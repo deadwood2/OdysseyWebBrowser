@@ -29,8 +29,6 @@ import tempfile
 
 from webkitpy.common.system.filesystem import FileSystem
 from webkitpy.common.webkit_finder import WebKitFinder
-import webkitpy.thirdparty.autoinstalled.pytest
-import webkitpy.thirdparty.autoinstalled.pytest_timeout
 import pytest
 from _pytest.main import EXIT_INTERNALERROR
 
@@ -199,8 +197,7 @@ def run(path, args, timeout, env, expectations, ignore_param=None):
                    '--basetemp=%s' % cache_directory,
                    '--showlocals',
                    '--timeout=%s' % timeout,
-                   '-p', 'no:cacheprovider',
-                   '-p', 'pytest_timeout']
+                   '-p', 'no:cacheprovider']
             cmd.extend(args)
             cmd.append(path)
             result = pytest.main(cmd, plugins=[harness_recorder, subtests_recorder, expectations_marker])

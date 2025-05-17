@@ -52,6 +52,11 @@
     return wrapper(WebKit::WebProcess::singleton().webFrame(handle->_frameHandle->frameID()));
 }
 
++ (instancetype)lookUpFrameFromJSContext:(JSContext *)context
+{
+    return wrapper(WebKit::WebFrame::frameForContext(context.JSGlobalContextRef));
+}
+
 - (void)dealloc
 {
     _frame->~WebFrame();
@@ -110,6 +115,14 @@
     return wrapper(API::FrameHandle::create(_frame->frameID()));
 }
 
+- (NSString *)_securityOrigin
+{
+    auto* coreFrame = _frame->coreFrame();
+    if (!coreFrame)
+        return nil;
+    return coreFrame->document()->securityOrigin().toString();
+}
+
 static RetainPtr<NSArray> collectIcons(WebCore::Frame* frame, OptionSet<WebCore::LinkIconType> iconTypes)
 {
     if (!frame)
@@ -147,7 +160,7 @@ static RetainPtr<NSArray> collectIcons(WebCore::Frame* frame, OptionSet<WebCore:
 
 - (NSArray *)_certificateChain
 {
-    return [[(NSArray *)_frame->certificateInfo().certificateChain() retain] autorelease];
+    return retainPtr((NSArray *)_frame->certificateInfo().certificateChain()).autorelease();
 }
 
 - (SecTrustRef)_serverTrust

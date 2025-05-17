@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -45,11 +45,11 @@ using WebCore::PlaybackSessionInterfaceMac;
 
 @implementation WebPlaybackControlsManager
 
-@synthesize seekToTime=_seekToTime;
-@synthesize hasEnabledAudio=_hasEnabledAudio;
-@synthesize hasEnabledVideo=_hasEnabledVideo;
-@synthesize rate=_rate;
-@synthesize canTogglePlayback=_canTogglePlayback;
+@synthesize seekToTime = _seekToTime;
+@synthesize hasEnabledAudio = _hasEnabledAudio;
+@synthesize hasEnabledVideo = _hasEnabledVideo;
+@synthesize rate = _rate;
+@synthesize canTogglePlayback = _canTogglePlayback;
 @synthesize allowsPictureInPicturePlayback;
 @synthesize pictureInPictureActive;
 @synthesize canTogglePictureInPicture;
@@ -98,10 +98,11 @@ using WebCore::PlaybackSessionInterfaceMac;
 
 - (void)seekToTime:(NSTimeInterval)time toleranceBefore:(NSTimeInterval)toleranceBefore toleranceAfter:(NSTimeInterval)toleranceAfter
 {
-    UNUSED_PARAM(toleranceBefore);
-    UNUSED_PARAM(toleranceAfter);
+    if (!_playbackSessionInterfaceMac)
+        return;
+
     if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
-        model->seekToTime(time);
+        model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::SeekToPlaybackPositionCommand, { time, toleranceBefore || toleranceAfter });
 }
 
 - (void)cancelThumbnailAndAudioAmplitudeSampleGeneration
@@ -133,12 +134,24 @@ using WebCore::PlaybackSessionInterfaceMac;
 
 - (void)beginTouchBarScrubbing
 {
-    _playbackSessionInterfaceMac->beginScrubbing();
+    if (!_playbackSessionInterfaceMac)
+        return;
+
+    auto* model = _playbackSessionInterfaceMac->playbackSessionModel();
+    if (!model)
+        return;
+        
+    _playbackSessionInterfaceMac->willBeginScrubbing();
+    model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::BeginScrubbing, { });
 }
 
 - (void)endTouchBarScrubbing
 {
-    _playbackSessionInterfaceMac->endScrubbing();
+    if (!_playbackSessionInterfaceMac)
+        return;
+
+    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
+        model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::EndScrubbing, { });
 }
 
 - (NSArray<AVTouchBarMediaSelectionOption *> *)audioTouchBarMediaSelectionOptions
@@ -282,34 +295,42 @@ static RetainPtr<NSArray> mediaSelectionOptions(const Vector<MediaSelectionOptio
 
 - (void)togglePlayback
 {
-    if (_playbackSessionInterfaceMac && _playbackSessionInterfaceMac->playbackSessionModel())
-        _playbackSessionInterfaceMac->playbackSessionModel()->togglePlayState();
+    if (!_playbackSessionInterfaceMac)
+        return;
+
+    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
+        model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::TogglePlayPauseCommand, { });
 }
 
 - (void)setPlaying:(BOOL)playing
 {
-    if (!_playbackSessionInterfaceMac || !_playbackSessionInterfaceMac->playbackSessionModel())
+    if (playing != _playing) {
+        [self willChangeValueForKey:@"playing"];
+        _playing = playing;
+        [self didChangeValueForKey:@"playing"];
+    }
+
+    if (!_playbackSessionInterfaceMac)
         return;
 
-    BOOL isCurrentlyPlaying = self.playing;
-    if (!isCurrentlyPlaying && playing)
-        _playbackSessionInterfaceMac->playbackSessionModel()->play();
-    else if (isCurrentlyPlaying && !playing)
-        _playbackSessionInterfaceMac->playbackSessionModel()->pause();
+    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel()) {
+        BOOL isCurrentlyPlaying = model->isPlaying();
+        if (!isCurrentlyPlaying && _playing)
+            model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::PlayCommand, { });
+        else if (isCurrentlyPlaying && !_playing)
+            model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::PauseCommand, { });
+    }
 }
 
 - (BOOL)isPlaying
 {
-    if (_playbackSessionInterfaceMac && _playbackSessionInterfaceMac->playbackSessionModel())
-        return _playbackSessionInterfaceMac->playbackSessionModel()->isPlaying();
-
-    return NO;
+    return _playing;
 }
 
 - (void)togglePictureInPicture
 {
-    if (_playbackSessionInterfaceMac && _playbackSessionInterfaceMac->playbackSessionModel())
-        _playbackSessionInterfaceMac->playbackSessionModel()->togglePictureInPicture();
+    if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
+        model->togglePictureInPicture();
 }
 
 IGNORE_WARNINGS_END

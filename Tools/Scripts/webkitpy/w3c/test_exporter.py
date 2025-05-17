@@ -235,10 +235,11 @@ class WebPlatformTestExporter(object):
             self._validate_and_save_token(self._username, self._token)
 
     def _validate_and_save_token(self, username, token):
-        url = 'https://api.github.com/user?access_token=%s' % (token,)
+        url = 'https://api.github.com/user'
+        headers = {'Accept': 'application/vnd.github.v3+json', 'Authorization': 'token {}'.format(token)}
         try:
-            response = self._host.web.request(method='GET', url=url, data=None)
-        except HTTPError as e:
+            response = self._host.web.request(method='GET', url=url, data=None, headers=headers)
+        except HTTPError:
             raise Exception("OAuth token is not valid")
         data = json.load(response)
         login = data.get('login', None)
@@ -253,7 +254,6 @@ class WebPlatformTestExporter(object):
                 self._git.set_local_config('github.username', username)
 
     def _ensure_wpt_repository(self, url, wpt_repository_directory, gitClass):
-        git = None
         if not self._filesystem.exists(wpt_repository_directory):
             _log.info('Cloning %s into %s...' % (url, wpt_repository_directory))
             gitClass.clone(url, wpt_repository_directory, self._host.executive)

@@ -98,7 +98,11 @@ static void installFlip4MacPlugInWorkaroundIfNecessary();
 #endif
 
 
-static NSMutableSet *pluginViews = nil;
+static RetainPtr<NSMutableSet>& pluginViews()
+{
+    static NeverDestroyed<RetainPtr<NSMutableSet>> pluginViews;
+    return pluginViews;
+}
 
 #if PLATFORM(IOS_FAMILY)
 static void initializeAudioSession()
@@ -148,10 +152,10 @@ static void initializeAudioSession()
         return nil;
     }
     
-    if (pluginViews == nil) {
-        pluginViews = [[NSMutableSet alloc] init];
-    }
-    [pluginViews addObject:view];
+    auto& views = pluginViews();
+    if (!views)
+        views = adoptNS([[NSMutableSet alloc] init]);
+    [views addObject:view];
 
     return view;
 }
@@ -159,18 +163,19 @@ static void initializeAudioSession()
 #if PLATFORM(IOS_FAMILY)
 + (void)addPlugInView:(NSView *)view
 {
-    if (pluginViews == nil)
-        pluginViews = [[NSMutableSet alloc] init];
+    auto& views = pluginViews();
+    if (!views)
+        views = adoptNS([[NSMutableSet alloc] init]);
 
     ASSERT(view);
     if (view)
-        [pluginViews addObject:view];
+        [views addObject:view];
 }
 #endif
 
 + (BOOL)isPlugInView:(NSView *)view
 {
-    return [pluginViews containsObject:view];
+    return [pluginViews() containsObject:view];
 }
 
 - (id)initWithDocumentView:(NSView *)view
@@ -385,7 +390,7 @@ static void initializeAudioSession()
             frame->script().cleanupScriptObjectsForPlugin(self);
 #endif
         
-        [pluginViews removeObject:view];
+        [pluginViews() removeObject:view];
 #if !PLATFORM(IOS_FAMILY)
         [[_documentView _webView] removePluginInstanceView:view];
 #endif
@@ -433,7 +438,7 @@ static void cancelOutstandingCheck(const void *item, void *context)
             frame->script().cleanupScriptObjectsForPlugin(self);
 #endif
         
-        [pluginViews removeObject:aView];
+        [pluginViews() removeObject:aView];
 #if !PLATFORM(IOS_FAMILY)
         [[_documentView _webView] removePluginInstanceView:aView];
 #endif
@@ -538,9 +543,7 @@ static void cancelOutstandingCheck(const void *item, void *context)
     bool primary = true;
     if (auto* frame = core([self webFrame]))
         primary = frame->selection().isFocusedAndActive();
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    return primary ? [NSColor selectedTextBackgroundColor] : [NSColor secondarySelectedControlColor];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    return primary ? [NSColor selectedTextBackgroundColor] : [NSColor unemphasizedSelectedContentBackgroundColor];
 }
 
 // For compatibility only.
@@ -574,13 +577,12 @@ static void cancelOutstandingCheck(const void *item, void *context)
     else {
         // Cancel the load since this plug-in does its own loading.
         // FIXME: See <rdar://problem/4258008> for a problem with this.
-        NSError *error = [[NSError alloc] _initWithPluginErrorCode:WebKitErrorPlugInWillHandleLoad
+        auto error = adoptNS([[NSError alloc] _initWithPluginErrorCode:WebKitErrorPlugInWillHandleLoad
                                                         contentURL:[response URL]
                                                      pluginPageURL:nil
                                                         pluginName:nil // FIXME: Get this from somewhere
-                                                          MIMEType:[response MIMEType]];
-        [_dataSource _documentLoader]->cancelMainResourceLoad(error);
-        [error release];
+                                                          MIMEType:[response MIMEType]]);
+        [_dataSource _documentLoader]->cancelMainResourceLoad(error.get());
     }        
 }
 

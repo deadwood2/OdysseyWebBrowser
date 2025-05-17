@@ -1,6 +1,5 @@
 SCRIPTS_PATH ?= ../Tools/Scripts
 
-SET_COLOR_DIAGNOSTICS_ARG = if [[ -t 1 ]]; then COLOR_DIAGNOSTICS_ARG="COLOR_DIAGNOSTICS=YES"; fi
 XCODE_OPTIONS = `perl -I$(SCRIPTS_PATH) -Mwebkitdirs -e 'print XcodeOptionString()' -- $(BUILD_WEBKIT_OPTIONS)` $${COLOR_DIAGNOSTICS_ARG} $(ARGS)
 
 ifneq (,$(SDKROOT))
@@ -42,12 +41,9 @@ ifeq ($(findstring UseNewBuildSystem,$(ARGS)),)
 	ifeq ($(CAN_USE_XCBUILD),1)
 		# Temporarily disable default use of XCBuild until issues with it are ironed out.
 		#XCODE_OPTIONS += -UseNewBuildSystem=YES
-		#XCODE_OPTIONS += USE_NEW_BUILD_SYSTEM=YES
 		XCODE_OPTIONS += -UseNewBuildSystem=NO
-		XCODE_OPTIONS += USE_NEW_BUILD_SYSTEM=NO
 	else
 		XCODE_OPTIONS += -UseNewBuildSystem=NO
-		XCODE_OPTIONS += USE_NEW_BUILD_SYSTEM=NO
 	endif
 endif
 
@@ -73,6 +69,14 @@ ASAN_OPTION=--no-asan
 endif
 endif
 
+ifeq ($(TSAN),YES)
+TSAN_OPTION=--tsan
+else
+ifeq ($(TSAN),NO)
+TSAN_OPTION=--no-tsan
+endif
+endif
+
 ifeq ($(WK_LTO_MODE),full)
 WK_LTO_OPTION=--lto-mode=full
 else ifeq ($(WK_LTO_MODE),thin)
@@ -87,39 +91,63 @@ export DSYMUTIL_NUM_THREADS = $(shell sysctl -n hw.activecpu)
 # See <rdar://problem/16466196>.
 export PATH = $(shell getconf PATH)
 
-all: set_asan_configuration
-	( $(SET_COLOR_DIAGNOSTICS_ARG); xcodebuild $(OTHER_OPTIONS) $(XCODE_OPTIONS) GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)' | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} )
 
-debug d development dev develop: force
-	$(SCRIPTS_PATH)/set-webkit-configuration --debug $(ASAN_OPTION) $(WK_LTO_OPTION)
-	( $(SET_COLOR_DIAGNOSTICS_ARG); xcodebuild $(OTHER_OPTIONS) $(XCODE_OPTIONS) GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)' | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} )
+define set_webkit_configuration
+	$(SCRIPTS_PATH)/set-webkit-configuration $1 $(ASAN_OPTION) $(TSAN_OPTION) $(WK_LTO_OPTION)
+endef
 
-release r deployment dep deploy: force
-	$(SCRIPTS_PATH)/set-webkit-configuration --release $(ASAN_OPTION) $(WK_LTO_OPTION)
-	( $(SET_COLOR_DIAGNOSTICS_ARG); xcodebuild $(OTHER_OPTIONS) $(XCODE_OPTIONS) GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)' | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} )
+define invoke_xcode
+	( \
+		[[ -t 1 ]] && COLOR_DIAGNOSTICS_ARG="COLOR_DIAGNOSTICS=YES"; \
+		echo; \
+		echo "===== BUILDING $$(basename "$$(pwd)") ====="; \
+		echo; \
+		$1 xcodebuild $(OTHER_OPTIONS) $(XCODE_TARGET) $(XCODE_OPTIONS) $2 | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} \
+	)
+endef
+
+all:
+ifneq (,$(strip $(ASAN_OPTION) $(TSAN_OPTION) $(WK_LTO_OPTION)))
+	@$(call set_webkit_configuration,)
+endif
+	@$(call invoke_xcode,,GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)')
+
+debug d: force
+	@$(call set_webkit_configuration,--debug)
+	@$(call invoke_xcode,,GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)')
+
+release r: force
+	@$(call set_webkit_configuration,--release)
+	@$(call invoke_xcode,,GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)')
 
 release+assert ra: force
-	$(SCRIPTS_PATH)/set-webkit-configuration --release $(ASAN_OPTION) $(WK_LTO_OPTION)
-	( $(SET_COLOR_DIAGNOSTICS_ARG); xcodebuild $(OTHER_OPTIONS) $(XCODE_OPTIONS) GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) ASSERT_ENABLED=1 $$(inherited)' | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} )
+	@$(call set_webkit_configuration,--release)
+	@$(call invoke_xcode,,GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) ASSERT_ENABLED=1 $$(inherited)')
 
 testing t: force
-	$(SCRIPTS_PATH)/set-webkit-configuration --debug $(ASAN_OPTION) $(WK_LTO_OPTION) --force-optimization-level=O3
-	( $(SET_COLOR_DIAGNOSTICS_ARG); xcodebuild $(OTHER_OPTIONS) $(XCODE_OPTIONS) GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)' | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} )
+	@$(call set_webkit_configuration,--debug --force-optimization-level=O3)
+	@$(call invoke_xcode,,GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)')
 
 analyze:
-	$(SCRIPTS_PATH)/set-webkit-configuration --debug $(ASAN_OPTION) $(WK_LTO_OPTION)
+	@$(call set_webkit_configuration,--debug)
 ifndef PATH_TO_SCAN_BUILD
-	( $(SET_COLOR_DIAGNOSTICS_ARG); xcodebuild $(OTHER_OPTIONS) $(XCODE_OPTIONS) GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)' RUN_CLANG_STATIC_ANALYZER=YES | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} )
+	@$(call invoke_xcode,,GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)' RUN_CLANG_STATIC_ANALYZER=YES)
 else
-	( $(SET_COLOR_DIAGNOSTICS_ARG); $(PATH_TO_SCAN_BUILD) xcodebuild $(OTHER_OPTIONS) $(XCODE_OPTIONS) GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)' | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} )
-endif
-
-set_asan_configuration:
-ifneq (,$(ASAN_OPTION))
-	$(SCRIPTS_PATH)/set-webkit-configuration $(ASAN_OPTION)
+	@$(call invoke_xcode,$(PATH_TO_SCAN_BUILD),GCC_PREPROCESSOR_DEFINITIONS='$(GCC_PREPROCESSOR_ADDITIONS) $$(inherited)')
 endif
 
 clean:
-	( $(SET_COLOR_DIAGNOSTICS_ARG); xcodebuild $(OTHER_OPTIONS) -alltargets clean $(XCODE_OPTIONS) | $(OUTPUT_FILTER) && exit $${PIPESTATUS[0]} )
+ifndef XCODE_TARGET
+	@$(call invoke_xcode,,-alltargets clean)
+else
+	@$(call invoke_xcode,,clean)
+endif
+
+installsrc:
+ifndef XCODE_TARGET
+	@$(call invoke_xcode,,-alltargets installsrc SRCROOT="$(SRCROOT)$(PATH_FROM_ROOT)")
+else
+	@$(call invoke_xcode,,installsrc SRCROOT="$(SRCROOT)$(PATH_FROM_ROOT)")
+endif
 
 force: ;

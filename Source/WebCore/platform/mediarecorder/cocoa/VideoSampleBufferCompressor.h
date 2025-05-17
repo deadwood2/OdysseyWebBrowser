@@ -40,10 +40,13 @@ public:
     static std::unique_ptr<VideoSampleBufferCompressor> create(CMVideoCodecType, CMBufferQueueTriggerCallback, void* callbackObject);
     ~VideoSampleBufferCompressor();
 
+    void setBitsPerSecond(unsigned);
     void finish();
     void addSampleBuffer(CMSampleBufferRef);
     CMSampleBufferRef getOutputSampleBuffer();
     RetainPtr<CMSampleBufferRef> takeOutputSampleBuffer();
+
+    unsigned bitRate() const;
 
 private:
     explicit VideoSampleBufferCompressor(CMVideoCodecType);
@@ -64,6 +67,7 @@ private:
     bool m_isEncoding { false };
     float m_maxKeyFrameIntervalDuration { 2.0 };
     unsigned m_expectedFrameRate { 30 };
+    Optional<unsigned> m_outputBitRate;
 };
 
 }

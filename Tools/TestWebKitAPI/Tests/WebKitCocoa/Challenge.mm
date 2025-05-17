@@ -47,7 +47,7 @@
 
 static bool navigationFinished;
 
-static RetainPtr<SecCertificateRef> testCertificate()
+RetainPtr<SecCertificateRef> testCertificate()
 {
     auto certificateBytes = TestWebKitAPI::TCPServer::testCertificate();
     return adoptCF(SecCertificateCreateWithData(nullptr, (__bridge CFDataRef)[NSData dataWithBytes:certificateBytes.data() length:certificateBytes.size()]));
@@ -232,12 +232,35 @@ TEST(Challenge, SecIdentity)
     [webView setNavigationDelegate:delegate.get()];
 
     // Make sure no credential left by previous tests.
-    NSURLProtectionSpace *protectionSpace = [[[NSURLProtectionSpace alloc] initWithHost:@"127.0.0.1" port:server.port() protocol:NSURLProtectionSpaceHTTP realm:@"testrealm" authenticationMethod:NSURLAuthenticationMethodHTTPBasic] autorelease];
-    [[webView configuration].processPool _clearPermanentCredentialsForProtectionSpace:protectionSpace];
+    auto protectionSpace = adoptNS([[NSURLProtectionSpace alloc] initWithHost:@"127.0.0.1" port:server.port() protocol:NSURLProtectionSpaceHTTP realm:@"testrealm" authenticationMethod:NSURLAuthenticationMethodHTTPBasic]);
+    [[webView configuration].processPool _clearPermanentCredentialsForProtectionSpace:protectionSpace.get()];
 
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/", server.port()]]]];
 
     Util::run(&navigationFinished);
+}
+
+TEST(Challenge, DeallocateDuringChallenge)
+{
+    using namespace TestWebKitAPI;
+    HTTPServer server({{ "/", { "hi" }}}, HTTPServer::Protocol::Https);
+
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    delegate.get().didReceiveAuthenticationChallenge = ^(WKWebView *, NSURLAuthenticationChallenge *challenge, void (^completionHandler)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)) {
+        completionHandler(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
+    };
+
+    @autoreleasepool {
+        Vector<RetainPtr<WKWebView>> views;
+        for (size_t i = 0; i < 100; i++)
+            views.append(adoptNS([WKWebView new]));
+        for (auto& view : views) {
+            [view setNavigationDelegate:delegate.get()];
+            [view loadRequest:server.request()];
+        }
+        Util::spinRunLoop(10);
+    }
+    Util::spinRunLoop(1000);
 }
 
 @interface ClientCertificateDelegate : NSObject <WKNavigationDelegate> {
@@ -318,8 +341,6 @@ static RetainPtr<NSURLCredential> persistentCredential;
 
 @end
 
-#if HAVE(NETWORK_FRAMEWORK)
-
 TEST(Challenge, BasicProposedCredential)
 {
     using namespace TestWebKitAPI;
@@ -330,8 +351,8 @@ TEST(Challenge, BasicProposedCredential)
     [webView setNavigationDelegate:delegate.get()];
 
     // Make sure no credential left by previous tests.
-    NSURLProtectionSpace *protectionSpace = [[[NSURLProtectionSpace alloc] initWithHost:@"127.0.0.1" port:server.port() protocol:NSURLProtectionSpaceHTTP realm:@"testrealm" authenticationMethod:NSURLAuthenticationMethodHTTPBasic] autorelease];
-    [[webView configuration].processPool _clearPermanentCredentialsForProtectionSpace:protectionSpace];
+    auto protectionSpace = adoptNS([[NSURLProtectionSpace alloc] initWithHost:@"127.0.0.1" port:server.port() protocol:NSURLProtectionSpaceHTTP realm:@"testrealm" authenticationMethod:NSURLAuthenticationMethodHTTPBasic]);
+    [[webView configuration].processPool _clearPermanentCredentialsForProtectionSpace:protectionSpace.get()];
 
     RetainPtr<NSURLRequest> request = server.request();
     [webView loadRequest:request.get()];
@@ -342,10 +363,42 @@ TEST(Challenge, BasicProposedCredential)
     EXPECT_TRUE(receivedSecondChallenge);
 
     // Clear persistent credentials created by this test.
-    [[webView configuration].processPool _clearPermanentCredentialsForProtectionSpace:protectionSpace];
+    [[webView configuration].processPool _clearPermanentCredentialsForProtectionSpace:protectionSpace.get()];
 }
 
-#endif // HAVE(NETWORK_FRAMEWORK)
+TEST(Challenge, BasicPersistentCredential)
+{
+    using namespace TestWebKitAPI;
+    HTTPServer server(HTTPServer::respondWithChallengeThenOK);
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    __block RetainPtr<NSURLProtectionSpace> protectionSpace;
+    auto credentialStorage = [NSURLCredentialStorage sharedCredentialStorage];
+    delegate.get().didReceiveAuthenticationChallenge = ^(WKWebView *, NSURLAuthenticationChallenge *challenge, void (^completionHandler)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)) {
+        protectionSpace = challenge.protectionSpace;
+        NSURLCredential *existingCredential = [credentialStorage defaultCredentialForProtectionSpace:protectionSpace.get()];
+        EXPECT_NULL(existingCredential);
+        EXPECT_WK_STREQ(protectionSpace.get().authenticationMethod, NSURLAuthenticationMethodHTTPBasic);
+        completionHandler(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialWithUser:@"testuser" password:@"testpassword" persistence:NSURLCredentialPersistencePermanent]);
+    };
+    auto webView = adoptNS([WKWebView new]);
+    webView.get().navigationDelegate = delegate.get();
+    [webView loadRequest:server.request()];
+    [delegate waitForDidFinishNavigation];
+
+    NSURLCredential *storedCredential = nil;
+    while (!storedCredential) {
+        storedCredential = [[NSURLCredentialStorage sharedCredentialStorage] defaultCredentialForProtectionSpace:protectionSpace.get()];
+        Util::spinRunLoop();
+    }
+    EXPECT_NOT_NULL(storedCredential);
+    EXPECT_WK_STREQ(storedCredential.user, "testuser");
+    EXPECT_WK_STREQ(storedCredential.password, "testpassword");
+    EXPECT_EQ(storedCredential.persistence, NSURLCredentialPersistencePermanent);
+
+    [credentialStorage removeCredential:storedCredential forProtectionSpace:protectionSpace.get()];
+    NSURLCredential *removedCredential = [credentialStorage defaultCredentialForProtectionSpace:protectionSpace.get()];
+    EXPECT_NULL(removedCredential);
+}
 
 #if HAVE(SSL)
 static void verifyCertificateAndPublicKey(SecTrustRef trust)
@@ -500,11 +553,11 @@ TEST(WebKit, FastServerTrust)
         EXPECT_FALSE(ssl);
     }, WTF::nullopt, 2);
 #endif
-    WKWebViewConfiguration *configuration = [[[WKWebViewConfiguration alloc] init] autorelease];
-    _WKWebsiteDataStoreConfiguration *dataStoreConfiguration = [[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease];
-    dataStoreConfiguration.fastServerTrustEvaluationEnabled = YES;
-    configuration.websiteDataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration] autorelease];
-    auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration]);
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto dataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
+    [dataStoreConfiguration setFastServerTrustEvaluationEnabled:YES];
+    [configuration setWebsiteDataStore:adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration.get()]).get()];
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]);
     auto delegate = adoptNS([ServerTrustDelegate new]);
     [webView setNavigationDelegate:delegate.get()];
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"https://localhost:%d/", server.port()]]]];
@@ -520,8 +573,28 @@ TEST(WebKit, FastServerTrust)
 #endif
 }
 
+TEST(WebKit, ErrorSecureCoding)
+{
+    HTTPServer server({{ "/", { HTTPResponse::TerminateConnection::Yes }}});
+    auto webView = [[WKWebView new] autorelease];
+    auto delegate = [[TestNavigationDelegate new] autorelease];
+    webView.navigationDelegate = delegate;
+    [webView loadRequest:server.request()];
+    NSError *error = [delegate waitForDidFailProvisionalNavigation];
+
+    EXPECT_WK_STREQ(NSStringFromClass([error.userInfo[_WKRecoveryAttempterErrorKey] class]), @"WKReloadFrameErrorRecoveryAttempter");
+    auto archiver = adoptNS([[NSKeyedArchiver alloc] initRequiringSecureCoding:YES]);
+    [archiver encodeObject:error forKey:NSKeyedArchiveRootObjectKey];
+    [archiver finishEncoding];
+    auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:archiver.get().encodedData error:nullptr]);
+    NSError *decodedError = [unarchiver decodeObjectOfClasses:[NSSet setWithObjects:[NSDictionary class], [NSString class], [NSError class], NSClassFromString(@"WKReloadFrameErrorRecoveryAttempter"), nil] forKey:NSKeyedArchiveRootObjectKey];
+    EXPECT_EQ(decodedError.code, NSURLErrorNetworkConnectionLost);
+    EXPECT_WK_STREQ(decodedError.domain, NSURLErrorDomain);
+    EXPECT_WK_STREQ(NSStringFromClass([decodedError.userInfo[_WKRecoveryAttempterErrorKey] class]), @"WKReloadFrameErrorRecoveryAttempter");
+}
+
 // FIXME: Find out why these tests time out on Mojave.
-#if HAVE(NETWORK_FRAMEWORK) && (!PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500)
+#if !PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
 
 static HTTPServer clientCertServer()
 {
@@ -536,7 +609,7 @@ static HTTPServer clientCertServer()
         { "/5.png", { longString } },
         { "/6.png", { longString } },
         { "/redirectToError", { 301, {{ "Location", "/error" }} } },
-        { "/error", { HTTPServer::HTTPResponse::TerminateConnection::Yes } },
+        { "/error", { HTTPResponse::TerminateConnection::Yes } },
     }, HTTPServer::Protocol::Https, [] (auto, auto, auto certificateAllowed) {
         certificateAllowed(true);
     });
@@ -631,7 +704,7 @@ TEST(MultipleClientCertificateConnections, NonPersistentDataStore)
     EXPECT_EQ(countClientCertChallenges(methods), 1u);
 }
 
-#endif // HAVE(NETWORK_FRAMEWORK)
+#endif // !PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
 
 } // namespace TestWebKitAPI
 

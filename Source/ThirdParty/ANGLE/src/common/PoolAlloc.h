@@ -12,7 +12,7 @@
 #define COMMON_POOLALLOC_H_
 
 #if !defined(NDEBUG)
-#    define ANGLE_POOL_ALLOC_GUARD_BLOCKS  // define to enable guard block sanity checking
+#    define ANGLE_POOL_ALLOC_GUARD_BLOCKS  // define to enable guard block checking
 #endif
 
 //
@@ -65,7 +65,7 @@ class Allocation
 #endif
     }
 
-    void check() const
+    void checkAlloc() const
     {
         checkGuardBlock(preGuard(), kGuardBlockBeginVal, "before");
         checkGuardBlock(postGuard(), kGuardBlockEndVal, "after");

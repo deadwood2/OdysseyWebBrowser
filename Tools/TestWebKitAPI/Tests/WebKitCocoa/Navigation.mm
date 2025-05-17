@@ -75,14 +75,14 @@ TEST(WKNavigation, NavigationDelegate)
 {
     RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
 
-    NavigationDelegate *delegate = [[NavigationDelegate alloc] init];
-    [webView setNavigationDelegate:delegate];
+    auto delegate = adoptNS([[NavigationDelegate alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
 
     @autoreleasepool {
         EXPECT_EQ(delegate, [webView navigationDelegate]);
     }
 
-    [delegate release];
+    delegate = nil;
     EXPECT_NULL([webView navigationDelegate]);
 }
 
@@ -121,7 +121,6 @@ TEST(WKNavigation, HTTPBody)
     TestWebKitAPI::Util::run(&done);
 }
 
-#if HAVE(NETWORK_FRAMEWORK)
 TEST(WKNavigation, UserAgentAndAccept)
 {
     using namespace TestWebKitAPI;
@@ -140,7 +139,6 @@ TEST(WKNavigation, UserAgentAndAccept)
     [webView loadRequest:server.request()];
     TestWebKitAPI::Util::run(&done);
 }
-#endif
 
 @interface FrameNavigationDelegate : NSObject <WKNavigationDelegate>
 - (void)waitForNavigations:(size_t)count;
@@ -227,8 +225,8 @@ TEST(WKNavigation, UserAgentAndAccept)
 
 TEST(WKNavigation, Frames)
 {
-    WKWebViewConfiguration *configuration = [[[WKWebViewConfiguration alloc] init] autorelease];
-    TestURLSchemeHandler *handler = [[TestURLSchemeHandler new] autorelease];
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto handler = adoptNS([TestURLSchemeHandler new]);
     [handler setStartURLSchemeTaskHandler:^(WKWebView *, id<WKURLSchemeTask> task) {
         NSString *responseString = nil;
         if ([task.request.URL.absoluteString isEqualToString:@"frame://host1/"])
@@ -246,9 +244,9 @@ TEST(WKNavigation, Frames)
         [task didReceiveData:[responseString dataUsingEncoding:NSUTF8StringEncoding]];
         [task didFinish];
     }];
-    [configuration setURLSchemeHandler:handler forURLScheme:@"frame"];
+    [configuration setURLSchemeHandler:handler.get() forURLScheme:@"frame"];
 
-    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration]);
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
     auto delegate = adoptNS([FrameNavigationDelegate new]);
         webView.get().navigationDelegate = delegate.get();
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"frame://host1/"]]];
@@ -716,8 +714,6 @@ TEST(WKNavigation, ListItemAddedRemoved)
 
 #endif // PLATFORM(MAC)
 
-#if HAVE(NETWORK_FRAMEWORK)
-
 @interface LoadingObserver : NSObject
 @property (nonatomic, readonly) size_t changesObserved;
 @end
@@ -747,34 +743,83 @@ TEST(WKNavigation, FrameBackLoading)
         { "/frame1.html", { "<a href='frame2.html'>link</a>" } },
         { "/frame2.html", { "<script>alert('frame2 loaded')</script>" } },
     });
-    auto webView = [[WKWebView new] autorelease];
-    auto delegate = [[TestUIDelegate new] autorelease];
-    auto observer = [[LoadingObserver new] autorelease];
-    webView.UIDelegate = delegate;
-    [webView addObserver:observer forKeyPath:@"loading" options:NSKeyValueObservingOptionNew context:nil];
-    EXPECT_FALSE(webView.loading);
-    EXPECT_EQ(observer.changesObserved, 0u);
+    auto webView = adoptNS([WKWebView new]);
+    auto delegate = adoptNS([TestUIDelegate new]);
+    auto observer = adoptNS([LoadingObserver new]);
+    [webView setUIDelegate:delegate.get()];
+    [webView addObserver:observer.get() forKeyPath:@"loading" options:NSKeyValueObservingOptionNew context:nil];
+    EXPECT_FALSE([webView isLoading]);
+    EXPECT_EQ([observer changesObserved], 0u);
     [webView loadRequest:server.request()];
-    EXPECT_TRUE(webView.loading);
-    EXPECT_EQ(observer.changesObserved, 1u);
-    while (observer.changesObserved < 2u)
+    EXPECT_TRUE([webView isLoading]);
+    EXPECT_EQ([observer changesObserved], 1u);
+    while ([observer changesObserved] < 2u)
         Util::spinRunLoop();
-    EXPECT_FALSE(webView.loading);
-    EXPECT_EQ(observer.changesObserved, 2u);
-    EXPECT_FALSE(webView.canGoBack);
+    EXPECT_FALSE([webView isLoading]);
+    EXPECT_EQ([observer changesObserved], 2u);
+    EXPECT_FALSE([webView canGoBack]);
     [webView evaluateJavaScript:@"document.querySelector('iframe').contentWindow.document.querySelector('a').click()" completionHandler:nil];
     EXPECT_WK_STREQ([delegate waitForAlert], "frame2 loaded");
-    EXPECT_EQ(observer.changesObserved, 2u);
-    EXPECT_TRUE(webView.canGoBack);
+    EXPECT_EQ([observer changesObserved], 2u);
+    EXPECT_TRUE([webView canGoBack]);
     [webView goBack];
-    while (observer.changesObserved < 3)
+    while ([observer changesObserved] < 3)
         Util::spinRunLoop();
-    EXPECT_TRUE(webView.loading);
-    while (observer.changesObserved < 4)
+    EXPECT_TRUE([webView isLoading]);
+    while ([observer changesObserved] < 4)
         Util::spinRunLoop();
-    EXPECT_FALSE(webView.loading);
-    [webView removeObserver:observer forKeyPath:@"loading"];
+    EXPECT_FALSE([webView isLoading]);
+    [webView removeObserver:observer.get() forKeyPath:@"loading"];
 
 }
 
-#endif // HAVE(NETWORK_FRAMEWORK)
+TEST(WKNavigation, SimultaneousNavigationWithFontsFinishes)
+{
+    const char* mainHTML =
+    "<!DOCTYPE html>"
+    "<html>"
+    "<head>"
+    "<style>"
+    "@font-face {"
+    "    font-family: 'WebFont';"
+    "    src: url('Ahem.svg') format('svg');"
+    "}"
+    "</style>"
+    "<script src='scriptsrc.js'></script>"
+    "</head>"
+    "<body>"
+    "<span style=\"font: 100px 'WebFont';\">text</span>"
+    "<iframe src='iframesrc.html'></iframe>"
+    "<script>window.location='refresh-nav:///'</script>"
+    "</body>"
+    "</html>";
+
+    NSString *svg = [NSString stringWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"AllAhem" withExtension:@"svg" subdirectory:@"TestWebKitAPI.resources"] encoding:NSUTF8StringEncoding error:nil];
+
+    using namespace TestWebKitAPI;
+    HTTPServer server({
+        { "/", { mainHTML } },
+        { "/Ahem.svg", { svg } },
+        { "/scriptsrc.js", { "/* js content */" } },
+        { "/iframesrc.html", { "frame content" } },
+    });
+
+    auto webView = adoptNS([WKWebView new]);
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    delegate.get().decidePolicyForNavigationAction = ^(WKNavigationAction *action, void (^completionHandler)(WKNavigationActionPolicy)) {
+        if ([action.request.URL.scheme isEqualToString:@"refresh-nav"])
+            completionHandler(WKNavigationActionPolicyCancel);
+        else
+            completionHandler(WKNavigationActionPolicyAllow);
+    };
+
+    __block bool finishedNavigation = false;
+    delegate.get().didFinishNavigation = ^(WKWebView *, WKNavigation *) {
+        finishedNavigation = true;
+    };
+
+    [webView loadRequest:server.request()];
+    Util::run(&finishedNavigation);
+}

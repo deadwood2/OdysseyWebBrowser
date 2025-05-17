@@ -149,6 +149,7 @@ static CFDictionaryRef createExtensionToMIMETypeMap()
         CFSTR("wbmp"),
         CFSTR("wbxml"),
         CFSTR("webarchive"),
+        CFSTR("webm"),
         CFSTR("wmd"),
         CFSTR("wml"),
         CFSTR("wmlc"),
@@ -269,6 +270,7 @@ static CFDictionaryRef createExtensionToMIMETypeMap()
         CFSTR("image/vnd.wap.wbmp"),
         CFSTR("application/vnd.wap.wbxml"),
         CFSTR("application/x-webarchive"),
+        CFSTR("video/webm"),
         CFSTR("application/x-ms-wmd"),
         CFSTR("text/vnd.wap.wml"),
         CFSTR("application/vnd.wap.wmlc"),
@@ -311,7 +313,9 @@ void adjustMIMETypeIfNecessary(CFURLResponseRef cfResponse, bool isMainResourceL
                 if (!result) {
                     // If the Gatekeeper-based map doesn't have a MIME type, we'll try to figure out what it should be by
                     // looking up the file extension in the UTI maps.
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
                     RetainPtr<CFStringRef> uti = adoptCF(UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, extension.get(), 0));
+ALLOW_DEPRECATED_DECLARATIONS_END
                     String MIMEType = MIMETypeFromUTITree(uti.get());
                     if (!MIMEType.isEmpty())
                         result = MIMEType.createCFString();
@@ -338,7 +342,7 @@ NSURLResponse *synthesizeRedirectResponseIfNecessary(NSURLRequest *currentReques
     if ([[[newRequest URL] scheme] isEqualToString:[[currentRequest URL] scheme]] && ![newRequest _schemeWasUpgradedDueToDynamicHSTS])
         return nil;
 
-    return [[ResourceResponse::syntheticRedirectResponse(URL([currentRequest URL]), URL([newRequest URL])).nsURLResponse() retain] autorelease];
+    return retainPtr(ResourceResponse::syntheticRedirectResponse(URL([currentRequest URL]), URL([newRequest URL])).nsURLResponse()).autorelease();
 }
 
 }

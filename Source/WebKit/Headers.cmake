@@ -47,7 +47,8 @@ set(WebKit_PUBLIC_FRAMEWORK_HEADERS
     UIProcess/API/C/WKCookieManager.h
     UIProcess/API/C/WKCredential.h
     UIProcess/API/C/WKCredentialTypes.h
-    UIProcess/API/C/WKDownload.h
+    UIProcess/API/C/WKDownloadClient.h
+    UIProcess/API/C/WKDownloadRef.h
     UIProcess/API/C/WKFormSubmissionListener.h
     UIProcess/API/C/WKFrame.h
     UIProcess/API/C/WKFrameHandleRef.h
@@ -61,6 +62,7 @@ set(WebKit_PUBLIC_FRAMEWORK_HEADERS
     UIProcess/API/C/WKIconDatabase.h
     UIProcess/API/C/WKInspector.h
     UIProcess/API/C/WKLayoutMode.h
+    UIProcess/API/C/WKMediaKeySystemPermissionCallback.h
     UIProcess/API/C/WKMessageListener.h
     UIProcess/API/C/WKMockDisplay.h
     UIProcess/API/C/WKMockMediaDevice.h
@@ -99,6 +101,7 @@ set(WebKit_PUBLIC_FRAMEWORK_HEADERS
     UIProcess/API/C/WKProtectionSpaceTypes.h
     UIProcess/API/C/WKResourceCacheManager.h
     UIProcess/API/C/WKSessionStateRef.h
+    UIProcess/API/C/WKSpeechRecognitionPermissionCallback.h
     UIProcess/API/C/WKTestingSupport.h
     UIProcess/API/C/WKTextChecker.h
     UIProcess/API/C/WKUserContentControllerRef.h

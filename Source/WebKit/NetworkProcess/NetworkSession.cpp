@@ -26,19 +26,19 @@
 #include "config.h"
 #include "NetworkSession.h"
 
-#include "AdClickAttributionManager.h"
 #include "Logging.h"
+#include "NetworkLoadScheduler.h"
 #include "NetworkProcess.h"
 #include "NetworkProcessProxyMessages.h"
 #include "NetworkResourceLoadParameters.h"
 #include "NetworkResourceLoader.h"
 #include "NetworkSessionCreationParameters.h"
 #include "PingLoad.h"
+#include "PrivateClickMeasurementManager.h"
 #include "WebPageProxy.h"
 #include "WebPageProxyMessages.h"
 #include "WebProcessProxy.h"
 #include "WebSocketTask.h"
-#include <WebCore/AdClickAttribution.h>
 #include <WebCore/CookieJar.h>
 #include <WebCore/ResourceRequest.h>
 
@@ -90,9 +90,7 @@ NetworkSession::NetworkSession(NetworkProcess& networkProcess, const NetworkSess
     , m_sameSiteStrictEnforcementEnabled(parameters.resourceLoadStatisticsParameters.sameSiteStrictEnforcementEnabled)
     , m_firstPartyWebsiteDataRemovalMode(parameters.resourceLoadStatisticsParameters.firstPartyWebsiteDataRemovalMode)
     , m_standaloneApplicationDomain(parameters.resourceLoadStatisticsParameters.standaloneApplicationDomain)
-    , m_cnameCloakingMitigationEnabled(parameters.resourceLoadStatisticsParameters.cnameCloakingMitigationEnabled)
 #endif
-    , m_adClickAttribution(makeUniqueRef<AdClickAttributionManager>(networkProcess, parameters.sessionID))
     , m_testSpeedMultiplier(parameters.testSpeedMultiplier)
     , m_allowsServerPreconnect(parameters.allowsServerPreconnect)
 {
@@ -121,15 +119,15 @@ NetworkSession::NetworkSession(NetworkProcess& networkProcess, const NetworkSess
 
     m_isStaleWhileRevalidateEnabled = parameters.staleWhileRevalidateEnabled;
 
-    m_adClickAttribution->setPingLoadFunction([this, weakThis = makeWeakPtr(this)](NetworkResourceLoadParameters&& loadParameters, CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&& completionHandler) {
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    setResourceLoadStatisticsEnabled(parameters.resourceLoadStatisticsParameters.enabled);
+    m_privateClickMeasurement = makeUnique<PrivateClickMeasurementManager>(*this, networkProcess, parameters.sessionID);
+    m_privateClickMeasurement->setPingLoadFunction([this, weakThis = makeWeakPtr(this)](NetworkResourceLoadParameters&& loadParameters, CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&& completionHandler) {
         if (!weakThis)
             return;
         // PingLoad manages its own lifetime, deleting itself when its purpose has been fulfilled.
         new PingLoad(m_networkProcess, m_sessionID, WTFMove(loadParameters), WTFMove(completionHandler));
     });
-
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    setResourceLoadStatisticsEnabled(parameters.resourceLoadStatisticsParameters.enabled);
 #endif
 }
 
@@ -149,20 +147,12 @@ void NetworkSession::destroyResourceLoadStatistics(CompletionHandler<void()>&& c
     m_resourceLoadStatistics->didDestroyNetworkSession(WTFMove(completionHandler));
     m_resourceLoadStatistics = nullptr;
 }
-
-void NetworkSession::flushAndDestroyPersistentStore(CompletionHandler<void()>&& completionHandler)
-{
-    if (!m_resourceLoadStatistics)
-        return completionHandler();
-
-    m_resourceLoadStatistics->flushAndDestroyPersistentStore(WTFMove(completionHandler));
-}
 #endif
 
 void NetworkSession::invalidateAndCancel()
 {
-    for (auto* task : m_dataTaskSet)
-        task->invalidateAndCancel();
+    for (auto& task : m_dataTaskSet)
+        task.invalidateAndCancel();
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     if (m_resourceLoadStatistics)
         m_resourceLoadStatistics->invalidateAndCancel();
@@ -235,11 +225,6 @@ void NetworkSession::logDiagnosticMessageWithValue(const String& message, const 
     m_networkProcess->parentProcessConnection()->send(Messages::WebPageProxy::LogDiagnosticMessageWithValue(message, description, value, significantFigures, shouldSample), 0);
 }
 
-void NetworkSession::notifyPageStatisticsTelemetryFinished(unsigned numberOfPrevalentResources, unsigned numberOfPrevalentResourcesWithUserInteraction, unsigned numberOfPrevalentResourcesWithoutUserInteraction, unsigned topPrevalentResourceWithUserInteractionDaysSinceUserInteraction, unsigned medianDaysSinceUserInteractionPrevalentResourceWithUserInteraction, unsigned top3NumberOfPrevalentResourcesWithUI, unsigned top3MedianSubFrameWithoutUI, unsigned top3MedianSubResourceWithoutUI, unsigned top3MedianUniqueRedirectsWithoutUI, unsigned top3MedianDataRecordsRemovedWithoutUI)
-{
-    m_networkProcess->parentProcessConnection()->send(Messages::NetworkProcessProxy::NotifyResourceLoadStatisticsTelemetryFinished(numberOfPrevalentResources, numberOfPrevalentResourcesWithUserInteraction, numberOfPrevalentResourcesWithoutUserInteraction, topPrevalentResourceWithUserInteractionDaysSinceUserInteraction, medianDaysSinceUserInteractionPrevalentResourceWithUserInteraction, top3NumberOfPrevalentResourcesWithUI, top3MedianSubFrameWithoutUI, top3MedianSubResourceWithoutUI, top3MedianUniqueRedirectsWithoutUI, top3MedianDataRecordsRemovedWithoutUI), 0);
-}
-
 void NetworkSession::deleteAndRestrictWebsiteDataForRegistrableDomains(OptionSet<WebsiteDataType> dataTypes, RegistrableDomainsToDeleteOrRestrictWebsiteDataFor&& domains, bool shouldNotifyPage, CompletionHandler<void(const HashSet<RegistrableDomain>&)>&& completionHandler)
 {
     if (auto* storageSession = networkStorageSession()) {
@@ -285,9 +270,6 @@ void NetworkSession::setShouldEnbleSameSiteStrictEnforcement(WebCore::SameSiteSt
 void NetworkSession::setFirstPartyHostCNAMEDomain(String&& firstPartyHost, WebCore::RegistrableDomain&& cnameDomain)
 {
 #if HAVE(CFNETWORK_CNAME_AND_COOKIE_TRANSFORM_SPI)
-    if (!cnameCloakingMitigationEnabled())
-        return;
-
     ASSERT(!firstPartyHost.isEmpty() && !cnameDomain.isEmpty() && firstPartyHost != cnameDomain.string());
     if (firstPartyHost.isEmpty() || cnameDomain.isEmpty() || firstPartyHost == cnameDomain.string())
         return;
@@ -301,7 +283,7 @@ void NetworkSession::setFirstPartyHostCNAMEDomain(String&& firstPartyHost, WebCo
 Optional<WebCore::RegistrableDomain> NetworkSession::firstPartyHostCNAMEDomain(const String& firstPartyHost)
 {
 #if HAVE(CFNETWORK_CNAME_AND_COOKIE_TRANSFORM_SPI)
-    if (!cnameCloakingMitigationEnabled())
+    if (!decltype(m_firstPartyHostCNAMEDomains)::isValidKey(firstPartyHost))
         return WTF::nullopt;
 
     auto iterator = m_firstPartyHostCNAMEDomains.find(firstPartyHost);
@@ -321,44 +303,70 @@ void NetworkSession::resetCNAMEDomainData()
 }
 #endif // ENABLE(RESOURCE_LOAD_STATISTICS)
 
-void NetworkSession::storeAdClickAttribution(WebCore::AdClickAttribution&& adClickAttribution)
+void NetworkSession::storePrivateClickMeasurement(WebCore::PrivateClickMeasurement&& unattributedPrivateClickMeasurement)
 {
-    m_adClickAttribution->storeUnconverted(WTFMove(adClickAttribution));
+    privateClickMeasurement().storeUnattributed(WTFMove(unattributedPrivateClickMeasurement));
 }
 
-void NetworkSession::handleAdClickAttributionConversion(AdClickAttribution::Conversion&& conversion, const URL& requestURL, const WebCore::ResourceRequest& redirectRequest)
+void NetworkSession::handlePrivateClickMeasurementConversion(PrivateClickMeasurement::AttributionTriggerData&& attributionTriggerData, const URL& requestURL, const WebCore::ResourceRequest& redirectRequest)
 {
-    m_adClickAttribution->handleConversion(WTFMove(conversion), requestURL, redirectRequest);
+    privateClickMeasurement().handleAttribution(WTFMove(attributionTriggerData), requestURL, redirectRequest);
 }
 
-void NetworkSession::dumpAdClickAttribution(CompletionHandler<void(String)>&& completionHandler)
+void NetworkSession::dumpPrivateClickMeasurement(CompletionHandler<void(String)>&& completionHandler)
 {
-    m_adClickAttribution->toString(WTFMove(completionHandler));
+    privateClickMeasurement().toString(WTFMove(completionHandler));
 }
 
-void NetworkSession::clearAdClickAttribution()
+void NetworkSession::clearPrivateClickMeasurement()
 {
-    m_adClickAttribution->clear();
+    privateClickMeasurement().clear();
 }
 
-void NetworkSession::clearAdClickAttributionForRegistrableDomain(WebCore::RegistrableDomain&& domain)
+void NetworkSession::clearPrivateClickMeasurementForRegistrableDomain(WebCore::RegistrableDomain&& domain)
 {
-    m_adClickAttribution->clearForRegistrableDomain(WTFMove(domain));
+    privateClickMeasurement().clearForRegistrableDomain(WTFMove(domain));
 }
 
-void NetworkSession::setAdClickAttributionOverrideTimerForTesting(bool value)
+void NetworkSession::setPrivateClickMeasurementOverrideTimerForTesting(bool value)
 {
-    m_adClickAttribution->setOverrideTimerForTesting(value);
+    privateClickMeasurement().setOverrideTimerForTesting(value);
 }
 
-void NetworkSession::setAdClickAttributionConversionURLForTesting(URL&& url)
+void NetworkSession::markAttributedPrivateClickMeasurementsAsExpiredForTesting(CompletionHandler<void()>&& completionHandler)
 {
-    m_adClickAttribution->setConversionURLForTesting(WTFMove(url));
+    privateClickMeasurement().markAttributedPrivateClickMeasurementsAsExpiredForTesting(WTFMove(completionHandler));
 }
 
-void NetworkSession::markAdClickAttributionsAsExpiredForTesting()
+void NetworkSession::setPrivateClickMeasurementTokenPublicKeyURLForTesting(URL&& url)
 {
-    m_adClickAttribution->markAllUnconvertedAsExpiredForTesting();
+    privateClickMeasurement().setTokenPublicKeyURLForTesting(WTFMove(url));
+}
+
+void NetworkSession::setPrivateClickMeasurementTokenSignatureURLForTesting(URL&& url)
+{
+    privateClickMeasurement().setTokenSignatureURLForTesting(WTFMove(url));
+}
+
+void NetworkSession::setPrivateClickMeasurementAttributionReportURLForTesting(URL&& url)
+{
+    privateClickMeasurement().setAttributionReportURLForTesting(WTFMove(url));
+}
+
+void NetworkSession::markPrivateClickMeasurementsAsExpiredForTesting()
+{
+    privateClickMeasurement().markAllUnattributedAsExpiredForTesting();
+}
+
+// FIXME: Switch to non-mocked test data once the right cryptography library is available in open source.
+void NetworkSession::setFraudPreventionValuesForTesting(String&& secretToken, String&& unlinkableToken, String&& signature, String&& keyID)
+{
+    privateClickMeasurement().setFraudPreventionValuesForTesting(WTFMove(secretToken), WTFMove(unlinkableToken), WTFMove(signature), WTFMove(keyID));
+}
+
+void NetworkSession::firePrivateClickMeasurementTimerImmediately()
+{
+    privateClickMeasurement().startTimer(0_s);
 }
 
 void NetworkSession::addKeptAliveLoad(Ref<NetworkResourceLoader>&& loader)
@@ -378,6 +386,23 @@ void NetworkSession::removeKeptAliveLoad(NetworkResourceLoader& loader)
 std::unique_ptr<WebSocketTask> NetworkSession::createWebSocketTask(NetworkSocketChannel&, const WebCore::ResourceRequest&, const String& protocol)
 {
     return nullptr;
+}
+
+void NetworkSession::registerNetworkDataTask(NetworkDataTask& task)
+{
+    m_dataTaskSet.add(task);
+}
+
+void NetworkSession::unregisterNetworkDataTask(NetworkDataTask& task)
+{
+    m_dataTaskSet.remove(task);
+}
+
+NetworkLoadScheduler& NetworkSession::networkLoadScheduler()
+{
+    if (!m_networkLoadScheduler)
+        m_networkLoadScheduler = makeUnique<NetworkLoadScheduler>();
+    return *m_networkLoadScheduler;
 }
 
 } // namespace WebKit

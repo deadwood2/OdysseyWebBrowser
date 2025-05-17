@@ -509,7 +509,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 - (void)pdfHostViewControllerExtensionProcessDidCrash:(PDFHostViewController *)controller
 {
     // FIXME 40916725: PDFKit should dispatch this message to the main thread like it does for other delegate messages.
-    dispatch_async(dispatch_get_main_queue(), [webView = _webView] {
+    RunLoop::main().dispatch([webView = _webView] {
         if (auto page = [webView _page])
             page->dispatchProcessDidTerminate(WebKit::ProcessTerminationReason::Crash);
     });
@@ -528,10 +528,12 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
     if (action != WebKit::SheetAction::Copy)
         return;
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     NSDictionary *representations = @{
         (NSString *)kUTTypeUTF8PlainText : (NSString *)_positionInformation.url.string(),
         (NSString *)kUTTypeURL : (NSURL *)_positionInformation.url,
     };
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     [UIPasteboard generalPasteboard].items = @[ representations ];
 }
@@ -615,8 +617,13 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 
     auto dataProvider = adoptCF(CGDataProviderCreateWithCFData((CFDataRef)_data.get()));
     auto pdfDocument = adoptCF(CGPDFDocumentCreateWithProvider(dataProvider.get()));
-    if (!CGPDFDocumentIsUnlocked(pdfDocument.get()))
-        CGPDFDocumentUnlockWithPassword(pdfDocument.get(), _passwordForPrinting.data());
+    if (!CGPDFDocumentIsUnlocked(pdfDocument.get())) {
+        if (!CGPDFDocumentUnlockWithPassword(pdfDocument.get(), _passwordForPrinting.data()))
+            return nullptr;
+    }
+
+    if (!CGPDFDocumentAllowsPrinting(pdfDocument.get()))
+        return nullptr;
 
     _documentForPrinting = WTFMove(pdfDocument);
     return _documentForPrinting.get();
@@ -625,7 +632,7 @@ static NSStringCompareOptions stringCompareOptions(_WKFindOptions findOptions)
 - (NSUInteger)_wk_pageCountForPrintFormatter:(_WKWebViewPrintFormatter *)printFormatter
 {
     CGPDFDocumentRef documentForPrinting = [self _ensureDocumentForPrinting];
-    if (!CGPDFDocumentAllowsPrinting(documentForPrinting))
+    if (!documentForPrinting)
         return 0;
 
     size_t pageCount = CGPDFDocumentGetNumberOfPages(documentForPrinting);

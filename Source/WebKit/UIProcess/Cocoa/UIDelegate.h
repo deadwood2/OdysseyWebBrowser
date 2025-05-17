@@ -31,6 +31,7 @@
 #import "APIUIClient.h"
 #import <wtf/RetainPtr.h>
 #import <wtf/WeakObjCPtr.h>
+#import <wtf/WeakPtr.h>
 
 @class _WKActivatedElementInfo;
 @class WKWebView;
@@ -47,7 +48,7 @@ class RegistrableDomain;
 
 namespace WebKit {
 
-class UIDelegate {
+class UIDelegate : public CanMakeWeakPtr<UIDelegate> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit UIDelegate(WKWebView *);
@@ -72,11 +73,11 @@ private:
         // API::ContextMenuClient
         void menuFromProposedMenu(WebPageProxy&, NSMenu *, const WebHitTestResultData&, API::Object*, CompletionHandler<void(RetainPtr<NSMenu>&&)>&&) override;
 
-        UIDelegate& m_uiDelegate;
+        WeakPtr<UIDelegate> m_uiDelegate;
     };
 #endif
 
-    class UIClient : public API::UIClient {
+    class UIClient : public API::UIClient, public CanMakeWeakPtr<UIClient> {
     public:
         explicit UIClient(UIDelegate&);
         ~UIClient();
@@ -124,16 +125,19 @@ private:
         bool runOpenPanel(WebPageProxy&, WebFrameProxy*, FrameInfoData&&, API::OpenPanelParameters*, WebOpenPanelResultListenerProxy*) final;
         void didExceedBackgroundResourceLimitWhileInForeground(WebPageProxy&, WKResourceLimit) final;
         void saveDataToFileInDownloadsFolder(WebPageProxy*, const WTF::String&, const WTF::String&, const URL&, API::Data&) final;
+        Ref<API::InspectorConfiguration> configurationForLocalInspector(WebPageProxy&, WebInspectorProxy&) final;
+        void didAttachLocalInspector(WebPageProxy&, WebInspectorProxy&) final;
+        void willCloseLocalInspector(WebPageProxy&, WebInspectorProxy&) final;
 #endif
 #if ENABLE(DEVICE_ORIENTATION)
         void shouldAllowDeviceOrientationAndMotionAccess(WebKit::WebPageProxy&, WebFrameProxy&, FrameInfoData&&, CompletionHandler<void(bool)>&&) final;
 #endif
-        bool needsFontAttributes() const final { return m_uiDelegate.m_delegateMethods.webViewDidChangeFontAttributes; }
+        bool needsFontAttributes() const final { return m_uiDelegate ? m_uiDelegate->m_delegateMethods.webViewDidChangeFontAttributes : false; }
         void didChangeFontAttributes(const WebCore::FontAttributes&) final;
         void decidePolicyForUserMediaPermissionRequest(WebPageProxy&, WebFrameProxy&, API::SecurityOrigin&, API::SecurityOrigin&, UserMediaPermissionRequestProxy&) final;
         void checkUserMediaPermissionForOrigin(WebPageProxy&, WebFrameProxy&, API::SecurityOrigin&, API::SecurityOrigin&, UserMediaPermissionCheckProxy&) final;
         void mediaCaptureStateDidChange(WebCore::MediaProducer::MediaStateFlags) final;
-        void printFrame(WebPageProxy&, WebFrameProxy&, CompletionHandler<void()>&&) final;
+        void printFrame(WebPageProxy&, WebFrameProxy&, const WebCore::FloatSize& pdfFirstPageSize, CompletionHandler<void()>&&) final;
 #if PLATFORM(IOS_FAMILY)
 #if HAVE(APP_LINKS)
         bool shouldIncludeAppLinkActionsForElement(_WKActivatedElementInfo *) final;
@@ -158,11 +162,14 @@ private:
 #if ENABLE(WEB_AUTHN)
         void runWebAuthenticationPanel(WebPageProxy&, API::WebAuthenticationPanel&, WebFrameProxy&, FrameInfoData&&, CompletionHandler<void(WebAuthenticationPanelResult)>&&) final;
 #endif
+        void decidePolicyForSpeechRecognitionPermissionRequest(WebPageProxy&, API::SecurityOrigin&, CompletionHandler<void(bool)>&&) final;
+        void didEnableInspectorBrowserDomain(WebPageProxy&) final;
+        void didDisableInspectorBrowserDomain(WebPageProxy&) final;
 
-        UIDelegate& m_uiDelegate;
+        WeakPtr<UIDelegate> m_uiDelegate;
     };
 
-    WKWebView *m_webView;
+    WeakObjCPtr<WKWebView> m_webView;
     WeakObjCPtr<id <WKUIDelegate> > m_delegate;
 
     struct {
@@ -199,6 +206,9 @@ private:
         bool webViewSaveDataToFileSuggestedFilenameMimeTypeOriginatingURL : 1;
         bool webViewRunOpenPanelWithParametersInitiatedByFrameCompletionHandler : 1;
         bool webViewRequestNotificationPermissionForSecurityOriginDecisionHandler : 1;
+        bool webViewConfigurationForLocalInspector : 1;
+        bool webViewDidAttachLocalInspector : 1;
+        bool webViewWillCloseLocalInspector : 1;
 #endif
 #if ENABLE(DEVICE_ORIENTATION)
         bool webViewShouldAllowDeviceOrientationAndMotionAccessRequestedByFrameDecisionHandler : 1;
@@ -207,13 +217,12 @@ private:
         bool webViewDecideDatabaseQuotaForSecurityOriginDatabaseNameDisplayNameCurrentQuotaCurrentOriginUsageCurrentDatabaseUsageExpectedUsageDecisionHandler : 1;
         bool webViewDecideWebApplicationCacheQuotaForSecurityOriginCurrentQuotaTotalBytesNeeded : 1;
         bool webViewPrintFrame : 1;
-        bool webViewPrintFrameCompletionHandler : 1;
+        bool webViewPrintFramePDFFirstPageSizeCompletionHandler : 1;
         bool webViewDidClose : 1;
         bool webViewClose : 1;
         bool webViewFullscreenMayReturnToInline : 1;
         bool webViewDidEnterFullscreen : 1;
         bool webViewDidExitFullscreen : 1;
-        bool webViewRequestMediaCaptureAuthorizationForFrameDecisionHandler : 1;
         bool webViewIsMediaCaptureAuthorizedForFrameDecisionHandler : 1;
         bool webViewMediaCaptureStateDidChange : 1;
         bool webViewDidChangeFontAttributes : 1;
@@ -243,6 +252,8 @@ private:
 #if ENABLE(WEB_AUTHN)
         bool webViewRunWebAuthenticationPanelInitiatedByFrameCompletionHandler : 1;
 #endif
+        bool webViewDidEnableInspectorBrowserDomain : 1;
+        bool webViewDidDisableInspectorBrowserDomain : 1;
     } m_delegateMethods;
 };
 

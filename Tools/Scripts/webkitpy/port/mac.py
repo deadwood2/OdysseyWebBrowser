@@ -46,8 +46,8 @@ _log = logging.getLogger(__name__)
 class MacPort(DarwinPort):
     port_name = "mac"
 
-    CURRENT_VERSION = Version(10, 15)
-    LAST_MACOSX = Version(10, 16)  # FIXME: Once we don't need to support the seed, deprecate in favor of Catalina
+    CURRENT_VERSION = Version(11, 0)
+    LAST_MACOSX = Version(10, 15)
 
     SDK = 'macosx'
 
@@ -73,6 +73,18 @@ class MacPort(DarwinPort):
             return 'arm64'
         return result
 
+    # FIXME: This is a work-around for Rosetta, remove once <https://bugs.webkit.org/show_bug.cgi?id=213761> is resolved
+    def expectations_dict(self, device_type=None):
+        result = super(MacPort, self).expectations_dict(device_type=device_type)
+        if self.architecture() == 'x86_64' and self.host.platform.architecture() == 'arm64':
+            rosetta_expectations = self._filesystem.join(self.layout_tests_dir(), 'platform', 'mac', 'TestExpectationsRosetta')
+            if self._filesystem.exists(rosetta_expectations):
+                result[rosetta_expectations] = self._filesystem.read_text_file(rosetta_expectations)
+            else:
+                _log.warning('Failed to find Rosetta special-case expectation path at {}'.format(rosetta_expectations))
+        return result
+
+
     def _build_driver_flags(self):
         architecture = self.architecture()
         # The Internal SDK should always prefer arm64e binaries to arm64 ones
@@ -93,15 +105,16 @@ class MacPort(DarwinPort):
             while temp_version != self.CURRENT_VERSION:
                 versions_to_fallback.append(Version.from_iterable(temp_version))
                 if temp_version < self.CURRENT_VERSION:
-                    if temp_version.minor < self.LAST_MACOSX.minor:
-                        temp_version.minor += 1
+                    if temp_version.major == self.LAST_MACOSX.major:
+                        if temp_version.minor < self.LAST_MACOSX.minor:
+                            temp_version.minor += 1
+                        else:
+                            temp_version = Version(11, 0)
                     else:
-                        temp_version = Version(11, 0)
+                        temp_version = Version(temp_version.major + 1)
                 else:
-                    if temp_version.minor > 0:
-                        temp_version.minor -= 1
-                    else:
-                        temp_version = Version(self.LAST_MACOSX.major, self.LAST_MACOSX.minor)
+                    temp_version = Version(temp_version.major - 1)
+
         wk_string = 'wk1'
         if self.get_option('webkit_test_runner'):
             wk_string = 'wk2'
@@ -281,6 +294,9 @@ class MacPort(DarwinPort):
 
         # FIXME: Remove this after <rdar://problem/52897406> is fixed.
         logging_patterns.append((re.compile('VPA info:.*\n'), ''))
+
+        # FIXME: Find where this is coming from and file a bug to have it removed (then remove this line).
+        logging_patterns.append((re.compile('VP9 Info:.*\n'), ''))
 
         return logging_patterns
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,30 +26,47 @@
 #import "config.h"
 #import "_WKInspectorInternal.h"
 
+#import "InspectorDelegate.h"
+#import "WKError.h"
 #import "WKWebViewInternal.h"
 #import "WebPageProxy.h"
 #import "WebProcessProxy.h"
 #import "_WKFrameHandleInternal.h"
+#import "_WKInspectorPrivateForTesting.h"
+#import "_WKRemoteObjectRegistry.h"
 #import <WebCore/FrameIdentifier.h>
 #import <wtf/HashMap.h>
 #import <wtf/HashSet.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/text/WTFString.h>
 
+#if ENABLE(INSPECTOR_EXTENSIONS)
+#import "APIInspectorExtension.h"
+#import "WebInspectorUIExtensionControllerProxy.h"
+#import "_WKInspectorExtensionInternal.h"
+#import <wtf/BlockPtr.h>
+#endif
+
 @implementation _WKInspector
 
 // MARK: _WKInspector methods
 
+- (id <_WKInspectorDelegate>)delegate
+{
+    return _delegate->delegate().autorelease();
+}
+
+- (void)setDelegate:(id<_WKInspectorDelegate>)delegate
+{
+    if (!delegate && !_delegate)
+        return;
+
+    _delegate = makeUnique<WebKit::InspectorDelegate>(self, delegate);
+}
+
 - (WKWebView *)webView
 {
     if (auto* page = _inspector->inspectedPage())
-        return fromWebPageProxy(*page);
-    return nil;
-}
-
-- (WKWebView *)inspectorWebView
-{
-    if (auto* page = _inspector->inspectorPage())
         return fromWebPageProxy(*page);
     return nil;
 }
@@ -153,30 +170,62 @@
     _inspector->setDiagnosticLoggingAvailable(!!delegate);
 }
 
-- (void)_browserExtensionsEnabled:(NSDictionary<NSString *, NSString *> *)extensionIDToNameMap
-{
-    HashMap<String, String> transformed;
-    transformed.reserveInitialCapacity(extensionIDToNameMap.count);
-    [extensionIDToNameMap enumerateKeysAndObjectsUsingBlock:[&](NSString *extensionID, NSString *extensionName, BOOL *) {
-        transformed.set(extensionID, extensionName);
-    }];
-    _inspector->browserExtensionsEnabled(WTFMove(transformed));
-}
-
-- (void)_browserExtensionsDisabled:(NSSet<NSString *> *)extensionIDs
-{
-    HashSet<String> transformed;
-    transformed.reserveInitialCapacity(extensionIDs.count);
-    for (NSString *extensionID in extensionIDs)
-        transformed.addVoid(extensionID);
-    _inspector->browserExtensionsDisabled(WTFMove(transformed));
-}
-
 // MARK: _WKInspectorInternal methods
 
 - (API::Object&)_apiObject
 {
     return *_inspector;
+}
+
+// MARK: _WKInspectorExtensionHost methods
+
+- (WKWebView *)extensionHostWebView
+{
+    return self.inspectorWebView;
+}
+
+- (void)registerExtensionWithID:(NSString *)extensionID displayName:(NSString *)displayName completionHandler:(void(^)(NSError *, _WKInspectorExtension *))completionHandler
+{
+#if ENABLE(INSPECTOR_EXTENSIONS)
+    // It is an error to call this method prior to creating a frontend (i.e., with -connect or -show).
+    if (!_inspector->extensionController()) {
+        completionHandler([NSError errorWithDomain:WKErrorDomain code:WKErrorUnknown userInfo:@{ NSLocalizedFailureReasonErrorKey: Inspector::extensionErrorToString(Inspector::ExtensionError::InvalidRequest)}], nil);
+        return;
+    }
+
+    _inspector->extensionController()->registerExtension(extensionID, displayName, [protectedSelf = retainPtr(self), capturedBlock = makeBlockPtr(completionHandler)] (Expected<RefPtr<API::InspectorExtension>, Inspector::ExtensionError> result) mutable {
+        if (!result) {
+            capturedBlock([NSError errorWithDomain:WKErrorDomain code:WKErrorUnknown userInfo:@{ NSLocalizedFailureReasonErrorKey: Inspector::extensionErrorToString(result.error())}], nil);
+            return;
+        }
+
+        capturedBlock(nil, wrapper(result.value()));
+    });
+#else
+    completionHandler([NSError errorWithDomain:WKErrorDomain code:WKErrorUnknown userInfo:nil], nil);
+#endif
+}
+
+- (void)unregisterExtension:(_WKInspectorExtension *)extension completionHandler:(void(^)(NSError *))completionHandler
+{
+#if ENABLE(INSPECTOR_EXTENSIONS)
+    // It is an error to call this method prior to creating a frontend (i.e., with -connect or -show).
+    if (!_inspector->extensionController()) {
+        completionHandler([NSError errorWithDomain:WKErrorDomain code:WKErrorUnknown userInfo:@{ NSLocalizedFailureReasonErrorKey: Inspector::extensionErrorToString(Inspector::ExtensionError::InvalidRequest)}]);
+        return;
+    }
+
+    _inspector->extensionController()->unregisterExtension(extension.extensionID, [protectedSelf = retainPtr(self), capturedBlock = makeBlockPtr(completionHandler)] (Expected<bool, Inspector::ExtensionError> result) mutable {
+        if (!result) {
+            capturedBlock([NSError errorWithDomain:WKErrorDomain code:WKErrorUnknown userInfo:@{ NSLocalizedFailureReasonErrorKey: Inspector::extensionErrorToString(result.error())}]);
+            return;
+        }
+
+        capturedBlock(nil);
+    });
+#else
+    completionHandler([NSError errorWithDomain:WKErrorDomain code:WKErrorUnknown userInfo:nil]);
+#endif
 }
 
 @end

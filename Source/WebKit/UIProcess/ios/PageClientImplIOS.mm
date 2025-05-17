@@ -30,7 +30,6 @@
 
 #import "APIData.h"
 #import "ApplicationStateTracker.h"
-#import "AssertionServicesSPI.h"
 #import "DataReference.h"
 #import "DownloadProxy.h"
 #import "DrawingAreaProxy.h"
@@ -46,7 +45,6 @@
 #import "ViewSnapshotStore.h"
 #import "WKContentView.h"
 #import "WKContentViewInteraction.h"
-#import "WKDrawingView.h"
 #import "WKEditCommand.h"
 #import "WKGeolocationProviderIOS.h"
 #import "WKPasswordView.h"
@@ -148,27 +146,18 @@ bool PageClientImpl::isViewVisible()
     return false;
 }
 
-bool PageClientImpl::isApplicationVisible()
+bool PageClientImpl::canTakeForegroundAssertions()
 {
-    if (applicationType([m_webView window]) == ApplicationType::Application) {
-        ASSERT(!_UIApplicationIsExtension());
-        return [[UIApplication sharedApplication] applicationState] != UIApplicationStateBackground;
+    if (EndowmentStateTracker::singleton().isVisible()) {
+        // If the application is visible according to the UIKit visibility endowment then we can take
+        // foreground assertions. Note that for view services, the visibility endownment from the host
+        // application gets propagated to the view service.
+        return true;
     }
 
-    // Complex code path for extensions and view services.
-    UIViewController *serviceViewController = nil;
-    for (UIView *view = m_webView.get().get(); view; view = view.superview) {
-        UIViewController *viewController = [UIViewController viewControllerForView:view];
-        if (viewController._hostProcessIdentifier) {
-            serviceViewController = viewController;
-            break;
-        }
-    }
-    ASSERT(serviceViewController);
-    pid_t applicationPID = serviceViewController._hostProcessIdentifier;
-    ASSERT(applicationPID);
-
-    return EndowmentStateTracker::isApplicationForeground(applicationPID);
+    // If there is no run time limitation, then it means that the process is allowed to run for an extended
+    // period of time in the background (e.g. a daemon) and we let such processes take foreground assertions.
+    return [RBSProcessHandle currentProcess].activeLimitations.runTime == RBSProcessTimeLimitationNone;
 }
 
 bool PageClientImpl::isViewInWindow()
@@ -458,12 +447,26 @@ void PageClientImpl::doneWithTouchEvent(const NativeWebTouchEvent& nativeWebTouc
 
 #if ENABLE(IOS_TOUCH_EVENTS)
 
-void PageClientImpl::doneDeferringNativeGestures(bool preventNativeGestures)
+void PageClientImpl::doneDeferringTouchStart(bool preventNativeGestures)
 {
-    [m_contentView _doneDeferringNativeGestures:preventNativeGestures];
+    [m_contentView _doneDeferringTouchStart:preventNativeGestures];
+}
+
+void PageClientImpl::doneDeferringTouchEnd(bool preventNativeGestures)
+{
+    [m_contentView _doneDeferringTouchEnd:preventNativeGestures];
 }
 
 #endif // ENABLE(IOS_TOUCH_EVENTS)
+
+#if HAVE(PASTEBOARD_DATA_OWNER)
+
+WebCore::DataOwnerType PageClientImpl::dataOwnerForPasteboard(PasteboardAccessIntent intent) const
+{
+    return [m_contentView _dataOwnerForPasteboard:intent];
+}
+
+#endif
 
 RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy&)
 {
@@ -650,7 +653,12 @@ bool PageClientImpl::showShareSheet(const ShareDataWithParsedURL& shareData, WTF
     return true;
 }
 
-void PageClientImpl::showInspectorHighlight(const WebCore::Highlight& highlight)
+void PageClientImpl::showContactPicker(const WebCore::ContactsRequestData& requestData, WTF::CompletionHandler<void(Optional<Vector<WebCore::ContactInfo>>&&)>&& completionHandler)
+{
+    [m_contentView _showContactPicker:requestData completionHandler:WTFMove(completionHandler)];
+}
+
+void PageClientImpl::showInspectorHighlight(const WebCore::InspectorOverlay::Highlight& highlight)
 {
     [m_contentView _showInspectorHighlight:highlight];
 }
@@ -858,6 +866,13 @@ RefPtr<WebDataListSuggestionsDropdown> PageClientImpl::createDataListSuggestions
 }
 #endif
 
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+RefPtr<WebDateTimePicker> PageClientImpl::createDateTimePicker(WebPageProxy&)
+{
+    return nullptr;
+}
+#endif
+
 #if ENABLE(DRAG_SUPPORT)
 void PageClientImpl::didPerformDragOperation(bool handled)
 {
@@ -919,13 +934,6 @@ void PageClientImpl::requestDOMPasteAccess(const WebCore::IntRect& elementRect, 
     [m_contentView _requestDOMPasteAccessWithElementRect:elementRect originIdentifier:originIdentifier completionHandler:WTFMove(completionHandler)];
 }
 
-#if HAVE(PENCILKIT)
-RetainPtr<WKDrawingView> PageClientImpl::createDrawingView(WebCore::GraphicsLayer::EmbeddedViewID embeddedViewID)
-{
-    return adoptNS([[WKDrawingView alloc] initWithEmbeddedViewID:embeddedViewID contentView:m_contentView.getAutoreleased()]);
-}
-#endif
-
 void PageClientImpl::cancelPointersForGestureRecognizer(UIGestureRecognizer* gestureRecognizer)
 {
     [m_contentView cancelPointersForGestureRecognizer:gestureRecognizer];
@@ -966,6 +974,20 @@ void PageClientImpl::setMouseEventPolicy(WebCore::MouseEventPolicy policy)
     [m_contentView _setMouseEventPolicy:policy];
 #endif
 }
+
+#if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
+void PageClientImpl::showMediaControlsContextMenu(FloatRect&& targetFrame, Vector<MediaControlsContextMenuItem>&& items, CompletionHandler<void(MediaControlsContextMenuItem::ID)>&& completionHandler)
+{
+    [m_contentView _showMediaControlsContextMenu:WTFMove(targetFrame) items:WTFMove(items) completionHandler:WTFMove(completionHandler)];
+}
+#endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
+
+#if HAVE(UISCROLLVIEW_ASYNCHRONOUS_SCROLL_EVENT_HANDLING)
+void PageClientImpl::handleAsynchronousCancelableScrollEvent(UIScrollView *scrollView, UIScrollEvent *scrollEvent, void (^completion)(BOOL handled))
+{
+    [m_webView _scrollView:scrollView asynchronouslyHandleScrollEvent:scrollEvent completion:completion];
+}
+#endif
 
 } // namespace WebKit
 

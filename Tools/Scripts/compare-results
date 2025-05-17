@@ -36,13 +36,13 @@ from webkitpy.benchmark_runner.benchmark_json_merge import mergeJSONs
 try:
     from scipy import stats
 except:
-    print "ERROR: scipy package is not installed. Run `pip install scipy`"
+    print("ERROR: scipy package is not installed. Run `pip install scipy`")
     sys.exit(1)
 
 try:
     import numpy
 except:
-    print "ERROR: numpy package is not installed. Run `pip install numpy`"
+    print("ERROR: numpy package is not installed. Run `pip install numpy`")
     sys.exit(1)
 
 def readJSONFile(path):
@@ -55,6 +55,7 @@ def readJSONFile(path):
 Speedometer2 = "Speedometer2"
 JetStream2 = "JetStream2"
 PLT5 = "PLT5"
+PLUM3 = "PLUM3"
 MotionMark = "MotionMark"
 MotionMark1_1 = "MotionMark-1.1"
 MotionMark1_1_1 = "MotionMark-1.1.1"
@@ -119,6 +120,14 @@ def plt5Breakdown(jsonObject):
             result["warm--" + nameMapping[test]].append(warmTests[test]["Geometric"])
             result["cold--" + nameMapping[test]].append(coldTests[test]["Geometric"])
 
+    return result
+
+def plum3Breakdown(jsonObject):
+    breakdown = BenchmarkResults(jsonObject)
+    result = {}
+    result[unitMarker] = "B"
+    for test in breakdown._results["PLUM3-PhysFootprint"]["tests"].keys():
+        result[test] = breakdown._results["PLUM3-PhysFootprint"]["tests"][test]["metrics"]["Allocations"]["Geometric"]["current"]
     return result
 
 def displayStr(value):
@@ -228,10 +237,10 @@ def dumpBreakdowns(a, b):
     strings.insert(2, verticalSeparator)
     strings.append(verticalSeparator)
 
-    print "\n"
+    print("\n")
     for s in strings:
         print(s)
-    print "\n"
+    print("\n")
 
 def writeCSV(a, b, fileName):
     strings = []
@@ -310,6 +319,14 @@ def PLT5Results(payload):
         results.append(obj["Geometric"])
     return results
 
+def detectPLUM3(payload):
+    return "PLUM3-PhysFootprint" in payload
+
+def PLUM3Results(payload):
+    assert detectPLUM3(payload)
+    breakdown = BenchmarkResults(payload)
+    return breakdown._results["PLUM3-PhysFootprint"]["metrics"]["Allocations"]["Arithmetic"]["current"]
+
 def detectMotionMark(payload):
     return "MotionMark" in payload
 
@@ -327,7 +344,7 @@ def motionMarkResults(payload):
         payload = payload["MotionMark-1.1"]
     else:
         payload = payload["MotionMark-1.1.1"]
-    testNames = payload["tests"].keys()
+    testNames = list(payload["tests"].keys())
     numTests = len(payload["tests"][testNames[0]]["metrics"]["Score"]["current"])
     results = []
     for i in range(numTests):
@@ -345,6 +362,8 @@ def detectBenchmark(payload):
         return Speedometer2
     if detectPLT5(payload):
         return PLT5
+    if detectPLUM3(payload):
+        return PLUM3
     if detectMotionMark(payload):
         return MotionMark
     if detectMotionMark1_1(payload):
@@ -364,8 +383,10 @@ def biggerIsBetter(benchmarkType):
         return True
     if benchmarkType == PLT5:
         return False
+    if benchmarkType == PLUM3:
+        return False
 
-    print "Should not be reached."
+    print("Should not be reached.")
     assert False
 
 def ttest(benchmarkType, a, b):
@@ -373,28 +394,28 @@ def ttest(benchmarkType, a, b):
     (tStatistic, pValue) = stats.ttest_ind(a, b, equal_var=False)
     aMean = numpy.mean(a)
     bMean = numpy.mean(b)
-    print "a mean = {:.5f}".format(aMean)
-    print "b mean = {:.5f}".format(bMean)
+    print("a mean = {:.5f}".format(aMean))
+    print("b mean = {:.5f}".format(bMean))
 
-    print "pValue = {:.10f}".format(pValue)
+    print("pValue = {:.10f}".format(pValue))
 
     if biggerIsBetter(benchmarkType):
-        print "(Bigger means are better.)"
+        print("(Bigger means are better.)")
         if aMean > bMean:
-            print "{:.3f} times worse".format((aMean / bMean))
+            print("{:.3f} times worse".format((aMean / bMean)))
         else:
-            print "{:.3f} times better".format((bMean / aMean))
+            print("{:.3f} times better".format((bMean / aMean)))
     else:
-        print "(Smaller means are better.)"
+        print("(Smaller means are better.)")
         if aMean > bMean:
-            print "{:.3f} times better".format((aMean / bMean))
+            print("{:.3f} times better".format((aMean / bMean)))
         else:
-            print "{:.3f} times worse".format((bMean / aMean))
+            print("{:.3f} times worse".format((bMean / aMean)))
 
     if pValue <= 0.05:
-        print "Results ARE significant"
+        print("Results ARE significant")
     else:
-        print "Results ARE NOT significant"
+        print("Results ARE NOT significant")
 
 def getOptions():
     parser = argparse.ArgumentParser(description="Compare two WebKit benchmark results. Pass in at least two JSON result files to compare them. This script prints the pValue along with the magnitude of the change. If more than one JSON is passed as a/b they will be merged when computing the breakdown.")
@@ -438,11 +459,11 @@ def main():
     typeB = detectBenchmark(b)
 
     if typeA != typeB:
-        print "-a and -b are not the same benchmark. a={} b={}".format(typeA, typeB)
+        print("-a and -b are not the same benchmark. a={} b={}".format(typeA, typeB))
         sys.exit(1)
 
     if not (typeA and typeB):
-        print "Unknown benchmark type. a={} b={}".format(typeA, typeB)
+        print("Unknown benchmark type. a={} b={}".format(typeA, typeB))
         sys.exit(1)
     
     if typeA == JetStream2:
@@ -478,8 +499,16 @@ def main():
 
         if args.csv:
             writeCSV(plt5Breakdown(a), plt5Breakdown(b), args.csv)
+    elif typeA == PLUM3:
+        if args.breakdown:
+            dumpBreakdowns(plum3Breakdown(a), plum3Breakdown(b))
+
+        ttest(typeA, PLUM3Results(a), PLUM3Results(b))
+
+        if args.csv:
+            writeCSV(plum3Breakdown(a), plum3Breakdown(b), args.csv)
     else:
-        print "Unknown benchmark type"
+        print("Unknown benchmark type")
         sys.exit(1)
 
 

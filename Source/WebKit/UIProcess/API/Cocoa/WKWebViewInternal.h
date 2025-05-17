@@ -23,11 +23,12 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import "WKWebViewPrivate.h"
-
+#import "PDFPluginIdentifier.h"
 #import "SameDocumentNavigationType.h"
+#import "WKBlankOverlayView.h"
 #import "WKShareSheet.h"
 #import "WKWebViewConfiguration.h"
+#import "WKWebViewPrivate.h"
 #import "_WKAttachmentInternal.h"
 #import "_WKWebViewPrintFormatterInternal.h"
 #import <wtf/CompletionHandler.h>
@@ -65,10 +66,15 @@ namespace API {
 class Attachment;
 }
 
+namespace WebCore {
+struct AppHighlight;
+struct ExceptionDetails;
+enum class WheelScrollGestureState : uint8_t;
+}
+
 namespace WebKit {
 enum class ContinueUnsafeLoad : bool;
 class IconLoadingDelegate;
-class InspectorDelegate;
 class NavigationState;
 class ResourceLoadDelegate;
 class SafeBrowsingWarning;
@@ -102,6 +108,7 @@ class ViewGestureController;
 
 @protocol _WKTextManipulationDelegate;
 @protocol _WKInputDelegate;
+@protocol _WKAppHighlightDelegate;
 
 @interface WKWebView () WK_WEB_VIEW_PROTOCOLS {
 
@@ -113,10 +120,10 @@ class ViewGestureController;
     std::unique_ptr<WebKit::UIDelegate> _uiDelegate;
     std::unique_ptr<WebKit::IconLoadingDelegate> _iconLoadingDelegate;
     std::unique_ptr<WebKit::ResourceLoadDelegate> _resourceLoadDelegate;
-    std::unique_ptr<WebKit::InspectorDelegate> _inspectorDelegate;
 
     WeakObjCPtr<id <_WKTextManipulationDelegate>> _textManipulationDelegate;
     WeakObjCPtr<id <_WKInputDelegate>> _inputDelegate;
+    WeakObjCPtr<id <_WKAppHighlightDelegate>> _appHighlightDelegate;
 
     RetainPtr<WKSafeBrowsingWarning> _safeBrowsingWarning;
 
@@ -126,6 +133,8 @@ class ViewGestureController;
     _WKRenderingProgressEvents _observedRenderingProgressEvents;
     BOOL _usePlatformFindUI;
 
+    RetainPtr<WKBlankOverlayView> _blankOverlayView;
+
 #if PLATFORM(MAC)
     std::unique_ptr<WebKit::WebViewImpl> _impl;
     RetainPtr<WKTextFinderClient> _textFinderClient;
@@ -133,7 +142,7 @@ class ViewGestureController;
     // Only used with UI-side compositing.
     RetainPtr<WKScrollView> _scrollView;
     RetainPtr<WKContentView> _contentView;
-#endif
+#endif // PLATFORM(MAC)
 
 #if PLATFORM(IOS_FAMILY)
     RetainPtr<WKScrollView> _scrollView;
@@ -229,7 +238,10 @@ class ViewGestureController;
     RetainPtr<WKPasswordView> _passwordView;
 
     BOOL _hasScheduledVisibleRectUpdate;
-    BOOL _visibleContentRectUpdateScheduledFromScrollViewInStableState;
+    OptionSet<WebKit::ViewStabilityFlag> _viewStabilityWhenVisibleContentRectUpdateScheduled;
+
+    Optional<WebCore::WheelScrollGestureState> _currentScrollGestureState;
+    uint64_t _wheelEventCountInCurrentScrollGesture;
 
     _WKDragInteractionPolicy _dragInteractionPolicy;
 
@@ -253,6 +265,10 @@ class ViewGestureController;
 - (void)_didInvalidateDataForAttachment:(API::Attachment&)attachment;
 #endif
 
+#if ENABLE(APP_HIGHLIGHTS)
+- (void)_storeAppHighlight:(const WebCore::AppHighlight&)info;
+#endif
+
 - (void)_internalDoAfterNextPresentationUpdate:(void (^)(void))updateBlock withoutWaitingForPainting:(BOOL)withoutWaitingForPainting withoutWaitingForAnimatedResize:(BOOL)withoutWaitingForAnimatedResize;
 
 - (void)_showSafeBrowsingWarning:(const WebKit::SafeBrowsingWarning&)warning completionHandler:(CompletionHandler<void(Variant<WebKit::ContinueUnsafeLoad, URL>&&)>&&)completionHandler;
@@ -267,6 +283,7 @@ class ViewGestureController;
 @end
 
 WKWebView* fromWebPageProxy(WebKit::WebPageProxy&);
+RetainPtr<NSError> nsErrorFromExceptionDetails(const WebCore::ExceptionDetails&);
 
 #if ENABLE(FULLSCREEN_API) && PLATFORM(IOS_FAMILY)
 @interface WKWebView (FullScreenAPI_Internal)

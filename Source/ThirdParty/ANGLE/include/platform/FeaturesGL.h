@@ -469,6 +469,48 @@ struct FeaturesGL : FeatureSetBase
         "emulate_pack_skip_rows_and_pack_skip_pixels", FeatureCategory::OpenGLWorkarounds,
         "GL_PACK_SKIP_ROWS and GL_PACK_SKIP_PIXELS are ignored in Apple's OpenGL driver.", &members,
         "https://anglebug.com/4849"};
+
+    // Some drivers return bogus/1hz values for GetMscRate, which we may want to clamp
+    Feature clampMscRate = {
+        "clamp_msc_rate", FeatureCategory::OpenGLWorkarounds,
+        "Some drivers return bogus values for GetMscRate, so we clamp it to 30Hz", &members,
+        "https://crbug.com/1042393"};
+
+    // Mac drivers generate GL_INVALID_VALUE when binding a transform feedback buffer with
+    // glBindBufferRange before first binding it to some generic binding point.
+    Feature bindTransformFeedbackBufferBeforeBindBufferRange = {
+        "bind_transform_feedback_buffer_before_bind_buffer_range",
+        FeatureCategory::OpenGLWorkarounds,
+        "Bind transform feedback buffers to the generic binding point before calling "
+        "glBindBufferBase or glBindBufferRange.",
+        &members, "https://anglebug.com/5140"};
+
+    // Speculative fix for issues on Linux/Wayland where exposing GLX_OML_sync_control renders
+    // Chrome unusable
+    Feature disableSyncControlSupport = {
+        "disable_sync_control_support", FeatureCategory::OpenGLWorkarounds,
+        "Speculative fix for issues on Linux/Wayland where exposing GLX_OML_sync_control renders "
+        "Chrome unusable",
+        &members, "https://crbug.com/1137851"};
+
+    // Buffers need to maintain a shadow copy of data when buffer data readback is not possible
+    // through the GL API
+    Feature keepBufferShadowCopy = {
+        "keep_buffer_shadow_copy", FeatureCategory::OpenGLWorkarounds,
+        "Maintain a shadow copy of buffer data when the GL API does not permit reading data back.",
+        &members};
+
+    // glGenerateMipmap fails if the zero texture level is not set on some Mac drivers
+    Feature setZeroLevelBeforeGenerateMipmap = {
+        "set_zero_level_before_generating_mipmap", FeatureCategory::OpenGLWorkarounds,
+        "glGenerateMipmap fails if the zero texture level is not set on some Mac drivers.",
+        &members};
+
+    // On macOS with AMD GPUs, most of the packed color formats like RGB565 and RGBA4444 are
+    // buggy. Promote them to 8 bit per channel formats.
+    Feature promotePackedFormatsTo8BitPerChannel = {
+        "promote_packed_formats_to_8_bit_per_channel", FeatureCategory::OpenGLWorkarounds,
+        "Packed color formats are buggy on Macs with AMD GPUs", &members, "https://anglebug.com/4849"};
 };
 
 inline FeaturesGL::FeaturesGL()  = default;

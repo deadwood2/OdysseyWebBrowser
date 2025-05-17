@@ -37,6 +37,7 @@
 #include "WebCoreArgumentCoders.h"
 #include <WebCore/MediaPlayer.h>
 #include <WebCore/MediaPlayerPrivate.h>
+#include <wtf/Logger.h>
 #include <wtf/UniqueRef.h>
 
 #if PLATFORM(COCOA)
@@ -48,10 +49,7 @@ namespace WebKit {
 using namespace WebCore;
 
 RemoteMediaPlayerManagerProxy::RemoteMediaPlayerManagerProxy(GPUConnectionToWebProcess& connection)
-    : m_gpuConnectionToWebProcess(connection)
-#if !RELEASE_LOG_DISABLED
-    , m_logIdentifier(WTF::LoggerHelper::uniqueLogIdentifier())
-#endif
+    : m_gpuConnectionToWebProcess(makeWeakPtr(connection))
 {
 }
 
@@ -59,22 +57,28 @@ RemoteMediaPlayerManagerProxy::~RemoteMediaPlayerManagerProxy()
 {
 }
 
-void RemoteMediaPlayerManagerProxy::createMediaPlayer(MediaPlayerPrivateRemoteIdentifier id, MediaPlayerEnums::MediaEngineIdentifier engineIdentifier, RemoteMediaPlayerProxyConfiguration&& proxyConfiguration, CompletionHandler<void(RemoteMediaPlayerConfiguration&)>&& completionHandler)
+void RemoteMediaPlayerManagerProxy::createMediaPlayer(MediaPlayerIdentifier identifier, MediaPlayerEnums::MediaEngineIdentifier engineIdentifier, RemoteMediaPlayerProxyConfiguration&& proxyConfiguration, CompletionHandler<void(RemoteMediaPlayerConfiguration&)>&& completionHandler)
 {
-    ASSERT(!m_proxies.contains(id));
+    ASSERT(RunLoop::isMain());
+    ASSERT(m_gpuConnectionToWebProcess);
+
+    auto locker = holdLock(m_proxiesLock);
+    ASSERT(!m_proxies.contains(identifier));
 
     RemoteMediaPlayerConfiguration playerConfiguration;
 
-    auto proxy = makeUnique<RemoteMediaPlayerProxy>(*this, id, m_gpuConnectionToWebProcess.connection(), engineIdentifier, WTFMove(proxyConfiguration));
+    auto proxy = makeUnique<RemoteMediaPlayerProxy>(*this, identifier, m_gpuConnectionToWebProcess->connection(), engineIdentifier, WTFMove(proxyConfiguration));
     proxy->getConfiguration(playerConfiguration);
-    m_proxies.add(id, WTFMove(proxy));
+    m_proxies.add(identifier, WTFMove(proxy));
 
     completionHandler(playerConfiguration);
 }
 
-void RemoteMediaPlayerManagerProxy::deleteMediaPlayer(MediaPlayerPrivateRemoteIdentifier id)
+void RemoteMediaPlayerManagerProxy::deleteMediaPlayer(MediaPlayerIdentifier identifier)
 {
-    if (auto proxy = m_proxies.take(id))
+    ASSERT(RunLoop::isMain());
+    auto locker = holdLock(m_proxiesLock);
+    if (auto proxy = m_proxies.take(identifier))
         proxy->invalidate();
 }
 
@@ -97,7 +101,7 @@ void RemoteMediaPlayerManagerProxy::getSupportedTypes(MediaPlayerEnums::MediaEng
     completionHandler(WTFMove(result));
 }
 
-void RemoteMediaPlayerManagerProxy::supportsTypeAndCodecs(MediaPlayerEnums::MediaEngineIdentifier engineIdentifier, const WebCore::MediaEngineSupportParameters&& parameters, CompletionHandler<void(MediaPlayer::SupportsType)>&& completionHandler)
+void RemoteMediaPlayerManagerProxy::supportsTypeAndCodecs(MediaPlayerEnums::MediaEngineIdentifier engineIdentifier, const MediaEngineSupportParameters&& parameters, CompletionHandler<void(MediaPlayer::SupportsType)>&& completionHandler)
 {
     auto engine = MediaPlayer::mediaEngine(engineIdentifier);
     if (!engine) {
@@ -108,32 +112,6 @@ void RemoteMediaPlayerManagerProxy::supportsTypeAndCodecs(MediaPlayerEnums::Medi
 
     auto result = engine->supportsTypeAndCodecs(parameters);
     completionHandler(result);
-}
-
-void RemoteMediaPlayerManagerProxy::canDecodeExtendedType(WebCore::MediaPlayerEnums::MediaEngineIdentifier engineIdentifier, const String&& mimeType, CompletionHandler<void(bool)>&& completionHandler)
-{
-    bool supported = false;
-
-    switch (engineIdentifier) {
-    case MediaPlayerEnums::MediaEngineIdentifier::AVFoundation:
-#if PLATFORM(COCOA)
-        supported = AVAssetMIMETypeCache::singleton().canDecodeType(mimeType) == MediaPlayerEnums::SupportsType::IsSupported;
-        break;
-#endif
-
-    case MediaPlayerEnums::MediaEngineIdentifier::AVFoundationMSE:
-    case MediaPlayerEnums::MediaEngineIdentifier::AVFoundationMediaStream:
-    case MediaPlayerEnums::MediaEngineIdentifier::AVFoundationCF:
-    case MediaPlayerEnums::MediaEngineIdentifier::GStreamer:
-    case MediaPlayerEnums::MediaEngineIdentifier::GStreamerMSE:
-    case MediaPlayerEnums::MediaEngineIdentifier::HolePunch:
-    case MediaPlayerEnums::MediaEngineIdentifier::MediaFoundation:
-    case MediaPlayerEnums::MediaEngineIdentifier::MockMSE:
-        ASSERT_NOT_REACHED();
-        break;
-    }
-
-    completionHandler(supported);
 }
 
 void RemoteMediaPlayerManagerProxy::originsInMediaCache(MediaPlayerEnums::MediaEngineIdentifier engineIdentifier, const String&& path, CompletionHandler<void(Vector<WebCore::SecurityOriginData>&&)>&& completionHandler)
@@ -194,33 +172,37 @@ void RemoteMediaPlayerManagerProxy::supportsKeySystem(MediaPlayerEnums::MediaEng
 
 void RemoteMediaPlayerManagerProxy::didReceivePlayerMessage(IPC::Connection& connection, IPC::Decoder& decoder)
 {
-    if (auto* player = m_proxies.get(makeObjectIdentifier<MediaPlayerPrivateRemoteIdentifierType>(decoder.destinationID())))
+    ASSERT(RunLoop::isMain());
+    if (auto* player = m_proxies.get(makeObjectIdentifier<MediaPlayerIdentifierType>(decoder.destinationID())))
         player->didReceiveMessage(connection, decoder);
 }
 
 void RemoteMediaPlayerManagerProxy::didReceiveSyncPlayerMessage(IPC::Connection& connection, IPC::Decoder& decoder, std::unique_ptr<IPC::Encoder>& encoder)
 {
-    if (auto* player = m_proxies.get(makeObjectIdentifier<MediaPlayerPrivateRemoteIdentifierType>(decoder.destinationID())))
+    ASSERT(RunLoop::isMain());
+    if (auto* player = m_proxies.get(makeObjectIdentifier<MediaPlayerIdentifierType>(decoder.destinationID())))
         player->didReceiveSyncMessage(connection, decoder, encoder);
 }
 
-RemoteMediaPlayerProxy* RemoteMediaPlayerManagerProxy::getProxy(const MediaPlayerPrivateRemoteIdentifier& id)
+// May get called on a background thread.
+RefPtr<MediaPlayer> RemoteMediaPlayerManagerProxy::mediaPlayer(const MediaPlayerIdentifier& identifier)
 {
-    auto results = m_proxies.find(id);
+    auto locker = holdLock(m_proxiesLock);
+    auto results = m_proxies.find(identifier);
     if (results != m_proxies.end())
-        return results->value.get();
+        return results->value->mediaPlayer();
     return nullptr;
 }
 
 #if !RELEASE_LOG_DISABLED
-const Logger& RemoteMediaPlayerManagerProxy::logger() const
+Logger& RemoteMediaPlayerManagerProxy::logger()
 {
-    return m_gpuConnectionToWebProcess.logger();
-}
+    if (!m_logger) {
+        m_logger = Logger::create(this);
+        m_logger->setEnabled(this, m_gpuConnectionToWebProcess ? m_gpuConnectionToWebProcess->isAlwaysOnLoggingAllowed() : false);
+    }
 
-WTFLogChannel& RemoteMediaPlayerManagerProxy::logChannel() const
-{
-    return WebKit2LogMedia;
+    return *m_logger;
 }
 #endif
 

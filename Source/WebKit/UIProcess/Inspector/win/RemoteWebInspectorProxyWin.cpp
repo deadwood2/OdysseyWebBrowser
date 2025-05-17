@@ -109,10 +109,10 @@ WebPageProxy* RemoteWebInspectorProxy::platformCreateFrontendPageAndWindow()
     preferences->setLogsPageMessagesToSystemConsoleEnabled(true);
 #endif
 
-    RefPtr<WebPageGroup> pageGroup = WebPageGroup::create(inspectorPageGroupIdentifierForPage(nullptr));
+    RefPtr<WebPageGroup> pageGroup = WebPageGroup::create(WebKit::defaultInspectorPageGroupIdentifierForPage(nullptr));
 
     auto pageConfiguration = API::PageConfiguration::create();
-    pageConfiguration->setProcessPool(&inspectorProcessPool(inspectorLevelForPage(nullptr)));
+    pageConfiguration->setProcessPool(&WebKit::defaultInspectorProcessPool(inspectorLevelForPage(nullptr)));
     pageConfiguration->setPreferences(preferences.get());
     pageConfiguration->setPageGroup(pageGroup.get());
 
@@ -137,7 +137,7 @@ void RemoteWebInspectorProxy::platformAppend(const String&, const String&) { }
 void RemoteWebInspectorProxy::platformSetSheetRect(const WebCore::FloatRect&) { }
 void RemoteWebInspectorProxy::platformSetForcedAppearance(WebCore::InspectorFrontendClient::Appearance) { }
 void RemoteWebInspectorProxy::platformStartWindowDrag() { }
-void RemoteWebInspectorProxy::platformOpenInNewTab(const String&) { }
+void RemoteWebInspectorProxy::platformOpenURLExternally(const String&) { }
 void RemoteWebInspectorProxy::platformShowCertificate(const WebCore::CertificateInfo&) { }
 
 void RemoteWebInspectorProxy::platformCloseFrontendPageAndWindow()

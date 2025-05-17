@@ -1,0 +1,234 @@
+2021-04-22  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [GTK][WPE] Bump libsoup3 version to 2.99.4
+        https://bugs.webkit.org/show_bug.cgi?id=224925
+
+        Reviewed by Philippe Normand.
+
+        * elements/sdk/libsoup3.bst:
+
+2021-03-11  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update libsoup3
+        https://bugs.webkit.org/show_bug.cgi?id=223066
+
+        Reviewed by Carlos Garcia Campos.
+
+        * elements/sdk/libsoup3.bst: Bump to version 2.99.2.
+
+2021-02-26  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Add recipe for libsoup3
+        https://bugs.webkit.org/show_bug.cgi?id=222419
+
+        Reviewed by Carlos Garcia Campos.
+
+        LibSoup3 is parallel-installable with libsoup2, for now we want to keep libsoup2 in the SDK,
+        at least until porting to libsoup3 has progressed enough.
+
+        * elements/sdk-platform.bst:
+        * elements/sdk/glib.bst: Bump to latest 2.67 release.
+        * elements/sdk/gtk+-3.bst: Bump to latest 3.24 release, not strictly needed but I was driving by.
+        * elements/sdk/libsoup3.bst: Added.
+
+2021-02-24  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update to sccache 0.2.15
+        https://bugs.webkit.org/show_bug.cgi?id=222271
+
+        Reviewed by Adrian Perez de Castro.
+
+        * elements/sdk/sccache.bst: Bump to latest stable release. The previous version broke in the
+        SDK update, timing out when starting the local server.
+        * patches/sccache-no-selenium.patch: Removed.
+
+2021-02-22  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Add Monado for XR runtime support
+        https://bugs.webkit.org/show_bug.cgi?id=220738
+
+        Reviewed by Žan Doberšek.
+
+        * elements/sdk-platform.bst:
+        * elements/sdk/eigen.bst: Added.
+        * elements/sdk/monado.bst: Added.
+
+2021-02-22  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update to GStreamer 1.18.3 and backport one patch from upcoming 1.18.4
+        https://bugs.webkit.org/show_bug.cgi?id=222033
+
+        Reviewed by Žan Doberšek.
+
+        The backported patch fixes a racy crash in media/media-source/media-source-webm.html, where
+        the player would be destroyed quickly after being created.
+
+        * elements/freedesktop-sdk.bst: Update junction.
+        * elements/sdk/gst-libav.bst: Bump to 1.18.3
+        * elements/sdk/gst-plugins-bad.bst: Ditto.
+        * elements/sdk/gst-plugins-base.bst: Ditto and backport patch from 1.18.4.
+        * elements/sdk/gst-plugins-good.bst: Bump to 1.18.3
+        * elements/sdk/gstreamer.bst: Ditto.
+        * patches/gst-plugins-base-0001-videodecoder-Fix-racy-critical-when-pool-negotiation.patch: Added.
+
+2021-01-15  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Cargo recipes improvements
+        https://bugs.webkit.org/show_bug.cgi?id=220656
+
+        Reviewed by Adrian Perez de Castro.
+
+        * elements/freedesktop-sdk.bst: Update junction.
+        * elements/sdk/cargo-c.bst: Properly separate build command from install command.
+        * elements/sdk/gst-plugin-closedcaption.bst: Ditto.
+        * elements/sdk/gst-plugin-dav1d.bst: Ditto.
+
+2021-01-15  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update GStreamer and Mesa
+        https://bugs.webkit.org/show_bug.cgi?id=220237
+
+        Reviewed by Adrian Perez de Castro.
+
+        This patch updates several SDK components:
+
+        - GStreamer 1.18.0 -> 1.18.2
+        - Mesa 20.1.10 -> 20.3.2
+
+        Additionally some libdrm-related cleanups are included, since we have our own version of
+        this component, it is better to use it everywhere instead of the upstream SDK version, to
+        avoid collisions.
+
+        This patch also updates the pipenv dependencies used by Buildstream.
+
+        * Pipfile.lock:
+        * elements/freedesktop-sdk.bst:
+        * elements/qt5/qtbase.bst:
+        * elements/qt5/qtwayland.bst:
+        * elements/sdk/gst-libav.bst:
+        * elements/sdk/gst-plugins-bad.bst:
+        * elements/sdk/gst-plugins-base.bst:
+        * elements/sdk/gst-plugins-good.bst:
+        * elements/sdk/gst-plugins-ugly.bst:
+        * elements/sdk/gstreamer.bst:
+        * elements/sdk/mesa.bst:
+        * elements/sdk/xorg-server.bst:
+        * patches/mesa/0004-mesa-clear-texture-s-views-when-texture-is-remove.patch: Removed.
+        * patches/mesa/mesa_libdrm_deps.patch:
+
+2021-01-15  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Updates for gst-build and gst-plugins-rs support
+        https://bugs.webkit.org/show_bug.cgi?id=220418
+
+        Reviewed by Adrian Perez de Castro.
+
+        This patch:
+
+        - bumps from Meson 0.55.3 to Meson 0.56.1 in the FDO junction
+        - includes cargo-c in the SDK, this is a new dependency for gst-build (only if
+          gst-plugins-rs is enabled though)
+        - includes the latest release of the rsclosedcaption GStreamer plugin in the SDK. This
+          plugin includes several elements (ccconverter, cea608tott) that will be useful in order to
+          support CEA608 rendering in WebKit GStreamer ports.
+
+        * elements/freedesktop-sdk.bst:
+        * elements/sdk-platform.bst:
+        * elements/sdk/cargo-c.bst: Added.
+        * elements/sdk/gst-plugin-closedcaption.bst: Added.
+        * files/gst-plugin-closedcaption/Cargo.lock: Added.
+        * patches/fdo-0001-meson-Bump-to-0.56.1.patch: Added.
+
+2021-01-07  Lauro Moura  <lmoura@igalia.com>
+
+        [Flatpak SDK] Update GTK4 to 4.0.0
+        https://bugs.webkit.org/show_bug.cgi?id=219983
+
+        Reviewed by Philippe Normand.
+
+        * elements/sdk/gtk.bst: Bump to 4.0.0
+
+2020-12-22  Lauro Moura  <lmoura@igalia.com>
+
+        [Flapak SDK] Allow setting custom SDK repository locations and other small fixes
+        https://bugs.webkit.org/show_bug.cgi?id=219884
+
+        Reviewed by Philippe Normand.
+
+        - Allow inheriting the RSYNC info from envvar for local testing.
+        - Add a 'dry-push-repo' command to be able to perform push-repo dry-runs.
+
+        * Makefile:
+
+2020-12-14  Lauro Moura  <lmoura@igalia.com>
+
+        [Flatpak SDK] Update GTK4 to 3.99.5
+        https://bugs.webkit.org/show_bug.cgi?id=219781
+
+        Reviewed by Philippe Normand.
+
+        Looks like there was a mishap tagging the GTK RC, as the tag present
+        in their repo is 3.99.5.1 instead of 3.99.5.
+
+        * elements/sdk/glib.bst: Bump to 2.66 to reflect the bumped
+        requirement by GTK.
+        * elements/sdk/gtk.bst: Bump to 3.99.5.1
+
+2020-11-27  Lauro Moura  <lmoura@igalia.com>
+
+        [Flatpak SDK] Update GTK4 to 3.99.4
+        https://bugs.webkit.org/show_bug.cgi?id=219269
+
+        Reviewed by Philippe Normand.
+
+        * elements/sdk/gtk.bst: Update to track tags instead of individual commits and
+        specify 3.99.4 as the latest tag. Also added new meson flags to disable the ffmpeg
+        media backend and cloud printing after GTK changed some more options into features[1]
+
+        [1] https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/2708
+
+2020-11-27  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Add clangd
+        https://bugs.webkit.org/show_bug.cgi?id=219302
+
+        Reviewed by Adrian Perez de Castro.
+
+        clangd can be used as an alternative to ccls in IDEs supporting the LSP protocol.
+
+        * elements/sdk-platform.bst:
+        * elements/sdk/clangd.bst: Added.
+        * project.conf:
+
+2020-11-27  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update ccls
+        https://bugs.webkit.org/show_bug.cgi?id=219303
+
+        Reviewed by Adrian Perez de Castro.
+
+        * elements/sdk/ccls.bst: Update to latest release, 0.20201025.
+
+2020-11-27  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Add cmake-lsp recipe
+        https://bugs.webkit.org/show_bug.cgi?id=219234
+
+        Reviewed by Adrian Perez de Castro.
+
+        Add CMake LSP server for use in IDEs.
+        
+        * elements/sdk-platform.bst:
+        * elements/sdk/cmake-lsp.bst: Added.
+        * elements/sdk/pygls.bst: Added.
+        * project.conf:
+
+2020-11-16  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update rr
+        https://bugs.webkit.org/show_bug.cgi?id=218973
+
+        Reviewed by Žan Doberšek.
+
+        * elements/sdk/rr.bst: Update for new git repository location and bump to version 5.4.x.
+

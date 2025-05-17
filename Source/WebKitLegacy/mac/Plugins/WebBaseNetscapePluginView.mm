@@ -54,6 +54,7 @@
 #import <WebCore/RenderEmbeddedObject.h>
 #import <WebCore/RenderView.h>
 #import <WebCore/SecurityOrigin.h>
+#import <WebCore/WebCoreJITOperations.h>
 #import <WebKitLegacy/DOMPrivate.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <wtf/Assertions.h>
@@ -72,6 +73,7 @@ using namespace WebCore;
 {
     JSC::initialize();
     WTF::initializeMainThread();
+    WebCore::populateJITOperations();
     WebKit::sendUserChangeNotifications();
 }
 
@@ -432,7 +434,7 @@ using namespace WebCore;
     if (!boundsSize.height || !boundsSize.width)
         return;
 
-    NSImage *snapshot = [[NSImage alloc] initWithSize:boundsSize];
+    auto snapshot = adoptNS([[NSImage alloc] initWithSize:boundsSize]);
         
     _snapshotting = YES;
     [snapshot lockFocus];
@@ -440,7 +442,7 @@ using namespace WebCore;
     [snapshot unlockFocus];
     _snapshotting = NO;
     
-    _cachedSnapshot = adoptNS(snapshot);
+    _cachedSnapshot = WTFMove(snapshot);
 }
 
 - (void)clearCachedSnapshot

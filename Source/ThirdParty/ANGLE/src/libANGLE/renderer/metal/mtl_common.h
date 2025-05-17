@@ -22,13 +22,34 @@
 #include "common/angleutils.h"
 #include "common/apple_platform_utils.h"
 #include "libANGLE/Constants.h"
+#include "libANGLE/ImageIndex.h"
 #include "libANGLE/Version.h"
 #include "libANGLE/angletypes.h"
+#include "libANGLE/renderer/metal/mtl_constants.h"
 
 #if TARGET_OS_IPHONE
+#    if !defined(__IPHONE_11_0)
+#        define __IPHONE_11_0 110000
+#    endif
 #    if !defined(ANGLE_IOS_DEPLOY_TARGET)
 #        define ANGLE_IOS_DEPLOY_TARGET __IPHONE_11_0
 #    endif
+#    if !defined(__IPHONE_OS_VERSION_MAX_ALLOWED)
+#        define __IPHONE_OS_VERSION_MAX_ALLOWED __IPHONE_11_0
+#    endif
+#    if !defined(__TV_OS_VERSION_MAX_ALLOWED)
+#        define __TV_OS_VERSION_MAX_ALLOWED __IPHONE_11_0
+#    endif
+#endif
+
+#if !defined(TARGET_OS_MACCATALYST)
+#    define TARGET_OS_MACCATALYST 0
+#endif
+
+#if defined(__ARM_ARCH)
+#    define ANGLE_MTL_ARM (__ARM_ARCH != 0)
+#else
+#    define ANGLE_MTL_ARM 0
 #endif
 
 #define ANGLE_MTL_OBJC_SCOPE @autoreleasepool
@@ -55,6 +76,7 @@ namespace egl
 {
 class Display;
 class Image;
+class Surface;
 }  // namespace egl
 
 #define ANGLE_GL_OBJECTS_X(PROC) \
@@ -64,6 +86,7 @@ class Image;
     PROC(MemoryObject)           \
     PROC(Query)                  \
     PROC(Program)                \
+    PROC(Sampler)                \
     PROC(Semaphore)              \
     PROC(Texture)                \
     PROC(TransformFeedback)      \
@@ -88,53 +111,44 @@ class BufferMtl;
 class VertexArrayMtl;
 class TextureMtl;
 class ProgramMtl;
+class SamplerMtl;
+class TransformFeedbackMtl;
 
 ANGLE_GL_OBJECTS_X(ANGLE_PRE_DECLARE_MTL_OBJECT)
 
 namespace mtl
 {
+// This special constant is used to indicate that a particular vertex descriptor's buffer layout
+// index is unused.
+constexpr MTLVertexStepFunction kVertexStepFunctionInvalid =
+    static_cast<MTLVertexStepFunction>(0xff);
 
-// NOTE(hqle): support variable max number of vertex attributes
-constexpr uint32_t kMaxVertexAttribs = gl::MAX_VERTEX_ATTRIBS;
-// NOTE(hqle): support variable max number of render targets
-constexpr uint32_t kMaxRenderTargets = 1;
-
-constexpr size_t kDefaultAttributeSize = 4 * sizeof(float);
-
-// Metal limits
-constexpr uint32_t kMaxShaderBuffers     = 31;
-constexpr uint32_t kMaxShaderSamplers    = 16;
-constexpr size_t kDefaultUniformsMaxSize = 4 * 1024;
-constexpr uint32_t kMaxViewports         = 1;
-
-constexpr uint32_t kVertexAttribBufferStrideAlignment = 4;
-// Alignment requirement for offset passed to setVertex|FragmentBuffer
+// Work-around the enum is not available on macOS
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
-constexpr uint32_t kUniformBufferSettingOffsetMinAlignment = 256;
+constexpr MTLBlitOption kBlitOptionRowLinearPVRTC = MTLBlitOptionNone;
 #else
-constexpr uint32_t kUniformBufferSettingOffsetMinAlignment = 4;
+constexpr MTLBlitOption kBlitOptionRowLinearPVRTC          = MTLBlitOptionRowLinearPVRTC;
 #endif
-constexpr uint32_t kIndexBufferOffsetAlignment = 4;
 
-// Front end binding limits
-constexpr uint32_t kMaxGLSamplerBindings = 2 * kMaxShaderSamplers;
+#if defined(__IPHONE_13_0) || defined(__MAC_10_15)
+using TextureSwizzleChannels                   = MTLTextureSwizzleChannels;
+using RenderStages                             = MTLRenderStages;
+constexpr MTLRenderStages kRenderStageVertex   = MTLRenderStageVertex;
+constexpr MTLRenderStages kRenderStageFragment = MTLRenderStageFragment;
+#else
+using TextureSwizzleChannels                               = int;
+using RenderStages                                         = int;
+constexpr RenderStages kRenderStageVertex                  = 1;
+constexpr RenderStages kRenderStageFragment                = 2;
+#endif
 
-// Binding index start for vertex data buffers:
-constexpr uint32_t kVboBindingIndexStart = 0;
-
-// Binding index for default attribute buffer:
-constexpr uint32_t kDefaultAttribsBindingIndex = kVboBindingIndexStart + kMaxVertexAttribs;
-// Binding index for driver uniforms:
-constexpr uint32_t kDriverUniformsBindingIndex = kDefaultAttribsBindingIndex + 1;
-// Binding index for default uniforms:
-constexpr uint32_t kDefaultUniformsBindingIndex = kDefaultAttribsBindingIndex + 3;
-
-constexpr uint32_t kStencilMaskAll = 0xff;  // Only 8 bits stencil is supported
-
-constexpr float kEmulatedAlphaValue = 1.0f;
-
-// NOTE(hqle): Support ES 3.0.
-constexpr gl::Version kMaxSupportedGLVersion = gl::Version(2, 0);
+enum class PixelType
+{
+    Int,
+    UInt,
+    Float,
+    EnumCount,
+};
 
 template <typename T>
 struct ImplTypeHelper;
@@ -155,12 +169,11 @@ struct ImplTypeHelper<egl::Display>
 {
     using ImplType = DisplayMtl;
 };
-
 template <typename T>
 using GetImplType = typename ImplTypeHelper<T>::ImplType;
 
 template <typename T>
-GetImplType<T> *GetImpl(const T *_Nonnull glObject)
+GetImplType<T> *GetImpl(const T *glObject)
 {
     return GetImplAs<GetImplType<T>>(glObject);
 }
@@ -280,11 +293,106 @@ class AutoObjCPtr : public WrappedObject<T>
 template <typename T>
 using AutoObjCObj = AutoObjCPtr<T *>;
 
-struct ClearOptions
+// NOTE: SharedEvent is only declared on iOS 12.0+ or mac 10.14+
+#if defined(__IPHONE_12_0) || defined(__MAC_10_14)
+using SharedEventRef = AutoObjCPtr<id<MTLSharedEvent>>;
+#else
+using SharedEventRef                                       = AutoObjCObj<NSObject>;
+#endif
+
+// The native image index used by Metal back-end,  the image index uses native mipmap level instead
+// of "virtual" level modified by OpenGL's base level.
+using MipmapNativeLevel = gl::LevelIndexWrapper<uint32_t>;
+constexpr MipmapNativeLevel kZeroNativeMipLevel(0);
+class ImageNativeIndexIterator;
+class ImageNativeIndex final
 {
-    Optional<MTLClearColor> clearColor;
-    Optional<float> clearDepth;
-    Optional<uint32_t> clearStencil;
+  public:
+    ImageNativeIndex() = delete;
+    ImageNativeIndex(const gl::ImageIndex &src, GLint baseLevel)
+    {
+        mNativeIndex = gl::ImageIndex::MakeFromType(src.getType(), src.getLevelIndex() - baseLevel,
+                                                    src.getLayerIndex(), src.getLayerCount());
+    }
+    static ImageNativeIndex FromBaseZeroGLIndex(const gl::ImageIndex &src)
+    {
+        return ImageNativeIndex(src, 0);
+    }
+    MipmapNativeLevel getNativeLevel() const
+    {
+        return MipmapNativeLevel(mNativeIndex.getLevelIndex());
+    }
+    gl::TextureType getType() const { return mNativeIndex.getType(); }
+    GLint getLayerIndex() const { return mNativeIndex.getLayerIndex(); }
+    GLint getLayerCount() const { return mNativeIndex.getLayerCount(); }
+    GLint cubeMapFaceIndex() const { return mNativeIndex.cubeMapFaceIndex(); }
+    bool isLayered() const { return mNativeIndex.isLayered(); }
+    bool hasLayer() const { return mNativeIndex.hasLayer(); }
+    bool has3DLayer() const { return mNativeIndex.has3DLayer(); }
+    bool usesTex3D() const { return mNativeIndex.usesTex3D(); }
+    bool valid() const { return mNativeIndex.valid(); }
+    ImageNativeIndexIterator getLayerIterator(GLint layerCount) const;
+  private:
+    gl::ImageIndex mNativeIndex;
+};
+class ImageNativeIndexIterator final
+{
+  public:
+    ImageNativeIndex next() { return ImageNativeIndex(mNativeIndexIte.next(), 0); }
+    ImageNativeIndex current() const { return ImageNativeIndex(mNativeIndexIte.current(), 0); }
+    bool hasNext() const { return mNativeIndexIte.hasNext(); }
+  private:
+    // This class is only constructable from ImageNativeIndex
+    friend class ImageNativeIndex;
+    explicit ImageNativeIndexIterator(const gl::ImageIndexIterator &baseZeroSrc)
+        : mNativeIndexIte(baseZeroSrc)
+    {}
+    gl::ImageIndexIterator mNativeIndexIte;
+};
+using ClearColorValueBytes = std::array<uint8_t, 4 * sizeof(float)>;
+class ClearColorValue
+{
+  public:
+    constexpr ClearColorValue()
+        : mType(PixelType::Float), mRedF(0), mGreenF(0), mBlueF(0), mAlphaF(0)
+    {}
+    constexpr ClearColorValue(float r, float g, float b, float a)
+        : mType(PixelType::Float), mRedF(r), mGreenF(g), mBlueF(b), mAlphaF(a)
+    {}
+    constexpr ClearColorValue(int32_t r, int32_t g, int32_t b, int32_t a)
+        : mType(PixelType::Int), mRedI(r), mGreenI(g), mBlueI(b), mAlphaI(a)
+    {}
+    constexpr ClearColorValue(uint32_t r, uint32_t g, uint32_t b, uint32_t a)
+        : mType(PixelType::UInt), mRedU(r), mGreenU(g), mBlueU(b), mAlphaU(a)
+    {}
+    constexpr ClearColorValue(const ClearColorValue &src)
+        : mType(src.mType), mValueBytes(src.mValueBytes)
+    {}
+    MTLClearColor toMTLClearColor() const;
+    PixelType getType() const { return mType; }
+    const ClearColorValueBytes &getValueBytes() const { return mValueBytes; }
+    ClearColorValue &operator=(const ClearColorValue &src);
+    void setAsFloat(float r, float g, float b, float a);
+    void setAsInt(int32_t r, int32_t g, int32_t b, int32_t a);
+    void setAsUInt(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
+  private:
+    PixelType mType;
+    union
+    {
+        struct
+        {
+            float mRedF, mGreenF, mBlueF, mAlphaF;
+        };
+        struct
+        {
+            int32_t mRedI, mGreenI, mBlueI, mAlphaI;
+        };
+        struct
+        {
+            uint32_t mRedU, mGreenU, mBlueU, mAlphaU;
+        };
+        ClearColorValueBytes mValueBytes;
+    };
 };
 
 class CommandQueue;
@@ -298,7 +406,7 @@ class ErrorHandler
                              const char *function,
                              unsigned int line) = 0;
 
-    virtual void handleError(NSError *_Nullable error,
+    virtual void handleError(NSError *error,
                              const char *file,
                              const char *function,
                              unsigned int line) = 0;
@@ -308,7 +416,7 @@ class Context : public ErrorHandler
 {
   public:
     Context(DisplayMtl *displayMtl);
-    _Nullable id<MTLDevice> getMetalDevice() const;
+    id<MTLDevice> getMetalDevice() const;
     mtl::CommandQueue &cmdQueue();
 
     DisplayMtl *getDisplay() const { return mDisplay; }

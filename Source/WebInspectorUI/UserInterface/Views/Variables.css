@@ -190,6 +190,9 @@
 
     --focus-ring-outline-offset: -2px;
 
+    /* Invert colors yet preserve the hue */
+    --filter-invert: invert(100%) hue-rotate(180deg);
+
     --undocked-title-area-height: 0px;
     --tab-bar-height: var(--navigation-bar-height);
     --navigation-bar-height: 29px;
@@ -208,6 +211,12 @@
     --color-picker-width: 256px;
 
     --sorted-header-font-weight: 500;
+
+    --reference-page-link-size: 20px;
+
+    --image-button-navigation-item-width: 26px;
+
+    --blackboxed-tree-item-opacity: 0.5;
 }
 
 body.window-inactive {
@@ -238,10 +247,12 @@ body.big-sur {
 }
 
 body.mac-platform:not(.big-sur):not(.docked) {
+    /* keep in sync with `WI.undockedTitleAreaHeight` */
     --undocked-title-area-height: calc(22px / var(--zoom-factor));
 }
 
 body.mac-platform.big-sur:not(.docked) {
+    /* keep in sync with `WI.undockedTitleAreaHeight` */
     --undocked-title-area-height: calc(27px / var(--zoom-factor));
 }
 
@@ -362,9 +373,6 @@ body.mac-platform.big-sur:not(.docked) {
 
         --timeline-scanner-color: hsl(0, 0%, 80%);
 
-        /* Invert colors yet preserve the hue */
-        --filter-invert: invert(100%) hue-rotate(180deg);
-
         /* TODO: Use the same variable for the default theme */
         --overlay-background: hsla(0, 0%, 24%, 0.9);
 
@@ -408,7 +416,7 @@ body.mac-platform.big-sur:not(.docked) {
     }
 }
 
-body.mac-platform:not(.sierra, .high-sierra) {
+body.mac-platform {
     --selected-foreground-color: -apple-system-alternate-selected-text;
     --selected-background-color: -apple-system-selected-content-background;
     --selected-text-background-color: -apple-system-selected-text-background;

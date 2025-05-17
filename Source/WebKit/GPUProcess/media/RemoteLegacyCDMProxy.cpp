@@ -28,7 +28,7 @@
 
 #if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
-#include "GPUConnectionToWebProcess.h"
+#include "RemoteLegacyCDMSessionProxy.h"
 #include "RemoteMediaPlayerManagerProxy.h"
 #include "RemoteMediaPlayerProxy.h"
 
@@ -36,12 +36,12 @@ namespace WebKit {
 
 using namespace WebCore;
 
-std::unique_ptr<RemoteLegacyCDMProxy> RemoteLegacyCDMProxy::create(WeakPtr<RemoteLegacyCDMFactoryProxy> factory, MediaPlayerPrivateRemoteIdentifier&& playerId, std::unique_ptr<WebCore::LegacyCDM>&& cdm)
+std::unique_ptr<RemoteLegacyCDMProxy> RemoteLegacyCDMProxy::create(WeakPtr<RemoteLegacyCDMFactoryProxy> factory, MediaPlayerIdentifier&& playerId, std::unique_ptr<WebCore::LegacyCDM>&& cdm)
 {
     return std::unique_ptr<RemoteLegacyCDMProxy>(new RemoteLegacyCDMProxy(WTFMove(factory), WTFMove(playerId), WTFMove(cdm)));
 }
 
-RemoteLegacyCDMProxy::RemoteLegacyCDMProxy(WeakPtr<RemoteLegacyCDMFactoryProxy>&& factory, MediaPlayerPrivateRemoteIdentifier&& playerId, std::unique_ptr<WebCore::LegacyCDM>&& cdm)
+RemoteLegacyCDMProxy::RemoteLegacyCDMProxy(WeakPtr<RemoteLegacyCDMFactoryProxy>&& factory, MediaPlayerIdentifier&& playerId, std::unique_ptr<WebCore::LegacyCDM>&& cdm)
     : m_factory(WTFMove(factory))
     , m_playerId(WTFMove(playerId))
     , m_cdm(WTFMove(cdm))
@@ -74,7 +74,7 @@ void RemoteLegacyCDMProxy::createSession(const String& keySystem, CreateSessionC
     callback(WTFMove(identifier));
 }
 
-void RemoteLegacyCDMProxy::setPlayerId(Optional<MediaPlayerPrivateRemoteIdentifier>&& playerId)
+void RemoteLegacyCDMProxy::setPlayerId(Optional<MediaPlayerIdentifier>&& playerId)
 {
     if (!playerId)
         m_playerId = { };
@@ -86,11 +86,11 @@ RefPtr<MediaPlayer> RemoteLegacyCDMProxy::cdmMediaPlayer(const LegacyCDM*) const
     if (!m_playerId || !m_factory)
         return nullptr;
 
-    auto proxy = m_factory->gpuConnectionToWebProcess().remoteMediaPlayerManagerProxy().getProxy(m_playerId);
-    if (!proxy)
+    auto* gpuConnectionToWebProcess = m_factory->gpuConnectionToWebProcess();
+    if (!gpuConnectionToWebProcess)
         return nullptr;
 
-    return proxy->mediaPlayer();
+    return gpuConnectionToWebProcess->remoteMediaPlayerManagerProxy().mediaPlayer(m_playerId);
 }
 
 }

@@ -81,7 +81,6 @@ public:
 
         WindowProperties(cairo_rectangle_int_t* geometry, bool toolbarVisible, bool statusbarVisible, bool scrollbarsVisible, bool menubarVisible, bool locationbarVisible, bool resizable, bool fullscreen)
             : m_isNull(false)
-            , m_geometry(*geometry)
             , m_toolbarVisible(toolbarVisible)
             , m_statusbarVisible(statusbarVisible)
             , m_scrollbarsVisible(scrollbarsVisible)
@@ -90,6 +89,9 @@ public:
             , m_resizable(resizable)
             , m_fullscreen(fullscreen)
         {
+#if PLATFORM(GTK)
+            m_geometry = *geometry;
+#endif
         }
 
         bool isNull() const { return m_isNull; }
@@ -114,8 +116,9 @@ public:
     private:
         bool m_isNull;
 
+#if PLATFORM(GTK)
         cairo_rectangle_int_t m_geometry;
-
+#endif
         bool m_toolbarVisible;
         bool m_statusbarVisible;
         bool m_scrollbarsVisible;
@@ -893,6 +896,43 @@ static void testWebViewGeolocationPermissionRequests(UIClientTest* test, gconstp
     Test::addLogFatalFlag(G_LOG_LEVEL_WARNING);
 }
 
+#if ENABLE(ENCRYPTED_MEDIA)
+static void testWebViewMediaKeySystemPermissionRequests(UIClientTest* test, gconstpointer)
+{
+    webkit_settings_set_enable_encrypted_media(webkit_web_view_get_settings(test->m_webView), TRUE);
+    test->showInWindow();
+    static const char* mediaKeySystemRequestHTML = "<html>"
+        "  <script>"
+        "  function runTest()"
+        "  {"
+        "    const options = ["
+        "     { initDataTypes: [\"cenc\"],"
+        "       videoCapabilities: [{contentType : 'video/mp4'}] }"
+        "    ];"
+        "    navigator.requestMediaKeySystemAccess('org.w3.clearkey', options).then((access) => {"
+        "      window.webkit.messageHandlers.permission.postMessage('OK');"
+        "    }).catch((e) => {"
+        "      window.webkit.messageHandlers.permission.postMessage(e.name);"
+        "    });"
+        "  }"
+        "  </script>"
+        "  <body onload='runTest();'></body>"
+        "</html>";
+
+    // Test denying a permission request.
+    test->m_allowPermissionRequests = false;
+    test->loadHtml(mediaKeySystemRequestHTML, "https://foo.com/bar");
+    const gchar* result = test->waitUntilPermissionResultMessageReceived();
+    g_assert_cmpstr(result, ==, "NotSupportedError");
+
+    // Test allowing a permission request.
+    test->m_allowPermissionRequests = true;
+    test->loadHtml(mediaKeySystemRequestHTML, "https://foo.com/bar");
+    result = test->waitUntilPermissionResultMessageReceived();
+    g_assert_cmpstr(result, ==, "OK");
+}
+#endif
+
 #if ENABLE(MEDIA_STREAM)
 static void testWebViewUserMediaEnumerateDevicesPermissionCheck(UIClientTest* test, gconstpointer)
 {
@@ -1296,6 +1336,9 @@ void beforeAll()
     UIClientTest::add("WebKitWebView", "mouse-target", testWebViewMouseTarget);
 #endif
     UIClientTest::add("WebKitWebView", "geolocation-permission-requests", testWebViewGeolocationPermissionRequests);
+#if ENABLE(ENCRYPTED_MEDIA)
+    UIClientTest::add("WebKitWebView", "mediaKeySystem-permission-requests", testWebViewMediaKeySystemPermissionRequests);
+#endif
 #if ENABLE(MEDIA_STREAM)
     UIClientTest::add("WebKitWebView", "usermedia-enumeratedevices-permission-check", testWebViewUserMediaEnumerateDevicesPermissionCheck);
     UIClientTest::add("WebKitWebView", "usermedia-permission-requests", testWebViewUserMediaPermissionRequests);

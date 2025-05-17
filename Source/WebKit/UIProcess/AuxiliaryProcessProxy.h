@@ -48,15 +48,16 @@ public:
     virtual ~AuxiliaryProcessProxy();
 
     void connect();
-    void terminate();
+    virtual void terminate();
 
     virtual ProcessThrottler& throttler() = 0;
 
     template<typename T> bool send(T&& message, uint64_t destinationID, OptionSet<IPC::SendOption> sendOptions = { });
-    template<typename T> bool sendSync(T&& message, typename T::Reply&&, uint64_t destinationID, Seconds timeout = 1_s, OptionSet<IPC::SendSyncOption> sendSyncOptions = { });
+    using SendSyncResult = IPC::Connection::SendSyncResult;
+    template<typename T> SendSyncResult sendSync(T&& message, typename T::Reply&&, uint64_t destinationID, Seconds timeout = 1_s, OptionSet<IPC::SendSyncOption> sendSyncOptions = { });
 
     enum class ShouldStartProcessThrottlerActivity : bool { No, Yes };
-    template<typename T, typename C> void sendWithAsyncReply(T&&, C&&, uint64_t destinationID = 0, OptionSet<IPC::SendOption> = { }, ShouldStartProcessThrottlerActivity = ShouldStartProcessThrottlerActivity::Yes);
+    template<typename T, typename C> uint64_t sendWithAsyncReply(T&&, C&&, uint64_t destinationID = 0, OptionSet<IPC::SendOption> = { }, ShouldStartProcessThrottlerActivity = ShouldStartProcessThrottlerActivity::Yes);
     
     template<typename T, typename U>
     bool send(T&& message, ObjectIdentifier<U> destinationID, OptionSet<IPC::SendOption> sendOptions = { })
@@ -65,7 +66,7 @@ public:
     }
     
     template<typename T, typename U>
-    bool sendSync(T&& message, typename T::Reply&& reply, ObjectIdentifier<U> destinationID, Seconds timeout = 1_s, OptionSet<IPC::SendSyncOption> sendSyncOptions = { })
+    SendSyncResult sendSync(T&& message, typename T::Reply&& reply, ObjectIdentifier<U> destinationID, Seconds timeout = 1_s, OptionSet<IPC::SendSyncOption> sendSyncOptions = { })
     {
         return sendSync<T>(WTFMove(message), WTFMove(reply), destinationID.toUInt64(), timeout, sendSyncOptions);
     }
@@ -74,6 +75,11 @@ public:
     {
         ASSERT(m_connection);
         return m_connection.get();
+    }
+
+    bool hasConnection() const
+    {
+        return !!m_connection;
     }
     
     bool hasConnection(const IPC::Connection& connection) const
@@ -157,18 +163,18 @@ bool AuxiliaryProcessProxy::send(T&& message, uint64_t destinationID, OptionSet<
     COMPILE_ASSERT(!T::isSync, AsyncMessageExpected);
 
     auto encoder = makeUnique<IPC::Encoder>(T::name(), destinationID);
-    encoder->encode(message.arguments());
+    *encoder << message.arguments();
 
     return sendMessage(WTFMove(encoder), sendOptions);
 }
 
 template<typename U> 
-bool AuxiliaryProcessProxy::sendSync(U&& message, typename U::Reply&& reply, uint64_t destinationID, Seconds timeout, OptionSet<IPC::SendSyncOption> sendSyncOptions)
+AuxiliaryProcessProxy::SendSyncResult AuxiliaryProcessProxy::sendSync(U&& message, typename U::Reply&& reply, uint64_t destinationID, Seconds timeout, OptionSet<IPC::SendSyncOption> sendSyncOptions)
 {
     COMPILE_ASSERT(U::isSync, SyncMessageExpected);
 
     if (!m_connection)
-        return false;
+        return { };
 
     TraceScope scope(SyncMessageStart, SyncMessageEnd);
 
@@ -176,20 +182,21 @@ bool AuxiliaryProcessProxy::sendSync(U&& message, typename U::Reply&& reply, uin
 }
 
 template<typename T, typename C>
-void AuxiliaryProcessProxy::sendWithAsyncReply(T&& message, C&& completionHandler, uint64_t destinationID, OptionSet<IPC::SendOption> sendOptions, ShouldStartProcessThrottlerActivity shouldStartProcessThrottlerActivity)
+uint64_t AuxiliaryProcessProxy::sendWithAsyncReply(T&& message, C&& completionHandler, uint64_t destinationID, OptionSet<IPC::SendOption> sendOptions, ShouldStartProcessThrottlerActivity shouldStartProcessThrottlerActivity)
 {
     COMPILE_ASSERT(!T::isSync, AsyncMessageExpected);
 
     auto encoder = makeUnique<IPC::Encoder>(T::name(), destinationID);
     uint64_t listenerID = IPC::nextAsyncReplyHandlerID();
-    encoder->encode(listenerID);
-    encoder->encode(message.arguments());
+    *encoder << listenerID;
+    *encoder << message.arguments();
     sendMessage(WTFMove(encoder), sendOptions, {{ [completionHandler = WTFMove(completionHandler)] (IPC::Decoder* decoder) mutable {
         if (decoder && decoder->isValid())
             T::callReply(*decoder, WTFMove(completionHandler));
         else
             T::cancelReply(WTFMove(completionHandler));
     }, listenerID }}, shouldStartProcessThrottlerActivity);
+    return listenerID;
 }
     
 } // namespace WebKit

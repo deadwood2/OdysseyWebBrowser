@@ -78,6 +78,7 @@
 #import <WebCore/UserTypingGestureIndicator.h>
 #import <WebCore/VisibleUnits.h>
 #import <WebCore/WebContentReader.h>
+#import <WebCore/WebCoreJITOperations.h>
 #import <WebCore/WebCoreObjCExtras.h>
 #import <pal/spi/cocoa/NSAttributedStringSPI.h>
 #import <pal/spi/mac/NSSpellCheckerSPI.h>
@@ -140,6 +141,7 @@ static WebViewInsertAction kit(EditorInsertAction action)
 #if !PLATFORM(IOS_FAMILY)
     JSC::initialize();
     WTF::initializeMainThread();
+    WebCore::populateJITOperations();
 #endif
 }
 
@@ -162,7 +164,7 @@ static WebViewInsertAction kit(EditorInsertAction action)
 
 + (WebUndoStep *)stepWithUndoStep:(Ref<UndoStep>&&)step
 {
-    return [[[WebUndoStep alloc] initWithUndoStep:WTFMove(step)] autorelease];
+    return adoptNS([[WebUndoStep alloc] initWithUndoStep:WTFMove(step)]).autorelease();
 }
 
 - (UndoStep&)step
@@ -300,7 +302,7 @@ bool WebEditorClient::shouldInsertText(const String& text, const Optional<Simple
     return [[webView _editingDelegateForwarder] webView:webView shouldInsertText:text replacingDOMRange:kit(range) givenAction:kit(action)];
 }
 
-bool WebEditorClient::shouldChangeSelectedRange(const Optional<SimpleRange>& fromRange, const Optional<SimpleRange>& toRange, EAffinity selectionAffinity, bool stillSelecting)
+bool WebEditorClient::shouldChangeSelectedRange(const Optional<SimpleRange>& fromRange, const Optional<SimpleRange>& toRange, Affinity selectionAffinity, bool stillSelecting)
 {
     return [m_webView _shouldChangeSelectedDOMRange:kit(fromRange) toDOMRange:kit(toRange) affinity:kit(selectionAffinity) stillSelecting:stillSelecting];
 }
@@ -432,7 +434,7 @@ void _WebCreateFragment(Document&, NSAttributedString *, FragmentAndResources&)
 static NSDictionary *attributesForAttributedStringConversion()
 {
     // This function needs to be kept in sync with identically named one in WebCore, which is used on newer OS versions.
-    NSMutableArray *excludedElements = [[NSMutableArray alloc] initWithObjects:
+    auto excludedElements = adoptNS([[NSMutableArray alloc] initWithObjects:
         // Omit style since we want style to be inline so the fragment can be easily inserted.
         @"style",
         // Omit xml so the result is not XHTML.
@@ -445,18 +447,14 @@ static NSDictionary *attributesForAttributedStringConversion()
         // Omit object so no file attachments are part of the fragment.
         @"object",
 #endif
-        nil];
+        nil]);
 
 #if ENABLE(ATTACHMENT_ELEMENT)
     if (!RuntimeEnabledFeatures::sharedFeatures().attachmentElementEnabled())
         [excludedElements addObject:@"object"];
 #endif
 
-    NSDictionary *dictionary = @{ NSExcludedElementsDocumentAttribute: excludedElements };
-
-    [excludedElements release];
-
-    return dictionary;
+    return @{ NSExcludedElementsDocumentAttribute: excludedElements.get() };
 }
 
 void _WebCreateFragment(Document& document, NSAttributedString *string, FragmentAndResources& result)
@@ -1120,10 +1118,10 @@ void WebEditorClient::requestCandidatesForSelection(const VisibleSelection& sele
     NSTextCheckingTypes checkingTypes = NSTextCheckingTypeSpelling | NSTextCheckingTypeReplacement | NSTextCheckingTypeCorrection;
     auto weakEditor = makeWeakPtr(*this);
     m_lastCandidateRequestSequenceNumber = [[NSSpellChecker sharedSpellChecker] requestCandidatesForSelectedRange:m_rangeForCandidates inString:m_paragraphContextForCandidateRequest.get() types:checkingTypes options:nil inSpellDocumentWithTag:spellCheckerDocumentTag() completionHandler:[weakEditor](NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates) {
-        dispatch_async(dispatch_get_main_queue(), ^{
+        RunLoop::main().dispatch([weakEditor, sequenceNumber, candidates = retainPtr(candidates)] {
             if (!weakEditor)
                 return;
-            weakEditor->handleRequestedCandidates(sequenceNumber, candidates);
+            weakEditor->handleRequestedCandidates(sequenceNumber, candidates.get());
         });
     }];
 }
@@ -1221,12 +1219,11 @@ void WebEditorClient::handleAcceptedCandidateWithSoftSpaces(TextCheckingResult a
 
 void WebEditorClient::didCheckSucceed(TextCheckingRequestIdentifier identifier, NSArray *results)
 {
-    auto requestOptional = m_requestsInFlight.take(identifier);
-    ASSERT(requestOptional);
-    if (!requestOptional)
+    auto request = m_requestsInFlight.take(identifier);
+    ASSERT(request);
+    if (!request)
         return;
-    
-    auto request = WTFMove(requestOptional.value());
+
     ASSERT(identifier == request->data().identifier().value());
     request->didSucceed(core(results, request->data().checkingTypes()));
 }

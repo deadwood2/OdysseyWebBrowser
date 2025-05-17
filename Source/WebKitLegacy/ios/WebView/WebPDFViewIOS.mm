@@ -69,7 +69,7 @@ static CGColorRef createCGColorWithDeviceWhite(CGFloat white, CGFloat alpha)
 @implementation WebPDFView {
     BOOL dataSourceHasBeenSet;
     CGPDFDocumentRef _PDFDocument;
-    NSString *_title;
+    RetainPtr<NSString> _title;
     CGRect *_pageRects;
 }
 
@@ -109,7 +109,6 @@ static CGColorRef createCGColorWithDeviceWhite(CGFloat white, CGFloat alpha)
     if (_PDFDocument != NULL)
         CGPDFDocumentRelease(_PDFDocument);
     free(_pageRects);
-    [_title release];
     [super dealloc];
 }
 
@@ -203,7 +202,7 @@ static CGColorRef createCGColorWithDeviceWhite(CGFloat white, CGFloat alpha)
         return;
 
     if (!_title)
-        _title = [[[[dataSource request] URL] lastPathComponent] copy];
+        _title = adoptNS([[[[dataSource request] URL] lastPathComponent] copy]);
 
     WAKView * superview = [self superview];
     
@@ -288,17 +287,16 @@ static CGColorRef createCGColorWithDeviceWhite(CGFloat white, CGFloat alpha)
     if (!_PDFDocument)
         return;
 
-    NSString *title = nil;
+    RetainPtr<CFStringRef> title;
 
     CGPDFDictionaryRef info = CGPDFDocumentGetInfo(_PDFDocument);
     CGPDFStringRef value;
     if (CGPDFDictionaryGetString(info, "Title", &value))
-        title = [(NSString *)CGPDFStringCopyTextString(value) autorelease];
+        title = adoptCF(CGPDFStringCopyTextString(value));
 
-    if ([title length]) {
-        [_title release];
-        _title = [title copy];
-        core([self _frame])->loader().client().dispatchDidReceiveTitle({ title, TextDirection::LTR });
+    if (title && CFStringGetLength(title.get())) {
+        _title = (NSString *)title.get();
+        core([self _frame])->loader().client().dispatchDidReceiveTitle({ _title.get(), TextDirection::LTR });
     }
 }
 
@@ -344,7 +342,7 @@ static CGColorRef createCGColorWithDeviceWhite(CGFloat white, CGFloat alpha)
 
 - (NSString *)title
 {
-    return _title;
+    return _title.get();
 }
 
 - (unsigned)pageNumberForRect:(CGRect)rect

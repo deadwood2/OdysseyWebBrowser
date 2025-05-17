@@ -27,12 +27,11 @@ import plistlib
 import re
 import time
 
-from webkitcorepy import Version
+from webkitcorepy import Version, Timeout
 
 from webkitpy.common.memoized import memoized
 from webkitpy.common.system.executive import ScriptError
 from webkitpy.common.system.systemhost import SystemHost
-from webkitpy.common.timeout_context import Timeout
 from webkitpy.port.device import Device
 from webkitpy.xcode.device_type import DeviceType
 
@@ -64,8 +63,8 @@ class SimulatedDeviceManager(object):
 
     SIMULATOR_BOOT_TIMEOUT = 600
 
-    # FIXME: Simulators should only take up 2GB, but because of <rdar://problem/39393590> something in the OS thinks they're taking closer to 6GB
-    MEMORY_ESTIMATE_PER_SIMULATOR_INSTANCE = 6 * (1024 ** 3)  # 6GB a simulator.
+    # FIXME: Switch this back to 6GB (or maybe lower?) once webkit.org/b/217392 is resolved.
+    MEMORY_ESTIMATE_PER_SIMULATOR_INSTANCE = 8 * (1024 ** 3)  # 8GB a simulator.
     PROCESS_COUNT_ESTIMATE_PER_SIMULATOR_INSTANCE = 125
 
     # Testing on iMac Pros has indicated that more than 12 simulators, even if we seem to have enough resources for them,
@@ -638,9 +637,7 @@ class SimulatedDevice(object):
         def _log_debug_error(error):
             _log.debug(error.message_with_output())
 
-        output = None
-
-        with Timeout(timeout, RuntimeError(u'Timed out waiting for process to open {} on {}'.format(bundle_id, self.udid))):
+        with Timeout(timeout, handler=RuntimeError(u'Timed out waiting for process to open {} on {}'.format(bundle_id, self.udid)), patch=False):
             while True:
                 output = self.executive.run_command(
                     ['xcrun', 'simctl', 'launch', self.udid, bundle_id] + args,

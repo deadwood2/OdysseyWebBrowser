@@ -28,9 +28,12 @@
 #if USE(MEDIATOOLBOX)
 
 #include <MediaToolbox/MediaToolbox.h>
+#include <pal/spi/cocoa/MediaToolboxSPI.h>
 #include <wtf/SoftLinking.h>
 
 SOFT_LINK_FRAMEWORK_FOR_HEADER(PAL, MediaToolbox)
+
+SOFT_LINK_FUNCTION_MAY_FAIL_FOR_HEADER(PAL, MediaToolbox, FigPhotoDecompressionSetHardwareCutoff, void, (int, size_t numPixelsCutoff), (format, numPixelsCutoff))
 
 SOFT_LINK_FUNCTION_MAY_FAIL_FOR_HEADER(PAL, MediaToolbox, MTShouldPlayHDRVideo, Boolean, (CFArrayRef displayList), (displayList))
 SOFT_LINK_FUNCTION_MAY_FAIL_FOR_HEADER(PAL, MediaToolbox, MTOverrideShouldPlayHDRVideo, void, (Boolean override, Boolean playHDRVideo), (override, playHDRVideo))
@@ -38,4 +41,25 @@ SOFT_LINK_FUNCTION_MAY_FAIL_FOR_HEADER(PAL, MediaToolbox, MT_GetShouldPlayHDRVid
 
 SOFT_LINK_CONSTANT_MAY_FAIL_FOR_HEADER(PAL, MediaToolbox, kMTSupportNotification_ShouldPlayHDRVideoChanged, CFStringRef)
 
-#endif
+#if HAVE(MT_PLUGIN_FORMAT_READER)
+
+SOFT_LINK_CONSTANT_FOR_HEADER(PAL, MediaToolbox, kMTPluginFormatReaderProperty_Duration, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_HEADER(PAL, MediaToolbox, kMTPluginTrackReaderProperty_Enabled, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_HEADER(PAL, MediaToolbox, kMTPluginTrackReaderProperty_FormatDescriptionArray, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_HEADER(PAL, MediaToolbox, kMTPluginTrackReaderProperty_NominalFrameRate, CFStringRef)
+SOFT_LINK_CONSTANT_MAY_FAIL_FOR_HEADER(PAL, MediaToolbox, kMTPluginFormatReader_SupportsPlayableHorizonQueries, CFStringRef)
+
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginByteSourceGetLength, int64_t, (MTPluginByteSourceRef byteSource), (byteSource))
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginByteSourceRead, OSStatus, (MTPluginByteSourceRef byteSource, size_t num, int64_t offset, void* dest, size_t* bytesReadOut), (byteSource, num, offset, dest, bytesReadOut))
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginFormatReaderGetClassID, CMBaseClassID, (), ())
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginFormatReaderGetTypeID, CFTypeID, (), ())
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginFormatReaderDisableSandboxing, OSStatus, (), ())
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTRegisterPluginFormatReaderBundleDirectory, void, (CFURLRef directoryURL), (directoryURL))
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginSampleCursorGetClassID, CMBaseClassID, (), ())
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginSampleCursorGetTypeID, CFTypeID, (), ())
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginTrackReaderGetClassID, CMBaseClassID, (), ())
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, MediaToolbox, MTPluginTrackReaderGetTypeID, CFTypeID, (), ())
+
+#endif // HAVE(MT_PLUGIN_FORMAT_READER)
+
+#endif // USE(MEDIATOOLBOX)

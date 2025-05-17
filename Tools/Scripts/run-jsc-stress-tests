@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-# Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+# Copyright (C) 2013-2020 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -87,15 +87,17 @@ def printCommandArray(*cmd)
     $stderr.puts ">> #{commandArray}"
 end
 
-$ignoreNextCommandExecutionExitCode = false
+class CommandExecutionFailed < Exception
+end
 
-def mysys(*cmd)
-    begin
-        printCommandArray(*cmd) if $verbosity >= 1
-        raise "Command failed: #{$?.inspect}" unless (system(*cmd) or $ignoreNextCommandExecutionExitCode)
-    ensure
-        $ignoreNextCommandExecutionExitCode = false
+def mysys(commandArray, options={})
+    printCommandArray(commandArray) if $verbosity >= 1
+    successful = system(*commandArray)
+    status = $?
+    if successful or options[:ignoreFailure]
+        return
     end
+    raise CommandExecutionFailed, "Command failed: #{status.inspect}"
 end
 
 def escapeAll(array)
@@ -130,6 +132,8 @@ $mode = "full"
 $buildType = "release"
 $forceCollectContinuously = false
 $reportExecutionTime = false
+$ldd = nil
+$artifact_exec_wrapper = nil
 
 def usage
     puts "run-jsc-stress-tests -j <shell path> <collections path> [<collections path> ...]"
@@ -149,6 +153,8 @@ def usage
     puts "--arch                      Specify architecture instead of determining from JavaScriptCore build."
     puts "--force-architecture        Override the architecture to run tests with."
     puts "                            e.g. x86, x86_64, arm."
+    puts "--ldd                       Use alternate ldd"
+    puts "--artifact-exec-wrapper     Wrapper for executing a build artifact"
     puts "--os                        Specify os instead of determining from JavaScriptCore build."
     puts "                            e.g. darwin, linux & windows."
     puts "--shell-runner              Uses the shell-based test runner instead of the default make-based runner."
@@ -190,6 +196,8 @@ GetoptLong.new(['--help', '-h', GetoptLong::NO_ARGUMENT],
                ['--force-vm-copy', GetoptLong::NO_ARGUMENT],
                ['--arch', GetoptLong::REQUIRED_ARGUMENT],
                ['--force-architecture', GetoptLong::REQUIRED_ARGUMENT],
+               ['--ldd', GetoptLong::REQUIRED_ARGUMENT],
+               ['--artifact-exec-wrapper', GetoptLong::REQUIRED_ARGUMENT],
                ['--os', GetoptLong::REQUIRED_ARGUMENT],
                ['--shell-runner', GetoptLong::NO_ARGUMENT],
                ['--make-runner', GetoptLong::NO_ARGUMENT],
@@ -263,10 +271,14 @@ GetoptLong.new(['--help', '-h', GetoptLong::NO_ARGUMENT],
     when '--force-architecture'
         $architecture = arg unless $architecture
         $forceArchitecture = arg
+    when '--ldd'
+        $ldd = arg
+    when '--artifact-exec-wrapper'
+        $artifact_exec_wrapper = arg
     when '--os'
         $hostOS = arg
     when '--model'
-        $model = arg
+        $model = arg.gsub(/\A['"]+|['"]+\Z/, '')
     when '--env-vars'
         $envVars = arg.gsub(/\s+/, ' ').split(' ')
     when '--quick'
@@ -544,6 +556,7 @@ end
 
 COLLECT_CONTINUOUSLY_OPTIONS = shouldCollectContinuously? ? ["--collectContinuously=true", "--useGenerationalGC=false"] : []
 
+$serialRunlist = []
 $runlist = []
 
 def frameworkFromJSCPath(jscPath)
@@ -574,11 +587,14 @@ def pathToVM
 end
 
 def vmCommand
-    if ($forceArchitecture)
-        ["/usr/bin/arch", "-" + $forceArchitecture,  pathToVM.to_s]
-    else
-        [pathToVM.to_s]
+    cmd = [pathToVM.to_s]
+    if not $artifact_exec_wrapper.nil?
+        cmd.unshift($artifact_exec_wrapper)
     end
+    if ($forceArchitecture)
+        cmd = ["/usr/bin/arch", "-" + $forceArchitecture] + cmd
+    end
+    return cmd
 end
 
 def pathToHelpers
@@ -611,6 +627,14 @@ def addRunCommand(kind, command, outputHandler, errorHandler, *additionalEnv)
         $benchmarkDirectory, command, "#{$collectionName}/#{$benchmark}", name, outputHandler,
         errorHandler)
     plan.additionalEnv.push(*additionalEnv)
+    if $runCommandOptions[:serial]
+        # Add this to the list of tests to be run on their own, so
+        # that we can treat them specially when scheduling, but keep
+        # it in the $runlist for code that dosn't care about
+        # scheduling.
+        $serialRunlist << plan
+    end
+
     if $numChildProcesses > 1 and $runCommandOptions[:isSlow]
         $runlist.unshift plan
     else
@@ -660,6 +684,10 @@ end
 def crashOK!
     $testSpecificRequiredOptions += ["-s"]
     $runCommandOptions[:crashOK] = true
+end
+
+def serial!
+    $runCommandOptions[:serial] = true
 end
 
 def requireOptions(*options)
@@ -726,13 +754,19 @@ def runDefault(*optionalTestSpecificOptions)
     run("default", *(FTL_OPTIONS + optionalTestSpecificOptions))
 end
 
+# FIXME: need to fix https://bugs.webkit.org/show_bug.cgi?id=218703 to enable this on Linux/MIPS.
 def runBytecodeCacheImpl(optionalTestSpecificOptions, *additionalEnv)
-    unless $hostOS == "darwin"
+    if ($hostOS == "darwin")
+        fileTemplate = "bytecode-cache"
+    elsif ($hostOS == "linux" && $architecture != "mips")
+        fileTemplate = "bytecode-cacheXXXXXX"
+    else
         skip
         return
     end
+
     options = BASE_OPTIONS + $testSpecificRequiredOptions + FTL_OPTIONS + optionalTestSpecificOptions
-    addRunCommand("bytecode-cache", ["sh", (pathToHelpers + "bytecode-cache-test-helper.sh").to_s, pathToVM.to_s, $benchmark.to_s] + options, silentOutputHandler, simpleErrorHandler, *additionalEnv)
+    addRunCommand("bytecode-cache", ["sh", (pathToHelpers + "bytecode-cache-test-helper.sh").to_s, fileTemplate.to_s, *vmCommand, $benchmark.to_s] + options, silentOutputHandler, simpleErrorHandler, *additionalEnv)
 end
 
 def runBytecodeCache(*optionalTestSpecificOptions)
@@ -741,18 +775,6 @@ end
 
 def runBytecodeCacheNoAssertion(*optionalTestSpecificOptions)
     runBytecodeCacheImpl(optionalTestSpecificOptions, "JSC_forceDiskCache=false")
-end
-
-def runBigIntEnabled(*optionalTestSpecificOptions)
-    run("big-int-enabled", "--useBigInt=true" , *(FTL_OPTIONS + optionalTestSpecificOptions))
-end
-
-def runBigIntEnabledNoJIT(*optionalTestSpecificOptions)
-    run("big-int-enabled-nojit", "--useBigInt=true", "--useJIT=false", *optionalTestSpecificOptions)
-end
-
-def runBigIntEnabledBaseline(*optionalTestSpecificOptions)
-    run("big-int-enabled-baseline", "--useBigInt=true", "--useDFGJIT=0", *optionalTestSpecificOptions)
 end
 
 def runFTLNoCJIT(*optionalTestSpecificOptions)
@@ -764,7 +786,7 @@ def runFTLNoCJITB3O0(*optionalTestSpecificOptions)
 end
 
 def runFTLNoCJITValidate(*optionalTestSpecificOptions)
-    run("ftl-no-cjit-validate-sampling-profiler", "--validateGraph=true", "--useSamplingProfiler=true", "--airForceIRCAllocator=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + optionalTestSpecificOptions))
+    run("ftl-no-cjit-validate-sampling-profiler", "--validateGraph=true", "--validateBCE=true", "--useSamplingProfiler=true", "--airForceIRCAllocator=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + optionalTestSpecificOptions))
 end
 
 def runFTLNoCJITNoPutStackValidate(*optionalTestSpecificOptions)
@@ -797,7 +819,7 @@ def runFTLEagerWatchdog(*optionalTestSpecificOptions)
 end
 
 def runFTLEagerNoCJITValidate(*optionalTestSpecificOptions)
-    run("ftl-eager-no-cjit", "--validateGraph=true", "--airForceIRCAllocator=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + EAGER_OPTIONS + COLLECT_CONTINUOUSLY_OPTIONS + FORCE_LLINT_EXIT_OPTIONS + optionalTestSpecificOptions))
+    run("ftl-eager-no-cjit", "--validateGraph=true", "--validateBCE=true", "--airForceIRCAllocator=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + EAGER_OPTIONS + COLLECT_CONTINUOUSLY_OPTIONS + FORCE_LLINT_EXIT_OPTIONS + optionalTestSpecificOptions))
 end
 
 def runFTLEagerNoCJITB3O1(*optionalTestSpecificOptions)
@@ -989,7 +1011,7 @@ def runProfiler
 
     profilerOutput = uniqueFilename(".json")
     if $canRunDisplayProfilerOutput
-        addRunCommand("profiler", ["ruby", (pathToHelpers + "profiler-test-helper").to_s, (SCRIPTS_PATH + "display-profiler-output").to_s, profilerOutput.to_s, pathToVM.to_s, "--useConcurrentJIT=false", "-p", profilerOutput.to_s, $benchmark.to_s], silentOutputHandler, simpleErrorHandler)
+        addRunCommand("profiler", ["ruby", (pathToHelpers + "profiler-test-helper").to_s, (SCRIPTS_PATH + "display-profiler-output").to_s, profilerOutput.to_s, *vmCommand, "--useConcurrentJIT=false", "-p", profilerOutput.to_s, $benchmark.to_s], silentOutputHandler, simpleErrorHandler)
     else
         puts "Running simple version of #{$collectionName}/#{$benchmark} because some required Ruby features are unavailable."
         run("profiler-simple", "--useConcurrentJIT=false", "-p", profilerOutput.to_s)
@@ -1202,7 +1224,7 @@ def runHarnessTest(kind, *options)
     wasmFiles.each {
         | file |
         basename = file.basename.to_s
-        addRunCommand("(" + basename + ")-" + kind, [pathToVM.to_s] + $testSpecificRequiredOptions + options + [$benchmark.to_s, "--", basename], silentOutputHandler, simpleErrorHandler)
+        addRunCommand("(" + basename + ")-" + kind, vmCommand + $testSpecificRequiredOptions + options + [$benchmark.to_s, "--", basename], silentOutputHandler, simpleErrorHandler)
     }
 end
 
@@ -1247,7 +1269,7 @@ def runWebAssemblyEmscripten(mode)
     end
 end
 
-def runWebAssemblySpecTest(mode)
+def runWebAssemblySpecTestBase(mode, specHarnessPath, *optionalTestSpecificOptions)
     case mode
     when :skip
         return
@@ -1259,18 +1281,27 @@ def runWebAssemblySpecTest(mode)
     modules = Dir[WASMTESTS_PATH + "*.js"].map { |f| File.basename(f) }
     prepareExtraRelativeFiles(modules.map { |f| "../../" + f }, $collection)
 
-    harness = Dir[WASMTESTS_PATH + "spec-harness/" + "*.js"].map { |f| File.basename(f) }
-    prepareExtraRelativeFiles(harness.map { |f| "../../spec-harness/" + f }, $collection)
+    harness = Dir[WASMTESTS_PATH + (specHarnessPath + "/") + "*.js"].map { |f| File.basename(f) }
+    prepareExtraRelativeFiles(harness.map { |f| ("../../" + specHarnessPath + "/") + f }, $collection)
 
-    runWithOutputHandler("default-wasm", noisyOutputHandler, "../spec-harness.js", *FTL_OPTIONS)
+    specHarnessJsPath = "../" + specHarnessPath + ".js"
+    runWithOutputHandler("default-wasm", noisyOutputHandler, specHarnessJsPath, *(FTL_OPTIONS + optionalTestSpecificOptions))
     if $mode != "quick"
-      runWithOutputHandler("wasm-no-cjit-yes-tls-context", noisyOutputHandler, "../spec-harness.js",  "--useFastTLSForWasmContext=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS))
-      runWithOutputHandler("wasm-eager-jettison", noisyOutputHandler, "../spec-harness.js", "--forceCodeBlockToJettisonDueToOldAge=true", "--useRandomizingExecutableIslandAllocation=true", *FTL_OPTIONS)
-      runWithOutputHandler("wasm-no-tls-context", noisyOutputHandler, "../spec-harness.js", "--useFastTLSForWasmContext=false", *FTL_OPTIONS)
-      runWithOutputHandler("wasm-b3", noisyOutputHandler, "../spec-harness.js", "--useWasmLLInt=false", "--wasmBBQUsesAir=false", *FTL_OPTIONS)
-      runWithOutputHandler("wasm-air", noisyOutputHandler, "../spec-harness.js", "--useWasmLLInt=false", "--useRandomizingExecutableIslandAllocation=true", *FTL_OPTIONS)
-      runWithOutputHandler("wasm-collect-continuously", noisyOutputHandler, "../spec-harness.js", "--collectContinuously=true", *FTL_OPTIONS) if shouldCollectContinuously?
+      runWithOutputHandler("wasm-no-cjit-yes-tls-context", noisyOutputHandler, specHarnessJsPath,  "--useFastTLSForWasmContext=true", *(FTL_OPTIONS + NO_CJIT_OPTIONS + optionalTestSpecificOptions))
+      runWithOutputHandler("wasm-eager-jettison", noisyOutputHandler, specHarnessJsPath, "--forceCodeBlockToJettisonDueToOldAge=true", "--useRandomizingExecutableIslandAllocation=true", *(FTL_OPTIONS + optionalTestSpecificOptions))
+      runWithOutputHandler("wasm-no-tls-context", noisyOutputHandler, specHarnessJsPath, "--useFastTLSForWasmContext=false", *(FTL_OPTIONS + optionalTestSpecificOptions))
+      runWithOutputHandler("wasm-b3", noisyOutputHandler, specHarnessJsPath, "--useWasmLLInt=false", "--wasmBBQUsesAir=false", *(FTL_OPTIONS + optionalTestSpecificOptions))
+      runWithOutputHandler("wasm-air", noisyOutputHandler, specHarnessJsPath, "--useWasmLLInt=false", "--useRandomizingExecutableIslandAllocation=true", *(FTL_OPTIONS + optionalTestSpecificOptions))
+      runWithOutputHandler("wasm-collect-continuously", noisyOutputHandler, specHarnessJsPath, "--collectContinuously=true", *(FTL_OPTIONS + optionalTestSpecificOptions)) if shouldCollectContinuously?
     end
+end
+
+def runWebAssemblySpecTest(mode)
+    runWebAssemblySpecTestBase(mode, "spec-harness", "--useWebAssemblyReferences=false")
+end
+
+def runWebAssemblyReferenceSpecTest(mode)
+    runWebAssemblySpecTestBase(mode, "ref-spec-harness", "--useWebAssemblyReferences=true")
 end
 
 def runWebAssemblyLowExecutableMemory(*optionalTestSpecificOptions)
@@ -1862,7 +1893,7 @@ def prepareBundle
             if $copyVM
                 FileUtils.cp_r source, destination
             else
-                begin 
+                begin
                     FileUtils.ln_s source, destination
                 rescue Exception
                     $stderr.puts "Warning: unable to create soft link, trying to copy."
@@ -1871,15 +1902,38 @@ def prepareBundle
             end
 
             if $remote and $hostOS == "linux"
-                begin
-                    dependencies = `ldd #{source}`
-                    dependencies.split(/\n/).each {
-                        | dependency |
-                        FileUtils.cp_r $&, $jscPath.dirname if dependency =~ /#{WEBKIT_PATH}[^ ]*/
-                    }
-                rescue
-                    $stderr.puts "Warning: unable to determine or copy library dependnecies of JSC."
-                end
+                generate_bundle = (Pathname.new(THIS_SCRIPT_PATH).dirname + 'generate-bundle').realpath
+                Dir.mktmpdir {
+                    | tmpdir |
+                    # Generate bundle in a temporary directory so that
+                    # we can safely pick it up regardless of its name
+                    # (it's the only zip file there).
+                    cmdline = [
+                        generate_bundle.to_s,
+                        "--platform=gtk",
+                        "--bundle=jsc",
+                        "--syslibs=bundle-all",
+                        "--no-strip",
+                        "--compression=tar.xz",
+                        ($buildType == "release") ? "--release" : "--debug",
+                        "--destination=#{tmpdir}"
+                    ]
+                    if not $ldd.nil?
+                        cmdline << "--ldd=#{$ldd}"
+                    end
+                    mysys(cmdline)
+                    archives = Dir.glob("#{tmpdir}/*.tar.xz")
+                    if archives.size != 1
+                        raise "Expected exactly one entry in tmpdir, not #{archives}"
+                    end
+                    # Note: we overwrite 'jsc'. This obviously conflicts with
+                    # !copyVM but, then gain, so does $remote.
+                    mysys(["tar",
+                           "-C",
+                           $jscPath.dirname.to_s,
+                           "-xf",
+                           archives[0]])
+                }
             end
         }
     end
@@ -2032,7 +2086,7 @@ def numberOfProcessors
 end
 
 $runnerDirMutex = Mutex.new
-def runAndMonitorTestRunnerCommand(*cmd)
+def runAndMonitorTestRunnerCommand(cmd, options={})
     numberOfTests = 0
     $runnerDirMutex.synchronize {
         Dir.chdir($runnerDir) {
@@ -2041,7 +2095,7 @@ def runAndMonitorTestRunnerCommand(*cmd)
         }
     }
     unless $progressMeter
-        mysys(cmd.join(' '))
+        mysys(cmd.join(' '), options)
     else
        running = {}
        didRun = {}
@@ -2097,7 +2151,9 @@ def runAndMonitorTestRunnerCommand(*cmd)
            }
        }
        puts
-       raise "Failed to run #{cmd}: #{$?.inspect}" unless $?.success?
+       if not $?.success? and not options[:ignoreFailure]
+           raise "Failed to run #{cmd}: #{$?.inspect}"
+       end
     end
 end
 
@@ -2109,8 +2165,8 @@ def getRemoteDirectoryIfNeeded(remoteIndex)
 end
 
 def copyBundleToRemote(remoteHost)
-    mysys("ssh", "-o", "NoHostAuthenticationForLocalhost=yes", "-p", remoteHost.port.to_s, "#{remoteHost.user}@#{remoteHost.host}", "mkdir -p #{remoteHost.remoteDirectory}")
-    mysys("scp", "-o", "NoHostAuthenticationForLocalhost=yes", "-P", remoteHost.port.to_s, ($outputDir.dirname + $tarFileName).to_s, "#{remoteHost.user}@#{remoteHost.host}:#{remoteHost.remoteDirectory}")
+    mysys(["ssh", "-o", "NoHostAuthenticationForLocalhost=yes", "-p", remoteHost.port.to_s, "#{remoteHost.user}@#{remoteHost.host}", "mkdir -p #{remoteHost.remoteDirectory}"])
+    mysys(["scp", "-o", "NoHostAuthenticationForLocalhost=yes", "-P", remoteHost.port.to_s, ($outputDir.dirname + $tarFileName).to_s, "#{remoteHost.user}@#{remoteHost.host}:#{remoteHost.remoteDirectory}"])
 end
 
 def exportBaseEnvironmentVariables
@@ -2139,10 +2195,10 @@ def runTestRunner(remoteIndex=0)
         remoteScript += exportBaseEnvironmentVariables
         $envVars.each { |var| remoteScript += "export " << var << "\n" }
         remoteScript += "#{testRunnerCommand(remoteIndex)}\""
-        runAndMonitorTestRunnerCommand("ssh", "-o", "NoHostAuthenticationForLocalhost=yes", "-p", remoteHost.port.to_s, "#{remoteHost.user}@#{remoteHost.host}", remoteScript)
+        runAndMonitorTestRunnerCommand(["ssh", "-o", "NoHostAuthenticationForLocalhost=yes", "-p", remoteHost.port.to_s, "#{remoteHost.user}@#{remoteHost.host}", remoteScript])
     else
         Dir.chdir($runnerDir) {
-            runAndMonitorTestRunnerCommand(testRunnerCommand)
+            runAndMonitorTestRunnerCommand(Shellwords.shellsplit(testRunnerCommand))
         }
     end
 end
@@ -2306,7 +2362,7 @@ def runTarball
     compressBundle
 end
 
-def forEachRemote(&blk)
+def forEachRemote(options={}, &blk)
     threads = []
     $remoteHosts.each_index {
         | index |
@@ -2315,7 +2371,27 @@ def forEachRemote(&blk)
             blk.call(index, remoteHost)
         }
     }
-    threads.each { |thr| thr.join }
+    failedRemotes = []
+    threads.each_index {
+        | index |
+        thread = threads[index]
+        begin
+            thread.join
+        rescue CommandExecutionFailed
+            if options[:dropOnFailure]
+                failedRemotes << index
+            else
+                raise
+            end
+        end
+    }
+    failedRemotes.reverse.each {
+        | index |
+        if $verbosity > 0
+            $stderr.puts("Dropping failed remote #{$remoteHosts[index]}")
+        end
+        $remoteHosts.delete_at(index)
+    }
 end
 
 def runRemote
@@ -2334,17 +2410,27 @@ def runRemote
     detectFailures
 end
 
-def prepareGnuParallelTestRunner
-    path = $runnerDir + "parallel-tests"
+def prepareGnuParallelRunnerJobs(name, runlist, exclude)
+    path = $runnerDir + name
     FileUtils.mkdir_p($runnerDir)
 
     File.open(path, "w") {
         | outp |
-        $runlist.each {
+        runlist.each {
             | plan |
+            if exclude.has_key?(plan)
+                next
+            end
             outp.puts("./test_script_#{plan.index}")
         }
     }
+end
+
+def prepareGnuParallelTestRunner
+    serialTests = {}
+    $serialRunlist.each { |p| serialTests[p] = nil }
+    prepareGnuParallelRunnerJobs("parallel-tests", $runlist, serialTests)
+    prepareGnuParallelRunnerJobs("serial-tests", $serialRunlist, {})
 end
 
 def withGnuParallelSshWrapper(&blk)
@@ -2396,57 +2482,45 @@ def withGnuParallelSshLoginFile(&blk)
     }
 end
 
-
-def runSameCommandOnRemotes(cmd)
-    Tempfile.open('gnu-parallel-commands', $runnerDir) {
-        | commands |
-        commands.puts(cmd)
-        commands.flush
-        withGnuParallelSshLoginFile {
-            | slf |
-            cmd = [
-                "parallel",
-                "--nonall",
-                "-j0",
-                "--slf", slf
-            ] + ["-a", commands.path]
-            return mysys(*cmd)
-        }
+def unpackBundleGnuParallel
+    forEachRemote ({ :dropOnFailure => true }) {
+        |remoteIndex, remoteHost|
+        mysys(["ssh", "-o", "NoHostAuthenticationForLocalhost=yes",
+               "-p", remoteHost.port.to_s,
+               "#{remoteHost.user}@#{remoteHost.host}",
+               "cd #{Shellwords.shellescape(remoteHost.remoteDirectory)} && rm -rf #{$outputDir.basename} && tar xzf #{$tarFileName}"])
     }
 end
 
-def unpackBundleGnuParallel
-    runSameCommandOnRemotes("rm -rf #{$outputDir.basename} && " +
-                            "tar xzf #{$tarFileName}")
-end
-
-def runGnuParallelRunner
-    inputs = $runnerDir + "parallel-tests"
+def runGnuParallelRunner(inputs, options={})
     timeout = 300
     if ENV["JSCTEST_timeout"]
         timeout = ENV["JSCTEST_timeout"].to_f.ceil.to_i
+    end
+    # We add 1 to make sure we always have waiting jobs and
+    # don't run into stalls due to ssh latency. However, we
+    # want to respect numChildProcesses, so we don't just use
+    # the -j +1 GNU parallel idiom.
+    parallelJobsOnEachHost = $numChildProcesses + 1
+    if options[:parallelJobsOnEachHost]
+      parallelJobsOnEachHost = options[:parallelJobsOnEachHost]
     end
     withGnuParallelSshLoginFile {
         | slf |
         cmd = [
             "parallel",
-            # We add 1 to make sure we always have waiting jobs and
-            # don't run into stalls due to ssh latency. However, we
-            # want to respect numChildProcesses, so we don't just use
-            # the -j +1 GNU parallel idiom.
-            "-j", "#{$numChildProcesses + 1}",
+            "-j", "#{parallelJobsOnEachHost}",
             "--retries 5",
             "--line-buffer", # we know our output is line-oriented
             "--slf", slf,
             "--timeout", timeout.to_s,
             "-a", inputs,
-            "'cd #{$outputDir.basename}/.runner && " +
+            "\"cd #{$outputDir.basename}/.runner && " +
             exportBaseEnvironmentVariables +
             $envVars.collect { |var | "export #{var} &&"}.join("") +
-            "sh '"
+            "sh \""
         ]
-        $ignoreNextCommandExecutionExitCode = true
-        runAndMonitorTestRunnerCommand(*cmd)
+        runAndMonitorTestRunnerCommand(cmd, :ignoreFailure => true)
     }
 end
 
@@ -2455,13 +2529,22 @@ def runGnuParallel
     prepareBundle
     prepareTestRunner
     compressBundle
-    forEachRemote {
+    # If the preparatory steps fail, drop the remote host from our
+    # list. Otherwise, if it later comes up online, we'll try to run
+    # test jobs on it, possibly using a previously-unpacked unrelated
+    # bundle.
+    forEachRemote ({ :dropOnFailure => true }) {
         |remoteIndex, remoteHost|
         getRemoteDirectoryIfNeeded(remoteIndex)
         copyBundleToRemote(remoteHost)
     }
     unpackBundleGnuParallel
-    runGnuParallelRunner
+    if $remoteHosts.size == 0
+        raise "All remote hosts failed, giving up"
+    end
+    runGnuParallelRunner($runnerDir + "serial-tests",
+                         { :parallelJobsOnEachHost => 1})
+    runGnuParallelRunner($runnerDir + "parallel-tests")
     detectFailures
 end
 

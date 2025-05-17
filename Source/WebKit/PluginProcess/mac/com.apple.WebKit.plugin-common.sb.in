@@ -334,8 +334,6 @@
     (subpath "/Library/Video/Plug-Ins")
     (home-library-subpath "/Caches/QuickTime")
 
-    (literal "/Library/Application Support/CrashReporter/SubmitDiagInfo.domains")
-
     (home-library-literal "/Application Support/SyncServices/Local/ClientsWithChanges/com.apple.Keychain")
 
     (subpath "/Library/ColorSync")
@@ -489,12 +487,6 @@
 (allow ipc-posix-shm*
     (ipc-posix-name-regex #"^AudioIO")
     (ipc-posix-name-regex #"^CFPBS:")
-    (ipc-posix-name "com.apple.ColorSync.Gen.lock")
-    (ipc-posix-name "com.apple.ColorSync.Disp.lock")
-    (ipc-posix-name "com.apple.ColorSync.Gray2.2")
-    (ipc-posix-name "com.apple.ColorSync.sRGB")
-    (ipc-posix-name "com.apple.ColorSync.GenGray")
-    (ipc-posix-name "com.apple.ColorSync.GenRGB")
     (ipc-posix-name-regex #"^com\.apple\.cs\.")
     (ipc-posix-name-regex #"^ls\."))
 (allow ipc-posix-shm-read*

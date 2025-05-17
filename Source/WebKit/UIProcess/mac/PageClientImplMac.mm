@@ -29,6 +29,7 @@
 #if PLATFORM(MAC)
 
 #import "APIHitTestResult.h"
+#import "AppKitSPI.h"
 #import "ColorSpaceData.h"
 #import "DataReference.h"
 #import "DownloadProxy.h"
@@ -52,6 +53,7 @@
 #import "WebColorPickerMac.h"
 #import "WebContextMenuProxyMac.h"
 #import "WebDataListSuggestionsDropdownMac.h"
+#import "WebDateTimePickerMac.h"
 #import "WebEditCommandProxy.h"
 #import "WebPageProxy.h"
 #import "WebPopupMenuProxyMac.h"
@@ -327,6 +329,11 @@ void PageClientImpl::setCursor(const WebCore::Cursor& cursor)
         return;
 
     [platformCursor set];
+
+    if (cursor.type() == WebCore::Cursor::Type::None) {
+        if ([NSCursor respondsToSelector:@selector(hideUntilChanged)])
+            [NSCursor hideUntilChanged];
+    }
 }
 
 void PageClientImpl::setCursorHiddenUntilMouseMoves(bool hiddenUntilMouseMoves)
@@ -348,6 +355,30 @@ void PageClientImpl::registerInsertionUndoGrouping()
     registerInsertionUndoGroupingWithUndoManager([m_view undoManager]);
 }
 
+#if ENABLE(UI_PROCESS_PDF_HUD)
+
+void PageClientImpl::createPDFHUD(PDFPluginIdentifier identifier, const WebCore::IntRect& rect)
+{
+    m_impl->createPDFHUD(identifier, rect);
+}
+
+void PageClientImpl::updatePDFHUDLocation(PDFPluginIdentifier identifier, const WebCore::IntRect& rect)
+{
+    m_impl->updatePDFHUDLocation(identifier, rect);
+}
+
+void PageClientImpl::removePDFHUD(PDFPluginIdentifier identifier)
+{
+    m_impl->removePDFHUD(identifier);
+}
+
+void PageClientImpl::removeAllPDFHUDs()
+{
+    m_impl->removeAllPDFHUDs();
+}
+
+#endif // ENABLE(UI_PROCESS_PDF_HUD)
+
 void PageClientImpl::clearAllEditCommands()
 {
     m_impl->clearAllEditCommands();
@@ -368,11 +399,11 @@ void PageClientImpl::startDrag(const WebCore::DragItem& item, const ShareableBit
     m_impl->startDrag(item, image);
 }
 
-void PageClientImpl::setPromisedDataForImage(const String& pasteboardName, Ref<SharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title, const String& url, const String& visibleURL, RefPtr<SharedBuffer>&& archiveBuffer)
+void PageClientImpl::setPromisedDataForImage(const String& pasteboardName, Ref<SharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title, const String& url, const String& visibleURL, RefPtr<SharedBuffer>&& archiveBuffer, const String& originIdentifier)
 {
     auto image = BitmapImage::create();
     image->setData(WTFMove(imageBuffer), true);
-    m_impl->setPromisedDataForImage(image.ptr(), filename, extension, title, url, visibleURL, archiveBuffer.get(), pasteboardName);
+    m_impl->setPromisedDataForImage(image.ptr(), filename, extension, title, url, visibleURL, archiveBuffer.get(), pasteboardName, originIdentifier);
 }
 
 void PageClientImpl::updateSecureInputState()
@@ -450,6 +481,15 @@ void PageClientImpl::doneWithKeyEvent(const NativeWebKeyboardEvent& event, bool 
     m_impl->doneWithKeyEvent(event.nativeEvent(), eventWasHandled);
 }
 
+#if ENABLE(IMAGE_EXTRACTION)
+
+void PageClientImpl::requestImageExtraction(const ShareableBitmap::Handle& imageData, CompletionHandler<void(ImageExtractionResult&&)>&& completion)
+{
+    m_impl->requestImageExtraction(imageData, WTFMove(completion));
+}
+
+#endif
+
 RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy& page)
 {
     return WebPopupMenuProxyMac::create(m_view, page);
@@ -473,6 +513,13 @@ RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, con
 RefPtr<WebDataListSuggestionsDropdown> PageClientImpl::createDataListSuggestionsDropdown(WebPageProxy& page)
 {
     return WebDataListSuggestionsDropdownMac::create(page, m_view);
+}
+#endif
+
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+RefPtr<WebDateTimePicker> PageClientImpl::createDateTimePicker(WebPageProxy& page)
+{
+    return WebDateTimePickerMac::create(page, m_view);
 }
 #endif
 
@@ -941,7 +988,7 @@ void PageClientImpl::requestDOMPasteAccess(const WebCore::IntRect& elementRect, 
 #if HAVE(APP_ACCENT_COLORS)
 WebCore::Color PageClientImpl::accentColor()
 {
-    return WebCore::colorFromNSColor([NSApp _accentColor]);
+    return WebCore::colorFromNSColor([NSApp _effectiveAccentColor]);
 }
 #endif
 

@@ -47,6 +47,7 @@
 #import <WebCore/HistoryItem.h>
 #import <WebCore/Image.h>
 #import <WebCore/ThreadCheck.h>
+#import <WebCore/WebCoreJITOperations.h>
 #import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/Assertions.h>
 #import <wtf/MainThread.h>
@@ -127,6 +128,7 @@ void WKNotifyHistoryItemChanged(HistoryItem&)
 #if !PLATFORM(IOS_FAMILY)
     JSC::initialize();
     WTF::initializeMainThread();
+    WebCore::populateJITOperations();
 #endif
 }
 
@@ -159,13 +161,13 @@ void WKNotifyHistoryItemChanged(HistoryItem&)
 - (id)copyWithZone:(NSZone *)zone
 {
     WebCoreThreadViolationCheckRoundOne();
-    WebHistoryItem *copy = [[[self class] alloc] initWithWebCoreHistoryItem:core(_private)->copy()];
+    RetainPtr<WebHistoryItem> copy = adoptNS([[[self class] alloc] initWithWebCoreHistoryItem:core(_private)->copy()]);
 
     copy->_private->_lastVisitedTime = _private->_lastVisitedTime;
 
-    historyItemWrappers().set(core(copy->_private), copy);
+    historyItemWrappers().set(core(copy->_private), copy.get());
 
-    return copy;
+    return copy.leakRef();
 }
 
 // FIXME: Need to decide if this class ever returns URLs and decide on the name of this method
@@ -268,13 +270,13 @@ WebHistoryItem *kit(HistoryItem* item)
     if (!item)
         return nil;
     if (auto wrapper = historyItemWrappers().get(item))
-        return [[wrapper retain] autorelease];
-    return [[[WebHistoryItem alloc] initWithWebCoreHistoryItem:*item] autorelease];
+        return retainPtr(wrapper).autorelease();
+    return adoptNS([[WebHistoryItem alloc] initWithWebCoreHistoryItem:*item]).autorelease();
 }
 
 + (WebHistoryItem *)entryWithURL:(NSURL *)URL
 {
-    return [[[self alloc] initWithURL:URL title:nil] autorelease];
+    return adoptNS([[self alloc] initWithURL:URL title:nil]).autorelease();
 }
 
 - (id)initWithURLString:(NSString *)URLString title:(NSString *)title displayTitle:(NSString *)displayTitle lastVisitedTimeInterval:(NSTimeInterval)time
@@ -347,13 +349,9 @@ WebHistoryItem *kit(HistoryItem* item)
     if (NSArray *redirectURLs = [dict _webkit_arrayForKey:redirectURLsKey])
         _private->_redirectURLs = makeUnique<Vector<String>>(makeVector<String>(redirectURLs));
 
-    NSArray *childDicts = [dict objectForKey:childrenKey];
-    if (childDicts) {
-        for (int i = [childDicts count] - 1; i >= 0; i--) {
-            WebHistoryItem *child = [[WebHistoryItem alloc] initFromDictionaryRepresentation:[childDicts objectAtIndex:i]];
-            core(_private)->addChildItem(*core(child->_private));
-            [child release];
-        }
+    for (id childDict in [[dict objectForKey:childrenKey] reverseObjectEnumerator]) {
+        auto child = adoptNS([[WebHistoryItem alloc] initFromDictionaryRepresentation:childDict]);
+        core(_private)->addChildItem(*core(child->_private));
     }
 
 #if PLATFORM(IOS_FAMILY)

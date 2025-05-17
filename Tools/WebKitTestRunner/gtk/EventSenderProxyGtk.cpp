@@ -34,6 +34,7 @@
 #include "EventSenderProxy.h"
 
 #include "PlatformWebView.h"
+#include "StringFunctions.h"
 #include "TestController.h"
 #include "WebKitWebViewBaseInternal.h"
 #include <WebCore/GtkUtilities.h>
@@ -156,6 +157,10 @@ static int getGDKKeySymForKeyRef(WKStringRef keyRef, unsigned location, guint* m
         return GDK_KEY_Alt_L;
     if (WKStringIsEqualToUTF8CString(keyRef, "rightAlt"))
         return GDK_KEY_Alt_R;
+    if (WKStringIsEqualToUTF8CString(keyRef, "leftMeta"))
+        return GDK_KEY_Meta_L;
+    if (WKStringIsEqualToUTF8CString(keyRef, "rightMeta"))
+        return GDK_KEY_Meta_R;
     if (WKStringIsEqualToUTF8CString(keyRef, "leftArrow"))
         return GDK_KEY_Left;
     if (WKStringIsEqualToUTF8CString(keyRef, "rightArrow"))
@@ -239,7 +244,7 @@ void EventSenderProxy::keyDown(WKStringRef keyRef, WKEventModifiers wkModifiers,
     webkitWebViewBaseSynthesizeKeyEvent(toWebKitGLibAPI(m_testController->mainWebView()->platformView()), KeyEventType::Insert, gdkKeySym, modifiers, ShouldTranslateKeyboardState::No);
 }
 
-void EventSenderProxy::mouseDown(unsigned button, WKEventModifiers wkModifiers)
+void EventSenderProxy::mouseDown(unsigned button, WKEventModifiers wkModifiers, WKStringRef pointerType)
 {
     unsigned gdkButton = eventSenderButtonToGDKButton(button);
     auto modifier = WebCore::stateModifierForGdkButton(gdkButton);
@@ -253,28 +258,28 @@ void EventSenderProxy::mouseDown(unsigned button, WKEventModifiers wkModifiers)
     m_mouseButtonsCurrentlyDown |= modifier;
 
     webkitWebViewBaseSynthesizeMouseEvent(toWebKitGLibAPI(m_testController->mainWebView()->platformView()),
-        MouseEventType::Press, gdkButton, m_mouseButtonsCurrentlyDown, m_position.x, m_position.y, webkitModifiersToGDKModifiers(wkModifiers), m_clickCount);
+        MouseEventType::Press, gdkButton, m_mouseButtonsCurrentlyDown, m_position.x, m_position.y, webkitModifiersToGDKModifiers(wkModifiers), m_clickCount, toWTFString(pointerType));
 }
 
-void EventSenderProxy::mouseUp(unsigned button, WKEventModifiers wkModifiers)
+void EventSenderProxy::mouseUp(unsigned button, WKEventModifiers wkModifiers, WKStringRef pointerType)
 {
     unsigned gdkButton = eventSenderButtonToGDKButton(button);
     auto modifier = WebCore::stateModifierForGdkButton(gdkButton);
     m_mouseButtonsCurrentlyDown &= ~modifier;
     webkitWebViewBaseSynthesizeMouseEvent(toWebKitGLibAPI(m_testController->mainWebView()->platformView()),
-        MouseEventType::Release, gdkButton, m_mouseButtonsCurrentlyDown, m_position.x, m_position.y, webkitModifiersToGDKModifiers(wkModifiers), 0);
+        MouseEventType::Release, gdkButton, m_mouseButtonsCurrentlyDown, m_position.x, m_position.y, webkitModifiersToGDKModifiers(wkModifiers), 0, toWTFString(pointerType));
 
     m_clickPosition = m_position;
     m_clickTime = m_time;
 }
 
-void EventSenderProxy::mouseMoveTo(double x, double y)
+void EventSenderProxy::mouseMoveTo(double x, double y, WKStringRef pointerType)
 {
     m_position.x = x;
     m_position.y = y;
 
     webkitWebViewBaseSynthesizeMouseEvent(toWebKitGLibAPI(m_testController->mainWebView()->platformView()),
-        MouseEventType::Motion, 0, m_mouseButtonsCurrentlyDown, m_position.x, m_position.y, 0, 0);
+        MouseEventType::Motion, 0, m_mouseButtonsCurrentlyDown, m_position.x, m_position.y, 0, 0, toWTFString(pointerType));
 }
 
 void EventSenderProxy::mouseScrollBy(int horizontal, int vertical)
@@ -326,16 +331,16 @@ void EventSenderProxy::mouseScrollByWithWheelAndMomentumPhases(int horizontal, i
     WheelEventPhase eventMomentumPhase = WheelEventPhase::NoPhase;
     switch (momentum) {
     case 0:
-        eventPhase = WheelEventPhase::NoPhase;
+        eventMomentumPhase = WheelEventPhase::NoPhase;
         break;
     case 1:
-        eventPhase = WheelEventPhase::Began;
+        eventMomentumPhase = WheelEventPhase::Began;
         break;
     case 2:
-        eventPhase = WheelEventPhase::Changed;
+        eventMomentumPhase = WheelEventPhase::Changed;
         break;
     case 3:
-        eventPhase = WheelEventPhase::Ended;
+        eventMomentumPhase = WheelEventPhase::Ended;
         break;
     }
 

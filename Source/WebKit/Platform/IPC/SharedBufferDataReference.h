@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2020 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,47 +23,32 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+// Encodes a SharedBuffer or DataReference that is received as a DataReference to the decoded data.
+
 #pragma once
 
-#include "WebCoreArgumentCoders.h"
-#include <WebCore/SharedBuffer.h>
+#include "DataReference.h"
+#include "SharedBufferCopy.h"
 
 namespace IPC {
 
-class SharedBufferDataReference {
+class Encoder;
+
+class SharedBufferDataReference : private SharedBufferCopy {
 public:
     SharedBufferDataReference() = default;
-    SharedBufferDataReference(RefPtr<WebCore::SharedBuffer>&& buffer) : m_buffer(WTFMove(buffer)) { }
-    SharedBufferDataReference(Ref<WebCore::SharedBuffer>&& buffer) : m_buffer(WTFMove(buffer)) { }
-    SharedBufferDataReference(const WebCore::SharedBuffer& buffer)
-        : m_buffer(WebCore::SharedBuffer::create())
-    {
-        m_buffer->append(buffer);
-    }
+    using SharedBufferCopy::SharedBufferCopy;
 
-    RefPtr<WebCore::SharedBuffer>& buffer() { return m_buffer; }
-    const RefPtr<WebCore::SharedBuffer>& buffer() const { return m_buffer; }
+    SharedBufferDataReference(DataReference data)
+        : m_data(WTFMove(data)) { }
+    SharedBufferDataReference(const uint8_t* data, size_t size)
+        : m_data(data, size) { }
 
-    const char* data() const { return m_buffer ? m_buffer->data() : nullptr; }
-    size_t size() const { return m_buffer ? m_buffer->size() : 0; }
-    bool isEmpty() const { return m_buffer ? m_buffer->isEmpty() : true; }
-
-    void encode(Encoder& encoder) const
-    {
-        encoder << m_buffer;
-    }
-
-    static Optional<SharedBufferDataReference> decode(Decoder& decoder)
-    {
-        Optional<RefPtr<WebCore::SharedBuffer>> buffer;
-        decoder >> buffer;
-        if (!buffer)
-            return WTF::nullopt;
-        return { WTFMove(*buffer) };
-    }
+    void encode(Encoder&) const;
+    // Use IPC::DataReference to decode.
 
 private:
-    RefPtr<WebCore::SharedBuffer> m_buffer;
+    DataReference m_data;
 };
 
-}
+} // namespace IPC

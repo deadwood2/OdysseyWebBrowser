@@ -27,6 +27,7 @@
 
 #if PLATFORM(MAC)
 
+#include "PDFPluginIdentifier.h"
 #include "PluginComplexTextInputState.h"
 #include "ShareableBitmap.h"
 #include "WKLayoutMode.h"
@@ -76,6 +77,14 @@ OBJC_CLASS WKTextTouchBarItemController;
 OBJC_CLASS WebPlaybackControlsManager;
 #endif // HAVE(TOUCH_BAR)
 
+#if ENABLE(UI_PROCESS_PDF_HUD)
+OBJC_CLASS WKPDFHUDView;
+#endif
+
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebViewImplAdditionsBefore.h>
+#endif
+
 namespace API {
 class HitTestResult;
 class Object;
@@ -84,6 +93,10 @@ class PageConfiguration;
 
 namespace WebCore {
 struct ShareDataWithParsedURL;
+
+#if ENABLE(IMAGE_EXTRACTION)
+struct ImageExtractionResult;
+#endif
 }
 
 @protocol WebViewImplDelegate
@@ -189,6 +202,14 @@ public:
 
     void viewWillStartLiveResize();
     void viewDidEndLiveResize();
+
+#if ENABLE(UI_PROCESS_PDF_HUD)
+    void createPDFHUD(PDFPluginIdentifier, const WebCore::IntRect&);
+    void updatePDFHUDLocation(PDFPluginIdentifier, const WebCore::IntRect&);
+    void removePDFHUD(PDFPluginIdentifier);
+    void removeAllPDFHUDs();
+    NSSet *pdfHUDs();
+#endif
 
     void renewGState();
     void setFrameSize(CGSize);
@@ -473,7 +494,7 @@ public:
 
     void startDrag(const WebCore::DragItem&, const ShareableBitmap::Handle& image);
     void setFileAndURLTypes(NSString *filename, NSString *extension, NSString *title, NSString *url, NSString *visibleURL, NSPasteboard *);
-    void setPromisedDataForImage(WebCore::Image*, NSString *filename, NSString *extension, NSString *title, NSString *url, NSString *visibleURL, WebCore::SharedBuffer* archiveBuffer, NSString *pasteboardName);
+    void setPromisedDataForImage(WebCore::Image*, NSString *filename, NSString *extension, NSString *title, NSString *url, NSString *visibleURL, WebCore::SharedBuffer* archiveBuffer, NSString *pasteboardName, NSString *pasteboardOrigin);
     void pasteboardChangedOwner(NSPasteboard *);
     void provideDataForPasteboard(NSPasteboard *, NSString *type);
     NSArray *namesOfPromisedFilesDroppedAtDestination(NSURL *dropDestination);
@@ -561,6 +582,10 @@ public:
 
     void forceRequestCandidatesForTesting();
     bool shouldRequestCandidates() const;
+
+#if ENABLE(IMAGE_EXTRACTION)
+    void requestImageExtraction(const ShareableBitmap::Handle&, CompletionHandler<void(WebCore::ImageExtractionResult&&)>&&);
+#endif
 
     bool windowIsFrontWindowUnderMouse(NSEvent *);
 
@@ -729,7 +754,11 @@ private:
 #if ENABLE(FULLSCREEN_API)
     RetainPtr<WKFullScreenWindowController> m_fullScreenWindowController;
 #endif
-    
+
+#if ENABLE(UI_PROCESS_PDF_HUD)
+    HashMap<WebKit::PDFPluginIdentifier, RetainPtr<WKPDFHUDView>> _pdfHUDViews;
+#endif
+
     RetainPtr<WKShareSheet> _shareSheet;
 
     RetainPtr<WKWindowVisibilityObserver> m_windowVisibilityObserver;
@@ -814,6 +843,10 @@ private:
     RetainPtr<NSMenu> m_domPasteMenu;
     RetainPtr<WKDOMPasteMenuDelegate> m_domPasteMenuDelegate;
     CompletionHandler<void(WebCore::DOMPasteAccessResponse)> m_domPasteRequestHandler;
+
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebViewImplAdditionsAfter.h>
+#endif
 };
     
 } // namespace WebKit

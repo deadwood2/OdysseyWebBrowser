@@ -36,6 +36,7 @@
 #import <WebKit/WKWebViewPrivate.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/BlockObjCExceptions.h>
+#import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
 #import <wtf/WeakObjCPtr.h>
@@ -175,6 +176,19 @@ static CGRect viewRectForWindowRect(CGRect, PlatformWebView::WebViewSizingMode);
     }];
 }
 
+- (void)presentViewController:(UIViewController *)viewController animated:(BOOL)animated completion:(void(^)(void))completion
+{
+    auto weakWebView = WeakObjCPtr<TestRunnerWKWebView>(WTR::TestController::singleton().mainWebView()->platformView());
+    [super presentViewController:viewController animated:animated completion:[weakWebView, completion = makeBlockPtr(completion), viewController = retainPtr(viewController)] {
+        if (completion)
+            completion();
+
+        auto strongWebView = weakWebView.get();
+        if (WTR::TestController::singleton().mainWebView()->platformView() == strongWebView)
+            [strongWebView _didPresentViewController:viewController.get()];
+    }];
+}
+
 @end
 
 namespace WTR {
@@ -189,15 +203,13 @@ PlatformWebView::PlatformWebView(WKWebViewConfiguration* configuration, const Te
     : m_windowIsKey(true)
     , m_options(options)
 {
-    CGRect rect = CGRectMake(0, 0, TestController::viewWidth, TestController::viewHeight);
+    CGRect rect = CGRectMake(0, 0, options.viewWidth(), options.viewHeight());
 
     m_window = [[WebKitTestRunnerWindow alloc] initWithFrame:rect];
     m_window.backgroundColor = [UIColor lightGrayColor];
     m_window.platformWebView = this;
 
-    UIViewController *viewController = [[PlatformWebViewController alloc] init];
-    [m_window setRootViewController:viewController];
-    [viewController release];
+    [m_window setRootViewController:adoptNS([[PlatformWebViewController alloc] init]).get()];
 
     m_view = [[TestRunnerWKWebView alloc] initWithFrame:viewRectForWindowRect(rect, WebViewSizingMode::Default) configuration:configuration];
 
@@ -289,10 +301,9 @@ void PlatformWebView::didInitializeClients()
 
 void PlatformWebView::addChromeInputField()
 {
-    UITextField* textField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 100, 20)];
-    textField.tag = 1;
-    [m_window addSubview:textField];
-    [textField release];
+    auto textField = adoptNS([[UITextField alloc] initWithFrame:CGRectMake(0, 0, 100, 20)]);
+    [textField setTag:1];
+    [m_window addSubview:textField.get()];
 }
 
 void PlatformWebView::removeChromeInputField()

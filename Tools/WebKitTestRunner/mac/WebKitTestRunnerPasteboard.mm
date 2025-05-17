@@ -45,7 +45,7 @@
 -(id)initWithName:(NSString *)name;
 @end
 
-static NSMutableDictionary *localPasteboards;
+static RetainPtr<NSMutableDictionary> localPasteboards;
 
 @implementation WebKitTestRunnerPasteboard
 
@@ -56,14 +56,12 @@ static NSMutableDictionary *localPasteboards;
     if (!name)
         name = [NSString stringWithFormat:@"LocalPasteboard%d", ++number];
     if (!localPasteboards)
-        localPasteboards = [[NSMutableDictionary alloc] init];
-    LocalPasteboard *pasteboard = [localPasteboards objectForKey:name];
-    if (pasteboard)
+        localPasteboards = adoptNS([[NSMutableDictionary alloc] init]);
+    if (LocalPasteboard *pasteboard = [localPasteboards objectForKey:name])
         return pasteboard;
-    pasteboard = [[LocalPasteboard alloc] initWithName:name];
-    [localPasteboards setObject:pasteboard forKey:name];
-    [pasteboard release];
-    return pasteboard;
+    auto pasteboard = adoptNS([[LocalPasteboard alloc] initWithName:name]);
+    [localPasteboards setObject:pasteboard.get() forKey:name];
+    return pasteboard.autorelease();
 }
 
 // This method crashes when called on LocalPasteboard.
@@ -74,7 +72,6 @@ static NSMutableDictionary *localPasteboards;
 
 + (void)releaseLocalPasteboards
 {
-    [localPasteboards release];
     localPasteboards = nil;
 }
 
@@ -151,15 +148,14 @@ static NSMutableDictionary *localPasteboards;
     unsigned i;
     for (i = 0; i < count; ++i) {
         NSString *type = [newTypes objectAtIndex:i];
-        NSString *setType = [_typesSet member:type];
+        RetainPtr<NSString> setType = [_typesSet member:type];
         if (!setType) {
-            setType = [type copy];
-            [_typesArray addObject:setType];
-            [_typesSet addObject:setType];
-            [setType release];
+            setType = adoptNS([type copy]);
+            [_typesArray addObject:setType.get()];
+            [_typesSet addObject:setType.get()];
         }
         if (newOwner && [newOwner respondsToSelector:@selector(pasteboard:provideDataForType:)])
-            [newOwner pasteboard:self provideDataForType:setType];
+            [newOwner pasteboard:self provideDataForType:setType.get()];
     }
 }
 

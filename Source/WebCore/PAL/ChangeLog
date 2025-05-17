@@ -1,3 +1,990 @@
+2021-02-22  Per Arne  <pvollan@apple.com>
+
+        [macOS] Disabling relaunch on login for the WebContent process is racy
+        https://bugs.webkit.org/show_bug.cgi?id=222074
+        <rdar://problem/74230216>
+
+        Reviewed by Geoffrey Garen.
+
+        Declare Launch Services key to disable relaunch on login.
+
+        * pal/spi/cocoa/LaunchServicesSPI.h:
+
+2021-02-20  Chris Fleizach  <cfleizach@apple.com>
+
+        AX: Image should report the embedded accessibility description if available
+        https://bugs.webkit.org/show_bug.cgi?id=221875
+        <rdar://problem/74320584>
+
+        Reviewed by Jer Noble.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/MediaAccessibilitySPI.h: Added.
+
+2021-02-18  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [iOS] Specify a _UIDataOwner when reading or writing from the system pasteboard
+        https://bugs.webkit.org/show_bug.cgi?id=222072
+        <rdar://problem/74208576>
+
+        Reviewed by Devin Rousso.
+
+        Import `UIPasteboard_Private.h` so that `PlatformPasteboardIOS.mm` can use the new SPI.
+
+        * pal/spi/ios/UIKitSPI.h:
+
+2021-02-18  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [GPU Process] Temporarily disable drawing OT-SVG glyphs in the GPU process until it can be implemented properly
+        https://bugs.webkit.org/show_bug.cgi?id=221744
+
+        Reviewed by Simon Fraser.
+
+        This patch soft-links the OTSVG framework because it's a private framework that doesn't exist on watchOS.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cf/CoreTextSoftLink.cpp: Added.
+        * pal/cf/CoreTextSoftLink.h: Added.
+        * pal/cf/OTSVGTable.cpp: Added.
+        (PAL::OTSVGTable::OTSVGTable):
+        (PAL::OTSVGTable::~OTSVGTable):
+        (PAL::OTSVGTable::operator=):
+        * pal/cf/OTSVGTable.h: Added.
+        * pal/spi/cf/CoreTextSPI.h:
+
+2021-02-18  Devin Rousso  <drousso@apple.com>
+
+        [Payment Request] add an `object data` to `PaymentItem` so that data specific to Apple Pay can be provided
+        https://bugs.webkit.org/show_bug.cgi?id=221970
+        <rdar://problem/69806999>
+
+        Reviewed by Alex Christensen.
+
+        * pal/cocoa/PassKitSoftLink.h:
+        * pal/cocoa/PassKitSoftLink.mm:
+        * pal/spi/cocoa/PassKitSPI.h:
+
+2021-02-18  Per Arne  <pvollan@apple.com>
+
+        [macOS] Observe system sleep events in the UI process
+        https://bugs.webkit.org/show_bug.cgi?id=221996
+        <rdar://problem/74406570>
+
+        Reviewed by Chris Dumez.
+
+        Export symbols, since the system sleep listener will be instantiated in the UI process.
+
+        * pal/system/SystemSleepListener.h:
+
+2021-02-15  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        Unreviewed, fix the Apple internal iOS build after r272878
+
+        Wrap `NSScrollViewSPI.h` in a `USE(APPKIT)` guard, so that we don't attempt to import AppKit headers when
+        building for iOS using the internal SDK.
+
+        * pal/spi/mac/NSScrollViewSPI.h:
+
+2021-02-15  Said Abou-Hallawa  <said@apple.com>
+
+        [GPU Process] Ensure that no image decoders run in the GPU Process
+        https://bugs.webkit.org/show_bug.cgi?id=221885
+        <rdar://problem/74341122>
+
+        Reviewed by Simon Fraser.
+
+        Add CGImageSourceSetAllowableTypes() to the ImageIO SPI header file.
+
+        * pal/spi/cg/ImageIOSPI.h:
+
+2021-02-10  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        Move pal/spi/cocoa/CoreTextSPI.h to pal/spi/cf/CoreTextSPI.h
+        https://bugs.webkit.org/show_bug.cgi?id=221683
+
+        Reviewed by Simon Fraser.
+
+        Core Text has a C API, and doesn't depend on UIKit/AppKit. It also exists on Windows,
+        where there is no Cocoa. And pal/spi/cf already includes things like CoreAudioSPI.h
+        and CoreVideoSPI.h
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/spi/cf/CoreTextSPI.h: Renamed from Source/WebCore/PAL/pal/spi/cocoa/CoreTextSPI.h.
+
+2021-02-05  Eric Carlson  <eric.carlson@apple.com>
+
+        [Mac] Connect MediaSession with MediaRemote and NowPlaying
+        https://bugs.webkit.org/show_bug.cgi?id=221431
+        <rdar://problem/74000363>
+
+        Reviewed by Jer Noble.
+
+        * pal/spi/mac/MediaRemoteSPI.h:
+
+2021-02-01  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Disable interstitial events on AVPlayerItem.
+        https://bugs.webkit.org/show_bug.cgi?id=221215
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/cocoa/AVFoundationSPI.h:
+
+2021-01-29  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        font-stretch is not applied to system-ui
+        https://bugs.webkit.org/show_bug.cgi?id=221103
+        <rdar://problem/73719139>
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cocoa/CoreTextSPI.h:
+
+2021-01-28  Per Arne  <pvollan@apple.com>
+
+        [macOS] Crash when updating color preferences
+        https://bugs.webkit.org/show_bug.cgi?id=221088
+        <rdar://problem/73709142>
+
+        Reviewed by Brent Fulgham.
+
+        Declare NSApplication SPI for updating application information with Launch Services.
+
+        * pal/spi/mac/NSApplicationSPI.h:
+
+2021-01-21  Alex Christensen  <achristensen@webkit.org>
+
+        Add experimental feature to use network loader
+        https://bugs.webkit.org/show_bug.cgi?id=220521
+        <rdar://problem/69394713>
+
+        Reviewed by Geoff Garen.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2021-01-21  Sam Weinig  <weinig@apple.com>
+
+        Add experimental support for separated layers
+        https://bugs.webkit.org/show_bug.cgi?id=220734
+
+        Reviewed by Simon Fraser.
+
+        * pal/spi/cocoa/QuartzCoreSPI.h:
+        Add forward declaration for CALayer's separated property.
+
+2021-01-19  Chris Dumez  <cdumez@apple.com>
+
+        [GPUProcess] Claim ownership of IOSurface backing for ImageBufferBackends in the WebProcess
+        https://bugs.webkit.org/show_bug.cgi?id=220663
+
+        Reviewed by Geoffrey Garen.
+
+        Declare new IOSurface SPI.
+
+        * pal/spi/cocoa/IOSurfaceSPI.h:
+
+2021-01-14  Tim Horton  <timothy_horton@apple.com>
+
+        Exceptions thrown when invoking a <select> on an iPhone-idiom app running on macOS
+        https://bugs.webkit.org/show_bug.cgi?id=220628
+        <rdar://problem/70546547>
+
+        Reviewed by Wenson Hsieh.
+
+        * pal/spi/ios/MobileGestaltSPI.h:
+
+2021-01-12  Per Arne Vollan  <pvollan@apple.com>
+
+        [macOS] Reset user directory suffix before getting sandbox directory
+        https://bugs.webkit.org/show_bug.cgi?id=220358
+        <rdar://problem/57616019>
+
+        Reviewed by Alexey Proskuryakov.
+
+        Declare functions to get and set user directory suffix.
+
+        * pal/spi/cocoa/CoreServicesSPI.h:
+
+2021-01-12  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Support key rotation with HLS-backed encrypted media streams
+        https://bugs.webkit.org/show_bug.cgi?id=220493
+        <rdar://68227709>
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/cocoa/AVFoundationSPI.h:
+
+2021-01-08  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, reverting r271331.
+        https://bugs.webkit.org/show_bug.cgi?id=220487
+
+        Wasn't ready for review.
+
+        Reverted changeset:
+
+        "[macOS] Reset user directory suffix before getting sandbox
+        directory"
+        https://bugs.webkit.org/show_bug.cgi?id=220358
+        https://trac.webkit.org/changeset/271331
+
+2021-01-08  Per Arne Vollan  <pvollan@apple.com>
+
+        [macOS] Reset user directory suffix before getting sandbox directory
+        https://bugs.webkit.org/show_bug.cgi?id=220358
+        <rdar://problem/57616019>
+
+        Reviewed by Brent Fulgham.
+
+        Declare functions to get and set user directory suffix.
+
+        * pal/spi/cocoa/CoreServicesSPI.h:
+
+2021-01-06  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Revert audioTimePitchAlgorithm to "TimeDomain" from "Spectral"
+        https://bugs.webkit.org/show_bug.cgi?id=220341
+
+        Reviewed by Youenn Fablet.
+
+        * pal/cocoa/AVFoundationSoftLink.h:
+        * pal/cocoa/AVFoundationSoftLink.mm:
+
+2020-12-15  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Adopt -externalContentProtectionStatus
+        https://bugs.webkit.org/show_bug.cgi?id=219911
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/cocoa/AVFoundationSPI.h:
+
+2020-12-14  Chris Fleizach  <cfleizach@apple.com>
+
+        AX: implement prefers-contrast: more
+        https://bugs.webkit.org/show_bug.cgi?id=215507
+        <rdar://problem/67077492>
+
+        Reviewed by Dean Jackson.
+
+        * pal/ios/UIKitSoftLink.h:
+
+2020-12-14  Tim Horton  <timothy_horton@apple.com>
+
+        Adopt symbol image API instead of SPI in WKPDFHUDView
+        https://bugs.webkit.org/show_bug.cgi?id=219866
+
+        Reviewed by Wenson Hsieh.
+
+        * pal/spi/mac/NSImageSPI.h:
+
+2020-12-14  Sihui Liu  <sihui_liu@apple.com>
+
+        Implement recognizer for SpeechRecognition
+        https://bugs.webkit.org/show_bug.cgi?id=219459
+        <rdar://problem/71914465>
+
+        Reviewed by Youenn Fablet.
+
+        Add soft linking to Speech framework and SPI.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cocoa/SpeechSoftLink.h: Added.
+        * pal/cocoa/SpeechSoftLink.mm: Added.
+        * pal/spi/cocoa/SpeechSPI.h: Added.
+
+2020-12-13  Andy Estes  <aestes@apple.com>
+
+        [Mac] Create a MediaToolbox format reader plug-in for WebM
+        https://bugs.webkit.org/show_bug.cgi?id=218908
+        <rdar://problem/71373264>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cf/CoreMediaSoftLink.cpp:
+        * pal/cf/CoreMediaSoftLink.h:
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h:
+        * pal/spi/cf/CoreMediaSPI.h:
+        * pal/spi/cocoa/MediaToolboxSPI.h:
+
+2020-12-11  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Determine correct visibility for linked frameworks
+        https://bugs.webkit.org/show_bug.cgi?id=210366
+
+        Reviewed by Michael Catanzaro.
+
+        Set PAL_FRAMEWORKS to determine correct linkage for the library.
+
+        * pal/CMakeLists.txt:
+
+2020-12-10  Andy Estes  <aestes@apple.com>
+
+        [Mac] Create a format reader plug-in for WebM
+        https://bugs.webkit.org/show_bug.cgi?id=218908
+        <rdar://problem/71373264>
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/cocoa/MediaToolboxSPI.h: Defined SPI for MTPluginFormatReader.
+
+2020-12-07  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Remove WEBKIT_WRAP_SOURCELIST
+        https://bugs.webkit.org/show_bug.cgi?id=196916
+
+        Reviewed by Michael Catanzaro.
+
+        * pal/CMakeLists.txt:
+
+2020-12-04  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Adopt AVOutputDevice.allowsHeadTrackedSpatialAudio
+        https://bugs.webkit.org/show_bug.cgi?id=219503
+
+        Reviewed by Eric Carlson.
+
+        On macOS, clients who wish to query head tracking AVOutputDevice capabilities must use the
+        sharedSystemAudioContext--not the sharedAudioPresentationOutputContext--to do so. This context
+        requires a specific entitlement to use.
+
+        In addition to querying -supportsHeadTrackedSpatialAudio, also query
+        -allowsHeadTrackedSpatialAudio, if present, to determine whether the current route supports
+        spatialization.
+
+        * pal/avfoundation/OutputContext.mm:
+        (PAL::OutputContext::sharedAudioPresentationOutputContext):
+        * pal/avfoundation/OutputDevice.mm:
+        (PAL::OutputDevice::supportsSpatialAudio const):
+        * pal/spi/cocoa/AVFoundationSPI.h:
+
+2020-12-04  Adam Roben  <aroben@apple.com>
+
+        More FALLBACK_PLATFORM adoption
+        https://bugs.webkit.org/show_bug.cgi?id=219545
+
+        Reviewed by Tim Horton.
+
+        * Configurations/SDKVariant.xcconfig:
+        WK_EMPTY_$(THIS_IS_NOT_EMPTY) evaluates to the empty string, not to
+        NO.
+
+2020-12-03  Adam Roben  <aroben@apple.com>
+
+        Adopt FALLBACK_PLATFORM
+        https://bugs.webkit.org/show_bug.cgi?id=219504
+
+        Reviewed by Tim Horton.
+
+        * Configurations/SDKVariant.xcconfig: Use FALLBACK_PLATFORM it if it's
+        defined, otherwise use PLATFORM_NAME as before.
+
+2020-11-30  Per Arne Vollan  <pvollan@apple.com>
+
+        [macOS] Adopt SPI to prevent establishing XPC connections to Launch Services
+        https://bugs.webkit.org/show_bug.cgi?id=219173
+        <rdar://problem/71595536>
+
+        Reviewed by Alex Christensen.
+
+        Declare enum value to be used when adopting the SPI.
+
+        * pal/spi/cocoa/LaunchServicesSPI.h:
+
+2020-11-28  Per Arne Vollan  <pvollan@apple.com>
+
+        [macOS] Set application information in the Networking process on behalf of the WebContent process
+        https://bugs.webkit.org/show_bug.cgi?id=218052
+        <rdar://problem/70586405>
+
+        Reviewed by Brent Fulgham.
+
+        Declare function to create ASN from an audit token.
+
+        * pal/spi/cocoa/LaunchServicesSPI.h:
+
+2020-11-17  Per Arne Vollan  <pvollan@apple.com>
+
+        [macOS] Perform AX TCC check in the UI process
+        https://bugs.webkit.org/show_bug.cgi?id=218870
+        <rdar://problem/71339830>
+
+        Reviewed by Brent Fulgham.
+
+        Add typedef for TCC authentication callback.
+
+        * pal/spi/mac/HIServicesSPI.h:
+
+2020-11-17  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Build fails on internal simulator builds due to missing enum kCVPixelFormatType_AGX_420YpCbCr8BiPlanarVideoRange
+        https://bugs.webkit.org/show_bug.cgi?id=219030
+
+        Reviewed by Antti Koivisto.
+
+        Fix compile for simulator builds.
+        Rename HAVE_CV_AGX_420_PIXEL_FORMAT_TYPES to
+        HAVE_COREVIDEO_COMPRESSED_PIXEL_FORMAT_TYPES to better reflect what the ifdef does.
+
+        * pal/spi/cf/CoreVideoSPI.h:
+
+2020-11-17  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Build fails on internal Catalina due to missing enum kCVPixelFormatType_AGX_420YpCbCr8BiPlanarVideoRange
+        https://bugs.webkit.org/show_bug.cgi?id=219026
+
+        Reviewed by Antti Koivisto.
+
+        Fix compile for macOS versions before Big Sur.
+
+        On macOS, only use the private header on Big Sur. On Catalina, use the
+        manual enums.
+
+        Regressed in:
+        Textures Fail to Render in WebGL from HLS Stream on iPhone 12 [iOS 14.2]
+
+        * pal/spi/cf/CoreVideoSPI.h:
+
+2020-11-16  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Textures Fail to Render in WebGL from HLS Stream on iPhone 12 [iOS 14.2]
+        https://bugs.webkit.org/show_bug.cgi?id=218637
+        <rdar://problem/71102126>
+
+        Reviewed by Eric Carlson.
+
+        Patch by Jer Noble.
+
+        Treat internal compressed YUV pixel formats
+        kCVPixelFormatType_AGX_420YpCbCr8BiPlanarVideoRange and
+        kCVPixelFormatType_AGX_420YpCbCr8BiPlanarFullRange as
+        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange and
+        kCVPixelFormatType_420YpCbCr8BiPlanarFullRange when
+        using the OpenGL shader to convert video IOSurface to a WebGL
+        texture.
+
+        Fixes cases where the decoder outputs the compressed formats.
+
+        No new tests, adding more comprehensive test content suite is tracked
+        in another bug.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cf/CoreVideoSPI.h: Added.
+
+2020-11-11  Eric Carlson  <eric.carlson@apple.com>
+
+        USB microphone not recognized iOS Safari
+        https://bugs.webkit.org/show_bug.cgi?id=211192
+        <rdar://problem/62607313>
+
+        Reviewed by Youenn Fablet.
+
+        * pal/spi/cocoa/AVFoundationSPI.h: Declare +[AVAudioSession initAuxiliarySession].
+
+2020-11-10  Jer Noble  <jer.noble@apple.com>
+
+        Unreviewed internal macOS build-fix.
+
+        * pal/avfoundation/OutputDevice.mm:
+        (PAL::OutputDevice::supportsSpatialAudio const):
+
+2020-11-10  Jer Noble  <jer.noble@apple.com>
+
+        Add support for AudioConfiguration.spatialRendering
+        https://bugs.webkit.org/show_bug.cgi?id=218727
+        <rdar://problem/71213348>
+
+        Reviewed by Eric Carlson.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/avfoundation/OutputContext.h: Copied from Source/WebCore/platform/mediacapabilities/AudioConfiguration.h.
+        (PAL::OutputContext::platformContext const):
+        * pal/avfoundation/OutputContext.mm: Added.
+        (PAL::OutputContext::OutputContext):
+        (PAL::OutputContext::sharedAudioPresentationOutputContext):
+        (PAL::OutputContext::supportsMultipleOutputDevices):
+        (PAL::OutputContext::deviceName):
+        (PAL::OutputContext::outputDevices const):
+        * pal/avfoundation/OutputDevice.h: Copied from Source/WebCore/platform/mediacapabilities/AudioConfiguration.h.
+        (PAL::OutputDevice::platformDevice const):
+        * pal/avfoundation/OutputDevice.mm: Copied from Source/WebCore/platform/mediacapabilities/AudioConfiguration.h.
+        (PAL::OutputDevice::OutputDevice):
+        (PAL::OutputDevice::name const):
+        (PAL::OutputDevice::deviceFeatures const):
+        (PAL::OutputDevice::supportsSpatialAudio const):
+        * pal/spi/cocoa/AVFoundationSPI.h:
+
+2020-11-04  David Kilzer  <ddkilzer@apple.com>
+
+        WebKit should remove unused debug variant support
+        <https://webkit.org/b/218315>
+        <rdar://problem/70785369>
+
+        Reviewed by Darin Adler.
+
+        Remove support for building the debug variant since it is
+        currently unused. We now set default values for the
+        DEAD_CODE_STRIPPING, DEBUG_DEFINES, GCC_OPTIMIZATION_LEVEL and
+        STRIP_INSTALLED_PRODUCT variables.
+
+        Also move these values out of the Xcode project into
+        Base.xcconfig files using the [config=Debug] specifier so that
+        these overrides are next to the definitions.
+
+        * Configurations/Base.xcconfig:
+        * PAL.xcodeproj/project.pbxproj:
+
+2020-11-02  David Kilzer  <ddkilzer@apple.com>
+
+        Sort Xcode project file
+
+        * PAL.xcodeproj/project.pbxproj:
+
+2020-11-01  Chris Fleizach  <cfleizach@apple.com>
+
+        AX: Provide build workaround while isSystemVoice is not in all SDKs
+        https://bugs.webkit.org/show_bug.cgi?id=218414
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/AXSpeechManagerSPI.h:
+
+2020-10-30  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        Fix internal watchOS and tvOS builds after r269211
+        https://bugs.webkit.org/show_bug.cgi?id=217506
+
+        Unreviewed build fix.
+
+        * pal/spi/cg/CoreGraphicsSPI.h:
+
+2020-10-29  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [Cocoa] [GPU Process] Perform image decoding of color fonts in the Web Process
+        https://bugs.webkit.org/show_bug.cgi?id=217506
+
+        Reviewed by Simon Fraser.
+
+        Add some new entry points, and do some various cleanup.
+
+        * pal/spi/cg/CoreGraphicsSPI.h:
+
+2020-10-30  Chris Fleizach  <cfleizach@apple.com>
+
+        AX: Incorrect list of voices being displayed on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=218293
+
+        Reviewed by Per Arne Vollan.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/spi/cocoa/AXSpeechManagerSPI.h: Added.
+
+2020-10-13  Keith Rollin  <krollin@apple.com>
+
+        Remove leftover MACOSX_DEPLOYMENT_TARGET_macosx support
+        https://bugs.webkit.org/show_bug.cgi?id=217649
+        <rdar://problem/70236877>
+
+        Reviewed by Darin Adler.
+
+        Bug 42796 introduced MACOSX_DEPLOYMENT_TARGET_<PLATFORM> as "support
+        for compiling WebKit against iOS SDKs". Support for the iOS part of
+        this feature was later removed in several changes, including Bug
+        139212, Bug 139463 and Bug 144762. However, vestiges have remained for
+        five or six years in the form of MACOSX_DEPLOYMENT_TARGET_macosx. The
+        inclusion of the platform in MACOSX_DEPLOYMENT_TARGET is no longer
+        needed and can be removed.
+
+        This changes brings most projects in conformance with other projects
+        that don't support including the platform in MACOSX_DEPLOYMENT_TARGET,
+        including WebEditingTester, gtest, WebKitTestRunner, MiniBrowser, and
+        TestWebKitAPI.
+
+        Along the way, remove a couple of left-over references to macOS 10.16,
+        and a couple of places where [sdk=macosx*] was still being used.
+
+        With this change, initialization of MACOSX_DEPLOYMENT_TARGET should be
+        consistent across all projects, with two exceptions: WebKitLauncher
+        (which hardcodes it to 10.12) and libwebrtc's copy of googletest
+        (which hardcodes it to 10.4). The reasons for these hard-coded values
+        is not apparent, so leave them be.
+
+        * Configurations/DebugRelease.xcconfig:
+
+2020-10-12  Luming Yin  <luming_yin@apple.com>
+
+        [macOS] Workaround for MAC_OS_X_VERSION_MAJOR incorrectly including minor version when building 
+        with Xcode 12 on macOS Big Sur SUs
+        https://bugs.webkit.org/show_bug.cgi?id=217602
+        rdar://70194453
+
+        Reviewed by Darin Adler.
+
+        The previous workaround turns out to be ineffective because we can't set the value of 
+        TARGET_MAC_OS_X_VERSION_MAJOR based on a previous value of itself. Introduce a new 
+        variable TARGET_MAC_OS_X_VERSION_MAJOR to determine whether we need to explicitly 
+        adjust MAC_OS_X_VERSION_MAJOR to 110000.
+
+        * Configurations/DebugRelease.xcconfig:
+
+2020-10-12  Luming Yin  <luming_yin@apple.com>
+
+        [macOS] Workaround for MAC_OS_X_VERSION_MAJOR incorrectly including minor version when building 
+        with Xcode 12 on macOS Big Sur SUs
+        https://bugs.webkit.org/show_bug.cgi?id=217602
+        rdar://70194453
+
+        Reviewed by Darin Adler.
+
+        Due to a bug in Xcode (rdar://70185899), Xcode 12.0 and Xcode 12.1 Beta incorrectly includes the 
+        minor release number in MAC_OS_X_VERSION_MAJOR, which causes Debug and Release builds of WebKit 
+        to be misconfigured when building on macOS Big Sur SUs, leading to webpages failing to load.
+
+        To work around the Xcode bug, when the MAC_OS_X_VERSION_MAJOR includes the minor version number, 
+        drop the minor version number by explicitly setting TARGET_MAC_OS_X_VERSION_MAJOR to 110000.
+
+        Note: This change should be reverted after <rdar://70185899> is resolved.
+
+        * Configurations/DebugRelease.xcconfig:
+
+2020-10-11  Luming Yin  <luming_yin@apple.com>
+
+        Strip patch version from TARGET_MAC_OS_X_VERSION_MAJOR when building for macOS Big Sur 
+        or later
+        https://bugs.webkit.org/show_bug.cgi?id=217594
+        rdar://70188497
+
+        Reviewed by Darin Adler.
+
+        To ensure successful Mac Catalyst WebKit builds, strip the patch version from 
+        TARGET_MAC_OS_X_VERSION_MAJOR by using two `base:`s on MACOSX_DEPLOYMENT_TARGET.
+
+        * Configurations/Base.xcconfig:
+
+2020-10-11  Luming Yin  <luming_yin@apple.com>
+
+        Ignore deployment suffix and identifier when computing major OS version for macOS 
+        Big Sur and newer
+        https://bugs.webkit.org/show_bug.cgi?id=217584
+        rdar://70168426
+
+        Reviewed by Darin Adler.
+
+        Stop using MACOSX_DEPLOYMENT_TARGET:suffix:identifier to compute major OS versions. 
+        Only use the deployment target base for macOS Big Sur and newer. Keep the manual 
+        definitions for legacy versions of macOS.
+
+        * Configurations/Base.xcconfig:
+
+2020-10-09  Jer Noble  <jer.noble@apple.com>
+
+        [Mac] AirPlay menu does not show up when AirPlay button is clicked
+        https://bugs.webkit.org/show_bug.cgi?id=217536
+        <rdar://problem/69973777>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cocoa/AVFoundationSoftLink.h:
+        * pal/cocoa/AVFoundationSoftLink.mm:
+
+2020-10-02  Youenn Fablet  <youenn@apple.com>
+
+        Add AVAssetWriter SPI header
+        https://bugs.webkit.org/show_bug.cgi?id=217169
+        <rdar://problem/69793050>
+
+        Reviewed by Eric Carlson.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/AVAssetWriterSPI.h: Added.
+
+2020-10-01  Truitt Savell  <tsavell@apple.com>
+
+        Unreviewed, reverting r267841.
+
+        Broke Catalina Builds
+
+        Reverted changeset:
+
+        "Add AVAssetWriter SPI header"
+        https://bugs.webkit.org/show_bug.cgi?id=217169
+        https://trac.webkit.org/changeset/267841
+
+2020-10-01  Youenn Fablet  <youenn@apple.com>
+
+        Add AVAssetWriter SPI header
+        https://bugs.webkit.org/show_bug.cgi?id=217169
+        <rdar://problem/69793050>
+
+        Reviewed by Eric Carlson.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/AVAssetWriterSPI.h: Added.
+
+2020-09-29  Jonathan Bedard  <jbedard@apple.com>
+
+        [watchOS] AVKitSPI build fixes
+        https://bugs.webkit.org/show_bug.cgi?id=217070
+        <rdar://problem/69724883>
+
+        Rubber-stamped by Eric Carlson.
+
+        * pal/spi/cocoa/AVKitSPI.h: Explicitly import AVPlayer.h and UIKit.h.
+
+2020-09-29  Aditya Keerthi  <akeerthi@apple.com>
+
+        [macCatalyst] Focus rings are not painted
+        https://bugs.webkit.org/show_bug.cgi?id=217073
+        <rdar://problem/46794111>
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/ios/UIKitSPI.h:
+
+        Ensure needed interfaces are available on all IOS_FAMILY platforms.
+
+2020-09-24  Dean Jackson  <dino@apple.com>
+
+        WebGL should use GLES in iOS apps running on Apple Silicon
+        https://bugs.webkit.org/show_bug.cgi?id=216722
+        <rdar://problem/68976337>
+
+        Reviewed by Tim Horton.
+
+        Add soft-linking content for OpenGL/OpenGLES.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/cocoa/OpenGLSoftLinkCocoa.h: Added.
+        * pal/cocoa/OpenGLSoftLinkCocoa.mm: Added.
+
+2020-09-17  Tim Horton  <timothy_horton@apple.com>
+
+        Per-app accent color overrides are broken
+        https://bugs.webkit.org/show_bug.cgi?id=216674
+        <rdar://problem/67745464>
+
+        Reviewed by Wenson Hsieh.
+
+        * pal/spi/mac/NSApplicationSPI.h:
+
+2020-09-16  Alex Christensen  <achristensen@webkit.org>
+
+        Remove unneeded HAVE_FOUNDATION_WITH_SAVE_COOKIES_WITH_COMPLETION_HANDLER
+        https://bugs.webkit.org/show_bug.cgi?id=216572
+
+        Reviewed by Youenn Fablet.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2020-09-14  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [Apple Win] Migrate from FontPlatformDataWin.cpp to FontPlatformDataCoreText.cpp
+        https://bugs.webkit.org/show_bug.cgi?id=216448
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/win/CoreTextSPIWin.h:
+
+2020-09-14  Peng Liu  <peng.liu6@apple.com>
+
+        Clean up AVKitSPI.h
+        https://bugs.webkit.org/show_bug.cgi?id=216449
+
+        Unreviewed, a follow-up patch to fix build failures on watchOS.
+
+        * pal/spi/cocoa/AVKitSPI.h:
+
+2020-09-14  Peng Liu  <peng.liu6@apple.com>
+
+        Clean up AVKitSPI.h
+        https://bugs.webkit.org/show_bug.cgi?id=216449
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cocoa/AVFoundationSPI.h:
+        Remove a duplicated AVKit header file.
+
+        * pal/spi/cocoa/AVKitSPI.h:
+        Organize header files (and definitions) in the following order:
+        - General AVKit header files
+        - General AVKit internal header files and definitions
+        - Feature specific internal header files and definitions
+
+2020-09-14  Peng Liu  <peng.liu6@apple.com>
+
+        Unreviewed, reverting r267004.
+
+        The patch leads to build failures on macOS Catalina.
+
+        Reverted changeset:
+
+        "Clean up AVKitSPI.h"
+        https://bugs.webkit.org/show_bug.cgi?id=216449
+        https://trac.webkit.org/changeset/267004
+
+2020-09-13  Peng Liu  <peng.liu6@apple.com>
+
+        Clean up AVKitSPI.h
+        https://bugs.webkit.org/show_bug.cgi?id=216449
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cocoa/AVFoundationSPI.h:
+        Remove a duplicated AVKit header file.
+
+        * pal/spi/cocoa/AVKitSPI.h:
+        Organize header files (and definitions) in the following order:
+        - General AVKit header files
+        - General AVKit internal header files and definitions
+        - Feature specific internal header files and definitions
+
+2020-09-11  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [Cocoa] Migrate CoreText-specific code from ***Cocoa.mm to ***CoreText.cpp
+        https://bugs.webkit.org/show_bug.cgi?id=216400
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/win/CoreTextSPIWin.h:
+
+2020-09-11  Ben Nham  <nham@apple.com>
+
+        Fix undeclared identifier issue due to clashes in soft link headers
+        https://bugs.webkit.org/show_bug.cgi?id=216412
+
+        Reviewed by Geoffrey Garen.
+
+        r266898 broke builds on certain SDKs. The reason for this is that it includes
+        MediaToolbox/FigPhoto.h, which transitively includes CoreMedia/CMTimePrivate.h. The latter
+        header has a bunch of inline code in certain SDKs which conflicts with the
+        CoreMediaSoftLink.h header. For instance, CoreMediaSoftLink.h redefines CMTimeCompare to
+        softLink_CoreMedia_CMTimeCompare, which messes up the inline code in the CMTimePrivate.h
+        header that references CMTimeCompare.
+
+        For now, we just avoid including FigPhoto.h altogether and use a constant. We'll clean this
+        up once we start weak linking rather than soft linking CoreMedia and MediaToolbox (216388).
+
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h:
+        * pal/spi/cocoa/MediaToolboxSPI.h:
+
+2020-09-10  Ben Nham  <nham@apple.com>
+
+        Disable hardware JPEG decoding on x86 Mac
+        https://bugs.webkit.org/show_bug.cgi?id=216377
+
+        Reviewed by Geoff Garen.
+
+        Add wrappers for a new MediaToolbox SPI that allows us to disable HW JPEG decoding.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h:
+
+2020-09-10  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] PERF: Don't instantiate AVPlayer-based audio decoders or renderers if an element is initially muted.
+        https://bugs.webkit.org/show_bug.cgi?id=216299
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/cocoa/AVFoundationSPI.h:
+
+2020-09-06  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [iOS] attachmentActionFont() Needs to use kCTFontSymbolicTrait: @(kCTFontTraitTightLeading | kCTFontTraitEmphasized) to get the short emphasized footnote font
+        https://bugs.webkit.org/show_bug.cgi?id=215707
+        <rdar://problem/63930892>
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cocoa/CoreTextSPI.h: Add an optimzation for platforms which support it.
+
+2020-09-06  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [Cocoa] Prepare for migrating to CTFontHasTable() once it's faster than CTFontCopyAvailableTables()
+        https://bugs.webkit.org/show_bug.cgi?id=215688
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cocoa/CoreTextSPI.h:
+
+2020-09-05  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [Cocoa] USE(PLATFORM_SYSTEM_FALLBACK_LIST) is true on all Cocoa platforms, so there's no need to consult it in Cocoa-specific files
+        https://bugs.webkit.org/show_bug.cgi?id=215684
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cocoa/CoreTextSPI.h:
+
+2020-09-05  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [Cocoa] CTFontIsSystemUIFont() is faster than CTFontDescriptorIsSystemUIFont()/CTFontCopyFontDescriptor()
+        https://bugs.webkit.org/show_bug.cgi?id=215687
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cocoa/CoreTextSPI.h:
+
+2020-09-04  Sihui Liu  <sihui_liu@apple.com>
+
+        Webpages flash when switching between windows
+        https://bugs.webkit.org/show_bug.cgi?id=216012
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/QuartzCoreSPI.h:
+
+2020-08-25  Alex Christensen  <achristensen@webkit.org>
+
+        Clean up deprecated and unused SPI to set HSTS storage on ProcessPoolConfiguration
+        https://bugs.webkit.org/show_bug.cgi?id=215788
+
+        Reviewed by Chris Dumez.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2020-08-24  Alex Christensen  <achristensen@webkit.org>
+
+        Make _WKWebsiteDataStoreConfiguration SPI for HSTS storage to replace _WKProcessPoolConfiguration.hstsStorageDirectory
+        https://bugs.webkit.org/show_bug.cgi?id=213048
+
+        Reviewed by Youenn Fablet.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2020-08-20  Per Arne Vollan  <pvollan@apple.com>
+
+        [macOS] Web pages are not responding correctly to changes in "Reduce motion" setting
+        https://bugs.webkit.org/show_bug.cgi?id=215664
+
+        Reviewed by Darin Adler.
+
+        Declare "Reduce motion" preference key, as well as notification sent when the "Reduce motion" setting is changed.
+ 
+        * pal/spi/mac/HIServicesSPI.h:
+
+2020-08-19  Aditya Keerthi  <akeerthi@apple.com>
+
+        [macOS] Move stepper painting code off of Carbon API
+        https://bugs.webkit.org/show_bug.cgi?id=215619
+        <rdar://problem/41936617>
+
+        Reviewed by Darin Adler.
+
+        Add forward declarations for CoreUI SPI on non-internal SDKs.
+
+        Also grouped declarations by key and value pairs.
+
+        * pal/spi/mac/CoreUISPI.h:
+
 2020-08-11  Myles C. Maxfield  <mmaxfield@apple.com>
 
         Fix Apple internal Mojave builds

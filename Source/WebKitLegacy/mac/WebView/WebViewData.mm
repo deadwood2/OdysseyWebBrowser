@@ -40,8 +40,10 @@
 #import <WebCore/RunLoopObserver.h>
 #import <WebCore/TextIndicatorWindow.h>
 #import <WebCore/ValidationBubble.h>
+#import <WebCore/WebCoreJITOperations.h>
 #import <wtf/MainThread.h>
 #import <wtf/RunLoop.h>
+#import <wtf/SetForScope.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import "WebGeolocationProviderIOS.h"
@@ -107,6 +109,9 @@ WebViewLayerFlushScheduler::~WebViewLayerFlushScheduler()
 
 void WebViewLayerFlushScheduler::schedule()
 {
+    if (m_insideCallback)
+        m_rescheduledInsideCallback = true;
+
     m_runLoopObserver->schedule(currentRunLoop());
 }
 
@@ -119,7 +124,11 @@ void WebViewLayerFlushScheduler::layerFlushCallback()
 {
     @autoreleasepool {
         RefPtr<LayerFlushController> protector = m_flushController;
-        if (m_flushController->flushLayers())
+
+        SetForScope<bool> insideCallbackScope(m_insideCallback, true);
+        m_rescheduledInsideCallback = false;
+
+        if (m_flushController->flushLayers() && !m_rescheduledInsideCallback)
             invalidate();
     }
 }
@@ -169,6 +178,7 @@ void WebViewLayerFlushScheduler::layerFlushCallback()
 #if !PLATFORM(IOS_FAMILY)
     JSC::initialize();
     WTF::initializeMainThread();
+    WebCore::populateJITOperations();
 #endif
 }
 
@@ -220,37 +230,6 @@ void WebViewLayerFlushScheduler::layerFlushCallback()
 #endif
 #if ENABLE(VIDEO)
     ASSERT(!fullscreenController);
-#endif
-
-    [applicationNameForUserAgent release];
-#if !PLATFORM(IOS_FAMILY)
-    [backgroundColor release];
-#else
-    CGColorRelease(backgroundColor);
-#endif
-    [inspector release];
-    [currentNodeHighlight release];
-#if PLATFORM(MAC)
-    [immediateActionController release];
-#endif
-    [hostWindow release];
-    [policyDelegateForwarder release];
-    [UIDelegateForwarder release];
-    [frameLoadDelegateForwarder release];
-    [editingDelegateForwarder release];
-    [mediaStyle release];
-
-#if ENABLE(REMOTE_INSPECTOR)
-#if PLATFORM(IOS_FAMILY)
-    [indicateLayer release];
-#endif
-#endif
-
-#if PLATFORM(IOS_FAMILY)
-    [UIKitDelegateForwarder release];
-    [formDelegateForwarder release];
-    [_caretChangeListeners release];
-    [_fixedPositionContent release];
 #endif
 
     [super dealloc];

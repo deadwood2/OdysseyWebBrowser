@@ -43,6 +43,7 @@
 #import <pal/spi/mac/NSMenuSPI.h>
 #import <pal/spi/mac/NSSharingServicePickerSPI.h>
 #import <pal/spi/mac/NSWindowSPI.h>
+#import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
 
 @interface WKUserDataWrapper : NSObject {
@@ -183,7 +184,9 @@ void WebContextMenuProxyMac::setupServicesMenu()
         auto cgImage = image->makeCGImage();
         auto nsImage = adoptNS([[NSImage alloc] initWithCGImage:cgImage.get() size:image->size()]);
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         auto itemProvider = adoptNS([[NSItemProvider alloc] initWithItem:[nsImage TIFFRepresentation] typeIdentifier:(__bridge NSString *)kUTTypeTIFF]);
+ALLOW_DEPRECATED_DECLARATIONS_END
         items = @[ itemProvider.get() ];
     } else if (!m_context.controlledSelectionData().isEmpty()) {
         auto selectionData = adoptNS([[NSData alloc] initWithBytes:static_cast<const void*>(m_context.controlledSelectionData().data()) length:m_context.controlledSelectionData().size()]);
@@ -347,16 +350,16 @@ void WebContextMenuProxyMac::getContextMenuFromItems(const Vector<WebContextMenu
         return;
     }
     
-    Vector<WebContextMenuItemData> filteredItems;
-    filteredItems.reserveInitialCapacity(items.size());
+    auto filteredItems = items;
     auto webView = m_webView.get();
     
     bool isPopover = webView.get().window._childWindowOrderingPriority == NSWindowChildOrderingPriorityPopover;
     bool isLookupDisabled = [NSUserDefaults.standardUserDefaults boolForKey:@"LULookupDisabled"];
-
-    for (auto& item : items) {
-        if (item.action() != ContextMenuItemTagLookUpInDictionary || (!isLookupDisabled && !isPopover))
-            filteredItems.uncheckedAppend(item);
+    
+    if (isLookupDisabled || isPopover) {
+        filteredItems.removeAllMatching([] (auto& item) {
+            return item.action() == WebCore::ContextMenuItemTagLookUpInDictionary;
+        });
     }
 
     auto sparseMenuItems = retainPtr([NSPointerArray strongObjectsPointerArray]);
@@ -414,7 +417,13 @@ static NSString *menuItemIdentifier(const WebCore::ContextMenuAction action)
 
     case ContextMenuItemTagLookUpInDictionary:
         return _WKMenuItemIdentifierLookUp;
-
+#if ENABLE(APP_HIGHLIGHTS)
+    case ContextMenuItemTagAddHighlightToCurrentGroup:
+        return _WKMenuItemIdentifierAddHighlightToCurrentGroup;
+        
+    case ContextMenuItemTagAddHighlightToNewGroup:
+        return _WKMenuItemIdentifierAddHighlightToNewGroup;
+#endif
     case ContextMenuItemTagOpenFrameInNewWindow:
         return _WKMenuItemIdentifierOpenFrameInNewWindow;
 
@@ -435,6 +444,9 @@ static NSString *menuItemIdentifier(const WebCore::ContextMenuAction action)
 
     case ContextMenuItemTagReload:
         return _WKMenuItemIdentifierReload;
+
+    case ContextMenuItemTagRevealImage:
+        return _WKMenuItemIdentifierRevealImage;
 
     case ContextMenuItemTagSearchWeb:
         return _WKMenuItemIdentifierSearchWeb;

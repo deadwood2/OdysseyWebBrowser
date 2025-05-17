@@ -1,4 +1,5 @@
 # Copyright (C) 2009 Google Inc. All rights reserved.
+# Copyright (C) 2020 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -26,16 +27,37 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import logging
 import unittest
 
-from webkitpy.common.system.outputcapture import OutputCapture
 from webkitpy.tool.mocktool import MockOptions, MockTool
 from webkitpy.tool.steps.closebugforlanddiff import CloseBugForLandDiff
+
+from webkitcorepy import OutputCapture
+from webkitscmpy import mocks, Commit
 
 
 class CloseBugForLandDiffTest(unittest.TestCase):
     def test_empty_state(self):
-        capture = OutputCapture()
-        step = CloseBugForLandDiff(MockTool(), MockOptions())
-        expected_logs = "Committed r49824: <https://trac.webkit.org/changeset/49824>\nNo bug id provided.\n"
-        capture.assert_outputs(self, step.run, [{"commit_text": "Mock commit text"}], expected_logs=expected_logs)
+        with mocks.remote.Svn('svn.webkit.org/repository/webkit') as repo:
+            repo.commits['trunk'].append(Commit(
+                author=dict(name='Dmitry Titov', emails=['dimich@chromium.org']),
+                identifier='5@trunk',
+                revision=49824,
+                timestamp=1601668000,
+                message=
+                    'Manual Test for crash caused by JS accessing DOMWindow which is disconnected from the Frame.\n'
+                    'https://bugs.webkit.org/show_bug.cgi?id=30544\n'
+                    '\n'
+                    'Reviewed by Darin Adler.\n'
+                    '\n'
+                    '    manual-tests/crash-on-accessing-domwindow-without-frame.html: Added.\n',
+            ))
+
+            step = CloseBugForLandDiff(MockTool(), MockOptions())
+            with OutputCapture(level=logging.INFO) as captured:
+                step.run(dict(commit_text='Mock commit text'))
+            self.assertEqual(
+                captured.root.log.getvalue(),
+                'Committed r49824 (5@main): <https://commits.webkit.org/5@main>\nNo bug id provided.\n'
+            )

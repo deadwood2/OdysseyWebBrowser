@@ -311,6 +311,23 @@ bool ValidateRobustStateQuery(const Context *context,
                               GLenum *nativeType,
                               unsigned int *numParams);
 
+bool ValidateCopyImageSubDataBase(const Context *context,
+                                  GLuint srcName,
+                                  GLenum srcTarget,
+                                  GLint srcLevel,
+                                  GLint srcX,
+                                  GLint srcY,
+                                  GLint srcZ,
+                                  GLuint dstName,
+                                  GLenum dstTarget,
+                                  GLint dstLevel,
+                                  GLint dstX,
+                                  GLint dstY,
+                                  GLint dstZ,
+                                  GLsizei srcWidth,
+                                  GLsizei srcHeight,
+                                  GLsizei srcDepth);
+
 bool ValidateCopyTexImageParametersBase(const Context *context,
                                         TextureTarget target,
                                         GLint level,
@@ -650,7 +667,7 @@ bool ValidateGetInternalFormativBase(const Context *context,
 
 bool ValidateFramebufferNotMultisampled(const Context *context,
                                         const Framebuffer *framebuffer,
-                                        bool needResourceSamples);
+                                        bool checkReadBufferResourceSamples);
 
 bool ValidateMultitextureUnit(const Context *context, GLenum texture);
 
@@ -755,9 +772,6 @@ ANGLE_INLINE bool ValidateFramebufferComplete(const Context *context,
     return true;
 }
 
-const char *ValidateProgramDrawStates(const State &state,
-                                      const Extensions &extensions,
-                                      Program *program);
 const char *ValidateProgramPipelineDrawStates(const State &state,
                                               const Extensions &extensions,
                                               ProgramPipeline *programPipeline);
@@ -777,7 +791,7 @@ ANGLE_INLINE bool ValidateDrawAttribs(const Context *context, int64_t maxVertex)
     return true;
 }
 
-ANGLE_INLINE bool ValidateDrawArraysAttribs(const Context *context, GLint first, GLsizei count)
+ANGLE_INLINE bool ValidateDrawArraysAttribs(const Context *context, GLint first, GLsizei count, GLsizei primcount)
 {
     if (!context->isBufferAccessValidationEnabled())
     {
@@ -795,6 +809,12 @@ ANGLE_INLINE bool ValidateDrawArraysAttribs(const Context *context, GLint first,
     {
         context->validationError(GL_INVALID_OPERATION, err::kIntegerOverflow);
         return false;
+    }
+
+    if (primcount == 0)
+    {
+        // Skip the specific validation of the non-instanced vertex element limit.
+        return true;
     }
 
     return ValidateDrawAttribs(context, maxVertex);
@@ -856,7 +876,7 @@ ANGLE_INLINE bool ValidateDrawArraysCommon(const Context *context,
         }
     }
 
-    return ValidateDrawArraysAttribs(context, first, count);
+    return ValidateDrawArraysAttribs(context, first, count, primcount);
 }
 
 ANGLE_INLINE bool ValidateDrawElementsBase(const Context *context,

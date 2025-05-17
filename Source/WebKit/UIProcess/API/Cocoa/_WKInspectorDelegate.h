@@ -26,25 +26,16 @@
 #import <Foundation/Foundation.h>
 #import <WebKit/WKFoundation.h>
 
-@class WKWebView;
 @class _WKInspector;
 
 @protocol _WKInspectorDelegate <NSObject>
 @optional
 
-/*! @abstract Called when a Web Inspector instance is attached to this WKWebView. This is not called in the case of remote inspection.
-    @param inspector The Web Inspector instance attached to this WKWebView.
+/*! @abstract Called when the _WKInspector requests to show a resource externally. This
+    is used to display documentation pages and to show external URLs that are linkified.
+    @param inspector the associated inspector for which an external navigation should be triggered.
+    @param url The resource to be shown.
  */
-- (void)_webView:(WKWebView *)webView didAttachLocalInspector:(_WKInspector *)inspector;
-
-/*! @abstract Called when the Web Inspector protocol Browser domain is enabled for the Web Inspector instance attached to this WKWebView.
-    @param inspector The Web Inspector instance attached to this WKWebView.
- */
-- (void)_webView:(WKWebView *)webView browserDomainEnabledForInspector:(_WKInspector *)inspector;
-
-/*! @abstract Called when the Web Inspector protocol Browser domain is disabled for the Web Inspector instance attached to this WKWebView.
-    @param inspector The Web Inspector instance attached to this WKWebView.
- */
-- (void)_webView:(WKWebView *)webView browserDomainDisabledForInspector:(_WKInspector *)inspector;
+- (void)inspector:(_WKInspector *)inspector openURLExternally:(NSURL *)url;
 
 @end

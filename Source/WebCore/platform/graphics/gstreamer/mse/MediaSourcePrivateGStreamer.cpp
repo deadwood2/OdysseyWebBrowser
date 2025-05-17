@@ -51,9 +51,11 @@
 
 namespace WebCore {
 
-void MediaSourcePrivateGStreamer::open(MediaSourcePrivateClient& mediaSource, MediaPlayerPrivateGStreamerMSE& playerPrivate)
+Ref<MediaSourcePrivateGStreamer> MediaSourcePrivateGStreamer::open(MediaSourcePrivateClient& mediaSource, MediaPlayerPrivateGStreamerMSE& playerPrivate)
 {
-    mediaSource.setPrivateAndOpen(adoptRef(*new MediaSourcePrivateGStreamer(mediaSource, playerPrivate)));
+    auto mediaSourcePrivate = adoptRef(*new MediaSourcePrivateGStreamer(mediaSource, playerPrivate));
+    mediaSource.setPrivateAndOpen(mediaSourcePrivate.copyRef());
+    return mediaSourcePrivate;
 }
 
 MediaSourcePrivateGStreamer::MediaSourcePrivateGStreamer(MediaSourcePrivateClient& mediaSource, MediaPlayerPrivateGStreamerMSE& playerPrivate)
@@ -74,7 +76,7 @@ MediaSourcePrivateGStreamer::~MediaSourcePrivateGStreamer()
         sourceBufferPrivate->clearMediaSource();
 }
 
-MediaSourcePrivateGStreamer::AddStatus MediaSourcePrivateGStreamer::addSourceBuffer(const ContentType& contentType, RefPtr<SourceBufferPrivate>& sourceBufferPrivate)
+MediaSourcePrivateGStreamer::AddStatus MediaSourcePrivateGStreamer::addSourceBuffer(const ContentType& contentType, bool, RefPtr<SourceBufferPrivate>& sourceBufferPrivate)
 {
     DEBUG_LOG(LOGIDENTIFIER, contentType);
     sourceBufferPrivate = SourceBufferPrivateGStreamer::create(this, contentType, m_playerPrivate);
@@ -93,7 +95,7 @@ void MediaSourcePrivateGStreamer::removeSourceBuffer(SourceBufferPrivate* source
     m_activeSourceBuffers.remove(sourceBufferPrivateGStreamer.get());
 }
 
-void MediaSourcePrivateGStreamer::durationChanged()
+void MediaSourcePrivateGStreamer::durationChanged(const MediaTime&)
 {
     ASSERT(isMainThread());
 
@@ -109,11 +111,13 @@ void MediaSourcePrivateGStreamer::markEndOfStream(EndOfStreamStatus status)
 {
     ASSERT(isMainThread());
     m_playerPrivate.markEndOfStream(status);
+    m_isEnded = true;
 }
 
 void MediaSourcePrivateGStreamer::unmarkEndOfStream()
 {
     notImplemented();
+    m_isEnded = false;
 }
 
 MediaPlayer::ReadyState MediaSourcePrivateGStreamer::readyState() const
@@ -134,6 +138,16 @@ void MediaSourcePrivateGStreamer::waitForSeekCompleted()
 void MediaSourcePrivateGStreamer::seekCompleted()
 {
     m_playerPrivate.seekCompleted();
+}
+
+MediaTime MediaSourcePrivateGStreamer::duration() const
+{
+    return m_mediaSource->duration();
+}
+
+MediaTime MediaSourcePrivateGStreamer::currentMediaTime() const
+{
+    return m_playerPrivate.currentMediaTime();
 }
 
 void MediaSourcePrivateGStreamer::sourceBufferPrivateDidChangeActiveState(SourceBufferPrivateGStreamer* sourceBufferPrivate, bool isActive)

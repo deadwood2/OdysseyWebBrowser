@@ -28,6 +28,7 @@
 #include "TestController.h"
 
 #include "PlatformWebView.h"
+#include <WebKit/WKTextChecker.h>
 #include <gtk/gtk.h>
 #include <wtf/Platform.h>
 #include <wtf/RunLoop.h>
@@ -150,9 +151,17 @@ void TestController::platformResetPreferencesToConsistentValues()
     m_mainWebView->dismissAllPopupMenus();
 }
 
-void TestController::updatePlatformSpecificTestOptionsForTest(TestOptions& options, const std::string&) const
+bool TestController::platformResetStateToConsistentValues(const TestOptions&)
 {
-    options.enableModernMediaControls = false;
+    WKTextCheckerContinuousSpellCheckingEnabledStateChanged(true);
+    return true;
+}
+
+TestFeatures TestController::platformSpecificFeatureDefaultsForTest(const TestCommand&) const
+{
+    TestFeatures features;
+    features.boolWebPreferenceFeatures.insert({ "ModernMediaControlsEnabled", false });
+    return features;
 }
 
 } // namespace WTR

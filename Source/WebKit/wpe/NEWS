@@ -1,101 +1,133 @@
 =================
-WPE WebKit 2.30.6
+WPE WebKit 2.32.4
 =================
 
-What's new in WPE WebKit 2.30.6?
+What's new in WPE WebKit 2.32.4?
 
-  - Update User-Agent quirks again for Google Docs and Google Drive.
+  - Do not append .asc extension to downloaded text/plain files.
   - Fix several crashes and rendering issues.
 
 =================
-WPE WebKit 2.30.5
+WPE WebKit 2.32.3
 =================
 
-What's new in WPE WebKit 2.30.5?
+What's new WPE WebKit 2.32.3?
 
-  - Fix RunLoop objects leaked in worker threads.
-  - Fix aarch64 llint build with JIT disabled.
-  - Use Internet Explorer quirk for Google Docs.
-
-=================
-WPE WebKit 2.30.4
-=================
-
-What's new in WPE WebKit 2.30.4?
-
-  - Fix text data sent with WebSocket when using libsoup older than 2.68.
-  - Fix rendering on the Raspberry Pi 3 using the proprietary GPU driver.
-  - Fix clipping of descendant layers of a mask layer.
-  - Fix the build with ICU 68.1.
-
-=================
-WPE WebKit 2.30.3
-=================
-
-What's new in WPE WebKit 2.30.3?
-
-  - Add new JavaScriptCore build option USE_64KB_PAGE_BLOCK.
-  - Update Outlook User-Agent quirk.
-  - Fix rendering of CSS backdrop filters with rounded borders.
-  - Fix <iframe> scrolling when asynchronous scrolling is in use.
-  - Fix the build with video support disabled.
+  - Properly set the cookies settings after a network process crash.
+  - Fix accessibility tree after a cross site navigation with PSON enabled.
+  - Ensure WebKitScriptWorld::window-object-cleared signal is always emitted.
   - Fix several crashes and rendering issues.
 
 =================
-WPE WebKit 2.30.2
+WPE WebKit 2.32.2
 =================
 
-What's new in WPE WebKit 2.30.2?
+What's new WPE WebKit 2.32.2?
 
-  - Fix cookies set in WebSocket requests not appearing in the inspector.
-  - Fix scrolling when smooth scrolling is enabled in async scrolling mode.
-  - Fix WebSocket requests with same-site cookies.
-  - Fix TLS certificate information for service workers.
-  - Handle chassis type when its value is quoted.
-  - Fix the build with ENABLE_MEDIA_STREAM enabled and ENABLE_WEB_RTC_DISABLED.
-  - Fix the build with ENABLE_ACCELERATED_2D_CANVAS enabled.
+  - Improve the touch gesture touch controller.
+  - Fix handling of wheel events for devices which produce axis events.
+  - Fix kinetic scrolling on touchpad with async scrolling off.
+  - Fix a crash on empty drag operation in X11.
+  - Handle null native surface for for surfaceless rendering.
+  - Fix JavaScriptCore crash on 32-bit big endian systems.
   - Fix several crashes and rendering issues.
 
 =================
-WPE WebKit 2.30.1
+WPE WebKit 2.32.1
 =================
 
-What's new in WPE WebKit 2.30.1?
+What's new WPE WebKit 2.32.1?
 
-  - Fix downloads started by an ephemeral web context.
+  - Support building against the Musl C library.
+  - Support building against ICU version 69 or newer.
+  - Improve handling of Media Capture devices.
+  - Improve WebAudio playback.
+  - Improve video orientation handling.
+  - Improve seeking support for MSE playback.
+  - Improve flush support in EME decryptors.
+  - Fix HTTP status codes for requests done through a custom URI handler.
+  - Fix the Bubblewrap sandbox in certain 32-bit systems.
+  - Fix inconsistencies between the WebKitWebView.is-muted property state
+    and values returned by webkit_web_view_is_playing_audio().
+  - Fix the build with ENABLE_VIDEO=OFF.
+  - Fix the build of the Qt QML WPEView plug-in.
+  - Fix wrong timestamps for long-lived cookies.
+  - Fix several crashes and rendering issues.
 
 =================
-WPE WebKit 2.30.0
+WPE WebKit 2.32.0
 =================
 
-What's new in WPE WebKit 2.30.0?
+What's new WPE WebKit 2.32.0?
 
-  - Fix NTLM authentication.
-  - Fix the build due to the seccomp.h header not being found.
-
-==================
-WPE WebKit 2.29.91
-==================
-
-What's new in WPE WebKit 2.29.91?
-
-  - Enable support for the Notification Web API.
-  - Stop using the Firefox User-Agent quirk for Google Docs.
-  - Fix User-Agent header after a redirect when a new quirk is required.
-  - Fix rendering of the frames timeline panel in the Web Inspector.
-  - Fix display of per-thread CPU usage in the Web Inspector.
+  - Fix the authentication request port when URL omits the port.
+  - Fix iframe scrolling when main frame is scrolled in async scrolling mode.
+  - Stop using g_memdup.
+  - Show a warning message when overriding signal handler for threading suspension.
+  - Fix the build on RISC-V with GCC 11.
   - Fix several crashes and rendering issues.
 
 ==================
-WPE WebKit 2.29.90
+WPE WebKit 2.31.91
 ==================
 
-What's new in WPE WebKit 2.29.90?
+What's new WPE WebKit 2.31.91?
 
-  - Fix font variation settings when font smoothing setting is also present.
-  - Fix argument order for clone syscall seccomp filter on s390x.
-  - Fix a crash when selecting text.
+  - Make WebKitSecurityOrigin a simple data store for <protocol, host, port>
+    and deprecate webkit_security_origin_is_opaque().
+  - Fix user agent again to work on several Google websites.
+  - Fix web view URL on web process termination signals.
+  - Fix preferred language overrides sent to the web process.
+  - Fix the build on i386.
+
+==================
+WPE WebKit 2.31.90
+==================
+
+What's new WPE WebKit 2.31.90?
+
+  - Add permission request API for MediaKeySystem access.
+  - Fix rendering when using opacity filters on hardware accelerated layers.
+  - Fix flatpak-spawn subsandbox to not clear environment variables.
+  - Ensure a URI scheme handler can't be registered multiple times.
   - Fix several crashes and rendering issues.
+  - The minimum required GStreamer version is now 1.14.
+  - CEA-608 closed captions support (requires WEBKIT_GST_USE_PLAYBIN3=1 environment variable).
+  - Advertise CBCS decryption and VP9 support in Thunder.
+  - Advertise DASH as supported in the media player.
+  - Improved support for playbin3.
+
+=================
+WPE WebKit 2.31.1
+=================
+
+What's new in WPE WebKit 2.31.1?
+
+  - Remove support for NPAPI plugins.
+  - Enable the web process cache when PSON is enabled too.
+  - TLS errors and proxy settings APIs have been moved from WebKitContext to WebKitWebsiteDataManager.
+  - Add new API to remove individual scripts/stylesheets using WebKitUserContentManager.
+  - Correctly apply the system font scaling factor.
+  - Show main loop frames information in the web inspector.
+  - Internal audio rendering support. The WebProcess can now maintain a single
+    connection to the system audio daemon and perform audio mixing internally.
+	For the time being this has to be enabled at runtime through the
+	WEBKIT_GST_ENABLE_AUDIO_MIXER=1 environment variable.
+  - On-demand GStreamer initialization support, mostly contained to WebProcess.
+    GStreamer used to be initialized unconditionally once from the UI process
+	and once from the WebProcess. GStreamer is now used mostly only from the
+    WebProcess, even for audio/video capture devices probing. Users of the
+    webkit_web_view_can_show_mime_type API will still trigger GStreamer
+    initialization in the UIProcess though.
+  - ImageDecoder video decoder switched to decodebin3.
+  - WebAudio to MediaStream support.
+  - Multi-channel (>2) support for the AudioFileReader.
+  - Multi-channel (>2) support for the WebAudio renderer.
+  - Audio worklet support.
+  - Optional support for native formats rendering.
+  - Opus support for the Thunder CDM.
+  - Common-encryption support for CMAF in Thunder CDM.
+  - MSE/EME/WebAudio and general media playback bug fixes.
 
 =================
 WPE WebKit 2.29.2

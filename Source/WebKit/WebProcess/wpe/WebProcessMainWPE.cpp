@@ -36,6 +36,10 @@
 #include <atk/atk.h>
 #endif
 
+#if USE(GCRYPT)
+#include <pal/crypto/gcrypt/Initialization.h>
+#endif
+
 namespace WebKit {
 using namespace WebCore;
 
@@ -72,10 +76,14 @@ static void initializeAccessibility()
 }
 #endif
 
-class WebProcessMainWPE final : public AuxiliaryProcessMainBase {
+class WebProcessMainWPE final : public AuxiliaryProcessMainBase<WebProcess> {
 public:
     bool platformInitialize() override
     {
+#if USE(GCRYPT)
+        PAL::GCrypt::initialize();
+#endif
+
 #if ENABLE(DEVELOPER_MODE)
         if (g_getenv("WEBKIT2_PAUSE_WEB_PROCESS_ON_LAUNCH"))
             WTF::sleep(30_s);
@@ -95,7 +103,7 @@ public:
 
 int WebProcessMain(int argc, char** argv)
 {
-    return AuxiliaryProcessMain<WebProcess, WebProcessMainWPE>(argc, argv);
+    return AuxiliaryProcessMain<WebProcessMainWPE>(argc, argv);
 }
 
 } // namespace WebKit

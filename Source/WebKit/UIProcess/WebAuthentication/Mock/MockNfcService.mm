@@ -57,15 +57,15 @@ uint8_t tagID2[] = { 0x02 };
     RetainPtr<NSData> _tagID;
 }
 
-@synthesize technology=_technology;
-@synthesize AppData=_AppData;
-@synthesize UID=_UID;
-@synthesize ndefAvailability=_ndefAvailability;
-@synthesize ndefMessageSize=_ndefMessageSize;
-@synthesize ndefContainerSize=_ndefContainerSize;
-@synthesize tagA=_tagA;
-@synthesize tagB=_tagB;
-@synthesize tagF=_tagF;
+@synthesize technology = _technology;
+@synthesize AppData = _AppData;
+@synthesize UID = _UID;
+@synthesize ndefAvailability = _ndefAvailability;
+@synthesize ndefMessageSize = _ndefMessageSize;
+@synthesize ndefContainerSize = _ndefContainerSize;
+@synthesize tagA = _tagA;
+@synthesize tagB = _tagB;
+@synthesize tagF = _tagF;
 
 - (NFTagType)type
 {
@@ -188,9 +188,9 @@ NSData* MockNfcService::transceive()
     if (m_configuration.nfc->payloadBase64.isEmpty())
         return nil;
 
-    auto result = [[NSData alloc] initWithBase64EncodedString:m_configuration.nfc->payloadBase64[0] options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    auto result = adoptNS([[NSData alloc] initWithBase64EncodedString:m_configuration.nfc->payloadBase64[0] options:NSDataBase64DecodingIgnoreUnknownCharacters]);
     m_configuration.nfc->payloadBase64.remove(0);
-    return [result autorelease];
+    return result.autorelease();
 }
 
 void MockNfcService::receiveStopPolling()

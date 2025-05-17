@@ -49,6 +49,7 @@ NSString * const _WKWebsiteDataTypeSearchFieldRecentSearches = @"_WKWebsiteDataT
 NSString * const _WKWebsiteDataTypeResourceLoadStatistics = @"_WKWebsiteDataTypeResourceLoadStatistics";
 NSString * const _WKWebsiteDataTypeCredentials = @"_WKWebsiteDataTypeCredentials";
 NSString * const _WKWebsiteDataTypeAdClickAttributions = @"_WKWebsiteDataTypeAdClickAttributions";
+NSString * const _WKWebsiteDataTypePrivateClickMeasurements = @"_WKWebsiteDataTypePrivateClickMeasurements";
 NSString * const _WKWebsiteDataTypeAlternativeServices = @"_WKWebsiteDataTypeAlternativeServices";
 
 #if PLATFORM(MAC)
@@ -102,8 +103,8 @@ static NSString *dataTypesToString(NSSet *dataTypes)
         [array addObject:@"Resource Load Statistics"];
     if ([dataTypes containsObject:_WKWebsiteDataTypeCredentials])
         [array addObject:@"Credentials"];
-    if ([dataTypes containsObject:_WKWebsiteDataTypeAdClickAttributions])
-        [array addObject:@"Ad Click Attributions"];
+    if ([dataTypes containsObject:_WKWebsiteDataTypeAdClickAttributions] || [dataTypes containsObject:_WKWebsiteDataTypePrivateClickMeasurements])
+        [array addObject:@"Private Click Measurements"];
     if ([dataTypes containsObject:_WKWebsiteDataTypeAlternativeServices])
         [array addObject:@"Alternative Services"];
 
@@ -149,7 +150,7 @@ static NSString *dataTypesToString(NSSet *dataTypes)
     if (!size)
         return nil;
 
-    return [[[_WKWebsiteDataSize alloc] initWithSize:*size] autorelease];
+    return adoptNS([[_WKWebsiteDataSize alloc] initWithSize:*size]).autorelease();
 }
 
 - (NSArray<NSString *> *)_originsStrings

@@ -32,6 +32,7 @@
 #import "TestInvocation.h"
 #import "TestRunnerWKWebView.h"
 #import "TestWebsiteDataStoreDelegate.h"
+#import "WebCoreTestSupport.h"
 #import <Foundation/Foundation.h>
 #import <Security/SecItem.h>
 #import <WebKit/WKContextConfigurationRef.h>
@@ -58,36 +59,46 @@
 
 namespace WTR {
 
-static WKWebViewConfiguration *globalWebViewConfiguration;
-static TestWebsiteDataStoreDelegate *globalWebsiteDataStoreDelegateClient;
+static RetainPtr<WKWebViewConfiguration>& globalWebViewConfiguration()
+{
+    static NeverDestroyed<RetainPtr<WKWebViewConfiguration>> globalWebViewConfiguration;
+    return globalWebViewConfiguration;
+}
+
+static RetainPtr<TestWebsiteDataStoreDelegate>& globalWebsiteDataStoreDelegateClient()
+{
+    static NeverDestroyed<RetainPtr<TestWebsiteDataStoreDelegate>> globalWebsiteDataStoreDelegateClient;
+    return globalWebsiteDataStoreDelegateClient;
+}
 
 void initializeWebViewConfiguration(const char* libraryPath, WKStringRef injectedBundlePath, WKContextRef context, WKContextConfigurationRef contextConfiguration)
 {
-    [globalWebViewConfiguration release];
-    globalWebViewConfiguration = [[WKWebViewConfiguration alloc] init];
+    globalWebViewConfiguration() = [&] {
+        auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
 
-    globalWebViewConfiguration.processPool = (__bridge WKProcessPool *)context;
-    globalWebViewConfiguration.websiteDataStore = (__bridge WKWebsiteDataStore *)TestController::defaultWebsiteDataStore();
-    globalWebViewConfiguration._allowUniversalAccessFromFileURLs = YES;
-    globalWebViewConfiguration._allowTopNavigationToDataURLs = YES;
-    globalWebViewConfiguration._applePayEnabled = YES;
+        [configuration setProcessPool:(__bridge WKProcessPool *)context];
+        [configuration setWebsiteDataStore:(__bridge WKWebsiteDataStore *)TestController::defaultWebsiteDataStore()];
+        [configuration _setAllowUniversalAccessFromFileURLs:YES];
+        [configuration _setAllowTopNavigationToDataURLs:YES];
+        [configuration _setApplePayEnabled:YES];
 
-    [globalWebsiteDataStoreDelegateClient release];
-    globalWebsiteDataStoreDelegateClient = [[TestWebsiteDataStoreDelegate alloc] init];
-    [globalWebViewConfiguration.websiteDataStore set_delegate:globalWebsiteDataStoreDelegateClient];
+        globalWebsiteDataStoreDelegateClient() = adoptNS([[TestWebsiteDataStoreDelegate alloc] init]);
+        [[configuration websiteDataStore] set_delegate:globalWebsiteDataStoreDelegateClient().get()];
 
 #if PLATFORM(IOS_FAMILY)
-    globalWebViewConfiguration.allowsInlineMediaPlayback = YES;
-    globalWebViewConfiguration._inlineMediaPlaybackRequiresPlaysInlineAttribute = NO;
-    globalWebViewConfiguration._invisibleAutoplayNotPermitted = NO;
-    globalWebViewConfiguration._mediaDataLoadsAutomatically = YES;
-    globalWebViewConfiguration.requiresUserActionForMediaPlayback = NO;
+        [configuration setAllowsInlineMediaPlayback:YES];
+        [configuration _setInlineMediaPlaybackRequiresPlaysInlineAttribute:NO];
+        [configuration _setInvisibleAutoplayNotPermitted:NO];
+        [configuration _setMediaDataLoadsAutomatically:YES];
+        [configuration setRequiresUserActionForMediaPlayback:NO];
 #endif
-    globalWebViewConfiguration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+        [configuration setMediaTypesRequiringUserActionForPlayback:WKAudiovisualMediaTypeNone];
 
 #if USE(SYSTEM_PREVIEW)
-    globalWebViewConfiguration._systemPreviewEnabled = YES;
+        [configuration _setSystemPreviewEnabled:YES];
 #endif
+        return configuration;
+    }();
 }
 
 void TestController::cocoaPlatformInitialize()
@@ -106,74 +117,71 @@ void TestController::cocoaPlatformInitialize()
 
 WKContextRef TestController::platformContext()
 {
-    return (__bridge WKContextRef)globalWebViewConfiguration.processPool;
+    return (__bridge WKContextRef)[globalWebViewConfiguration() processPool];
 }
 
 WKPreferencesRef TestController::platformPreferences()
 {
-    return (__bridge WKPreferencesRef)globalWebViewConfiguration.preferences;
+    return (__bridge WKPreferencesRef)[globalWebViewConfiguration() preferences];
 }
 
-void TestController::platformAddTestOptions(TestOptions& options) const
+TestFeatures TestController::platformSpecificFeatureOverridesDefaultsForTest(const TestCommand&) const
 {
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnNavigation"])
-        options.contextOptions.enableProcessSwapOnNavigation = true;
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnWindowOpen"])
-        options.contextOptions.enableProcessSwapOnWindowOpen = true;
+    TestFeatures features;
 
-#if PLATFORM(IOS_FAMILY)
-    if (options.enableInAppBrowserPrivacy)
-        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"WebKitDebugIsInAppBrowserPrivacyEnabled"];
-#endif
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnNavigation"])
+        features.boolTestRunnerFeatures.insert({ "enableProcessSwapOnNavigation", true });
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnWindowOpen"])
+        features.boolTestRunnerFeatures.insert({ "enableProcessSwapOnWindowOpen", true });
+
+    return features;
 }
 
 void TestController::platformInitializeDataStore(WKPageConfigurationRef, const TestOptions& options)
 {
-    if (options.useEphemeralSession || options.standaloneWebApplicationURL.length()) {
-        auto websiteDataStoreConfig = options.useEphemeralSession ? [[[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration] autorelease] : [[[_WKWebsiteDataStoreConfiguration alloc] init] autorelease];
-        if (!options.useEphemeralSession)
-            configureWebsiteDataStoreTemporaryDirectories((WKWebsiteDataStoreConfigurationRef)websiteDataStoreConfig);
-        if (options.standaloneWebApplicationURL.length())
-            [websiteDataStoreConfig setStandaloneApplicationURL:[NSURL URLWithString:[NSString stringWithUTF8String:options.standaloneWebApplicationURL.c_str()]]];
-        m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)[[[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfig] autorelease];
+    bool useEphemeralSession = options.useEphemeralSession();
+    auto standaloneWebApplicationURL = options.standaloneWebApplicationURL();
+    if (useEphemeralSession || standaloneWebApplicationURL.length() || options.enableInAppBrowserPrivacy()) {
+        auto websiteDataStoreConfig = useEphemeralSession ? adoptNS([[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration]) : adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
+        if (!useEphemeralSession)
+            configureWebsiteDataStoreTemporaryDirectories((WKWebsiteDataStoreConfigurationRef)websiteDataStoreConfig.get());
+        if (standaloneWebApplicationURL.length())
+            [websiteDataStoreConfig setStandaloneApplicationURL:[NSURL URLWithString:[NSString stringWithUTF8String:standaloneWebApplicationURL.c_str()]]];
+#if PLATFORM(IOS_FAMILY)
+        if (options.enableInAppBrowserPrivacy())
+            [websiteDataStoreConfig setEnableInAppBrowserPrivacyForTesting:YES];
+#endif
+        m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfig.get()]).get();
     } else
-        m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)globalWebViewConfiguration.websiteDataStore;
+        m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)[globalWebViewConfiguration() websiteDataStore];
 }
 
 void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOptions& options)
 {
-    RetainPtr<WKWebViewConfiguration> copiedConfiguration = adoptNS([globalWebViewConfiguration copy]);
+    auto copiedConfiguration = adoptNS([globalWebViewConfiguration() copy]);
 
 #if PLATFORM(IOS_FAMILY)
-    if (options.useDataDetection)
+    if (options.useDataDetection())
         [copiedConfiguration setDataDetectorTypes:WKDataDetectorTypeAll];
-    if (options.ignoresViewportScaleLimits)
+    if (options.ignoresViewportScaleLimits())
         [copiedConfiguration setIgnoresViewportScaleLimits:YES];
-    if (options.useCharacterSelectionGranularity)
+    if (options.useCharacterSelectionGranularity())
         [copiedConfiguration setSelectionGranularity:WKSelectionGranularityCharacter];
-    if (options.isAppBoundWebView)
+    if (options.isAppBoundWebView())
         [copiedConfiguration setLimitsNavigationsToAppBoundDomains:YES];
-#else
-    [copiedConfiguration _setServiceControlsEnabled:options.enableServiceControls];
 #endif
 
-    if (options.enableAttachmentElement)
+    if (options.enableAttachmentElement())
         [copiedConfiguration _setAttachmentElementEnabled:YES];
 
-    if (options.enableColorFilter)
-        [copiedConfiguration _setColorFilterEnabled:YES];
-
-    if (options.enableEditableImages)
-        [copiedConfiguration _setEditableImagesEnabled:YES];
-
     [copiedConfiguration setWebsiteDataStore:(WKWebsiteDataStore *)websiteDataStore()];
-
-    [copiedConfiguration _setAllowTopNavigationToDataURLs:options.allowTopNavigationToDataURLs];
+    [copiedConfiguration _setAllowTopNavigationToDataURLs:options.allowTopNavigationToDataURLs()];
 
     configureContentMode(copiedConfiguration.get(), options);
 
-    if (options.applicationManifest.length()) {
-        auto manifestPath = [NSString stringWithUTF8String:options.applicationManifest.c_str()];
+    auto applicationManifest = options.applicationManifest();
+    if (applicationManifest.length()) {
+        auto manifestPath = [NSString stringWithUTF8String:applicationManifest.c_str()];
         NSString *text = [NSString stringWithContentsOfFile:manifestPath usedEncoding:nullptr error:nullptr];
         [copiedConfiguration _setApplicationManifest:[_WKApplicationManifest applicationManifestFromJSON:text manifestURL:nil documentURL:nil]];
     }
@@ -181,23 +189,23 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
     m_mainWebView = makeUnique<PlatformWebView>(copiedConfiguration.get(), options);
     finishCreatingPlatformWebView(m_mainWebView.get(), options);
 
-    if (options.punchOutWhiteBackgroundsInDarkMode)
+    if (options.punchOutWhiteBackgroundsInDarkMode())
         m_mainWebView->setDrawsBackground(false);
 
-    if (options.editable)
+    if (options.editable())
         m_mainWebView->setEditable(true);
 
-    m_mainWebView->platformView().allowsLinkPreview = options.allowsLinkPreview;
+    m_mainWebView->platformView().allowsLinkPreview = options.allowsLinkPreview();
     [m_mainWebView->platformView() _setShareSheetCompletesImmediatelyWithResolutionForTesting:YES];
 }
 
 PlatformWebView* TestController::platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions& options)
 {
-    WKWebViewConfiguration *newConfiguration = [[globalWebViewConfiguration copy] autorelease];
-    newConfiguration._relatedWebView = static_cast<WKWebView*>(parentView->platformView());
-    if (newConfiguration._relatedWebView)
-        newConfiguration.websiteDataStore = newConfiguration._relatedWebView.configuration.websiteDataStore;
-    PlatformWebView* view = new PlatformWebView(newConfiguration, options);
+    auto newConfiguration = adoptNS([globalWebViewConfiguration() copy]);
+    [newConfiguration _setRelatedWebView:static_cast<WKWebView*>(parentView->platformView())];
+    if ([newConfiguration _relatedWebView])
+        [newConfiguration setWebsiteDataStore:[newConfiguration _relatedWebView].configuration.websiteDataStore];
+    PlatformWebView* view = new PlatformWebView(newConfiguration.get(), options);
     finishCreatingPlatformWebView(view, options);
     return view;
 }
@@ -206,7 +214,7 @@ PlatformWebView* TestController::platformCreateOtherPage(PlatformWebView* parent
 void TestController::finishCreatingPlatformWebView(PlatformWebView* view, const TestOptions& options)
 {
 #if PLATFORM(MAC)
-    if (options.shouldShowWebView)
+    if (options.shouldShowWebView())
         [view->platformWindow() orderFront:nil];
     else
         [view->platformWindow() orderBack:nil];
@@ -216,7 +224,7 @@ void TestController::finishCreatingPlatformWebView(PlatformWebView* view, const 
 WKContextRef TestController::platformAdjustContext(WKContextRef context, WKContextConfigurationRef contextConfiguration)
 {
     initializeWebViewConfiguration(libraryPathForTesting(), injectedBundlePath(), context, contextConfiguration);
-    return (__bridge WKContextRef)globalWebViewConfiguration.processPool;
+    return (__bridge WKContextRef)[globalWebViewConfiguration() processPool];
 }
 
 void TestController::platformRunUntil(bool& done, WTF::Seconds timeout)
@@ -266,12 +274,12 @@ void TestController::resetContentExtensions()
     }
 }
 
-void TestController::setApplicationBundleIdentifier(const String& bundleIdentifier)
+void TestController::setApplicationBundleIdentifier(const std::string& bundleIdentifier)
 {
-    if (bundleIdentifier.isEmpty())
+    if (bundleIdentifier.empty())
         return;
     
-    [TestRunnerWKWebView _setApplicationBundleIdentifier:(NSString *)bundleIdentifier.createCFString().get()];
+    [TestRunnerWKWebView _setApplicationBundleIdentifier:(NSString *)toWTFString(bundleIdentifier).createCFString().get()];
 }
 
 void TestController::clearApplicationBundleIdentifierTestingOverride()
@@ -289,12 +297,15 @@ void TestController::cocoaResetStateToConsistentValues(const TestOptions& option
         TestRunnerWKWebView *platformView = webView->platformView();
         platformView._viewScale = 1;
         platformView._minimumEffectiveDeviceWidth = 0;
-        [platformView _setContinuousSpellCheckingEnabledForTesting:options.shouldShowSpellCheckingDots];
+        [platformView _setContinuousSpellCheckingEnabledForTesting:options.shouldShowSpellCheckingDots()];
         [platformView resetInteractionCallbacks];
         [platformView _resetNavigationGestureStateForTesting];
+        [platformView.configuration.preferences setTextInteractionEnabled:options.textInteractionEnabled()];
     }
 
-    [globalWebsiteDataStoreDelegateClient setAllowRaisingQuota:YES];
+    [globalWebsiteDataStoreDelegateClient() setAllowRaisingQuota:YES];
+
+    WebCoreTestSupport::setAdditionalSupportedImageTypesForTesting(options.additionalSupportedImageTypes().c_str());
 }
 
 void TestController::platformWillRunTest(const TestInvocation& testInvocation)
@@ -336,7 +347,7 @@ unsigned TestController::imageCountInGeneralPasteboard() const
 void TestController::removeAllSessionCredentials()
 {
     auto types = adoptNS([[NSSet alloc] initWithObjects:_WKWebsiteDataTypeCredentials, nil]);
-    [globalWebViewConfiguration.websiteDataStore removeDataOfTypes:types.get() modifiedSince:[NSDate distantPast] completionHandler:^() {
+    [[globalWebViewConfiguration() websiteDataStore] removeDataOfTypes:types.get() modifiedSince:[NSDate distantPast] completionHandler:^() {
         m_currentInvocation->didRemoveAllSessionCredentials();
     }];
 }
@@ -347,36 +358,36 @@ void TestController::getAllStorageAccessEntries()
     if (!parentView)
         return;
 
-    [globalWebViewConfiguration.websiteDataStore _getAllStorageAccessEntriesFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *domains) {
+    [[globalWebViewConfiguration() websiteDataStore] _getAllStorageAccessEntriesFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *domains) {
         m_currentInvocation->didReceiveAllStorageAccessEntries(makeVector<String>(domains));
     }];
 }
 
-void TestController::loadedThirdPartyDomains()
+void TestController::loadedSubresourceDomains()
 {
     auto* parentView = mainWebView();
     if (!parentView)
         return;
     
-    [globalWebViewConfiguration.websiteDataStore _loadedThirdPartyDomainsFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *domains) {
-        m_currentInvocation->didReceiveLoadedThirdPartyDomains(makeVector<String>(domains));
+    [[globalWebViewConfiguration() websiteDataStore] _loadedSubresourceDomainsFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *domains) {
+        m_currentInvocation->didReceiveLoadedSubresourceDomains(makeVector<String>(domains));
     }];
 }
 
-void TestController::clearLoadedThirdPartyDomains()
+void TestController::clearLoadedSubresourceDomains()
 {
     auto* parentView = mainWebView();
     if (!parentView)
         return;
 
-    [globalWebViewConfiguration.websiteDataStore _clearLoadedThirdPartyDomainsFor:parentView->platformView()];
+    [[globalWebViewConfiguration() websiteDataStore] _clearLoadedSubresourceDomainsFor:parentView->platformView()];
 }
 
 void TestController::injectUserScript(WKStringRef script)
 {
     auto userScript = adoptNS([[WKUserScript alloc] initWithSource: toWTFString(script) injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO]);
 
-    [[globalWebViewConfiguration userContentController] addUserScript: userScript.get()];
+    [[globalWebViewConfiguration() userContentController] addUserScript: userScript.get()];
 }
 
 void TestController::addTestKeyToKeychain(const String& privateKeyBase64, const String& attrLabel, const String& applicationTagBase64)
@@ -448,14 +459,14 @@ bool TestController::keyExistsInKeychain(const String& attrLabel, const String& 
 
 void TestController::setAllowStorageQuotaIncrease(bool value)
 {
-    [globalWebsiteDataStoreDelegateClient setAllowRaisingQuota: value];
+    [globalWebsiteDataStoreDelegateClient() setAllowRaisingQuota: value];
 }
 
 void TestController::setAllowsAnySSLCertificate(bool allows)
 {
     m_allowsAnySSLCertificate = allows;
-    WKContextSetAllowsAnySSLCertificateForWebSocketTesting(platformContext(), allows);
-    [globalWebsiteDataStoreDelegateClient setAllowAnySSLCertificate: allows];
+    WKWebsiteDataStoreSetAllowsAnySSLCertificateForWebSocketTesting(websiteDataStore(), allows);
+    [globalWebsiteDataStoreDelegateClient() setAllowAnySSLCertificate: allows];
 }
 
 void TestController::installCustomMenuAction(const String& name, bool dismissesAutomatically)
@@ -490,12 +501,11 @@ bool TestController::isDoingMediaCapture() const
 
 static WKContentMode contentMode(const TestOptions& options)
 {
-    if (options.contentMode == "desktop"_s)
+    auto mode = options.contentMode();
+    if (mode == "desktop")
         return WKContentModeDesktop;
-
-    if (options.contentMode == "mobile"_s)
+    if (mode == "mobile")
         return WKContentModeMobile;
-
     return WKContentModeRecommended;
 }
 

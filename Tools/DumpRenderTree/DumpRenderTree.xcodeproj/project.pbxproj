@@ -109,9 +109,13 @@
 		5DB9AC9E0F722C3600684641 /* WebKitWeightWatcher700.ttf in Copy Font Files */ = {isa = PBXBuildFile; fileRef = 375F09770DAC3CB600C8B4E5 /* WebKitWeightWatcher700.ttf */; };
 		5DB9AC9F0F722C3600684641 /* WebKitWeightWatcher800.ttf in Copy Font Files */ = {isa = PBXBuildFile; fileRef = 375F09780DAC3CB600C8B4E5 /* WebKitWeightWatcher800.ttf */; };
 		5DB9ACA00F722C3600684641 /* WebKitWeightWatcher900.ttf in Copy Font Files */ = {isa = PBXBuildFile; fileRef = 375F09790DAC3CB600C8B4E5 /* WebKitWeightWatcher900.ttf */; };
+		7C9893DF25433F8E00354EBC /* TestOptionsGeneratedWebKitLegacyKeyMapping.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7C9893DE25433C8700354EBC /* TestOptionsGeneratedWebKitLegacyKeyMapping.cpp */; };
+		7CFF9BBF2533BB240008009F /* TestFeatures.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CFF9BBE2533BB240008009F /* TestFeatures.cpp */; };
+		7CFF9BC22533BC160008009F /* TestCommand.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7CFF9BC12533BC160008009F /* TestCommand.cpp */; };
 		80045AEE147718E7008290A8 /* AccessibilityNotificationHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = 80045AEC147718E7008290A8 /* AccessibilityNotificationHandler.mm */; };
 		8465E2C70FFA8DF2003B8342 /* PixelDumpSupport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8465E2C60FFA8DF2003B8342 /* PixelDumpSupport.cpp */; };
-		9830F31F15C81181005AB206 /* DumpRenderTreeCommon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9830F31E15C81181005AB206 /* DumpRenderTreeCommon.cpp */; };
+		93C78826250C6D3A00C0AA24 /* ReftestFunctions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 93C78824250C6D3900C0AA24 /* ReftestFunctions.cpp */; };
+		93C7882E250C717200C0AA24 /* JSBasics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 93C78829250C713400C0AA24 /* JSBasics.cpp */; };
 		A1158D581892740C0088C17B /* DumpRenderTreeBrowserView.mm in Sources */ = {isa = PBXBuildFile; fileRef = A1158D56189273EB0088C17B /* DumpRenderTreeBrowserView.mm */; };
 		A1158D59189274360088C17B /* PixelDumpSupportIOS.mm in Sources */ = {isa = PBXBuildFile; fileRef = A1158D57189273EB0088C17B /* PixelDumpSupportIOS.mm */; };
 		A134E531188FC27000901D06 /* DumpRenderTreeMain.mm in Sources */ = {isa = PBXBuildFile; fileRef = A134E52F188FC27000901D06 /* DumpRenderTreeMain.mm */; };
@@ -158,7 +162,6 @@
 		E1B7816511AF31B7007E1BC2 /* MockGeolocationProvider.mm in Sources */ = {isa = PBXBuildFile; fileRef = E1B7808711AF1669007E1BC2 /* MockGeolocationProvider.mm */; };
 		F4010B7B24DA201F00A876E2 /* PoseAsClass.mm in Sources */ = {isa = PBXBuildFile; fileRef = F4010B7924DA200E00A876E2 /* PoseAsClass.mm */; };
 		F445C68624B2789D00790440 /* UIScriptControllerShared.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F445C68524B2788F00790440 /* UIScriptControllerShared.cpp */; };
-		F445C68924B278EC00790440 /* UIScriptController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F445C68824B278EC00790440 /* UIScriptController.cpp */; };
 		F44A531D21B89A4D00DBB99C /* ClassMethodSwizzler.mm in Sources */ = {isa = PBXBuildFile; fileRef = F44A531A21B89A4400DBB99C /* ClassMethodSwizzler.mm */; };
 		F44A531E21B89A5000DBB99C /* InstanceMethodSwizzler.mm in Sources */ = {isa = PBXBuildFile; fileRef = F44A531C21B89A4500DBB99C /* InstanceMethodSwizzler.mm */; };
 		F484C223237B27D600BF77D0 /* UIScriptControllerCocoa.mm in Sources */ = {isa = PBXBuildFile; fileRef = F484C222237B27D600BF77D0 /* UIScriptControllerCocoa.mm */; };
@@ -328,13 +331,26 @@
 		53CBB830134E42F3001CE6A4 /* CyclicRedundancyCheck.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CyclicRedundancyCheck.cpp; sourceTree = "<group>"; };
 		53CBB831134E42F3001CE6A4 /* CyclicRedundancyCheck.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CyclicRedundancyCheck.h; sourceTree = "<group>"; };
 		5DE8AE4313A2C15800D6A37D /* libWebCoreTestSupport.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libWebCoreTestSupport.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
+		7C44697F25377A020024290A /* TestOptionsGeneratedKeys.h.erb */ = {isa = PBXFileReference; lastKnownFileType = text; path = TestOptionsGeneratedKeys.h.erb; sourceTree = "<group>"; };
+		7C44698025377A020024290A /* check-xcfilelists.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "check-xcfilelists.sh"; sourceTree = "<group>"; };
+		7C44698125377A020024290A /* generate-derived-sources.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "generate-derived-sources.sh"; sourceTree = "<group>"; };
+		7C44698525377E520024290A /* TestOptionsGeneratedKeys.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestOptionsGeneratedKeys.h; sourceTree = "<group>"; };
+		7C9893DE25433C8700354EBC /* TestOptionsGeneratedWebKitLegacyKeyMapping.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TestOptionsGeneratedWebKitLegacyKeyMapping.cpp; sourceTree = "<group>"; };
 		7CBBC3221DDFCF9A00786B9D /* TestOptions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TestOptions.h; sourceTree = "<group>"; };
+		7CD4A69525507EF8007A5382 /* TestOptionsGeneratedWebKitLegacyKeyMapping.cpp.erb */ = {isa = PBXFileReference; lastKnownFileType = text; path = TestOptionsGeneratedWebKitLegacyKeyMapping.cpp.erb; sourceTree = "<group>"; };
+		7CFF9BBD2533BB240008009F /* TestFeatures.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestFeatures.h; sourceTree = "<group>"; };
+		7CFF9BBE2533BB240008009F /* TestFeatures.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TestFeatures.cpp; sourceTree = "<group>"; };
+		7CFF9BC02533BC160008009F /* TestCommand.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestCommand.h; sourceTree = "<group>"; };
+		7CFF9BC12533BC160008009F /* TestCommand.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TestCommand.cpp; sourceTree = "<group>"; };
 		80045AEB147718E7008290A8 /* AccessibilityNotificationHandler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AccessibilityNotificationHandler.h; path = mac/AccessibilityNotificationHandler.h; sourceTree = "<group>"; };
 		80045AEC147718E7008290A8 /* AccessibilityNotificationHandler.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AccessibilityNotificationHandler.mm; path = mac/AccessibilityNotificationHandler.mm; sourceTree = "<group>"; };
 		8465E2C60FFA8DF2003B8342 /* PixelDumpSupport.cpp */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.cpp.cpp; path = PixelDumpSupport.cpp; sourceTree = "<group>"; };
 		9335435F03D75502008635CE /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = WebKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9340995408540CAF007F3BC8 /* DumpRenderTree */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = DumpRenderTree; sourceTree = BUILT_PRODUCTS_DIR; };
-		9830F31E15C81181005AB206 /* DumpRenderTreeCommon.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DumpRenderTreeCommon.cpp; sourceTree = "<group>"; };
+		93C78824250C6D3900C0AA24 /* ReftestFunctions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ReftestFunctions.cpp; sourceTree = "<group>"; };
+		93C78825250C6D3900C0AA24 /* ReftestFunctions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ReftestFunctions.h; sourceTree = "<group>"; };
+		93C78829250C713400C0AA24 /* JSBasics.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = JSBasics.cpp; sourceTree = "<group>"; };
+		93C7882B250C713400C0AA24 /* JSBasics.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JSBasics.h; sourceTree = "<group>"; };
 		A1103B5B1892498F00738C87 /* LayoutTestHelper.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = LayoutTestHelper.xcconfig; path = mac/Configurations/LayoutTestHelper.xcconfig; sourceTree = "<group>"; };
 		A1158D55189273EB0088C17B /* DumpRenderTreeBrowserView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = DumpRenderTreeBrowserView.h; path = ios/DumpRenderTreeBrowserView.h; sourceTree = "<group>"; };
 		A1158D56189273EB0088C17B /* DumpRenderTreeBrowserView.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = DumpRenderTreeBrowserView.mm; path = ios/DumpRenderTreeBrowserView.mm; sourceTree = "<group>"; };
@@ -432,7 +448,6 @@
 		F4010B7924DA200E00A876E2 /* PoseAsClass.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = PoseAsClass.mm; sourceTree = "<group>"; };
 		F4010B7A24DA200E00A876E2 /* PoseAsClass.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseAsClass.h; sourceTree = "<group>"; };
 		F445C68524B2788F00790440 /* UIScriptControllerShared.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = UIScriptControllerShared.cpp; path = ../TestRunnerShared/UIScriptContext/UIScriptControllerShared.cpp; sourceTree = "<group>"; };
-		F445C68824B278EC00790440 /* UIScriptController.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = UIScriptController.cpp; sourceTree = "<group>"; };
 		F44A531921B89A4400DBB99C /* InstanceMethodSwizzler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InstanceMethodSwizzler.h; sourceTree = "<group>"; };
 		F44A531A21B89A4400DBB99C /* ClassMethodSwizzler.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ClassMethodSwizzler.mm; sourceTree = "<group>"; };
 		F44A531B21B89A4400DBB99C /* ClassMethodSwizzler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ClassMethodSwizzler.h; sourceTree = "<group>"; };
@@ -489,13 +504,13 @@
 			isa = PBXGroup;
 			children = (
 				0F18E6F11D6B9C640027E547 /* DerivedSources.make */,
+				7C44698225377C340024290A /* Derived Sources */,
 				3148A0651E6F90F400D3B316 /* TestRunnerShared */,
 				0F18E6E71D6B9BF50027E547 /* UIScriptContext */,
 				A1158D6A18927CE10088C17B /* ios */,
 				A134E53418905E6C00901D06 /* config.h */,
 				1A2FB84C178C80920059FD96 /* DefaultPolicyDelegate.h */,
 				1A2FB84D178C80930059FD96 /* DefaultPolicyDelegate.mm */,
-				9830F31E15C81181005AB206 /* DumpRenderTreeCommon.cpp */,
 				32A70AAB03705E1F00C91783 /* DumpRenderTreePrefix.h */,
 				1422A2750AF6F4BD00E1A883 /* Delegates */,
 				1422A2690AF6F45200E1A883 /* Controllers */,
@@ -522,8 +537,9 @@
 				9345229B0BD12B2C0086EDA0 /* Resources */,
 				417DA9181373674D007C57FB /* WebCoreTestSupport */,
 				A803FF6409CAACC1009B2A37 /* Frameworks */,
-				9340995508540CAF007F3BC8 /* Products */,
+				7C44697D25377A020024290A /* Scripts */,
 				BCB281ED0CFA711D007E533E /* Configurations */,
+				9340995508540CAF007F3BC8 /* Products */,
 			);
 			name = DumpRenderTree;
 			sourceTree = "<group>";
@@ -538,7 +554,6 @@
 				0F6A0E001D6E0F8A00F1C9A8 /* mac */,
 				0F18E6E81D6B9C070027E547 /* UIScriptContext.cpp */,
 				0F18E6E91D6B9C070027E547 /* UIScriptContext.h */,
-				F445C68824B278EC00790440 /* UIScriptController.cpp */,
 				0F18E6EB1D6B9C070027E547 /* UIScriptController.h */,
 				F445C68524B2788F00790440 /* UIScriptControllerShared.cpp */,
 			);
@@ -719,11 +734,18 @@
 		3148A0651E6F90F400D3B316 /* TestRunnerShared */ = {
 			isa = PBXGroup;
 			children = (
+				93C78828250C713400C0AA24 /* Bindings */,
 				F4B6C31820E84382008AC225 /* cocoa */,
 				F4FED31623581EF3003C139C /* mac */,
 				A17A5A2B22A880D80065C5F0 /* spi */,
 				3148A0551E6F90F400D3B316 /* IOSLayoutTestCommunication.cpp */,
 				3148A0561E6F90F400D3B316 /* IOSLayoutTestCommunication.h */,
+				93C78824250C6D3900C0AA24 /* ReftestFunctions.cpp */,
+				93C78825250C6D3900C0AA24 /* ReftestFunctions.h */,
+				7CFF9BC12533BC160008009F /* TestCommand.cpp */,
+				7CFF9BC02533BC160008009F /* TestCommand.h */,
+				7CFF9BBE2533BB240008009F /* TestFeatures.cpp */,
+				7CFF9BBD2533BB240008009F /* TestFeatures.h */,
 			);
 			name = TestRunnerShared;
 			path = ../TestRunnerShared;
@@ -736,6 +758,35 @@
 			);
 			name = WebCoreTestSupport;
 			sourceTree = "<group>";
+		};
+		7C44697D25377A020024290A /* Scripts */ = {
+			isa = PBXGroup;
+			children = (
+				7C44697E25377A020024290A /* PreferencesTemplates */,
+				7C44698025377A020024290A /* check-xcfilelists.sh */,
+				7C44698125377A020024290A /* generate-derived-sources.sh */,
+			);
+			path = Scripts;
+			sourceTree = "<group>";
+		};
+		7C44697E25377A020024290A /* PreferencesTemplates */ = {
+			isa = PBXGroup;
+			children = (
+				7C44697F25377A020024290A /* TestOptionsGeneratedKeys.h.erb */,
+				7CD4A69525507EF8007A5382 /* TestOptionsGeneratedWebKitLegacyKeyMapping.cpp.erb */,
+			);
+			path = PreferencesTemplates;
+			sourceTree = "<group>";
+		};
+		7C44698225377C340024290A /* Derived Sources */ = {
+			isa = PBXGroup;
+			children = (
+				7C44698525377E520024290A /* TestOptionsGeneratedKeys.h */,
+				7C9893DE25433C8700354EBC /* TestOptionsGeneratedWebKitLegacyKeyMapping.cpp */,
+			);
+			name = "Derived Sources";
+			path = DerivedSources/DumpRenderTree;
+			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 		9340995508540CAF007F3BC8 /* Products */ = {
 			isa = PBXGroup;
@@ -766,6 +817,15 @@
 				375F09790DAC3CB600C8B4E5 /* WebKitWeightWatcher900.ttf */,
 			);
 			name = Resources;
+			sourceTree = "<group>";
+		};
+		93C78828250C713400C0AA24 /* Bindings */ = {
+			isa = PBXGroup;
+			children = (
+				93C78829250C713400C0AA24 /* JSBasics.cpp */,
+				93C7882B250C713400C0AA24 /* JSBasics.h */,
+			);
+			path = Bindings;
 			sourceTree = "<group>";
 		};
 		A1158D6A18927CE10088C17B /* ios */ = {
@@ -1201,7 +1261,6 @@
 				1A2FB84F178C80930059FD96 /* DefaultPolicyDelegate.mm in Sources */,
 				BCA18C470C9B5B9400114369 /* DumpRenderTree.mm in Sources */,
 				A1158D581892740C0088C17B /* DumpRenderTreeBrowserView.mm in Sources */,
-				9830F31F15C81181005AB206 /* DumpRenderTreeCommon.cpp in Sources */,
 				BCA18B7B0C9B08F100114369 /* DumpRenderTreeDraggingInfo.mm in Sources */,
 				A8D79CEB0FC28B2C004AC8FE /* DumpRenderTreeFileDraggingSource.m in Sources */,
 				A8B91ADA0CF3B32F008F91FF /* DumpRenderTreePasteboard.mm in Sources */,
@@ -1215,6 +1274,7 @@
 				F44A531E21B89A5000DBB99C /* InstanceMethodSwizzler.mm in Sources */,
 				312943F91E71F2B4001EE2CC /* IOSLayoutTestCommunication.cpp in Sources */,
 				2CE88FA217124D8C00734FC0 /* JavaScriptThreading.cpp in Sources */,
+				93C7882E250C717200C0AA24 /* JSBasics.cpp in Sources */,
 				0F18E7061D6BA0230027E547 /* JSUIScriptController.cpp in Sources */,
 				0F18E7131D6BC43A0027E547 /* JSWrapper.cpp in Sources */,
 				F4C3578D20E8444E00FA0748 /* LayoutTestSpellChecker.mm in Sources */,
@@ -1231,15 +1291,18 @@
 				BCB284D60CFA83D1007E533E /* PixelDumpSupportMac.mm in Sources */,
 				BCA18B660C9B08C200114369 /* PolicyDelegate.mm in Sources */,
 				F4010B7B24DA201F00A876E2 /* PoseAsClass.mm in Sources */,
+				93C78826250C6D3A00C0AA24 /* ReftestFunctions.cpp in Sources */,
 				BCA18B680C9B08C200114369 /* ResourceLoadDelegate.mm in Sources */,
+				7CFF9BC22533BC160008009F /* TestCommand.cpp in Sources */,
+				7CFF9BBF2533BB240008009F /* TestFeatures.cpp in Sources */,
 				A30A21F82051D8C40008FF42 /* TestOptions.cpp in Sources */,
+				7C9893DF25433F8E00354EBC /* TestOptionsGeneratedWebKitLegacyKeyMapping.cpp in Sources */,
 				BC0131DA0C9772010087317D /* TestRunner.cpp in Sources */,
 				BCA18B240C9B014B00114369 /* TestRunnerMac.mm in Sources */,
 				F4D423611DD5048200678290 /* TextInputControllerIOS.m in Sources */,
 				BCA18B490C9B02C400114369 /* TextInputControllerMac.m in Sources */,
 				BCA18B6A0C9B08C200114369 /* UIDelegate.mm in Sources */,
 				0F18E6EC1D6B9C070027E547 /* UIScriptContext.cpp in Sources */,
-				F445C68924B278EC00790440 /* UIScriptController.cpp in Sources */,
 				F484C223237B27D600BF77D0 /* UIScriptControllerCocoa.mm in Sources */,
 				0F18E70D1D6BAC8C0027E547 /* UIScriptControllerIOS.mm in Sources */,
 				0F18E70F1D6BACB60027E547 /* UIScriptControllerMac.mm in Sources */,
@@ -1361,8 +1424,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BCB282F40CFA7450007E533E /* DebugRelease.xcconfig */;
 			buildSettings = {
-				DEBUG_DEFINES = "$(DEBUG_DEFINES_debug)";
-				GCC_OPTIMIZATION_LEVEL = 0;
 			};
 			name = Debug;
 		};
@@ -1505,15 +1566,7 @@
 			buildSettings = {
 				COPY_PHASE_STRIP = NO;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = All;
-				SECTORDER_FLAGS = "";
-				WARNING_CFLAGS = (
-					"-Wmost",
-					"-Wno-four-char-constants",
-					"-Wno-unknown-pragmas",
-				);
 			};
 			name = Debug;
 		};
@@ -1522,15 +1575,7 @@
 			buildSettings = {
 				COPY_PHASE_STRIP = YES;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = All;
-				SECTORDER_FLAGS = "";
-				WARNING_CFLAGS = (
-					"-Wmost",
-					"-Wno-four-char-constants",
-					"-Wno-unknown-pragmas",
-				);
 			};
 			name = Release;
 		};

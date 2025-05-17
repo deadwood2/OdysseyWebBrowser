@@ -41,7 +41,7 @@ import sys
 
 from collections import OrderedDict
 from functools import partial
-from webkitcorepy import string_utils
+from webkitcorepy import string_utils, decorators
 
 from webkitpy.common import find_files
 from webkitpy.common import read_checksum_from_png
@@ -130,7 +130,6 @@ class Port(object):
         if not hasattr(options, 'configuration') or not options.configuration:
             self.set_option_default('configuration', self.default_configuration())
         self._test_configuration = None
-        self._reftest_list = {}
         self._results_directory = None
         self._root_was_set = hasattr(options, 'root') and options.root
         self._jhbuild_wrapper = []
@@ -275,7 +274,7 @@ class Port(object):
 
     def check_image_diff(self, override_step=None, logging=True):
         """This routine is used to check whether image_diff binary exists."""
-        image_diff_path = self._path_to_default_image_diff()
+        image_diff_path = self._path_to_image_diff()
         if not self._filesystem.exists(image_diff_path):
             if logging:
                 _log.error("ImageDiff was not found at %s" % image_diff_path)
@@ -494,38 +493,13 @@ class Port(object):
         text = string_utils.decode(self._filesystem.read_binary_file(baseline_path), target_type=str)
         return text.replace("\r\n", "\n")
 
-    def _get_reftest_list(self, test_name):
-        dirname = self._filesystem.join(self.layout_tests_dir(), self._filesystem.dirname(test_name))
-        if dirname not in self._reftest_list:
-            self._reftest_list[dirname] = Port._parse_reftest_list(self._filesystem, dirname)
-        return self._reftest_list[dirname]
-
-    @staticmethod
-    def _parse_reftest_list(filesystem, test_dirpath):
-        reftest_list_path = filesystem.join(test_dirpath, 'reftest.list')
-        if not filesystem.isfile(reftest_list_path):
-            return None
-        reftest_list_file = filesystem.read_text_file(reftest_list_path)
-
-        parsed_list = {}
-        for line in reftest_list_file.split('\n'):
-            line = re.sub('#.+$', '', line)
-            split_line = line.split()
-            if len(split_line) < 3:
-                continue
-            expectation_type, test_file, ref_file = split_line
-            parsed_list.setdefault(filesystem.join(test_dirpath, test_file), []).append((expectation_type, filesystem.join(test_dirpath, ref_file)))
-        return parsed_list
+    _supported_reference_extensions = set(['.html', '.xml', '.xhtml', '.htm', '.svg', '.xht'])
 
     def reference_files(self, test_name, device_type=None):
         """Return a list of expectation (== or !=) and filename pairs"""
 
         if self.get_option('treat_ref_tests_as_pixel_tests'):
             return []
-
-        result = self._get_reftest_list(test_name)
-        if result:
-            return result.get(self._filesystem.join(self.layout_tests_dir(), test_name), [])
 
         result = []
         suffixes = []
@@ -552,81 +526,6 @@ class Port(object):
             path = self._filesystem.join(self._filesystem.sep.join(steps[2:]))
 
         return [self.host.filesystem.relpath(test, self.layout_tests_dir()) for test in self._filesystem.glob(re.sub('-expected.*', '.*', self._filesystem.join(self.layout_tests_dir(), path))) if self._filesystem.isfile(test)]
-
-    def tests(self, paths, device_type=None):
-        """Return the list of tests found. Both generic and platform-specific tests matching paths should be returned."""
-        expanded_paths = self._expanded_paths(paths, device_type=device_type)
-        return self._real_tests(expanded_paths)
-
-    def _expanded_paths(self, paths, device_type=None):
-        expanded_paths = []
-        fs = self._filesystem
-        all_platform_dirs = [path for path in fs.glob(fs.join(self.layout_tests_dir(), 'platform', '*')) if fs.isdir(path)]
-        for path in paths:
-            expanded_paths.append(path)
-            if self.test_isdir(path) and not path.startswith('platform') and not fs.isabs(path):
-                for platform_dir in all_platform_dirs:
-                    if fs.isdir(fs.join(platform_dir, path)) and platform_dir in self.baseline_search_path(device_type=device_type):
-                        expanded_paths.append(self.relative_test_filename(fs.join(platform_dir, path)))
-
-        return expanded_paths
-
-    def _real_tests(self, paths):
-        # When collecting test cases, skip these directories
-        skipped_directories = set(['.svn', '_svn', 'resources', 'support', 'script-tests', 'reference', 'reftest'])
-        files = find_files.find(self._filesystem, self.layout_tests_dir(), paths, skipped_directories, partial(Port._is_test_file, self), self.test_key)
-        return [self.relative_test_filename(f) for f in files]
-
-    # When collecting test cases, we include any file with these extensions.
-    _supported_test_extensions = set(['.html', '.shtml', '.xml', '.xhtml', '.pl', '.htm', '.php', '.svg', '.mht', '.xht'])
-    _supported_reference_extensions = set(['.html', '.xml', '.xhtml', '.htm', '.svg', '.xht'])
-
-    def is_w3c_resource_file(self, filesystem, dirname, filename):
-        path = filesystem.join(dirname, filename)
-        w3c_path = filesystem.join(self.layout_tests_dir(), "imported", "w3c")
-        if not w3c_path in path:
-            return False
-
-        if not self._w3c_resource_files:
-            filepath = filesystem.join(w3c_path, "resources", "resource-files.json")
-            json_data = filesystem.read_text_file(filepath)
-            self._w3c_resource_files = json.loads(json_data)
-
-        subpath = path[len(w3c_path) + 1:].replace('\\', '/')
-        if subpath in self._w3c_resource_files["files"]:
-            return True
-        for dirpath in self._w3c_resource_files["directories"]:
-            if dirpath in subpath:
-                return True
-        return False
-
-    @staticmethod
-    # If any changes are made here be sure to update the isUsedInReftest method in old-run-webkit-tests as well.
-    def is_reference_html_file(filesystem, dirname, filename):
-        if filename.startswith('ref-') or filename.startswith('notref-'):
-            return True
-        filename_wihout_ext, ext = filesystem.splitext(filename)
-        if ext not in Port._supported_reference_extensions:
-            return False
-        for suffix in ['-expected', '-expected-mismatch', '-ref', '-notref']:
-            if filename_wihout_ext.endswith(suffix):
-                return True
-        return False
-
-    @staticmethod
-    def _has_supported_extension(filesystem, filename):
-        """Return true if filename is one of the file extensions we want to run a test on."""
-        extension = filesystem.splitext(filename)[1]
-        return extension in Port._supported_test_extensions
-
-    def _is_test_file(self, filesystem, dirname, filename):
-        if not Port._has_supported_extension(filesystem, filename):
-            return False
-        if Port.is_reference_html_file(filesystem, dirname, filename):
-            return False
-        if self.is_w3c_resource_file(filesystem, dirname, filename):
-            return False
-        return True
 
     def test_key(self, test_name):
         """Turns a test name into a list with two sublists, the natural key of the
@@ -929,6 +828,9 @@ class Port(object):
         for string_variable in self.get_option('additional_env_var', []):
             [name, value] = string_variable.split('=', 1)
             clean_env[name] = value
+
+        # FIXME: Some tests fail if the time zone is not set to US/Pacific (<https://webkit.org/b/186612>)
+        clean_env['TZ'] = 'US/Pacific'
 
         return clean_env
 
@@ -1266,8 +1168,13 @@ class Port(object):
 
     def _darwin_php_version(self):
         if self._is_darwin_php_version_7():
-            return "-php7"
-        return ""
+            return '-php7'
+        if self._filesystem.isdir('/usr/libexec/apache2'):
+            for file in self._filesystem.listdir('/usr/libexec/apache2'):
+                if 'php' in file:
+                    return ''
+            return '-x'
+        return ''
 
     def _fedora_php_version(self):
         if self._is_fedora_php_version_7():
@@ -1379,7 +1286,7 @@ class Port(object):
         args.append("--%s" % self.get_option('platform'))
         return self._executive.run_command([miniBrowser] + args, stdout=None, cwd=self.webkit_base(), return_stderr=False, decode_output=False, ignore_errors=True)
 
-    @memoized
+    @decorators.Memoize()
     def _path_to_image_diff(self):
         """Returns the full path to the image_diff binary, or None if it is not available.
 
@@ -1529,6 +1436,7 @@ class Port(object):
         env = environment.to_dictionary()
         try:
             self._run_script("build-imagediff", env=env)
+            self._path_to_image_diff.clear()
         except ScriptError as e:
             _log.error(e.message_with_output(output_limit=None))
             return False

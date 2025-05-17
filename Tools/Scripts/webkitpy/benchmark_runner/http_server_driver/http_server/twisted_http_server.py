@@ -4,14 +4,15 @@ import argparse
 import logging
 import os
 import sys
-from pkg_resources import require, VersionConflict, DistributionNotFound
 
-try:
-    require("Twisted>=15.5.0")
-    import twisted
-except (ImportError, VersionConflict, DistributionNotFound):
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../..')))
-    from webkitpy.thirdparty.autoinstalled.twisted_15_5_0 import twisted
+# Since we execute this script directly as a subprocess, we need to ensure
+# that Tools/Scripts is in sys.path for the next imports to work correctly.
+script_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../..'))
+if script_dir not in sys.path:
+    sys.path.append(script_dir)
+
+from pkg_resources import require, VersionConflict, DistributionNotFound
+from webkitpy.autoinstalled import twisted
 
 from twisted.web import static, server
 from twisted.web.resource import Resource

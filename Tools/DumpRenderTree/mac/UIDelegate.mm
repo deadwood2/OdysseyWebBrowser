@@ -48,7 +48,7 @@
 #import <wtf/cocoa/VectorCocoa.h>
 
 #if !PLATFORM(IOS_FAMILY)
-DumpRenderTreeDraggingInfo *draggingInfo = nil;
+RetainPtr<DumpRenderTreeDraggingInfo> draggingInfo;
 #endif
 
 @implementation UIDelegate
@@ -58,9 +58,9 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
     windowOrigin = NSZeroPoint;
 }
 
-- (void)resetToConsistentStateBeforeTesting:(const TestOptions&)options
+- (void)resetToConsistentStateBeforeTesting:(const WTR::TestOptions&)options
 {
-    m_enableDragDestinationActionLoad = options.enableDragDestinationActionLoad;
+    m_enableDragDestinationActionLoad = options.enableDragDestinationActionLoad();
 }
 
 - (void)webView:(WebView *)sender setFrame:(NSRect)frame
@@ -76,6 +76,18 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
     return NSMakeRect(windowOrigin.x, windowOrigin.y, size.width, size.height);
 }
 
+static NSString *stripTrailingSpaces(NSString *string)
+{
+    auto result = [string stringByReplacingOccurrencesOfString:@" +\n" withString:@"\n" options:NSRegularExpressionSearch range:NSMakeRange(0, string.length)];
+    return [result stringByReplacingOccurrencesOfString:@" +$" withString:@"" options:NSRegularExpressionSearch range:NSMakeRange(0, result.length)];
+}
+
+static NSString *addLeadingSpaceStripTrailingSpaces(NSString *string)
+{
+    auto result = stripTrailingSpaces(string);
+    return (result.length && ![result hasPrefix:@"\n"]) ? [@" " stringByAppendingString:result] : result;
+}
+
 - (void)webView:(WebView *)sender addMessageToConsole:(NSDictionary *)dictionary withSource:(NSString *)source
 {
     if (done)
@@ -87,9 +99,7 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
     if (range.location != NSNotFound)
         message = [[message substringToIndex:range.location] stringByAppendingString:[[message substringFromIndex:NSMaxRange(range)] lastPathComponent]];
 
-    auto out = gTestRunner->dumpJSConsoleLogInStdErr() ? stderr : stdout;
-    fprintf(out, "CONSOLE MESSAGE: ");
-    fprintf(out, "%s\n", [message UTF8String]);
+    fprintf(gTestRunner->dumpJSConsoleLogInStdErr() ? stderr : stdout, "CONSOLE MESSAGE:%s\n", addLeadingSpaceStripTrailingSpaces(message).UTF8String ?: " (null)");
 }
 
 - (void)modalWindowWillClose:(NSNotification *)notification
@@ -113,7 +123,7 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
 - (void)webView:(WebView *)sender runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WebFrame *)frame
 {
     if (!done) {
-        printf("ALERT: %s\n", [message UTF8String]);
+        printf("ALERT:%s\n", addLeadingSpaceStripTrailingSpaces(message).UTF8String ?: " (null)");
         fflush(stdout);
     }
 }
@@ -121,22 +131,21 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
 - (BOOL)webView:(WebView *)sender runJavaScriptConfirmPanelWithMessage:(NSString *)message initiatedByFrame:(WebFrame *)frame
 {
     if (!done)
-        printf("CONFIRM: %s\n", [message UTF8String]);
+        printf("CONFIRM:%s\n", addLeadingSpaceStripTrailingSpaces(message).UTF8String ?: " (null)");
     return YES;
 }
 
 - (NSString *)webView:(WebView *)sender runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt defaultText:(NSString *)defaultText initiatedByFrame:(WebFrame *)frame
 {
     if (!done)
-        printf("PROMPT: %s, default text: %s\n", [prompt UTF8String], [defaultText UTF8String]);
+        printf("PROMPT: %s, default text:%s\n", prompt.UTF8String, addLeadingSpaceStripTrailingSpaces(defaultText).UTF8String ?: " (null)");
     return defaultText;
 }
 
 - (BOOL)webView:(WebView *)c runBeforeUnloadConfirmPanelWithMessage:(NSString *)message initiatedByFrame:(WebFrame *)frame
 {
     if (!done)
-        printf("CONFIRM NAVIGATION: %s\n", [message UTF8String]);
-    
+        printf("CONFIRM NAVIGATION:%s\n", addLeadingSpaceStripTrailingSpaces(message).UTF8String ?: " (null)");
     return !gTestRunner->shouldStayOnPageAfterHandlingBeforeUnload();
 }
 
@@ -144,10 +153,10 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
 #if !PLATFORM(IOS_FAMILY)
 - (void)webView:(WebView *)sender dragImage:(NSImage *)anImage at:(NSPoint)viewLocation offset:(NSSize)initialOffset event:(NSEvent *)event pasteboard:(NSPasteboard *)pboard source:(id)sourceObj slideBack:(BOOL)slideFlag forView:(NSView *)view
 {
-     assert(!draggingInfo);
-     draggingInfo = [[DumpRenderTreeDraggingInfo alloc] initWithImage:anImage offset:initialOffset pasteboard:pboard source:sourceObj];
-     [sender draggingUpdated:draggingInfo];
-     [EventSendingController replaySavedEvents];
+    assert(!draggingInfo);
+    draggingInfo = adoptNS([[DumpRenderTreeDraggingInfo alloc] initWithImage:anImage offset:initialOffset pasteboard:pboard source:sourceObj]);
+    [sender draggingUpdated:draggingInfo.get()];
+    [EventSendingController replaySavedEvents];
 }
 #endif
 
@@ -169,12 +178,13 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
     // Make sure that waitUntilDone has been called.
     ASSERT(gTestRunner->waitToDump());
 
-    WebView *webView = createWebViewAndOffscreenWindow();
-    
+    auto webView = createWebViewAndOffscreenWindow();
+    [webView setPreferences:[sender preferences]];
+
     if (gTestRunner->newWindowsCopyBackForwardList())
         [webView _loadBackForwardListFromOtherView:sender];
     
-    return [webView autorelease];
+    return webView.autorelease();
 }
 
 - (void)webViewClose:(WebView *)sender
@@ -235,14 +245,14 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
 - (void)webView:(WebView *)sender setStatusText:(NSString *)text
 {
     if (!done && gTestRunner->dumpStatusCallbacks())
-        printf("UI DELEGATE STATUS CALLBACK: setStatusText:%s\n", [text UTF8String]);
+        printf("UI DELEGATE STATUS CALLBACK: setStatusText:%s\n", stripTrailingSpaces(text).UTF8String);
 }
 
 - (void)webView:(WebView *)webView decidePolicyForGeolocationRequestFromOrigin:(WebSecurityOrigin *)origin frame:(WebFrame *)frame listener:(id<WebAllowDenyPolicyListener>)listener
 {
     if (!gTestRunner->isGeolocationPermissionSet()) {
         if (!m_pendingGeolocationPermissionListeners)
-            m_pendingGeolocationPermissionListeners = [[NSMutableSet set] retain];
+            m_pendingGeolocationPermissionListeners = [NSMutableSet set];
         [m_pendingGeolocationPermissionListeners addObject:listener];
         return;
     }
@@ -280,7 +290,6 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
             [listener deny];
     }
     [m_pendingGeolocationPermissionListeners removeAllObjects];
-    [m_pendingGeolocationPermissionListeners release];
     m_pendingGeolocationPermissionListeners = nil;
 }
 
@@ -424,11 +433,8 @@ DumpRenderTreeDraggingInfo *draggingInfo = nil;
 - (void)dealloc
 {
 #if !PLATFORM(IOS_FAMILY)
-    [draggingInfo release];
     draggingInfo = nil;
 #endif
-    [m_pendingGeolocationPermissionListeners release];
-    m_pendingGeolocationPermissionListeners = nil;
 
     [super dealloc];
 }

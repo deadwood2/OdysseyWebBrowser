@@ -101,7 +101,7 @@ private:
     bool executeSavedCommandBySelector(const String& selector) override;
     void startDrag(const WebCore::DragItem&, const ShareableBitmap::Handle& image) override;
     void setPromisedDataForImage(const String& pasteboardName, Ref<WebCore::SharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title,
-        const String& url, const String& visibleUrl, RefPtr<WebCore::SharedBuffer>&& archiveBuffer) override;
+        const String& url, const String& visibleURL, RefPtr<WebCore::SharedBuffer>&& archiveBuffer, const String& originIdentifier) override;
     void updateSecureInputState() override;
     void resetSecureInputState() override;
     void notifyInputContextAboutDiscardedComposition() override;
@@ -130,6 +130,10 @@ private:
 
     void doneWithKeyEvent(const NativeWebKeyboardEvent&, bool wasEventHandled) override;
 
+#if ENABLE(IMAGE_EXTRACTION)
+    void requestImageExtraction(const ShareableBitmap::Handle&, CompletionHandler<void(WebCore::ImageExtractionResult&&)>&&) override;
+#endif
+
     RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) override;
 #if ENABLE(CONTEXT_MENUS)
     Ref<WebContextMenuProxy> createContextMenuProxy(WebPageProxy&, ContextMenuContextData&&, const UserData&) override;
@@ -141,6 +145,10 @@ private:
 
 #if ENABLE(DATALIST_ELEMENT)
     RefPtr<WebDataListSuggestionsDropdown> createDataListSuggestionsDropdown(WebPageProxy&) override;
+#endif
+
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+    RefPtr<WebDateTimePicker> createDateTimePicker(WebPageProxy&) override;
 #endif
 
     Ref<WebCore::ValidationBubble> createValidationBubble(const String& message, const WebCore::ValidationBubble::Settings&) final;
@@ -185,6 +193,13 @@ private:
     void setEditableElementIsFocused(bool) override;
 
     void registerInsertionUndoGrouping() override;
+
+#if ENABLE(UI_PROCESS_PDF_HUD)
+    void createPDFHUD(PDFPluginIdentifier, const WebCore::IntRect&) override;
+    void updatePDFHUDLocation(PDFPluginIdentifier, const WebCore::IntRect&) override;
+    void removePDFHUD(PDFPluginIdentifier) override;
+    void removeAllPDFHUDs() override;
+#endif
 
     // Auxiliary Client Creation
 #if ENABLE(FULLSCREEN_API)

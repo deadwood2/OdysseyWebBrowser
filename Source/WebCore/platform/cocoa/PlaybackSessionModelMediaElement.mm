@@ -28,6 +28,7 @@
 
 #if PLATFORM(IOS_FAMILY) || (PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE))
 
+#import "AddEventListenerOptions.h"
 #import "AudioTrackList.h"
 #import "Event.h"
 #import "EventListener.h"
@@ -64,8 +65,13 @@ PlaybackSessionModelMediaElement::~PlaybackSessionModelMediaElement()
 
 void PlaybackSessionModelMediaElement::setMediaElement(HTMLMediaElement* mediaElement)
 {
-    if (m_mediaElement == mediaElement)
+    if (m_mediaElement == mediaElement) {
+        if (m_mediaElement) {
+            for (auto client : m_clients)
+                client->isPictureInPictureSupportedChanged(isPictureInPictureSupported());
+        }
         return;
+    }
 
     auto& events = eventNames();
 
@@ -110,6 +116,13 @@ void PlaybackSessionModelMediaElement::setMediaElement(HTMLMediaElement* mediaEl
 
     for (auto client : m_clients)
         client->isPictureInPictureSupportedChanged(isPictureInPictureSupported());
+}
+
+void PlaybackSessionModelMediaElement::mediaEngineChanged()
+{
+    bool wirelessVideoPlaybackDisabled = this->wirelessVideoPlaybackDisabled();
+    for (auto client : m_clients)
+        client->wirelessVideoPlaybackDisabledChanged(wirelessVideoPlaybackDisabled);
 }
 
 void PlaybackSessionModelMediaElement::handleEvent(WebCore::ScriptExecutionContext&, WebCore::Event& event)
@@ -320,9 +333,9 @@ void PlaybackSessionModelMediaElement::togglePictureInPicture()
 
     auto& element = downcast<HTMLVideoElement>(*m_mediaElement);
     if (element.fullscreenMode() == MediaPlayerEnums::VideoFullscreenModePictureInPicture)
-        element.setFullscreenMode(MediaPlayerEnums::VideoFullscreenModeNone);
+        element.setPresentationMode(HTMLVideoElement::VideoPresentationMode::Inline);
     else
-        element.setFullscreenMode(MediaPlayerEnums::VideoFullscreenModePictureInPicture);
+        element.setPresentationMode(HTMLVideoElement::VideoPresentationMode::PictureInPicture);
 #endif
 }
 
@@ -349,6 +362,12 @@ void PlaybackSessionModelMediaElement::setPlayingOnSecondScreen(bool value)
         m_mediaElement->setPlayingOnSecondScreen(value);
 }
 
+void PlaybackSessionModelMediaElement::sendRemoteCommand(PlatformMediaSession::RemoteControlCommandType command, const PlatformMediaSession::RemoteCommandArgument& argument)
+{
+    if (m_mediaElement)
+        m_mediaElement->mediaSession().didReceiveRemoteControlCommand(command, argument);
+}
+
 void PlaybackSessionModelMediaElement::updateMediaSelectionOptions()
 {
     if (!m_mediaElement)
@@ -360,7 +379,7 @@ void PlaybackSessionModelMediaElement::updateMediaSelectionOptions()
     auto& captionPreferences = m_mediaElement->document().page()->group().captionPreferences();
     auto* textTracks = m_mediaElement->textTracks();
     if (textTracks && textTracks->length())
-        m_legibleTracksForMenu = captionPreferences.sortedTrackListForMenu(textTracks);
+        m_legibleTracksForMenu = captionPreferences.sortedTrackListForMenu(textTracks, { TextTrack::Kind::Subtitles, TextTrack::Kind::Captions, TextTrack::Kind::Descriptions });
     else
         m_legibleTracksForMenu.clear();
 

@@ -30,6 +30,13 @@ var ellipsis = "\u2026";
 var zeroWidthSpace = "\u200b";
 var multiplicationSign = "\u00d7";
 
+function xor(a, b)
+{
+    if (a)
+        return b ? false : a;
+    return b || false;
+}
+
 Object.defineProperty(Object, "shallowCopy",
 {
     value(object)
@@ -171,10 +178,12 @@ Object.defineProperty(Set.prototype, "take",
 {
     value(key)
     {
-        let exists = this.has(key);
-        if (exists)
+        if (this.has(key)) {
             this.delete(key);
-        return exists;
+            return key;
+        }
+
+        return undefined;
     }
 });
 
@@ -483,6 +492,29 @@ Object.defineProperty(DocumentFragment.prototype, "createChild",
 {
     value: Element.prototype.createChild
 });
+
+(function() {
+    const fontSymbol = Symbol("font");
+
+    Object.defineProperty(HTMLInputElement.prototype, "autosize",
+    {
+        value(extra = 0)
+        {
+            extra += 6; // UserAgent styles add 1px padding and 2px border.
+            if (this.type === "number")
+                extra += 13; // Number input inner spin button width.
+            extra += 2; // Add extra pixels for the cursor.
+
+            WI.ImageUtilities.scratchCanvasContext2D((context) => {
+                this[fontSymbol] ||= window.getComputedStyle(this).font;
+
+                context.font = this[fontSymbol];
+                let textMetrics = context.measureText(this.value || this.placeholder);
+                this.style.setProperty("width", (textMetrics.width + extra) + "px");
+            });
+        },
+    });
+})();
 
 Object.defineProperty(Event.prototype, "stop",
 {
@@ -1324,12 +1356,12 @@ Object.defineProperty(Number, "secondsToString",
 
 Object.defineProperty(Number, "bytesToString",
 {
-    value(bytes, higherResolution)
+    value(bytes, higherResolution, bytesThreshold)
     {
-        if (higherResolution === undefined)
-            higherResolution = true;
+        higherResolution ??= true;
+        bytesThreshold ??= 1024;
 
-        if (Math.abs(bytes) < 1024)
+        if (Math.abs(bytes) < bytesThreshold)
             return WI.UIString("%.0f B").format(bytes);
 
         let kilobytes = bytes / 1024;
@@ -1589,6 +1621,40 @@ Object.defineProperty(Array.prototype, "binaryIndexOf",
 
         var index = this.lowerBound(value, comparator);
         return index < this.length && comparator(value, this[index]) === 0 ? index : -1;
+    }
+});
+
+Object.defineProperty(Array.prototype, "groupBy",
+{
+    value(groupFunction, minGroupSize = 1)
+    {
+        let result = [];
+        let startIndex = null;
+
+        let flush = (endIndex) => {
+            if (startIndex === null)
+                return;
+            let group = this.slice(startIndex, endIndex + 1);
+            let adjacentCount = (endIndex + 1) - startIndex;
+            if (adjacentCount >= minGroupSize)
+                result.push(group);
+            else
+                result.pushAll(group);
+        }
+
+        this.forEach((item, i) => {
+            if (groupFunction(item)) {
+                startIndex ??= i;
+                if (i === this.length - 1)
+                    flush(this.length - 1);
+            } else {
+                flush(i - 1);
+                result.push(item);
+                startIndex = null;
+            }
+        });
+
+        return result;
     }
 });
 

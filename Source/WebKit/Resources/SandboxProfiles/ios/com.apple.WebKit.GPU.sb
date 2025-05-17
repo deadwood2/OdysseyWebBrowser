@@ -106,9 +106,7 @@
 
 (define-once (play-audio)
     (allow mach-lookup
-           (global-name "com.apple.audio.AURemoteIOServer"))
-    (allow mach-lookup (with report) (with telemetry)
-           (xpc-service-name "com.apple.audio.toolbox.reporting.service")))
+           (global-name "com.apple.audio.AURemoteIOServer")))
 
 (define-once (play-media . filters)
     (if (not (null? filters))
@@ -289,7 +287,7 @@
     )
 )
 
-(define-once (debugging-support)
+(define-once (internal-debugging-support)
         (allow file-read* file-map-executable
                (subpath "/Developer"))
 
@@ -407,7 +405,6 @@
 
     ; UIKit-required IOKit nodes.
     (allow iokit-open
-        (iokit-user-client-class "AppleJPEGDriverUserClient")
         (iokit-user-client-class "IOSurfaceAcceleratorClient")
         (iokit-user-client-class "IOSurfaceSendRight")
         ;; Requires by UIView -> UITextMagnifierRenderer -> UIWindow
@@ -534,14 +531,10 @@
     (allow-read-write-and-issue-generic-extensions
            (extension "com.apple.security.exception.files.absolute-path.read-write")
            (extension "com.apple.security.exception.files.home-relative-path.read-write"))
-    (allow iokit-open
-           (extension "com.apple.security.exception.iokit-user-client-class"))
     (allow managed-preference-read
            (extension "com.apple.security.exception.managed-preference.read-only"))
     (allow user-preference-read
            (extension "com.apple.security.exception.shared-preference.read-only"))
-    (allow user-preference-read user-preference-write
-           (extension "com.apple.security.exception.shared-preference.read-write"))
 
     (allow file-issue-extension
           (require-all
@@ -552,7 +545,9 @@
                   (front-user-home-prefix "/Library/Caches/"))))
 )
 
-(debugging-support)
+(with-filter (system-attribute apple-internal)
+    (internal-debugging-support)
+)
 
 (allow file-read*
     required-etc-files
@@ -604,7 +599,9 @@
        (require-entitlement "com.apple.private.kernel.override-cpumon"))
 
 (deny sysctl-read (with no-report)
-      (sysctl-name "sysctl.proc_native"))
+      (sysctl-name
+          "hw.tbfrequency_compat" ;; <rdar://71740719>
+          "sysctl.proc_native"))
 
 (with-filter (system-attribute apple-internal)
     (allow sysctl-read sysctl-write
@@ -690,10 +687,6 @@
 ;; Access the keyboards
 (allow file-read*
     (home-subpath "/Library/Caches/com.apple.keyboards"))
-
-;; Power logging
-(allow mach-lookup
-    (global-name "com.apple.powerlog.plxpclogger.xpc")) ;;  <rdar://problem/36442803>
 
 (mobile-preferences-read
     "com.apple.EmojiPreferences"
@@ -791,6 +784,7 @@
         "kern.osversion"
         "kern.secure_kernel"
         "kern.version"
+        "sysctl.name2oid"
         "vm.footprint_suspend"))
 
 (allow iokit-get-properties
@@ -890,12 +884,20 @@
     (literal "/usr/local/lib/log") ; <rdar://problem/36629495>
 )
 
+(deny mach-lookup (with no-log)
+    (xpc-service-name "com.apple.audio.toolbox.reporting.service")
+)
+
 (allow mach-lookup
     (require-all
         (extension "com.apple.webkit.extension.mach")
         (global-name "com.apple.iphone.axserver-systemwide" "com.apple.tccd" "com.apple.AGXCompilerService")))
 
 (media-capture-support)
+
+(allow mach-lookup
+  (global-name "com.apple.audio.AudioQueueServer" "com.apple.audio.AudioComponentRegistrar")
+)
 
 ;; These services have been identified as unused during living-on.
 ;; This list overrides some definitions above and in common.sb.

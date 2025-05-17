@@ -39,7 +39,7 @@ TestExpectationParser = test_expectations.TestExpectationParser
 
 class BuildBotPrinter(object):
     # This output is parsed by buildbots and must only be changed in coordination with buildbot scripts (see webkit.org's
-    # Tools/BuildSlaveSupport/build.webkit.org-config/master.cfg: RunWebKitTests._parseNewRunWebKitTestsOutput
+    # Tools/CISupport/build-webkit-org/master.cfg: RunWebKitTests._parseNewRunWebKitTestsOutput
     # and chromium.org's buildbot/master.chromium/scripts/master/log_parser/webkit_test_command.py).
 
     def __init__(self, stream, debug_logging):
@@ -147,7 +147,6 @@ class BuildBotPrinter(object):
                     result = resultsjsonparser.result_for_test(summarized_results['tests'], test)
                     actual = result['actual'].split(" ")
                     expected = result['expected'].split(" ")
-                    result = TestExpectations.EXPECTATIONS[key.lower()]
                     # FIXME: clean this up once the old syntax is gone
                     new_expectations_list = [TestExpectationParser._inverted_expectation_tokens[exp] for exp in list(set(actual) | set(expected))]
                     self._print("  %s [ %s ]" % (test, " ".join(new_expectations_list)))

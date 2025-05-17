@@ -25,21 +25,23 @@
 
 #pragma once
 
+#include "DataReference.h"
 #include "MessageReceiver.h"
 #include "MessageSender.h"
-#include "WebSocketIdentifier.h"
+#include <WebCore/Timer.h>
+#include <WebCore/WebSocketIdentifier.h>
 #include <pal/SessionID.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 class ResourceRequest;
+class ResourceResponse;
 }
 
 namespace IPC {
 class Connection;
 class Decoder;
-class DataReference;
 }
 
 namespace WebKit {
@@ -52,9 +54,9 @@ class NetworkSession;
 class NetworkSocketChannel : public IPC::MessageSender, public IPC::MessageReceiver {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static std::unique_ptr<NetworkSocketChannel> create(NetworkConnectionToWebProcess&, PAL::SessionID, const WebCore::ResourceRequest&, const String& protocol, WebSocketIdentifier);
+    static std::unique_ptr<NetworkSocketChannel> create(NetworkConnectionToWebProcess&, PAL::SessionID, const WebCore::ResourceRequest&, const String& protocol, WebCore::WebSocketIdentifier);
 
-    NetworkSocketChannel(NetworkConnectionToWebProcess&, NetworkSession*, const WebCore::ResourceRequest&, const String& protocol, WebSocketIdentifier);
+    NetworkSocketChannel(NetworkConnectionToWebProcess&, NetworkSession*, const WebCore::ResourceRequest&, const String& protocol, WebCore::WebSocketIdentifier);
     ~NetworkSocketChannel();
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
@@ -73,6 +75,7 @@ private:
     void sendString(const IPC::DataReference&, CompletionHandler<void()>&&);
     void sendData(const IPC::DataReference&, CompletionHandler<void()>&&);
     void close(int32_t code, const String& reason);
+    void sendDelayedError();
 
     NetworkSession* session();
 
@@ -82,12 +85,15 @@ private:
     void finishClosingIfPossible();
 
     NetworkConnectionToWebProcess& m_connectionToWebProcess;
-    WebSocketIdentifier m_identifier;
+    WebCore::WebSocketIdentifier m_identifier;
     WeakPtr<NetworkSession> m_session;
     std::unique_ptr<WebSocketTask> m_socket;
 
     enum class State { Open, Closing, Closed };
     State m_state { State::Open };
+    WebCore::Timer m_errorTimer;
+    String m_errorMessage;
+    Optional<std::pair<unsigned short, String>> m_closeInfo;
 };
 
 } // namespace WebKit

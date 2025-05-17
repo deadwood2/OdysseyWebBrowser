@@ -1,19 +1,11 @@
 kind: meson
 sources:
 - kind: tar
-  url: gst_downloads:gst-plugins-base/gst-plugins-base-1.16.2.tar.xz
-  ref: b13e73e2fe74a4166552f9577c3dcb24bed077021b9c7fa600d910ec6987816a
+  url: gst_downloads:gst-plugins-base/gst-plugins-base-1.18.3.tar.xz
+  ref: dbfa20283848f0347a223dd8523dfb62e09e5220b21b1d157a8b0c8b67ba9f52
+# Backport of https://gitlab.freedesktop.org/gstreamer/gst-plugins-base/-/merge_requests/1031 to be shipped in 1.18.4
 - kind: patch
-  path: patches/gst-plugins-base-0001-playbin-Handle-error-message-with-redirection-indica.patch
-- kind: patch
-  path: patches/gst-plugins-base-0001-glupload-Fix-fallback-from-direct-dmabuf-to-dmabuf-u.patch
-- kind: patch
-  path: patches/gst-plugins-base-0002-glupload-fix-segfault.patch
-- kind: patch
-  path: patches/gst-plugins-base-0003-glbasefilter-add-support-for-changing-the-display.patch
-- kind: patch
-  path: patches/gst-plugins-base-0001-oggstream-Workaround-for-broken-PAR-in-VP8-BOS.patch
-
+  path: patches/gst-plugins-base-0001-videodecoder-Fix-racy-critical-when-pool-negotiation.patch
 build-depends:
 - freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
 depends:
@@ -22,6 +14,7 @@ depends:
 - sdk/graphene.bst
 - sdk/gtk+-3.bst
 - freedesktop-sdk.bst:components/pango.bst
+- sdk/libdrm.bst
 - sdk/libsoup.bst
 - freedesktop-sdk.bst:bootstrap-import.bst
 - freedesktop-sdk.bst:components/alsa-lib.bst
@@ -44,6 +37,7 @@ variables:
     -Dtremor=disabled
     -Dexamples=disabled
     -Dgtk_doc=disabled
+    -Ddoc=disabled
     -Dtests=disabled
 
 public:

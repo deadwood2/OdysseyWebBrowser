@@ -337,10 +337,10 @@ static const char* fragmentTemplateCommon =
                 color.a);
         }
 
-        float invert(float n) { return (1.0 - n) * u_filterAmount + n * (1.0 - u_filterAmount); }
+        float invert(float n, float a) { return (a - n) * u_filterAmount + n * (1.0 - u_filterAmount); }
         void applyInvertFilter(inout vec4 color)
         {
-            color = vec4(invert(color.r), invert(color.g), invert(color.b), color.a);
+            color = vec4(invert(color.r, color.a), invert(color.g, color.a), invert(color.b, color.a), color.a);
         }
 
         void applyBrightnessFilter(inout vec4 color)
@@ -356,7 +356,7 @@ static const char* fragmentTemplateCommon =
 
         void applyOpacityFilter(inout vec4 color)
         {
-            color = vec4(color.r, color.g, color.b, color.a * u_filterAmount);
+            color *= u_filterAmount;
         }
 
         vec4 sampleColorAtRadius(float radius, vec2 texCoord)

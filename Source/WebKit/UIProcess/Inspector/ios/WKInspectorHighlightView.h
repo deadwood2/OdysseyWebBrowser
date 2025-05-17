@@ -26,15 +26,12 @@
 #if PLATFORM(IOS_FAMILY)
 
 #import <UIKit/UIKit.h>
-
-namespace WebCore {
-struct Highlight;
-}
+#import <WebCore/InspectorOverlay.h>
 
 @interface WKInspectorHighlightView : UIView {
-    NSMutableArray *_layers; // CAShapeLayers.
+    RetainPtr<NSMutableArray<CAShapeLayer *>> _layers;
 }
-- (void)update:(const WebCore::Highlight&)highlight;
+- (void)update:(const WebCore::InspectorOverlay::Highlight&)highlight;
 @end
 
 #endif

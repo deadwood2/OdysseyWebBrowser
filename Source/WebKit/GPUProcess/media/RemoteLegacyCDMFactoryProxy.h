@@ -28,21 +28,21 @@
 #if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
 #include "Connection.h"
-#include "MediaPlayerPrivateRemoteIdentifier.h"
+#include "GPUConnectionToWebProcess.h"
 #include "MessageReceiver.h"
 #include "RemoteLegacyCDMIdentifier.h"
 #include "RemoteLegacyCDMSessionIdentifier.h"
+#include <WebCore/MediaPlayerIdentifier.h>
 #include <wtf/UniqueRef.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebKit {
 
-class GPUConnectionToWebProcess;
 class RemoteLegacyCDMSessionProxy;
 class RemoteLegacyCDMProxy;
 struct RemoteLegacyCDMConfiguration;
 
-class RemoteLegacyCDMFactoryProxy final : private IPC::MessageReceiver, public CanMakeWeakPtr<RemoteLegacyCDMFactoryProxy> {
+class RemoteLegacyCDMFactoryProxy final : public IPC::MessageReceiver {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     RemoteLegacyCDMFactoryProxy(GPUConnectionToWebProcess&);
@@ -62,7 +62,7 @@ public:
     void removeSession(RemoteLegacyCDMSessionIdentifier);
     RemoteLegacyCDMSessionProxy* getSession(const RemoteLegacyCDMSessionIdentifier&) const;
 
-    GPUConnectionToWebProcess& gpuConnectionToWebProcess() const { return m_gpuConnectionToWebProcess; }
+    GPUConnectionToWebProcess* gpuConnectionToWebProcess() { return m_gpuConnectionToWebProcess.get(); }
 
 private:
     friend class GPUProcessConnection;
@@ -71,10 +71,10 @@ private:
     void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) final;
 
     // Messages
-    void createCDM(const String& keySystem, Optional<MediaPlayerPrivateRemoteIdentifier>&&, CompletionHandler<void(RemoteLegacyCDMIdentifier&&)>&&);
+    void createCDM(const String& keySystem, Optional<WebCore::MediaPlayerIdentifier>&&, CompletionHandler<void(RemoteLegacyCDMIdentifier&&)>&&);
     void supportsKeySystem(const String& keySystem, Optional<String> mimeType, CompletionHandler<void(bool)>&&);
 
-    GPUConnectionToWebProcess& m_gpuConnectionToWebProcess;
+    WeakPtr<GPUConnectionToWebProcess> m_gpuConnectionToWebProcess;
     HashMap<RemoteLegacyCDMIdentifier, std::unique_ptr<RemoteLegacyCDMProxy>> m_proxies;
     HashMap<RemoteLegacyCDMSessionIdentifier, std::unique_ptr<RemoteLegacyCDMSessionProxy>> m_sessions;
 };

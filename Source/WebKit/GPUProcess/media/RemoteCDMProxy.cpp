@@ -31,9 +31,9 @@
 #include "RemoteCDMConfiguration.h"
 #include "RemoteCDMInstanceConfiguration.h"
 #include "RemoteCDMInstanceProxy.h"
-#include "SharedBufferDataReference.h"
 #include <WebCore/CDMKeySystemConfiguration.h>
 #include <WebCore/CDMPrivate.h>
+#include <WebCore/SharedBuffer.h>
 
 namespace WebKit {
 
@@ -90,8 +90,8 @@ void RemoteCDMProxy::createInstance(CompletionHandler<void(RemoteCDMInstanceIden
         completion({ }, { });
         return;
     }
-    auto instance = RemoteCDMInstanceProxy::create(makeWeakPtr(this), privateInstance.releaseNonNull());
     auto identifier = RemoteCDMInstanceIdentifier::generate();
+    auto instance = RemoteCDMInstanceProxy::create(makeWeakPtr(this), privateInstance.releaseNonNull(), identifier);
     RemoteCDMInstanceConfiguration configuration = instance->configuration();
     m_factory->addInstance(identifier, WTFMove(instance));
     completion(identifier, WTFMove(configuration));

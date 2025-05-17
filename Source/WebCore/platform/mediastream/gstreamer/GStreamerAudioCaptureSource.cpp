@@ -44,8 +44,10 @@ const static RealtimeMediaSourceCapabilities::EchoCancellation defaultEchoCancel
 GST_DEBUG_CATEGORY(webkit_audio_capture_source_debug);
 #define GST_CAT_DEFAULT webkit_audio_capture_source_debug
 
-static void initializeGStreamerDebug()
+static void initializeDebugCategory()
 {
+    ensureGStreamerInitialized();
+
     static std::once_flag debugRegisteredFlag;
     std::call_once(debugRegisteredFlag, [] {
         GST_DEBUG_CATEGORY_INIT(webkit_audio_capture_source_debug, "webkitaudiocapturesource", 0, "WebKit Audio Capture Source.");
@@ -60,6 +62,9 @@ public:
     }
 private:
     CaptureDeviceManager& audioCaptureDeviceManager() final { return GStreamerAudioCaptureDeviceManager::singleton(); }
+    const Vector<CaptureDevice>& speakerDevices() const { return m_speakerDevices; }
+
+    Vector<CaptureDevice> m_speakerDevices;
 };
 
 static GStreamerAudioCaptureSourceFactory& libWebRTCAudioCaptureSourceFactory()
@@ -94,14 +99,14 @@ GStreamerAudioCaptureSource::GStreamerAudioCaptureSource(GStreamerCaptureDevice 
     : RealtimeMediaSource(RealtimeMediaSource::Type::Audio, String { device.persistentId() }, String { device.label() }, WTFMove(hashSalt))
     , m_capturer(makeUnique<GStreamerAudioCapturer>(device))
 {
-    initializeGStreamerDebug();
+    initializeDebugCategory();
 }
 
 GStreamerAudioCaptureSource::GStreamerAudioCaptureSource(String&& deviceID, String&& name, String&& hashSalt)
     : RealtimeMediaSource(RealtimeMediaSource::Type::Audio, WTFMove(deviceID), WTFMove(name), WTFMove(hashSalt))
     , m_capturer(makeUnique<GStreamerAudioCapturer>())
 {
-    initializeGStreamerDebug();
+    initializeDebugCategory();
 }
 
 GStreamerAudioCaptureSource::~GStreamerAudioCaptureSource()
@@ -121,13 +126,13 @@ GstFlowReturn GStreamerAudioCaptureSource::newSampleCallback(GstElement* sink, G
     auto sample = adoptGRef(gst_app_sink_pull_sample(GST_APP_SINK(sink)));
 
     // FIXME - figure out a way to avoid copying (on write) the data.
-    GstBuffer* buf = gst_sample_get_buffer(sample.get());
-    auto frames(std::unique_ptr<GStreamerAudioData>(new GStreamerAudioData(WTFMove(sample))));
-    auto streamDesc(std::unique_ptr<GStreamerAudioStreamDescription>(new GStreamerAudioStreamDescription(frames->getAudioInfo())));
+    auto* buffer = gst_sample_get_buffer(sample.get());
+    GStreamerAudioData frames(WTFMove(sample));
+    GStreamerAudioStreamDescription description(frames.getAudioInfo());
 
     source->audioSamplesAvailable(
-        MediaTime(GST_TIME_AS_USECONDS(GST_BUFFER_PTS(buf)), G_USEC_PER_SEC),
-        *frames, *streamDesc, gst_buffer_get_size(buf) / frames->getAudioInfo().bpf);
+        MediaTime(GST_TIME_AS_USECONDS(GST_BUFFER_PTS(buffer)), G_USEC_PER_SEC),
+        frames, description, gst_buffer_get_size(buffer) / description.getInfo().bpf);
 
     return GST_FLOW_OK;
 }

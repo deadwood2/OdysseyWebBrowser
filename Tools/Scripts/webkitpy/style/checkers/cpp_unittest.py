@@ -287,7 +287,8 @@ class CppStyleTestBase(unittest.TestCase):
                              '+build/include',
                              '+build/include_order',
                              '+build/namespaces',
-                             '+runtime/rtti')
+                             '+runtime/rtti',
+                             '+security/javascriptcore_wtf_blockptr')
         return self.perform_lint(code, filename, basic_error_rules, lines_to_check=lines_to_check)
 
     # Only keep function length errors.
@@ -2105,6 +2106,9 @@ class CppStyleTest(CppStyleTestBase):
         self.assert_lint('foo (foo)', 'Extra space before ( in function call'
                          '  [whitespace/parens] [4]')
         self.assert_lint('@property (readonly) NSUInteger count;', '')
+        self.assert_lint('@synthesize a = b;', '')
+        self.assert_lint('@synthesize a=b;', 'Should have spaces around = in property synthesis.  [whitespace/property] [4]')
+        self.assert_lint('@synthesize a;', '')
         self.assert_lint('#elif (foo(bar))', '')
         self.assert_lint('#elif (foo(bar) && foo(baz))', '')
         self.assert_lint('typedef foo (*foo)(foo)', '')
@@ -3230,6 +3234,59 @@ class OrderOfIncludesTest(CppStyleTestBase):
                                          '#include "b.h"\n',
                                          'Alphabetical sorting problem.  [build/include_order] [4]')
 
+    def test_check_wtf_blockptr_usage_in_javascriptcore(self):
+        # FIXME: Remove once JavaScriptCore builds with ARC enabled (Bug 221117).
+        self.assert_language_rules_check(
+            'Source/JavaScriptCore/foo.h',
+            '#include <wtf/BlockPtr.h>\n',
+            'Replace WTF::BlockPtr with WTF::Function.'
+            ' WTF::BlockPtr is not safe to use until JavaScriptCore builds with ARC enabled.'
+            '  [security/javascriptcore_wtf_blockptr] [5]')
+
+        self.assert_language_rules_check(
+            'Source/JavaScriptCore/foo.mm',
+            '#include <wtf/BlockPtr.h>\n',
+            'Replace WTF::BlockPtr with WTF::Function.'
+            ' WTF::BlockPtr is not safe to use until JavaScriptCore builds with ARC enabled.'
+            '  [security/javascriptcore_wtf_blockptr] [5]')
+
+        self.assert_language_rules_check('Source/JavaScriptCore/foo.h',
+                                         '#include <wtf/Function.h>\n',
+                                         '')
+
+        self.assert_language_rules_check('Source/WebCore/foo.h',
+                                         '#include <wtf/BlockPtr.h>\n',
+                                         '')
+
+        self.assert_lint(
+            'typedef Vector<BlockPtr<void ()>> RemoteTargetQueue;\n',
+            'Replace WTF::BlockPtr with WTF::Function.'
+            ' WTF::BlockPtr is not safe to use until JavaScriptCore builds with ARC enabled.'
+            '  [security/javascriptcore_wtf_blockptr] [5]',
+            file_name='Source/JavaScriptCore/foo.h')
+
+        self.assert_lint(
+            'BlockPtr<void(WebItemProviderFileCallback)> _callback;\n',
+            'Replace WTF::BlockPtr with WTF::Function.'
+            ' WTF::BlockPtr is not safe to use until JavaScriptCore builds with ARC enabled.'
+            '  [security/javascriptcore_wtf_blockptr] [5]',
+            file_name='Source/JavaScriptCore/foo.mm')
+
+        self.assert_lint(
+            'typedef Vector<Function<void ()>> RemoteTargetQueue;\n',
+            '',
+            file_name='Source/JavaScriptCore/foo.h')
+
+        self.assert_lint(
+            'typedef Vector<BlockPtr<void ()>> RemoteTargetQueue;\n',
+            '',
+            file_name='Source/WebCore/foo.h')
+
+        self.assert_lint(
+            'BlockPtr<void(WebItemProviderFileCallback)> _callback;\n',
+            '',
+            file_name='Source/WebCore/foo.mm')
+
     def test_check_line_break_after_own_header(self):
         self.assert_language_rules_check('foo.cpp',
                                          '#include "config.h"\n'
@@ -3423,6 +3480,16 @@ class OrderOfIncludesTest(CppStyleTestBase):
                                          '#include "FrameworkSoftLink.h"\n'
                                          '#include <Framework/Bar.h>\n',
                                          '*SoftLink.h header should be included after all other headers.  [build/include_order] [4]')
+
+        # Allow WebKitAdditions headers to appear after *SoftLink.h headers.
+        self.assert_language_rules_check('Foo.cpp',
+                                         '#include "config.h"\n'
+                                         '#include "Foo.h"\n'
+                                         '\n'
+                                         '#include "ALocalHeader.h"\n'
+                                         '#include "FrameworkSoftLink.h"\n'
+                                         '#include <WebKitAdditions/FooAdditions.h>\n',
+                                         '')
 
         self.assert_language_rules_check('Foo.cpp',
                                          '#include "config.h"\n'
@@ -5621,6 +5688,75 @@ class WebKitStyleTest(CppStyleTestBase):
             'std::lock_guard<Lock> locker(mutex);',
             "Use 'auto locker = holdLock(mutex)' instead of 'std::lock_guard<>'."
             "  [runtime/lock_guard] [4]",
+            'foo.mm')
+
+    def test_once_flag(self):
+        self.assert_lint(
+            'static std::once_flag onceKey;',
+            '',
+            'foo.cpp')
+
+        self.assert_lint(
+            'std::once_flag onceKey;',
+            "std::once_flag / dispatch_once_t should be in `static` storage."
+            "  [runtime/once_flag] [4]",
+            'foo.cpp')
+
+        self.assert_lint(
+            '    std::once_flag onceKey;',
+            "std::once_flag / dispatch_once_t should be in `static` storage."
+            "  [runtime/once_flag] [4]",
+            'foo.cpp')
+
+        self.assert_lint(
+            'static std::once_flag onceKey;',
+            '',
+            'foo.mm')
+
+        self.assert_lint(
+            'std::once_flag onceKey;',
+            "std::once_flag / dispatch_once_t should be in `static` storage."
+            "  [runtime/once_flag] [4]",
+            'foo.mm')
+
+        self.assert_lint(
+            '    std::once_flag onceKey;',
+            "std::once_flag / dispatch_once_t should be in `static` storage."
+            "  [runtime/once_flag] [4]",
+            'foo.mm')
+
+        self.assert_lint(
+            'static dispatch_once_t onceKey;',
+            '',
+            'foo.cpp')
+
+        self.assert_lint(
+            'dispatch_once_t onceKey;',
+            "std::once_flag / dispatch_once_t should be in `static` storage."
+            "  [runtime/once_flag] [4]",
+            'foo.cpp')
+
+        self.assert_lint(
+            '    dispatch_once_t onceKey;',
+            "std::once_flag / dispatch_once_t should be in `static` storage."
+            "  [runtime/once_flag] [4]",
+            'foo.cpp')
+
+        self.assert_lint(
+            'static dispatch_once_t onceKey;',
+            '',
+            'foo.mm')
+
+        self.assert_lint(
+            'dispatch_once_t onceKey;',
+            "std::once_flag / dispatch_once_t should be in `static` storage."
+            "  [runtime/once_flag] [4]",
+            'foo.mm')
+
+        self.assert_lint(
+            '    dispatch_once_t onceKey;',
+            "std::once_flag / dispatch_once_t should be in `static` storage."
+            "  [runtime/once_flag] [4]",
             'foo.mm')
 
     def test_ctype_fucntion(self):

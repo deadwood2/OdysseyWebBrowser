@@ -36,7 +36,19 @@
 
 namespace WebKit {
 
-void RemoteMediaPlayerProxy::prepareForPlayback(bool privateMode, WebCore::MediaPlayerEnums::Preload preload, bool preservesPitch, bool prepareForRendering, float videoContentScale, CompletionHandler<void(Optional<LayerHostingContextID>&& inlineLayerHostingContextId, Optional<LayerHostingContextID>&& fullscreenLayerHostingContextId)>&& completionHandler)
+static void setVideoInlineSizeIfPossible(LayerHostingContext& context, const WebCore::IntSize& size)
+{
+    if (!context.rootLayer())
+        return;
+
+    // We do not want animations here.
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [context.rootLayer() setFrame:CGRectMake(0, 0, size.width(), size.height())];
+    [CATransaction commit];
+}
+
+void RemoteMediaPlayerProxy::prepareForPlayback(bool privateMode, WebCore::MediaPlayerEnums::Preload preload, bool preservesPitch, bool prepareForRendering, float videoContentScale, CompletionHandler<void(Optional<LayerHostingContextID>&& inlineLayerHostingContextId)>&& completionHandler)
 {
     m_player->setPrivateBrowsingMode(privateMode);
     m_player->setPreload(preload);
@@ -45,58 +57,24 @@ void RemoteMediaPlayerProxy::prepareForPlayback(bool privateMode, WebCore::Media
     m_videoContentScale = videoContentScale;
     if (!m_inlineLayerHostingContext)
         m_inlineLayerHostingContext = LayerHostingContext::createForExternalHostingProcess();
-#if ENABLE(VIDEO_PRESENTATION_MODE)
-    if (!m_fullscreenLayerHostingContext)
-        m_fullscreenLayerHostingContext = LayerHostingContext::createForExternalHostingProcess();
-    completionHandler(m_inlineLayerHostingContext->contextID(), m_fullscreenLayerHostingContext->contextID());
-#endif
+    completionHandler(m_inlineLayerHostingContext->contextID());
 }
 
 void RemoteMediaPlayerProxy::mediaPlayerFirstVideoFrameAvailable()
 {
-    // Initially the size of the platformLayer will be 0x0 because we do not provide mediaPlayerContentBoxRect() in this class.
+    // Initially the size of the platformLayer may be 0x0 because we do not provide mediaPlayerContentBoxRect() in this class.
     m_inlineLayerHostingContext->setRootLayer(m_player->platformLayer());
+    setVideoInlineSizeIfPossible(*m_inlineLayerHostingContext, m_videoInlineSize);
     m_webProcessConnection->send(Messages::MediaPlayerPrivateRemote::FirstVideoFrameAvailable(), m_id);
-}
-
-void RemoteMediaPlayerProxy::mediaPlayerRenderingModeChanged()
-{
-    m_inlineLayerHostingContext->setRootLayer(m_player->platformLayer());
 }
 
 void RemoteMediaPlayerProxy::setVideoInlineSizeFenced(const WebCore::IntSize& size, const WTF::MachSendRight& machSendRight)
 {
     m_inlineLayerHostingContext->setFencePort(machSendRight.sendRight());
-    // We do not want animations here
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    [m_inlineLayerHostingContext->rootLayer() setFrame:CGRectMake(0, 0, size.width(), size.height())];
-    [CATransaction commit];
-}
 
-#if ENABLE(VIDEO_PRESENTATION_MODE)
-void RemoteMediaPlayerProxy::enterFullscreen(CompletionHandler<void()>&& completionHandler)
-{
-    auto videoFullscreenLayer = m_player->createVideoFullscreenLayer();
-    [videoFullscreenLayer setName:@"Web Video Fullscreen Layer (remote)"];
-    [videoFullscreenLayer setPosition:CGPointZero];
-    m_fullscreenLayerHostingContext->setRootLayer(videoFullscreenLayer.get());
-
-    m_player->setVideoFullscreenLayer(videoFullscreenLayer.get(), WTFMove(completionHandler));
+    m_videoInlineSize = size;
+    setVideoInlineSizeIfPossible(*m_inlineLayerHostingContext, size);
 }
-
-void RemoteMediaPlayerProxy::exitFullscreen(CompletionHandler<void()>&& completionHandler)
-{
-    m_player->setVideoFullscreenLayer(nullptr, WTFMove(completionHandler));
-    m_fullscreenLayerHostingContext->setRootLayer(nullptr);
-}
-
-void RemoteMediaPlayerProxy::setVideoFullscreenFrameFenced(const WebCore::FloatRect& rect, const WTF::MachSendRight& machSendRight)
-{
-    m_fullscreenLayerHostingContext->setFencePort(machSendRight.sendRight());
-    m_player->setVideoFullscreenFrame(rect);
-}
-#endif
 
 } // namespace WebKit
 

@@ -340,10 +340,14 @@ void NetworkDataTaskBlob::readData(const BlobDataItem& item)
     ASSERT(item.data().data());
 
     long long bytesToRead = item.length() - m_currentItemReadSize;
+    ASSERT(bytesToRead >= 0);
     if (bytesToRead > m_totalRemainingSize)
         bytesToRead = m_totalRemainingSize;
-    consumeData(reinterpret_cast<const char*>(item.data().data()->data()) + item.offset() + m_currentItemReadSize, static_cast<int>(bytesToRead));
+
+    auto* data = reinterpret_cast<const char*>(item.data().data()->data()) + item.offset() + m_currentItemReadSize;
     m_currentItemReadSize = 0;
+
+    consumeData(data, static_cast<int>(bytesToRead));
 }
 
 void NetworkDataTaskBlob::readFile(const BlobDataItem& item)
@@ -442,10 +446,7 @@ void NetworkDataTaskBlob::setPendingDownloadLocation(const String& filename, San
 
 String NetworkDataTaskBlob::suggestedFilename() const
 {
-    if (!m_suggestedFilename.isEmpty())
-        return m_suggestedFilename;
-
-    return "unknown"_s;
+    return m_suggestedFilename;
 }
 
 void NetworkDataTaskBlob::download()

@@ -47,18 +47,19 @@
 #import "HTMLSpanElement.h"
 #import "LegacyNSPasteboardTypes.h"
 #import "LegacyWebArchive.h"
+#import "PagePasteboardContext.h"
 #import "Pasteboard.h"
 #import "PasteboardStrategy.h"
 #import "PlatformStrategies.h"
 #import "RenderElement.h"
 #import "RenderStyle.h"
 #import "Settings.h"
+#import "SystemSoundManager.h"
 #import "Text.h"
 #import "UTIUtilities.h"
 #import "WebContentReader.h"
 #import "markup.h"
 #import <pal/spi/cocoa/NSAttributedStringSPI.h>
-#import <pal/system/Sound.h>
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/cocoa/NSURLExtras.h>
 
@@ -239,7 +240,7 @@ RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard
 void Editor::takeFindStringFromSelection()
 {
     if (!canCopyExcludingStandaloneImages()) {
-        PAL::systemBeep();
+        SystemSoundManager::singleton().systemBeep();
         return;
     }
 
@@ -247,9 +248,10 @@ void Editor::takeFindStringFromSelection()
 #if PLATFORM(MAC)
     Vector<String> types;
     types.append(String(legacyStringPasteboardType()));
+    auto context = PagePasteboardContext::create(m_document.pageID());
     ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    platformStrategies()->pasteboardStrategy()->setTypes(types, NSFindPboard);
-    platformStrategies()->pasteboardStrategy()->setStringForType(WTFMove(stringFromSelection), legacyStringPasteboardType(), NSFindPboard);
+    platformStrategies()->pasteboardStrategy()->setTypes(types, NSFindPboard, context.get());
+    platformStrategies()->pasteboardStrategy()->setStringForType(WTFMove(stringFromSelection), legacyStringPasteboardType(), NSFindPboard, context.get());
     ALLOW_DEPRECATED_DECLARATIONS_END
 #else
     if (auto* client = this->client()) {

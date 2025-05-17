@@ -24,11 +24,12 @@
  */
 
 #import "config.h"
-
-#if PLATFORM(IOS_FAMILY) && ENABLE(FULLSCREEN_API)
 #import "WKFullScreenWindowControllerIOS.h"
 
+#if PLATFORM(IOS_FAMILY) && ENABLE(FULLSCREEN_API)
+
 #import "UIKitSPI.h"
+#import "VideoFullscreenManagerProxy.h"
 #import "WKFullScreenViewController.h"
 #import "WKFullscreenStackView.h"
 #import "WKWebView.h"
@@ -44,6 +45,8 @@
 #import <WebCore/GeometryUtilities.h>
 #import <WebCore/IntRect.h>
 #import <WebCore/LocalizedStrings.h>
+#import <WebCore/VideoFullscreenInterfaceAVKit.h>
+#import <WebCore/VideoFullscreenModel.h>
 #import <WebCore/ViewportArguments.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <pal/spi/cocoa/NSStringSPI.h>
@@ -424,6 +427,30 @@ static const NSTimeInterval kAnimationDuration = 0.2;
 
 #pragma mark -
 
+@interface WKFullScreenWindowController (VideoFullscreenManagerProxyClient)
+- (void)didEnterPictureInPicture;
+- (void)didExitPictureInPicture;
+@end
+
+class WKFullScreenWindowControllerVideoFullscreenManagerProxyClient : public WebKit::VideoFullscreenManagerProxyClient {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    void setParent(WKFullScreenWindowController *parent) { m_parent = parent; }
+
+private:
+    void hasVideoInPictureInPictureDidChange(bool value) final
+    {
+        if (value)
+            [m_parent didEnterPictureInPicture];
+        else
+            [m_parent didExitPictureInPicture];
+    }
+
+    WKFullScreenWindowController *m_parent { nullptr };
+};
+
+#pragma mark -
+
 @implementation WKFullScreenWindowController {
     RetainPtr<WKFullScreenPlaceholderView> _webViewPlaceholder;
 
@@ -433,13 +460,18 @@ static const NSTimeInterval kAnimationDuration = 0.2;
     RetainPtr<UIWindow> _window;
     RetainPtr<UIViewController> _rootViewController;
 
-    RefPtr<WebKit::VoidCallback> _repaintCallback;
     RetainPtr<UIViewController> _viewControllerForPresentation;
     RetainPtr<WKFullScreenViewController> _fullscreenViewController;
     RetainPtr<UISwipeGestureRecognizer> _startDismissGestureRecognizer;
     RetainPtr<UIPanGestureRecognizer> _interactivePanDismissGestureRecognizer;
     RetainPtr<UIPinchGestureRecognizer> _interactivePinchDismissGestureRecognizer;
     RetainPtr<WKFullScreenInteractiveTransition> _interactiveDismissTransitionCoordinator;
+
+    WKFullScreenWindowControllerVideoFullscreenManagerProxyClient _videoFullscreenManagerProxyClient;
+    BOOL _shouldReturnToFullscreenFromPictureInPicture;
+    BOOL _enterFullscreenNeedsExitPictureInPicture;
+    BOOL _returnToFullscreenFromPictureInPicture;
+    BOOL _blocksReturnToFullscreenFromPictureInPicture;
 
     CGRect _initialFrame;
     CGRect _finalFrame;
@@ -448,6 +480,8 @@ static const NSTimeInterval kAnimationDuration = 0.2;
     BOOL _EVOrganizationNameIsValid;
     BOOL _inInteractiveDismiss;
     BOOL _exitRequested;
+    BOOL _enterRequested;
+    BOOL _exitingFullScreen;
 
     RetainPtr<id> _notificationListener;
 }
@@ -460,6 +494,7 @@ static const NSTimeInterval kAnimationDuration = 0.2;
         return nil;
 
     self._webView = webView;
+    _videoFullscreenManagerProxyClient.setParent(self);
 
     return self;
 }
@@ -468,6 +503,8 @@ static const NSTimeInterval kAnimationDuration = 0.2;
 {
     [NSObject cancelPreviousPerformRequestsWithTarget:self];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+
+    _videoFullscreenManagerProxyClient.setParent(nullptr);
 
     [super dealloc];
 }
@@ -504,6 +541,7 @@ static const NSTimeInterval kAnimationDuration = 0.2;
     [self _invalidateEVOrganizationName];
 
     _fullScreenState = WebKit::WaitingToEnterFullScreen;
+    _blocksReturnToFullscreenFromPictureInPicture = manager->blocksReturnToFullscreenFromPictureInPicture();
 
     _window = adoptNS([[UIWindow alloc] initWithWindowScene:[[webView window] windowScene]]);
     [_window setBackgroundColor:[UIColor clearColor]];
@@ -511,7 +549,7 @@ static const NSTimeInterval kAnimationDuration = 0.2;
     [_window setHidden:NO];
 
     _rootViewController = [[UIViewController alloc] init];
-    _rootViewController.get().view = [[[UIView alloc] initWithFrame:_window.get().bounds] autorelease];
+    _rootViewController.get().view = adoptNS([[UIView alloc] initWithFrame:_window.get().bounds]).get();
     _rootViewController.get().view.backgroundColor = [UIColor clearColor];
     _rootViewController.get().view.autoresizingMask = (UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight);
     [_rootViewController setModalPresentationStyle:UIModalPresentationCustom];
@@ -524,7 +562,7 @@ static const NSTimeInterval kAnimationDuration = 0.2;
     [_fullscreenViewController setTransitioningDelegate:self];
     [_fullscreenViewController setModalPresentationCapturesStatusBarAppearance:YES];
     [_fullscreenViewController setTarget:self];
-    [_fullscreenViewController setAction:@selector(requestExitFullScreen)];
+    [_fullscreenViewController setExitFullScreenAction:@selector(requestExitFullScreen)];
     _fullscreenViewController.get().view.frame = _rootViewController.get().view.bounds;
     [self _updateLocationInfo];
 
@@ -587,9 +625,7 @@ static const NSTimeInterval kAnimationDuration = 0.2;
         arguments.userZoom = 1;
         page->setOverrideViewportArguments(arguments);
 
-        _repaintCallback = WebKit::VoidCallback::create([protectedSelf = retainPtr(self), self](WebKit::CallbackBase::Error) {
-            _repaintCallback = nullptr;
-
+        page->forceRepaint([protectedSelf = retainPtr(self), self] {
             if (_exitRequested) {
                 _exitRequested = NO;
                 [self _exitFullscreenImmediately];
@@ -604,7 +640,6 @@ static const NSTimeInterval kAnimationDuration = 0.2;
             ASSERT_NOT_REACHED();
             [self _exitFullscreenImmediately];
         });
-        page->forceRepaint(_repaintCallback.copyRef());
 
         [CATransaction commit];
     }];
@@ -652,12 +687,47 @@ static const NSTimeInterval kAnimationDuration = 0.2;
             manager->didEnterFullScreen();
             manager->setAnimatingFullScreen(false);
             page->setSuppressVisibilityUpdates(false);
+
+            if (auto* videoFullscreenManager = self._videoFullscreenManager) {
+                videoFullscreenManager->setClient(&_videoFullscreenManagerProxyClient);
+
+                if (auto* videoFullscreenInterface = videoFullscreenManager ? videoFullscreenManager->controlsManagerInterface() : nullptr) {
+                    if (_returnToFullscreenFromPictureInPicture)
+                        videoFullscreenInterface->preparedToReturnToStandby();
+                    else if (videoFullscreenInterface->inPictureInPicture()) {
+                        if (auto* model = videoFullscreenInterface->videoFullscreenModel()) {
+                            _enterFullscreenNeedsExitPictureInPicture = YES;
+                            model->requestFullscreenMode(WebCore::HTMLMediaElementEnums::VideoFullscreenModeNone);
+                        }
+                    }
+                }
+            }
+
+            _returnToFullscreenFromPictureInPicture = NO;
+
             return;
         }
 
         ASSERT_NOT_REACHED();
         [self _exitFullscreenImmediately];
     }];
+}
+
+- (void)requestEnterFullScreen
+{
+    if (_fullScreenState != WebKit::NotInFullScreen)
+        return;
+
+    // Switch the active tab if needed
+    if (auto* page = [self._webView _page].get())
+        page->fullscreenMayReturnToInline();
+
+    if (auto* manager = self._manager) {
+        manager->requestEnterFullScreen();
+        return;
+    }
+
+    ASSERT_NOT_REACHED();
 }
 
 - (void)requestExitFullScreen
@@ -669,6 +739,7 @@ static const NSTimeInterval kAnimationDuration = 0.2;
 
     if (auto* manager = self._manager) {
         manager->requestExitFullScreen();
+        _exitingFullScreen = YES;
         return;
     }
 
@@ -683,6 +754,7 @@ static const NSTimeInterval kAnimationDuration = 0.2;
         return;
     }
     _fullScreenState = WebKit::WaitingToExitFullScreen;
+    _exitingFullScreen = YES;
 
     if (auto* manager = self._manager) {
         manager->setAnimatingFullScreen(true);
@@ -753,16 +825,13 @@ static const NSTimeInterval kAnimationDuration = 0.2;
         manager->didExitFullScreen();
     }
 
+    auto* videoFullscreenInterface = self._videoFullscreenManager ? self._videoFullscreenManager->controlsManagerInterface() : nullptr;
+    _shouldReturnToFullscreenFromPictureInPicture = videoFullscreenInterface && videoFullscreenInterface->inPictureInPicture();
+
     [_window setHidden:YES];
     _window = nil;
 
-    if (_repaintCallback) {
-        _repaintCallback->invalidate(WebKit::CallbackBase::Error::OwnerWasInvalidated);
-        ASSERT(!_repaintCallback);
-    }
-
-    _repaintCallback = WebKit::VoidCallback::create([protectedSelf = retainPtr(self), self](WebKit::CallbackBase::Error) {
-        _repaintCallback = nullptr;
+    CompletionHandler<void()> completionHandler([protectedSelf = retainPtr(self), self] {
         _webViewPlaceholder.get().parent = nil;
         [_webViewPlaceholder removeFromSuperview];
 
@@ -770,16 +839,23 @@ static const NSTimeInterval kAnimationDuration = 0.2;
             page->setSuppressVisibilityUpdates(false);
             page->setNeedsDOMWindowResizeEvent();
         }
+
+        _exitRequested = NO;
+        _exitingFullScreen = NO;
+        if (_enterRequested) {
+            _enterRequested = NO;
+            [self requestEnterFullScreen];
+        }
     });
 
-    if (auto page = [self._webView _page])
-        page->forceRepaint(_repaintCallback.copyRef());
+    auto* page = [self._webView _page].get();
+    if (page && page->isViewFocused())
+        page->forceRepaint(WTFMove(completionHandler));
     else
-        _repaintCallback->performCallback();
+        completionHandler();
 
     [_fullscreenViewController setPrefersStatusBarHidden:YES];
     _fullscreenViewController = nil;
-    _exitRequested = NO;
 }
 
 - (void)close
@@ -805,10 +881,39 @@ static const NSTimeInterval kAnimationDuration = 0.2;
     if (superview)
         return;
 
-    dispatch_async(dispatch_get_main_queue(), ^{
+    RunLoop::main().dispatch([self, strongSelf = retainPtr(self)] {
         if ([_webViewPlaceholder superview] == nil && [_webViewPlaceholder parent] == self)
             [self close];
     });
+}
+
+- (void)didEnterPictureInPicture
+{
+    _shouldReturnToFullscreenFromPictureInPicture = !_blocksReturnToFullscreenFromPictureInPicture;
+
+    if (_fullScreenState == WebKit::InFullScreen)
+        [self requestExitFullScreen];
+}
+
+- (void)didExitPictureInPicture
+{
+    if (!_enterFullscreenNeedsExitPictureInPicture && _shouldReturnToFullscreenFromPictureInPicture) {
+        auto* videoFullscreenInterface = self._videoFullscreenManager ? self._videoFullscreenManager->controlsManagerInterface() : nullptr;
+        if (videoFullscreenInterface && videoFullscreenInterface->returningToStandby()) {
+            if (!_exitingFullScreen) {
+                if (_fullScreenState == WebKit::InFullScreen)
+                    videoFullscreenInterface->preparedToReturnToStandby();
+                else
+                    [self requestEnterFullScreen];
+            } else
+                _enterRequested = YES;
+
+            _returnToFullscreenFromPictureInPicture = YES;
+            return;
+        }
+    }
+
+    _enterFullscreenNeedsExitPictureInPicture = NO;
 }
 
 #pragma mark -
@@ -875,8 +980,10 @@ static const NSTimeInterval kAnimationDuration = 0.2;
 
 - (void)_exitFullscreenImmediately
 {
-    if (![self isFullScreen])
+    if (_fullScreenState == WebKit::NotInFullScreen)
         return;
+
+    _shouldReturnToFullscreenFromPictureInPicture = false;
 
     auto* manager = self._manager;
     if (manager)
@@ -981,6 +1088,13 @@ static const NSTimeInterval kAnimationDuration = 0.2;
 {
     if (auto page = [self._webView _page])
         return page->fullScreenManager();
+    return nullptr;
+}
+
+- (WebKit::VideoFullscreenManagerProxy*)_videoFullscreenManager
+{
+    if (auto page = [self._webView _page])
+        return page->videoFullscreenManager();
     return nullptr;
 }
 

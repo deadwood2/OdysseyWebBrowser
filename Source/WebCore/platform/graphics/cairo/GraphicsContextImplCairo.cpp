@@ -154,7 +154,8 @@ void GraphicsContextImplCairo::fillRect(const FloatRect& rect, const Color& colo
 
 void GraphicsContextImplCairo::fillRect(const FloatRect& rect, Gradient& gradient)
 {
-    auto pattern = gradient.createPattern(1.0);
+    auto& state = graphicsContext().state();
+    auto pattern = gradient.createPattern(1.0, state.fillGradientSpaceTransform);
     if (!pattern)
         return;
 
@@ -231,21 +232,17 @@ void GraphicsContextImplCairo::clearRect(const FloatRect& rect)
     Cairo::clearRect(m_platformContext, rect);
 }
 
-void GraphicsContextImplCairo::drawGlyphs(const Font& font, const GlyphBuffer& glyphBuffer, unsigned from, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode fontSmoothing)
+void GraphicsContextImplCairo::drawGlyphs(const Font& font, const GlyphBufferGlyph* glyphs, const GlyphBufferAdvance* advances, unsigned numGlyphs, const FloatPoint& point, FontSmoothingMode fontSmoothing)
 {
     if (!font.platformData().size())
         return;
 
     auto xOffset = point.x();
-    Vector<cairo_glyph_t> glyphs(numGlyphs);
+    Vector<cairo_glyph_t> cairoGlyphs(numGlyphs);
     {
-        ASSERT(from + numGlyphs <= glyphBuffer.size());
-        auto* glyphsData = glyphBuffer.glyphs(from);
-        auto* advances = glyphBuffer.advances(from);
-
         auto yOffset = point.y();
         for (size_t i = 0; i < numGlyphs; ++i) {
-            glyphs[i] = { glyphsData[i], xOffset, yOffset };
+            cairoGlyphs[i] = { glyphs[i], xOffset, yOffset };
             xOffset += advances[i].width();
             yOffset += advances[i].height();
         }
@@ -259,37 +256,27 @@ void GraphicsContextImplCairo::drawGlyphs(const Font& font, const GlyphBuffer& g
 
     auto& state = graphicsContext().state();
     Cairo::drawGlyphs(m_platformContext, Cairo::FillSource(state), Cairo::StrokeSource(state),
-        Cairo::ShadowState(state), point, scaledFont, syntheticBoldOffset, glyphs, xOffset,
+        Cairo::ShadowState(state), point, scaledFont, syntheticBoldOffset, cairoGlyphs, xOffset,
         state.textDrawingMode, state.strokeThickness, state.shadowOffset, state.shadowColor,
         fontSmoothing);
 }
 
-ImageDrawResult GraphicsContextImplCairo::drawImage(Image& image, const FloatRect& destination, const FloatRect& source, const ImagePaintingOptions& imagePaintingOptions)
+void GraphicsContextImplCairo::drawImageBuffer(ImageBuffer& image, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
-    return GraphicsContextImpl::drawImageImpl(graphicsContext(), image, destination, source, imagePaintingOptions);
+    image.draw(graphicsContext(), destRect, srcRect, options);
 }
 
-ImageDrawResult GraphicsContextImplCairo::drawTiledImage(Image& image, const FloatRect& destination, const FloatPoint& source, const FloatSize& tileSize, const FloatSize& spacing, const ImagePaintingOptions& imagePaintingOptions)
-{
-    return GraphicsContextImpl::drawTiledImageImpl(graphicsContext(), image, destination, source, tileSize, spacing, imagePaintingOptions);
-}
-
-ImageDrawResult GraphicsContextImplCairo::drawTiledImage(Image& image, const FloatRect& destination, const FloatRect& source, const FloatSize& tileScaleFactor, Image::TileRule hRule, Image::TileRule vRule, const ImagePaintingOptions& imagePaintingOptions)
-{
-    return GraphicsContextImpl::drawTiledImageImpl(graphicsContext(), image, destination, source, tileScaleFactor, hRule, vRule, imagePaintingOptions);
-}
-
-void GraphicsContextImplCairo::drawNativeImage(const NativeImagePtr& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
+void GraphicsContextImplCairo::drawNativeImage(NativeImage& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
     UNUSED_PARAM(imageSize);
     auto& state = graphicsContext().state();
-    Cairo::drawNativeImage(m_platformContext, image.get(), destRect, srcRect, { options, state.imageInterpolationQuality }, state.alpha, Cairo::ShadowState(state));
+    Cairo::drawPlatformImage(m_platformContext, image.platformImage().get(), destRect, srcRect, { options, state.imageInterpolationQuality }, state.alpha, Cairo::ShadowState(state));
 }
 
-void GraphicsContextImplCairo::drawPattern(Image& image, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize&, const ImagePaintingOptions& options)
+void GraphicsContextImplCairo::drawPattern(NativeImage& image, const FloatSize& imageSize, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, const ImagePaintingOptions& options)
 {
-    if (auto surface = image.nativeImageForCurrentFrame())
-        Cairo::drawPattern(m_platformContext, surface.get(), IntSize(image.size()), destRect, tileRect, patternTransform, phase, options);
+    UNUSED_PARAM(spacing);
+    Cairo::drawPattern(m_platformContext, image.platformImage().get(), IntSize(imageSize), destRect, tileRect, patternTransform, phase, options);
 }
 
 void GraphicsContextImplCairo::drawRect(const FloatRect& rect, float borderThickness)
@@ -414,8 +401,8 @@ IntRect GraphicsContextImplCairo::clipBounds()
 
 void GraphicsContextImplCairo::clipToImageBuffer(ImageBuffer& buffer, const FloatRect& destRect)
 {
-    if (auto surface = buffer.copyNativeImage(DontCopyBackingStore))
-        Cairo::clipToImageBuffer(m_platformContext, surface.get(), destRect);
+    if (auto nativeImage = buffer.copyNativeImage(DontCopyBackingStore))
+        Cairo::clipToImageBuffer(m_platformContext, nativeImage->platformImage().get(), destRect);
 }
 
 void GraphicsContextImplCairo::applyDeviceScaleFactor(float)
@@ -426,6 +413,18 @@ FloatRect GraphicsContextImplCairo::roundToDevicePixels(const FloatRect& rect, G
 {
     return Cairo::State::roundToDevicePixels(m_platformContext, rect);
 }
+
+void GraphicsContextImplCairo::clipToDrawingCommands(const FloatRect&, DestinationColorSpace, Function<void(GraphicsContext&)>&&)
+{
+    // FIXME: Not implemented.
+}
+
+#if ENABLE(VIDEO)
+void GraphicsContextImplCairo::paintFrameForMedia(MediaPlayer&, const FloatRect&)
+{
+    // FIXME: Not implemented.
+}
+#endif
 
 } // namespace WebCore
 

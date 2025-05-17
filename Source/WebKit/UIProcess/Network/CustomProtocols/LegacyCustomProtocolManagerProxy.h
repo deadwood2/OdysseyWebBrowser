@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "DataReference.h"
 #include "LegacyCustomProtocolID.h"
 #include "MessageReceiver.h"
 #include <wtf/WeakPtr.h>
@@ -34,10 +35,6 @@
 #include <wtf/RetainPtr.h>
 OBJC_CLASS WKCustomProtocolLoader;
 #endif
-
-namespace IPC {
-class DataReference;
-}
 
 namespace WebCore {
 class ResourceError;
@@ -49,7 +46,7 @@ namespace WebKit {
 
 class NetworkProcessProxy;
 
-class LegacyCustomProtocolManagerProxy : public CanMakeWeakPtr<LegacyCustomProtocolManagerProxy>, public IPC::MessageReceiver {
+class LegacyCustomProtocolManagerProxy : public IPC::MessageReceiver {
 public:
     LegacyCustomProtocolManagerProxy(NetworkProcessProxy&);
     ~LegacyCustomProtocolManagerProxy();

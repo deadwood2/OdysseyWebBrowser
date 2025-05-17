@@ -26,8 +26,9 @@
 #import "config.h"
 #import "WebKit2Initialize.h"
 
-#import "VersionChecks.h"
 #import <JavaScriptCore/InitializeThreading.h>
+#import <WebCore/VersionChecks.h>
+#import <WebCore/WebCoreJITOperations.h>
 #import <mutex>
 #import <wtf/MainThread.h>
 #import <wtf/RefCounted.h>
@@ -54,6 +55,8 @@ static void runInitializationCode(void* = nullptr)
     WTF::initializeMainThread();
 
     WTF::RefCountedBase::enableThreadingChecksGlobally();
+
+    WebCore::populateJITOperations();
 }
 
 void InitializeWebKit2()
@@ -61,7 +64,7 @@ void InitializeWebKit2()
     // Make sure the initialization code is run only once and on the main thread since things like initializeMainThread()
     // are only safe to call on the main thread.
     std::call_once(flag, [] {
-        if ([NSThread isMainThread] || linkedOnOrAfter(SDKVersion::FirstWithInitializeWebKit2MainThreadAssertion))
+        if ([NSThread isMainThread] || linkedOnOrAfter(WebCore::SDKVersion::FirstWithInitializeWebKit2MainThreadAssertion))
             runInitializationCode();
         else
             dispatch_sync_f(dispatch_get_main_queue(), nullptr, runInitializationCode);

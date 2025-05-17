@@ -54,24 +54,31 @@ uint8_t verifyImageBufferIsBigEnough(const void* buffer, size_t bufferSize)
 
 CFStringRef jpegUTI()
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 #if PLATFORM(IOS_FAMILY) || PLATFORM(WIN)
     static const CFStringRef kUTTypeJPEG = CFSTR("public.jpeg");
 #endif
     return kUTTypeJPEG;
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 RetainPtr<CFStringRef> utiFromImageBufferMIMEType(const String& mimeType)
 {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     // FIXME: Why doesn't iOS use the CoreServices version?
 #if PLATFORM(MAC)
     return UTIFromMIMEType(mimeType).createCFString();
 #else
-    ASSERT(isMainThread()); // It is unclear if CFSTR is threadsafe.
-
     // FIXME: Add Windows support for all the supported UTIs when a way to convert from MIMEType to UTI reliably is found.
     // For now, only support PNG, JPEG, and GIF. See <rdar://problem/6095286>.
-    static const CFStringRef kUTTypePNG = CFSTR("public.png");
-    static const CFStringRef kUTTypeGIF = CFSTR("com.compuserve.gif");
+    static CFStringRef kUTTypePNG;
+    static CFStringRef kUTTypeGIF;
+
+    static std::once_flag onceKey;
+    std::call_once(onceKey, [&] {
+        kUTTypePNG = CFSTR("public.png");
+        kUTTypeGIF = CFSTR("com.compuserve.gif");
+    });
 
     if (equalLettersIgnoringASCIICase(mimeType, "image/png"))
         return kUTTypePNG;
@@ -83,6 +90,7 @@ RetainPtr<CFStringRef> utiFromImageBufferMIMEType(const String& mimeType)
     ASSERT_NOT_REACHED();
     return kUTTypePNG;
 #endif
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 bool encodeImage(CGImageRef image, CFStringRef uti, Optional<double> quality, CFMutableDataRef data)

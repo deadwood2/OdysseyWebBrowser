@@ -72,7 +72,7 @@ std::unique_ptr<CachedResourceMediaLoader> CachedResourceMediaLoader::create(Web
 {
     // FIXME: Skip Content Security Policy check if the element that inititated this request
     // is in a user-agent shadow tree. See <https://bugs.webkit.org/show_bug.cgi?id=173498>.
-    CachedResourceRequest request(WTFMove(resourceRequest), ResourceLoaderOptions(
+    ResourceLoaderOptions loaderOptions(
         SendCallbackPolicy::SendCallbacks,
         ContentSniffingPolicy::DoNotSniffContent,
         DataBufferingPolicy::BufferData,
@@ -84,7 +84,10 @@ std::unique_ptr<CachedResourceMediaLoader> CachedResourceMediaLoader::create(Web
         CertificateInfoPolicy::DoNotIncludeCertificateInfo,
         ContentSecurityPolicyImposition::DoPolicyCheck,
         DefersLoadingPolicy::AllowDefersLoading,
-        CachingPolicy::DisallowCaching));
+        CachingPolicy::DisallowCaching
+    );
+    loaderOptions.destination = FetchOptions::Destination::Video;
+    CachedResourceRequest request(WTFMove(resourceRequest), loaderOptions);
 
     auto resource = loader.requestMedia(WTFMove(request)).value_or(nullptr);
     if (!resource)
@@ -167,7 +170,7 @@ WeakPtr<PlatformResourceMediaLoader> PlatformResourceMediaLoader::create(WebCore
     if (!resource)
         return nullptr;
     auto* resourcePointer = resource.get();
-    auto client = std::unique_ptr<PlatformResourceMediaLoader>(new PlatformResourceMediaLoader { parent, resource.releaseNonNull() });
+    auto client = adoptRef(*new PlatformResourceMediaLoader { parent, resource.releaseNonNull() });
     auto result = makeWeakPtr(client.get());
 
     resourcePointer->setClient(WTFMove(client));
@@ -244,7 +247,7 @@ void WebCoreAVFResourceLoader::startLoading()
     request.setPriority(ResourceLoadPriority::Low);
 
     if (auto* loader = m_parent->player()->cachedResourceLoader()) {
-        m_resourceMediaLoader = CachedResourceMediaLoader::create(*this, *loader, WTFMove(request));
+        m_resourceMediaLoader = CachedResourceMediaLoader::create(*this, *loader, ResourceRequest(request));
         if (m_resourceMediaLoader)
             return;
     }

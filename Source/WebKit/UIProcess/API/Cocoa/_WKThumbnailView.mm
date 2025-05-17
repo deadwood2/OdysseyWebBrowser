@@ -60,7 +60,7 @@
     RetainPtr<NSColor> _overrideBackgroundColor;
 }
 
-@synthesize _waitingForSnapshot=_waitingForSnapshot;
+@synthesize _waitingForSnapshot = _waitingForSnapshot;
 
 - (instancetype)initWithFrame:(NSRect)frame
 {
@@ -141,7 +141,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
     _lastSnapshotScale = _scale;
     _lastSnapshotMaximumSize = _maximumSnapshotSize;
-    _webPageProxy->takeSnapshot(snapshotRect, bitmapSize, options, [thumbnailView](const WebKit::ShareableBitmap::Handle& imageHandle, WebKit::CallbackBase::Error) {
+    _webPageProxy->takeSnapshot(snapshotRect, bitmapSize, options, [thumbnailView](const WebKit::ShareableBitmap::Handle& imageHandle) {
         auto bitmap = WebKit::ShareableBitmap::create(imageHandle, WebKit::SharedMemory::Protection::ReadOnly);
         RetainPtr<CGImageRef> cgImage = bitmap ? bitmap->makeCGImage() : nullptr;
         [thumbnailView _didTakeSnapshot:cgImage.get()];

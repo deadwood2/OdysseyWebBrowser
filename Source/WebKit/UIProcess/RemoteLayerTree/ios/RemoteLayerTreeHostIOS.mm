@@ -28,11 +28,9 @@
 
 #if PLATFORM(IOS_FAMILY)
 
-#import "EditableImageController.h"
 #import "RemoteLayerTreeDrawingAreaProxy.h"
 #import "RemoteLayerTreeViews.h"
 #import "UIKitSPI.h"
-#import "WKDrawingView.h"
 #import "WebPageProxy.h"
 #import <UIKit/UIScrollView.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
@@ -42,11 +40,8 @@ using namespace WebCore;
 
 std::unique_ptr<RemoteLayerTreeNode> RemoteLayerTreeHost::makeNode(const RemoteLayerTreeTransaction::LayerCreationProperties& properties)
 {
-    auto makeWithView = [&] (RetainPtr<UIView> view) {
+    auto makeWithView = [&] (RetainPtr<UIView>&& view) {
         return makeUnique<RemoteLayerTreeNode>(properties.layerID, WTFMove(view));
-    };
-    auto makeAdoptingView = [&] (UIView* view) {
-        return makeWithView(adoptNS(view));
     };
 
     switch (properties.type) {
@@ -56,22 +51,22 @@ std::unique_ptr<RemoteLayerTreeNode> RemoteLayerTreeHost::makeNode(const RemoteL
     case PlatformCALayer::LayerTypeSimpleLayer:
     case PlatformCALayer::LayerTypeTiledBackingLayer:
     case PlatformCALayer::LayerTypePageTiledBackingLayer:
-        return makeAdoptingView([[WKCompositingView alloc] init]);
+        return makeWithView(adoptNS([[WKCompositingView alloc] init]));
 
     case PlatformCALayer::LayerTypeTiledBackingTileLayer:
         return RemoteLayerTreeNode::createWithPlainLayer(properties.layerID);
 
     case PlatformCALayer::LayerTypeBackdropLayer:
-        return makeAdoptingView([[WKSimpleBackdropView alloc] init]);
+        return makeWithView(adoptNS([[WKSimpleBackdropView alloc] init]));
 
     case PlatformCALayer::LayerTypeLightSystemBackdropLayer:
-        return makeAdoptingView([[WKBackdropView alloc] initWithFrame:CGRectZero privateStyle:_UIBackdropViewStyle_Light]);
+        return makeWithView(adoptNS([[WKBackdropView alloc] initWithFrame:CGRectZero privateStyle:_UIBackdropViewStyle_Light]));
 
     case PlatformCALayer::LayerTypeDarkSystemBackdropLayer:
-        return makeAdoptingView([[WKBackdropView alloc] initWithFrame:CGRectZero privateStyle:_UIBackdropViewStyle_Dark]);
+        return makeWithView(adoptNS([[WKBackdropView alloc] initWithFrame:CGRectZero privateStyle:_UIBackdropViewStyle_Dark]));
 
     case PlatformCALayer::LayerTypeTransformLayer:
-        return makeAdoptingView([[WKTransformView alloc] init]);
+        return makeWithView(adoptNS([[WKTransformView alloc] init]));
 
     case PlatformCALayer::LayerTypeCustom:
     case PlatformCALayer::LayerTypeAVPlayerLayer:
@@ -86,48 +81,21 @@ std::unique_ptr<RemoteLayerTreeNode> RemoteLayerTreeHost::makeNode(const RemoteL
             }
             return makeWithView(WTFMove(view));
         }
-        return makeAdoptingView([[WKCompositingView alloc] init]);
+        return makeWithView(adoptNS([[WKCompositingView alloc] init]));
 
     case PlatformCALayer::LayerTypeShapeLayer:
-        return makeAdoptingView([[WKShapeView alloc] init]);
+        return makeWithView(adoptNS([[WKShapeView alloc] init]));
 
     case PlatformCALayer::LayerTypeScrollContainerLayer:
         if (!m_isDebugLayerTreeHost)
-            return makeAdoptingView([[WKChildScrollView alloc] init]);
+            return makeWithView(adoptNS([[WKChildScrollView alloc] init]));
         // The debug indicator parents views under layers, which can cause crashes with UIScrollView.
-        return makeAdoptingView([[UIView alloc] init]);
-
-    case PlatformCALayer::LayerTypeEditableImageLayer:
-        return makeWithView(createEmbeddedView(properties));
+        return makeWithView(adoptNS([[UIView alloc] init]));
 
     default:
         ASSERT_NOT_REACHED();
         return nullptr;
     }
-}
-
-RetainPtr<WKEmbeddedView> RemoteLayerTreeHost::createEmbeddedView(const RemoteLayerTreeTransaction::LayerCreationProperties& properties)
-{
-    if (m_isDebugLayerTreeHost)
-        return adoptNS([[UIView alloc] init]);
-
-    auto result = m_embeddedViews.ensure(properties.embeddedViewID, [&]() -> RetainPtr<UIView> {
-        switch (properties.type) {
-#if HAVE(PENCILKIT)
-        case PlatformCALayer::LayerTypeEditableImageLayer: {
-            auto editableImage = m_drawingArea->page().editableImageController().editableImage(properties.embeddedViewID);
-            return editableImage ? editableImage->drawingView : nil;
-        }
-#endif
-        default:
-            return adoptNS([[UIView alloc] init]);
-        }
-    });
-    auto view = result.iterator->value;
-    if (!result.isNewEntry)
-        m_layerToEmbeddedViewMap.remove(RemoteLayerTreeNode::layerID([view layer]));
-    m_layerToEmbeddedViewMap.set(properties.layerID, properties.embeddedViewID);
-    return view;
 }
 
 } // namespace WebKit

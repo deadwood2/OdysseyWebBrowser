@@ -29,6 +29,7 @@ WI.AuditTabContentView = class AuditTabContentView extends WI.ContentBrowserTabC
     {
         super(AuditTabContentView.tabInfo(), {
             navigationSidebarPanelConstructor: WI.AuditNavigationSidebarPanel,
+            disableBackForward: true,
         });
 
         this._startStopShortcut = new WI.KeyboardShortcut(null, WI.KeyboardShortcut.Key.Space, this._handleSpace.bind(this));
@@ -72,23 +73,36 @@ WI.AuditTabContentView = class AuditTabContentView extends WI.ContentBrowserTabC
             || representedObject instanceof WI.AuditTestGroupResult;
     }
 
-    shown()
+    attached()
     {
-        super.shown();
+        super.attached();
 
         this._startStopShortcut.disabled = false;
     }
 
-    hidden()
+    detached()
     {
         this._startStopShortcut.disabled = true;
 
-        super.hidden();
+        super.detached();
     }
 
-    async handleFileDrop(files)
+    // DropZoneView delegate
+
+    dropZoneShouldAppearForDragEvent(dropZone, event)
     {
-        await WI.FileUtilities.readJSON(files, (result) => WI.auditManager.processJSON(result));
+        return event.dataTransfer.types.includes("Files");
+    }
+
+    dropZoneHandleDrop(dropZone, event)
+    {
+        let files = event.dataTransfer.files;
+        if (files.length !== 1) {
+            InspectorFrontendHost.beep();
+            return;
+        }
+
+        WI.FileUtilities.readJSON(files, (result) => WI.auditManager.processJSON(result));
     }
 
     // Protected
@@ -96,6 +110,11 @@ WI.AuditTabContentView = class AuditTabContentView extends WI.ContentBrowserTabC
     initialLayout()
     {
         super.initialLayout();
+
+        let dropZoneView = new WI.DropZoneView(this);
+        dropZoneView.text = WI.UIString("Import Audit or Result");
+        dropZoneView.targetElement = this.element;
+        this.addSubview(dropZoneView);
 
         WI.auditManager.loadStoredTests();
     }

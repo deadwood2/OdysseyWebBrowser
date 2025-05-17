@@ -45,6 +45,7 @@ public:
 
     int run(int argc, char** argv);
 
+    static void platformInit();
     static bool platformCompareBrowserVersions(const String&, const String&);
 
 private:
@@ -122,8 +123,8 @@ private:
     RefPtr<JSON::Object> validatedCapabilities(const JSON::Object&) const;
     RefPtr<JSON::Object> mergeCapabilities(const JSON::Object&, const JSON::Object&) const;
     RefPtr<JSON::Object> matchCapabilities(const JSON::Object&) const;
-    bool platformValidateCapability(const String&, const RefPtr<JSON::Value>&) const;
-    bool platformMatchCapability(const String&, const RefPtr<JSON::Value>&) const;
+    bool platformValidateCapability(const String&, const Ref<JSON::Value>&) const;
+    bool platformMatchCapability(const String&, const Ref<JSON::Value>&) const;
     bool platformSupportProxyType(const String&) const;
     void parseCapabilities(const JSON::Object& desiredCapabilities, Capabilities&) const;
     void platformParseCapabilities(const JSON::Object& desiredCapabilities, Capabilities&) const;
@@ -136,6 +137,11 @@ private:
 
     HTTPServer m_server;
     RefPtr<Session> m_session;
+
+#if USE(INSPECTOR_SOCKET_SERVER)
+    String m_targetAddress;
+    uint16_t m_targetPort { 0 };
+#endif
 };
 
 } // namespace WebDriver

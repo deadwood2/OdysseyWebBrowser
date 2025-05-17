@@ -17,6 +17,7 @@
 #    include <dlfcn.h>
 
 #    include "common/debug.h"
+#    include "common/gl/cgl/FunctionsCGL.h"
 #    include "gpu_info_util/SystemInfo.h"
 #    include "libANGLE/Display.h"
 #    include "libANGLE/Error.h"
@@ -27,6 +28,8 @@
 #    include "libANGLE/renderer/gl/cgl/RendererCGL.h"
 #    include "libANGLE/renderer/gl/cgl/WindowSurfaceCGL.h"
 #    include "platform/PlatformMethods.h"
+
+#    include "libANGLE/renderer/gl/cgl/CGLFunctions.h"
 
 namespace
 {
@@ -110,6 +113,23 @@ static void SetGPUByRegistryID(CGLContextObj contextObj,
 
 }  // anonymous namespace
 
+EnsureCGLContextIsCurrent::EnsureCGLContextIsCurrent(CGLContextObj context)
+    : mOldContext(CGLGetCurrentContext()), mResetContext(mOldContext != context)
+{
+    if (mResetContext)
+    {
+        CGLSetCurrentContext(context);
+    }
+}
+
+EnsureCGLContextIsCurrent::~EnsureCGLContextIsCurrent()
+{
+    if (mResetContext)
+    {
+        CGLSetCurrentContext(mOldContext);
+    }
+}
+
 class FunctionsGLCGL : public FunctionsGL
 {
   public:
@@ -182,9 +202,11 @@ egl::Error DisplayCGL::initialize(egl::Display *display)
         mCurrentGPUID = angle::GetGpuIDFromDisplayID(kCGDirectMainDisplay);
     }
 
-    CGLSetCurrentContext(mContext);
-
-    mCurrentContexts[std::this_thread::get_id()] = mContext;
+    if (CGLSetCurrentContext(mContext) != kCGLNoError)
+    {
+        return egl::EglNotInitialized() << "Could not make the CGL context current.";
+    }
+    mThreadsWithCurrentContext.insert(std::this_thread::get_id());
 
     // There is no equivalent getProcAddress in CGL so we open the dylib directly
     void *handle = dlopen(kDefaultOpenGLDylibName, RTLD_NOW);
@@ -208,6 +230,10 @@ egl::Error DisplayCGL::initialize(egl::Display *display)
         return egl::EglNotInitialized() << "OpenGL ES 2.0 is not supportable.";
     }
 
+    auto &attributes = display->getAttributeMap();
+    mDeviceContextIsVolatile =
+        attributes.get(EGL_PLATFORM_ANGLE_DEVICE_CONTEXT_VOLATILE_CGL_ANGLE, GL_FALSE);
+
     return DisplayGL::initialize(display);
 }
 
@@ -221,12 +247,12 @@ void DisplayCGL::terminate()
         CGLDestroyPixelFormat(mPixelFormat);
         mPixelFormat = nullptr;
     }
-    mCurrentContexts.clear();
     if (mContext != nullptr)
     {
         CGLSetCurrentContext(nullptr);
         CGLDestroyContext(mContext);
         mContext = nullptr;
+        mThreadsWithCurrentContext.clear();
     }
     if (mDiscreteGPUPixelFormat != nullptr)
     {
@@ -236,24 +262,47 @@ void DisplayCGL::terminate()
     }
 }
 
-egl::Error DisplayCGL::makeCurrent(egl::Surface *drawSurface,
+egl::Error DisplayCGL::prepareForCall()
+{
+    if (!mContext)
+    {
+        return egl::EglNotInitialized() << "Context not allocated.";
+    }
+    auto threadId = std::this_thread::get_id();
+    if (mDeviceContextIsVolatile ||
+        mThreadsWithCurrentContext.find(threadId) == mThreadsWithCurrentContext.end())
+    {
+        if (CGLSetCurrentContext(mContext) != kCGLNoError)
+        {
+            return egl::EglBadAlloc() << "Could not make device CGL context current.";
+        }
+        mThreadsWithCurrentContext.insert(threadId);
+    }
+    return egl::NoError();
+}
+
+egl::Error DisplayCGL::releaseThread()
+{
+    ASSERT(mContext);
+    auto threadId = std::this_thread::get_id();
+    if (mThreadsWithCurrentContext.find(threadId) != mThreadsWithCurrentContext.end())
+    {
+        if (CGLSetCurrentContext(nullptr) != kCGLNoError)
+        {
+            return egl::EglBadAlloc() << "Could not release device CGL context.";
+        }
+        mThreadsWithCurrentContext.erase(threadId);
+    }
+    return egl::NoError();
+}
+
+egl::Error DisplayCGL::makeCurrent(egl::Display *display,
+                                   egl::Surface *drawSurface,
                                    egl::Surface *readSurface,
                                    gl::Context *context)
 {
     checkDiscreteGPUStatus();
-    // If the thread that's calling makeCurrent does not have the correct
-    // context current (either mContext or 0), we need to set it current.
-    CGLContextObj newContext = 0;
-    if (context)
-    {
-        newContext = mContext;
-    }
-    if (newContext != mCurrentContexts[std::this_thread::get_id()])
-    {
-        CGLSetCurrentContext(newContext);
-        mCurrentContexts[std::this_thread::get_id()] = newContext;
-    }
-    return DisplayGL::makeCurrent(drawSurface, readSurface, context);
+    return DisplayGL::makeCurrent(display, drawSurface, readSurface, context);
 }
 
 SurfaceImpl *DisplayCGL::createWindowSurface(const egl::SurfaceState &state,
@@ -435,8 +484,9 @@ void DisplayCGL::generateExtensions(egl::DisplayExtensions *outExtensions) const
     outExtensions->surfacelessContext    = true;
     outExtensions->deviceQuery           = true;
 
-    // Contexts are virtualized so textures can be shared globally
-    outExtensions->displayTextureShareGroup = true;
+    // Contexts are virtualized so textures and semaphores can be shared globally
+    outExtensions->displayTextureShareGroup   = true;
+    outExtensions->displaySemaphoreShareGroup = true;
 
     if (mSupportsGPUSwitching)
     {

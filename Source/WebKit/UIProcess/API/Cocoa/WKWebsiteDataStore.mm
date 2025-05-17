@@ -30,7 +30,6 @@
 #import "AuthenticationChallengeDispositionCocoa.h"
 #import "CompletionHandlerCallChecker.h"
 #import "ShouldGrandfatherStatistics.h"
-#import "VersionChecks.h"
 #import "WKHTTPCookieStoreInternal.h"
 #import "WKNSArray.h"
 #import "WKNSURLAuthenticationChallenge.h"
@@ -38,13 +37,13 @@
 #import "WKWebsiteDataRecordInternal.h"
 #import "WebPageProxy.h"
 #import "WebResourceLoadStatisticsStore.h"
-#import "WebResourceLoadStatisticsTelemetry.h"
 #import "WebsiteDataFetchOption.h"
 #import "_WKResourceLoadStatisticsThirdPartyInternal.h"
 #import "_WKWebsiteDataStoreConfigurationInternal.h"
 #import "_WKWebsiteDataStoreDelegate.h"
 #import <WebCore/Credential.h>
 #import <WebCore/RegistrationDatabase.h>
+#import <WebCore/VersionChecks.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/URL.h>
 #import <wtf/WeakObjCPtr.h>
@@ -118,7 +117,7 @@ private:
 
 - (instancetype)init
 {
-    if (WebKit::linkedOnOrAfter(WebKit::SDKVersion::FirstWithWKWebsiteDataStoreInitReturningNil))
+    if (WebCore::linkedOnOrAfter(WebCore::SDKVersion::FirstWithWKWebsiteDataStoreInitReturningNil))
         [NSException raise:NSGenericException format:@"Calling [WKWebsiteDataStore init] is not supported."];
     
     if (!(self = [super init]))
@@ -167,12 +166,12 @@ private:
 + (NSSet *)allWebsiteDataTypes
 {
     static dispatch_once_t onceToken;
-    static NSSet *allWebsiteDataTypes;
+    static NeverDestroyed<RetainPtr<NSSet>> allWebsiteDataTypes;
     dispatch_once(&onceToken, ^{
-        allWebsiteDataTypes = [[NSSet alloc] initWithArray:@[ WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeFetchCache, WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeOfflineWebApplicationCache, WKWebsiteDataTypeCookies, WKWebsiteDataTypeSessionStorage, WKWebsiteDataTypeLocalStorage, WKWebsiteDataTypeIndexedDBDatabases, WKWebsiteDataTypeServiceWorkerRegistrations, WKWebsiteDataTypeWebSQLDatabases ]];
+        allWebsiteDataTypes.get() = adoptNS([[NSSet alloc] initWithArray:@[ WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeFetchCache, WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeOfflineWebApplicationCache, WKWebsiteDataTypeCookies, WKWebsiteDataTypeSessionStorage, WKWebsiteDataTypeLocalStorage, WKWebsiteDataTypeIndexedDBDatabases, WKWebsiteDataTypeServiceWorkerRegistrations, WKWebsiteDataTypeWebSQLDatabases ]]);
     });
 
-    return allWebsiteDataTypes;
+    return allWebsiteDataTypes.get().get();
 }
 
 - (WKHTTPCookieStore *)httpCookieStore
@@ -241,6 +240,7 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
             _WKWebsiteDataTypeResourceLoadStatistics,
             _WKWebsiteDataTypeCredentials,
             _WKWebsiteDataTypeAdClickAttributions,
+            _WKWebsiteDataTypePrivateClickMeasurements,
             _WKWebsiteDataTypeAlternativeServices
 #if !TARGET_OS_IPHONE
             , _WKWebsiteDataTypePlugInData
@@ -302,17 +302,6 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
 {
     _websiteDataStore->useExplicitITPState();
     _websiteDataStore->setResourceLoadStatisticsEnabled(enabled);
-}
-
-- (void)_setUseITPDatabase:(BOOL)enabled completionHandler:(void (^)(void))completionHandler
-{
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
-    _websiteDataStore->setUseITPDatabase(enabled, [completionHandler = makeBlockPtr(completionHandler)]() {
-        completionHandler();
-    });
-#else
-    completionHandler();
-#endif
 }
 
 - (BOOL)_resourceLoadStatisticsDebugMode
@@ -405,7 +394,7 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     WebKit::WebsiteDataStore::allowWebsiteDataRecordsForAllOrigins();
 }
 
-- (void)_loadedThirdPartyDomainsFor:(WKWebView *)webView completionHandler:(void (^)(NSArray<NSString *> *domains))completionHandler
+- (void)_loadedSubresourceDomainsFor:(WKWebView *)webView completionHandler:(void (^)(NSArray<NSString *> *domains))completionHandler
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     if (!webView) {
@@ -419,8 +408,8 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
         return;
     }
     
-    webPageProxy->loadedThirdPartyDomains([completionHandler = makeBlockPtr(completionHandler)] (Vector<WebCore::RegistrableDomain>&& loadedThirdPartyDomains) {
-        Vector<RefPtr<API::Object>> apiDomains = WTF::map(loadedThirdPartyDomains, [](auto& domain) {
+    webPageProxy->getLoadedSubresourceDomains([completionHandler = makeBlockPtr(completionHandler)] (Vector<WebCore::RegistrableDomain>&& loadedSubresourceDomains) {
+        Vector<RefPtr<API::Object>> apiDomains = WTF::map(loadedSubresourceDomains, [](auto& domain) {
             return RefPtr<API::Object>(API::String::create(WTFMove(domain.string())));
         });
         completionHandler(wrapper(API::Array::create(WTFMove(apiDomains))));
@@ -430,7 +419,7 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
 #endif
 }
 
-- (void)_clearLoadedThirdPartyDomainsFor:(WKWebView *)webView
+- (void)_clearLoadedSubresourceDomainsFor:(WKWebView *)webView
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     if (!webView)
@@ -440,7 +429,7 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     if (!webPageProxy)
         return;
 
-    webPageProxy->clearLoadedThirdPartyDomains();
+    webPageProxy->clearLoadedSubresourceDomains();
 #endif
 }
 
@@ -617,6 +606,11 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     });
 }
 
+- (BOOL)_networkProcessHasEntitlementForTesting:(NSString *)entitlement
+{
+    return _websiteDataStore->networkProcessHasEntitlementForTesting(entitlement);
+}
+
 - (id <_WKWebsiteDataStoreDelegate>)_delegate
 {
     return _delegate.get().get();
@@ -633,8 +627,14 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     return wrapper(_websiteDataStore->configuration().copy());
 }
 
+- (void)_allowTLSCertificateChain:(NSArray *)certificateChain forHost:(NSString *)host
+{
+    _websiteDataStore->allowSpecificHTTPSCertificateForHost(WebKit::WebCertificateInfo::create(WebCore::CertificateInfo((__bridge CFArrayRef)certificateChain)).ptr(), host);
+}
+
 - (void)_appBoundDomains:(void (^)(NSArray<NSString *> *))completionHandler
 {
+#if ENABLE(APP_BOUND_DOMAINS)
     _websiteDataStore->getAppBoundDomains([completionHandler = makeBlockPtr(completionHandler)](auto& domains) mutable {
         Vector<RefPtr<API::Object>> apiDomains;
         apiDomains.reserveInitialCapacity(domains.size());
@@ -642,10 +642,14 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
             apiDomains.uncheckedAppend(API::String::create(domain.string()));
         completionHandler(wrapper(API::Array::create(WTFMove(apiDomains))));
     });
+#else
+    completionHandler({ });
+#endif
 }
 
 - (void)_appBoundSchemes:(void (^)(NSArray<NSString *> *))completionHandler
 {
+#if ENABLE(APP_BOUND_DOMAINS)
     _websiteDataStore->getAppBoundSchemes([completionHandler = makeBlockPtr(completionHandler)](auto& schemes) mutable {
         Vector<RefPtr<API::Object>> apiSchemes;
         apiSchemes.reserveInitialCapacity(schemes.size());
@@ -653,6 +657,52 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
             apiSchemes.uncheckedAppend(API::String::create(scheme));
         completionHandler(wrapper(API::Array::create(WTFMove(apiSchemes))));
     });
+#else
+    completionHandler({ });
+#endif
+}
+
+- (void)_terminateNetworkProcess
+{
+    _websiteDataStore->terminateNetworkProcess();
+}
+
+- (void)_sendNetworkProcessPrepareToSuspend:(void(^)(void))completionHandler
+{
+    _websiteDataStore->sendNetworkProcessPrepareToSuspendForTesting([completionHandler = makeBlockPtr(completionHandler)] {
+        completionHandler();
+    });
+}
+
+- (void)_sendNetworkProcessWillSuspendImminently
+{
+    _websiteDataStore->sendNetworkProcessWillSuspendImminentlyForTesting();
+
+}
+
+- (void)_sendNetworkProcessDidResume
+{
+    _websiteDataStore->sendNetworkProcessDidResume();
+}
+
+- (void)_synthesizeAppIsBackground:(BOOL)background
+{
+    _websiteDataStore->networkProcess().synthesizeAppIsBackground(background);
+}
+
+- (pid_t)_networkProcessIdentifier
+{
+    return _websiteDataStore->networkProcess().processIdentifier();
+}
+
++ (void)_makeNextNetworkProcessLaunchFailForTesting
+{
+    WebKit::WebsiteDataStore::makeNextNetworkProcessLaunchFailForTesting();
+}
+
+- (BOOL)_networkProcessExists
+{
+    return !!_websiteDataStore->networkProcessIfExists();
 }
 
 @end

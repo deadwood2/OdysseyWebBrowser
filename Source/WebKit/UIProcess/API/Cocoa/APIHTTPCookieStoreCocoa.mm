@@ -30,25 +30,16 @@
 #import <WebCore/Cookie.h>
 #import <WebCore/CookieStorageObserver.h>
 #import <WebCore/HTTPCookieAcceptPolicy.h>
+#import <WebCore/HTTPCookieAcceptPolicyCocoa.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RunLoop.h>
 
 namespace API {
 
-void HTTPCookieStore::flushDefaultUIProcessCookieStore(CompletionHandler<void()>&& completionHandler)
+void HTTPCookieStore::flushDefaultUIProcessCookieStore()
 {
-#if HAVE(FOUNDATION_WITH_SAVE_COOKIES_WITH_COMPLETION_HANDLER)
-    ASSERT(RunLoop::isMain());
-    m_owningDataStore->dispatchOnQueue([completionHandler = WTFMove(completionHandler)] () mutable {
-        [[NSHTTPCookieStorage sharedHTTPCookieStorage] _saveCookies:makeBlockPtr([completionHandler = WTFMove(completionHandler)]() mutable {
-            RunLoop::main().dispatch(WTFMove(completionHandler));
-        }).get()];
-    });
-#else
     [[NSHTTPCookieStorage sharedHTTPCookieStorage] _saveCookies];
-    RunLoop::main().dispatch(WTFMove(completionHandler));
-#endif
 }
 
 Vector<WebCore::Cookie> HTTPCookieStore::getAllDefaultUIProcessCookieStoreCookies()
@@ -87,22 +78,6 @@ void HTTPCookieStore::stopObservingChangesToDefaultUIProcessCookieStore()
 void HTTPCookieStore::deleteCookiesInDefaultUIProcessCookieStore()
 {
     [[NSHTTPCookieStorage sharedHTTPCookieStorage] removeCookiesSinceDate:[NSDate distantPast]];
-}
-
-static NSHTTPCookieAcceptPolicy toNSHTTPCookieAcceptPolicy(WebCore::HTTPCookieAcceptPolicy policy)
-{
-    switch (policy) {
-    case WebCore::HTTPCookieAcceptPolicy::AlwaysAccept:
-        return NSHTTPCookieAcceptPolicyAlways;
-    case WebCore::HTTPCookieAcceptPolicy::Never:
-        return NSHTTPCookieAcceptPolicyNever;
-    case WebCore::HTTPCookieAcceptPolicy::OnlyFromMainDocumentDomain:
-        return NSHTTPCookieAcceptPolicyOnlyFromMainDocumentDomain;
-    case WebCore::HTTPCookieAcceptPolicy::ExclusivelyFromMainDocumentDomain:
-        return (NSHTTPCookieAcceptPolicy)NSHTTPCookieAcceptPolicyExclusivelyFromMainDocumentDomain;
-    }
-    ASSERT_NOT_REACHED();
-    return NSHTTPCookieAcceptPolicyAlways;
 }
 
 void HTTPCookieStore::setHTTPCookieAcceptPolicyInDefaultUIProcessCookieStore(WebCore::HTTPCookieAcceptPolicy policy)

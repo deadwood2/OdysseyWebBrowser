@@ -33,6 +33,7 @@
 #import "EditingRange.h"
 #import "EditorState.h"
 #import "FontInfo.h"
+#import "FrameInfoData.h"
 #import "InjectedBundleHitTestResult.h"
 #import "PDFKitImports.h"
 #import "PDFPlugin.h"
@@ -42,12 +43,13 @@
 #import "UserData.h"
 #import "WKAccessibilityWebPageObjectMac.h"
 #import "WebCoreArgumentCoders.h"
-#import "WebEvent.h"
 #import "WebEventConversion.h"
 #import "WebFrame.h"
 #import "WebHitTestResultData.h"
 #import "WebImage.h"
 #import "WebInspector.h"
+#import "WebKeyboardEvent.h"
+#import "WebMouseEvent.h"
 #import "WebPageOverlay.h"
 #import "WebPageProxyMessages.h"
 #import "WebPasteboardOverrides.h"
@@ -69,7 +71,6 @@
 #import <WebCore/FrameLoaderTypes.h>
 #import <WebCore/FrameView.h>
 #import <WebCore/GraphicsContext.h>
-#import <WebCore/GraphicsContextGLOpenGL.h>
 #import <WebCore/HTMLConverter.h>
 #import <WebCore/HTMLPlugInImageElement.h>
 #import <WebCore/HitTestResult.h>
@@ -81,6 +82,7 @@
 #import <WebCore/PageOverlayController.h>
 #import <WebCore/PlatformKeyboardEvent.h>
 #import <WebCore/PluginDocument.h>
+#import <WebCore/PointerCharacteristics.h>
 #import <WebCore/RenderElement.h>
 #import <WebCore/RenderObject.h>
 #import <WebCore/RenderStyle.h>
@@ -105,16 +107,16 @@ using namespace WebCore;
 
 void WebPage::platformInitialize()
 {
-    WKAccessibilityWebPageObject* mockAccessibilityElement = [[[WKAccessibilityWebPageObject alloc] init] autorelease];
+    auto mockAccessibilityElement = adoptNS([[WKAccessibilityWebPageObject alloc] init]);
 
     // Get the pid for the starting process.
     pid_t pid = WebCore::presentingApplicationPID();
     // FIXME: WKAccessibilityWebPageObject doesn't respond to -accessibilitySetPresenterProcessIdentifier:.
     // Either it needs to or this call should be removed.
     if ([mockAccessibilityElement respondsToSelector:@selector(accessibilitySetPresenterProcessIdentifier:)])
-        [(id)mockAccessibilityElement accessibilitySetPresenterProcessIdentifier:pid];
+        [(id)mockAccessibilityElement.get() accessibilitySetPresenterProcessIdentifier:pid];
     [mockAccessibilityElement setWebPage:this];
-    m_mockAccessibilityElement = mockAccessibilityElement;
+    m_mockAccessibilityElement = WTFMove(mockAccessibilityElement);
 
     accessibilityTransferRemoteToken(accessibilityRemoteTokenData());
 }
@@ -162,14 +164,14 @@ void WebPage::getPlatformEditorState(Frame& frame, EditorState& result) const
     postLayoutData.selectedTextLength = characterCount({ *selectionStartBoundary, *selectionEnd });
     postLayoutData.paragraphContextForCandidateRequest = contextRangeForCandidateRequest ? plainText(*contextRangeForCandidateRequest) : String();
     postLayoutData.stringForCandidateRequest = frame.editor().stringForCandidateRequest();
+    postLayoutData.canEnableAutomaticSpellingCorrection = frame.editor().canEnableAutomaticSpellingCorrection();
 
     auto quads = RenderObject::absoluteTextQuads(*selectedRange);
     if (!quads.isEmpty())
-        postLayoutData.focusedElementRect = frame.view()->contentsToWindow(quads[0].enclosingBoundingBox());
-    else {
+        postLayoutData.selectionBoundingRect = frame.view()->contentsToWindow(quads[0].enclosingBoundingBox());
+    else if (selection.isCaret()) {
         // Quads will be empty at the start of a paragraph.
-        if (selection.isCaret())
-            postLayoutData.focusedElementRect = frame.view()->contentsToWindow(frame.selection().absoluteCaretBounds());
+        postLayoutData.selectionBoundingRect = frame.view()->contentsToWindow(frame.selection().absoluteCaretBounds());
     }
 }
 
@@ -194,9 +196,13 @@ NSObject *WebPage::accessibilityObjectForMainFramePlugin()
     return nil;
 }
 
-bool WebPage::shouldUsePDFPlugin() const
+bool WebPage::shouldUsePDFPlugin(const String& contentType, StringView path) const
 {
-    return pdfPluginEnabled() && classFromPDFKit(@"PDFLayerController");
+    return pdfPluginEnabled()
+        && classFromPDFKit(@"PDFLayerController")
+        && (MIMETypeRegistry::isPDFOrPostScriptMIMEType(contentType)
+            || (contentType.isEmpty()
+                && (path.endsWithIgnoringASCIICase(".pdf") || path.endsWithIgnoringASCIICase(".ps"))));
 }
 
 typedef HashMap<String, String> SelectorNameMap;
@@ -328,19 +334,19 @@ void WebPage::sendComplexTextInputToPlugin(uint64_t pluginComplexTextInputIdenti
     }
 }
 
-void WebPage::attributedSubstringForCharacterRangeAsync(const EditingRange& editingRange, CallbackID callbackID)
+void WebPage::attributedSubstringForCharacterRangeAsync(const EditingRange& editingRange, CompletionHandler<void(const WebCore::AttributedString&, const EditingRange&)>&& completionHandler)
 {
     Frame& frame = m_page->focusController().focusedOrMainFrame();
 
     const VisibleSelection& selection = frame.selection().selection();
     if (selection.isNone() || !selection.isContentEditable() || selection.isInPasswordField()) {
-        send(Messages::WebPageProxy::AttributedStringForCharacterRangeCallback({ }, EditingRange(), callbackID));
+        completionHandler({ }, { });
         return;
     }
 
     auto range = EditingRange::toRange(frame, editingRange);
     if (!range) {
-        send(Messages::WebPageProxy::AttributedStringForCharacterRangeCallback({ }, EditingRange(), callbackID));
+        completionHandler({ }, { });
         return;
     }
 
@@ -359,42 +365,42 @@ void WebPage::attributedSubstringForCharacterRangeAsync(const EditingRange& edit
     ASSERT(rangeToSend.isValid());
     if (!rangeToSend.isValid()) {
         // Send an empty EditingRange as a last resort for <rdar://problem/27078089>.
-        send(Messages::WebPageProxy::AttributedStringForCharacterRangeCallback({ WTFMove(attributedString), nil }, EditingRange(), callbackID));
+        completionHandler({ WTFMove(attributedString), nil }, EditingRange());
         return;
     }
 
-    send(Messages::WebPageProxy::AttributedStringForCharacterRangeCallback({ WTFMove(attributedString), nil }, rangeToSend, callbackID));
+    completionHandler({ WTFMove(attributedString), nil }, rangeToSend);
 }
 
-void WebPage::fontAtSelection(CallbackID callbackID)
+void WebPage::fontAtSelection(CompletionHandler<void(const FontInfo&, double, bool)>&& completionHandler)
 {
     bool selectionHasMultipleFonts = false;
     auto& frame = m_page->focusController().focusedOrMainFrame();
 
     if (frame.selection().selection().isNone()) {
-        send(Messages::WebPageProxy::FontAtSelectionCallback({ }, 0, false, callbackID));
+        completionHandler({ }, 0, false);
         return;
     }
 
     auto* font = frame.editor().fontForSelection(selectionHasMultipleFonts);
     if (!font) {
-        send(Messages::WebPageProxy::FontAtSelectionCallback({ }, 0, false, callbackID));
+        completionHandler({ }, 0, false);
         return;
     }
 
     auto ctFont = font->getCTFont();
     if (!ctFont) {
-        send(Messages::WebPageProxy::FontAtSelectionCallback({ }, 0, false, callbackID));
+        completionHandler({ }, 0, false);
         return;
     }
 
     auto fontDescriptor = adoptCF(CTFontCopyFontDescriptor(ctFont));
     if (!fontDescriptor) {
-        send(Messages::WebPageProxy::FontAtSelectionCallback({ }, 0, false, callbackID));
+        completionHandler({ }, 0, false);
         return;
     }
 
-    send(Messages::WebPageProxy::FontAtSelectionCallback({ adoptCF(CTFontDescriptorCopyAttributes(fontDescriptor.get())) }, CTFontGetSize(ctFont), selectionHasMultipleFonts, callbackID));
+    completionHandler({ adoptCF(CTFontDescriptorCopyAttributes(fontDescriptor.get())) }, CTFontGetSize(ctFont), selectionHasMultipleFonts);
 }
     
 
@@ -556,21 +562,21 @@ void WebPage::getStringSelectionForPasteboard(CompletionHandler<void(String&&)>&
     completionHandler(frame.editor().stringSelectionForPasteboard());
 }
 
-void WebPage::getDataSelectionForPasteboard(const String pasteboardType, CompletionHandler<void(SharedMemory::Handle&&, uint64_t)>&& completionHandler)
+void WebPage::getDataSelectionForPasteboard(const String pasteboardType, CompletionHandler<void(SharedMemory::IPCHandle&&)>&& completionHandler)
 {
     auto& frame = m_page->focusController().focusedOrMainFrame();
     if (frame.selection().isNone())
-        return completionHandler({ }, 0);
+        return completionHandler({ });
 
     RefPtr<SharedBuffer> buffer = frame.editor().dataSelectionForPasteboard(pasteboardType);
     if (!buffer)
-        return completionHandler({ }, 0);
+        return completionHandler({ });
     uint64_t size = buffer->size();
     RefPtr<SharedMemory> sharedMemoryBuffer = SharedMemory::allocate(size);
     memcpy(sharedMemoryBuffer->data(), buffer->data(), size);
     SharedMemory::Handle handle;
     sharedMemoryBuffer->createHandle(handle, SharedMemory::Protection::ReadOnly);
-    completionHandler(WTFMove(handle), size);
+    completionHandler(SharedMemory::IPCHandle { WTFMove(handle), size });
 }
 
 WKAccessibilityWebPageObject* WebPage::accessibilityRemoteObject()
@@ -829,6 +835,26 @@ String WebPage::platformUserAgent(const URL&) const
     return String();
 }
 
+bool WebPage::hoverSupportedByPrimaryPointingDevice() const
+{
+    return true;
+}
+
+bool WebPage::hoverSupportedByAnyAvailablePointingDevice() const
+{
+    return true;
+}
+
+Optional<PointerCharacteristics> WebPage::pointerCharacteristicsOfPrimaryPointingDevice() const
+{
+    return PointerCharacteristics::Fine;
+}
+
+OptionSet<PointerCharacteristics> WebPage::pointerCharacteristicsOfAllAvailablePointingDevices() const
+{
+    return PointerCharacteristics::Fine;
+}
+
 void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locationInViewCoordinates)
 {
     layoutIfNeeded();
@@ -878,7 +904,7 @@ void WebPage::performImmediateActionHitTestAtLocation(WebCore::FloatPoint locati
         if (!actionContext)
             continue;
 
-        auto view = actionContext->range.start.container->document().view();
+        auto view = actionContext->range.start.document().view();
         if (!view)
             continue;
 
@@ -1006,6 +1032,15 @@ void WebPage::updateVisibleContentRects(const VisibleContentRectUpdateInfo&, Mon
 {
 }
 
+void WebPage::didUpdateRendering()
+{
+    if (m_didUpdateRenderingAfterCommittingLoad)
+        return;
+
+    m_didUpdateRenderingAfterCommittingLoad = true;
+    send(Messages::WebPageProxy::DidUpdateRenderingAfterCommittingLoad());
+}
+
 #if ENABLE(WIRELESS_PLAYBACK_TARGET) && !PLATFORM(IOS_FAMILY)
 void WebPage::playbackTargetSelected(PlaybackTargetClientContextIdentifier contextId, const WebCore::MediaPlaybackTargetContext& targetContext) const
 {
@@ -1052,7 +1087,62 @@ void WebPage::setAccentColor(WebCore::Color color)
     [NSApp _setAccentColor:color.isValid() ? WebCore::nsColor(color) : nil];
 }
 
-#endif
+#endif // HAVE(APP_ACCENT_COLORS)
+
+#if ENABLE(UI_PROCESS_PDF_HUD)
+
+void WebPage::zoomPDFIn(PDFPluginIdentifier identifier)
+{
+    auto pdfPlugin = m_pdfPlugInsWithHUD.get(identifier);
+    if (!pdfPlugin)
+        return;
+    pdfPlugin->zoomIn();
+}
+
+void WebPage::zoomPDFOut(PDFPluginIdentifier identifier)
+{
+    auto pdfPlugin = m_pdfPlugInsWithHUD.get(identifier);
+    if (!pdfPlugin)
+        return;
+    pdfPlugin->zoomOut();
+}
+
+void WebPage::savePDF(PDFPluginIdentifier identifier, CompletionHandler<void(const String&, const URL&, const IPC::DataReference&)>&& completionHandler)
+{
+    auto pdfPlugin = m_pdfPlugInsWithHUD.get(identifier);
+    if (!pdfPlugin)
+        return completionHandler({ }, { }, { });
+    pdfPlugin->save(WTFMove(completionHandler));
+}
+
+void WebPage::openPDFWithPreview(PDFPluginIdentifier identifier, CompletionHandler<void(const String&, FrameInfoData&&, const IPC::DataReference&, const String&)>&& completionHandler)
+{
+    auto pdfPlugin = m_pdfPlugInsWithHUD.get(identifier);
+    if (!pdfPlugin)
+        return completionHandler({ }, { }, { }, { });
+    pdfPlugin->openWithPreview(WTFMove(completionHandler));
+}
+
+void WebPage::createPDFHUD(PDFPlugin& plugin, const IntRect& boundingBox)
+{
+    auto addResult = m_pdfPlugInsWithHUD.add(plugin.identifier(), makeWeakPtr(plugin));
+    if (addResult.isNewEntry)
+        send(Messages::WebPageProxy::CreatePDFHUD(plugin.identifier(), boundingBox));
+}
+
+void WebPage::updatePDFHUDLocation(PDFPlugin& plugin, const IntRect& boundingBox)
+{
+    if (m_pdfPlugInsWithHUD.contains(plugin.identifier()))
+        send(Messages::WebPageProxy::UpdatePDFHUDLocation(plugin.identifier(), boundingBox));
+}
+
+void WebPage::removePDFHUD(PDFPlugin& plugin)
+{
+    if (m_pdfPlugInsWithHUD.remove(plugin.identifier()))
+        send(Messages::WebPageProxy::RemovePDFHUD(plugin.identifier()));
+}
+
+#endif // ENABLE(UI_PROCESS_PDF_HUD)
 
 } // namespace WebKit
 

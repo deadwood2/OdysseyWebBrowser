@@ -73,7 +73,7 @@ void ScrollingCoordinatorMac::pageDestroyed()
     });
 }
 
-bool ScrollingCoordinatorMac::handleWheelEvent(FrameView&, const PlatformWheelEvent& wheelEvent)
+bool ScrollingCoordinatorMac::handleWheelEventForScrolling(const PlatformWheelEvent& wheelEvent, ScrollingNodeID targetNodeID, Optional<WheelScrollGestureState> gestureState)
 {
     ASSERT(isMainThread());
     ASSERT(m_page);
@@ -81,16 +81,28 @@ bool ScrollingCoordinatorMac::handleWheelEvent(FrameView&, const PlatformWheelEv
     if (scrollingTree()->willWheelEventStartSwipeGesture(wheelEvent))
         return false;
 
+    LOG_WITH_STREAM(Scrolling, stream << "ScrollingCoordinatorMac::handleWheelEventForScrolling " << wheelEvent << " - sending event to scrolling thread, node " << targetNodeID << " gestureState " << gestureState);
+
+    auto deferrer = WheelEventTestMonitorCompletionDeferrer { m_page->wheelEventTestMonitor().get(), reinterpret_cast<WheelEventTestMonitor::ScrollableAreaIdentifier>(targetNodeID), WheelEventTestMonitor::PostMainThreadWheelEventHandling };
+
     RefPtr<ThreadedScrollingTree> threadedScrollingTree = downcast<ThreadedScrollingTree>(scrollingTree());
-    ScrollingThread::dispatch([threadedScrollingTree, wheelEvent] {
-        threadedScrollingTree->handleWheelEventAfterMainThread(wheelEvent);
+    ScrollingThread::dispatch([threadedScrollingTree, wheelEvent, targetNodeID, gestureState, deferrer = WTFMove(deferrer)] {
+        threadedScrollingTree->handleWheelEventAfterMainThread(wheelEvent, targetNodeID, gestureState);
     });
     return true;
 }
 
+void ScrollingCoordinatorMac::wheelEventWasProcessedByMainThread(const PlatformWheelEvent& wheelEvent, Optional<WheelScrollGestureState> gestureState)
+{
+    LOG_WITH_STREAM(Scrolling, stream << "ScrollingCoordinatorMac::wheelEventWasProcessedByMainThread " << gestureState);
+
+    RefPtr<ThreadedScrollingTree> threadedScrollingTree = downcast<ThreadedScrollingTree>(scrollingTree());
+    threadedScrollingTree->wheelEventWasProcessedByMainThread(wheelEvent, gestureState);
+}
+
 void ScrollingCoordinatorMac::scheduleTreeStateCommit()
 {
-    m_page->scheduleRenderingUpdate();
+    scheduleRenderingUpdate();
 }
 
 void ScrollingCoordinatorMac::commitTreeStateIfNeeded()

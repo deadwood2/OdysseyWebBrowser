@@ -27,16 +27,12 @@
 
 #include "SharedMemory.h"
 #include <WebCore/IntRect.h>
-#include <wtf/RefCounted.h>
+#include <WebCore/PlatformImage.h>
 #include <wtf/RefPtr.h>
+#include <wtf/ThreadSafeRefCounted.h>
 
 #if USE(CG)
 #include "ColorSpaceData.h"
-#include <wtf/RetainPtr.h>
-#endif
-
-#if USE(CAIRO)
-#include <WebCore/RefPtrCairo.h>
 #endif
 
 #if USE(DIRECT2D)
@@ -56,7 +52,7 @@ class GraphicsContext;
 
 namespace WebKit {
     
-class ShareableBitmap : public RefCounted<ShareableBitmap> {
+class ShareableBitmap : public ThreadSafeRefCounted<ShareableBitmap> {
 public:
     struct Configuration {
         bool isOpaque { false };
@@ -133,16 +129,22 @@ public:
     // This creates a CGImageRef that directly references the shared bitmap data.
     // This is only safe to use when we know that the contents of the shareable bitmap won't change.
     RetainPtr<CGImageRef> makeCGImage();
+
+    WebCore::PlatformImagePtr createPlatformImage() { return makeCGImageCopy(); }
 #elif USE(CAIRO)
     // This creates a BitmapImage that directly references the shared bitmap data.
     // This is only safe to use when we know that the contents of the shareable bitmap won't change.
     RefPtr<cairo_surface_t> createCairoSurface();
+
+    WebCore::PlatformImagePtr createPlatformImage() { return createCairoSurface(); }
 #elif USE(DIRECT2D)
     COMPtr<ID2D1Bitmap> createDirect2DSurface(ID3D11Device1*, ID2D1RenderTarget*);
     IDXGISurface1* dxSurface() { return m_surface.get(); }
     void createSharedResource();
     void disposeSharedResource();
     void leakSharedResource();
+
+    WebCore::PlatformImagePtr createPlatformImage() { return nullptr; }
 #endif
 
 private:
@@ -151,7 +153,7 @@ private:
 
     static Checked<unsigned, RecordOverflow> numBytesForSize(WebCore::IntSize, const ShareableBitmap::Configuration&);
     static Checked<unsigned, RecordOverflow> calculateBytesPerRow(WebCore::IntSize, const Configuration&);
-    static unsigned calculateBytesPerPixel(const Configuration&);
+    static Checked<unsigned, RecordOverflow> calculateBytesPerPixel(const Configuration&);
 
 #if USE(CG)
     RetainPtr<CGImageRef> createCGImage(CGDataProviderRef) const;
@@ -165,6 +167,8 @@ private:
 
 public:
     void* data() const;
+    size_t bytesPerRow() const { return calculateBytesPerRow(m_size, m_configuration).unsafeGet(); }
+    
 private:
     size_t sizeInBytes() const { return numBytesForSize(m_size, m_configuration).unsafeGet(); }
 

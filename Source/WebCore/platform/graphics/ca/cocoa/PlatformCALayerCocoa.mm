@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,7 @@
 #import "GraphicsLayerCA.h"
 #import "IOSurface.h"
 #import "LengthFunctions.h"
+#import "LocalCurrentGraphicsContext.h"
 #import "PlatformCAAnimationCocoa.h"
 #import "PlatformCAFilters.h"
 #import "ScrollbarThemeMac.h"
@@ -234,7 +235,6 @@ PlatformCALayerCocoa::PlatformCALayerCocoa(LayerType layerType, PlatformCALayerC
     case LayerTypeScrollContainerLayer:
         // Scroll container layers only have special behavior with PlatformCALayerRemote.
         // fallthrough
-    case LayerTypeEditableImageLayer:
     case LayerTypeWebLayer:
         layerClass = [WebLayer class];
         break;
@@ -372,7 +372,7 @@ Ref<PlatformCALayer> PlatformCALayerCocoa::clone(PlatformCALayerClient* owner) c
         AVPlayerLayer *sourcePlayerLayer = avPlayerLayer();
         ASSERT(sourcePlayerLayer);
 
-        dispatch_async(dispatch_get_main_queue(), ^{
+        RunLoop::main().dispatch([destinationPlayerLayer = retainPtr(destinationPlayerLayer), sourcePlayerLayer = retainPtr(sourcePlayerLayer)] {
             [destinationPlayerLayer setPlayer:[sourcePlayerLayer player]];
         });
     }
@@ -506,12 +506,12 @@ void PlatformCALayerCocoa::addAnimationForKey(const String& key, PlatformCAAnima
 {
     // Add the delegate
     if (!m_delegate) {
-        WebAnimationDelegate* webAnimationDelegate = [[WebAnimationDelegate alloc] init];
-        m_delegate = adoptNS(webAnimationDelegate);
+        auto webAnimationDelegate = adoptNS([[WebAnimationDelegate alloc] init]);
         [webAnimationDelegate setOwner:this];
+        m_delegate = WTFMove(webAnimationDelegate);
     }
     
-    CAPropertyAnimation* propertyAnimation = static_cast<CAPropertyAnimation*>(downcast<PlatformCAAnimationCocoa>(animation).platformAnimation());
+    CAAnimation *propertyAnimation = static_cast<CAAnimation *>(downcast<PlatformCAAnimationCocoa>(animation).platformAnimation());
     if (![propertyAnimation delegate])
         [propertyAnimation setDelegate:static_cast<id>(m_delegate.get())];
 
@@ -529,7 +529,7 @@ void PlatformCALayerCocoa::removeAnimationForKey(const String& key)
 
 RefPtr<PlatformCAAnimation> PlatformCALayerCocoa::animationForKey(const String& key)
 {
-    CAPropertyAnimation* propertyAnimation = static_cast<CAPropertyAnimation*>([m_layer animationForKey:key]);
+    CAAnimation *propertyAnimation = static_cast<CAAnimation *>([m_layer animationForKey:key]);
     if (!propertyAnimation)
         return nullptr;
     return PlatformCAAnimationCocoa::create(propertyAnimation);
@@ -915,9 +915,7 @@ void PlatformCALayerCocoa::setContentsScale(float value)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_layer setContentsScale:value];
-#if PLATFORM(IOS_FAMILY)
     [m_layer setRasterizationScale:value];
-#endif
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
@@ -1039,11 +1037,19 @@ void PlatformCALayerCocoa::setEventRegion(const EventRegion& eventRegion)
     m_eventRegion = eventRegion;
 }
 
-GraphicsLayer::EmbeddedViewID PlatformCALayerCocoa::embeddedViewID() const
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+bool PlatformCALayerCocoa::isSeparated() const
 {
-    ASSERT_NOT_REACHED();
-    return 0;
+    return m_layer.get().isSeparated;
 }
+
+void PlatformCALayerCocoa::setSeparated(bool value)
+{
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
+    [m_layer setSeparated:value];
+    END_BLOCK_OBJC_EXCEPTIONS
+}
+#endif
 
 static NSString *layerContentsFormat(bool acceleratesDrawing, bool wantsDeepColor, bool supportsSubpixelAntialiasedFonts)
 {
@@ -1098,8 +1104,7 @@ bool PlatformCALayer::isWebLayer()
 
 void PlatformCALayer::setBoundsOnMainThread(CGRect bounds)
 {
-    CALayer *layer = m_layer.get();
-    dispatch_async(dispatch_get_main_queue(), ^{
+    RunLoop::main().dispatch([layer = m_layer, bounds] {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
         [layer setBounds:bounds];
         END_BLOCK_OBJC_EXCEPTIONS
@@ -1108,8 +1113,7 @@ void PlatformCALayer::setBoundsOnMainThread(CGRect bounds)
 
 void PlatformCALayer::setPositionOnMainThread(CGPoint position)
 {
-    CALayer *layer = m_layer.get();
-    dispatch_async(dispatch_get_main_queue(), ^{
+    RunLoop::main().dispatch([layer = m_layer, position] {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
         [layer setPosition:position];
         END_BLOCK_OBJC_EXCEPTIONS
@@ -1118,8 +1122,7 @@ void PlatformCALayer::setPositionOnMainThread(CGPoint position)
 
 void PlatformCALayer::setAnchorPointOnMainThread(FloatPoint3D value)
 {
-    CALayer *layer = m_layer.get();
-    dispatch_async(dispatch_get_main_queue(), ^{
+    RunLoop::main().dispatch([layer = m_layer, value] {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
         [layer setAnchorPoint:CGPointMake(value.x(), value.y())];
         [layer setAnchorPointZ:value.z()];
@@ -1162,64 +1165,53 @@ void PlatformCALayer::drawLayerContents(GraphicsContext& graphicsContext, WebCor
     if (!layerContents->platformCALayerRepaintCount(platformCALayer))
         layerPaintBehavior |= GraphicsLayerPaintFirstTilePaint;
 
-    GraphicsContextStateSaver saver(graphicsContext);
-
-    // We never use CompositingCoordinatesOrientation::BottomUp on Mac.
-    ASSERT(layerContents->platformCALayerContentsOrientation() == GraphicsLayer::CompositingCoordinatesOrientation::TopDown);
-
-#if PLATFORM(IOS_FAMILY)
-    WTF::Optional<FontAntialiasingStateSaver> fontAntialiasingState;
-#endif
-    if (graphicsContext.hasPlatformContext()) {
-        CGContextRef context = graphicsContext.platformContext();
-#if PLATFORM(IOS_FAMILY)
-        WKSetCurrentGraphicsContext(context);
-
-        fontAntialiasingState = FontAntialiasingStateSaver { context, !![platformCALayer->platformLayer() isOpaque] };
-        fontAntialiasingState->setup([WAKWindow hasLandscapeOrientation]);
-#else
-        [NSGraphicsContext saveGraphicsState];
-
-        // Set up an NSGraphicsContext for the context, so that parts of AppKit that rely on
-        // the current NSGraphicsContext (e.g. NSCell drawing) get the right one.
-        NSGraphicsContext* layerContext = [NSGraphicsContext graphicsContextWithCGContext:context flipped:YES];
-        [NSGraphicsContext setCurrentContext:layerContext];
-#endif
-    }
-    
     {
-        graphicsContext.setIsCALayerContext(true);
-        graphicsContext.setIsAcceleratedContext(platformCALayer->acceleratesDrawing());
+        GraphicsContextStateSaver saver(graphicsContext);
+        WTF::Optional<LocalCurrentGraphicsContext> platformContextSaver;
+#if PLATFORM(IOS_FAMILY)
+        WTF::Optional<FontAntialiasingStateSaver> fontAntialiasingState;
+#endif
 
-        if (!layerContents->platformCALayerContentsOpaque() && !platformCALayer->supportsSubpixelAntialiasedText() && FontCascade::isSubpixelAntialiasingAvailable()) {
-            // Turn off font smoothing to improve the appearance of text rendered onto a transparent background.
-            graphicsContext.setShouldSmoothFonts(false);
+        // We never use CompositingCoordinatesOrientation::BottomUp on Mac.
+        ASSERT(layerContents->platformCALayerContentsOrientation() == GraphicsLayer::CompositingCoordinatesOrientation::TopDown);
+
+        if (graphicsContext.hasPlatformContext()) {
+            platformContextSaver.emplace(graphicsContext);
+#if PLATFORM(IOS_FAMILY)
+            CGContextRef context = graphicsContext.platformContext();
+            WKSetCurrentGraphicsContext(context);
+            fontAntialiasingState.emplace(context, !![platformCALayer->platformLayer() isOpaque]);
+            fontAntialiasingState->setup([WAKWindow hasLandscapeOrientation]);
+#endif
         }
+        
+        {
+            graphicsContext.setIsCALayerContext(true);
+            graphicsContext.setIsAcceleratedContext(platformCALayer->acceleratesDrawing());
+
+            if (!layerContents->platformCALayerContentsOpaque() && !platformCALayer->supportsSubpixelAntialiasedText() && FontCascade::isSubpixelAntialiasingAvailable()) {
+                // Turn off font smoothing to improve the appearance of text rendered onto a transparent background.
+                graphicsContext.setShouldSmoothFonts(false);
+            }
 
 #if PLATFORM(MAC)
-        // It's important to get the clip from the context, because it may be significantly
-        // smaller than the layer bounds (e.g. tiled layers)
-        ThemeMac::setFocusRingClipRect(graphicsContext.clipBounds());
+            // It's important to get the clip from the context, because it may be significantly
+            // smaller than the layer bounds (e.g. tiled layers)
+            ThemeMac::setFocusRingClipRect(graphicsContext.clipBounds());
 #endif
 
-        for (const auto& rect : dirtyRects) {
-            GraphicsContextStateSaver stateSaver(graphicsContext);
-            graphicsContext.clip(rect);
+            for (const auto& rect : dirtyRects) {
+                GraphicsContextStateSaver stateSaver(graphicsContext);
+                graphicsContext.clip(rect);
 
-            layerContents->platformCALayerPaintContents(platformCALayer, graphicsContext, rect, layerPaintBehavior);
+                layerContents->platformCALayerPaintContents(platformCALayer, graphicsContext, rect, layerPaintBehavior);
+            }
+
+#if PLATFORM(MAC)
+            ThemeMac::setFocusRingClipRect(FloatRect());
+#endif
         }
-
-#if PLATFORM(IOS_FAMILY)
-        if (fontAntialiasingState)
-            fontAntialiasingState->restore();
-#else
-        ThemeMac::setFocusRingClipRect(FloatRect());
-
-        [NSGraphicsContext restoreGraphicsState];
-#endif
     }
-
-    saver.restore();
 
     // Re-fetch the layer owner, since <rdar://problem/9125151> indicates that it might have been destroyed during painting.
     layerContents = platformCALayer->owner();

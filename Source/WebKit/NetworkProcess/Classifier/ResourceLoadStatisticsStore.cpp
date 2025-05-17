@@ -33,10 +33,8 @@
 #include "NetworkSession.h"
 #include "PluginProcessManager.h"
 #include "PluginProcessProxy.h"
-#include "ResourceLoadStatisticsPersistentStorage.h"
 #include "StorageAccessStatus.h"
 #include "WebProcessProxy.h"
-#include "WebResourceLoadStatisticsTelemetry.h"
 #include "WebsiteDataStore.h"
 #include <WebCore/CookieJar.h>
 #include <WebCore/KeyedCoding.h>
@@ -172,12 +170,6 @@ void ResourceLoadStatisticsStore::setShouldClassifyResourcesBeforeDataRecordsRem
     m_parameters.shouldClassifyResourcesBeforeDataRecordsRemoval = value;
 }
 
-void ResourceLoadStatisticsStore::setShouldSubmitTelemetry(bool value)
-{
-    ASSERT(!RunLoop::isMain());
-    m_parameters.shouldSubmitTelemetry = value;
-}
-
 void ResourceLoadStatisticsStore::removeDataRecords(CompletionHandler<void()>&& completionHandler)
 {
     ASSERT(!RunLoop::isMain());
@@ -248,7 +240,6 @@ void ResourceLoadStatisticsStore::processStatisticsAndDataRecords()
             return;
 
         pruneStatisticsIfNeeded();
-        syncStorageIfNeeded();
 
         logTestingEvent("Storage Synced"_s);
 
@@ -275,7 +266,6 @@ void ResourceLoadStatisticsStore::grandfatherExistingWebsiteData(CompletionHandl
 
                 weakThis->grandfatherDataForDomains(domainsWithWebsiteData);
                 weakThis->m_endOfGrandfatheringTimestamp = WallTime::now() + weakThis->m_parameters.grandfatheringTime;
-                weakThis->syncStorageImmediately();
                 callback();
                 weakThis->logTestingEvent("Grandfathered"_s);
             });
@@ -312,10 +302,12 @@ void ResourceLoadStatisticsStore::setPrevalentResourceForDebugMode(const Registr
     m_debugManualPrevalentResource = domain;
 }
 
+#if ENABLE(APP_BOUND_DOMAINS)
 void ResourceLoadStatisticsStore::setAppBoundDomains(HashSet<RegistrableDomain>&& domains)
 {
     m_appBoundDomains = WTFMove(domains);
 }
+#endif
 
 void ResourceLoadStatisticsStore::scheduleStatisticsProcessingRequestIfNecessary()
 {
@@ -449,13 +441,9 @@ void ResourceLoadStatisticsStore::updateCookieBlockingForDomains(const Registrab
 
 bool ResourceLoadStatisticsStore::shouldEnforceSameSiteStrictForSpecificDomain(const RegistrableDomain& domain) const
 {
-    static NeverDestroyed<HashSet<RegistrableDomain>> domains = [] {
-        HashSet<RegistrableDomain> set;
-        set.add(RegistrableDomain::uncheckedCreateFromRegistrableDomainString("yahoo.co.jp"_s));
-        return set;
-    }();
-
-    return domains.get().contains(domain);
+    // We currently know of no domains that need this protection.
+    UNUSED_PARAM(domain);
+    return false;
 }
 
 void ResourceLoadStatisticsStore::setMaxStatisticsEntries(size_t maximumEntryCount)

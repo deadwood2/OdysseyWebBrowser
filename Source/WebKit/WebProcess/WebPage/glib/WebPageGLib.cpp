@@ -41,6 +41,7 @@
 #include <WebCore/HTMLTextAreaElement.h>
 #include <WebCore/Range.h>
 #include <WebCore/TextIterator.h>
+#include <WebCore/UserAgent.h>
 #include <WebCore/VisiblePosition.h>
 #include <WebCore/VisibleUnits.h>
 
@@ -109,7 +110,7 @@ void WebPage::getPlatformEditorState(Frame& frame, EditorState& result) const
         auto surroundingStart = startOfEditableContent(selectionStart);
         auto surroundingRange = makeSimpleRange(surroundingStart, endOfEditableContent(selectionStart));
         auto compositionRange = frame.editor().compositionRange();
-        if (surroundingRange && compositionRange && createLiveRange(surroundingRange)->contains(createLiveRange(*compositionRange).get())) {
+        if (surroundingRange && compositionRange && contains<ComposedTree>(*surroundingRange, *compositionRange)) {
             auto beforeText = plainText({ surroundingRange->start, compositionRange->start });
             postLayoutData.surroundingContext = beforeText + plainText({ compositionRange->end, surroundingRange->end });
             postLayoutData.surroundingContextCursorPosition = beforeText.length();
@@ -154,6 +155,14 @@ void WebPage::setInputMethodState(Element* element)
 
     m_inputMethodState = state;
     send(Messages::WebPageProxy::SetInputMethodState(state));
+}
+
+String WebPage::platformUserAgent(const URL& url) const
+{
+    if (url.isNull() || !m_page->settings().needsSiteSpecificQuirks())
+        return String();
+
+    return WebCore::standardUserAgentForURL(url);
 }
 
 } // namespace WebKit

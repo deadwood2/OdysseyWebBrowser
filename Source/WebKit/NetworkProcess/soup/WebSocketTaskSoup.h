@@ -25,13 +25,11 @@
 
 #pragma once
 
+#include "DataReference.h"
+#include <WebCore/ResourceRequest.h>
 #include <libsoup/soup.h>
 #include <wtf/RunLoop.h>
 #include <wtf/glib/GRefPtr.h>
-
-namespace IPC {
-class DataReference;
-}
 
 namespace WebKit {
 class NetworkSocketChannel;
@@ -39,7 +37,7 @@ class NetworkSocketChannel;
 class WebSocketTask {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    WebSocketTask(NetworkSocketChannel&, SoupSession*, SoupMessage*, const String& protocol);
+    WebSocketTask(NetworkSocketChannel&, const WebCore::ResourceRequest&, SoupSession*, SoupMessage*, const String& protocol);
     ~WebSocketTask();
 
     void sendString(const IPC::DataReference&, CompletionHandler<void()>&&);
@@ -62,6 +60,7 @@ private:
     static void didCloseCallback(WebSocketTask*);
 
     NetworkSocketChannel& m_channel;
+    WebCore::ResourceRequest m_request;
     GRefPtr<SoupMessage> m_handshakeMessage;
     GRefPtr<SoupWebsocketConnection> m_connection;
     GRefPtr<GCancellable> m_cancellable;

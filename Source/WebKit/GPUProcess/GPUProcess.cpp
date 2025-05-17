@@ -33,6 +33,7 @@
 #include "AuxiliaryProcessMessages.h"
 #include "DataReference.h"
 #include "GPUConnectionToWebProcess.h"
+#include "GPUProcessConnectionParameters.h"
 #include "GPUProcessCreationParameters.h"
 #include "GPUProcessSessionParameters.h"
 #include "Logging.h"
@@ -41,10 +42,12 @@
 #include "WebProcessPoolMessages.h"
 #include <WebCore/DeprecatedGlobalSettings.h>
 #include <WebCore/LogInitialization.h>
+#include <WebCore/MemoryRelease.h>
 #include <WebCore/NowPlayingManager.h>
 #include <WebCore/RuntimeApplicationChecks.h>
 #include <wtf/Algorithms.h>
 #include <wtf/CallbackAggregator.h>
+#include <wtf/MemoryPressureHandler.h>
 #include <wtf/OptionSet.h>
 #include <wtf/ProcessPrivilege.h>
 #include <wtf/RunLoop.h>
@@ -57,6 +60,14 @@
 
 #if ENABLE(MEDIA_STREAM)
 #include <WebCore/MockRealtimeMediaSourceCenter.h>
+#endif
+
+#if PLATFORM(COCOA)
+#include <WebCore/VP9UtilitiesCocoa.h>
+#endif
+
+#if HAVE(CGIMAGESOURCE_WITH_SET_ALLOWABLE_TYPES)
+#include <pal/spi/cg/ImageIOSPI.h>
 #endif
 
 namespace WebKit {
@@ -72,7 +83,7 @@ GPUProcess::~GPUProcess()
 {
 }
 
-void GPUProcess::createGPUConnectionToWebProcess(ProcessIdentifier identifier, PAL::SessionID sessionID, CompletionHandler<void(Optional<IPC::Attachment>&&)>&& completionHandler)
+void GPUProcess::createGPUConnectionToWebProcess(ProcessIdentifier identifier, PAL::SessionID sessionID, GPUProcessConnectionParameters&& parameters, CompletionHandler<void(Optional<IPC::Attachment>&&)>&& completionHandler)
 {
     auto ipcConnection = createIPCConnectionPair();
     if (!ipcConnection) {
@@ -80,7 +91,7 @@ void GPUProcess::createGPUConnectionToWebProcess(ProcessIdentifier identifier, P
         return;
     }
 
-    auto newConnection = GPUConnectionToWebProcess::create(*this, identifier, ipcConnection->first, sessionID);
+    auto newConnection = GPUConnectionToWebProcess::create(*this, identifier, ipcConnection->first, sessionID, WTFMove(parameters));
 
 #if ENABLE(MEDIA_STREAM)
     // FIXME: We should refactor code to go from WebProcess -> GPUProcess -> UIProcess when getUserMedia is called instead of going from WebProcess -> UIProcess directly.
@@ -109,20 +120,21 @@ bool GPUProcess::shouldTerminate()
     return m_webProcessConnections.isEmpty();
 }
 
-void GPUProcess::didClose(IPC::Connection&)
+void GPUProcess::lowMemoryHandler(Critical critical, Synchronous synchronous)
 {
-    ASSERT(RunLoop::isMain());
-}
-
-void GPUProcess::lowMemoryHandler(Critical critical)
-{
-    WTF::releaseFastMallocFreeMemory();
+    WebCore::releaseGraphicsMemory(critical, synchronous);
 }
 
 void GPUProcess::initializeGPUProcess(GPUProcessCreationParameters&& parameters)
 {
     WTF::Thread::setCurrentThreadIsUserInitiated();
     AtomString::init();
+
+    auto& memoryPressureHandler = MemoryPressureHandler::singleton();
+    memoryPressureHandler.setLowMemoryHandler([this] (Critical critical, Synchronous synchronous) {
+        lowMemoryHandler(critical, synchronous);
+    });
+    memoryPressureHandler.install();
 
 #if PLATFORM(IOS_FAMILY) || ENABLE(ROUTING_ARBITRATION)
     DeprecatedGlobalSettings::setShouldManageAudioSessionCategory(true);
@@ -137,12 +149,25 @@ void GPUProcess::initializeGPUProcess(GPUProcessCreationParameters&& parameters)
 #endif
 #endif
 
+#if USE(SANDBOX_EXTENSIONS_FOR_CACHE_AND_TEMP_DIRECTORY_ACCESS)
+    SandboxExtension::consumePermanently(parameters.containerCachesDirectoryExtensionHandle);
+    SandboxExtension::consumePermanently(parameters.containerTemporaryDirectoryExtensionHandle);
+#endif
+    
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
     m_contextForVisibilityPropagation = LayerHostingContext::createForExternalHostingProcess({
         m_canShowWhileLocked
     });
     send(Messages::GPUProcessProxy::DidCreateContextForVisibilityPropagation(m_contextForVisibilityPropagation->contextID()));
 #endif
+
+#if HAVE(CGIMAGESOURCE_WITH_SET_ALLOWABLE_TYPES)
+    auto emptyArray = adoptCF(CFArrayCreate(kCFAllocatorDefault, nullptr, 0, &kCFTypeArrayCallBacks));
+    CGImageSourceSetAllowableTypes(emptyArray.get());
+#endif
+
+    // Match the QoS of the UIProcess since the GPU process is doing rendering on its behalf.
+    WTF::Thread::setCurrentThreadIsUserInteractive(0);
 
     WebCore::setPresentingApplicationPID(parameters.parentPID);
 }
@@ -151,7 +176,8 @@ void GPUProcess::prepareToSuspend(bool isSuspensionImminent, CompletionHandler<v
 {
     RELEASE_LOG(ProcessSuspension, "%p - GPUProcess::prepareToSuspend(), isSuspensionImminent: %d", this, isSuspensionImminent);
 
-    lowMemoryHandler(Critical::Yes);
+    lowMemoryHandler(Critical::Yes, Synchronous::Yes);
+    completionHandler();
 }
 
 void GPUProcess::processDidResume()
@@ -202,6 +228,26 @@ void GPUProcess::updateCaptureAccess(bool allowAudioCapture, bool allowVideoCapt
     access.allowDisplayCapture |= allowDisplayCapture;
 
     completionHandler();
+}
+
+void GPUProcess::addMockMediaDevice(const WebCore::MockMediaDevice& device)
+{
+    MockRealtimeMediaSourceCenter::addDevice(device);
+}
+
+void GPUProcess::clearMockMediaDevices()
+{
+    MockRealtimeMediaSourceCenter::setDevices({ });
+}
+
+void GPUProcess::removeMockMediaDevice(const String& persistentId)
+{
+    MockRealtimeMediaSourceCenter::removeDevice(persistentId);
+}
+
+void GPUProcess::resetMockMediaDevices()
+{
+    MockRealtimeMediaSourceCenter::resetDevices();
 }
 #endif
 
@@ -254,6 +300,54 @@ RemoteAudioSessionProxyManager& GPUProcess::audioSessionManager() const
     if (!m_audioSessionManager)
         m_audioSessionManager = WTF::makeUnique<RemoteAudioSessionProxyManager>();
     return *m_audioSessionManager;
+}
+#endif
+
+#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
+WorkQueue& GPUProcess::audioMediaStreamTrackRendererQueue()
+{
+    if (!m_audioMediaStreamTrackRendererQueue)
+        m_audioMediaStreamTrackRendererQueue = WorkQueue::create("RemoteAudioMediaStreamTrackRenderer", WorkQueue::Type::Serial, WorkQueue::QOS::UserInteractive);
+    return *m_audioMediaStreamTrackRendererQueue;
+}
+WorkQueue& GPUProcess::videoMediaStreamTrackRendererQueue()
+{
+    if (!m_videoMediaStreamTrackRendererQueue)
+        m_videoMediaStreamTrackRendererQueue = WorkQueue::create("RemoteVideoMediaStreamTrackRenderer", WorkQueue::Type::Serial, WorkQueue::QOS::UserInitiated);
+    return *m_videoMediaStreamTrackRendererQueue;
+}
+#endif
+
+#if USE(LIBWEBRTC) && PLATFORM(COCOA)
+WorkQueue& GPUProcess::libWebRTCCodecsQueue()
+{
+    if (!m_libWebRTCCodecsQueue)
+        m_libWebRTCCodecsQueue = WorkQueue::create("LibWebRTCCodecsQueue", WorkQueue::Type::Serial, WorkQueue::QOS::UserInitiated);
+    return *m_libWebRTCCodecsQueue;
+}
+#endif
+
+#if ENABLE(VP9)
+void GPUProcess::enableVP9Decoders(bool shouldEnableVP8Decoder, bool shouldEnableVP9Decoder, bool shouldEnableVP9SWDecoder)
+{
+    if (shouldEnableVP9Decoder && !m_enableVP9Decoder) {
+        m_enableVP9Decoder = true;
+#if PLATFORM(COCOA)
+        WebCore::registerSupplementalVP9Decoder();
+#endif
+    }
+    if (shouldEnableVP8Decoder && !m_enableVP8Decoder) {
+        m_enableVP8Decoder = true;
+#if PLATFORM(COCOA)
+        WebCore::registerWebKitVP8Decoder();
+#endif
+    }
+    if (shouldEnableVP9SWDecoder && !m_enableVP9SWDecoder) {
+        m_enableVP9SWDecoder = true;
+#if PLATFORM(COCOA)
+        WebCore::registerWebKitVP9Decoder();
+#endif
+    }
 }
 #endif
 

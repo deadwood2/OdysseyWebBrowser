@@ -20,13 +20,14 @@
 #include "config.h"
 #include "WebHitTestResultData.h"
 
+#include "ShareableBitmapUtilities.h"
 #include "WebCoreArgumentCoders.h"
 #include <WebCore/Document.h>
 #include <WebCore/Frame.h>
 #include <WebCore/FrameView.h>
 #include <WebCore/HitTestResult.h>
 #include <WebCore/Node.h>
-#include <WebCore/RenderObject.h>
+#include <WebCore/RenderImage.h>
 #include <WebCore/SharedBuffer.h>
 #include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
@@ -91,6 +92,9 @@ WebHitTestResultData::WebHitTestResultData(const WebCore::HitTestResult& hitTest
             imageSize = buffer->size();
         }
     }
+
+    if (auto target = makeRefPtr(hitTestResult.innerNonSharedNode()); target && is<RenderImage>(target->renderer()))
+        imageBitmap = createShareableBitmap(*downcast<RenderImage>(target->renderer()));
 }
 
 WebHitTestResultData::~WebHitTestResultData()
@@ -120,8 +124,13 @@ void WebHitTestResultData::encode(IPC::Encoder& encoder) const
     WebKit::SharedMemory::Handle imageHandle;
     if (imageSharedMemory && imageSharedMemory->data())
         imageSharedMemory->createHandle(imageHandle, WebKit::SharedMemory::Protection::ReadOnly);
-    encoder << imageHandle;
-    encoder << imageSize;
+
+    encoder << WebKit::SharedMemory::IPCHandle { WTFMove(imageHandle), imageSize };
+
+    ShareableBitmap::Handle imageBitmapHandle;
+    if (imageBitmap)
+        imageBitmap->createHandle(imageBitmapHandle, SharedMemory::Protection::ReadOnly);
+    encoder << imageBitmapHandle;
 
     bool hasLinkTextIndicator = linkTextIndicator;
     encoder << hasLinkTextIndicator;
@@ -152,22 +161,28 @@ bool WebHitTestResultData::decode(IPC::Decoder& decoder, WebHitTestResultData& h
         || !decoder.decode(hitTestResultData.dictionaryPopupInfo))
         return false;
 
-    WebKit::SharedMemory::Handle imageHandle;
+    WebKit::SharedMemory::IPCHandle imageHandle;
     if (!decoder.decode(imageHandle))
         return false;
 
-    if (!imageHandle.isNull())
-        hitTestResultData.imageSharedMemory = WebKit::SharedMemory::map(imageHandle, WebKit::SharedMemory::Protection::ReadOnly);
-
-    if (!decoder.decode(hitTestResultData.imageSize))
-        return false;
-
-    if (hitTestResultData.imageSharedMemory) {
-        // SharedMemory:size() is rounded up to the nearest page.
-        if (hitTestResultData.imageSize > hitTestResultData.imageSharedMemory->size())
+    hitTestResultData.imageSize = imageHandle.dataSize;
+    if (imageHandle.handle.isNull()) {
+        if (hitTestResultData.imageSize)
             return false;
-    } else if (hitTestResultData.imageSize)
+    } else {
+        hitTestResultData.imageSharedMemory = WebKit::SharedMemory::map(imageHandle.handle, WebKit::SharedMemory::Protection::ReadOnly);
+        if (!hitTestResultData.imageSharedMemory)
+            return false;
+        if (!hitTestResultData.imageSize)
+            return false;
+    }
+
+    ShareableBitmap::Handle imageBitmapHandle;
+    if (!decoder.decode(imageBitmapHandle))
         return false;
+
+    if (!imageBitmapHandle.isNull())
+        hitTestResultData.imageBitmap = ShareableBitmap::create(imageBitmapHandle, SharedMemory::Protection::ReadOnly);
 
     bool hasLinkTextIndicator;
     if (!decoder.decode(hasLinkTextIndicator))

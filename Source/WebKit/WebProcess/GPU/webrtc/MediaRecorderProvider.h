@@ -29,14 +29,27 @@
 
 namespace WebKit {
 
+class WebPage;
+
 class MediaRecorderProvider final : public WebCore::MediaRecorderProvider {
 public:
-    MediaRecorderProvider() = default;
+    explicit MediaRecorderProvider(WebPage&);
 
 private:
 #if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
-    std::unique_ptr<WebCore::MediaRecorderPrivate> createMediaRecorderPrivate(WebCore::MediaStreamPrivate&) final;
+    std::unique_ptr<WebCore::MediaRecorderPrivate> createMediaRecorderPrivate(WebCore::MediaStreamPrivate&, const WebCore::MediaRecorderPrivateOptions&) final;
+#endif
+
+#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && HAVE(AVASSETWRITERDELEGATE)
+    WebPage& m_webPage;
 #endif
 };
+
+inline MediaRecorderProvider::MediaRecorderProvider(WebPage& webPage)
+#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && HAVE(AVASSETWRITERDELEGATE)
+    : m_webPage(webPage)
+#endif
+{
+}
 
 }

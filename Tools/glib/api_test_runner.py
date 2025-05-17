@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(top_level_directory, "Tools", "glib"))
 import common
 from webkitpy.common.host import Host
 from webkitpy.common.test_expectations import TestExpectations
-from webkitpy.common.timeout_context import Timeout
+from webkitcorepy import Timeout
 
 if os.name == 'posix' and sys.version_info[0] < 3:
     try:
@@ -44,6 +44,8 @@ class TestRunner(object):
     TEST_TARGETS = []
 
     def __init__(self, port, options, tests=[]):
+        if len(options.subtests) > 0 and len(tests) != 1:
+            raise ValueError("Passing one or more subtests requires one and only test argument")
         self._options = options
 
         self._port = Host().port_factory.get(port)
@@ -159,13 +161,14 @@ class TestRunner(object):
                     return 0
                 raise
 
-    def _run_test_glib(self, test_program, skipped_test_cases):
+    def _run_test_glib(self, test_program, subtests, skipped_test_cases):
         timeout = self._options.timeout
 
         def is_slow_test(test, subtest):
             return self._expectations.is_slow(test, subtest)
 
-        return GLibTestRunner(test_program, timeout, is_slow_test, timeout * 10).run(skipped=skipped_test_cases, env=self._test_env)
+        runner = GLibTestRunner(test_program, timeout, is_slow_test, timeout * 10)
+        return runner.run(subtests=subtests, skipped=skipped_test_cases, env=self._test_env)
 
     def _run_test_qt(self, test_program):
         env = self._test_env
@@ -200,7 +203,7 @@ class TestRunner(object):
         except subprocess.CalledProcessError:
             sys.stderr.write("ERROR: could not list available tests for binary %s.\n" % (test_program))
             sys.stderr.flush()
-            return 1
+            sys.exit(1)
 
         tests = []
         prefix = None
@@ -230,7 +233,7 @@ class TestRunner(object):
                 common.parse_output_lines(fd, sys.stdout.write)
                 status = self._waitpid(pid)
                 os.close(fd)
-            except RuntimeError:
+            except Timeout.Exception:
                 self._kill_process(pid)
                 os.close(fd)
                 sys.stdout.write("**TIMEOUT** %s\n" % subtest)
@@ -247,10 +250,11 @@ class TestRunner(object):
 
         return {subtest: "PASS"}
 
-    def _run_google_test_suite(self, test_program, skipped_test_cases):
+    def _run_google_test_suite(self, test_program, subtests, skipped_test_cases):
         result = {}
         for subtest in self._get_tests_from_google_test_suite(test_program, skipped_test_cases):
-            result.update(self._run_google_test(test_program, subtest))
+            if subtest in subtests or not subtests:
+                result.update(self._run_google_test(test_program, subtest))
         return result
 
     def is_glib_test(self, test_program):
@@ -262,24 +266,25 @@ class TestRunner(object):
     def is_qt_test(self, test_program):
         raise NotImplementedError
 
-    def _run_test(self, test_program, skipped_test_cases):
+    def _run_test(self, test_program, subtests, skipped_test_cases):
         if self.is_glib_test(test_program):
-            return self._run_test_glib(test_program, skipped_test_cases)
+            return self._run_test_glib(test_program, subtests, skipped_test_cases)
 
         if self.is_google_test(test_program):
-            return self._run_google_test_suite(test_program, skipped_test_cases)
+            return self._run_google_test_suite(test_program, subtests, skipped_test_cases)
 
         # FIXME: support skipping Qt subtests
         if self.is_qt_test(test_program):
             return self._run_test_qt(test_program)
 
+        sys.stderr.write("WARNING: %s doesn't seem to be a supported test program.\n" % test_program)
         return {}
 
     def run_tests(self):
         if not self._tests:
             sys.stderr.write("ERROR: tests not found in %s.\n" % (self._test_programs_base_dir()))
             sys.stderr.flush()
-            return 1
+            sys.exit(1)
 
         self._setup_testing_environment()
 
@@ -294,10 +299,16 @@ class TestRunner(object):
         timed_out_tests = {}
         passed_tests = {}
         try:
+            subtests = self._options.subtests
             for test in self._tests:
                 skipped_subtests = self._test_cases_to_skip(test)
-                number_of_total_tests += len(skipped_subtests)
-                results = self._run_test(test, skipped_subtests)
+                number_of_total_tests += len(skipped_subtests if not subtests else set(skipped_subtests).intersection(subtests))
+                results = self._run_test(test, subtests, skipped_subtests)
+                if len(results) == 0:
+                    # No subtests were emitted, either the test binary didn't exist, or we don't know how to run it, or it crashed.
+                    sys.stderr.write("ERROR: %s failed to run, as it didn't emit any subtests.\n" % test)
+                    crashed_tests[test] = ["(problem in test executable)"]
+                    continue
                 number_of_executed_subtests_for_test = len(results)
                 if number_of_executed_subtests_for_test > 1:
                     number_of_executed_tests += number_of_executed_subtests_for_test
@@ -378,3 +389,5 @@ def add_options(option_parser):
                              help='Time in seconds until a test times out')
     option_parser.add_option('--json-output', action='store', default=None,
                              help='Save test results as JSON to file')
+    option_parser.add_option('-p', action='append', dest='subtests', default=[],
+                             help='Subtests to run')

@@ -41,7 +41,7 @@ extern "C" {
 
 #define WEBKIT2_LOG_CHANNELS(M) \
     M(ActivityState) \
-    M(AdClickAttribution) \
+    M(PrivateClickMeasurement) \
     M(AppSSO) \
     M(Automation) \
     M(AutomationInteractions) \
@@ -52,6 +52,7 @@ extern "C" {
     M(ContextMenu) \
     M(DiskPersistency) \
     M(DragAndDrop) \
+    M(EME) \
     M(Fullscreen) \
     M(Gamepad) \
     M(IPC) \
@@ -61,6 +62,7 @@ extern "C" {
     M(IncrementalPDF) \
     M(IncrementalPDFVerbose) \
     M(IndexedDB) \
+    M(Inspector) \
     M(KeyHandling) \
     M(Layers) \
     M(Layout) \
@@ -100,6 +102,7 @@ extern "C" {
     M(VisibleRects) \
     M(WebGL) \
     M(WebRTC) \
+    M(WheelEvents) \
 
 WEBKIT2_LOG_CHANNELS(DECLARE_LOG_CHANNEL)
 

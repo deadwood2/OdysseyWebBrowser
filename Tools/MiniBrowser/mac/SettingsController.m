@@ -42,7 +42,7 @@ static NSString * const UseWebKit2ByDefaultPreferenceKey = @"UseWebKit2ByDefault
 static NSString * const CreateEditorByDefaultPreferenceKey = @"CreateEditorByDefault";
 static NSString * const LayerBordersVisiblePreferenceKey = @"LayerBordersVisible";
 static NSString * const SimpleLineLayoutEnabledPreferenceKey = @"SimpleLineLayoutEnabled";
-static NSString * const SimpleLineLayoutDebugBordersEnabledPreferenceKey = @"SimpleLineLayoutDebugBordersEnabled";
+static NSString * const LegacyLineLayoutVisualCoverageEnabledPreferenceKey = @"LegacyLineLayoutVisualCoverageEnabled";
 static NSString * const TiledScrollingIndicatorVisiblePreferenceKey = @"TiledScrollingIndicatorVisible";
 static NSString * const ReserveSpaceForBannersPreferenceKey = @"ReserveSpaceForBanners";
 static NSString * const WebViewFillsWindowKey = @"WebViewFillsWindow";
@@ -61,7 +61,6 @@ static NSString * const WheelEventHandlerRegionOverlayVisiblePreferenceKey = @"W
 
 static NSString * const UseTransparentWindowsPreferenceKey = @"UseTransparentWindows";
 static NSString * const UsePaginatedModePreferenceKey = @"UsePaginatedMode";
-static NSString * const EnableSubPixelCSSOMMetricsPreferenceKey = @"EnableSubPixelCSSOMMetrics";
 
 static NSString * const LargeImageAsyncDecodingEnabledPreferenceKey = @"LargeImageAsyncDecodingEnabled";
 static NSString * const AnimatedImageAsyncDecodingEnabledPreferenceKey = @"AnimatedImageAsyncDecodingEnabled";
@@ -105,6 +104,7 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
         LargeImageAsyncDecodingEnabledPreferenceKey,
         AnimatedImageAsyncDecodingEnabledPreferenceKey,
         WebViewFillsWindowKey,
+        ResourceLoadStatisticsEnabledPreferenceKey,
     ];
     
     NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
@@ -162,7 +162,7 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     [self _addItemWithTitle:@"Use Paginated Mode" action:@selector(toggleUsePaginatedMode:) indented:NO];
     [self _addItemWithTitle:@"Show Layer Borders" action:@selector(toggleShowLayerBorders:) indented:NO];
     [self _addItemWithTitle:@"Disable Simple Line Layout" action:@selector(toggleSimpleLineLayoutEnabled:) indented:NO];
-    [self _addItemWithTitle:@"Show Simple Line Layout Borders" action:@selector(toggleSimpleLineLayoutDebugBordersEnabled:) indented:NO];
+    [self _addItemWithTitle:@"Enable Legacy Line Layout Visual Coverage" action:@selector(toggleLegacyLineLayoutVisualCoverageEnabled:) indented:NO];
     [self _addItemWithTitle:@"Suppress Incremental Rendering in New Windows" action:@selector(toggleIncrementalRenderingSuppressed:) indented:NO];
     [self _addItemWithTitle:@"Enable Accelerated Drawing" action:@selector(toggleAcceleratedDrawingEnabled:) indented:NO];
     [self _addItemWithTitle:@"Enable Display List Drawing" action:@selector(toggleDisplayListDrawingEnabled:) indented:NO];
@@ -219,6 +219,12 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
         [experimentalFeaturesMenu addItem:[item autorelease]];
     }
 
+    [experimentalFeaturesMenu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *resetExperimentalFeaturesToDefaultsItem = [[NSMenuItem alloc] initWithTitle:@"Reset All to Defaults" action:@selector(resetAllExperimentalFeatures:) keyEquivalent:@""];
+    [resetExperimentalFeaturesToDefaultsItem setTarget:self];
+    [experimentalFeaturesMenu addItem:resetExperimentalFeaturesToDefaultsItem];
+    [resetExperimentalFeaturesToDefaultsItem release];
+
     [_menu addItem:experimentalFeaturesSubmenuItem];
     [experimentalFeaturesSubmenuItem release];
     [experimentalFeaturesMenu release];
@@ -239,12 +245,17 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
         [internalDebugFeaturesMenu addItem:[item autorelease]];
     }
 
+    [internalDebugFeaturesMenu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *resetInternalFeaturesToDefaultsItem = [[NSMenuItem alloc] initWithTitle:@"Reset All to Defaults" action:@selector(resetAllInternalDebugFeatures:) keyEquivalent:@""];
+    [resetInternalFeaturesToDefaultsItem setTarget:self];
+    [internalDebugFeaturesMenu addItem:resetInternalFeaturesToDefaultsItem];
+    [resetInternalFeaturesToDefaultsItem release];
+
     [_menu addItem:internalDebugFeaturesSubmenuItem];
     [internalDebugFeaturesSubmenuItem release];
     [internalDebugFeaturesMenu release];
 
     [self _addHeaderWithTitle:@"WebKit1-only Settings"];
-    [self _addItemWithTitle:@"Enable Subpixel CSSOM Metrics" action:@selector(toggleEnableSubPixelCSSOMMetrics:) indented:YES];
 }
 
 + (NSArray *)userAgentData
@@ -348,8 +359,8 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
         [menuItem setState:[self layerBordersVisible] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleSimpleLineLayoutEnabled:))
         [menuItem setState:[self simpleLineLayoutEnabled] ? NSControlStateValueOff : NSControlStateValueOn];
-    else if (action == @selector(toggleSimpleLineLayoutDebugBordersEnabled:))
-        [menuItem setState:[self simpleLineLayoutDebugBordersEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
+    else if (action == @selector(toggleLegacyLineLayoutVisualCoverageEnabled:))
+        [menuItem setState:[self legacyLineLayoutVisualCoverageEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleIncrementalRenderingSuppressed:))
         [menuItem setState:[self incrementalRenderingSuppressed] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleAcceleratedDrawingEnabled:))
@@ -388,8 +399,6 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
         [menuItem setState:[self useUISideCompositing] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(togglePerWindowWebProcessesDisabled:))
         [menuItem setState:[self perWindowWebProcessesDisabled] ? NSControlStateValueOn : NSControlStateValueOff];
-    else if (action == @selector(toggleEnableSubPixelCSSOMMetrics:))
-        [menuItem setState:[self subPixelCSSOMMetricsEnabled] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(toggleDebugOverlay:))
         [menuItem setState:[self debugOverlayVisible:menuItem] ? NSControlStateValueOn : NSControlStateValueOff];
     else if (action == @selector(changeCutomUserAgent:)) {
@@ -527,14 +536,14 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     return [[NSUserDefaults standardUserDefaults] boolForKey:SimpleLineLayoutEnabledPreferenceKey];
 }
 
-- (void)toggleSimpleLineLayoutDebugBordersEnabled:(id)sender
+- (void)toggleLegacyLineLayoutVisualCoverageEnabled:(id)sender
 {
-    [self _toggleBooleanDefault:SimpleLineLayoutDebugBordersEnabledPreferenceKey];
+    [self _toggleBooleanDefault:LegacyLineLayoutVisualCoverageEnabledPreferenceKey];
 }
 
-- (BOOL)simpleLineLayoutDebugBordersEnabled
+- (BOOL)legacyLineLayoutVisualCoverageEnabled
 {
-    return [[NSUserDefaults standardUserDefaults] boolForKey:SimpleLineLayoutDebugBordersEnabledPreferenceKey];
+    return [[NSUserDefaults standardUserDefaults] boolForKey:LegacyLineLayoutVisualCoverageEnabledPreferenceKey];
 }
 
 - (void)toggleAcceleratedDrawingEnabled:(id)sender
@@ -707,16 +716,6 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     return [[NSUserDefaults standardUserDefaults] boolForKey:UseSystemAppearancePreferenceKey];
 }
 
-- (void)toggleEnableSubPixelCSSOMMetrics:(id)sender
-{
-    [self _toggleBooleanDefault:EnableSubPixelCSSOMMetricsPreferenceKey];
-}
-
-- (BOOL)subPixelCSSOMMetricsEnabled
-{
-    return [[NSUserDefaults standardUserDefaults] boolForKey:EnableSubPixelCSSOMMetricsPreferenceKey];
-}
-
 - (BOOL)nonFastScrollableRegionOverlayVisible
 {
     return [[NSUserDefaults standardUserDefaults] boolForKey:NonFastScrollableRegionOverlayVisiblePreferenceKey];
@@ -766,6 +765,28 @@ typedef NS_ENUM(NSInteger, DebugOverylayMenuItemTag) {
     [preferences _setEnabled:!currentlyEnabled forInternalDebugFeature:feature];
 
     [[NSUserDefaults standardUserDefaults] setBool:!currentlyEnabled forKey:feature.key];
+}
+
+- (void)resetAllExperimentalFeatures:(id)sender
+{
+    WKPreferences *preferences = [[NSApplication sharedApplication] browserAppDelegate].defaultPreferences;
+    NSArray<_WKExperimentalFeature *> *experimentalFeatures = [WKPreferences _experimentalFeatures];
+
+    for (_WKExperimentalFeature *feature in experimentalFeatures) {
+        [preferences _setEnabled:feature.defaultValue forExperimentalFeature:feature];
+        [[NSUserDefaults standardUserDefaults] setBool:feature.defaultValue forKey:feature.key];
+    }
+}
+
+- (void)resetAllInternalDebugFeatures:(id)sender
+{
+    WKPreferences *preferences = [[NSApplication sharedApplication] browserAppDelegate].defaultPreferences;
+    NSArray<_WKInternalDebugFeature *> *internalDebugFeatures = [WKPreferences _internalDebugFeatures];
+
+    for (_WKInternalDebugFeature *feature in internalDebugFeatures) {
+        [preferences _setEnabled:feature.defaultValue forInternalDebugFeature:feature];
+        [[NSUserDefaults standardUserDefaults] setBool:feature.defaultValue forKey:feature.key];
+    }
 }
 
 - (BOOL)debugOverlayVisible:(NSMenuItem *)menuItem

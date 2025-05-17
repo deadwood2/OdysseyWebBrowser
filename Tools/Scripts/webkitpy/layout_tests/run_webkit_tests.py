@@ -88,6 +88,8 @@ def main(argv, stdout, stderr):
         stackSizeInBytes = int(1.5 * 1024 * 1024)
         options.additional_env_var.append('JSC_maxPerThreadStackUsage=' + str(stackSizeInBytes))
         options.additional_env_var.append('__XPC_JSC_maxPerThreadStackUsage=' + str(stackSizeInBytes))
+        options.additional_env_var.append('JSC_useSharedArrayBuffer=1')
+        options.additional_env_var.append('__XPC_JSC_useSharedArrayBuffer=1')
         run_details = run(port, options, args, stderr)
         if run_details.exit_code != -1 and run_details.skipped_all_tests:
             return run_details.exit_code
@@ -151,6 +153,9 @@ def parse_args(args):
             dest="sample_on_timeout", help="Don't run sample on timeout (OS X only)"),
         optparse.make_option("--no-ref-tests", action="store_true",
             dest="no_ref_tests", help="Skip all ref tests"),
+        optparse.make_option("--ignore-render-tree-dump-results", action="store_true",
+            dest="ignore_render_tree_dump_results",
+            help="Don't compare or save results for render tree dump tests (they still run and crashes are reported)"),
         optparse.make_option("--tolerance",
             help="Ignore image differences less than this percentage (some "
                 "ports may ignore this option)", type="float"),
@@ -345,7 +350,7 @@ def parse_args(args):
         optparse.make_option("--build-name", default="DUMMY_BUILD_NAME",
             help=("The name of the builder used in its path, e.g. webkit-rel.")),
         optparse.make_option("--build-slave", default="DUMMY_BUILD_SLAVE",
-            help=("The name of the buildslave used. e.g. apple-macpro-6.")),
+            help=("The name of the worker used. e.g. apple-macpro-6.")),
         optparse.make_option("--test-results-server", action="append", default=[],
             help=("If specified, upload results json files to this appengine server.")),
         optparse.make_option("--results-server-host", action="append", default=[],
@@ -381,9 +386,15 @@ def parse_args(args):
         options.additional_expectations.insert(0, host.filesystem.join(host.scm().checkout_root, 'LayoutTests/gpu-process/TestExpectations'))
         if not options.internal_feature:
             options.internal_feature = []
-        options.internal_feature.append('UseGPUProcessForMedia')
+        options.internal_feature.append('UseGPUProcessForMediaEnabled')
         options.internal_feature.append('CaptureAudioInGPUProcessEnabled')
-        options.internal_feature.append('RenderCanvasInGPUProcessEnabled')
+        options.internal_feature.append('CaptureVideoInGPUProcessEnabled')
+        options.internal_feature.append('UseGPUProcessForCanvasRenderingEnabled')
+        options.internal_feature.append('UseGPUProcessForDOMRenderingEnabled')
+        options.internal_feature.append('UseGPUProcessForWebGLEnabled')
+        if not options.experimental_feature:
+            options.experimental_feature = []
+        options.experimental_feature.append('WebRTCPlatformCodecsInGPUProcessEnabled')
         if options.result_report_flavor:
             raise RuntimeError('--use-gpu-process implicitly sets the result flavor, this should not be overridden')
         options.result_report_flavor = 'gpuprocess'
@@ -470,6 +481,10 @@ def _set_up_derived_options(port, options):
     # The GTK+ and WPE ports only support WebKit2 so they always use WKTR.
     if options.platform in ["gtk", "wpe"]:
         options.webkit_test_runner = True
+
+    # Don't maintain render tree dump results for Apple Windows port.
+    if port.port_name == "win":
+        options.ignore_render_tree_dump_results = True
 
     if options.leaks:
         options.additional_env_var.append("JSC_usePoisoning=0")

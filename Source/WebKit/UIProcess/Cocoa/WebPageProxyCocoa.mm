@@ -28,6 +28,7 @@
 
 #import "APIAttachment.h"
 #import "APIUIClient.h"
+#import "CocoaImage.h"
 #import "Connection.h"
 #import "DataDetectionResult.h"
 #import "InsertTextOptions.h"
@@ -36,25 +37,36 @@
 #import "QuickLookThumbnailLoader.h"
 #import "SafeBrowsingSPI.h"
 #import "SafeBrowsingWarning.h"
+#import "SharedBufferCopy.h"
 #import "SharedBufferDataReference.h"
+#import "WebPage.h"
 #import "WebPageMessages.h"
 #import "WebPasteboardProxy.h"
 #import "WebProcessProxy.h"
 #import "WebsiteDataStore.h"
 #import "WKErrorInternal.h"
 #import <WebCore/DragItem.h>
+#import <WebCore/GeometryUtilities.h>
 #import <WebCore/LocalCurrentGraphicsContext.h>
+#import <WebCore/NetworkExtensionContentFilter.h>
 #import <WebCore/NotImplemented.h>
+#import <WebCore/RunLoopObserver.h>
 #import <WebCore/SearchPopupMenuCocoa.h>
 #import <WebCore/TextAlternativeWithRange.h>
 #import <WebCore/ValidationBubble.h>
-#import <pal/spi/cocoa/NEFilterSourceSPI.h>
+#import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/SoftLinking.h>
 #import <wtf/cf/TypeCastsCF.h>
 
 #if ENABLE(MEDIA_USAGE)
 #import "MediaUsageManagerCocoa.h"
+#endif
+
+#if USE(APPKIT)
+#import <AppKit/NSImage.h>
+#else
+#import <UIKit/UIImage.h>
 #endif
 
 #if PLATFORM(IOS)
@@ -64,8 +76,15 @@ SOFT_LINK_PRIVATE_FRAMEWORK(WebContentAnalysis);
 SOFT_LINK_CLASS(WebContentAnalysis, WebFilterEvaluator);
 #endif
 
-SOFT_LINK_FRAMEWORK_OPTIONAL(NetworkExtension);
-SOFT_LINK_CLASS_OPTIONAL(NetworkExtension, NEFilterSource);
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebPageProxyCocoaAdditionsBefore.mm>
+#endif
+
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebPageProxyAdditions.h>
+#else
+#define WEB_PAGE_PROXY_ADDITIONS
+#endif
 
 #define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, process().connection())
 #define MESSAGE_CHECK_COMPLETION(assertion, completion) MESSAGE_CHECK_COMPLETION_BASE(assertion, process().connection(), completion)
@@ -146,21 +165,8 @@ void WebPageProxy::addPlatformLoadParameters(WebProcessProxy& process, LoadParam
 {
     loadParameters.dataDetectionContext = m_uiClient->dataDetectionContext();
 
-    if (!process.hasNetworkExtensionSandboxAccess() && [getNEFilterSourceClass() filterRequired]) {
-        SandboxExtension::Handle helperHandle;
-        SandboxExtension::createHandleForMachLookup("com.apple.nehelper"_s, WTF::nullopt, helperHandle);
-        loadParameters.neHelperExtensionHandle = WTFMove(helperHandle);
-        SandboxExtension::Handle managerHandle;
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101500
-        SandboxExtension::createHandleForMachLookup("com.apple.nesessionmanager"_s, WTF::nullopt, managerHandle);
-#else
-        SandboxExtension::createHandleForMachLookup("com.apple.nesessionmanager.content-filter"_s, WTF::nullopt, managerHandle);
-#endif
-        loadParameters.neSessionManagerExtensionHandle = WTFMove(managerHandle);
-
-        process.markHasNetworkExtensionSandboxAccess();
-    }
-
+    loadParameters.networkExtensionSandboxExtensionHandles = createNetworkExtensionsSandboxExtensions(process);
+    
 #if PLATFORM(IOS)
     if (!process.hasManagedSessionSandboxAccess() && [getWebFilterEvaluatorClass() isManagedSession]) {
         SandboxExtension::Handle handle;
@@ -217,7 +223,7 @@ void WebPageProxy::startDrag(const DragItem& dragItem, const ShareableBitmap::Ha
 // FIXME: Move these functions to WebPageProxyIOS.mm.
 #if PLATFORM(IOS_FAMILY)
 
-void WebPageProxy::setPromisedDataForImage(const String&, const SharedMemory::Handle&, uint64_t, const String&, const String&, const String&, const String&, const String&, const SharedMemory::Handle&, uint64_t)
+void WebPageProxy::setPromisedDataForImage(const String&, const SharedMemory::IPCHandle&, const String&, const String&, const String&, const String&, const String&, const SharedMemory::IPCHandle&, const String&)
 {
     notImplemented();
 }
@@ -238,12 +244,12 @@ void WebPageProxy::setDragCaretRect(const IntRect& dragCaretRect)
 
 #if ENABLE(ATTACHMENT_ELEMENT)
 
-void WebPageProxy::platformRegisterAttachment(Ref<API::Attachment>&& attachment, const String& preferredFileName, const IPC::SharedBufferDataReference& dataReference)
+void WebPageProxy::platformRegisterAttachment(Ref<API::Attachment>&& attachment, const String& preferredFileName, const IPC::SharedBufferCopy& bufferCopy)
 {
-    if (dataReference.isEmpty())
+    if (bufferCopy.isEmpty())
         return;
 
-    auto fileWrapper = adoptNS([pageClient().allocFileWrapperInstance() initRegularFileWithContents:dataReference.buffer()->createNSData().autorelease()]);
+    auto fileWrapper = adoptNS([pageClient().allocFileWrapperInstance() initRegularFileWithContents:bufferCopy.buffer()->createNSData().get()]);
     [fileWrapper setPreferredFilename:preferredFileName];
     attachment->setFileWrapper(fileWrapper.get());
 }
@@ -298,6 +304,15 @@ void WebPageProxy::insertDictatedTextAsync(const String& text, const EditingRang
 
     send(Messages::WebPage::InsertDictatedTextAsync { text, replacementRange, dictationAlternatives, WTFMove(options) });
 }
+
+#if USE(DICTATION_ALTERNATIVES)
+
+NSTextAlternatives *WebPageProxy::platformDictationAlternatives(WebCore::DictationContext dictationContext)
+{
+    return pageClient().platformDictationAlternatives(dictationContext);
+}
+
+#endif
 
 ResourceError WebPageProxy::errorForUnpermittedAppBoundDomainNavigation(const URL& url)
 {
@@ -426,10 +441,14 @@ void WebPageProxy::removeMediaUsageManagerSession(WebCore::MediaSessionIdentifie
 
 #if HAVE(QUICKLOOK_THUMBNAILING)
 
-static RefPtr<WebKit::ShareableBitmap> convertPlatformImageToBitmap(CocoaImage *image, const WebCore::IntSize& size)
+static RefPtr<WebKit::ShareableBitmap> convertPlatformImageToBitmap(CocoaImage *image, const WebCore::IntSize& fittingSize)
 {
+    FloatSize originalThumbnailSize([image size]);
+    auto resultRect = roundedIntRect(largestRectWithAspectRatioInsideRect(originalThumbnailSize.aspectRatio(), { { }, fittingSize }));
+    resultRect.setLocation({ });
+
     WebKit::ShareableBitmap::Configuration bitmapConfiguration;
-    auto bitmap = WebKit::ShareableBitmap::createShareable(size, bitmapConfiguration);
+    auto bitmap = WebKit::ShareableBitmap::createShareable(resultRect.size(), bitmapConfiguration);
     if (!bitmap)
         return nullptr;
 
@@ -439,9 +458,9 @@ static RefPtr<WebKit::ShareableBitmap> convertPlatformImageToBitmap(CocoaImage *
 
     LocalCurrentGraphicsContext savedContext(*graphicsContext);
 #if PLATFORM(IOS_FAMILY)
-    [image drawInRect:CGRectMake(0, 0, bitmap->size().width(), bitmap->size().height())];
+    [image drawInRect:resultRect];
 #elif USE(APPKIT)
-    [image drawInRect:NSMakeRect(0, 0, bitmap->size().width(), bitmap->size().height()) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+    [image drawInRect:resultRect fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
 #endif
 
     return bitmap;
@@ -450,7 +469,7 @@ static RefPtr<WebKit::ShareableBitmap> convertPlatformImageToBitmap(CocoaImage *
 void WebPageProxy::requestThumbnailWithOperation(WKQLThumbnailLoadOperation *operation)
 {
     [operation setCompletionBlock:^{
-        dispatch_async(dispatch_get_main_queue(), ^{
+        RunLoop::main().dispatch([this, operation = retainPtr(operation)] {
             auto identifier = [operation identifier];
             auto convertedImage = convertPlatformImageToBitmap([operation thumbnail], WebCore::IntSize(400, 400));
             if (!convertedImage)
@@ -478,7 +497,132 @@ void WebPageProxy::requestThumbnailWithPath(const String& identifier, const Stri
 
 #endif // HAVE(QUICKLOOK_THUMBNAILING)
 
+void WebPageProxy::scheduleActivityStateUpdate()
+{
+    bool hasScheduledObserver = m_activityStateChangeDispatcher->isScheduled();
+    bool hasActiveCATransaction = [CATransaction currentState];
+
+    if (hasScheduledObserver && hasActiveCATransaction) {
+        ASSERT(m_hasScheduledActivityStateUpdate);
+        m_hasScheduledActivityStateUpdate = false;
+        m_activityStateChangeDispatcher->invalidate();
+    }
+
+    if (m_hasScheduledActivityStateUpdate)
+        return;
+    m_hasScheduledActivityStateUpdate = true;
+
+    // If there is an active transaction, we need to dispatch the update after the transaction is committed,
+    // to avoid flash caused by web process setting root layer too early.
+    // If there is no active transaction, likely there is no root layer change or change is committed,
+    // then schedule dispatch on runloop observer to collect changes in the same runloop cycle before dispatching.
+    if (hasActiveCATransaction) {
+        [CATransaction addCommitHandler:[weakThis = makeWeakPtr(*this)] {
+            // We can't call dispatchActivityStateChange directly underneath this commit handler, because it has side-effects
+            // that may result in other frameworks trying to install commit handlers for the same phase, which is not allowed.
+            // So, dispatch_async here; we only care that the activity state change doesn't apply until after the active commit is complete.
+            dispatch_async(dispatch_get_main_queue(), [weakThis] {
+                auto protectedThis = makeRefPtr(weakThis.get());
+                if (!protectedThis)
+                    return;
+
+                protectedThis->dispatchActivityStateChange();
+            });
+        } forPhase:kCATransactionPhasePostCommit];
+        return;
+    }
+
+    m_activityStateChangeDispatcher->schedule();
+}
+
+void WebPageProxy::addActivityStateUpdateCompletionHandler(CompletionHandler<void()>&& completionHandler)
+{
+    if (!m_hasScheduledActivityStateUpdate) {
+        completionHandler();
+        return;
+    }
+
+    m_activityStateUpdateCallbacks.append(WTFMove(completionHandler));
+}
+
+#if ENABLE(APP_HIGHLIGHTS)
+void WebPageProxy::createAppHighlightInSelectedRange(WebCore::CreateNewGroupForHighlight createNewGroup)
+{
+    if (!hasRunningProcess())
+        return;
+
+    send(Messages::WebPage::CreateAppHighlightInSelectedRange(createNewGroup));
+}
+
+void WebPageProxy::restoreAppHighlights(const Vector<Ref<SharedMemory>>& highlights)
+{
+    if (!hasRunningProcess())
+        return;
+
+    Vector<SharedMemory::IPCHandle> memoryHandles;
+
+    for (auto highlight : highlights) {
+        SharedMemory::Handle handle;
+        highlight->createHandle(handle, SharedMemory::Protection::ReadOnly);
+
+        memoryHandles.append(SharedMemory::IPCHandle { WTFMove(handle), highlight->size() });
+    }
+
+    send(Messages::WebPage::RestoreAppHighlights(WTFMove(memoryHandles)));
+}
+#endif
+
+SandboxExtension::HandleArray WebPageProxy::createNetworkExtensionsSandboxExtensions(WebProcessProxy& process)
+{
+#if ENABLE(CONTENT_FILTERING)
+    if (!process.hasNetworkExtensionSandboxAccess() && NetworkExtensionContentFilter::isRequired()) {
+        process.markHasNetworkExtensionSandboxAccess();
+        constexpr ASCIILiteral neHelperService { "com.apple.nehelper"_s };
+#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101500
+        constexpr ASCIILiteral neSessionManagerService { "com.apple.nesessionmanager"_s };
+#else
+        constexpr ASCIILiteral neSessionManagerService { "com.apple.nesessionmanager.content-filter"_s };
+#endif
+        return SandboxExtension::createHandlesForMachLookup({ neHelperService, neSessionManagerService }, WTF::nullopt);
+    }
+#endif
+    return SandboxExtension::HandleArray();
+}
+
+#if ENABLE(IMAGE_EXTRACTION) && ENABLE(CONTEXT_MENUS)
+
+void WebPageProxy::handleContextMenuRevealImage()
+{
+    auto& result = m_activeContextMenuContextData.webHitTestResultData();
+    if (!result.imageBitmap)
+        return;
+
+    revealExtractedImageInPreviewPanel(*result.imageBitmap, result.toolTipText);
+}
+
+#endif // ENABLE(IMAGE_EXTRACTION) && ENABLE(CONTEXT_MENUS)
+
+void WebPageProxy::requestActiveNowPlayingSessionInfo(CompletionHandler<void(bool, bool, const String&, double, double, uint64_t)>&& callback)
+{
+    sendWithAsyncReply(Messages::WebPage::RequestActiveNowPlayingSessionInfo(), WTFMove(callback));
+}
+
+void WebPageProxy::setLastNavigationWasAppBound(ResourceRequest& request)
+{
+    WEB_PAGE_PROXY_ADDITIONS
+    m_lastNavigationWasAppBound = request.isAppBound();
+}
+
+void WebPageProxy::lastNavigationWasAppBound(CompletionHandler<void(bool)>&& completionHandler)
+{
+    sendWithAsyncReply(Messages::WebPage::LastNavigationWasAppBound(), WTFMove(completionHandler));
+}
+
 } // namespace WebKit
+
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/WebPageProxyCocoaAdditionsAfter.mm>
+#endif
 
 #undef MESSAGE_CHECK_COMPLETION
 #undef MESSAGE_CHECK

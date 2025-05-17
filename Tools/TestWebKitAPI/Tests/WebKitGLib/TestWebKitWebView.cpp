@@ -21,8 +21,13 @@
 #include "config.h"
 #include "WebKitTestServer.h"
 #include "WebViewTest.h"
+#include <WebCore/SoupVersioning.h>
 #include <glib/gstdio.h>
 #include <wtf/glib/GRefPtr.h>
+
+#if PLATFORM(WPE) && USE(WPEBACKEND_FDO_AUDIO_EXTENSION)
+#include <wpe/extensions/audio.h>
+#endif
 
 class IsPlayingAudioWebViewTest : public WebViewTest {
 public:
@@ -39,6 +44,25 @@ public:
         g_signal_connect(m_webView, "notify::is-playing-audio", G_CALLBACK(isPlayingAudioChanged), this);
         g_main_loop_run(m_mainLoop);
     }
+
+    void periodicallyCheckIsPlayingForAWhile()
+    {
+        m_tickCount = 0;
+        g_timeout_add(50, [](gpointer userData) -> gboolean {
+            auto* test = static_cast<IsPlayingAudioWebViewTest*>(userData);
+            g_assert_true(webkit_web_view_is_playing_audio(test->m_webView));
+            test->m_tickCount++;
+            if (test->m_tickCount >= 10) {
+                test->quitMainLoop();
+                return G_SOURCE_REMOVE;
+            }
+            return G_SOURCE_CONTINUE;
+        }, this);
+        g_main_loop_run(m_mainLoop);
+    }
+
+private:
+    uint32_t m_tickCount { 0 };
 };
 
 static WebKitTestServer* gServer;
@@ -736,7 +760,7 @@ static void testWebViewPageVisibility(WebViewTest* test, gconstpointer)
     g_assert_nonnull(javascriptResult);
     g_assert_no_error(error.get());
     GUniquePtr<char> valueString(WebViewTest::javascriptResultToCString(javascriptResult));
-    g_assert_cmpstr(valueString.get(), ==, "prerender");
+    g_assert_cmpstr(valueString.get(), ==, "hidden");
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("document.hidden;", &error.outPtr());
     g_assert_nonnull(javascriptResult);
@@ -1065,16 +1089,14 @@ static void testWebViewNotification(NotificationWebViewTest* test, gconstpointer
 
 static void setInitialNotificationPermissionsAllowedCallback(WebKitWebContext* context, NotificationWebViewTest* test)
 {
-    GUniquePtr<char> baseURI(soup_uri_to_string(gServer->baseURI(), FALSE));
-    GList* allowedOrigins = g_list_prepend(nullptr, webkit_security_origin_new_for_uri(baseURI.get()));
+    GList* allowedOrigins = g_list_prepend(nullptr, webkit_security_origin_new_for_uri(gServer->baseURL().string().utf8().data()));
     webkit_web_context_initialize_notification_permissions(test->m_webContext.get(), allowedOrigins, nullptr);
     g_list_free_full(allowedOrigins, reinterpret_cast<GDestroyNotify>(webkit_security_origin_unref));
 }
 
 static void setInitialNotificationPermissionsDisallowedCallback(WebKitWebContext* context, NotificationWebViewTest* test)
 {
-    GUniquePtr<char> baseURI(soup_uri_to_string(gServer->baseURI(), FALSE));
-    GList* disallowedOrigins = g_list_prepend(nullptr, webkit_security_origin_new_for_uri(baseURI.get()));
+    GList* disallowedOrigins = g_list_prepend(nullptr, webkit_security_origin_new_for_uri(gServer->baseURL().string().utf8().data()));
     webkit_web_context_initialize_notification_permissions(test->m_webContext.get(), nullptr, disallowedOrigins);
     g_list_free_full(disallowedOrigins, reinterpret_cast<GDestroyNotify>(webkit_security_origin_unref));
 }
@@ -1111,6 +1133,7 @@ static void testWebViewIsPlayingAudio(IsPlayingAudioWebViewTest* test, gconstpoi
 
     // Initially, web views should always report no audio being played.
     g_assert_false(webkit_web_view_is_playing_audio(test->m_webView));
+    g_assert_false(webkit_web_view_get_is_muted(test->m_webView));
 
     GUniquePtr<char> resourcePath(g_build_filename(Test::getResourcesDir(Test::WebKit2Resources).data(), "file-with-video.html", nullptr));
     GUniquePtr<char> resourceURL(g_filename_to_uri(resourcePath.get(), nullptr, nullptr));
@@ -1121,6 +1144,15 @@ static void testWebViewIsPlayingAudio(IsPlayingAudioWebViewTest* test, gconstpoi
     test->runJavaScriptAndWaitUntilFinished("playVideo();", nullptr);
     if (!webkit_web_view_is_playing_audio(test->m_webView))
         test->waitUntilIsPlayingAudioChanged();
+    g_assert_true(webkit_web_view_is_playing_audio(test->m_webView));
+
+    // Mute the page, webkit_web_view_is_playing_audio() should still return TRUE.
+    webkit_web_view_set_is_muted(test->m_webView, TRUE);
+    g_assert_true(webkit_web_view_get_is_muted(test->m_webView));
+    test->periodicallyCheckIsPlayingForAWhile();
+    g_assert_true(webkit_web_view_is_playing_audio(test->m_webView));
+    webkit_web_view_set_is_muted(test->m_webView, FALSE);
+    g_assert_false(webkit_web_view_get_is_muted(test->m_webView));
     g_assert_true(webkit_web_view_is_playing_audio(test->m_webView));
 
     // Pause the video, and check again.
@@ -1225,15 +1257,17 @@ static void testWebViewTitleChange(WebViewTitleTest* test, gconstpointer)
     g_assert_cmpint(test->m_webViewTitles.size(), ==, 0);
 
     test->loadHtml("<head><title>Page Title</title></head>", nullptr);
-    test->waitUntilLoadFinished();
+    test->waitUntilTitleChanged();
     g_assert_cmpint(test->m_webViewTitles.size(), ==, 1);
     g_assert_cmpstr(test->m_webViewTitles[0].data(), ==, "Page Title");
 
     test->loadHtml("<head><title>Another Page Title</title></head>", nullptr);
-    test->waitUntilLoadFinished();
+    test->waitUntilTitleChanged();
+    g_assert_cmpint(test->m_webViewTitles.size(), ==, 2);
+    g_assert_cmpstr(test->m_webViewTitles[1].data(), ==, "");
+    test->waitUntilTitleChanged();
     g_assert_cmpint(test->m_webViewTitles.size(), ==, 3);
     /* Page title should be immediately unset when loading a new page. */
-    g_assert_cmpstr(test->m_webViewTitles[1].data(), ==, "");
     g_assert_cmpstr(test->m_webViewTitles[2].data(), ==, "Another Page Title");
 
     test->loadHtml("<p>This page has no title!</p>", nullptr);
@@ -1242,11 +1276,9 @@ static void testWebViewTitleChange(WebViewTitleTest* test, gconstpointer)
     g_assert_cmpstr(test->m_webViewTitles[3].data(), ==, "");
 
     test->loadHtml("<script>document.title = 'one'; document.title = 'two'; document.title = 'three';</script>", nullptr);
-    test->waitUntilLoadFinished();
-    g_assert_cmpint(test->m_webViewTitles.size(), ==, 7);
-    g_assert_cmpstr(test->m_webViewTitles[4].data(), ==, "one");
-    g_assert_cmpstr(test->m_webViewTitles[5].data(), ==, "two");
-    g_assert_cmpstr(test->m_webViewTitles[6].data(), ==, "three");
+    test->waitUntilTitleChanged();
+    g_assert_cmpint(test->m_webViewTitles.size(), ==, 5);
+    g_assert_cmpstr(test->m_webViewTitles[4].data(), ==, "three");
 }
 
 #if PLATFORM(WPE)
@@ -1343,18 +1375,158 @@ static void testWebViewFrameDisplayed(FrameDisplayedTest* test, gconstpointer)
 }
 #endif
 
-static void serverCallback(SoupServer* server, SoupMessage* message, const char* path, GHashTable*, SoupClientContext*, gpointer)
+#if PLATFORM(WPE) && USE(WPEBACKEND_FDO_AUDIO_EXTENSION)
+enum class RenderingState {
+    Unknown,
+    Started,
+    Paused,
+    Stopped
+};
+
+class AudioRenderingWebViewTest : public WebViewTest {
+public:
+    MAKE_GLIB_TEST_FIXTURE_WITH_SETUP_TEARDOWN(AudioRenderingWebViewTest, setup, teardown);
+
+    static void setup()
+    {
+    }
+
+    static void teardown()
+    {
+        wpe_audio_register_receiver(nullptr, nullptr);
+    }
+
+    AudioRenderingWebViewTest()
+    {
+        wpe_audio_register_receiver(&m_audioReceiver, this);
+    }
+
+    void handleStart(uint32_t id, int32_t channels, const char* layout, int32_t sampleRate)
+    {
+        g_assert(m_state == RenderingState::Unknown);
+        g_assert_false(m_streamId.hasValue());
+        g_assert_cmpuint(id, ==, 0);
+        m_streamId = id;
+        m_state = RenderingState::Started;
+        g_assert_cmpint(channels, ==, 2);
+        g_assert_cmpstr(layout, ==, "S16LE");
+        g_assert_cmpint(sampleRate, ==, 44100);
+    }
+
+    void handleStop(uint32_t id)
+    {
+        g_assert_cmpuint(*m_streamId, ==, id);
+        g_assert(m_state != RenderingState::Unknown);
+        m_state = RenderingState::Stopped;
+        g_main_loop_quit(m_mainLoop);
+        m_streamId.reset();
+    }
+
+    void handlePause(uint32_t id)
+    {
+        g_assert_cmpuint(*m_streamId, ==, id);
+        g_assert(m_state != RenderingState::Unknown);
+        m_state = RenderingState::Paused;
+    }
+
+    void handleResume(uint32_t id)
+    {
+        g_assert_cmpuint(*m_streamId, ==, id);
+        g_assert(m_state == RenderingState::Paused);
+        m_state = RenderingState::Started;
+    }
+
+    void handlePacket(struct wpe_audio_packet_export* packet_export, uint32_t id, int32_t fd, uint32_t size)
+    {
+        g_assert_cmpuint(*m_streamId, ==, id);
+        g_assert(m_state == RenderingState::Started || m_state == RenderingState::Paused);
+        g_assert_cmpuint(size, >, 0);
+        wpe_audio_packet_export_release(packet_export);
+    }
+
+    void waitUntilStarted()
+    {
+        g_timeout_add(200, [](gpointer userData) -> gboolean {
+            auto* test = static_cast<AudioRenderingWebViewTest*>(userData);
+            if (test->state() == RenderingState::Started) {
+                test->quitMainLoop();
+                return G_SOURCE_REMOVE;
+            }
+            return G_SOURCE_CONTINUE;
+        }, this);
+        g_main_loop_run(m_mainLoop);
+    }
+
+    void waitUntilPaused()
+    {
+        g_timeout_add(200, [](gpointer userData) -> gboolean {
+            auto* test = static_cast<AudioRenderingWebViewTest*>(userData);
+            if (test->state() == RenderingState::Paused) {
+                test->quitMainLoop();
+                return G_SOURCE_REMOVE;
+            }
+            return G_SOURCE_CONTINUE;
+        }, this);
+        g_main_loop_run(m_mainLoop);
+    }
+
+    void waitUntilEOS()
+    {
+        g_main_loop_run(m_mainLoop);
+    }
+
+    RenderingState state() const { return m_state; }
+
+private:
+    static const struct wpe_audio_receiver m_audioReceiver;
+    RenderingState m_state { RenderingState::Unknown };
+    Optional<uint32_t> m_streamId;
+};
+
+const struct wpe_audio_receiver AudioRenderingWebViewTest::m_audioReceiver = {
+    [](void* data, uint32_t id, int32_t channels, const char* layout, int32_t sampleRate) { static_cast<AudioRenderingWebViewTest*>(data)->handleStart(id, channels, layout, sampleRate); },
+    [](void* data, struct wpe_audio_packet_export* packet_export, uint32_t id, int32_t fd, uint32_t size) { static_cast<AudioRenderingWebViewTest*>(data)->handlePacket(packet_export, id, fd, size); },
+    [](void* data, uint32_t id) { static_cast<AudioRenderingWebViewTest*>(data)->handleStop(id); },
+    [](void* data, uint32_t id) { static_cast<AudioRenderingWebViewTest*>(data)->handlePause(id); },
+    [](void* data, uint32_t id) { static_cast<AudioRenderingWebViewTest*>(data)->handleResume(id); }
+};
+
+static void testWebViewExternalAudioRendering(AudioRenderingWebViewTest* test, gconstpointer)
 {
-    if (message->method != SOUP_METHOD_GET) {
-        soup_message_set_status(message, SOUP_STATUS_NOT_IMPLEMENTED);
+    GUniquePtr<char> resourcePath(g_build_filename(Test::getResourcesDir(Test::WebKit2Resources).data(), "file-with-video.html", nullptr));
+    GUniquePtr<char> resourceURL(g_filename_to_uri(resourcePath.get(), nullptr, nullptr));
+    webkit_web_view_load_uri(test->m_webView, resourceURL.get());
+    test->waitUntilLoadFinished();
+
+    test->runJavaScriptAndWaitUntilFinished("playVideo();", nullptr);
+    test->waitUntilStarted();
+    g_assert(test->state() == RenderingState::Started);
+    test->runJavaScriptAndWaitUntilFinished("pauseVideo();", nullptr);
+    test->waitUntilPaused();
+    g_assert(test->state() == RenderingState::Paused);
+
+    test->runJavaScriptAndWaitUntilFinished("playVideo(); seekNearTheEnd();", nullptr);
+    test->waitUntilEOS();
+    g_assert(test->state() == RenderingState::Stopped);
+}
+#endif
+
+#if USE(SOUP2)
+static void serverCallback(SoupServer* server, SoupMessage* message, const char* path, GHashTable*, SoupClientContext*, gpointer)
+#else
+static void serverCallback(SoupServer* server, SoupServerMessage* message, const char* path, GHashTable*, gpointer)
+#endif
+{
+    if (soup_server_message_get_method(message) != SOUP_METHOD_GET) {
+        soup_server_message_set_status(message, SOUP_STATUS_NOT_IMPLEMENTED, nullptr);
         return;
     }
 
     if (g_str_equal(path, "/")) {
-        soup_message_set_status(message, SOUP_STATUS_OK);
-        soup_message_body_complete(message->response_body);
+        soup_server_message_set_status(message, SOUP_STATUS_OK, nullptr);
+        soup_message_body_complete(soup_server_message_get_response_body(message));
     } else
-        soup_message_set_status(message, SOUP_STATUS_NOT_FOUND);
+        soup_server_message_set_status(message, SOUP_STATUS_NOT_FOUND, nullptr);
 }
 
 void beforeAll()
@@ -1403,6 +1575,9 @@ void beforeAll()
 #endif
     WebViewTest::add("WebKitWebView", "is-audio-muted", testWebViewIsAudioMuted);
     WebViewTest::add("WebKitWebView", "autoplay-policy", testWebViewAutoplayPolicy);
+#if PLATFORM(WPE) && USE(WPEBACKEND_FDO_AUDIO_EXTENSION)
+    AudioRenderingWebViewTest::add("WebKitWebView", "external-audio-rendering", testWebViewExternalAudioRendering);
+#endif
 }
 
 void afterAll()

@@ -63,14 +63,51 @@ def main():
     tester = Tester()
     tester.add_tree(os.path.join(_webkit_root, 'Tools', 'Scripts'), 'webkitpy')
     tester.add_tree(os.path.join(_webkit_root, 'Tools', 'Scripts', 'libraries', 'webkitcorepy'), 'webkitcorepy')
+    tester.add_tree(os.path.join(_webkit_root, 'Tools', 'Scripts', 'libraries', 'webkitscmpy'), 'webkitscmpy')
+    tester.add_tree(os.path.join(_webkit_root, 'Tools', 'Scripts', 'libraries', 'webkitflaskpy'), 'webkitflaskpy')
 
-    # There is no WebKit2 on Windows, so we don't need to run WebKit2 unittests on it.
-    if not (sys.platform.startswith('win') or sys.platform == 'cygwin'):
+    # AppleWin is the only platform that does not support Modern WebKit
+    # FIXME: Find a better way to detect this currently assuming cygwin means AppleWin
+    if sys.platform != 'cygwin':
         tester.add_tree(os.path.join(_webkit_root, 'Source', 'WebKit', 'Scripts'), 'webkit')
 
     tester.skip(('webkitpy.common.checkout.scm.scm_unittest',), 'are really, really, slow', 31818)
     if sys.platform.startswith('win'):
-        tester.skip(('webkitpy.common.checkout', 'webkitpy.common.config', 'webkitpy.tool'), 'fail horribly on win32', 54526)
+        tester.skip(('webkitpy.common.checkout', 'webkitpy.tool'), 'fail horribly on win32', 54526)
+
+    # Tests that are platform specific
+    mac_only_tests = (
+        'webkitpy.xcode',
+        'webkitpy.port.ios_device_unittest',
+        'webkitpy.port.ios_simulator_unittest',
+        'webkitpy.port.mac_unittest',
+        'webkitpy.port.watch_simulator_unittest',
+    )
+    linux_only_tests = (
+        'webkitpy.port.gtk_unittest',
+        'webkitpy.port.headlessdriver_unittest',
+        'webkitpy.port.linux_get_crash_log_unittest',
+        'webkitpy.port.waylanddriver_unittest',
+        'webkitpy.port.westondriver_unittest',
+        'webkitpy.port.wpe_unittest',
+        'webkitpy.port.xorgdriver_unittest',
+        'webkitpy.port.xvfbdriver_unittest',
+    )
+    windows_only_tests = ('webkitpy.port.win_unittest',)
+
+    # Skip platform specific tests on Windows and Linux
+    # The webkitpy EWS is run on Mac so only skip tests that won't run on it
+    if sys.platform.startswith('darwin'):
+        skip_tests = None
+    elif sys.platform.startswith('win'):
+        skip_tests = mac_only_tests + linux_only_tests + \
+            ('webkitpy.port.leakdetector_unittest', 'webkitpy.port.leakdetector_valgrind_unittest')
+    else:
+        skip_tests = mac_only_tests + windows_only_tests
+
+    if skip_tests is not None:
+        tester.skip(skip_tests, 'are not relevant for the platform running tests', 222066)
+
     return not tester.run()
 
 
@@ -150,12 +187,6 @@ class Tester(object):
         # Make sure PYTHONPATH is set up properly.
         sys.path = self.finder.additional_paths(sys.path) + sys.path
 
-        # We autoinstall everything up so that we can run tests concurrently
-        # and not have to worry about autoinstalling packages concurrently.
-        self.printer.write_update("Checking autoinstalled packages ...")
-        from webkitpy.thirdparty import autoinstall_everything
-        autoinstall_everything()
-
         from webkitcorepy import AutoInstall
         AutoInstall.install_everything()
 
@@ -165,12 +196,10 @@ class Tester(object):
             _log.warning("Checking code coverage, so running things serially")
             self._options.child_processes = 1
 
-            import webkitpy.thirdparty.autoinstalled.coverage as coverage
+            import coverage
             cov = coverage.coverage(omit=[
                 "/usr/*",
-                "*/webkitpy/thirdparty/autoinstalled/*",
-                "*/webkitpy/thirdparty/BeautifulSoup.py",
-                "*/webkitpy/thirdparty/BeautifulSoup_legacy.py",
+                "*/webkitpy/thirdparty/*",
             ])
             cov.start()
 

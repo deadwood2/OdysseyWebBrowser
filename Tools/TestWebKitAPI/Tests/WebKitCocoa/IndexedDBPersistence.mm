@@ -78,7 +78,7 @@ TEST(IndexedDB, IndexedDBPersistence)
     webView = nil;
 
     // Terminate the network process
-    [configuration.get().processPool _terminateNetworkProcess];
+    [configuration.get().websiteDataStore _terminateNetworkProcess];
 
     // Make a new web view to finish the test
     webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
@@ -268,7 +268,7 @@ TEST(IndexedDB, IndexedDBThirdPartyFrameHasAccess)
 
     webView = nil;
     secondWebView = nil;
-    [configuration.get().processPool _terminateNetworkProcess];
+    [configuration.get().websiteDataStore _terminateNetworkProcess];
 
     // Third-party IDB storage is stored in the memory of network process.
     auto thirdWebView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
@@ -367,7 +367,7 @@ TEST(IndexedDB, IndexedDBThirdPartyWorkerHasAccess)
             response = adoptNS([[NSURLResponse alloc] initWithURL:requestURL MIMEType:@"text/html" expectedContentLength:0 textEncodingName:nil]);
             data = [NSData dataWithBytes:workerFrameBytes length:strlen(workerFrameBytes)];
         } else {
-            EXPECT_WK_STREQ("iframe://worker.js", requestURL.absoluteString);
+            EXPECT_WK_STREQ("iframe:///worker.js", requestURL.absoluteString);
             response = adoptNS([[NSURLResponse alloc] initWithURL:requestURL MIMEType:@"text/javascript" expectedContentLength:0 textEncodingName:nil]);
             data = [NSData dataWithBytes:workerBytes length:strlen(workerBytes)];
         }
@@ -385,7 +385,7 @@ TEST(IndexedDB, IndexedDBThirdPartyWorkerHasAccess)
 
     webView = nil;
     secondWebView = nil;
-    [configuration.get().processPool _terminateNetworkProcess];
+    [configuration.get().websiteDataStore _terminateNetworkProcess];
 
     auto thirdWebView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
     loadTestPageInWebView(thirdWebView.get(), @"database is created");

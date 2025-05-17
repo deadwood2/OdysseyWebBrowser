@@ -30,7 +30,7 @@
 
 #include "Connection.h"
 #include "GPUConnectionToWebProcessMessages.h"
-#include "GPUProcessConnection.h"
+#include "RemoteMediaSessionHelperMessages.h"
 #include "RemoteMediaSessionHelperProxyMessages.h"
 #include "WebProcess.h"
 #include <WebCore/MediaPlaybackTargetCocoa.h>
@@ -44,12 +44,27 @@ using namespace WebCore;
 RemoteMediaSessionHelper::RemoteMediaSessionHelper(WebProcess& process)
     : m_process(process)
 {
-    connection().send(Messages::GPUConnectionToWebProcess::EnsureMediaSessionHelper(), { });
+    connectToGPUProcess();
+}
+
+void RemoteMediaSessionHelper::connectToGPUProcess()
+{
+    auto& gpuProcessConnection = m_process.ensureGPUProcessConnection();
+    gpuProcessConnection.addClient(*this);
+    gpuProcessConnection.messageReceiverMap().addMessageReceiver(Messages::RemoteMediaSessionHelper::messageReceiverName(), *this);
+    gpuProcessConnection.connection().send(Messages::GPUConnectionToWebProcess::EnsureMediaSessionHelper(), { });
 }
 
 IPC::Connection& RemoteMediaSessionHelper::connection()
 {
     return m_process.ensureGPUProcessConnection().connection();
+}
+
+void RemoteMediaSessionHelper::gpuProcessConnectionDidClose(GPUProcessConnection& gpuProcessConnection)
+{
+    gpuProcessConnection.removeClient(*this);
+    gpuProcessConnection.messageReceiverMap().removeMessageReceiver(*this);
+    connectToGPUProcess();
 }
 
 void RemoteMediaSessionHelper::startMonitoringWirelessRoutes()
@@ -124,14 +139,14 @@ void RemoteMediaSessionHelper::activeVideoRouteDidChange(SupportsAirPlayVideo su
 {
     RefPtr<MediaPlaybackTarget> targetObject;
     if (targetContext.type() == MediaPlaybackTargetContext::AVOutputContextType)
-        targetObject = WebCore::MediaPlaybackTargetCocoa::create(targetContext.avOutputContext());
+        m_playbackTarget = WebCore::MediaPlaybackTargetCocoa::create(targetContext.avOutputContext());
     else {
         ASSERT_NOT_REACHED();
         return;
     }
 
     for (auto& client : m_clients)
-        client.activeVideoRouteDidChange(supportsAirPlayVideo, targetObject.copyRef().releaseNonNull());
+        client.activeVideoRouteDidChange(supportsAirPlayVideo, *m_playbackTarget);
 }
 
 }

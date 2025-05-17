@@ -52,14 +52,14 @@ public:
 
     WKPoint position() const { return m_position; }
 
-    void mouseDown(unsigned button, WKEventModifiers);
-    void mouseUp(unsigned button, WKEventModifiers);
+    void mouseDown(unsigned button, WKEventModifiers, WKStringRef pointerType = nullptr);
+    void mouseUp(unsigned button, WKEventModifiers, WKStringRef pointerType = nullptr);
     void mouseForceDown();
     void mouseForceUp();
     void mouseForceChanged(float);
     void mouseForceClick();
     void startAndCancelMouseForceClick();
-    void mouseMoveTo(double x, double y);
+    void mouseMoveTo(double x, double y, WKStringRef pointerType = nullptr);
     void mouseScrollBy(int x, int y);
     void mouseScrollByWithWheelAndMomentumPhases(int x, int y, int phase, int momentum);
     void continuousMouseScrollBy(int x, int y, bool paged);
@@ -112,18 +112,19 @@ private:
     POINT positionInPoint() const { return { static_cast<LONG>(m_position.x), static_cast<LONG>(m_position.y) }; }
 #endif
 
-    double m_time;
-    WKPoint m_position;
-    bool m_leftMouseButtonDown;
-    int m_clickCount;
-    double m_clickTime;
-    WKPoint m_clickPosition;
-    WKEventMouseButton m_clickButton;
+    double m_time { 0 };
+    WKPoint m_position { };
+    bool m_leftMouseButtonDown { false };
+    int m_clickCount { 0 };
+    double m_clickTime { 0 };
+    WKPoint m_clickPosition { };
+    WKEventMouseButton m_clickButton { kWKEventMouseButtonNoButton };
     unsigned m_mouseButtonsCurrentlyDown { 0 };
 #if PLATFORM(COCOA)
-    int eventNumber;
-#elif PLATFORM(WPE)
-    uint32_t m_buttonState;
+    int eventNumber { 0 };
+#endif
+#if PLATFORM(WPE)
+    uint32_t m_buttonState { 0 };
     Vector<struct wpe_input_touch_event_raw> m_touchEvents;
     HashSet<unsigned, DefaultHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> m_updatedTouchEvents;
 #endif

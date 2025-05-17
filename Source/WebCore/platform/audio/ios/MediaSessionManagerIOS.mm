@@ -62,6 +62,7 @@ MediaSessionManageriOS::~MediaSessionManageriOS()
     AudioSession::sharedSession().removeInterruptionObserver(*this);
 }
 
+#if !PLATFORM(MACCATALYST)
 void MediaSessionManageriOS::resetRestrictions()
 {
     static const size_t systemMemoryRequiredForVideoInBackgroundTabs = 1024 * 1024 * 1024;
@@ -76,8 +77,10 @@ void MediaSessionManageriOS::resetRestrictions()
     }
 
     addRestriction(PlatformMediaSession::MediaType::Video, BackgroundProcessPlaybackRestricted);
+    addRestriction(PlatformMediaSession::MediaType::WebAudio, BackgroundProcessPlaybackRestricted);
     addRestriction(PlatformMediaSession::MediaType::VideoAudio, ConcurrentPlaybackNotPermitted | BackgroundProcessPlaybackRestricted | SuspendedUnderLockPlaybackRestricted);
 }
+#endif
 
 bool MediaSessionManageriOS::hasWirelessTargetsAvailable()
 {
@@ -139,16 +142,14 @@ bool MediaSessionManageriOS::sessionWillBeginPlayback(PlatformMediaSession& sess
         return false;
 
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR) && !PLATFORM(MACCATALYST) && !PLATFORM(WATCHOS)
-    if (!m_playbackTarget) {
-        m_playbackTarget = MediaPlaybackTargetCocoa::create();
-        m_playbackTargetSupportsAirPlayVideo = m_playbackTarget->supportsRemoteVideoPlayback();
-    }
-
-    ALWAYS_LOG(LOGIDENTIFIER, "Playback Target Supports AirPlay Video = ", m_playbackTargetSupportsAirPlayVideo);
-    if (m_playbackTargetSupportsAirPlayVideo)
-        session.setPlaybackTarget(*m_playbackTarget.copyRef());
-    session.setShouldPlayToPlaybackTarget(m_playbackTargetSupportsAirPlayVideo);
+    auto playbackTargetSupportsAirPlayVideo = MediaSessionHelper::sharedHelper().activeVideoRouteSupportsAirPlayVideo();
+    ALWAYS_LOG(LOGIDENTIFIER, "Playback Target Supports AirPlay Video = ", playbackTargetSupportsAirPlayVideo);
+    if (auto target = MediaSessionHelper::sharedHelper().playbackTarget(); target && playbackTargetSupportsAirPlayVideo)
+        session.setPlaybackTarget(*target);
+    session.setShouldPlayToPlaybackTarget(playbackTargetSupportsAirPlayVideo);
 #endif
+
+    providePresentingApplicationPIDIfNecessary();
 
     return true;
 }
@@ -203,8 +204,8 @@ void MediaSessionManageriOS::activeVideoRouteDidChange(SupportsAirPlayVideo supp
     if (!nowPlayingSession)
         return;
 
-    nowPlayingSession->setShouldPlayToPlaybackTarget(supportsAirPlayVideo == SupportsAirPlayVideo::Yes);
     nowPlayingSession->setPlaybackTarget(WTFMove(playbackTarget));
+    nowPlayingSession->setShouldPlayToPlaybackTarget(supportsAirPlayVideo == SupportsAirPlayVideo::Yes);
 }
 
 void MediaSessionManageriOS::applicationWillEnterForeground(SuspendedUnderLock isSuspendedUnderLock)

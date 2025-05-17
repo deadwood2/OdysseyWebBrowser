@@ -162,6 +162,12 @@ _PATH_RULES_SPECIFIER = [
     ["-readability/parameter_name"]),
 
     ([
+     # The WPE QT wrapper lib is not part of Webkit and therefore don't need to statically
+     # link the WTF framework. Instead it uses the standard alloc mechanism.
+     os.path.join('Source', 'WebKit', 'UIProcess', 'API', 'wpe', 'qt')],
+     ["-runtime/wtf_make_unique"]),
+
+    ([
       # The GTK+ and WPE APIs use upper case, underscore separated, words in
       # certain types of enums (e.g. signals, properties).
       os.path.join('Source', 'JavaScriptCore', 'API', 'glib'),
@@ -219,13 +225,24 @@ _PATH_RULES_SPECIFIER = [
       # variables and functions containing underscores.
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'GLVideoSinkGStreamer.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'GLVideoSinkGStreamer.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'TextCombinerGStreamer.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'TextCombinerGStreamer.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'TextCombinerPadGStreamer.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'TextCombinerPadGStreamer.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'TextSinkGStreamer.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'TextSinkGStreamer.h'),
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'VideoSinkGStreamer.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'WebKitWebSourceGStreamer.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'WebKitAudioSinkGStreamer.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'WebKitAudioSinkGStreamer.h'),
       os.path.join('Source', 'WebCore', 'platform', 'audio', 'gstreamer', 'WebKitWebAudioSourceGStreamer.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMediaStreamSource.h'),
       os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMediaStreamSource.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'ProxyResolverSoup.cpp'),
-      os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'ProxyResolverSoup.h')],
+      os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'ProxyResolverSoup.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'WebKitFormDataInputStream.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'WebKitFormDataInputStream.h'),
+      os.path.join('Source', 'WebKit', 'NetworkProcess', 'soup', 'WebKitDirectoryInputStream.h')],
      ["-readability/naming",
       "-readability/enum_casing"]),
 

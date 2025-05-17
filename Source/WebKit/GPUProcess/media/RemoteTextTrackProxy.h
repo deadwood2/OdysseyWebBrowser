@@ -28,36 +28,40 @@
 
 #if ENABLE(GPU_PROCESS)
 
+#include "MessageReceiver.h"
 #include "TrackPrivateRemoteIdentifier.h"
 #include <WebCore/InbandTextTrackPrivate.h>
+#include <WebCore/MediaPlayerIdentifier.h>
 #include <WebCore/TrackBase.h>
+#include <wtf/Ref.h>
+#include <wtf/WeakPtr.h>
 
 namespace IPC {
-
 class Connection;
-
+class Decoder;
 }
 
 namespace WebKit {
 
-class RemoteMediaPlayerProxy;
+class GPUConnectionToWebProcess;
 struct TextTrackPrivateRemoteConfiguration;
 
 class RemoteTextTrackProxy final
     : public ThreadSafeRefCounted<RemoteTextTrackProxy, WTF::DestructionThread::Main>
     , private WebCore::InbandTextTrackPrivateClient {
 public:
-    static Ref<RemoteTextTrackProxy> create(RemoteMediaPlayerProxy& player, TrackPrivateRemoteIdentifier id, Ref<IPC::Connection>&& connection, WebCore::InbandTextTrackPrivate& trackPrivate)
+    static Ref<RemoteTextTrackProxy> create(GPUConnectionToWebProcess& connectionToWebProcess, TrackPrivateRemoteIdentifier identifier, WebCore::InbandTextTrackPrivate& trackPrivate, WebCore::MediaPlayerIdentifier mediaPlayerIdentifier)
     {
-        return adoptRef(*new RemoteTextTrackProxy(player, id, WTFMove(connection), trackPrivate));
+        return adoptRef(*new RemoteTextTrackProxy(connectionToWebProcess, identifier, trackPrivate, mediaPlayerIdentifier));
     }
 
-    TrackPrivateRemoteIdentifier identifier() const { return m_identifier; };
+    virtual ~RemoteTextTrackProxy();
 
+    TrackPrivateRemoteIdentifier identifier() const { return m_identifier; }
     void setMode(WebCore::InbandTextTrackPrivate::Mode mode) { m_trackPrivate->setMode(mode); }
 
 private:
-    RemoteTextTrackProxy(RemoteMediaPlayerProxy&, TrackPrivateRemoteIdentifier, Ref<IPC::Connection>&&, WebCore::InbandTextTrackPrivate&);
+    RemoteTextTrackProxy(GPUConnectionToWebProcess&, TrackPrivateRemoteIdentifier, WebCore::InbandTextTrackPrivate&, WebCore::MediaPlayerIdentifier);
 
     // InbandTextTrackPrivateClient
     virtual void addDataCue(const MediaTime& start, const MediaTime& end, const void*, unsigned);
@@ -85,10 +89,10 @@ private:
     TextTrackPrivateRemoteConfiguration& configuration();
     void configurationChanged();
 
-    RemoteMediaPlayerProxy& m_player;
+    WeakPtr<GPUConnectionToWebProcess> m_connectionToWebProcess;
     TrackPrivateRemoteIdentifier m_identifier;
-    Ref<IPC::Connection> m_webProcessConnection;
     Ref<WebCore::InbandTextTrackPrivate> m_trackPrivate;
+    WebCore::MediaPlayerIdentifier m_mediaPlayerIdentifier;
 };
 
 } // namespace WebKit

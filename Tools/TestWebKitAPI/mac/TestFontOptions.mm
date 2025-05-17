@@ -59,19 +59,19 @@ static TestFontOptions *sharedFontOptionsForTesting()
     BOOL _hasMultipleFonts;
 }
 
-@synthesize hasShadow=_hasShadow;
-@synthesize shadowBlurRadius=_shadowBlurRadius;
-@synthesize hasMultipleFonts=_hasMultipleFonts;
+@synthesize hasShadow = _hasShadow;
+@synthesize shadowBlurRadius = _shadowBlurRadius;
+@synthesize hasMultipleFonts = _hasMultipleFonts;
 
 + (instancetype)sharedInstance
 {
-    static TestFontOptions *sharedInstance;
+    static RetainPtr<TestFontOptions> sharedInstance;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         NSFontOptions *sharedFontOptions = [NSClassFromString(@"NSFontOptions") sharedFontOptions];
-        sharedInstance = [[TestFontOptions alloc] initWithFontOptions:sharedFontOptions];
+        sharedInstance = adoptNS([[TestFontOptions alloc] initWithFontOptions:sharedFontOptions]);
     });
-    return sharedInstance;
+    return sharedInstance.get();
 }
 
 - (instancetype)initWithFontOptions:(NSFontOptions *)fontOptions

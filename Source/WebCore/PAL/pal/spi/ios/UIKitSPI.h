@@ -41,6 +41,7 @@ WTF_EXTERN_C_END
 #import <UIKit/UIFocusRingStyle.h>
 #import <UIKit/UIFont_Private.h>
 #import <UIKit/UIInterface_Private.h>
+#import <UIKit/UIPasteboard_Private.h>
 #import <UIKit/UIScreen_Private.h>
 #import <UIKit/UIViewController_Private.h>
 #import <UIKit/NSItemProvider+UIKitAdditions.h>
@@ -143,21 +144,17 @@ typedef enum {
 @property (nonatomic, copy, setter=_setTitle:) NSString *_title;
 @end
 
-#if ENABLE(FULL_KEYBOARD_ACCESS)
 @interface UIFocusRingStyle : NSObject
 + (CGFloat)cornerRadius;
 + (CGFloat)maxAlpha;
 + (CGFloat)alphaThreshold;
 @end
-#endif
 
 #endif // USE(APPLE_INTERNAL_SDK)
 
-#if ENABLE(FULL_KEYBOARD_ACCESS)
 @interface UIColor (IPI)
 + (UIColor *)keyboardFocusIndicatorColor;
 @end
-#endif
 
 #if HAVE(OS_DARK_MODE_SUPPORT)
 @interface UIColor (UIColorInternal)

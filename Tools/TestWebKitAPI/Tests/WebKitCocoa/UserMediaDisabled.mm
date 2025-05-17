@@ -59,18 +59,16 @@ static RetainPtr<WKScriptMessage> lastScriptMessage;
 
 @implementation UserMediaUIDelegate
 
-- (void)_webView:(WKWebView *)webView requestMediaCaptureAuthorization: (_WKCaptureDevices)devices decisionHandler:(void (^)(BOOL))decisionHandler
+- (void)_webView:(WKWebView *)webView requestMediaCapturePermission:(BOOL)audio video:(BOOL)video decisionHandler:(void (^)(_WKPermissionDecision))decisionHandler
 {
     wasPrompted = true;
 
-    BOOL needsMicrophoneAuthorized = devices & _WKCaptureDeviceMicrophone;
-    BOOL needsCameraAuthorized = devices & _WKCaptureDeviceCamera;
-    if (!needsMicrophoneAuthorized && !needsCameraAuthorized) {
-        decisionHandler(NO);
+    if (!audio && !video) {
+        decisionHandler(_WKPermissionDecisionDeny);
         return;
     }
 
-    decisionHandler(YES);
+    decisionHandler(_WKPermissionDecisionGrant);
 }
 
 - (void)_webView:(WKWebView *)webView includeSensitiveMediaDeviceDetails:(void (^)(BOOL includeSensitiveDetails))decisionHandler
@@ -84,6 +82,7 @@ public:
     virtual void SetUp()
     {
         m_configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+        m_configuration.get()._mediaCaptureEnabled = YES;
 
         RetainPtr<UserMediaMessageHandler> handler = adoptNS([[UserMediaMessageHandler alloc] init]);
         [[m_configuration userContentController] addScriptMessageHandler:handler.get() name:@"testHandler"];
@@ -91,7 +90,6 @@ public:
         m_webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:m_configuration.get()]);
 
         auto preferences = [m_webView configuration].preferences;
-        preferences._mediaDevicesEnabled = YES;
         preferences._mockCaptureDevicesEnabled = YES;
         preferences._mediaCaptureRequiresSecureConnection = NO;
 
@@ -136,7 +134,7 @@ TEST_F(MediaCaptureDisabledTest, UnsecureContext)
     preferences._mediaCaptureRequiresSecureConnection = YES;
 
     receivedScriptMessage = false;
-    [m_webView loadHTMLString:@"<html><body><script>window.webkit.messageHandlers.testHandler.postMessage(Navigator.prototype.hasOwnProperty('mediaDevices') ? 'has' : 'none');</script></body></html>" baseURL: [[NSURL alloc] initWithString:@"http://test.org"]];
+    [m_webView loadHTMLString:@"<html><body><script>window.webkit.messageHandlers.testHandler.postMessage(Navigator.prototype.hasOwnProperty('mediaDevices') ? 'has' : 'none');</script></body></html>" baseURL:adoptNS([[NSURL alloc] initWithString:@"http://test.org"]).get()];
 
     TestWebKitAPI::Util::run(&receivedScriptMessage);
     EXPECT_STREQ([(NSString *)[lastScriptMessage body] UTF8String], "none");

@@ -217,6 +217,15 @@ private:
             webkitScriptWorldWindowObjectCleared(wkWorld, m_webPage, webkitFrameGetOrCreate(&frame));
     }
 
+    void globalObjectIsAvailableForFrame(WebPage&, WebFrame& frame, DOMWrapperWorld& world) override
+    {
+        // Force the creation of the JavaScript context for existing WebKitScriptWorlds to
+        // ensure WebKitScriptWorld::window-object-cleared signal is emitted.
+        auto injectedWorld = InjectedBundleScriptWorld::getOrCreate(world);
+        if (webkitScriptWorldGet(injectedWorld.ptr()))
+            frame.jsContextForWorld(injectedWorld.ptr());
+    }
+
     WebKitWebPage* m_webPage;
 };
 
@@ -252,7 +261,6 @@ private:
         }
 
         webkitURIRequestGetResourceRequest(request.get(), resourceRequest);
-        resourceRequest.setInitiatingPageID(page.webPageProxyIdentifier().toUInt64());
 
         API::Dictionary::MapType message;
         message.set(String::fromUTF8("Page"), &page);

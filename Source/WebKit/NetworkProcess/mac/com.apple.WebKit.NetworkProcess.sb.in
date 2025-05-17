@@ -172,6 +172,7 @@
     (sysctl-name
         "hw.availcpu"
         "hw.ncpu"
+        "hw.memsize"
         "hw.model" ;; Needed for bundle loading
         "kern.hostname"
         "kern.maxfilesperproc"
@@ -185,7 +186,6 @@
         "vm.footprint_suspend")
     (sysctl-name-prefix "kern.proc.pid.")
     (sysctl-name-regex #"^net.routetable")
-    (sysctl-name-prefix "sysctl.oidfmt.") ; Remove when <rdar://problem/64208532> is fixed.
 )
 
 (deny iokit-get-properties)
@@ -245,8 +245,6 @@
     (subpath "/Library/Frameworks")
     (subpath "/Library/Managed Preferences")
 
-    (literal "/Library/Application Support/CrashReporter/SubmitDiagInfo.domains")
-
     ;; System and user preferences
     (regex #"^/Library/Managed Preferences/[^/]+/com\.apple\.networkConnect\.plist$")
 
@@ -275,13 +273,6 @@
 (read-write-and-issue-extensions (extension "com.apple.app-sandbox.read-write"))
 
 (allow file-read* file-write* (subpath (param "DARWIN_USER_CACHE_DIR")))
-
-(deny file-read* file-write*
-    (subpath (string-append (param "DARWIN_USER_CACHE_DIR") "/com.apple.WebKit.WebContent.Sandbox")))
-(deny file-read* file-write*
-    (subpath (string-append (param "DARWIN_USER_CACHE_DIR") "/com.apple.WebKit.Networking.Sandbox")))
-(deny file-read* file-write*
-    (subpath (string-append (param "DARWIN_USER_CACHE_DIR") "/com.apple.WebKit.GPU.Sandbox")))
 
 (allow file-read* file-write* (subpath (param "DARWIN_USER_TEMP_DIR")))
 
@@ -339,7 +330,11 @@
     (regex (string-append "/Library/Keychains/" (uuid-regex-string) "(/|$)"))
     (home-regex (string-append "/Library/Keychains/" (uuid-regex-string) "(/|$)")))
 
-(allow file-read* file-write* (subpath "/private/var/db/mds/system")) ;; FIXME: This should be removed when <rdar://problem/9538414> is fixed.
+(allow file-read* (subpath "/private/var/db/mds/system")) ;; FIXME: This should be removed when <rdar://problem/9538414> is fixed.
+(with-filter (uid 0)
+    (allow file-write*
+        (subpath "/private/var/db/mds/system")) ;; FIXME: This should be removed when <rdar://problem/9538414> is fixed.
+)
 
 (allow user-preference-read
     (preference-domain

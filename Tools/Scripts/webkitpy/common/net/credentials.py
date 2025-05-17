@@ -34,10 +34,14 @@ import os
 import platform
 import re
 
+from webkitcorepy import OutputCapture
+
 from webkitpy.common.checkout.scm import Git
 from webkitpy.common.system.executive import Executive, ScriptError
 from webkitpy.common.system.user import User
-import webkitpy.thirdparty.autoinstalled.keyring as keyring
+
+with OutputCapture():
+    import keyring
 
 _log = logging.getLogger(__name__)
 
@@ -59,7 +63,7 @@ class Credentials(object):
                 return (None, None)
             return (Git.read_git_config(self.git_prefix + "username"),
                     Git.read_git_config(self.git_prefix + "password"))
-        except OSError as e:
+        except OSError:
             # Catch and ignore OSError exceptions such as "no such file
             # or directory" (OSError errno 2), which imply that the Git
             # command cannot be found/is not installed.

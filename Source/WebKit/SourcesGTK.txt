@@ -29,12 +29,11 @@ GPUProcess/media/RemoteAudioDestinationManager.cpp
 GPUProcess/media/gstreamer/RemoteMediaPlayerProxyGStreamer.cpp
 
 NetworkProcess/Classifier/WebResourceLoadStatisticsStore.cpp
-NetworkProcess/Classifier/WebResourceLoadStatisticsTelemetry.cpp
 
 NetworkProcess/Cookies/soup/WebCookieManagerSoup.cpp
 
-NetworkProcess/cache/NetworkCacheDataSoup.cpp
-NetworkProcess/cache/NetworkCacheIOChannelSoup.cpp
+NetworkProcess/cache/NetworkCacheDataGLib.cpp
+NetworkProcess/cache/NetworkCacheIOChannelGLib.cpp
 
 NetworkProcess/glib/DNSCache.cpp
 NetworkProcess/glib/WebKitCachedResolver.cpp
@@ -44,6 +43,7 @@ NetworkProcess/soup/NetworkProcessMainSoup.cpp
 NetworkProcess/soup/NetworkProcessSoup.cpp
 NetworkProcess/soup/NetworkSessionSoup.cpp
 NetworkProcess/soup/RemoteNetworkingContextSoup.cpp
+NetworkProcess/soup/WebKitDirectoryInputStream.cpp
 NetworkProcess/soup/WebSocketTaskSoup.cpp
 
 NetworkProcess/webrtc/LibWebRTCSocketClient.cpp
@@ -59,10 +59,6 @@ Platform/glib/ModuleGlib.cpp
 
 Platform/unix/LoggingUnix.cpp
 Platform/unix/SharedMemoryUnix.cpp
-
-PluginProcess/unix/PluginControllerProxyUnix.cpp
-PluginProcess/unix/PluginProcessMainUnix.cpp
-PluginProcess/unix/PluginProcessUnix.cpp
 
 Shared/API/c/cairo/WKImageCairo.cpp
 
@@ -80,11 +76,6 @@ Shared/CoordinatedGraphics/SimpleViewportController.cpp
 Shared/CoordinatedGraphics/threadedcompositor/CompositingRunLoop.cpp
 Shared/CoordinatedGraphics/threadedcompositor/ThreadedDisplayRefreshMonitor.cpp
 Shared/CoordinatedGraphics/threadedcompositor/ThreadedCompositor.cpp
-
-Shared/Plugins/Netscape/NetscapePluginModuleNone.cpp
-Shared/Plugins/Netscape/unix/NetscapePluginModuleUnix.cpp
-
-Shared/Plugins/unix/PluginSearchPath.cpp
 
 Shared/cairo/ShareableBitmapCairo.cpp
 
@@ -150,10 +141,12 @@ UIProcess/API/glib/WebKitFormSubmissionRequest.cpp @no-unify
 UIProcess/API/glib/WebKitGeolocationManager.cpp @no-unify
 UIProcess/API/glib/WebKitGeolocationPermissionRequest.cpp @no-unify
 UIProcess/API/glib/WebKitIconLoadingClient.cpp @no-unify
+UIProcess/API/glib/WebKitInitialize.cpp @no-unify
 UIProcess/API/glib/WebKitInjectedBundleClient.cpp @no-unify
 UIProcess/API/glib/WebKitInputMethodContext.cpp @no-unify
 UIProcess/API/glib/WebKitInstallMissingMediaPluginsPermissionRequest.cpp @no-unify
 UIProcess/API/glib/WebKitJavascriptResult.cpp @no-unify
+UIProcess/API/glib/WebKitMediaKeySystemPermissionRequest.cpp @no-unify
 UIProcess/API/glib/WebKitMimeInfo.cpp @no-unify
 UIProcess/API/glib/WebKitNavigationAction.cpp @no-unify
 UIProcess/API/glib/WebKitNavigationClient.cpp @no-unify
@@ -240,16 +233,12 @@ UIProcess/Launcher/glib/FlatpakLauncher.cpp @no-unify
 
 UIProcess/linux/MemoryPressureMonitor.cpp
 
-UIProcess/Plugins/gtk/PluginInfoCache.cpp
-
-UIProcess/Plugins/unix/PluginInfoStoreUnix.cpp
-UIProcess/Plugins/unix/PluginProcessProxyUnix.cpp
-
 UIProcess/WebsiteData/soup/WebsiteDataStoreSoup.cpp
 UIProcess/WebsiteData/unix/WebsiteDataStoreUnix.cpp
 
 UIProcess/cairo/BackingStoreCairo.cpp @no-unify
 
+UIProcess/glib/WebPageProxyGLib.cpp
 UIProcess/glib/WebProcessPoolGLib.cpp
 UIProcess/glib/WebProcessProxyGLib.cpp
 UIProcess/glib/WebsiteDataStoreGLib.cpp @no-unify
@@ -415,11 +404,6 @@ WebProcess/Inspector/gtk/WebInspectorUIGtk.cpp
 
 WebProcess/MediaCache/WebMediaKeyStorageManager.cpp
 
-WebProcess/Plugins/Netscape/unix/NetscapePluginUnix.cpp @no-unify
-WebProcess/Plugins/Netscape/unix/PluginProxyUnix.cpp @no-unify
-
-WebProcess/Plugins/Netscape/x11/NetscapePluginX11.cpp @no-unify
-
 WebProcess/WebCoreSupport/glib/WebEditorClientGLib.cpp
 
 WebProcess/WebCoreSupport/gtk/WebContextMenuClientGtk.cpp
@@ -452,5 +436,3 @@ WebProcess/glib/WebProcessGLib.cpp
 
 WebProcess/gtk/WaylandCompositorDisplay.cpp
 WebProcess/gtk/WebProcessMainGtk.cpp
-
-WebProcess/Plugins/Netscape/NetscapePluginNone.cpp

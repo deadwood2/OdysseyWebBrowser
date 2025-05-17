@@ -32,9 +32,9 @@ import json
 import sys
 import unittest
 
-from webkitcorepy import StringIO
+from webkitcorepy import StringIO, OutputCapture
 
-from webkitpy.common.system import outputcapture, path
+from webkitpy.common.system import path
 from webkitpy.common.system.crashlogs_unittest import make_mock_crash_report_darwin
 from webkitpy.common.system.systemhost import SystemHost
 from webkitpy.common.host import Host
@@ -101,13 +101,10 @@ def logging_run(extra_args=None, port_obj=None, tests_included=False, host=None,
 def run_and_capture(port_obj, options, parsed_args, shared_port=True):
     if shared_port:
         port_obj.host.port_factory.get = lambda *args, **kwargs: port_obj
-    oc = outputcapture.OutputCapture()
-    try:
-        oc.capture_output()
+    with OutputCapture():
         logging_stream = StringIO()
         run_details = run_webkit_tests.run(port_obj, options, parsed_args, logging_stream=logging_stream)
-    finally:
-        oc.restore_output()
+
     return (run_details, logging_stream)
 
 
@@ -137,13 +134,9 @@ def get_test_results(args, host=None):
     host = host or MockHost()
     port_obj = host.port_factory.get(port_name=options.platform, options=options)
 
-    oc = outputcapture.OutputCapture()
-    oc.capture_output()
-    logging_stream = StringIO()
-    try:
+    with OutputCapture():
+        logging_stream = StringIO()
         run_details = run_webkit_tests.run(port_obj, options, parsed_args, logging_stream=logging_stream)
-    finally:
-        oc.restore_output()
 
     all_results = []
     if run_details.initial_results:
@@ -814,70 +807,6 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         tests_run = get_test_results(['passes/mismatch.html'])
         self.assertEqual(tests_run[0].references, ['passes/mismatch-expected-mismatch.html'])
 
-    def test_reftest_should_not_use_naming_convention_if_not_listed_in_reftestlist(self):
-        host = MockHost()
-        _, err, _ = logging_run(['--no-show-results', 'reftests/foo/'], tests_included=True, host=host)
-        expected_dictionary = {
-            'version': 4,
-            'fixable': 5,
-            'skipped': 0,
-            'num_passes': 3,
-            'num_flaky': 0,
-            'num_missing': 1,
-            'num_regressions': 4,
-            'uses_expectations_file': True,
-            'interrupted': False,
-            'layout_tests_dir': '/test.checkout/LayoutTests',
-            'has_pretty_patch': False,
-            'pixel_tests_enabled': True,
-            'other_crashes': {},
-            'date': '10:27AM on December 13, 2019',
-            'tests': {
-                'reftests': {
-                    'foo': {
-                        'multiple-both-failure.html': {
-                            'reftest_type': ['!=', '=='],
-                            'report': 'REGRESSION',
-                            'expected': 'PASS',
-                            'actual': 'IMAGE',
-                        }, 'multiple-match-failure.html': {
-                            'reftest_type': ['=='],
-                            'report': 'REGRESSION',
-                            'expected': 'PASS',
-                            'actual': 'IMAGE',
-                            'image_diff_percent': 1,
-                        }, 'multiple-mismatch-failure.html': {
-                            'reftest_type': ['!='],
-                            'report': 'REGRESSION',
-                            'expected': 'PASS',
-                            'actual': 'IMAGE',
-                        }, 'test.html': {
-                            'reftest_type': ['=='],
-                            'report': 'REGRESSION',
-                            'expected': 'PASS',
-                            'actual': 'IMAGE',
-                            'image_diff_percent': None,
-                        }, 'unlistedtest.html': {
-                            'report': 'MISSING',
-                            'expected': 'PASS',
-                            'actual': 'MISSING',
-                            'is_missing_text': True,
-                            'is_missing_image': True,
-                        },
-                    },
-                },
-            },
-        }
-        actual_dictionary = json.loads(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')[len('ADD_RESULTS('):-2])
-
-        self.assertEqual(
-            expected_dictionary['tests']['reftests']['foo']['unlistedtest.html'],
-            actual_dictionary['tests']['reftests']['foo']['unlistedtest.html'],
-        )
-        self.assertEqual(expected_dictionary['num_regressions'], actual_dictionary['num_regressions'])
-        self.assertEqual(expected_dictionary['num_flaky'], actual_dictionary['num_flaky'])
-        self.assertEqual(expected_dictionary['num_missing'], actual_dictionary['num_missing'])
-
     def test_additional_platform_directory(self):
         self.assertTrue(passing_run(['--additional-platform-directory', '/tmp/foo']))
         self.assertTrue(passing_run(['--additional-platform-directory', '/tmp/../foo']))
@@ -965,13 +894,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         host.filesystem.write_text_file('/mock-checkout/LayoutTests/platform/ipad/test3.html', '')
         host.filesystem.write_text_file('/MOCK output of child process/ImageDiff', '')
 
-        oc = outputcapture.OutputCapture()
-        try:
-            oc.capture_output()
+        with OutputCapture() as captured:
             logging = StringIO()
             run_webkit_tests.run(port, run_webkit_tests.parse_args(['--debug-rwt-logging', '-n', '--no-build', '--root', '/build'])[0], [], logging_stream=logging)
-        finally:
-            output, err, _ = oc.restore_output()
 
         for line in logging.getvalue():
             if str(DeviceType.from_string('iPhone SE')) in line:
@@ -989,17 +914,13 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         host.filesystem.write_text_file('/mock-checkout/LayoutTests/platform/ios/test2.html', '')
         host.filesystem.write_text_file('/mock-checkout/LayoutTests/platform/ipad/test3.html', '')
 
-        oc = outputcapture.OutputCapture()
-        try:
-            oc.capture_output()
+        with OutputCapture() as captured:
             logging = StringIO()
             run_webkit_tests._print_expectations(port, run_webkit_tests.parse_args([])[0], [], logging_stream=logging)
-        finally:
-            output, _, _ = oc.restore_output()
 
         current_type = None
         by_type = {}
-        for line in output.splitlines():
+        for line in captured.stdout.getvalue().splitlines():
             if not line or 'skip' in line:
                 continue
             if 'Tests to run' in line:
@@ -1023,13 +944,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         host.filesystem.write_text_file('/mock-checkout/LayoutTests/platform/iphone/test4.html', '')
         host.filesystem.write_text_file('/MOCK output of child process/ImageDiff', '')
 
-        oc = outputcapture.OutputCapture()
-        try:
-            oc.capture_output()
+        with OutputCapture():
             logging = StringIO()
             run_webkit_tests.run(port, run_webkit_tests.parse_args(['--debug-rwt-logging', '-n', '--no-build', '--root', '/build'])[0], [], logging_stream=logging)
-        finally:
-            output, err, _ = oc.restore_output()
 
         for line in logging.getvalue():
             if str(DeviceType.from_string('iPad (5th generation)')) in line:
@@ -1044,17 +961,13 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         host.filesystem.write_text_file('/mock-checkout/LayoutTests/platform/ipad/test3.html', '')
         host.filesystem.write_text_file('/mock-checkout/LayoutTests/platform/iphone/test4.html', '')
 
-        oc = outputcapture.OutputCapture()
-        try:
-            oc.capture_output()
+        with OutputCapture() as captured:
             logging = StringIO()
             run_webkit_tests._print_expectations(port, run_webkit_tests.parse_args([])[0], [], logging_stream=logging)
-        finally:
-            output, _, _ = oc.restore_output()
 
         current_type = None
         by_type = {}
-        for line in output.splitlines():
+        for line in captured.stdout.getvalue().splitlines():
             if not line or 'skip' in line:
                 continue
             if 'Tests to run' in line:
@@ -1067,36 +980,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         self.assertEqual(3, len(by_type[DeviceType.from_string('iPad (5th generation)')]))
 
 
-class EndToEndTest(unittest.TestCase):
-    def test_reftest_with_two_notrefs(self):
-        # Test that we update expectations in place. If the expectation
-        # is missing, update the expected generic location.
-        host = MockHost()
-        _, _, _ = logging_run(['--no-show-results', 'reftests/foo/'], tests_included=True, host=host)
-        file_list = host.filesystem.written_files.keys()
-
-        json_string = host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')
-        json = parse_full_results(json_string)
-        self.assertTrue("multiple-match-success.html" not in json["tests"]["reftests"]["foo"])
-        self.assertTrue("multiple-mismatch-success.html" not in json["tests"]["reftests"]["foo"])
-        self.assertTrue("multiple-both-success.html" not in json["tests"]["reftests"]["foo"])
-        self.assertEqual(
-            json["tests"]["reftests"]["foo"]["multiple-match-failure.html"],
-            {"expected": "PASS", "actual": "IMAGE", "reftest_type": ["=="], "image_diff_percent": 1, "report": "REGRESSION"},
-        )
-        self.assertEqual(
-            json["tests"]["reftests"]["foo"]["multiple-mismatch-failure.html"],
-            {"expected": "PASS", "actual": "IMAGE", "reftest_type": ["!="], "report": "REGRESSION"},
-        )
-        self.assertEqual(
-            json["tests"]["reftests"]["foo"]["multiple-both-failure.html"],
-            {"expected": "PASS", "actual": "IMAGE", "reftest_type": sorted(["==", "!="]), "report": "REGRESSION"},
-        )
-
-
 class RebaselineTest(unittest.TestCase, StreamTestingMixin):
     def assertBaselines(self, file_list, file, extensions, err):
-        "assert that the file_list contains the baselines."""
+        """assert that the file_list contains the baselines."""
         for ext in extensions:
             baseline = file + "-expected" + ext
             baseline_msg = 'Writing new expected result "%s"\n' % baseline

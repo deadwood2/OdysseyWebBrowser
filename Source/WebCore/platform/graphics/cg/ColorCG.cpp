@@ -28,7 +28,7 @@
 
 #if USE(CG)
 
-#include "GraphicsContextCG.h"
+#include "ColorSpaceCG.h"
 #include <wtf/Assertions.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/TinyLRUCache.h>
@@ -81,7 +81,7 @@ static Optional<SRGBA<uint8_t>> roundAndClampToSRGBALossy(CGColorRef color)
         ASSERT_NOT_REACHED();
     }
 
-    return convertToComponentBytes(SRGBA { r, g, b, a });
+    return convertColor<SRGBA<uint8_t>>(SRGBA<float> { r, g, b, a });
 }
 
 Color::Color(CGColorRef color)
@@ -89,44 +89,56 @@ Color::Color(CGColorRef color)
 {
 }
 
-Color::Color(CGColorRef color, SemanticTag tag)
-    : Color(roundAndClampToSRGBALossy(color), tag)
+Color::Color(CGColorRef color, OptionSet<Flags> flags)
+    : Color(roundAndClampToSRGBALossy(color), flags)
 {
 }
 
 static CGColorRef leakCGColor(const Color& color)
 {
     auto [colorSpace, components] = color.colorSpaceAndComponents();
+
+    auto cgColorSpace = cachedNullableCGColorSpace(colorSpace);
+
+    // Some CG ports don't support all the color spaces required and return
+    // nullptr for unsupported color spaces. In those cases, we eagerly convert
+    // the color into either extended sRGB or normal sRGB, if extended sRGB is
+    // not supported, before creating the CGColorRef.
+    if (!cgColorSpace) {
+#if HAVE(CORE_GRAPHICS_EXTENDED_SRGB_COLOR_SPACE)
+        auto colorConvertedToExtendedSRGBA = callWithColorType(components, colorSpace, [] (const auto& color) {
+            return convertColor<ExtendedSRGBA<float>>(color);
+        });
+        components = asColorComponents(colorConvertedToExtendedSRGBA);
+        cgColorSpace = extendedSRGBColorSpaceRef();
+#else
+        auto colorConvertedToSRGBA = callWithColorType(components, colorSpace, [] (const auto& color) {
+            return convertColor<SRGBA<float>>(color);
+        });
+        components = asColorComponents(colorConvertedToSRGBA);
+        cgColorSpace = sRGBColorSpaceRef();
+#endif
+    }
+
     auto [r, g, b, a] = components;
     CGFloat cgFloatComponents[4] { r, g, b, a };
 
-    switch (colorSpace) {
-    case ColorSpace::SRGB:
-        return CGColorCreate(sRGBColorSpaceRef(), cgFloatComponents);
-    case ColorSpace::DisplayP3:
-        return CGColorCreate(displayP3ColorSpaceRef(), cgFloatComponents);
-    case ColorSpace::LinearRGB:
-        // FIXME: Do we ever create CGColorRefs in these spaces? It may only be ImageBuffers.
-        return CGColorCreate(sRGBColorSpaceRef(), cgFloatComponents);
-    }
-
-    ASSERT_NOT_REACHED();
-    return nullptr;
+    return CGColorCreate(cgColorSpace, cgFloatComponents);
 }
 
 CGColorRef cachedCGColor(const Color& color)
 {
     if (color.isInline()) {
-        switch (Packed::RGBA { color.asInline() }.value) {
-        case Packed::RGBA { Color::transparentBlack }.value: {
+        switch (PackedColor::RGBA { color.asInline() }.value) {
+        case PackedColor::RGBA { Color::transparentBlack }.value: {
             static CGColorRef transparentCGColor = leakCGColor(color);
             return transparentCGColor;
         }
-        case Packed::RGBA { Color::black }.value: {
+        case PackedColor::RGBA { Color::black }.value: {
             static CGColorRef blackCGColor = leakCGColor(color);
             return blackCGColor;
         }
-        case Packed::RGBA { Color::white }.value: {
+        case PackedColor::RGBA { Color::white }.value: {
             static CGColorRef whiteCGColor = leakCGColor(color);
             return whiteCGColor;
         }

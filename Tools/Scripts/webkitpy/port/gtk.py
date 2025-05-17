@@ -29,9 +29,9 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
-import subprocess
 import uuid
 import logging
+import shlex
 
 from webkitpy.common.system import path
 from webkitpy.common.memoized import memoized
@@ -44,6 +44,8 @@ from webkitpy.port.xorgdriver import XorgDriver
 from webkitpy.port.waylanddriver import WaylandDriver
 from webkitpy.port.linux_get_crash_log import GDBCrashLogGenerator
 from webkitpy.port.leakdetector_valgrind import LeakDetectorValgrind
+
+from webkitcorepy import decorators
 
 _log = logging.getLogger(__name__)
 
@@ -126,6 +128,8 @@ class GtkPort(Port):
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_TOP_LEVEL')
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_DEBUG')
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_GST_USE_PLAYBIN3')
+        self._copy_value_from_environ_if_set(environment, 'PULSE_SERVER')
+        self._copy_value_from_environ_if_set(environment, 'PULSE_CLIENTCONFIG')
         for gst_variable in ('DEBUG', 'DEBUG_DUMP_DOT_DIR', 'DEBUG_FILE', 'DEBUG_NO_COLOR',
                              'PLUGIN_SCANNER', 'PLUGIN_PATH', 'PLUGIN_SYSTEM_PATH', 'REGISTRY',
                              'PLUGIN_PATH_1_0'):
@@ -136,11 +140,10 @@ class GtkPort(Port):
             if self._should_use_jhbuild():
                 llvmpipe_libgl_path = self.host.executive.run_command(self._jhbuild_wrapper + ['printenv', 'LLVMPIPE_LIBGL_PATH'],
                                                                     ignore_errors=True).strip()
-                dri_libgl_path = os.path.join(llvmpipe_libgl_path, "dri")
             else:  # in flatpak
                 llvmpipe_libgl_path = "/usr/lib/x86_64-linux-gnu/"
-                dri_libgl_path = os.path.join(llvmpipe_libgl_path, "GL", "lib", "dri")
 
+            dri_libgl_path = os.path.join(llvmpipe_libgl_path, "dri")
             if os.path.exists(os.path.join(llvmpipe_libgl_path, "libGL.so")) and os.path.exists(os.path.join(dri_libgl_path, "swrast_dri.so")):
                 # Make sure va-api support gets disabled because it's incompatible with Mesa's softGL driver.
                 environment['LIBVA_DRIVER_NAME'] = "null"
@@ -185,6 +188,7 @@ class GtkPort(Port):
     def _path_to_driver(self):
         return self._built_executables_path(self.driver_name())
 
+    @decorators.Memoize()
     def _path_to_image_diff(self):
         return self._built_executables_path('ImageDiff')
 
@@ -268,7 +272,8 @@ class GtkPort(Port):
             return 1
         command = [miniBrowser]
         if os.environ.get("WEBKIT_MINI_BROWSER_PREFIX"):
-            command.insert(0, os.environ["WEBKIT_MINI_BROWSER_PREFIX"])
+            command = shlex.split(os.environ["WEBKIT_MINI_BROWSER_PREFIX"]) + command
+
         if self._should_use_jhbuild():
             command = self._jhbuild_wrapper + command
         return self._executive.run_command(command + args, cwd=self.webkit_base(), stdout=None, return_stderr=False, decode_output=False)

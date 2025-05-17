@@ -141,18 +141,17 @@ static WebAVPlayerView *allocWebAVPlayerViewInstance()
 - (id)init
 {
     // Do not defer window creation, to make sure -windowNumber is created (needed by WebWindowScaleAnimation).
-    NSWindow *window = [[WebCoreFullScreenWindow alloc] initWithContentRect:NSZeroRect styleMask:(NSWindowStyleMaskFullSizeContentView | NSWindowStyleMaskResizable) backing:NSBackingStoreBuffered defer:NO];
+    auto window = adoptNS([[WebCoreFullScreenWindow alloc] initWithContentRect:NSZeroRect styleMask:(NSWindowStyleMaskFullSizeContentView | NSWindowStyleMaskResizable) backing:NSBackingStoreBuffered defer:NO]);
     [window setCollectionBehavior:([window collectionBehavior] | NSWindowCollectionBehaviorFullScreenPrimary)];
-    window.delegate = self;
-    self = [super initWithWindow:window];
-    [window release];
+    [window setDelegate: self];
+    self = [super initWithWindow:window.get()];
     if (!self)
         return nil;
     _playbackModel = WebCore::PlaybackSessionModelMediaElement::create();
     _playbackInterface = WebCore::PlaybackSessionInterfaceAVKit::create(*_playbackModel);
     _contentOverlay = adoptNS([[NSView alloc] initWithFrame:NSZeroRect]);
     _contentOverlay.get().layerContentsRedrawPolicy = NSViewLayerContentsRedrawNever;
-    _contentOverlay.get().layer = [[[WebVideoFullscreenOverlayLayer alloc] init] autorelease];
+    _contentOverlay.get().layer = adoptNS([[WebVideoFullscreenOverlayLayer alloc] init]).get();
     [_contentOverlay setWantsLayer:YES];
     [_contentOverlay setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
     [self windowDidLoad];

@@ -163,7 +163,6 @@ function installDependenciesWithApt {
         hunspell \
         hunspell-en-us \
         hunspell-en-gb \
-        libapache2-mod-bw \
         libapache2-mod-php \
         php-json \
         libcgi-pm-perl \
@@ -247,7 +246,6 @@ function installDependenciesWithApt {
     # These are dependencies necessary for using webkit-patch
     packages="$packages \
         git-svn \
-        python3-secretstorage \
         subversion"
 
     # These are GStreamer plugins needed to play different media files.
@@ -352,7 +350,7 @@ function installDependenciesWithPacman {
         woff2"
 
     # These are dependencies necessary for running tests.
-    # Note: apache-mod_bw, ruby-json, and ruby-highline are available in the AUR
+    # Note: ruby-json and ruby-highline are available in the AUR
     packages="$packages \
         apache \
         curl \
@@ -433,7 +431,6 @@ function installDependenciesWithPacman {
 
     # These are dependencies necessary for using webkit-patch
     packages="$packages \
-        python-secretstorage \
         svn"
 
     # These are GStreamer plugins needed to play different media files.
@@ -449,7 +446,7 @@ function installDependenciesWithPacman {
 
 The following packages are available from AUR, and needed for running tests:
 
-    apache-mod_bw ruby-json ruby-highline
+    ruby-json ruby-highline
 
 Instructions on how to use the AUR can be found on the Arch Wiki:
 
@@ -547,7 +544,6 @@ function installDependenciesWithDnf {
         httpd \
         liberation-fonts \
         libgpg-error-devel \
-        mod_bw \
         mod_ssl \
         perl-CGI \
         php \
@@ -616,7 +612,6 @@ function installDependenciesWithDnf {
     # These are dependencies necessary for using webkit-patch
     packages="$packages
         git-svn \
-        python3-secretstorage \
         subversion"
 
     # These are GStreamer plugins needed to play different media files.

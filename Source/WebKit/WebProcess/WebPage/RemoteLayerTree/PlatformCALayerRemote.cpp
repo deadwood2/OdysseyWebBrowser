@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -63,13 +63,6 @@ Ref<PlatformCALayerRemote> PlatformCALayerRemote::create(PlatformLayer *platform
     return PlatformCALayerRemoteCustom::create(platformLayer, owner, context);
 }
 
-Ref<PlatformCALayerRemote> PlatformCALayerRemote::createForEmbeddedView(LayerType layerType, GraphicsLayer::EmbeddedViewID embeddedViewID, PlatformCALayerClient* owner, RemoteLayerTreeContext& context)
-{
-    RefPtr<PlatformCALayerRemote> layer = adoptRef(new PlatformCALayerRemote(layerType, embeddedViewID, owner, context));
-    context.layerDidEnterContext(*layer, layerType);
-    return layer.releaseNonNull();
-}
-
 Ref<PlatformCALayerRemote> PlatformCALayerRemote::create(const PlatformCALayerRemote& other, WebCore::PlatformCALayerClient* owner, RemoteLayerTreeContext& context)
 {
     auto layer = adoptRef(*new PlatformCALayerRemote(other, owner, context));
@@ -87,12 +80,6 @@ PlatformCALayerRemote::PlatformCALayerRemote(LayerType layerType, PlatformCALaye
         m_properties.contentsScale = owner->platformCALayerDeviceScaleFactor();
         m_properties.notePropertiesChanged(RemoteLayerTreeTransaction::ContentsScaleChanged);
     }
-}
-
-PlatformCALayerRemote::PlatformCALayerRemote(LayerType layerType, GraphicsLayer::EmbeddedViewID embeddedViewID, PlatformCALayerClient* owner, RemoteLayerTreeContext& context)
-    : PlatformCALayerRemote(layerType, owner, context)
-{
-    m_embeddedViewID = embeddedViewID;
 }
 
 PlatformCALayerRemote::PlatformCALayerRemote(const PlatformCALayerRemote& other, PlatformCALayerClient* owner, RemoteLayerTreeContext& context)
@@ -881,10 +868,21 @@ void PlatformCALayerRemote::setEventRegion(const WebCore::EventRegion& eventRegi
     m_properties.notePropertiesChanged(RemoteLayerTreeTransaction::EventRegionChanged);
 }
 
-GraphicsLayer::EmbeddedViewID PlatformCALayerRemote::embeddedViewID() const
+#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
+bool PlatformCALayerRemote::isSeparated() const
 {
-    return m_embeddedViewID;
+    return m_properties.isSeparated;
 }
+
+void PlatformCALayerRemote::setSeparated(bool value)
+{
+    if (m_properties.isSeparated == value)
+        return;
+
+    m_properties.isSeparated = value;
+    m_properties.notePropertiesChanged(RemoteLayerTreeTransaction::SeparatedChanged);
+}
+#endif
 
 Ref<PlatformCALayer> PlatformCALayerRemote::createCompatibleLayer(PlatformCALayer::LayerType layerType, PlatformCALayerClient* client) const
 {

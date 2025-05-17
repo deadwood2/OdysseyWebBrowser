@@ -159,13 +159,16 @@ static bool indicatorWantsManualAnimation(const TextIndicator& indicator)
     self.wantsLayer = YES;
     self.layer.anchorPoint = CGPointZero;
 
-    FloatSize contentsImageLogicalSize = _textIndicator->contentImage()->size();
-    contentsImageLogicalSize.scale(1 / _textIndicator->contentImageScaleFactor());
-    RetainPtr<CGImageRef> contentsImage;
-    if (indicatorWantsContentCrossfade(*_textIndicator))
-        contentsImage = _textIndicator->contentImageWithHighlight()->nativeImage();
-    else
-        contentsImage = _textIndicator->contentImage()->nativeImage();
+    RefPtr<NativeImage> contentsImage;
+    FloatSize contentsImageLogicalSize { 1, 1 };
+    if (auto* contentImage = _textIndicator->contentImage()) {
+        contentsImageLogicalSize = contentImage->size();
+        contentsImageLogicalSize.scale(1 / _textIndicator->contentImageScaleFactor());
+        if (indicatorWantsContentCrossfade(*_textIndicator) && _textIndicator->contentImageWithHighlight())
+            contentsImage = _textIndicator->contentImageWithHighlight()->nativeImage();
+        else
+            contentsImage = contentImage->nativeImage();
+    }
 
     RetainPtr<NSMutableArray> bounceLayers = adoptNS([[NSMutableArray alloc] init]);
 
@@ -229,7 +232,8 @@ static bool indicatorWantsManualAnimation(const TextIndicator& indicator)
         [textLayer setBorderColor:borderColor.get()];
         [textLayer setBorderWidth:borderWidth];
         [textLayer setDelegate:[WebActionDisablingCALayerDelegate shared]];
-        [textLayer setContents:(__bridge id)contentsImage.get()];
+        if (contentsImage)
+            [textLayer setContents:(__bridge id)contentsImage->platformImage().get()];
 
         RetainPtr<CAShapeLayer> maskLayer = adoptNS([[CAShapeLayer alloc] init]);
         [maskLayer setPath:translatedPath.platformPath()];
@@ -266,8 +270,8 @@ static RetainPtr<CAKeyframeAnimation> createBounceAnimation(CFTimeInterval durat
 static RetainPtr<CABasicAnimation> createContentCrossfadeAnimation(CFTimeInterval duration, TextIndicator& textIndicator)
 {
     RetainPtr<CABasicAnimation> crossfadeAnimation = [CABasicAnimation animationWithKeyPath:@"contents"];
-    RetainPtr<CGImageRef> contentsImage = textIndicator.contentImage()->nativeImage();
-    [crossfadeAnimation setToValue:(__bridge id)contentsImage.get()];
+    auto contentsImage = textIndicator.contentImage()->nativeImage();
+    [crossfadeAnimation setToValue:(__bridge id)contentsImage->platformImage().get()];
     [crossfadeAnimation setFillMode:kCAFillModeForwards];
     [crossfadeAnimation setRemovedOnCompletion:NO];
     [crossfadeAnimation setDuration:duration];

@@ -133,6 +133,10 @@ struct WebKitWebSrcPrivate {
         // and the player HTTP referrer string.
         WebCore::MediaPlayer* player;
 
+        // MediaPlayer referrer cached value. The corresponding method has to be called from the
+        // main thread, so the value needs to be cached before use in non-main thread.
+        String referrer;
+
         // Properties used for GStreamer data-flow in create().
         bool isFlushing { false };
         Condition responseCondition; // Must be signaled after any updates on HTTP requests, and when flushing.
@@ -461,12 +465,8 @@ static GstFlowReturn webKitWebSrcCreate(GstPushSrc* pushSrc, GstBuffer** buffer)
     // 1) webKitWebSrcSetMediaPlayer() is called by MediaPlayerPrivateGStreamer by means of hooking playbin's
     //    "source-setup" event. This doesn't work for additional WebKitWebSrc elements created by adaptivedemux.
     //
-    // 2) A GstContext query made here. Because of a bug, this only works in GStreamer >= 1.12.
-    //
-    // As a compatibility workaround, the http: URI protocol is only registered for gst>=1.12; otherwise using
-    // webkit+http:, which is used by MediaPlayerPrivateGStreamer but not by adaptivedemux's additional source
-    // elements, therefore using souphttpsrc instead and not routing traffic through the NetworkProcess.
-    if (webkitGstCheckVersion(1, 12, 0) && !members->player) {
+    // 2) A GstContext query made here.
+    if (!members->player) {
         members.runUnlocked([src, baseSrc]() {
             GRefPtr<GstQuery> query = adoptGRef(gst_query_new_context(WEBKIT_WEB_SRC_PLAYER_CONTEXT_TYPE_NAME));
             if (gst_pad_peer_query(GST_BASE_SRC_PAD(baseSrc), query.get())) {
@@ -641,7 +641,7 @@ static void webKitWebSrcMakeRequest(WebKitWebSrc* src, DataMutex<WebKitWebSrcPri
     request.setAllowCookies(true);
     request.setFirstPartyForCookies(url);
 
-    request.setHTTPReferrer(members->player->referrer());
+    request.setHTTPReferrer(members->referrer);
 
     if (priv->httpMethod.get())
         request.setHTTPMethod(priv->httpMethod.get());
@@ -699,7 +699,7 @@ static void webKitWebSrcMakeRequest(WebKitWebSrc* src, DataMutex<WebKitWebSrcPri
         PlatformMediaResourceLoader::LoadOptions loadOptions = 0;
         members->resource = members->loader->requestResource(ResourceRequest(request), loadOptions);
         if (members->resource) {
-            members->resource->setClient(makeUnique<CachedResourceStreamingClient>(protector.get(), ResourceRequest(request), requestNumber));
+            members->resource->setClient(adoptRef(*new CachedResourceStreamingClient(protector.get(), ResourceRequest(request), requestNumber)));
             GST_DEBUG_OBJECT(protector.get(), "Started request R%u", requestNumber);
         } else {
             GST_ERROR_OBJECT(protector.get(), "Failed to setup streaming client to handle R%u", requestNumber);
@@ -859,15 +859,9 @@ static GstURIType webKitWebSrcUriGetType(GType)
 const gchar* const* webKitWebSrcGetProtocols(GType)
 {
     static const char* protocols[4];
-    if (webkitGstCheckVersion(1, 12, 0)) {
-        protocols[0] = "http";
-        protocols[1] = "https";
-        protocols[2] = "blob";
-    } else {
-        protocols[0] = "webkit+http";
-        protocols[1] = "webkit+https";
-        protocols[2] = "webkit+blob";
-    }
+    protocols[0] = "http";
+    protocols[1] = "https";
+    protocols[2] = "blob";
     protocols[3] = nullptr;
     return protocols;
 }
@@ -875,10 +869,6 @@ const gchar* const* webKitWebSrcGetProtocols(GType)
 static URL convertPlaybinURI(const char* uriString)
 {
     URL url(URL(), uriString);
-    if (!webkitGstCheckVersion(1, 12, 0)) {
-        ASSERT(url.protocol().substring(0, 7) == "webkit+");
-        url.setProtocol(url.protocol().substring(7).toString());
-    }
     return url;
 }
 
@@ -929,11 +919,12 @@ static void webKitWebSrcUriHandlerInit(gpointer gIface, gpointer)
     iface->set_uri = webKitWebSrcSetUri;
 }
 
-void webKitWebSrcSetMediaPlayer(WebKitWebSrc* src, WebCore::MediaPlayer* player)
+void webKitWebSrcSetMediaPlayer(WebKitWebSrc* src, WebCore::MediaPlayer* player, const String& referrer)
 {
     ASSERT(player);
     DataMutex<WebKitWebSrcPrivate::StreamingMembers>::LockedWrapper members(src->priv->dataMutex);
     members->player = player;
+    members->referrer = referrer;
 }
 
 bool webKitSrcPassedCORSAccessCheck(WebKitWebSrc* src)
@@ -1132,7 +1123,7 @@ void CachedResourceStreamingClient::dataReceived(PlatformMediaResource&, const c
 
     checkUpdateBlocksize(length);
 
-    GstBuffer* buffer = gst_buffer_new_wrapped(g_memdup(data, length), length);
+    GstBuffer* buffer = gstBufferNewWrappedFast(fastMemDup(data, length), length);
     gst_adapter_push(members->adapter.get(), buffer);
     stopLoaderIfNeeded(src, members);
     members->responseCondition.notifyOne();
@@ -1186,7 +1177,7 @@ bool webKitSrcWouldTaintOrigin(WebKitWebSrc* src, const SecurityOrigin& origin)
 
     auto* cachedResourceStreamingClient = reinterpret_cast<CachedResourceStreamingClient*>(members->resource->client());
     for (auto& responseOrigin : cachedResourceStreamingClient->securityOrigins()) {
-        if (!origin.canAccess(*responseOrigin))
+        if (!origin.isSameOriginDomain(*responseOrigin))
             return true;
     }
     return false;

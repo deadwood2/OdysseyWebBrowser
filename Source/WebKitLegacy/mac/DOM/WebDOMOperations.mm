@@ -87,16 +87,16 @@ using namespace JSC;
 
 - (WebArchive *)webArchive
 {
-    return [[[WebArchive alloc] _initWithCoreLegacyWebArchive:LegacyWebArchive::create(*core(self))] autorelease];
+    return adoptNS([[WebArchive alloc] _initWithCoreLegacyWebArchive:LegacyWebArchive::create(*core(self))]).autorelease();
 }
 
 - (WebArchive *)webArchiveByFilteringSubframes:(WebArchiveSubframeFilter)webArchiveSubframeFilter
 {
-    WebArchive *webArchive = [[WebArchive alloc] _initWithCoreLegacyWebArchive:LegacyWebArchive::create(*core(self), [webArchiveSubframeFilter](Frame& subframe) -> bool {
+    auto webArchive = adoptNS([[WebArchive alloc] _initWithCoreLegacyWebArchive:LegacyWebArchive::create(*core(self), [webArchiveSubframeFilter](Frame& subframe) -> bool {
         return webArchiveSubframeFilter(kit(&subframe));
-    })];
+    })]);
 
-    return [webArchive autorelease];
+    return webArchive.autorelease();
 }
 
 #if PLATFORM(IOS_FAMILY)
@@ -186,13 +186,13 @@ using namespace JSC;
 
 - (WebArchive *)webArchive
 {
-    return [[[WebArchive alloc] _initWithCoreLegacyWebArchive:LegacyWebArchive::create(makeSimpleRange(*core(self)))] autorelease];
+    return adoptNS([[WebArchive alloc] _initWithCoreLegacyWebArchive:LegacyWebArchive::create(makeSimpleRange(*core(self)))]).autorelease();
 }
 
 - (NSString *)markupString
 {
-    auto& range = *core(self);
-    return String { documentTypeString(range.ownerDocument()) + serializePreservingVisualAppearance(makeSimpleRange(range), nullptr, AnnotateForInterchange::Yes) };
+    auto range = makeSimpleRange(*core(self));
+    return String { documentTypeString(range.start.document()) + serializePreservingVisualAppearance(range, nullptr, AnnotateForInterchange::Yes) };
 }
 
 @end
@@ -251,21 +251,24 @@ using namespace JSC;
 #if !PLATFORM(IOS_FAMILY)
 static NSEventPhase toNSEventPhase(PlatformWheelEventPhase platformPhase)
 {
-    uint32_t phase = PlatformWheelEventPhaseNone; 
-    if (platformPhase & PlatformWheelEventPhaseBegan)
-        phase |= NSEventPhaseBegan;
-    if (platformPhase & PlatformWheelEventPhaseStationary)
-        phase |= NSEventPhaseStationary;
-    if (platformPhase & PlatformWheelEventPhaseChanged)
-        phase |= NSEventPhaseChanged;
-    if (platformPhase & PlatformWheelEventPhaseEnded)
-        phase |= NSEventPhaseEnded;
-    if (platformPhase & PlatformWheelEventPhaseCancelled)
-        phase |= NSEventPhaseCancelled;
-    if (platformPhase & PlatformWheelEventPhaseMayBegin)
-        phase |= NSEventPhaseMayBegin;
+    switch (platformPhase) {
+    case PlatformWheelEventPhase::None:
+        return NSEventPhaseNone;
+    case PlatformWheelEventPhase::Began:
+        return NSEventPhaseBegan;
+    case PlatformWheelEventPhase::Stationary:
+        return NSEventPhaseStationary;
+    case PlatformWheelEventPhase::Changed:
+        return NSEventPhaseChanged;
+    case PlatformWheelEventPhase::Ended:
+        return NSEventPhaseEnded;
+    case PlatformWheelEventPhase::Cancelled:
+        return NSEventPhaseCancelled;
+    case PlatformWheelEventPhase::MayBegin:
+        return NSEventPhaseMayBegin;
+    }
 
-    return static_cast<NSEventPhase>(phase);
+    return NSEventPhaseNone;
 }
 
 @implementation DOMWheelEvent (WebDOMWheelEventOperationsPrivate)

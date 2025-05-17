@@ -41,6 +41,7 @@
 #import <WebKit/DOMPrivate.h>
 #import <WebKit/WebViewPrivate.h>
 #import <functional>
+#import <wtf/NeverDestroyed.h>
 #import <wtf/RetainPtr.h>
 
 #if !PLATFORM(IOS_FAMILY)
@@ -90,10 +91,15 @@ struct KeyMappingEntry {
 NSPoint lastMousePosition;
 NSPoint lastClickPosition;
 int lastClickButton = NoMouseButton;
-NSArray *webkitDomEventNames;
-NSMutableArray *savedMouseEvents; // mouse events sent between mouseDown and mouseUp are stored here, and then executed at once.
+static RetainPtr<NSArray> webkitDomEventNames;
 BOOL replayingSavedEvents;
 unsigned mouseButtonsCurrentlyDown = 0;
+
+static RetainPtr<NSMutableArray>& savedMouseEvents()
+{
+    static NeverDestroyed<RetainPtr<NSMutableArray>> _savedMouseEvents; // mouse events sent between mouseDown and mouseUp are stored here, and then executed at once.
+    return _savedMouseEvents;
+}
 
 #if PLATFORM(IOS_FAMILY)
 @interface SyntheticTouch : NSObject {
@@ -119,7 +125,7 @@ unsigned mouseButtonsCurrentlyDown = 0;
 
 + (id)touchWithLocation:(CGPoint)location phase:(UITouchPhase)phase identifier:(unsigned)identifier
 {
-    return [[[SyntheticTouch alloc] initWithLocation:location phase:phase identifier:identifier] autorelease];
+    return adoptNS([[SyntheticTouch alloc] initWithLocation:location phase:phase identifier:identifier]).autorelease();
 }
 
 - (id)initWithLocation:(CGPoint)location phase:(UITouchPhase)phase identifier:(unsigned)identifier
@@ -163,8 +169,8 @@ static NSDraggingSession *drt_WebHTMLView_beginDraggingSessionWithItemsEventSour
     for (NSDraggingItem *item in items)
         [pasteboard writeObjects:@[ item.item ]];
 
-    draggingInfo = [[DumpRenderTreeDraggingInfo alloc] initWithImage:nil offset:NSZeroSize pasteboard:pasteboard source:source];
-    [webView draggingUpdated:draggingInfo];
+    draggingInfo = adoptNS([[DumpRenderTreeDraggingInfo alloc] initWithImage:nil offset:NSZeroSize pasteboard:pasteboard source:source]);
+    [webView draggingUpdated:draggingInfo.get()];
     [EventSendingController replaySavedEvents];
 
     return nullptr;
@@ -173,7 +179,7 @@ static NSDraggingSession *drt_WebHTMLView_beginDraggingSessionWithItemsEventSour
 
 + (void)initialize
 {
-    webkitDomEventNames = [[NSArray alloc] initWithObjects:
+    webkitDomEventNames = @[
         @"abort",
         @"beforecopy",
         @"beforecut",
@@ -220,7 +226,7 @@ static NSDraggingSession *drt_WebHTMLView_beginDraggingSessionWithItemsEventSour
         @"textzoomout",
         @"unload",
         @"zoom",
-        nil];
+    ];
 
 #if PLATFORM(MAC)
     // Add an implementation of -[WebHTMLView beginDraggingSessionWithItems:event:source:].
@@ -456,9 +462,9 @@ static NSEventType eventTypeForMouseButtonAndAction(int button, MouseAction acti
     assert([pboard propertyListForType:NSFilenamesPboardType]); // setPropertyList will silently fail on error, assert that it didn't fail
 
     // Provide a source, otherwise [DumpRenderTreeDraggingInfo draggingSourceOperationMask] defaults to NSDragOperationNone
-    DumpRenderTreeFileDraggingSource *source = [[[DumpRenderTreeFileDraggingSource alloc] init] autorelease];
-    draggingInfo = [[DumpRenderTreeDraggingInfo alloc] initWithImage:nil offset:NSZeroSize pasteboard:pboard source:source];
-    [[mainFrame webView] draggingEntered:draggingInfo];
+    auto source = adoptNS([[DumpRenderTreeFileDraggingSource alloc] init]);
+    draggingInfo = adoptNS([[DumpRenderTreeDraggingInfo alloc] initWithImage:nil offset:NSZeroSize pasteboard:pboard source:source.get()]);
+    [[mainFrame webView] draggingEntered:draggingInfo.get()];
 
     dragMode = NO; // dragMode saves events and then replays them later.  We don't need/want that.
     leftMouseButtonDown = YES; // Make the rest of eventSender think a drag is in progress
@@ -497,8 +503,8 @@ static NSEventType eventTypeForMouseButtonAndAction(int button, MouseAction acti
     assert([pasteboard propertyListForType:NSFilenamesPboardType]);
 
     auto source = adoptNS([[DumpRenderTreeFileDraggingSource alloc] initWithPromisedFileURLs:fileURLs]);
-    draggingInfo = [[DumpRenderTreeDraggingInfo alloc] initWithImage:nil offset:NSZeroSize pasteboard:pasteboard source:source.get()];
-    [mainFrame.webView draggingEntered:draggingInfo];
+    draggingInfo = adoptNS([[DumpRenderTreeDraggingInfo alloc] initWithImage:nil offset:NSZeroSize pasteboard:pasteboard source:source.get()]);
+    [mainFrame.webView draggingEntered:draggingInfo.get()];
 
     dragMode = NO;
     leftMouseButtonDown = YES;
@@ -584,7 +590,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
     
 #if !PLATFORM(IOS_FAMILY)
     NSEventType eventType = eventTypeForMouseButtonAndAction(buttonNumber, MouseDown);
-    NSEvent *event = [NSEvent mouseEventWithType:eventType
+    auto event = retainPtr([NSEvent mouseEventWithType:eventType
                                         location:lastMousePosition 
                                    modifierFlags:buildModifierFlags(modifiers)
                                        timestamp:[self currentEventTime]
@@ -592,23 +598,23 @@ static NSUInteger swizzledEventPressedMouseButtons()
                                          context:[NSGraphicsContext currentContext] 
                                      eventNumber:++eventNumber 
                                       clickCount:clickCount 
-                                        pressure:0.0];
+                                        pressure:0.0]);
 #else
-    WebEvent *event = [[WebEvent alloc] initWithMouseEventType:WebEventMouseDown
+    auto event = adoptNS([[WebEvent alloc] initWithMouseEventType:WebEventMouseDown
                                                      timeStamp:[self currentEventTime]
-                                                      location:lastMousePosition];
+                                                      location:lastMousePosition]);
 #endif
 
     NSView *subView = [[mainFrame webView] hitTest:[event locationInWindow]];
     if (subView) {
 #if !PLATFORM(IOS_FAMILY)
-        [NSApp _setCurrentEvent:event];
+        [NSApp _setCurrentEvent:event.get()];
 #endif
         {
 #if !PLATFORM(IOS_FAMILY)
-            auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event);
+            auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event.get());
 #endif
-            [subView mouseDown:event];
+            [subView mouseDown:event.get()];
         }
 #if !PLATFORM(IOS_FAMILY)
         [NSApp _setCurrentEvent:nil];
@@ -616,10 +622,6 @@ static NSUInteger swizzledEventPressedMouseButtons()
         if (buttonNumber == LeftMouseButton)
             leftMouseButtonDown = YES;
     }
-
-#if PLATFORM(IOS_FAMILY)
-    [event release];
-#endif
 }
 
 - (void)mouseDown:(int)buttonNumber
@@ -676,7 +678,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
     [[[mainFrame frameView] documentView] layout];
 #if !PLATFORM(IOS_FAMILY)
     NSEventType eventType = eventTypeForMouseButtonAndAction(buttonNumber, MouseUp);
-    NSEvent *event = [NSEvent mouseEventWithType:eventType
+    auto event = retainPtr([NSEvent mouseEventWithType:eventType
                                         location:lastMousePosition 
                                    modifierFlags:buildModifierFlags(modifiers)
                                        timestamp:[self currentEventTime]
@@ -684,11 +686,11 @@ static NSUInteger swizzledEventPressedMouseButtons()
                                          context:[NSGraphicsContext currentContext] 
                                      eventNumber:++eventNumber 
                                       clickCount:clickCount 
-                                        pressure:0.0];
+                                        pressure:0.0]);
 #else
-    WebEvent *event = [[WebEvent alloc] initWithMouseEventType:WebEventMouseUp
+    auto event = adoptNS([[WebEvent alloc] initWithMouseEventType:WebEventMouseUp
                                                      timeStamp:[self currentEventTime]
-                                                      location:lastMousePosition];
+                                                      location:lastMousePosition]);
 #endif
 
     NSView *targetView = [[mainFrame webView] hitTest:[event locationInWindow]];
@@ -698,13 +700,13 @@ static NSUInteger swizzledEventPressedMouseButtons()
     targetView = targetView ? targetView : [[mainFrame frameView] documentView];
     assert(targetView);
 #if !PLATFORM(IOS_FAMILY)
-    [NSApp _setCurrentEvent:event];
+    [NSApp _setCurrentEvent:event.get()];
 #endif
     {
 #if !PLATFORM(IOS_FAMILY)
-        auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(targetView, event);
+        auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(targetView, event.get());
 #endif
-        [targetView mouseUp:event];
+        [targetView mouseUp:event.get()];
     }
 #if !PLATFORM(IOS_FAMILY)
     [NSApp _setCurrentEvent:nil];
@@ -717,22 +719,16 @@ static NSUInteger swizzledEventPressedMouseButtons()
     if (draggingInfo) {
         WebView *webView = [mainFrame webView];
         
-        NSDragOperation dragOperation = [webView draggingUpdated:draggingInfo];
-        
+        NSDragOperation dragOperation = [webView draggingUpdated:draggingInfo.get()];
         if (dragOperation != NSDragOperationNone)
-            [webView performDragOperation:draggingInfo];
+            [webView performDragOperation:draggingInfo.get()];
         else
-            [webView draggingExited:draggingInfo];
+            [webView draggingExited:draggingInfo.get()];
         // Per NSDragging.h: draggingSources may not implement draggedImage:endedAt:operation:
         if ([[draggingInfo draggingSource] respondsToSelector:@selector(draggedImage:endedAt:operation:)])
             [[draggingInfo draggingSource] draggedImage:[draggingInfo draggedImage] endedAt:lastMousePosition operation:dragOperation];
-        [draggingInfo release];
         draggingInfo = nil;
     }
-#endif
-
-#if PLATFORM(IOS_FAMILY)
-    [event release];
 #endif
 }
 
@@ -757,7 +753,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
     NSView *view = [mainFrame webView];
 #if !PLATFORM(IOS_FAMILY)
     NSPoint newMousePosition = [view convertPoint:NSMakePoint(x, [view frame].size.height - y) toView:nil];
-    NSEvent *event = [NSEvent mouseEventWithType:(leftMouseButtonDown ? NSEventTypeLeftMouseDragged : NSEventTypeMouseMoved)
+    auto event = retainPtr([NSEvent mouseEventWithType:(leftMouseButtonDown ? NSEventTypeLeftMouseDragged : NSEventTypeMouseMoved)
                                         location:newMousePosition
                                    modifierFlags:0 
                                        timestamp:[self currentEventTime]
@@ -765,23 +761,23 @@ static NSUInteger swizzledEventPressedMouseButtons()
                                          context:[NSGraphicsContext currentContext] 
                                      eventNumber:++eventNumber 
                                       clickCount:(leftMouseButtonDown ? clickCount : 0) 
-                                        pressure:0.0];
-    CGEventRef cgEvent = event.CGEvent;
+                                        pressure:0.0]);
+    CGEventRef cgEvent = [event CGEvent];
     CGEventSetIntegerValueField(cgEvent, kCGMouseEventDeltaX, newMousePosition.x - lastMousePosition.x);
     CGEventSetIntegerValueField(cgEvent, kCGMouseEventDeltaY, newMousePosition.y - lastMousePosition.y);
-    event = [NSEvent eventWithCGEvent:cgEvent];
+    event = retainPtr([NSEvent eventWithCGEvent:cgEvent]);
     lastMousePosition = newMousePosition;
 #else
     lastMousePosition = [view convertPoint:NSMakePoint(x, y) toView:nil];
-    WebEvent *event = [[WebEvent alloc] initWithMouseEventType:WebEventMouseMoved
+    auto event = adoptNS([[WebEvent alloc] initWithMouseEventType:WebEventMouseMoved
                                                      timeStamp:[self currentEventTime]
-                                                      location:lastMousePosition];
+                                                      location:lastMousePosition]);
 #endif // !PLATFORM(IOS_FAMILY)
 
     NSView *subView = [[mainFrame webView] hitTest:[event locationInWindow]];
     if (subView) {
 #if !PLATFORM(IOS_FAMILY)
-        [NSApp _setCurrentEvent:event];
+        [NSApp _setCurrentEvent:event.get()];
 #endif
         if (leftMouseButtonDown) {
 #if !PLATFORM(IOS_FAMILY)
@@ -789,28 +785,24 @@ static NSUInteger swizzledEventPressedMouseButtons()
                 // Per NSDragging.h: draggingSources may not implement draggedImage:movedTo:
                 if ([[draggingInfo draggingSource] respondsToSelector:@selector(draggedImage:movedTo:)])
                     [[draggingInfo draggingSource] draggedImage:[draggingInfo draggedImage] movedTo:lastMousePosition];
-                [[mainFrame webView] draggingUpdated:draggingInfo];
+                [[mainFrame webView] draggingUpdated:draggingInfo.get()];
             } else {
 #if !PLATFORM(IOS_FAMILY)
-                auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event);
+                auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event.get());
 #endif
-                [subView mouseDragged:event];
+                [subView mouseDragged:event.get()];
             }
 #endif
         } else {
 #if !PLATFORM(IOS_FAMILY)
-            auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event);
+            auto eventPressedMouseButtonsSwizzler = eventPressedMouseButtonsSwizzlerForViewAndEvent(subView, event.get());
 #endif
-            [subView mouseMoved:event];
+            [subView mouseMoved:event.get()];
         }
 #if !PLATFORM(IOS_FAMILY)
         [NSApp _setCurrentEvent:nil];
 #endif
     }
-
-#if PLATFORM(IOS_FAMILY)
-    [event release];
-#endif
 }
 
 - (void)mouseScrollByX:(int)x andY:(int)y continuously:(BOOL)continuously
@@ -956,18 +948,20 @@ static NSUInteger swizzledEventPressedMouseButtons()
 
 + (void)saveEvent:(NSInvocation *)event
 {
-    if (!savedMouseEvents)
-        savedMouseEvents = [[NSMutableArray alloc] init];
-    [savedMouseEvents addObject:event];
+    auto& savedEvents = savedMouseEvents();
+    if (!savedEvents)
+        savedEvents = adoptNS([[NSMutableArray alloc] init]);
+    [savedEvents addObject:event];
 }
 
 + (void)replaySavedEvents
 {
     replayingSavedEvents = YES;
-    while ([savedMouseEvents count]) {
+    auto& savedEvents = savedMouseEvents();
+    while ([savedEvents count]) {
         // if a drag is initiated, the remaining saved events will be dispatched from our dragging delegate
-        NSInvocation *invocation = [[[savedMouseEvents objectAtIndex:0] retain] autorelease];
-        [savedMouseEvents removeObjectAtIndex:0];
+        auto invocation = retainPtr(savedEvents.get()[0]);
+        [savedEvents removeObjectAtIndex:0];
         [invocation invoke];
     }
     replayingSavedEvents = NO;
@@ -975,8 +969,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
 
 + (void)clearSavedEvents
 {
-    [savedMouseEvents release];
-    savedMouseEvents = nil;
+    savedMouseEvents() = nil;
 }
 
 - (void)keyDown:(NSString *)character withModifiers:(WebScriptObject *)modifiers withLocation:(unsigned long)location
@@ -1167,7 +1160,7 @@ static NSUInteger swizzledEventPressedMouseButtons()
     [[[mainFrame frameView] documentView] layout];
 
 #if !PLATFORM(IOS_FAMILY)
-    NSEvent *event = [NSEvent keyEventWithType:NSEventTypeKeyDown
+    auto event = retainPtr([NSEvent keyEventWithType:NSEventTypeKeyDown
                         location:NSMakePoint(5, 5)
                         modifierFlags:modifierFlags
                         timestamp:[self currentEventTime]
@@ -1176,21 +1169,21 @@ static NSUInteger swizzledEventPressedMouseButtons()
                         characters:eventCharacter
                         charactersIgnoringModifiers:charactersIgnoringModifiers
                         isARepeat:NO
-                        keyCode:keyCode];
+                        keyCode:keyCode]);
 #else
-    WebEvent *event = [[WebEvent alloc] initWithKeyEventType:WebEventKeyDown timeStamp:[self currentEventTime] characters:eventCharacter charactersIgnoringModifiers:charactersIgnoringModifiers modifiers:(WebEventFlags)modifierFlags isRepeating:NO withFlags:0 withInputManagerHint:nil keyCode:[character characterAtIndex:0] isTabKey:([character characterAtIndex:0] == '\t')];
+    auto event = adoptNS([[WebEvent alloc] initWithKeyEventType:WebEventKeyDown timeStamp:[self currentEventTime] characters:eventCharacter charactersIgnoringModifiers:charactersIgnoringModifiers modifiers:(WebEventFlags)modifierFlags isRepeating:NO withFlags:0 withInputManagerHint:nil keyCode:[character characterAtIndex:0] isTabKey:([character characterAtIndex:0] == '\t')]);
 #endif
 
 #if !PLATFORM(IOS_FAMILY)
-    [NSApp _setCurrentEvent:event];
+    [NSApp _setCurrentEvent:event.get()];
 #endif
-    [[[[mainFrame webView] window] firstResponder] keyDown:event];
+    [[[[mainFrame webView] window] firstResponder] keyDown:event.get()];
 #if !PLATFORM(IOS_FAMILY)
     [NSApp _setCurrentEvent:nil];
 #endif
 
 #if !PLATFORM(IOS_FAMILY)
-    event = [NSEvent keyEventWithType:NSEventTypeKeyUp
+    event = retainPtr([NSEvent keyEventWithType:NSEventTypeKeyUp
                         location:NSMakePoint(5, 5)
                         modifierFlags:modifierFlags
                         timestamp:[self currentEventTime]
@@ -1199,22 +1192,17 @@ static NSUInteger swizzledEventPressedMouseButtons()
                         characters:eventCharacter
                         charactersIgnoringModifiers:charactersIgnoringModifiers
                         isARepeat:NO
-                        keyCode:keyCode];
+                        keyCode:keyCode]);
 #else
-    [event release];
-    event = [[WebEvent alloc] initWithKeyEventType:WebEventKeyUp timeStamp:[self currentEventTime] characters:eventCharacter charactersIgnoringModifiers:charactersIgnoringModifiers modifiers:(WebEventFlags)modifierFlags isRepeating:NO withFlags:0 withInputManagerHint:nil keyCode:[character characterAtIndex:0] isTabKey:([character characterAtIndex:0] == '\t')];
+    event = adoptNS([[WebEvent alloc] initWithKeyEventType:WebEventKeyUp timeStamp:[self currentEventTime] characters:eventCharacter charactersIgnoringModifiers:charactersIgnoringModifiers modifiers:(WebEventFlags)modifierFlags isRepeating:NO withFlags:0 withInputManagerHint:nil keyCode:[character characterAtIndex:0] isTabKey:([character characterAtIndex:0] == '\t')]);
 #endif
 
 #if !PLATFORM(IOS_FAMILY)
-    [NSApp _setCurrentEvent:event];
+    [NSApp _setCurrentEvent:event.get()];
 #endif
-    [[[[mainFrame webView] window] firstResponder] keyUp:event];
+    [[[[mainFrame webView] window] firstResponder] keyUp:event.get()];
 #if !PLATFORM(IOS_FAMILY)
     [NSApp _setCurrentEvent:nil];
-#endif
-
-#if PLATFORM(IOS_FAMILY)
-    [event release];
 #endif
 }
 
@@ -1270,7 +1258,8 @@ static NSUInteger swizzledEventPressedMouseButtons()
     }
     
     if ([event isKindOfClass:[DOMKeyboardEvent class]]) {
-        printf("  keyIdentifier: %s\n", [[(DOMKeyboardEvent*)event keyIdentifier] UTF8String]);
+        auto keyIdentifier = [(DOMKeyboardEvent*)event keyIdentifier];
+        printf("  keyIdentifier:%s%s\n", keyIdentifier.length ? " " : "", [keyIdentifier UTF8String]);
         printf("  keyLocation:   %d\n", [(DOMKeyboardEvent*)event location]);
         printf("  modifier keys: c:%d s:%d a:%d m:%d\n", 
                [(DOMKeyboardEvent*)event ctrlKey] ? 1 : 0, 
@@ -1493,9 +1482,9 @@ static NSUInteger swizzledEventPressedMouseButtons()
 
 - (void)sentTouchEventOfType:(WebEventType)type
 {
-    NSMutableArray *touchLocations = [[NSMutableArray alloc] initWithCapacity:[touches count]];
-    NSMutableArray *touchIdentifiers = [[NSMutableArray alloc] initWithCapacity:[touches count]];
-    NSMutableArray *touchPhases = [[NSMutableArray alloc] initWithCapacity:[touches count]];
+    auto touchLocations = adoptNS([[NSMutableArray alloc] initWithCapacity:[touches count]]);
+    auto touchIdentifiers = adoptNS([[NSMutableArray alloc] initWithCapacity:[touches count]]);
+    auto touchPhases = adoptNS([[NSMutableArray alloc] initWithCapacity:[touches count]]);
     
     CGPoint centroid = CGPointZero;
     NSUInteger touchesDownCount = 0;
@@ -1519,25 +1508,20 @@ static NSUInteger swizzledEventPressedMouseButtons()
     else
         centroid = CGPointZero;
 
-    WebEvent *event = [[WebEvent alloc] initWithTouchEventType:type
+    auto event = adoptNS([[WebEvent alloc] initWithTouchEventType:type
                                         timeStamp:[self currentEventTime]
                                         location:centroid
                                         modifiers:(WebEventFlags)nextEventFlags
                                         touchCount:[touches count]
-                                        touchLocations:touchLocations
-                                        touchIdentifiers:touchIdentifiers
-                                        touchPhases:touchPhases
+                                        touchLocations:touchLocations.get()
+                                        touchIdentifiers:touchIdentifiers.get()
+                                        touchPhases:touchPhases.get()
                                         isGesture:(touchesDownCount > 1)
                                         gestureScale:1
-                                        gestureRotation:0];
+                                        gestureRotation:0]);
     // Ensure that layout is up-to-date so that hit-testing through WAKViews works correctly.
     [mainFrame updateLayout];
-    [[[mainFrame webView] window] sendEventSynchronously:event];
-    [event release];
-    
-    [touchLocations release];
-    [touchIdentifiers release];
-    [touchPhases release];
+    [[[mainFrame webView] window] sendEventSynchronously:event.get()];
     
     nextEventFlags = 0;
 }
@@ -1556,28 +1540,26 @@ static NSUInteger swizzledEventPressedMouseButtons()
 {
     [self sentTouchEventOfType:WebEventTouchEnd];
 
-    NSMutableArray *touchesToRemove = [[NSMutableArray alloc] init];
+    auto touchesToRemove = adoptNS([[NSMutableArray alloc] init]);
     for (SyntheticTouch *currTouch in touches) {
         if (currTouch.phase == UITouchPhaseEnded)
             [touchesToRemove addObject:currTouch];
     }
 
-    [touches removeObjectsInArray:touchesToRemove];
-    [touchesToRemove release];
+    [touches removeObjectsInArray:touchesToRemove.get()];
 }
 
 - (void)touchCancel
 {
     [self sentTouchEventOfType:WebEventTouchCancel];
 
-    NSMutableArray *touchesToRemove = [[NSMutableArray alloc] init];
+    auto touchesToRemove = adoptNS([[NSMutableArray alloc] init]);
     for (SyntheticTouch *currTouch in touches) {
         if (currTouch.phase == UITouchPhaseCancelled)
             [touchesToRemove addObject:currTouch];
     }
 
-    [touches removeObjectsInArray:touchesToRemove];
-    [touchesToRemove release];
+    [touches removeObjectsInArray:touchesToRemove.get()];
 }
 #endif
 

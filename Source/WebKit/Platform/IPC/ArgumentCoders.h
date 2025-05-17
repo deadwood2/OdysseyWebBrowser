@@ -25,8 +25,8 @@
 
 #pragma once
 
-#include "Decoder.h"
-#include "Encoder.h"
+#include "ArgumentCoder.h"
+#include "ArrayReference.h"
 #include <utility>
 #include <wtf/Box.h>
 #include <wtf/CheckedArithmetic.h>
@@ -50,6 +50,55 @@ template<typename T> struct SimpleArgumentCoder {
     static WARN_UNUSED_RETURN bool decode(Decoder& decoder, T& t)
     {
         return decoder.decodeFixedLengthData(reinterpret_cast<uint8_t*>(&t), sizeof(T), alignof(T));
+    }
+};
+
+template<typename T, size_t Extent> struct ArgumentCoder<ArrayReference<T, Extent>> {
+    using ArrayReferenceType = ArrayReference<T, Extent>;
+    template<typename Encoder>
+    static void encode(Encoder& encoder, const ArrayReferenceType& arrayReference)
+    {
+        if (!Extent)
+            return;
+        encoder.encodeFixedLengthData(reinterpret_cast<const uint8_t*>(arrayReference.data()), arrayReference.size() * sizeof(T), alignof(T));
+    }
+    static Optional<ArrayReferenceType> decode(Decoder& decoder)
+    {
+        if (!Extent)
+            return ArrayReferenceType();
+        const uint8_t* data = decoder.decodeFixedLengthReference(Extent * sizeof(T), alignof(T));
+        if (!data)
+            return WTF::nullopt;
+        return ArrayReferenceType(reinterpret_cast<const T*>(data), Extent);
+    }
+};
+
+template<typename T> struct ArgumentCoder<ArrayReference<T, arrayReferenceDynamicExtent>> {
+    using ArrayReferenceType = ArrayReference<T, arrayReferenceDynamicExtent>;
+    template<typename Encoder>
+    static void encode(Encoder& encoder, const ArrayReferenceType& arrayReference)
+    {
+        encoder << static_cast<uint64_t>(arrayReference.size());
+        if (!arrayReference.size())
+            return;
+        encoder.encodeFixedLengthData(reinterpret_cast<const uint8_t*>(arrayReference.data()), arrayReference.size() * sizeof(T), alignof(T));
+    }
+    static Optional<ArrayReferenceType> decode(Decoder& decoder)
+    {
+        uint64_t size;
+        if (!decoder.decode(size))
+            return WTF::nullopt;
+        if (!size)
+            return ArrayReferenceType();
+
+        auto dataSize = CheckedSize { size } * sizeof(T);
+        if (UNLIKELY(dataSize.hasOverflowed()))
+            return WTF::nullopt;
+
+        const uint8_t* data = decoder.decodeFixedLengthReference(dataSize.unsafeGet(), alignof(T));
+        if (!data)
+            return WTF::nullopt;
+        return ArrayReferenceType(reinterpret_cast<const T*>(data), static_cast<size_t>(size));
     }
 };
 
@@ -219,6 +268,7 @@ template<typename T, typename U> struct ArgumentCoder<std::pair<T, U>> {
 
 template<size_t index, typename... Elements>
 struct TupleEncoder {
+    template<typename Encoder>
     static void encode(Encoder& encoder, const std::tuple<Elements...>& tuple)
     {
         encoder << std::get<sizeof...(Elements) - index>(tuple);
@@ -228,6 +278,7 @@ struct TupleEncoder {
 
 template<typename... Elements>
 struct TupleEncoder<0, Elements...> {
+    template<typename Encoder>
     static void encode(Encoder&, const std::tuple<Elements...>&)
     {
     }
@@ -291,6 +342,7 @@ struct TupleDecoder<0> {
 };
 
 template<typename... Elements> struct ArgumentCoder<std::tuple<Elements...>> {
+    template<typename Encoder>
     static void encode(Encoder& encoder, const std::tuple<Elements...>& tuple)
     {
         TupleEncoder<sizeof...(Elements), Elements...>::encode(encoder, tuple);
@@ -327,6 +379,7 @@ template<typename KeyType, typename ValueType> struct ArgumentCoder<WTF::KeyValu
 template<bool fixedSizeElements, typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity> struct VectorArgumentCoder;
 
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity> struct VectorArgumentCoder<false, T, inlineCapacity, OverflowHandler, minCapacity> {
+    template<typename Encoder>
     static void encode(Encoder& encoder, const Vector<T, inlineCapacity, OverflowHandler, minCapacity>& vector)
     {
         encoder << static_cast<uint64_t>(vector.size());
@@ -364,6 +417,7 @@ template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t min
 };
 
 template<typename T, size_t inlineCapacity, typename OverflowHandler, size_t minCapacity> struct VectorArgumentCoder<true, T, inlineCapacity, OverflowHandler, minCapacity> {
+    template<typename Encoder>
     static void encode(Encoder& encoder, const Vector<T, inlineCapacity, OverflowHandler, minCapacity>& vector)
     {
         encoder << static_cast<uint64_t>(vector.size());
@@ -706,6 +760,7 @@ template<> struct ArgumentCoder<CString> {
 };
 
 template<> struct ArgumentCoder<String> {
+    template<typename Encoder>
     static void encode(Encoder&, const String&);
     static WARN_UNUSED_RETURN bool decode(Decoder&, String&);
     static Optional<String> decode(Decoder&);

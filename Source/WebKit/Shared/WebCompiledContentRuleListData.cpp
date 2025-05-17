@@ -38,7 +38,14 @@ void WebCompiledContentRuleListData::encode(IPC::Encoder& encoder) const
 {
     SharedMemory::Handle handle;
     data->createHandle(handle, SharedMemory::Protection::ReadOnly);
-    encoder << handle;
+    
+#if OS(DARWIN) || OS(WINDOWS)
+    // Exact data size is the last bytecode offset plus its size.
+    uint64_t dataSize = topURLFiltersBytecodeOffset + topURLFiltersBytecodeSize;
+#else
+    uint64_t dataSize = 0;
+#endif
+    encoder << SharedMemory::IPCHandle { WTFMove(handle), dataSize };
 
     encoder << conditionsApplyOnlyToDomainOffset;
     encoder << actionsOffset;
@@ -53,10 +60,10 @@ void WebCompiledContentRuleListData::encode(IPC::Encoder& encoder) const
 
 Optional<WebCompiledContentRuleListData> WebCompiledContentRuleListData::decode(IPC::Decoder& decoder)
 {
-    SharedMemory::Handle handle;
-    if (!decoder.decode(handle))
+    SharedMemory::IPCHandle ipcHandle;
+    if (!decoder.decode(ipcHandle))
         return WTF::nullopt;
-    RefPtr<SharedMemory> data = SharedMemory::map(handle, SharedMemory::Protection::ReadOnly);
+    RefPtr<SharedMemory> data = SharedMemory::map(ipcHandle.handle, SharedMemory::Protection::ReadOnly);
 
     Optional<unsigned> conditionsApplyOnlyToDomainOffset;
     decoder >> conditionsApplyOnlyToDomainOffset;

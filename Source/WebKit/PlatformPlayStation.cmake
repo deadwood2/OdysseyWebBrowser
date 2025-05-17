@@ -7,13 +7,26 @@ set(WebKit_USE_PREFIX_HEADER ON)
 list(APPEND WebProcess_SOURCES
     WebProcess/EntryPoint/playstation/WebProcessMain.cpp
 )
+list(APPEND WebProcess_PRIVATE_LIBRARIES
+    ${EGL_LIBRARIES}
+    OpenSSL::Crypto
+    WebKitRequirements::ProcessLauncher
+)
 
 list(APPEND NetworkProcess_SOURCES
     NetworkProcess/EntryPoint/playstation/NetworkProcessMain.cpp
 )
+list(APPEND NetworkProcess_PRIVATE_LIBRARIES
+    OpenSSL::Crypto
+    WebKitRequirements::ProcessLauncher
+)
 
 list(APPEND GPUProcess_SOURCES
     GPUProcess/EntryPoint/unix/GPUProcessMain.cpp
+)
+list(APPEND GPUProcess_PRIVATE_LIBRARIES
+    ${EGL_LIBRARIES}
+    WebKitRequirements::ProcessLauncher
 )
 
 list(APPEND WebKit_SOURCES
@@ -23,7 +36,6 @@ list(APPEND WebKit_SOURCES
     GPUProcess/playstation/GPUProcessPlayStation.cpp
 
     NetworkProcess/Classifier/WebResourceLoadStatisticsStore.cpp
-    NetworkProcess/Classifier/WebResourceLoadStatisticsTelemetry.cpp
 
     NetworkProcess/Cookies/curl/WebCookieManagerCurl.cpp
 
@@ -72,6 +84,8 @@ list(APPEND WebKit_SOURCES
     Shared/libwpe/NativeWebWheelEventLibWPE.cpp
     Shared/libwpe/WebEventFactory.cpp
 
+    Shared/playstation/WebCoreArgumentCodersPlayStation.cpp
+
     Shared/unix/AuxiliaryProcessMain.cpp
 
     UIProcess/BackingStore.cpp
@@ -88,6 +102,7 @@ list(APPEND WebKit_SOURCES
 
     UIProcess/API/C/playstation/WKContextConfigurationPlayStation.cpp
     UIProcess/API/C/playstation/WKPagePrivatePlayStation.cpp
+    UIProcess/API/C/playstation/WKRunloop.cpp
     UIProcess/API/C/playstation/WKView.cpp
 
     UIProcess/Automation/cairo/WebAutomationSessionCairo.cpp
@@ -132,6 +147,7 @@ list(APPEND WebKit_SOURCES
 list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/NetworkProcess/curl"
     "${WEBKIT_DIR}/Platform/IPC/unix"
+    "${WEBKIT_DIR}/Platform/classifier"
     "${WEBKIT_DIR}/Platform/generic"
     "${WEBKIT_DIR}/Shared/CoordinatedGraphics"
     "${WEBKIT_DIR}/Shared/CoordinatedGraphics/threadedcompositor"
@@ -139,6 +155,7 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/UIProcess/API/C/cairo"
     "${WEBKIT_DIR}/UIProcess/API/C/curl"
     "${WEBKIT_DIR}/UIProcess/API/C/playstation"
+    "${WEBKIT_DIR}/UIProcess/API/playstation"
     "${WEBKIT_DIR}/UIProcess/CoordinatedGraphics"
     "${WEBKIT_DIR}/UIProcess/playstation"
     "${WEBKIT_DIR}/WebProcess/WebCoreSupport/curl"
@@ -160,14 +177,7 @@ list(APPEND WebKit_PUBLIC_FRAMEWORK_HEADERS
 
     UIProcess/API/C/playstation/WKContextConfigurationPlayStation.h
     UIProcess/API/C/playstation/WKPagePrivatePlayStation.h
+    UIProcess/API/C/playstation/WKRunloop.h
     UIProcess/API/C/playstation/WKView.h
-)
-
-# Both PAL and WebCore are built as object libraries. The WebKit:: interface
-# targets are used. A limitation of that is the object files are not propagated
-# so they are added here.
-list(APPEND WebKit_PRIVATE_LIBRARIES
-    $<TARGET_OBJECTS:PAL>
-    $<TARGET_OBJECTS:WebCore>
-    WebKitRequirements::ProcessLauncher
+    UIProcess/API/C/playstation/WKViewClient.h
 )

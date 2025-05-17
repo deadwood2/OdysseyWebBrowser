@@ -25,6 +25,7 @@
 #include "WebKitDeviceInfoPermissionRequestPrivate.h"
 #include "WebKitFileChooserRequestPrivate.h"
 #include "WebKitGeolocationPermissionRequestPrivate.h"
+#include "WebKitMediaKeySystemPermissionRequestPrivate.h"
 #include "WebKitNavigationActionPrivate.h"
 #include "WebKitNotificationPermissionRequestPrivate.h"
 #include "WebKitPointerLockPermissionRequestPrivate.h"
@@ -283,6 +284,12 @@ private:
         webkitWebViewMakePermissionRequest(m_webView, WEBKIT_PERMISSION_REQUEST(geolocationPermissionRequest.get()));
     }
 
+    void decidePolicyForMediaKeySystemPermissionRequest(WebPageProxy&, API::SecurityOrigin&, const WTF::String& keySystem, CompletionHandler<void(bool)>&& completionHandler) final
+    {
+        auto permissionRequest = adoptGRef(webkitMediaKeySystemPermissionRequestCreate(MediaKeySystemPermissionRequest::create(keySystem, WTFMove(completionHandler))));
+        webkitWebViewMakePermissionRequest(m_webView, WEBKIT_PERMISSION_REQUEST(permissionRequest.get()));
+    }
+
     void decidePolicyForUserMediaPermissionRequest(WebPageProxy&, WebFrameProxy&, API::SecurityOrigin& userMediaDocumentOrigin, API::SecurityOrigin& topLevelDocumentOrigin, UserMediaPermissionRequestProxy& permissionRequest) final
     {
         GRefPtr<WebKitUserMediaPermissionRequest> userMediaPermissionRequest = adoptGRef(webkitUserMediaPermissionRequestCreate(permissionRequest, userMediaDocumentOrigin, topLevelDocumentOrigin));
@@ -322,7 +329,7 @@ private:
         gtk_widget_grab_focus(GTK_WIDGET(m_webView));
     }
 
-    void printFrame(WebPageProxy&, WebFrameProxy& frame, CompletionHandler<void()>&& completionHandler) final
+    void printFrame(WebPageProxy&, WebFrameProxy& frame, const WebCore::FloatSize&, CompletionHandler<void()>&& completionHandler) final
     {
         webkitWebViewPrintFrame(m_webView, &frame);
         completionHandler();

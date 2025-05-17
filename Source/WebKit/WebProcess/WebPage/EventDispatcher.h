@@ -29,6 +29,7 @@
 #include "Connection.h"
 #include "WebEvent.h"
 #include <WebCore/PageIdentifier.h>
+#include <WebCore/PlatformWheelEvent.h>
 #include <WebCore/WheelEventDeltaFilter.h>
 #include <memory>
 #include <wtf/HashMap.h>
@@ -51,6 +52,10 @@ namespace WebKit {
 class WebPage;
 class WebWheelEvent;
 
+#if ENABLE(IOS_TOUCH_EVENTS)
+class WebTouchEvent;
+#endif
+
 class EventDispatcher : public IPC::Connection::WorkQueueMessageReceiver {
 public:
     static Ref<EventDispatcher> create();
@@ -62,11 +67,13 @@ public:
 #endif
 
 #if ENABLE(IOS_TOUCH_EVENTS)
-    using TouchEventQueue = Vector<std::pair<WebTouchEvent, Optional<CallbackID>>, 1>;
+    using TouchEventQueue = Vector<std::pair<WebTouchEvent, CompletionHandler<void(bool)>>, 1>;
     void takeQueuedTouchEventsForPage(const WebPage&, TouchEventQueue&);
 #endif
 
     void initializeConnection(IPC::Connection*);
+
+    void notifyScrollingTreesDisplayWasRefreshed(WebCore::PlatformDisplayID);
 
 private:
     EventDispatcher();
@@ -77,15 +84,16 @@ private:
     // Message handlers
     void wheelEvent(WebCore::PageIdentifier, const WebWheelEvent&, bool canRubberBandAtLeft, bool canRubberBandAtRight, bool canRubberBandAtTop, bool canRubberBandAtBottom);
 #if ENABLE(IOS_TOUCH_EVENTS)
-    void touchEvent(WebCore::PageIdentifier, const WebTouchEvent&, Optional<CallbackID>);
+    void touchEvent(WebCore::PageIdentifier, const WebTouchEvent&, CompletionHandler<void(bool)>&&);
+    void touchEventWithoutCallback(WebCore::PageIdentifier, const WebTouchEvent&);
 #endif
 #if ENABLE(MAC_GESTURE_EVENTS)
     void gestureEvent(WebCore::PageIdentifier, const WebGestureEvent&);
 #endif
 
     // This is called on the main thread.
-    void dispatchWheelEvent(WebCore::PageIdentifier, const WebWheelEvent&);
-    void dispatchWheelEventViaMainThread(WebCore::PageIdentifier, const WebWheelEvent&);
+    void dispatchWheelEvent(WebCore::PageIdentifier, const WebWheelEvent&, OptionSet<WebCore::WheelEventProcessingSteps>);
+    void dispatchWheelEventViaMainThread(WebCore::PageIdentifier, const WebWheelEvent&, OptionSet<WebCore::WheelEventProcessingSteps>);
 
 #if ENABLE(IOS_TOUCH_EVENTS)
     void dispatchTouchEvents();

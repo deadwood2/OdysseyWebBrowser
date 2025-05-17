@@ -25,20 +25,19 @@
 
 #pragma once
 
-#include "ArgumentCoder.h"
 #include "Attachment.h"
 #include "MessageNames.h"
 #include "StringReference.h"
-#include <WebCore/ContextMenuItem.h>
+#include <WebCore/SharedBuffer.h>
 #include <wtf/OptionSet.h>
 #include <wtf/Vector.h>
 
 namespace IPC {
 
-class DataReference;
 enum class MessageFlags : uint8_t;
-enum class MessageName : uint16_t;
 enum class ShouldDispatchWhenWaitingForSyncReply : uint8_t;
+
+template<typename, typename> struct ArgumentCoder;
 
 class Encoder final {
     WTF_MAKE_FAST_ALLOCATED;
@@ -50,8 +49,7 @@ public:
     MessageName messageName() const { return m_messageName; }
     uint64_t destinationID() const { return m_destinationID; }
 
-    void setIsSyncMessage(bool);
-    bool isSyncMessage() const;
+    bool isSyncMessage() const { return messageIsSync(messageName()); }
 
     void setShouldDispatchMessageWhenWaitingForSyncReply(ShouldDispatchWhenWaitingForSyncReply);
     ShouldDispatchWhenWaitingForSyncReply shouldDispatchMessageWhenWaitingForSyncReply() const;
@@ -61,33 +59,12 @@ public:
     void wrapForTesting(std::unique_ptr<Encoder>);
 
     void encodeFixedLengthData(const uint8_t* data, size_t, size_t alignment);
-    void encodeVariableLengthByteArray(const DataReference&);
 
-    template<typename T, std::enable_if_t<!std::is_enum<typename std::remove_const_t<std::remove_reference_t<T>>>::value && !std::is_arithmetic<typename std::remove_const_t<std::remove_reference_t<T>>>::value>* = nullptr>
-    void encode(T&& t)
-    {
-        ArgumentCoder<typename std::remove_const<typename std::remove_reference<T>::type>::type>::encode(*this, std::forward<T>(t));
-    }
-
-    template<typename E, std::enable_if_t<std::is_enum<E>::value>* = nullptr>
-    Encoder& operator<<(E&& enumValue)
-    {
-        ASSERT(WTF::isValidEnum<E>(WTF::enumToUnderlyingType<E>(enumValue)));
-        encode(WTF::enumToUnderlyingType<E>(enumValue));
-        return *this;
-    }
-
-    template<typename T, std::enable_if_t<!std::is_enum<T>::value>* = nullptr>
+    template<typename T>
     Encoder& operator<<(T&& t)
     {
-        encode(std::forward<T>(t));
+        ArgumentCoder<std::remove_const_t<std::remove_reference_t<T>>, void>::encode(*this, std::forward<T>(t));
         return *this;
-    }
-
-    template<typename T, std::enable_if_t<std::is_arithmetic<T>::value>* = nullptr>
-    void encode(T value)
-    {
-        encodeFixedLengthData(reinterpret_cast<const uint8_t*>(&value), sizeof(T), alignof(T));
     }
 
     uint8_t* buffer() const { return m_buffer; }
@@ -95,20 +72,31 @@ public:
 
     void addAttachment(Attachment&&);
     Vector<Attachment> releaseAttachments();
+    void reserve(size_t);
 
     static const bool isIPCEncoder = true;
 
+    template<typename T>
+    static RefPtr<WebCore::SharedBuffer> encodeSingleObject(const T& object)
+    {
+        Encoder encoder(ConstructWithoutHeader);
+        encoder << object;
+
+        if (encoder.hasAttachments()) {
+            ASSERT_NOT_REACHED();
+            return nullptr;
+        }
+
+        return WebCore::SharedBuffer::create(encoder.buffer(), encoder.bufferSize());
+    }
+
 private:
-    void reserve(size_t);
+    enum ConstructWithoutHeaderTag { ConstructWithoutHeader };
+    Encoder(ConstructWithoutHeaderTag);
 
     uint8_t* grow(size_t alignment, size_t);
 
-    template<typename E, std::enable_if_t<std::is_enum<E>::value>* = nullptr>
-    void encode(E enumValue)
-    {
-        ASSERT(WTF::isValidEnum<E>(WTF::enumToUnderlyingType<E>(enumValue)));
-        encode(WTF::enumToUnderlyingType<E>(enumValue));
-    }
+    bool hasAttachments() const;
 
     void encodeHeader();
     const OptionSet<MessageFlags>& messageFlags() const;

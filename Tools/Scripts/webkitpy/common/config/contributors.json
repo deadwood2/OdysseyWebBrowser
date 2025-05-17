@@ -22,8 +22,7 @@
       ],
       "nicks" : [
          "aaron_chu"
-      ],
-      "status" : "committer"
+      ]
    },
    "Aaron Colwell" : {
       "emails" : [
@@ -58,8 +57,7 @@
       "expertise" : "Security, HTML parser, webkit-patch, FrameLoader (sadly), V8 Bindings, The Chromium Port",
       "nicks" : [
          "abarth"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Adam Bergkvist" : {
       "emails" : [
@@ -146,8 +144,8 @@
    },
    "Aditya Keerthi" : {
       "emails" : [
-         "pxlcoder@gmail.com",
-         "akeerthi@apple.com"
+         "akeerthi@apple.com",
+         "pxlcoder@gmail.com"
       ],
       "nicks" : [
          "akeerthi"
@@ -348,11 +346,11 @@
       "emails" : [
          "shvaikalesh@gmail.com"
       ],
-      "expertise" : "JavaScript/ECMAScript",
+      "expertise" : "JavaScript/ECMAScript, JavaScript DOM Bindings",
       "nicks" : [
          "shvaikalesh"
       ],
-      "status" : "committer"
+      "status" : "reviewer"
    },
    "Alexis Menard" : {
       "emails" : [
@@ -607,8 +605,7 @@
       "emails" : [
          "andy@vanwagoner.family"
       ],
-      "expertise" : "JavaScriptCore Intl APIs",
-      "status" : "committer"
+      "expertise" : "JavaScriptCore Intl APIs"
    },
    "Andy Wingo" : {
       "emails" : [
@@ -662,8 +659,8 @@
    },
    "Antoine Quint" : {
       "emails" : [
-         "graouts@apple.com",
-         "graouts@webkit.org"
+         "graouts@webkit.org",
+         "graouts@apple.com"
       ],
       "nicks" : [
          "graouts"
@@ -713,8 +710,7 @@
       "expertise" : "{BlackBerry, EFL, Qt}WebKit ports, Hit testing, Touch/Event handling, Rendering and scrolling",
       "nicks" : [
          "tonikitoo"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Antti Koivisto" : {
       "emails" : [
@@ -784,6 +780,18 @@
       "nicks" : [
          "AryehGregor"
       ]
+   },
+   "BJ Burg" : {
+      "emails" : [
+         "bburg@apple.com",
+         "burg@cs.washington.edu"
+      ],
+      "expertise" : "Developer Tools, Web Inspector, WebDriver, Cocoa API",
+      "nicks" : [
+         "bburg",
+         "burg"
+      ],
+      "status" : "reviewer"
    },
    "Babak Shafiei" : {
       "emails" : [
@@ -903,8 +911,7 @@
       "expertise" : "The Rendering, Performance, Mobile stuff, Touch support.",
       "nicks" : [
          "benjaminp"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Beth Dakin" : {
       "aliases" : [
@@ -967,18 +974,6 @@
       "nicks" : [
          "brettx"
       ]
-   },
-   "Brian Burg" : {
-      "emails" : [
-         "bburg@apple.com",
-         "burg@cs.washington.edu"
-      ],
-      "expertise" : "Developer Tools, Web Inspector",
-      "nicks" : [
-         "bburg",
-         "brrian"
-      ],
-      "status" : "reviewer"
    },
    "Brian Holt" : {
       "emails" : [
@@ -1227,6 +1222,16 @@
          "cfleizach"
       ],
       "status" : "reviewer"
+   },
+   "Chris Gambrell" : {
+      "emails" : [
+         "cgambrell@apple.com"
+      ],
+      "expertise" : "CGI, PHP, and Python",
+      "nicks" : [
+         "ChrisGambrell"
+      ],
+      "status" : "committer"
    },
    "Chris Guillory" : {
       "emails" : [
@@ -1616,8 +1621,7 @@
       ],
       "nicks" : [
          "deanj"
-      ],
-      "status" : "committer"
+      ]
    },
    "Denis Nomiyama" : {
       "emails" : [
@@ -1713,8 +1717,7 @@
       "expertise" : "Cairo graphics backend, Canvas, SVG (Scalable Vector Graphics)",
       "nicks" : [
          "krit"
-      ],
-      "status" : "committer"
+      ]
    },
    "Dmitry Gorbik" : {
       "emails" : [
@@ -1767,8 +1770,7 @@
       ],
       "nicks" : [
          "dinfuehr"
-      ],
-      "status" : "committer"
+      ]
    },
    "Dominik R\u00f6ttsches" : {
       "emails" : [
@@ -2051,6 +2053,16 @@
          "fsamuel"
       ]
    },
+   "Federico Bucchi" : {
+      "emails" : [
+         "fbucchi@apple.com",
+         "b.federico@gmail.com"
+      ],
+      "nicks" : [
+         "fbucchi",
+         "federicobucchi"
+      ]
+   },
    "Feng Qian" : {
       "emails" : [
          "feng@chromium.org"
@@ -2177,6 +2189,11 @@
          "gavinp"
       ]
    },
+   "Geoff Lang" : {
+      "emails" : [
+         "geofflang@google.com"
+      ]
+   },
    "Geoffrey Garen" : {
       "aliases" : [
          "Geoff Garen"
@@ -2283,11 +2300,13 @@
    },
    "Guowei Yang" : {
       "emails" : [
-         "guowei_yang@apple.com"
+         "frankhome61@hotmail.com",
+         "guowei@framiere.com"
       ],
       "nicks" : [
          "frank"
-      ]
+      ],
+      "status" : "committer"
    },
    "Gurpreet Kaur" : {
       "emails" : [
@@ -2333,8 +2352,7 @@
       "expertise" : "The EFLWebKit Port, Navigator Content Utils, CMake build system",
       "nicks" : [
          "gyuyoung"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Hajime Morrita" : {
       "emails" : [
@@ -2541,8 +2559,7 @@
          "jfb",
          "jfb_",
          "jfbastien"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Jack Lee" : {
       "emails" : [
@@ -2630,8 +2647,9 @@
       ],
       "expertise" : "WebGL (Chromium and Safari ports)",
       "nicks" : [
-         "darpinian"
-      ]
+         "jdarpinian"
+      ],
+      "status" : "committer"
    },
    "James Hawkins" : {
       "emails" : [
@@ -2801,8 +2819,7 @@
       ],
       "nicks" : [
          "jeremyj"
-      ],
-      "status" : "committer"
+      ]
    },
    "Jeremy Moskovich" : {
       "emails" : [
@@ -2831,8 +2848,7 @@
       ],
       "nicks" : [
          "jessieberlin"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Jesus Sanchez-Palencia" : {
       "emails" : [
@@ -3041,6 +3057,11 @@
       ],
       "status" : "reviewer"
    },
+   "Jonah Ryan-Davis" : {
+      "emails" : [
+         "jonahr@google.com"
+      ]
+   },
    "Jonathan Backer" : {
       "emails" : [
          "backer@chromium.org"
@@ -3051,11 +3072,13 @@
    },
    "Jonathan Bedard" : {
       "emails" : [
-         "jbedard@apple.com"
+         "jbedard@apple.com",
+         "jbedard@webkit.org"
       ],
-      "expertise" : "webkitpy",
+      "expertise" : "webkitpy, Python, testing",
       "nicks" : [
-         "jbedard"
+         "jbedard",
+         "JonWBedard"
       ],
       "status" : "reviewer"
    },
@@ -3215,8 +3238,8 @@
    },
    "Justin Michaud" : {
       "emails" : [
-         "justin_michaud@apple.com",
-         "justin@justinmichaud.com"
+         "justin@justinmichaud.com",
+         "justin_michaud@apple.com"
       ],
       "status" : "committer"
    },
@@ -3342,6 +3365,9 @@
    "Ken Kocienda" : {
       "emails" : [
          "kocienda@apple.com"
+      ],
+      "nicks" : [
+         "kocienda"
       ]
    },
    "Kenichi Ishibashi" : {
@@ -3465,13 +3491,13 @@
    },
    "Kimmo Kinnunen" : {
       "emails" : [
-         "kimmo.t.kinnunen@nokia.com",
-         "kimmok@iki.fi",
-         "ktkinnun@webkit.org"
+         "kkinnunen@apple.com"
       ],
+      "expertise" : "WebGL",
       "nicks" : [
          "kimmok"
-      ]
+      ],
+      "status" : "committer"
    },
    "Kinuko Yasuda" : {
       "emails" : [
@@ -3708,8 +3734,7 @@
       ],
       "nicks" : [
          "lforschler"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Luciano Wolf" : {
       "emails" : [
@@ -3738,6 +3763,11 @@
          "macpherson"
       ]
    },
+   "Luming Yin" : {
+      "emails" : [
+         "luming_yin@apple.com"
+      ]
+   },
    "L\u00e1szl\u00f3 Lang\u00f3" : {
       "emails" : [
          "llango.u-szeged@partner.samsung.com",
@@ -3753,7 +3783,8 @@
       ],
       "expertise" : "JavaScript/ECMAScript, Performance, Security, Basic types and data structures, FastMalloc, DOM Bindings for JavaScript, Core DOM, HTML DOM, JavaScript DOM Bindings, WebKit API (Mac, Win), HTML Editing, Networking, Tools, New Features / Standards Support, General (probably a good backup on most topics even if not specifically an expert)",
       "nicks" : [
-         "othermaciej"
+         "othermaciej",
+         "mjs"
       ],
       "status" : "reviewer"
    },
@@ -3809,8 +3840,7 @@
       "expertise" : "WebKitGTK, Accessibility, WebKit2, Epiphany/WebKit Contributor",
       "nicks" : [
          "msanchez"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Mark Hahnenberg" : {
       "emails" : [
@@ -3875,7 +3905,8 @@
       "expertise" : "The WebKitGTK Port, Cairo graphics backend, soup HTTP backend",
       "nicks" : [
          "mrobinson"
-      ]
+      ],
+      "status" : "committer"
    },
    "Mary Wu" : {
       "emails" : [
@@ -3893,8 +3924,7 @@
       "expertise" : "Web Inspector",
       "nicks" : [
          "mattbaker"
-      ],
-      "status" : "reviewer"
+      ]
    },
    "Matt Daiter" : {
       "emails" : [
@@ -3957,8 +3987,7 @@
       ],
       "nicks" : [
          "mrajca"
-      ],
-      "status" : "committer"
+      ]
    },
    "Matthew Mirman" : {
       "emails" : [
@@ -4441,7 +4470,8 @@
       "expertise" : "Web Inspector",
       "nicks" : [
          "pangle"
-      ]
+      ],
+      "status" : "committer"
    },
    "Patrick Gansterer" : {
       "emails" : [
@@ -4460,7 +4490,8 @@
       "nicks" : [
          "pgriffis",
          "TingPing"
-      ]
+      ],
+      "status" : "committer"
    },
    "Paulo Matos" : {
       "emails" : [
@@ -4730,6 +4761,14 @@
          "rtoy"
       ]
    },
+   "Razvan Caliman" : {
+      "emails" : [
+         "rcaliman@apple.com"
+      ],
+      "nicks" : [
+         "rcaliman"
+      ]
+   },
    "Rebecca Hauck" : {
       "emails" : [
          "rhauck@adobe.com"
@@ -4774,12 +4813,12 @@
    },
    "Rob Buis" : {
       "emails" : [
+         "rbuis@igalia.com",
          "rwlbuis@gmail.com",
          "rwlbuis@webkit.org",
          "rob.buis@samsung.com",
          "rbuis@blackberry.com",
-         "rbuis@rim.com",
-         "rbuis@igalia.com"
+         "rbuis@rim.com"
       ],
       "expertise" : "KDE contributor, The QtWebKit Port, SVG (Scalable Vector Graphics)",
       "nicks" : [
@@ -4855,6 +4894,11 @@
          "rkirsling"
       ],
       "status" : "reviewer"
+   },
+   "Ruben Turcios" : {
+      "emails" : [
+         "rubent_22@apple.com"
+      ]
    },
    "Russell Epstein" : {
       "emails" : [
@@ -5014,6 +5058,14 @@
       ],
       "nicks" : [
          "seokju"
+      ]
+   },
+   "Sergey Rubanov" : {
+      "emails" : [
+         "chi187@gmail.com"
+      ],
+      "nicks" : [
+         "chicoxyzzy"
       ]
    },
    "Sergio Correia" : {
@@ -5314,6 +5366,14 @@
       ],
       "nicks" : [
          "tdanderson"
+      ]
+   },
+   "Tetsuharu Ohzeki" : {
+      "emails" : [
+         "tetsuharu.ohzeki@gmail.com"
+      ],
+      "nicks" : [
+         "tetsuharuohzeki"
       ]
    },
    "Theresa O'Connor" : {
@@ -5794,8 +5854,7 @@
    "Yoav Weiss" : {
       "emails" : [
          "yoav@yoav.ws"
-      ],
-      "status" : "committer"
+      ]
    },
    "Yong Li" : {
       "emails" : [
@@ -5811,8 +5870,7 @@
       "emails" : [
          "yongjun_zhang@apple.com",
          "yongjun.zhang@nokia.com"
-      ],
-      "status" : "committer"
+      ]
    },
    "Yoshiaki Jitsukawa" : {
       "emails" : [
@@ -5997,8 +6055,8 @@
    },
    "\u017dan Dober\u0161ek" : {
       "emails" : [
-         "zan@falconsigh.net",
          "zdobersek@igalia.com",
+         "zan@falconsigh.net",
          "zandobersek@gmail.com"
       ],
       "nicks" : [

@@ -151,18 +151,7 @@ enum {
 };
 typedef uint32_t WKMediaState;
 
-
 WK_EXPORT WKMediaState WKPageGetMediaState(WKPageRef page);
-
-enum {
-    kWKMediaEventTypePlayPause,
-    kWKMediaEventTypeTrackNext,
-    kWKMediaEventTypeTrackPrevious
-};
-typedef uint32_t WKMediaEventType;
-
-WK_EXPORT bool WKPageHasMediaSessionWithActiveMediaElements(WKPageRef page);
-WK_EXPORT void WKPageHandleMediaEvent(WKPageRef page, WKMediaEventType event);
 
 WK_EXPORT void WKPageLoadURLWithShouldOpenExternalURLsPolicy(WKPageRef page, WKURLRef url, bool shouldOpenExternalURLs);
 
@@ -180,23 +169,37 @@ typedef void (^WKPageGetApplicationManifestBlock)(void);
 WK_EXPORT void WKPageGetApplicationManifest_b(WKPageRef page, WKPageGetApplicationManifestBlock block);
 #endif
 
-typedef void (*WKPageDumpAdClickAttributionFunction)(WKStringRef adClickAttributionRepresentation, void* functionContext);
-WK_EXPORT void WKPageDumpAdClickAttribution(WKPageRef, WKPageDumpAdClickAttributionFunction, void* callbackContext);
-typedef void (*WKPageClearAdClickAttributionFunction)(void* functionContext);
-WK_EXPORT void WKPageClearAdClickAttribution(WKPageRef, WKPageClearAdClickAttributionFunction, void* callbackContext);
-typedef void (*WKPageSetAdClickAttributionOverrideTimerForTestingFunction)(void* functionContext);
-WK_EXPORT void WKPageSetAdClickAttributionOverrideTimerForTesting(WKPageRef page, bool value, WKPageSetAdClickAttributionOverrideTimerForTestingFunction callback, void* callbackContext);
-typedef void (*WKPageSetAdClickAttributionConversionURLForTestingFunction)(void* functionContext);
-WK_EXPORT void WKPageSetAdClickAttributionConversionURLForTesting(WKPageRef page, WKURLRef urlString, WKPageSetAdClickAttributionConversionURLForTestingFunction callback, void* callbackContext);
-typedef void (*WKPageMarkAdClickAttributionsAsExpiredForTestingFunction)(void* functionContext);
-WK_EXPORT void WKPageMarkAdClickAttributionsAsExpiredForTesting(WKPageRef page, WKPageMarkAdClickAttributionsAsExpiredForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageDumpPrivateClickMeasurementFunction)(WKStringRef privateClickMeasurementRepresentation, void* functionContext);
+WK_EXPORT void WKPageDumpPrivateClickMeasurement(WKPageRef, WKPageDumpPrivateClickMeasurementFunction, void* callbackContext);
+typedef void (*WKPageClearPrivateClickMeasurementFunction)(void* functionContext);
+WK_EXPORT void WKPageClearPrivateClickMeasurement(WKPageRef, WKPageClearPrivateClickMeasurementFunction, void* callbackContext);
+typedef void (*WKPageSetPrivateClickMeasurementOverrideTimerForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPrivateClickMeasurementOverrideTimerForTesting(WKPageRef page, bool value, WKPageSetPrivateClickMeasurementOverrideTimerForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTesting(WKPageRef page, WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageSimulateResourceLoadStatisticsSessionRestartFunction)(void* functionContext);
+WK_EXPORT void WKPageSimulateResourceLoadStatisticsSessionRestart(WKPageRef page, WKPageSimulateResourceLoadStatisticsSessionRestartFunction callback, void* callbackContext);
+typedef void (*WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTesting(WKPageRef page, WKURLRef urlString, WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageSetPrivateClickMeasurementTokenSignatureURLForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPrivateClickMeasurementTokenSignatureURLForTesting(WKPageRef page, WKURLRef urlString, WKPageSetPrivateClickMeasurementTokenSignatureURLForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageSetPrivateClickMeasurementAttributionReportURLForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPrivateClickMeasurementAttributionReportURLForTesting(WKPageRef page, WKURLRef urlString, WKPageSetPrivateClickMeasurementAttributionReportURLForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageMarkPrivateClickMeasurementsAsExpiredForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageMarkPrivateClickMeasurementsAsExpiredForTesting(WKPageRef page, WKPageMarkPrivateClickMeasurementsAsExpiredForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageSetFraudPreventionValuesForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetFraudPreventionValuesForTesting(WKPageRef page, WKStringRef secretToken, WKStringRef unlinkableToken, WKStringRef signature, WKStringRef keyID, WKPageSetFraudPreventionValuesForTestingFunction callback, void* callbackContext);
 
 WK_EXPORT void WKPageSetMockCameraOrientation(WKPageRef page, uint64_t orientation);
 WK_EXPORT bool WKPageIsMockRealtimeMediaSourceCenterEnabled(WKPageRef page);
 
-typedef void (*WKPageLoadedThirdPartyDomainsFunction)(WKArrayRef domains, void* functionContext);
-WK_EXPORT void WKPageLoadedThirdPartyDomains(WKPageRef page, WKPageLoadedThirdPartyDomainsFunction callback, void* callbackContext);
-WK_EXPORT void WKPageClearLoadedThirdPartyDomains(WKPageRef page);
+typedef void (*WKPageLoadedSubresourceDomainsFunction)(WKArrayRef domains, void* functionContext);
+WK_EXPORT void WKPageLoadedSubresourceDomains(WKPageRef page, WKPageLoadedSubresourceDomainsFunction callback, void* callbackContext);
+WK_EXPORT void WKPageClearLoadedSubresourceDomains(WKPageRef page);
+
+WK_EXPORT void WKPageSetMediaCaptureReportingDelayForTesting(WKPageRef page, double delay);
+
+WK_EXPORT void WKPageDispatchActivityStateUpdateForTesting(WKPageRef page);
 
 #ifdef __cplusplus
 }

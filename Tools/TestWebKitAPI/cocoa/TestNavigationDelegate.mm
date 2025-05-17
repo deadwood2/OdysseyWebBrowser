@@ -30,7 +30,9 @@
 #import <WebKit/WKWebViewPrivateForTesting.h>
 #import <wtf/RetainPtr.h>
 
-@implementation TestNavigationDelegate
+@implementation TestNavigationDelegate {
+    RetainPtr<NSError> _navigationError;
+}
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences *))decisionHandler
 {
@@ -124,6 +126,20 @@
     self.didFinishNavigation = nil;
 }
 
+- (void)waitForWebContentProcessDidTerminate
+{
+    EXPECT_FALSE(self.webContentProcessDidTerminate);
+
+    __block bool crashed = false;
+    self.webContentProcessDidTerminate = ^(WKWebView *) {
+        crashed = true;
+    };
+
+    TestWebKitAPI::Util::run(&crashed);
+
+    self.webContentProcessDidTerminate = nil;
+}
+
 - (void)waitForDidFinishNavigationWithPreferences:(WKWebpagePreferences *)preferences
 {
     EXPECT_FALSE(self.decidePolicyForNavigationActionWithPreferences);
@@ -137,18 +153,20 @@
     self.decidePolicyForNavigationActionWithPreferences = nil;
 }
 
-- (void)waitForDidFailProvisionalNavigation
+- (NSError *)waitForDidFailProvisionalNavigation
 {
     EXPECT_FALSE(self.didFailProvisionalNavigation);
 
     __block bool finished = false;
-    self.didFailProvisionalNavigation = ^(WKWebView *, WKNavigation *, NSError *) {
+    self.didFailProvisionalNavigation = ^(WKWebView *, WKNavigation *, NSError *error) {
+        _navigationError = error;
         finished = true;
     };
 
     TestWebKitAPI::Util::run(&finished);
 
     self.didFailProvisionalNavigation = nil;
+    return _navigationError.autorelease();
 }
 
 @end
@@ -205,6 +223,17 @@
     }];
     TestWebKitAPI::Util::run(&presentationUpdateHappened);
 #endif
+}
+
+- (void)_test_waitForWebContentProcessDidTerminate
+{
+    EXPECT_FALSE(self.navigationDelegate);
+
+    auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    self.navigationDelegate = navigationDelegate.get();
+    [navigationDelegate waitForWebContentProcessDidTerminate];
+
+    self.navigationDelegate = nil;
 }
 
 @end

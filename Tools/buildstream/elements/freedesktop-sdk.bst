@@ -4,15 +4,14 @@ sources:
 - kind: git_tag
   url: gitlab_com:freedesktop-sdk/freedesktop-sdk.git
   # Changed to track git commit from upstream bst
-  track: '19.08'
-  track-tags: true
-  ref: freedesktop-sdk-19.08.12-0-ga7778d9c98b5fbff712c2c8b17e3e804df9baaab
+  track: 'release/20.08'
+  ref: freedesktop-sdk-20.08.4-26-g4421da17dc0a37cc6bb159eceb64b839841c7392
 - kind: patch
   path: patches/nettle-no-debug.diff
 - kind: patch
-  path: patches/fdo/0001-Pango-Bump-to-1.45-master.patch
+  path: patches/fdo-0001-pango-Bump-to-1.47.patch
 - kind: patch
-  path: patches/fdo/0001-dav1d-Bump-to-0.7.0.patch
+  path: patches/fdo-0001-meson-Bump-to-0.56.1.patch
 config:
   options:
     target_arch: '%{arch}'

@@ -33,11 +33,14 @@
 #import <wtf/BlockPtr.h>
 #import <wtf/RunLoop.h>
 
+#import "AppAttestInternalSoftLink.h"
+#import "LocalAuthenticationSoftLink.h"
+
 #if USE(APPLE_INTERNAL_SDK)
 #import <WebKitAdditions/LocalConnectionAdditions.h>
+#else
+#define LOCAL_CONNECTION_ADDITIONS
 #endif
-
-#import "LocalAuthenticationSoftLink.h"
 
 namespace WebKit {
 using namespace WebCore;
@@ -99,6 +102,29 @@ void LocalConnection::verifyUser(const String& rpId, ClientDataType type, SecAcc
     [m_context evaluateAccessControl:accessControl operation:LAAccessControlOperationUseKeySign options:options.get() reply:reply.get()];
 }
 
+void LocalConnection::verifyUser(SecAccessControlRef accessControl, LAContext *context, CompletionHandler<void(UserVerification)>&& completionHandler)
+{
+    auto options = adoptNS([[NSMutableDictionary alloc] init]);
+    [options setObject:@YES forKey:@(LAOptionNotInteractive)];
+
+    auto reply = makeBlockPtr([completionHandler = WTFMove(completionHandler)] (NSDictionary *, NSError *error) mutable {
+        UserVerification verification = UserVerification::Yes;
+        if (error) {
+            LOG_ERROR("Couldn't authenticate with biometrics: %@", error);
+            verification = UserVerification::No;
+            if (error.code == LAErrorUserCancel)
+                verification = UserVerification::Cancel;
+        }
+
+        // This block can be executed in another thread.
+        RunLoop::main().dispatch([completionHandler = WTFMove(completionHandler), verification] () mutable {
+            completionHandler(verification);
+        });
+    });
+
+    [context evaluateAccessControl:accessControl operation:LAAccessControlOperationUseKeySign options:options.get() reply:reply.get()];
+}
+
 RetainPtr<SecKeyRef> LocalConnection::createCredentialPrivateKey(LAContext *context, SecAccessControlRef accessControlRef, const String& secAttrLabel, NSData *secAttrApplicationTag) const
 {
     NSDictionary *attributes = @{
@@ -113,6 +139,7 @@ RetainPtr<SecKeyRef> LocalConnection::createCredentialPrivateKey(LAContext *cont
             (id)kSecAttrLabel: secAttrLabel,
             (id)kSecAttrApplicationTag: secAttrApplicationTag,
         }};
+    LOCAL_CONNECTION_ADDITIONS
     CFErrorRef errorRef = nullptr;
     auto credentialPrivateKey = adoptCF(SecKeyCreateRandomKey((__bridge CFDictionaryRef)attributes, &errorRef));
     auto retainError = adoptCF(errorRef);
@@ -125,8 +152,10 @@ RetainPtr<SecKeyRef> LocalConnection::createCredentialPrivateKey(LAContext *cont
 
 void LocalConnection::getAttestation(SecKeyRef privateKey, NSData *authData, NSData *hash, AttestationCallback&& completionHandler) const
 {
-#if defined(LOCALCONNECTION_ADDITIONS)
-LOCALCONNECTION_ADDITIONS
+#if HAVE(APPLE_ATTESTATION)
+    AppAttest_WebAuthentication_AttestKey(privateKey, authData, hash, makeBlockPtr([completionHandler = WTFMove(completionHandler)] (NSArray *certificates, NSError *error) mutable {
+        completionHandler(certificates, error);
+    }).get());
 #endif
 }
 

@@ -37,7 +37,7 @@
 #include "Logging.h"
 #include "PlatformMediaSessionManager.h"
 #include "Timer.h"
-#include "WebAudioSourceProviderAVFObjC.h"
+#include "WebAudioSourceProviderCocoa.h"
 #include <AudioToolbox/AudioConverter.h>
 #include <AudioUnit/AudioUnit.h>
 #include <CoreMedia/CMSync.h>
@@ -611,10 +611,6 @@ CaptureSourceOrError CoreAudioCaptureSource::create(String&& deviceID, String&& 
         return { };
 
     auto source = adoptRef(*new CoreAudioCaptureSource(WTFMove(deviceID), String { device->label() }, WTFMove(hashSalt), 0));
-
-    // We ensure that we unsuspend ourselves on the constructor as a capture source
-    // is created when getUserMedia grants access which only happens when the process is foregrounded.
-    source->unit().prepareForNewCapture();
 #endif
     return initializeCoreAudioCaptureSource(WTFMove(source), constraints);
 }
@@ -691,6 +687,15 @@ CaptureDeviceManager& CoreAudioCaptureSourceFactory::audioCaptureDeviceManager()
 #endif
 }
 
+const Vector<CaptureDevice>& CoreAudioCaptureSourceFactory::speakerDevices() const
+{
+#if PLATFORM(MAC)
+    return CoreAudioCaptureDeviceManager::singleton().speakerDevices();
+#else
+    return AVAudioSessionCaptureDeviceManager::singleton().speakerDevices();
+#endif
+}
+
 void CoreAudioCaptureSourceFactory::devicesChanged(const Vector<CaptureDevice>& devices)
 {
     CoreAudioSharedUnit::unit().devicesChanged(devices);
@@ -702,6 +707,12 @@ CoreAudioCaptureSource::CoreAudioCaptureSource(String&& deviceID, String&& label
     , m_overrideUnit(overrideUnit)
 {
     auto& unit = this->unit();
+
+    // We ensure that we unsuspend ourselves on the constructor as a capture source
+    // is created when getUserMedia grants access which only happens when the process is foregrounded.
+    // We also reset unit capture values to default.
+    unit.prepareForNewCapture();
+
     initializeEchoCancellation(unit.enableEchoCancellation());
     initializeSampleRate(unit.sampleRate());
     initializeVolume(unit.volume());

@@ -60,14 +60,14 @@ public:
 
     IntSize frameSizeAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default) const final { return size(); }
     bool frameIsCompleteAtIndex(size_t index) const final { return sampleAtIndex(index); }
-    ImageOrientation frameOrientationAtIndex(size_t) const final;
+    ImageDecoder::FrameMetadata frameMetadataAtIndex(size_t) const final;
 
     Seconds frameDurationAtIndex(size_t) const final;
     bool frameHasAlphaAtIndex(size_t) const final;
     bool frameAllowSubsamplingAtIndex(size_t index) const final { return index <= m_sampleData.size(); }
     unsigned frameBytesAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default) const final;
 
-    NativeImagePtr createFrameImageAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default, const DecodingOptions& = DecodingOptions(DecodingMode::Synchronous)) final;
+    PlatformImagePtr createFrameImageAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default, const DecodingOptions& = DecodingOptions(DecodingMode::Synchronous)) final;
 
     void setExpectedContentSize(long long) final { }
     void setData(SharedBuffer&, bool allDataReceived) final;
@@ -111,7 +111,12 @@ private:
         ImageDecoderGStreamer& m_decoder;
         GRefPtr<GstElement> m_pipeline;
         GRefPtr<GInputStream> m_memoryStream;
+        GRefPtr<GstElement> m_decodebin;
         RunLoop& m_runLoop;
+
+        Condition m_messageCondition;
+        Lock m_messageLock;
+        bool m_messageDispatched { false };
     };
 
     void handleSample(GRefPtr<GstSample>&&);

@@ -40,8 +40,9 @@ from webkitpy.common.net.layouttestresults import LayoutTestResults
 from webkitpy.common.net.networktransaction import NetworkTransaction
 from webkitpy.common.net.regressionwindow import RegressionWindow
 from webkitpy.common.system.logutils import get_logger
-from webkitpy.thirdparty.autoinstalled.mechanize import Browser
 from webkitpy.thirdparty.BeautifulSoup import BeautifulSoup
+
+from mechanize import Browser
 
 if sys.version_info > (3, 0):
     from urllib.error import HTTPError, URLError
@@ -136,7 +137,7 @@ class Builder(object):
         def predicate(form):
             try:
                 return form.find_control("username")
-            except Exception as e:
+            except Exception:
                 return False
 
         if not self._browser:
@@ -314,7 +315,7 @@ class BuildBot(object):
             # If revision_string has non-digits assume it's not a revision number.
             builder['built_revision'] = int(revision_string) if not re.match(r'\D', revision_string) else None
 
-            # FIXME: We treat slave lost as green even though it is not to
+            # FIXME: We treat worker lost as green even though it is not to
             # work around the Qts bot being on a broken internet connection.
             # The real fix is https://bugs.webkit.org/show_bug.cgi?id=37099
             builder['is_green'] = not re.search('fail', string_utils.decode(cell.renderContents(), target_type=str)) or \
@@ -435,7 +436,6 @@ class BuildBot(object):
 
     def failure_map(self):
         failure_map = FailureMap()
-        revision_to_failing_bots = {}
         for builder_status in self.builder_statuses():
             if builder_status["is_green"]:
                 continue

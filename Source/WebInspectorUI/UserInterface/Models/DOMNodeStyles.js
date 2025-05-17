@@ -43,10 +43,15 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         this._computedStyle = null;
         this._orderedStyles = [];
 
+        this._computedPrimaryFont = null;
+
         this._propertyNameToEffectivePropertyMap = {};
 
         this._pendingRefreshTask = null;
         this.refresh();
+
+        this._trackedStyleSheets = new WeakSet;
+        WI.CSSStyleSheet.addEventListener(WI.CSSStyleSheet.Event.ContentDidChange, this._handleCSSStyleSheetContentDidChange, this);
     }
 
     // Static
@@ -123,6 +128,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
     get pseudoElements() { return this._pseudoElements; }
     get computedStyle() { return this._computedStyle; }
     get orderedStyles() { return this._orderedStyles; }
+    get computedPrimaryFont() { return this._computedPrimaryFont; }
 
     get needsRefresh()
     {
@@ -150,11 +156,10 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         this._needsRefresh = false;
 
-        let previousStylesMap = this._stylesMap.copy();
-
         let fetchedMatchedStylesPromise = new WI.WrappedPromise;
         let fetchedInlineStylesPromise = new WI.WrappedPromise;
         let fetchedComputedStylesPromise = new WI.WrappedPromise;
+        let fetchedFontDataPromise = new WI.WrappedPromise;
 
         // Ensure we resolve these promises even in the case of an error.
         function wrap(func, promise) {
@@ -188,6 +193,9 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             matchedRulesPayload = matchedRulesPayload || [];
             pseudoElementRulesPayload = pseudoElementRulesPayload || [];
             inheritedRulesPayload = inheritedRulesPayload || [];
+
+            this._previousStylesMap = this._stylesMap;
+            this._stylesMap = new Multimap;
 
             this._matchedRules = parseRuleMatchArrayPayload(matchedRulesPayload, this._node);
 
@@ -250,7 +258,8 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
             let significantChange = false;
             for (let [key, styles] of this._stylesMap.sets()) {
-                let previousStyles = previousStylesMap.get(key);
+                // Check if the same key exists in the previous map and has the same style objects.
+                let previousStyles = this._previousStylesMap.get(key);
                 if (previousStyles) {
                     // Some styles have selectors such that they will match with the DOM node twice (for example "::before, ::after").
                     // In this case a second style for a second matching may be generated and added which will cause the shallowEqual
@@ -284,7 +293,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             }
 
             if (!significantChange) {
-                for (let [key, previousStyles] of previousStylesMap.sets()) {
+                for (let [key, previousStyles] of this._previousStylesMap.sets()) {
                     // Check if the same key exists in current map. If it does exist it was already checked for equality above.
                     if (this._stylesMap.has(key))
                         continue;
@@ -302,11 +311,20 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
                 }
             }
 
+            this._previousStylesMap = null;
             this._includeUserAgentRulesOnNextRefresh = false;
 
-            this.dispatchEventToListeners(WI.DOMNodeStyles.Event.Refreshed, {significantChange});
+            fetchedComputedStylesPromise.resolve({significantChange});
+        }
 
-            fetchedComputedStylesPromise.resolve();
+        function fetchedFontData(error, fontDataPayload)
+        {
+            if (fontDataPayload)
+                this._computedPrimaryFont = WI.Font.fromPayload(fontDataPayload);
+            else
+                this._computedPrimaryFont = null;
+
+            fetchedFontDataPromise.resolve();
         }
 
         let target = WI.assumingMainTarget();
@@ -314,9 +332,18 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         target.CSSAgent.getInlineStylesForNode.invoke({nodeId: this._node.id}, wrap.call(this, fetchedInlineStyles, fetchedInlineStylesPromise));
         target.CSSAgent.getComputedStyleForNode.invoke({nodeId: this._node.id}, wrap.call(this, fetchedComputedStyle, fetchedComputedStylesPromise));
 
-        this._pendingRefreshTask = Promise.all([fetchedMatchedStylesPromise.promise, fetchedInlineStylesPromise.promise, fetchedComputedStylesPromise.promise])
-        .then(() => {
+        // COMPATIBILITY (iOS 14.0): `CSS.getFontDataForNode` did not exist yet.
+        if (InspectorBackend.hasCommand("CSS.getFontDataForNode"))
+            target.CSSAgent.getFontDataForNode.invoke({nodeId: this._node.id}, wrap.call(this, fetchedFontData, fetchedFontDataPromise));
+        else
+            fetchedFontDataPromise.resolve();
+
+        this._pendingRefreshTask = Promise.all([fetchedComputedStylesPromise.promise, fetchedMatchedStylesPromise.promise, fetchedInlineStylesPromise.promise, fetchedFontDataPromise.promise])
+        .then(([fetchComputedStylesResult]) => {
             this._pendingRefreshTask = null;
+            this.dispatchEventToListeners(WI.DOMNodeStyles.Event.Refreshed, {
+                significantChange: fetchComputedStylesResult.significantChange,
+            });
             return this;
         });
 
@@ -561,7 +588,8 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         console.assert(matchesNode || style);
 
         if (matchesNode) {
-            let existingStyles = this._stylesMap.get(mapKey);
+            console.assert(this._previousStylesMap);
+            let existingStyles = this._previousStylesMap.get(mapKey);
             if (existingStyles && !style) {
                 for (let existingStyle of existingStyles) {
                     if (existingStyle.node === node && existingStyle.inherited === inherited) {
@@ -603,7 +631,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         if (styleSheet) {
             if (type === WI.CSSStyleDeclaration.Type.Inline)
                 styleSheet.markAsInlineStyleAttributeStyleSheet();
-            styleSheet.addEventListener(WI.CSSStyleSheet.Event.ContentDidChange, this._styleSheetContentDidChange, this);
+            this._trackedStyleSheets.add(styleSheet);
         }
 
         if (inherited && !inheritedPropertyCount)
@@ -692,7 +720,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         }
 
         if (styleSheet)
-            styleSheet.addEventListener(WI.CSSStyleSheet.Event.ContentDidChange, this._styleSheetContentDidChange, this);
+            this._trackedStyleSheets.add(styleSheet);
 
         rule = new WI.CSSRule(this, styleSheet, id, type, sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, groupings);
 
@@ -708,11 +736,10 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         this.dispatchEventToListeners(WI.DOMNodeStyles.Event.NeedsRefresh);
     }
 
-    _styleSheetContentDidChange(event)
+    _handleCSSStyleSheetContentDidChange(event)
     {
-        var styleSheet = event.target;
-        console.assert(styleSheet);
-        if (!styleSheet)
+        let styleSheet = event.target;
+        if (!this._trackedStyleSheets.has(styleSheet))
             return;
 
         // Ignore the stylesheet we know we just changed and handled above.

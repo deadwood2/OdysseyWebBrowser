@@ -32,6 +32,13 @@
 
 @implementation TestUIDelegate
 
+- (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures
+{
+    if (_createWebViewWithConfiguration)
+        return _createWebViewWithConfiguration(configuration, navigationAction, windowFeatures);
+    return nil;
+}
+
 - (void)webView:(WKWebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(void))completionHandler
 {
     if (_runJavaScriptAlertPanelWithMessage)
@@ -49,6 +56,12 @@
         completionHandler(menu);
 }
 #endif // PLATFORM(MAC)
+
+- (void)_webView:(WKWebView *)webView saveDataToFile:(NSData *)data suggestedFilename:(NSString *)suggestedFilename mimeType:(NSString *)mimeType originatingURL:(NSURL *)url
+{
+    if (_saveDataToFile)
+        _saveDataToFile(webView, data, suggestedFilename, mimeType, url);
+}
 
 - (NSString *)waitForAlert
 {

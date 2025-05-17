@@ -79,8 +79,9 @@ private:
     Timer m_sendContentAreaScrolledTimer;
     FloatSize m_contentAreaScrolledTimerScrollDelta;
 
-    bool scroll(ScrollbarOrientation, ScrollGranularity, float step, float multiplier) override;
-    void scrollToOffsetWithoutAnimation(const FloatPoint&, ScrollClamping) override;
+    bool scroll(ScrollbarOrientation, ScrollGranularity, float step, float multiplier, ScrollBehavior) override;
+    bool scrollToPositionWithAnimation(const FloatPoint&) override;
+    bool scrollToPositionWithoutAnimation(const FloatPoint& position, ScrollClamping = ScrollClamping::Clamped) override;
 
 #if ENABLE(RUBBER_BANDING)
     bool shouldForwardWheelEventsToParent(const PlatformWheelEvent&) const;
@@ -132,8 +133,6 @@ private:
 
     FloatPoint adjustScrollPositionIfNecessary(const FloatPoint&) const;
 
-    void immediateScrollToPosition(const FloatPoint&, ScrollClamping = ScrollClamping::Clamped);
-
     bool isUserScrollInProgress() const override;
     bool isRubberBandInProgress() const override;
     bool isScrollSnapInProgress() const override;
@@ -146,15 +145,14 @@ private:
     IntSize stretchAmount() const final;
     bool allowsHorizontalStretching(const PlatformWheelEvent&) const final;
     bool allowsVerticalStretching(const PlatformWheelEvent&) const final;
-    bool pinnedInDirection(const FloatSize&) const final;
-    bool canScrollHorizontally() const final;
-    bool canScrollVertically() const final;
+    bool isPinnedForScrollDelta(const FloatSize&) const final;
+    RectEdges<bool> edgePinnedState() const final;
+    bool allowsHorizontalScrolling() const final;
+    bool allowsVerticalScrolling() const final;
     bool shouldRubberBandInDirection(ScrollDirection) const final;
     void immediateScrollByWithoutContentEdgeConstraints(const FloatSize&) final;
     void immediateScrollBy(const FloatSize&) final;
     void adjustScrollPositionToBoundsIfNecessary() final;
-
-    bool isAlreadyPinnedInDirectionOfGesture(const PlatformWheelEvent&, ScrollEventAxis) const;
 #endif
 
     bool m_haveScrolledSincePageLoad;

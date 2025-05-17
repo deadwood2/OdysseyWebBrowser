@@ -2,7 +2,7 @@ kind: flatpak_image
 
 build-depends:
 - flatpak/sdk-image.bst
-- freedesktop-sdk.bst:integration/linker-debuginfo.bst
+- freedesktop-sdk.bst:integration/app-debug-link.bst
 - freedesktop-sdk.bst:integration/sdk-integration.bst
 
 variables:
@@ -23,7 +23,6 @@ config:
 
     Environment:
       GI_TYPELIB_PATH: /app/lib/girepository-1.0
-      GST_PLUGIN_SYSTEM_PATH: /app/lib/gstreamer-1.0:/usr/lib/extensions/gstreamer-1.0:%{libdir}/gstreamer-1.0
       XDG_DATA_DIRS: /app/share:/usr/share:/usr/share/runtime/share:/run/host/share
 
     Extension org.webkit.Sdk.Debug:
@@ -42,17 +41,6 @@ config:
     # When syncing, skip the Debug, Docs and Locale extensions, and
     # add the freedesktop-sdk version to extensions that don't have
     # a version.
-    Extension org.freedesktop.Platform.GL:
-      # 1.4 is for Nvidia drivers
-      versions: "%{freedesktop-sdk-flatpak-branch};1.4"
-      version: "1.4"
-      directory: "%{lib}/GL"
-      subdirectories: "true"
-      autodelete: "false"
-      add-ld-path: "lib"
-      merge-dirs: "vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d"
-      download-if: "active-gl-driver"
-      enable-if: "active-gl-driver"
 
     Extension org.freedesktop.Platform.Timezones:
       directory: share/zoneinfo
@@ -95,6 +83,10 @@ config:
       autodelete: 'false'
       no-autodownload: 'true'
       download-if: have-intel-gpu
+      version: '%{freedesktop-sdk-flatpak-branch}'
+
+    Extension org.freedesktop.Sdk.Extension.rust-stable:
+      directory: 'lib/sdk/rust-stable'
       version: '%{freedesktop-sdk-flatpak-branch}'
 
     (?):

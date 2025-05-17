@@ -1,4 +1,5 @@
-# Copyright (C) 2014-2017 Igalia S.L.  All rights reserved.
+# -*- coding: utf-8 -*-
+# Copyright (C) 2014-2021 Igalia S.L.  All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -26,13 +27,18 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
+import shlex
+
 from webkitpy.common.system import path
 from webkitpy.common.memoized import memoized
 from webkitpy.layout_tests.models.test_configuration import TestConfiguration
 from webkitpy.port.base import Port
 from webkitpy.port.headlessdriver import HeadlessDriver
 from webkitpy.port.linux_get_crash_log import GDBCrashLogGenerator
-import os
+
+from webkitcorepy import decorators
+
 
 class WPEPort(Port):
     port_name = "wpe"
@@ -83,6 +89,8 @@ class WPEPort(Port):
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_TOP_LEVEL')
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_DEBUG')
         self._copy_value_from_environ_if_set(environment, 'LIBGL_ALWAYS_SOFTWARE')
+        self._copy_value_from_environ_if_set(environment, 'PULSE_SERVER')
+        self._copy_value_from_environ_if_set(environment, 'PULSE_CLIENTCONFIG')
         self._copy_value_from_environ_if_set(environment, 'XR_RUNTIME_JSON')
         self._copy_value_from_environ_if_set(environment, 'WEBKIT_GST_USE_PLAYBIN3')
         for gst_variable in ('DEBUG', 'DEBUG_DUMP_DOT_DIR', 'DEBUG_FILE', 'DEBUG_NO_COLOR',
@@ -106,6 +114,7 @@ class WPEPort(Port):
     def _path_to_driver(self):
         return self._built_executables_path(self.driver_name())
 
+    @decorators.Memoize()
     def _path_to_image_diff(self):
         return self._built_executables_path('ImageDiff')
 
@@ -135,13 +144,24 @@ class WPEPort(Port):
         return configuration
 
     def run_minibrowser(self, args):
-        miniBrowser = self._build_path('bin', 'MiniBrowser')
-        if not self._filesystem.isfile(miniBrowser):
-            print("%s not found... Did you run build-webkit?" % miniBrowser)
-            return 1
+        env = None
+        cog = self._build_path('Tools', 'cog-prefix', 'src', 'cog-build', 'cog')
+        if self._filesystem.isfile(cog):
+            miniBrowser = cog
+            env = os.environ.copy()
+            env.update({'WEBKIT_EXEC_PATH': self._build_path('bin'),
+                        'WEBKIT_INJECTED_BUNDLE_PATH': self._build_path('lib')})
+            args = ['-P', 'fdo'] + args
+        else:
+            print("Cog not found 😢. If you wish to enable it, rebuild with `-DENABLE_COG=ON`. Falling back to good old MiniBrowser")
+            miniBrowser = self._build_path('bin', 'MiniBrowser')
+            if not self._filesystem.isfile(miniBrowser):
+                print("%s not found... Did you run build-webkit?" % miniBrowser)
+                return 1
         command = [miniBrowser]
         if os.environ.get("WEBKIT_MINI_BROWSER_PREFIX"):
-            command.insert(0, os.environ["WEBKIT_MINI_BROWSER_PREFIX"])
+            command = shlex.split(os.environ["WEBKIT_MINI_BROWSER_PREFIX"]) + command
+
         if self._should_use_jhbuild():
             command = self._jhbuild_wrapper + command
-        return self._executive.run_command(command + args, cwd=self.webkit_base(), stdout=None, return_stderr=False, decode_output=False)
+        return self._executive.run_command(command + args, cwd=self.webkit_base(), stdout=None, return_stderr=False, decode_output=False, env=env)

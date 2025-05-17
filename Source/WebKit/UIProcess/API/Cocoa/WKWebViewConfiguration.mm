@@ -28,7 +28,6 @@
 
 #import "APIPageConfiguration.h"
 #import "UserInterfaceIdiom.h"
-#import "VersionChecks.h"
 #import "WKPreferences.h"
 #import "WKProcessPool.h"
 #import "WKRetainPtr.h"
@@ -38,12 +37,14 @@
 #import "WKWebViewContentProviderRegistry.h"
 #import "WebKit2Initialize.h"
 #import "WebPreferencesDefaultValues.h"
+#import "WebPreferencesDefinitions.h"
 #import "WebURLSchemeHandlerCocoa.h"
 #import "_WKApplicationManifestInternal.h"
 #import "_WKVisitedLinkStore.h"
 #import "_WKWebsiteDataStoreInternal.h"
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/Settings.h>
+#import <WebCore/VersionChecks.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/URLParser.h>
 #import <wtf/WeakObjCPtr.h>
@@ -105,7 +106,7 @@ static _WKDragLiftDelay toDragLiftDelay(NSUInteger value)
 static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
 {
 #if USE(QUICK_LOOK)
-    static bool shouldDecide = linkedOnOrAfter(WebKit::SDKVersion::FirstThatDecidesPolicyBeforeLoadingQuickLookPreview);
+    static bool shouldDecide = linkedOnOrAfter(WebCore::SDKVersion::FirstThatDecidesPolicyBeforeLoadingQuickLookPreview);
     return shouldDecide;
 #else
     return false;
@@ -157,7 +158,6 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     WKRetainPtr<WKPageGroupRef> _pageGroup;
     BOOL _showsURLsInToolTips;
     BOOL _serviceControlsEnabled;
-    BOOL _imageControlsEnabled;
     BOOL _requiresUserActionForEditingControlsManager;
 #endif
     BOOL _waitsForPaintAfterViewDidMoveToWindow;
@@ -173,7 +173,6 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     BOOL _incompleteImageBorderEnabled;
     BOOL _shouldDeferAsynchronousScriptsUntilAfterDocumentLoad;
     BOOL _drawsBackground;
-    BOOL _editableImagesEnabled;
     BOOL _undoManagerAPIEnabled;
 
     RetainPtr<NSString> _mediaContentTypesRequiringHardwareSupport;
@@ -193,12 +192,14 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
 #if !PLATFORM(WATCHOS)
     _allowsPictureInPictureMediaPlayback = YES;
 #endif
-    _allowsInlineMediaPlayback = WebKit::currentUserInterfaceIdiomIsPad();
+
+    _allowsInlineMediaPlayback = WebKit::currentUserInterfaceIdiomIsPadOrMac();
     _inlineMediaPlaybackRequiresPlaysInlineAttribute = !_allowsInlineMediaPlayback;
     _allowsInlineMediaPlaybackAfterFullscreen = !_allowsInlineMediaPlayback;
+
     _mediaDataLoadsAutomatically = NO;
 #if !PLATFORM(WATCHOS)
-    if (WebKit::linkedOnOrAfter(WebKit::SDKVersion::FirstWithMediaTypesRequiringUserActionForPlayback))
+    if (WebCore::linkedOnOrAfter(WebCore::SDKVersion::FirstWithMediaTypesRequiringUserActionForPlayback))
         _mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAudio;
     else
 #endif
@@ -224,7 +225,6 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     _respectsImageOrientation = NO;
     _showsURLsInToolTips = NO;
     _serviceControlsEnabled = NO;
-    _imageControlsEnabled = NO;
     _requiresUserActionForEditingControlsManager = NO;
 #endif
     _waitsForPaintAfterViewDidMoveToWindow = YES;
@@ -255,7 +255,7 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     _shouldDecidePolicyBeforeLoadingQuickLookPreview = defaultShouldDecidePolicyBeforeLoadingQuickLookPreview();
 #endif // PLATFORM(IOS_FAMILY)
 
-    _mediaContentTypesRequiringHardwareSupport = WebCore::Settings::defaultMediaContentTypesRequiringHardwareSupport();
+    _mediaContentTypesRequiringHardwareSupport = @"";
     _allowMediaContentTypesRequiringHardwareSupportAsFallback = YES;
 
     _colorFilterEnabled = NO;
@@ -263,11 +263,10 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     _shouldDeferAsynchronousScriptsUntilAfterDocumentLoad = YES;
     _drawsBackground = YES;
 
-    _editableImagesEnabled = NO;
     _undoManagerAPIEnabled = NO;
 
 #if ENABLE(APPLE_PAY)
-    _applePayEnabled = DEFAULT_APPLE_PAY_ENABLED;
+    _applePayEnabled = DEFAULT_VALUE_FOR_ApplePayEnabled;
 #endif
 
     return self;
@@ -308,7 +307,9 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     [coder encodeBool:self.allowsPictureInPictureMediaPlayback forKey:@"allowsPictureInPictureMediaPlayback"];
     [coder encodeBool:self.ignoresViewportScaleLimits forKey:@"ignoresViewportScaleLimits"];
     [coder encodeInteger:self._dragLiftDelay forKey:@"dragLiftDelay"];
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [coder encodeBool:self._textInteractionGesturesEnabled forKey:@"textInteractionGesturesEnabled"];
+    ALLOW_DEPRECATED_DECLARATIONS_END
     [coder encodeBool:self._longPressActionsEnabled forKey:@"longPressActionsEnabled"];
     [coder encodeBool:self._systemPreviewEnabled forKey:@"systemPreviewEnabled"];
     [coder encodeBool:self._shouldDecidePolicyBeforeLoadingQuickLookPreview forKey:@"shouldDecidePolicyBeforeLoadingQuickLookPreview"];
@@ -346,7 +347,9 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     self.allowsPictureInPictureMediaPlayback = [coder decodeBoolForKey:@"allowsPictureInPictureMediaPlayback"];
     self.ignoresViewportScaleLimits = [coder decodeBoolForKey:@"ignoresViewportScaleLimits"];
     self._dragLiftDelay = toDragLiftDelay([coder decodeIntegerForKey:@"dragLiftDelay"]);
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     self._textInteractionGesturesEnabled = [coder decodeBoolForKey:@"textInteractionGesturesEnabled"];
+    ALLOW_DEPRECATED_DECLARATIONS_END
     self._longPressActionsEnabled = [coder decodeBoolForKey:@"longPressActionsEnabled"];
     self._systemPreviewEnabled = [coder decodeBoolForKey:@"systemPreviewEnabled"];
     self._shouldDecidePolicyBeforeLoadingQuickLookPreview = [coder decodeBoolForKey:@"shouldDecidePolicyBeforeLoadingQuickLookPreview"];
@@ -414,7 +417,6 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     configuration->_userInterfaceDirectionPolicy = self->_userInterfaceDirectionPolicy;
     configuration->_showsURLsInToolTips = self->_showsURLsInToolTips;
     configuration->_serviceControlsEnabled = self->_serviceControlsEnabled;
-    configuration->_imageControlsEnabled = self->_imageControlsEnabled;
     configuration->_requiresUserActionForEditingControlsManager = self->_requiresUserActionForEditingControlsManager;
     configuration->_pageGroup = self._pageGroup;
 #endif
@@ -440,7 +442,6 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     configuration->_shouldDeferAsynchronousScriptsUntilAfterDocumentLoad = self->_shouldDeferAsynchronousScriptsUntilAfterDocumentLoad;
     configuration->_drawsBackground = self->_drawsBackground;
 
-    configuration->_editableImagesEnabled = self->_editableImagesEnabled;
     configuration->_undoManagerAPIEnabled = self->_undoManagerAPIEnabled;
 
     return configuration;
@@ -474,6 +475,16 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
 - (void)setUserContentController:(WKUserContentController *)userContentController
 {
     _userContentController.set(userContentController);
+}
+
+- (BOOL)upgradeKnownHostsToHTTPS
+{
+    return _pageConfiguration->httpsUpgradeEnabled();
+}
+
+- (void)setUpgradeKnownHostsToHTTPS:(BOOL)upgrade
+{
+    _pageConfiguration->setHTTPSUpgradeEnabled(upgrade);
 }
 
 - (WKWebsiteDataStore *)websiteDataStore
@@ -590,16 +601,6 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 - (Ref<API::PageConfiguration>)copyPageConfiguration
 {
     return _pageConfiguration->copy();
-}
-
-- (BOOL)limitsNavigationsToAppBoundDomains
-{
-    return _pageConfiguration->limitsNavigationsToAppBoundDomains();
-}
-
-- (void)setLimitsNavigationsToAppBoundDomains:(BOOL)limitsToAppBoundDomains
-{
-    _pageConfiguration->setLimitsNavigationsToAppBoundDomains(limitsToAppBoundDomains);
 }
 
 @end
@@ -767,16 +768,6 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     _dragLiftDelay = dragLiftDelay;
 }
 
-- (BOOL)_textInteractionGesturesEnabled
-{
-    return _textInteractionGesturesEnabled;
-}
-
-- (void)_setTextInteractionGesturesEnabled:(BOOL)enabled
-{
-    _textInteractionGesturesEnabled = enabled;
-}
-
 - (BOOL)_longPressActionsEnabled
 {
     return _longPressActionsEnabled;
@@ -827,7 +818,32 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     return _pageConfiguration->clickInteractionDriverForTesting().get();
 }
 
+- (BOOL)limitsNavigationsToAppBoundDomains
+{
+    return _pageConfiguration->limitsNavigationsToAppBoundDomains();
+}
+
+- (void)setLimitsNavigationsToAppBoundDomains:(BOOL)limitsToAppBoundDomains
+{
+    _pageConfiguration->setLimitsNavigationsToAppBoundDomains(limitsToAppBoundDomains);
+}
 #endif // PLATFORM(IOS_FAMILY)
+
+- (BOOL)_ignoresAppBoundDomains
+{
+#if PLATFORM(IOS_FAMILY)
+    return _pageConfiguration->ignoresAppBoundDomains();
+#else
+    return NO;
+#endif
+}
+
+- (void)_setIgnoresAppBoundDomains:(BOOL)ignoresAppBoundDomains
+{
+#if PLATFORM(IOS_FAMILY)
+    _pageConfiguration->setIgnoresAppBoundDomains(ignoresAppBoundDomains);
+#endif
+}
 
 - (BOOL)_invisibleAutoplayNotPermitted
 {
@@ -1066,12 +1082,13 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (BOOL)_imageControlsEnabled
 {
-    return _imageControlsEnabled;
+    // Image controls are no longer supported.
+    return NO;
 }
 
 - (void)_setImageControlsEnabled:(BOOL)imageControlsEnabled
 {
-    _imageControlsEnabled = imageControlsEnabled;
+    // Image controls are no longer supported.
 }
 
 - (BOOL)_requiresUserActionForEditingControlsManager
@@ -1182,14 +1199,14 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     return _allowMediaContentTypesRequiringHardwareSupportAsFallback;
 }
 
-- (void)_setEditableImagesEnabled:(BOOL)enabled
+- (BOOL)_mediaCaptureEnabled
 {
-    _editableImagesEnabled = enabled;
+    return _pageConfiguration->mediaCaptureEnabled();
 }
 
-- (BOOL)_editableImagesEnabled
+- (void)_setMediaCaptureEnabled:(BOOL)enabled
 {
-    return _editableImagesEnabled;
+    _pageConfiguration->setMediaCaptureEnabled(enabled);
 }
 
 - (void)_setUndoManagerAPIEnabled:(BOOL)enabled
@@ -1202,58 +1219,6 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     return _undoManagerAPIEnabled;
 }
 
-static WebKit::WebViewCategory toWebKitWebViewCategory(_WKWebViewCategory category)
-{
-    switch (category) {
-    case _WKWebViewCategoryAppBoundDomain:
-        return WebKit::WebViewCategory::AppBoundDomain;
-    case _WKWebViewCategoryHybridApp:
-        return WebKit::WebViewCategory::HybridApp;
-    case _WKWebViewCategoryInAppBrowser:
-        return WebKit::WebViewCategory::InAppBrowser;
-    case _WKWebViewCategoryWebBrowser:
-        return WebKit::WebViewCategory::WebBrowser;
-    }
-    ASSERT_NOT_REACHED();
-    return WebKit::WebViewCategory::AppBoundDomain;
-}
-
-static _WKWebViewCategory toWKWebViewCategory(WebKit::WebViewCategory category)
-{
-    switch (category) {
-    case WebKit::WebViewCategory::AppBoundDomain:
-        return _WKWebViewCategoryAppBoundDomain;
-    case WebKit::WebViewCategory::HybridApp:
-        return _WKWebViewCategoryHybridApp;
-    case WebKit::WebViewCategory::InAppBrowser:
-        return _WKWebViewCategoryInAppBrowser;
-    case WebKit::WebViewCategory::WebBrowser:
-        return _WKWebViewCategoryWebBrowser;
-    }
-    ASSERT_NOT_REACHED();
-    return _WKWebViewCategoryAppBoundDomain;
-}
-
-- (_WKWebViewCategory)_webViewCategory
-{
-    return toWKWebViewCategory(_pageConfiguration->webViewCategory());
-}
-
-- (void)_setWebViewCategory:(_WKWebViewCategory)category
-{
-    _pageConfiguration->setWebViewCategory(toWebKitWebViewCategory(category));
-}
-
-- (BOOL)_ignoresAppBoundDomains
-{
-    return _pageConfiguration->ignoresAppBoundDomains();
-}
-
-- (void)_setIgnoresAppBoundDomains:(BOOL)ignoresAppBoundDomains
-{
-    _pageConfiguration->setIgnoresAppBoundDomains(ignoresAppBoundDomains);
-}
-
 - (BOOL)_shouldRelaxThirdPartyCookieBlocking
 {
     return _pageConfiguration->shouldRelaxThirdPartyCookieBlocking() == WebCore::ShouldRelaxThirdPartyCookieBlocking::Yes;
@@ -1264,9 +1229,11 @@ static _WKWebViewCategory toWKWebViewCategory(WebKit::WebViewCategory category)
     bool allowed = WebCore::applicationBundleIdentifier() == "com.apple.WebKit.TestWebKitAPI"_s;
 #if PLATFORM(MAC)
     allowed = allowed || WebCore::MacApplication::isSafari();
+#elif PLATFORM(IOS_FAMILY)
+    allowed = allowed || WebCore::IOSApplication::isMobileSafari() || WebCore::IOSApplication::isSafariViewService();
 #endif
     if (!allowed)
-        [NSException raise:NSObjectNotAvailableException format:@"_shouldRelaxThirdPartyCookieBlocking may only be used by Mac Safari."];
+        [NSException raise:NSObjectNotAvailableException format:@"_shouldRelaxThirdPartyCookieBlocking may only be used by Safari."];
 
     _pageConfiguration->setShouldRelaxThirdPartyCookieBlocking(relax ? WebCore::ShouldRelaxThirdPartyCookieBlocking::Yes : WebCore::ShouldRelaxThirdPartyCookieBlocking::No);
 }
@@ -1315,7 +1282,22 @@ static _WKWebViewCategory toWKWebViewCategory(WebKit::WebViewCategory category)
 {
     self.mediaTypesRequiringUserActionForPlayback = requiresUserActionForMediaPlayback ? WKAudiovisualMediaTypeAll : WKAudiovisualMediaTypeNone;
 }
+#endif // PLATFORM(IOS_FAMILY)
 
+@end
+
+@implementation WKWebViewConfiguration (WKPrivateDeprecated)
+
+#if PLATFORM(IOS_FAMILY)
+- (BOOL)_textInteractionGesturesEnabled
+{
+    return _textInteractionGesturesEnabled;
+}
+
+- (void)_setTextInteractionGesturesEnabled:(BOOL)enabled
+{
+    _textInteractionGesturesEnabled = enabled;
+}
 #endif // PLATFORM(IOS_FAMILY)
 
 @end
