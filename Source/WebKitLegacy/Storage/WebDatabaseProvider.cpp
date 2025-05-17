@@ -59,9 +59,11 @@ void WebDatabaseProvider::deleteAllDatabases()
 #if PLATFORM(MUI)
 void WebDatabaseProvider::shutdownServers()
 {
-// FIXME
-//    for (auto& server : m_idbServerMap.values())
-//        server->server().shutdown();
+    // this triggers delete of triggers delete of separate servers
+    // which terminates server threads (m_thread) and workqueue in (m_quotaManagers)
+    // it leaves state of m_idbServerMap invalid
+    for (auto& server : m_idbServerMap.values())
+        delete server.get();
 }
 #endif
 
