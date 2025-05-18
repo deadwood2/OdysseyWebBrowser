@@ -38,9 +38,9 @@ public:
 
     virtual Seconds caretBlinkInterval() const override;
 
-    virtual bool paintCheckbox(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    virtual bool paintCheckbox(const RenderObject&, const PaintInfo&, const FloatRect&) override;
     virtual void setCheckboxSize(RenderStyle&) const override;
-    virtual bool paintRadio(const RenderObject&, const PaintInfo&, const IntRect&) override;
+    virtual bool paintRadio(const RenderObject&, const PaintInfo&, const FloatRect&) override;
     virtual void setRadioSize(RenderStyle&) const override;
     virtual bool paintButton(const RenderObject&, const PaintInfo&, const IntRect&) override;
     virtual void adjustMenuListStyle(RenderStyle&, const Element*) const override;
@@ -83,7 +83,7 @@ public:
     virtual bool paintSearchFieldCancelButton(const RenderBox&, const PaintInfo&, const IntRect&) override;
 
     virtual void adjustMenuListButtonStyle(RenderStyle&, const Element*) const override;
-    virtual bool paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
+    virtual void paintMenuListButtonDecorations(const RenderBox&, const PaintInfo&, const FloatRect&) override;
     virtual void adjustCheckboxStyle(RenderStyle&, const Element*) const override;
     virtual void adjustRadioStyle(RenderStyle&, const Element*) const override;
     virtual bool paintMenuList(const RenderObject&, const PaintInfo&, const FloatRect&) override;
@@ -119,7 +119,7 @@ protected:
     virtual void updateCachedSystemFontDescription(CSSValueID systemFontID, FontCascadeDescription&) const override;
 
 private:
-    bool canPaint(const PaintInfo&) const final { return true; }
+    bool canPaint(const PaintInfo&, const Settings&) const final { return true; }
 
     static const String& defaultGUIFont();
 

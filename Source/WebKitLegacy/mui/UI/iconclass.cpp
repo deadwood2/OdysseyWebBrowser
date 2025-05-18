@@ -118,7 +118,7 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
                     if(icon)
                     {
-                        cairo_surface_t * icon_surface = icon->nativeImageForCurrentFrame().leakRef();
+                        cairo_surface_t * icon_surface = icon->nativeImageForCurrentFrame()->platformImage().get();
 
                         if(!icon_surface)
                         {
@@ -126,7 +126,7 @@ STATIC VOID doset(struct Data *data, APTR obj, struct TagItem *taglist)
 
                             if(icon)
                             {
-                              icon_surface = icon->nativeImageForCurrentFrame().leakRef();
+                              icon_surface = icon->nativeImageForCurrentFrame()->platformImage().get();
                             }
                         }
                                 

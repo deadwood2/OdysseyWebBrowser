@@ -100,7 +100,7 @@ void WebContextMenuClient::searchWithGoogle(const Frame* frame)
 
     if (Page* page = frame->page()) {
       UserGestureIndicator indicator(ProcessingUserGesture);
-      page->mainFrame().loader().changeLocation(searchURL, { }, nullptr, WebCore::LockHistory::No, WebCore::LockBackForwardList::No, WebCore::ReferrerPolicy::EmptyString, WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow);
+      page->mainFrame().loader().changeLocation(searchURL, { }, nullptr, WebCore::ReferrerPolicy::EmptyString, WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow);
     };
 }
 

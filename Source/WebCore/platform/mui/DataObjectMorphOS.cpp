@@ -21,6 +21,7 @@
 
 #include "markup.h"
 #include "SimpleRange.h"
+#include "TextIterator.h"
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
@@ -35,7 +36,9 @@ static void replaceNonBreakingSpaceWithSpace(String& str)
 String DataObjectMorphOS::text() const
 {
     if (m_range) {
-        String text = m_range->text();
+        auto range = makeSimpleRange(m_range);
+        (*range).start.document().updateLayout();
+        String text = plainText(*range);
         replaceNonBreakingSpaceWithSpace(text);
         return text;
     }

@@ -100,6 +100,7 @@
 #include <WebCore/DatabaseManager.h>
 #include <WebCore/DragController.h>
 #include <WebCore/DragData.h>
+#include <WebCore/DummySpeechRecognitionProvider.h>
 #include <WebCore/Editor.h>
 #include <WebCore/EventHandler.h>
 #include <WebCore/EventNames.h>
@@ -131,6 +132,7 @@
 #include "ObserverServiceData.h"
 #include <WebCore/Page.h>
 #include <WebCore/PageConfiguration.h>
+#include <WebCore/PagePasteboardContext.h>
 #include <WebCore/BackForwardCache.h>
 #include <WebCore/PageGroup.h>
 #include <WebCore/PlatformKeyboardEvent.h>
@@ -152,6 +154,7 @@
 #include <WebCore/Settings.h>
 #include <WebCore/SubframeLoader.h>
 #include <WebCore/UserContentController.h>
+#include <WebCore/WebCoreJITOperations.h>
 #include <WebCore/WindowsKeyboardCodes.h>
 #include <WebCore/DiagnosticLoggingClient.h>
 #include <WebCore/ShouldTreatAsContinuingLoad.h>
@@ -369,6 +372,7 @@ WebView::WebView()
 {
     JSC::initialize();
     WTF::initializeMainThread();
+    WebCore::populateJITOperations();
 
     d->clearDirtyRegion();
 
@@ -399,10 +403,12 @@ WebView::WebView()
         SocketProvider::create(),
         makeUniqueRef<LibWebRTCProvider>(),
         CacheStorageProvider::create(),
+        m_webViewGroup->userContentController(),
         BackForwardList::create(),
         CookieJar::create(storageProvider.copyRef()),
         makeUniqueRef<WebProgressTrackerClient>(webFrame),
         makeUniqueRef<WebFrameLoaderClient>(webFrame),
+        makeUniqueRef<DummySpeechRecognitionProvider>(),
         makeUniqueRef<MediaRecorderProvider>()
     );
     configuration.backForwardClient = BackForwardList::create();
@@ -413,7 +419,6 @@ WebView::WebView()
     configuration.applicationCacheStorage = &WebApplicationCache::storage();
     configuration.databaseProvider = &WebDatabaseProvider::singleton();
     configuration.storageNamespaceProvider = &m_webViewGroup->storageNamespaceProvider();
-    configuration.userContentProvider = &m_webViewGroup->userContentController();
     configuration.visitedLinkStore = &WebVisitedLinkStore::singleton();
     configuration.pluginInfoProvider = &WebPluginInfoProvider::singleton();
 
@@ -445,17 +450,12 @@ WebView::WebView()
 
     settings.setAllowDisplayOfInsecureContent(true);
     settings.setTextAreasAreResizable(true);
+    settings.setDataTransferItemsEnabled(true);
 
     RuntimeEnabledFeatures::sharedFeatures().setModernMediaControlsEnabled(false);
 
-    RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsEnabled(true);
-    RuntimeEnabledFeatures::sharedFeatures().setWebAnimationsCSSIntegrationEnabled(false);
-
-    RuntimeEnabledFeatures::sharedFeatures().setDataTransferItemsEnabled(true);
-
     RuntimeEnabledFeatures::sharedFeatures().setCSSPaintingAPIEnabled(true);
     RuntimeEnabledFeatures::sharedFeatures().setCSSTypedOMEnabled(true);
-    RuntimeEnabledFeatures::sharedFeatures().setLegacyCSSVendorPrefixesEnabled(true);
 
     RuntimeEnabledFeatures::sharedFeatures().setCSSLogicalEnabled(true);
 
@@ -897,7 +897,7 @@ bool WebView::defaultActionOnFocusedNode(BalEventKey event)
 
 void WebView::paint()
 {
-    m_page->updateRendering();
+    m_page->isolatedUpdateRendering();
 }
 
 BalRectangle WebView::frameRect()
@@ -1171,7 +1171,7 @@ bool WebView::canShowMIMEType(const char* mimeType)
 {
     String type = String(mimeType).convertToLowercaseWithoutLocale();
     Frame* coreFrame = core(m_mainFrame);
-    bool allowPlugins = coreFrame && coreFrame->loader().arePluginsEnabled();
+    bool allowPlugins = coreFrame && coreFrame->arePluginsEnabled();
     
     bool canShow = type.isEmpty()
     || MIMETypeRegistry::isSupportedImageMIMEType(type)
@@ -2347,7 +2347,7 @@ void WebView::copy()
     else
     {
         /* Copying from HTML text, not from input/editor */
-        Pasteboard::createForCopyAndPaste()->writePlainText(frame.editor().selectedText(), Pasteboard::CannotSmartReplace);
+        Pasteboard::createForCopyAndPaste(PagePasteboardContext::create(frame.pageID()))->writePlainText(frame.editor().selectedText(), Pasteboard::CannotSmartReplace);
     }
 }
 
@@ -2608,9 +2608,6 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->databasesEnabled();
     DatabaseManager::singleton().setIsAvailable(enabled);
 
-    enabled = preferences->experimentalNotificationsEnabled();
-    settings->setExperimentalNotificationsEnabled(enabled);
-
     enabled = preferences->isWebSecurityEnabled();
     settings->setWebSecurityEnabled(enabled);
 
@@ -2768,7 +2765,7 @@ void WebView::setInitialFocus(bool forward)
     if (m_page) {
         Frame* frame = &(m_page->focusController().focusedOrMainFrame());
         frame->document()->setFocusedElement(0);
-        m_page->focusController().setInitialFocus(forward ? FocusDirectionForward : FocusDirectionBackward, 0);
+        m_page->focusController().setInitialFocus(forward ? WebCore::FocusDirection::Forward : WebCore::FocusDirection::Backward, 0);
     }
 }
 
@@ -3042,7 +3039,7 @@ void WebView::stopLoading(bool stop)
 {
     m_isStopped = stop;
     if (stop)
-        core(mainFrame())->loader().stopLoading(UnloadEventPolicyUnloadAndPageHide);
+        core(mainFrame())->loader().stopLoading(WebCore::UnloadEventPolicy::UnloadAndPageHide);
 }
 
 void WebView::enterFullscreenForNode(WebCore::Node* element)

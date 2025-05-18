@@ -43,7 +43,9 @@ bool DisplayRefreshMonitorMorphOS::requestRefreshCallback()
 {
     if (!isActive())
         return false;
-    m_timer.startOneShot(16_ms);
+    m_timer.startOneShot(33_ms);
+
+    LockHolder lock(mutex());
     setIsActive(true);
     setIsScheduled(true);
     return true;
@@ -51,10 +53,13 @@ bool DisplayRefreshMonitorMorphOS::requestRefreshCallback()
 
 void DisplayRefreshMonitorMorphOS::displayLinkFired()
 {
-    if (!isPreviousFrameDone())
-        return;
+    {
+        LockHolder lock(mutex());
+        if (!isPreviousFrameDone())
+            return;
 
-    setIsPreviousFrameDone(false);
+        setIsPreviousFrameDone(false);
+    }
 
     handleDisplayRefreshedNotificationOnMainThread(this);
 }

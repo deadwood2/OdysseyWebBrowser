@@ -42,7 +42,7 @@ MediaSourcePrivateMorphOS::~MediaSourcePrivateMorphOS()
         sourceBufferPrivate->clearMediaSource();
 }
 
-MediaSourcePrivate::AddStatus MediaSourcePrivateMorphOS::addSourceBuffer(const ContentType& contentType, RefPtr<SourceBufferPrivate>& buffer)
+MediaSourcePrivate::AddStatus MediaSourcePrivateMorphOS::addSourceBuffer(const ContentType& contentType, bool webMParserEnabled, RefPtr<SourceBufferPrivate>& buffer)
 {
 	D(dprintf("%s: '%s'\n", __PRETTY_FUNCTION__, contentType.raw().utf8().data()));
 
@@ -52,7 +52,7 @@ MediaSourcePrivate::AddStatus MediaSourcePrivateMorphOS::addSourceBuffer(const C
 
     if (MediaPlayerPrivateMorphOS::extendedSupportsType(parameters, MediaPlayer::SupportsType::MayBeSupported) == MediaPlayer::SupportsType::IsNotSupported)
 	{
-		return NotSupported;
+		return MediaSourcePrivate::AddStatus::NotSupported;
 	}
 
 	buffer = MediaSourceBufferPrivateMorphOS::create(this);
@@ -64,7 +64,7 @@ MediaSourcePrivate::AddStatus MediaSourcePrivateMorphOS::addSourceBuffer(const C
 		sourceBufferPrivate->prePlay();
 	}
 	
-	return Ok;
+	return MediaSourcePrivate::AddStatus::Ok;
 }
 
 void MediaSourcePrivateMorphOS::onSourceBufferRemoved(RefPtr<MediaSourceBufferPrivateMorphOS>& buffer)
@@ -79,11 +79,10 @@ void MediaSourcePrivateMorphOS::onSourceBufferRemoved(RefPtr<MediaSourceBufferPr
 		m_player->notifyActiveSourceBuffersChanged();
 }
 
-void MediaSourcePrivateMorphOS::durationChanged()
+void MediaSourcePrivateMorphOS::durationChanged(const MediaTime& duration)
 {
-	D(dprintf("%s: \n", __PRETTY_FUNCTION__));
     if (m_player)
-		m_player->accSetDuration(duration().toDouble());
+		m_player->accSetDuration(duration.toDouble());
 }
 
 void MediaSourcePrivateMorphOS::markEndOfStream(EndOfStreamStatus)
@@ -141,6 +140,13 @@ void MediaSourcePrivateMorphOS::onSourceBufferLoadingProgressed()
 MediaTime MediaSourcePrivateMorphOS::duration()
 {
 	return m_client->duration();
+}
+
+MediaTime MediaSourcePrivateMorphOS::currentMediaTime()
+{
+	if (m_player)
+		return MediaTime::createWithFloat(m_player->currentTime());
+	return { };
 }
 
 bool MediaSourcePrivateMorphOS::isLiveStream() const
@@ -456,7 +462,7 @@ void MediaSourcePrivateMorphOS::onSourceBufferDidChangeActiveState(RefPtr<MediaS
         m_activeSourceBuffers.add(buffer);
         if (m_player)
 			m_player->onActiveSourceBuffersChanged();
-        durationChanged();
+//        durationChanged();
         if (!m_paused)
         {
 			m_waitReady = true;

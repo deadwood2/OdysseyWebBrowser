@@ -132,8 +132,6 @@ public:
 private:
 	explicit MediaSourceBufferPrivateMorphOS(MediaSourcePrivateMorphOS*);
 
-    void setClient(SourceBufferPrivateClient*) override;
-
     void append(Vector<unsigned char>&&) override;
     void abort() override;
     void resetParserState() override;
@@ -146,7 +144,12 @@ private:
     void setActive(bool) override;
     void notifyClientWhenReadyForMoreSamples(const AtomString&)  override;
     bool canSetMinimumUpcomingPresentationTime(const AtomString&) const override;
-	
+
+//	bool isActive() const override { return m_isActive; }
+//	bool isSeeking() const override { return m_seeking; }
+	MediaTime currentMediaTime() const override;
+	MediaTime duration() const override;
+
 	void flush();
 	void becomeReadyForMoreSamples(int decoderIndex);
 
@@ -175,7 +178,6 @@ private:
 
 private:
 	MediaSourcePrivateMorphOS                    *m_mediaSource;
-	SourceBufferPrivateClient                    *m_client;
 	RefPtr<MediaSourceChunkReader>                m_reader;
 	RefPtr<Acinerella::AcinerellaMuxedBuffer>     m_muxer;
 	RefPtr<Acinerella::AcinerellaDecoder>         m_decoders[Acinerella::AcinerellaMuxedBuffer::maxDecoders];
@@ -200,6 +202,7 @@ private:
 	bool                                          m_readyForMoreSamples = true;
 	bool                                          m_requestedMoreFrames = false;
     bool                                          m_enqueuedSamples = false;
+    bool                                          m_isActive = false;
 	
 	bool                                          m_seeking = false;
 	double                                        m_seekTime;

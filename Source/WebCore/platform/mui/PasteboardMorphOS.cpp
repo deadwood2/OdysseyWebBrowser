@@ -142,7 +142,7 @@ std::unique_ptr<Pasteboard> Pasteboard::create(RefPtr<DataObjectMorphOS> dataObj
     return std::make_unique<Pasteboard>(dataObject.get(), clipboard);
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste()
+std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste(std::unique_ptr<PasteboardContext>&&)
 {
     D(kprintf("Pasteboard::createForCopyAndPaste\n"));
     return create(0);
@@ -154,13 +154,13 @@ std::unique_ptr<Pasteboard> Pasteboard::createForGlobalSelection()
     return create(0);
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop()
+std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(std::unique_ptr<PasteboardContext>&&)
 {
     D(kprintf("Pasteboard::createForDragAndDrop\n"));
     return create(DataObjectMorphOS::create(), 1);
 }
 
-std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(const DragData& dragData)
+std::unique_ptr<Pasteboard> Pasteboard::create(const DragData& dragData)
 {
     D(kprintf("Pasteboard::createForDragAndDrop(dragData)\n"));
     return create(dragData.platformData(), 1);
@@ -354,7 +354,7 @@ void Pasteboard::writeImage(Element& element, const URL&, const String& title)
 
         if(image)
         {
-            cairo_surface_t *surface = image->nativeImageForCurrentFrame().leakRef();
+            cairo_surface_t *surface = image->nativeImageForCurrentFrame()->platformImage().get();
             if(surface)
             {
                 ChkImage img;
@@ -383,7 +383,7 @@ void Pasteboard::writeImage(Element& element, const URL&, const String& title)
         m_dataObject->setMarkup(serializeFragment(element, SerializedNodes::SubtreeIncludingNode, nullptr, ResolveURLs::Yes));
     }
 
-    m_dataObject->setImage(image->nativeImageForCurrentFrame().get());
+    m_dataObject->setImage(image->nativeImageForCurrentFrame()->platformImage().get());
 }
 
 #if 0
@@ -686,10 +686,6 @@ void Pasteboard::write(const PasteboardImage&)
 }
 
 void Pasteboard::write(const PasteboardWebContent&)
-{
-}
-
-Pasteboard::Pasteboard()
 {
 }
 

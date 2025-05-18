@@ -35,7 +35,7 @@ public:
 	
     void load(const String&) final;
 #if ENABLE(MEDIA_SOURCE)
-    void load(const String& url, MediaSourcePrivateClient*) final;
+    void load(const URL& url, const ContentType&, MediaSourcePrivateClient*) final;
 #endif
     void cancelLoad() final;
     void prepareToPlay() final;

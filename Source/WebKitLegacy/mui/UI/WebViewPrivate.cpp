@@ -1441,7 +1441,7 @@ bool WebViewPrivate::onScroll(BalEventScroll event)
     if (!frame)
         return false;
     PlatformWheelEvent wheelEvent(&event);
-    return frame->eventHandler().handleWheelEvent(wheelEvent);
+    return frame->eventHandler().handleWheelEvent(wheelEvent, { WheelEventProcessingSteps::MainThreadForScrolling, WheelEventProcessingSteps::MainThreadForBlockingDOMEventDispatch });
 }
 
 void WebViewPrivate::onResize(BalResizeEvent event)
