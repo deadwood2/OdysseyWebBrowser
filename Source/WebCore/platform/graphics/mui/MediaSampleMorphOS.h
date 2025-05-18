@@ -32,6 +32,7 @@ public:
     bool isDivisable() const override { return false; }
     std::pair<RefPtr<MediaSample>, RefPtr<MediaSample>> divide(const MediaTime& presentationTime) override { (void)presentationTime; return { nullptr, nullptr }; }
     Ref<MediaSample> createNonDisplayingCopy() const override;
+    Optional<MediaSample::ByteRange> byteRange() const override;
 
     SampleFlags flags() const override { return m_flags; }
     PlatformSample platformSample() override;

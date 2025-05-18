@@ -417,7 +417,7 @@ void WebChromeClient::unavailablePluginButtonClicked(Element& element, RenderEmb
         DoMethod(widget->window, MM_OWBWindow_LoadURL, "http://fabportnawak.free.fr/owb/plugins/"); // Just a test
 }
 
-void WebChromeClient::print(Frame& frame)
+void WebChromeClient::print(Frame& frame, const WebCore::StringWithDirection&)
 {
     DoMethod((Object *) getv(app, MA_OWBApp_PrinterWindow), MM_PrinterWindow_PrintDocument, &frame);
 }
@@ -548,7 +548,7 @@ IntPoint WebChromeClient::screenToRootView(const WebCore::IntPoint& p) const
     return p;
 }
 
-void WebChromeClient::scheduleRenderingUpdate()
+void WebChromeClient::triggerRenderingUpdate()
 {
     m_webView->paint();
 }
@@ -570,8 +570,9 @@ bool WebChromeClient::supportsVideoFullscreen(WebCore::HTMLMediaElementEnums::Vi
 void WebChromeClient::enterVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&, WebCore::HTMLMediaElementEnums::VideoFullscreenMode, bool)
 {
 }
-void WebChromeClient::exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&)
+void WebChromeClient::exitVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&, CompletionHandler<void(bool)>&& completionHandler)
 {
+    completionHandler(true);
 }
 #endif
 

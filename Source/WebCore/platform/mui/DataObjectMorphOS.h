@@ -39,9 +39,9 @@ public:
     const URL& url() const { return m_url; }
     const String& uriList() const { return m_uriList; }
     const Vector<String>& filenames() const { return m_filenames; }
-    NativeImagePtr image() const { return m_image; }
+    PlatformImagePtr image() const { return m_image; }
     void setRange(RefPtr<Range> newRange) { m_range = newRange; }
-    void setImage(NativeImagePtr newImage) { m_image = newImage; }
+    void setImage(PlatformImagePtr newImage) { m_image = newImage; }
     void setURL(const URL&, const String&);
     bool hasText() const { return m_range || !m_text.isEmpty(); }
     bool hasMarkup() const { return m_range || !m_markup.isEmpty(); }
@@ -73,7 +73,7 @@ private:
     URL m_url;
     String m_uriList;
     Vector<String> m_filenames;
-    NativeImagePtr m_image;
+    PlatformImagePtr m_image;
     RefPtr<Range> m_range;
 };
 

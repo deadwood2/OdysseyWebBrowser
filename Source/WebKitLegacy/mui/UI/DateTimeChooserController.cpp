@@ -67,6 +67,7 @@ void DateTimeChooserController::didChooseValue(const String& value)
 void DateTimeChooserController::didEndChooser()
 {
     ASSERT(m_client);
+    delete m_chooser;
     m_chooser = nullptr;
     m_client->didEndChooser();
 }
@@ -79,7 +80,7 @@ const DateTimeChooserParameters & DateTimeChooserController::parameters()
 void DateTimeChooserController::openDateTimeChooser()
 {
     ASSERT(!m_chooser);
-    m_chooser = adoptRef(new DateTimeChooser);
+    m_chooser = new DateTimeChooser;
     
     BalWidget *widget = m_chromeClient->webView()->viewWindow();
 

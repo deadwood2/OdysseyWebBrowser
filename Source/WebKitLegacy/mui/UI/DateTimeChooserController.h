@@ -29,6 +29,7 @@
 #include "DateTimeChooserClient.h"
 #include "DateTimeChooser.h"
 #include "wtf/text/WTFString.h"
+#include "DateTimeChooserParameters.h"
 
 namespace WebCore {
 class DateTimeChooserClient;
@@ -54,7 +55,7 @@ public:
 
 protected:
     void openDateTimeChooser();
-    RefPtr<DateTimeChooser> m_chooser;
+    DateTimeChooser* m_chooser;
 
 private:
 

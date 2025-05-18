@@ -384,13 +384,20 @@ bool WebEditorClient::smartInsertDeleteEnabled(void)
     return m_webView->smartInsertDeleteEnabled();
 }
 
-bool WebEditorClient::shouldChangeSelectedRange(const Optional<WebCore::SimpleRange>& current, const Optional<WebCore::SimpleRange>& proposed, WebCore::EAffinity selectionAffinity, bool stillSelected)
+static WebSelectionAffinity toWebSelectionAffinity(WebCore::Affinity affinity)
+{
+    if (affinity == WebCore::Affinity::Upstream)
+        return WebSelectionAffinityUpstream;
+    return WebSelectionAffinityDownstream;
+}
+
+bool WebEditorClient::shouldChangeSelectedRange(const Optional<WebCore::SimpleRange>& current, const Optional<WebCore::SimpleRange>& proposed, WebCore::Affinity selectionAffinity, bool stillSelected)
 {
     SharedPtr<WebEditingDelegate> editing = m_webView->webEditingDelegate();
     if (editing) {
         DOMRange* currentRange = DOMRange::createInstance(current);
         DOMRange* proposedRange = DOMRange::createInstance(proposed);
-        bool result = editing->shouldChangeSelectedDOMRange(m_webView, currentRange, proposedRange, (WebSelectionAffinity)selectionAffinity, stillSelected);
+        bool result = editing->shouldChangeSelectedDOMRange(m_webView, currentRange, proposedRange, toWebSelectionAffinity(selectionAffinity), stillSelected);
         delete currentRange;
         delete proposedRange;
         return result;
@@ -537,7 +544,6 @@ static String undoNameForEditAction(EditAction editAction)
         case EditAction::Delete: return "Delete";
         case EditAction::Insert:
         case EditAction::InsertFromDrop:
-        case EditAction::InsertEditableImage:
             return "Insert";
         case EditAction::ConvertToOrderedList:
         case EditAction::ConvertToUnorderedList:

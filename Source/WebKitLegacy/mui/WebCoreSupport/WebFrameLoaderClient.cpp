@@ -67,7 +67,6 @@
 #include <WebCore/FrameLoader.h>
 #include <WebCore/FrameTree.h>
 #include <WebCore/FrameView.h>
-#include <WebCore/HTMLAppletElement.h>
 #include <WebCore/HTMLFormElement.h>
 #include <WebCore/HTMLFrameElement.h>
 #include <WebCore/HTMLFrameOwnerElement.h>
@@ -356,7 +355,7 @@ void WebFrameLoaderClient::dispatchDidFinishLoad()
         webFrameLoadDelegate->didFinishLoad(m_webFrame);
 }
 
-Frame* WebFrameLoaderClient::dispatchCreatePage(const WebCore::NavigationAction&)
+Frame* WebFrameLoaderClient::dispatchCreatePage(const WebCore::NavigationAction&,  WebCore::NewFrameOpenerPolicy)
 {
     BalWidget *widget = (BalWidget *) DoMethod(app, MM_OWBApp_AddPage, NULL, FALSE, FALSE, NULL, NULL, getv(m_webFrame->webView()->viewWindow()->browser, MA_OWBBrowser_PrivateBrowsing), FALSE);
 
@@ -959,17 +958,6 @@ void WebFrameLoaderClient::dispatchDidFailLoad(const ResourceError& error)
 void WebFrameLoaderClient::startDownload(const ResourceRequest&, const String& /* suggestedName */)
 {
     notImplemented();
-}
-
-RefPtr<Widget> WebFrameLoaderClient::createJavaAppletWidget(const IntSize& pluginSize, HTMLAppletElement& element, const URL& /*baseURL*/, const Vector<String>& paramNames, const Vector<String>& paramValues)
-{
-    RefPtr<PluginView> pluginView = PluginView::create(core(m_webFrame), pluginSize, &element, URL(), paramNames, paramValues, "application/x-java-applet", false);
-
-    // Check if the plugin can be loaded successfully
-    if (pluginView->plugin() && pluginView->plugin()->load())
-        return pluginView;
-
-    return pluginView;
 }
 
 ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const String& mimeTypeIn)

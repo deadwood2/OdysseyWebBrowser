@@ -45,12 +45,12 @@ static void* allocateWithCheck(size_t bytes, bool executable)
     return nullptr;
 }
 
-void* OSAllocator::reserveUncommitted(size_t bytes, Usage, bool, bool executable, bool)
+void* OSAllocator::reserveUncommitted(size_t bytes, Usage, bool, bool executable, bool, bool)
 {
     return allocateWithCheck(bytes, executable);
 }
 
-void* OSAllocator::reserveAndCommit(size_t bytes, Usage, bool, bool executable, bool)
+void* OSAllocator::reserveAndCommit(size_t bytes, Usage, bool, bool executable, bool, bool)
 {
     return allocateWithCheck(bytes, executable);
 }

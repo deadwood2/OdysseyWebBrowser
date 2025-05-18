@@ -257,8 +257,8 @@ Seconds RenderThemeBal::caretBlinkInterval() const
 void RenderThemeBal::setButtonStyle(RenderStyle& style) const
 {
     int vertPadding = (style.computedFontPixelSize() / paddingDivisor);
-    style.setPaddingTop(Length(vertPadding, Fixed));
-    style.setPaddingBottom(Length(vertPadding, Fixed));
+    style.setPaddingTop(Length(vertPadding, LengthType::Fixed));
+    style.setPaddingBottom(Length(vertPadding, LengthType::Fixed));
 }
 
 void RenderThemeBal::adjustButtonStyle(RenderStyle& style, const Element*) const
@@ -331,8 +331,8 @@ void RenderThemeBal::adjustSearchFieldCancelButtonStyle(RenderStyle& style, cons
     // Scale the button size based on the font size
     float fontScale = style.computedFontPixelSize() / defaultControlFontPixelSize;
     int cancelButtonSize = lroundf(std::min(std::max(minCancelButtonSize, defaultCancelButtonSize * fontScale), maxCancelButtonSize));
-    style.setWidth(Length(cancelButtonSize, Fixed));
-    style.setHeight(Length(cancelButtonSize, Fixed));
+    style.setWidth(Length(cancelButtonSize, LengthType::Fixed));
+    style.setHeight(Length(cancelButtonSize, LengthType::Fixed));
 }
 
 bool RenderThemeBal::paintSearchField(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
@@ -374,10 +374,10 @@ void RenderThemeBal::adjustMenuListButtonStyle(RenderStyle& style, const Element
     const int minHeight = style.computedFontPixelSize() * 2;
 
     style.resetPadding();
-    style.setHeight(Length(Auto));
+    style.setHeight(Length(LengthType::Auto));
 
-    style.setPaddingRight(Length(minHeight + paddingRight, Fixed));
-    style.setPaddingLeft(Length(paddingLeft, Fixed));
+    style.setPaddingRight(Length(minHeight + paddingRight, LengthType::Fixed));
+    style.setPaddingLeft(Length(paddingLeft, LengthType::Fixed));
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
@@ -385,8 +385,8 @@ void RenderThemeBal::calculateButtonSize(RenderStyle& style) const
 {
     int size = style.computedFontPixelSize();
     if (style.appearance() == CheckboxPart || style.appearance() == RadioPart) {
-        style.setWidth(Length(size, Fixed));
-        style.setHeight(Length(size, Fixed));
+        style.setWidth(Length(size, LengthType::Fixed));
+        style.setHeight(Length(size, LengthType::Fixed));
         return;
     }
 
@@ -395,14 +395,15 @@ void RenderThemeBal::calculateButtonSize(RenderStyle& style) const
         return;
 
     if (style.width().isIntrinsicOrAuto())
-        style.setWidth(Length(size, Fixed));
+        style.setWidth(Length(size, LengthType::Fixed));
 
     if (style.height().isAuto())
-        style.setHeight(Length(size, Fixed));
+        style.setHeight(Length(size, LengthType::Fixed));
 }
 
-bool RenderThemeBal::paintCheckbox(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintCheckbox(const RenderObject& object, const PaintInfo& info, const FloatRect& r)
 {
+    IntRect rect(r.x(), r.y(), r.width(), r.height());
     return paintButton(object, info, rect);
 }
 
@@ -411,8 +412,9 @@ void RenderThemeBal::setCheckboxSize(RenderStyle& style) const
     calculateButtonSize(style);
 }
 
-bool RenderThemeBal::paintRadio(const RenderObject& object, const PaintInfo& info, const IntRect& rect)
+bool RenderThemeBal::paintRadio(const RenderObject& object, const PaintInfo& info, const FloatRect& r)
 {
+    IntRect rect(r.x(), r.y(), r.width(), r.height());
     return paintButton(object, info, rect);
 }
 
@@ -428,9 +430,9 @@ void RenderThemeBal::setRadioSize(RenderStyle& style) const
     // the higher DPI.  Until our entire engine honors a DPI setting other than 96, we can't rely on the theme's
     // metrics.
     if (style.width().isIntrinsicOrAuto())
-        style.setWidth(Length(13, Fixed));
+        style.setWidth(Length(13, LengthType::Fixed));
     if (style.height().isAuto())
-        style.setHeight(Length(13, Fixed));
+        style.setHeight(Length(13, LengthType::Fixed));
 }
 
 // If this function returns false, WebCore assumes the button is fully decorated
@@ -527,8 +529,8 @@ void RenderThemeBal::adjustCheckboxStyle(RenderStyle& style, const Element*) con
 {
     setCheckboxSize(style);
     style.setBoxShadow(nullptr);
-    style.setMarginBottom(Length(marginSize, Fixed));
-    style.setMarginRight(Length(marginSize, Fixed));
+    style.setMarginBottom(Length(marginSize, LengthType::Fixed));
+    style.setMarginRight(Length(marginSize, LengthType::Fixed));
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
@@ -536,8 +538,8 @@ void RenderThemeBal::adjustRadioStyle(RenderStyle& style, const Element*) const
 {
     setRadioSize(style);
     style.setBoxShadow(nullptr);
-    style.setMarginBottom(Length(marginSize, Fixed));
-    style.setMarginRight(Length(marginSize, Fixed));
+    style.setMarginBottom(Length(marginSize, LengthType::Fixed));
+    style.setMarginRight(Length(marginSize, LengthType::Fixed));
     //style.setCursor(CURSOR_WEBKIT_GRAB);
 }
 
@@ -655,7 +657,7 @@ bool RenderThemeBal::paintMenuList(const RenderObject& o, const PaintInfo& paint
     return false;
 }
 
-bool RenderThemeBal::paintMenuListButtonDecorations(const RenderBox& o, const PaintInfo& paintInfo, const FloatRect& r)
+void RenderThemeBal::paintMenuListButtonDecorations(const RenderBox& o, const PaintInfo& paintInfo, const FloatRect& r)
 {
     // Note, this method is only called if the menu list explicitly specifies either a border or background color.
     // Otherwise, RenderThemeBal::paintMenuList is called. We need to fit the arrow button with the border box
@@ -679,8 +681,6 @@ bool RenderThemeBal::paintMenuListButtonDecorations(const RenderBox& o, const Pa
                          r.height() - o.style().borderTopWidth() - o.style().borderBottomWidth());
 
     drawArrowsAndSeparator(o, paintInfo, bounds);
-
-    return false;
 }
 
 void RenderThemeBal::adjustSliderThumbSize(RenderStyle& style, const Element* element) const
@@ -695,14 +695,14 @@ void RenderThemeBal::adjustSliderThumbSize(RenderStyle& style, const Element* el
     }
 
     if (part == SliderThumbHorizontalPart || part == SliderThumbVerticalPart) {
-        style.setWidth(Length((part == SliderThumbVerticalPart ? sliderThumbHeight : sliderThumbWidth) * fullScreenMultiplier, Fixed));
-        style.setHeight(Length((part == SliderThumbVerticalPart ? sliderThumbWidth : sliderThumbHeight) * fullScreenMultiplier, Fixed));
+        style.setWidth(Length((part == SliderThumbVerticalPart ? sliderThumbHeight : sliderThumbWidth) * fullScreenMultiplier, LengthType::Fixed));
+        style.setHeight(Length((part == SliderThumbVerticalPart ? sliderThumbWidth : sliderThumbHeight) * fullScreenMultiplier, LengthType::Fixed));
     } else if (part == MediaVolumeSliderThumbPart) {
-        style.setWidth(Length(mediaVolumeSliderThumbWidth * fullScreenMultiplier, Fixed));
-        style.setHeight(Length(mediaVolumeSliderThumbHeight * fullScreenMultiplier, Fixed));
+        style.setWidth(Length(mediaVolumeSliderThumbWidth * fullScreenMultiplier, LengthType::Fixed));
+        style.setHeight(Length(mediaVolumeSliderThumbHeight * fullScreenMultiplier, LengthType::Fixed));
     } else if (part == MediaSliderThumbPart) {
-        style.setWidth(Length(mediaSliderThumbWidth * fullScreenMultiplier, Fixed));
-        style.setHeight(Length(mediaSliderThumbHeight * fullScreenMultiplier, Fixed));
+        style.setWidth(Length(mediaSliderThumbWidth * fullScreenMultiplier, LengthType::Fixed));
+        style.setHeight(Length(mediaSliderThumbHeight * fullScreenMultiplier, LengthType::Fixed));
     }
 }
 
@@ -874,22 +874,22 @@ void RenderThemeBal::adjustMediaControlStyle(RenderStyle& style, const Element* 
     case MediaEnterFullscreenButtonPart:
     case MediaExitFullscreenButtonPart:
     case MediaMuteButtonPart:
-        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
-        style.setHeight(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
-        style.setBottom(Length(0, Fixed));
+        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, LengthType::Fixed));
+        style.setHeight(Length(mediaControlsHeight * fullScreenMultiplier, LengthType::Fixed));
+        style.setBottom(Length(0, LengthType::Fixed));
         break;
     case MediaCurrentTimePart:
     case MediaTimeRemainingPart:
-        style.setWidth(Length(mediaControlsHeight * 3 / 2 * fullScreenMultiplier, Fixed));
-        style.setHeight(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
-        style.setPaddingRight(Length(mediaControlsHeight / 8 * fullScreenMultiplier, Fixed));
+        style.setWidth(Length(mediaControlsHeight * 3 / 2 * fullScreenMultiplier, LengthType::Fixed));
+        style.setHeight(Length(mediaControlsHeight * fullScreenMultiplier, LengthType::Fixed));
+        style.setPaddingRight(Length(mediaControlsHeight / 8 * fullScreenMultiplier, LengthType::Fixed));
         style.setFontSize(static_cast<int>(fontSize));
-        style.setBottom(Length(0, Fixed));
+        style.setBottom(Length(0, LengthType::Fixed));
         break;
     case MediaVolumeSliderContainerPart:
-        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
-        style.setHeight(Length(mediaControlsHeight * 4 * fullScreenMultiplier, Fixed));
-        style.setBottom(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
+        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, LengthType::Fixed));
+        style.setHeight(Length(mediaControlsHeight * 4 * fullScreenMultiplier, LengthType::Fixed));
+        style.setBottom(Length(mediaControlsHeight * fullScreenMultiplier, LengthType::Fixed));
         break;
     default:
         break;
@@ -904,13 +904,13 @@ void RenderThemeBal::adjustMediaControlStyle(RenderStyle& style, const Element* 
         case MediaEnterFullscreenButtonPart:
         case MediaExitFullscreenButtonPart:
             style.setPosition(PositionType::Absolute);
-            style.setBottom(Length(0, Fixed));
-            style.setRight(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
+            style.setBottom(Length(0, LengthType::Fixed));
+            style.setRight(Length(mediaControlsHeight * fullScreenMultiplier, LengthType::Fixed));
             break;
         case MediaMuteButtonPart:
             style.setPosition(PositionType::Absolute);
-            style.setBottom(Length(0, Fixed));
-            style.setRight(Length(0, Fixed));
+            style.setBottom(Length(0, LengthType::Fixed));
+            style.setRight(Length(0, LengthType::Fixed));
             break;
         default:
             break;
@@ -929,11 +929,11 @@ void RenderThemeBal::adjustSliderTrackStyle(RenderStyle& style, const Element* e
     // We use multiples of mediaControlsHeight to make all objects scale evenly
     switch (style.appearance()) {
     case MediaSliderPart:
-        style.setHeight(Length(19, Fixed));
+        style.setHeight(Length(19, LengthType::Fixed));
         break;
     case MediaVolumeSliderPart:
-        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, Fixed));
-        style.setHeight(Length(mediaControlsHeight * 4 * fullScreenMultiplier, Fixed));
+        style.setWidth(Length(mediaControlsHeight * fullScreenMultiplier, LengthType::Fixed));
+        style.setHeight(Length(mediaControlsHeight * 4 * fullScreenMultiplier, LengthType::Fixed));
         break;
     case MediaFullScreenVolumeSliderPart:
     default:
@@ -1048,7 +1048,7 @@ bool RenderThemeBal::paintMediaSliderTrack(RenderObject* object, const PaintInfo
 
     float fullScreenMultiplier = determineFullScreenMultiplier(mediaElement);
     float loaded = 0;
-    // FIXME: replace loaded with commented out one when buffer bug is fixed (see comment in
+    // FIXME: replace loaded with commented out one when buffer bug is LengthType::Fixed (see comment in
     // MediaPlayerPrivateMMrenderer::percentLoaded).
     loaded = mediaElement->percentLoaded();
     //if (mediaElement->player() && mediaElement->player()->implementation())

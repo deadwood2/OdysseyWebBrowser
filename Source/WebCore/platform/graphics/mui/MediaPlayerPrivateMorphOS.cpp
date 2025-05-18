@@ -324,12 +324,12 @@ MediaPlayerMorphOSSettings::settings().m_load = [](WebCore::MediaPlayer *player,
 }
 
 #if ENABLE(MEDIA_SOURCE)
-void MediaPlayerPrivateMorphOS::load(const String& url, MediaSourcePrivateClient* client)
+void MediaPlayerPrivateMorphOS::load(const URL& url, const ContentType&, MediaSourcePrivateClient* client)
 {
-	D(dprintf("%s: %s\n", __PRETTY_FUNCTION__, url.utf8().data()));
+	D(dprintf("%s: %s\n", __PRETTY_FUNCTION__, url.string().utf8().data()));
 	cancelLoad();
 
-	if (startsWithLettersIgnoringASCIICase(url, "about:"))
+	if (startsWithLettersIgnoringASCIICase(url.string(), "about:"))
 		return;
 		
 	if (!canLoad(true))
@@ -340,7 +340,7 @@ void MediaPlayerPrivateMorphOS::load(const String& url, MediaSourcePrivateClient
 	m_readyState = MediaPlayer::ReadyState::HaveNothing;
 	m_player->readyStateChanged();
 
-	m_mediaSourcePrivate = MediaSourcePrivateMorphOS::create(*this, *client, url);
+	m_mediaSourcePrivate = MediaSourcePrivateMorphOS::create(*this, *client, url.string());
 }
 #endif
 

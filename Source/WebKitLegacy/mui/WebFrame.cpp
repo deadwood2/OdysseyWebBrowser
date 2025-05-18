@@ -55,7 +55,6 @@
 #include "Bookmarklet.h"
 #include <WebCore/MemoryCache.h>
 #include <WebCore/DocumentMarkerController.h>
-#include <WebCore/CSSAnimationController.h>
 #include <WebCore/Editor.h>
 #include <WebCore/Event.h>
 #include <WebCore/FormState.h>
@@ -65,7 +64,6 @@
 #include <WebCore/FrameView.h>
 #include <WebCore/Frame.h>
 #include <WebCore/GraphicsContext.h>
-#include <WebCore/HTMLAppletElement.h>
 #include <WebCore/HTMLFormElement.h>
 #include <WebCore/HTMLInputElement.h>
 #include <WebCore/HTMLPlugInElement.h>
@@ -411,15 +409,15 @@ const char* WebFrame::url() const
     String url("");
     switch(coreFrame->loader().state())
       {
-      case FrameStateProvisional:
+      case WebCore::FrameState::Provisional:
     if(coreFrame->loader().provisionalDocumentLoader())
       url = coreFrame->loader().provisionalDocumentLoader()->request().url().string();
     break;
-      case FrameStateCommittedPage:
+      case WebCore::FrameState::CommittedPage:
     if(coreFrame->loader().documentLoader())
       url = coreFrame->loader().documentLoader()->request().url().string();
     break;
-      case FrameStateComplete:
+      case WebCore::FrameState::Complete:
     url = coreFrame->document()->url().string();
     break;
       default:
@@ -1206,15 +1204,6 @@ bool WebFrame::shouldTreatURLAsSameAsCurrent(const char*) const
     return false;
 }
 
-int WebFrame::numberOfActiveAnimations()
-{
-    Frame* coreFrame = core(this);
-    if (!coreFrame)
-        return 0;
-
-    return  coreFrame->legacyAnimation().numberOfActiveAnimations(coreFrame->document());
-}
-
 static HTMLInputElement* inputElementFromDOMElement(DOMElement* element)
 {
     if (!element)
@@ -1239,22 +1228,6 @@ bool WebFrame::elementDoesAutoComplete(DOMElement *element)
         return false;
     else
     return inputElement->isTextField() && !inputElement->isPasswordField() && inputElement->shouldAutocomplete();
-}
-
-bool WebFrame::pauseAnimation(const char* name, double time, const char* element)
-{
-    Element* coreElement = core(this)->document()->getElementById(AtomString(element));
-    if (!coreElement || !coreElement->renderer())
-        return false;
-    return core(this)->legacyAnimation().pauseAnimationAtTime(*coreElement, AtomString(name), time);
-}
-
-bool WebFrame::pauseTransition(const char* name, double time, const char* element)
-{
-    Element* coreElement = core(this)->document()->getElementById(AtomString(element));
-    if (!coreElement || !coreElement->renderer())
-        return false;
-    return core(this)->legacyAnimation().pauseTransitionAtTime(*coreElement, AtomString(name), time);
 }
 
 void WebFrame::setEditable(bool flag)
