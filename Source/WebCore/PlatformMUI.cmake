@@ -73,7 +73,7 @@ list(APPEND WebCore_SOURCES
     platform/mui/IntPointMorphOS.cpp
     platform/mui/IntRectMorphOS.cpp
     platform/mui/LocalizedStringsMorphOS.cpp
-
+    platform/mui/memmem.c
     platform/mui/MIMETypeRegistryMorphOS.cpp
     platform/mui/NetworkStateNotifierMUI.cpp
     platform/mui/PasteboardMorphOS.cpp
