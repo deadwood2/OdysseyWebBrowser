@@ -647,6 +647,12 @@ void WebChromeClient::didFinishLoadingImageForElement(WebCore::HTMLImageElement&
 {
 }
 
+std::unique_ptr<WebCore::DateTimeChooser> WebChromeClient::createDateTimeChooser(WebCore::DateTimeChooserClient&)
+{
+asm("int3");
+    return nullptr;
+}
+
 //void WebChromeClient::fullScreenRendererChanged(RenderBox*)
 //{
 //    //m_webView->adjustFullScreenElementDimensionsIfNeeded();
