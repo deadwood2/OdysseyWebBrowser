@@ -36,6 +36,7 @@
 #include "WebCoreArgumentCoders.h"
 #include "WebProcessProxy.h"
 #include <WebCore/AudioSession.h>
+#include <WebCore/AudioUtilities.h>
 #include <WebCore/CARingBuffer.h>
 #include <WebCore/ImageRotationSessionVT.h>
 #include <WebCore/MediaConstraints.h>
@@ -60,7 +61,6 @@ public:
         : m_id(id)
         , m_connection(WTFMove(connection))
         , m_source(WTFMove(source))
-        , m_ringBuffer(makeUniqueRef<SharedRingBufferStorage>(std::bind(&SourceProxy::storageChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3)))
     {
         m_source->addObserver(*this);
         switch (m_source->type()) {
@@ -77,7 +77,8 @@ public:
 
     ~SourceProxy()
     {
-        storage().invalidate();
+        // Make sure the rendering thread is stopped before we proceed with the destruction.
+        stop();
 
         switch (m_source->type()) {
         case RealtimeMediaSource::Type::Audio:
@@ -90,24 +91,23 @@ public:
             ASSERT_NOT_REACHED();
         }
         m_source->removeObserver(*this);
+
+        if (m_ringBuffer)
+            static_cast<SharedRingBufferStorage&>(m_ringBuffer->storage()).invalidate();
     }
 
     RealtimeMediaSource& source() { return m_source; }
-    SharedRingBufferStorage& storage() { return static_cast<SharedRingBufferStorage&>(m_ringBuffer.storage()); }
     CAAudioStreamDescription& description() { return m_description; }
     int64_t numberOfFrames() { return m_numberOfFrames; }
 
     void audioUnitWillStart() final
     {
-        // FIXME: WebProcess might want to set the category/bufferSize itself, in which case we should remove that code.
-        auto bufferSize = AudioSession::sharedSession().sampleRate() / 50;
-        if (AudioSession::sharedSession().preferredBufferSize() > bufferSize)
-            AudioSession::sharedSession().setPreferredBufferSize(bufferSize);
-        AudioSession::sharedSession().setCategory(AudioSession::PlayAndRecord, RouteSharingPolicy::Default);
+        AudioSession::sharedSession().setCategory(AudioSession::CategoryType::PlayAndRecord, RouteSharingPolicy::Default);
     }
 
     void start()
     {
+        m_shouldReset = true;
         m_isEnded = false;
         m_source->start();
     }
@@ -145,18 +145,35 @@ private:
 
     // May get called on a background thread.
     void audioSamplesAvailable(const MediaTime& time, const PlatformAudioData& audioData, const AudioStreamDescription& description, size_t numberOfFrames) final {
-        if (m_description != description) {
+        if (m_description != description || m_shouldReset) {
+            DisableMallocRestrictionsForCurrentThreadScope scope;
+
+            m_shouldReset = false;
+            m_writeOffset = 0;
+            m_remainingFrameCount = 0;
+            m_startTime = time;
+            m_captureSemaphore = makeUnique<IPC::Semaphore>();
             ASSERT(description.platformDescription().type == PlatformDescription::CAAudioStreamBasicType);
             m_description = *WTF::get<const AudioStreamBasicDescription*>(description.platformDescription().description);
 
+            m_frameChunkSize = std::max(WebCore::AudioUtilities::renderQuantumSize, AudioSession::sharedSession().preferredBufferSize());
+
             // Allocate a ring buffer large enough to contain 2 seconds of audio.
             m_numberOfFrames = m_description.sampleRate() * 2;
-            m_ringBuffer.allocate(m_description.streamDescription(), m_numberOfFrames);
+            m_ringBuffer.reset();
+            m_ringBuffer = makeUnique<CARingBuffer>(makeUniqueRef<SharedRingBufferStorage>(std::bind(&SourceProxy::storageChanged, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3)));
+            m_ringBuffer->allocate(m_description.streamDescription(), m_numberOfFrames);
         }
 
         ASSERT(is<WebAudioBufferList>(audioData));
-        m_ringBuffer.store(downcast<WebAudioBufferList>(audioData).list(), numberOfFrames, time.timeValue());
-        m_connection->send(Messages::RemoteCaptureSampleManager::AudioSamplesAvailable(m_id, time, numberOfFrames), 0);
+        m_ringBuffer->store(downcast<WebAudioBufferList>(audioData).list(), numberOfFrames, m_writeOffset);
+        m_writeOffset += numberOfFrames;
+
+        size_t framesToSend = numberOfFrames + m_remainingFrameCount;
+        size_t signalCount = framesToSend / m_frameChunkSize;
+        m_remainingFrameCount = framesToSend - (signalCount * m_frameChunkSize);
+        for (unsigned i = 0; i < signalCount; ++i)
+            m_captureSemaphore->signal();
     }
 
     void videoSampleAvailable(MediaSample& sample) final
@@ -207,7 +224,7 @@ private:
 #else
         uint64_t dataSize = 0;
 #endif
-        m_connection->send(Messages::RemoteCaptureSampleManager::AudioStorageChanged(m_id, SharedMemory::IPCHandle { WTFMove(handle),  dataSize }, format, frameCount), 0);
+        m_connection->send(Messages::RemoteCaptureSampleManager::AudioStorageChanged(m_id, SharedMemory::IPCHandle { WTFMove(handle),  dataSize }, format, frameCount, *m_captureSemaphore, m_startTime, m_frameChunkSize), 0);
     }
 
     bool preventSourceFromStopping()
@@ -220,12 +237,18 @@ private:
     WeakPtr<PlatformMediaSessionManager> m_sessionManager;
     Ref<IPC::Connection> m_connection;
     Ref<RealtimeMediaSource> m_source;
-    CARingBuffer m_ringBuffer;
+    std::unique_ptr<CARingBuffer> m_ringBuffer;
     CAAudioStreamDescription m_description { };
     int64_t m_numberOfFrames { 0 };
     bool m_isEnded { false };
     std::unique_ptr<ImageRotationSessionVT> m_rotationSession;
     bool m_shouldApplyRotation { false };
+    std::unique_ptr<IPC::Semaphore> m_captureSemaphore;
+    int64_t m_writeOffset { 0 };
+    int64_t m_remainingFrameCount { 0 };
+    size_t m_frameChunkSize { 0 };
+    MediaTime m_startTime;
+    bool m_shouldReset { false };
 };
 
 UserMediaCaptureManagerProxy::UserMediaCaptureManagerProxy(UniqueRef<ConnectionProxy>&& connectionProxy)
@@ -299,8 +322,16 @@ void UserMediaCaptureManagerProxy::createMediaSourceForCaptureDeviceWithConstrai
 
 void UserMediaCaptureManagerProxy::startProducingData(RealtimeMediaSourceIdentifier id)
 {
-    if (auto* proxy = m_proxies.get(id))
-        proxy->start();
+    auto* proxy = m_proxies.get(id);
+    if (!proxy)
+        return;
+
+    if (!m_connectionProxy->setCaptureAttributionString()) {
+        RELEASE_LOG_ERROR(WebRTC, "Unable to set capture attribution, failing capture.");
+        return;
+    }
+
+    proxy->start();
 }
 
 void UserMediaCaptureManagerProxy::stopProducingData(RealtimeMediaSourceIdentifier id)
@@ -325,8 +356,10 @@ void UserMediaCaptureManagerProxy::capabilities(RealtimeMediaSourceIdentifier id
 void UserMediaCaptureManagerProxy::applyConstraints(RealtimeMediaSourceIdentifier id, const WebCore::MediaConstraints& constraints)
 {
     auto* proxy = m_proxies.get(id);
-    if (!proxy)
+    if (!proxy) {
+        m_connectionProxy->connection().send(Messages::UserMediaCaptureManager::ApplyConstraintsFailed(id, { }, "Unknown source"_s), 0);
         return;
+    }
 
     auto& source = proxy->source();
     auto result = source.applyConstraints(constraints);
@@ -364,6 +397,11 @@ void UserMediaCaptureManagerProxy::clear()
 void UserMediaCaptureManagerProxy::setOrientation(uint64_t orientation)
 {
     m_orientationNotifier.orientationChanged(orientation);
+}
+
+bool UserMediaCaptureManagerProxy::hasSourceProxies() const
+{
+    return !m_proxies.isEmpty();
 }
 
 }

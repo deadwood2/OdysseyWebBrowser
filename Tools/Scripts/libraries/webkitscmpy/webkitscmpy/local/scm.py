@@ -28,8 +28,6 @@ import six
 from webkitcorepy import run
 from webkitscmpy import ScmBase
 
-# TODO: Use shutil directly when Python 2.7 is removed
-from whichcraft import which
 
 class Scm(ScmBase):
     # Projects can define for themselves what constitutes a development vs a production branch,
@@ -39,23 +37,25 @@ class Scm(ScmBase):
 
     @classmethod
     def executable(cls, program):
+        # TODO: Use shutil directly when Python 2.7 is removed
+        from whichcraft import which
         path = which(program)
         if path is None:
             raise OSError("Cannot find '{}' program".format(program))
         return os.path.realpath(path)
 
     @classmethod
-    def from_path(cls, path, contributors=None):
+    def from_path(cls, path, contributors=None, **kwargs):
         from webkitscmpy import local
 
         if local.Git.is_checkout(path):
-            return local.Git(path, contributors=contributors)
+            return local.Git(path, contributors=contributors, **kwargs)
         if local.Svn.is_checkout(path):
-            return local.Svn(path, contributors=contributors)
+            return local.Svn(path, contributors=contributors, **kwargs)
         raise OSError("'{}' is not a known SCM type".format(path))
 
-    def __init__(self, path, dev_branches=None, prod_branches=None, contributors=None):
-        super(Scm, self).__init__(dev_branches=dev_branches, prod_branches=prod_branches, contributors=contributors)
+    def __init__(self, path, dev_branches=None, prod_branches=None, contributors=None, id=None):
+        super(Scm, self).__init__(dev_branches=dev_branches, prod_branches=prod_branches, contributors=contributors, id=id)
 
         if not isinstance(path, six.string_types):
             raise ValueError("Expected 'path' to be a string type, not '{}'".format(type(path)))

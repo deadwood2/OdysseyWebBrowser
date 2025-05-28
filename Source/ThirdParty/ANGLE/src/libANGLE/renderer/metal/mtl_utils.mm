@@ -27,6 +27,8 @@ namespace mtl
 {
 
 constexpr char kANGLEPrintMSLEnv[] = "ANGLE_METAL_PRINT_MSL_ENABLE";
+constexpr char kANGLEMSLVersionMajorEnv[] = "ANGLE_MSL_VERSION_MAJOR";
+constexpr char kANGLEMSLVersionMinorEnv[] = "ANGLE_MSL_VERSION_MINOR";
 
 namespace
 {
@@ -112,6 +114,11 @@ angle::Result InitializeTextureContents(const gl::Context *context,
     const angle::Format &actualAngleFormat           = textureObjFormat.actualAngleFormat();
     const gl::InternalFormat &intendedInternalFormat = textureObjFormat.intendedInternalFormat();
 
+    bool forceGPUInitialization = false;
+#if TARGET_OS_SIMULATOR
+    forceGPUInitialization = true;
+#endif // TARGET_OS_SIMULATOR
+    
     // This function is called in many places to initialize the content of a texture.
     // So it's better we do the sanity check here instead of let the callers do it themselves:
     if (!textureObjFormat.valid() || actualAngleFormat.isBlock || actualAngleFormat.depthBits > 0 ||
@@ -146,7 +153,7 @@ angle::Result InitializeTextureContents(const gl::Context *context,
     }
 
     if (texture->isCPUAccessible() && index.getType() != gl::TextureType::_2DMultisample &&
-        index.getType() != gl::TextureType::_2DMultisampleArray)
+        index.getType() != gl::TextureType::_2DMultisampleArray && !forceGPUInitialization)
     {
         const angle::Format &dstFormat = angle::Format::Get(textureObjFormat.actualFormatId);
         const size_t dstRowPitch       = dstFormat.pixelBytes * size.width;
@@ -310,7 +317,15 @@ angle::Result InitializeDepthStencilTextureContentsGPU(const gl::Context *contex
     uint32_t layer = index.hasLayer() ? index.getLayerIndex() : 0;
     rtMTL.set(texture, level, layer, textureObjFormat);
     mtl::RenderPassDesc rpDesc;
-    rtMTL.toRenderPassAttachmentDesc(&rpDesc.depthAttachment);
+    // For formats such as MTLPixelFormatStencil8/GL_STENCIL_INDEX8 we only want to set the stencil attachment.
+    if (angleFormat.stencilBits && !angleFormat.depthBits)
+    {
+        rtMTL.toRenderPassAttachmentDesc(&rpDesc.stencilAttachment);
+    }
+    else
+    {
+        rtMTL.toRenderPassAttachmentDesc(&rpDesc.depthAttachment);
+    }
     rpDesc.sampleCount = texture->samples();
     if (angleFormat.depthBits)
     {
@@ -474,40 +489,95 @@ uint32_t GetDeviceVendorId(id<MTLDevice> metalDevice)
     return vendorId;
 }
 
+static MTLLanguageVersion GetUserSetOrHighestMSLVersion(const MTLLanguageVersion currentVersion)
+{
+    const std::string major_str = angle::GetEnvironmentVar(kANGLEMSLVersionMajorEnv);
+    const std::string minor_str = angle::GetEnvironmentVar(kANGLEMSLVersionMinorEnv);
+    if (major_str != "" && minor_str != "")
+    {
+        const int major = std::stoi(major_str);
+        const int minor = std::stoi(minor_str);
+#if !defined(NDEBUG)
+        NSLog(@"Forcing MSL Version: MTLLanguageVersion%d_%d\n", major, minor);
+#endif
+        switch (major)
+        {
+            case 1:
+                switch (minor)
+                {
+#if (defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0) &&\
+    (TARGET_OS_IOS || TARGET_OS_TV) && !TARGET_OS_MACCATALYST
+                    case 0: return MTLLanguageVersion1_0;
+#endif
+#if (defined(__MAC_10_11) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_11) ||\
+    (defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0) ||\
+    (defined(__TVOS_9_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_9_0)
+                    case 1: return MTLLanguageVersion1_1;
+#endif
+#if (defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12) ||\
+    (defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_10_0) ||\
+    (defined(__TVOS_10_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_10_0)
+                    case 2: return MTLLanguageVersion1_2;
+#endif
+                    default:
+                        assert(0 && "Unsupported MSL Minor Language Version.");
+                }
+                break;
+            case 2:
+                switch (minor)
+                {
+#if (defined(__MAC_10_13) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_13) ||\
+    (defined(__IPHONE_11_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_11_0) ||\
+    (defined(__TVOS_11_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_11_0)
+                    case 0: return MTLLanguageVersion2_0;
+#endif
+#if (defined(__MAC_10_14) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_14) ||\
+    (defined(__IPHONE_12_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0) ||\
+    (defined(__TVOS_12_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_12_0)
+                    case 1: return MTLLanguageVersion2_1;
+#endif
+#if (defined(__MAC_10_15) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_15) ||\
+    (defined(__IPHONE_13_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_13_0) ||\
+    (defined(__TVOS_13_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_13_0)
+                    case 2: return MTLLanguageVersion2_2;
+#endif
+#if (defined(__MAC_11_0) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_11_0) ||\
+    (defined(__IPHONE_14_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_14_0) ||\
+    (defined(__TVOS_14_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_14_0)
+                    case 3: return MTLLanguageVersion2_3;
+#endif
+                    default:
+                        assert(0 && "Unsupported MSL Minor Language Version.");
+                }
+                break;
+            default:
+                assert(0 && "Unsupported MSL Major Language Version.");
+        }
+    }
+    return currentVersion;
+}
+
+AutoObjCPtr<id<MTLLibrary>> CreateShaderLibrary(id<MTLDevice> metalDevice,
+                                                const std::string &source,
+                                                NSDictionary<NSString *, NSObject *> * substitutionMacros,
+                                                bool enableFastMath,
+                                                AutoObjCPtr<NSError *> *error)
+{
+    return CreateShaderLibrary(metalDevice, source.c_str(), source.size(), substitutionMacros, enableFastMath, error);
+}
+
 AutoObjCPtr<id<MTLLibrary>> CreateShaderLibrary(id<MTLDevice> metalDevice,
                                                 const std::string &source,
                                                 AutoObjCPtr<NSError *> *error)
 {
-    return CreateShaderLibrary(metalDevice, source.c_str(), source.size(), error);
+    return CreateShaderLibrary(metalDevice, source.c_str(), source.size(),@{}, true, error);
 }
-
-#if 0
-static MTLLanguageVersion GetHighestSupportedMSLVersion()
-{
-    // https://developer.apple.com/documentation/metal/mtllanguageversion?language=objc
-    if (ANGLE_APPLE_AVAILABLE_XCI(11.0, 14.0, 14.0))
-        return MTLLanguageVersion2_3;
-    if (ANGLE_APPLE_AVAILABLE_XCI(10.15, 13.0, 13.0))
-        return MTLLanguageVersion2_2;
-    if (ANGLE_APPLE_AVAILABLE_XCI(10.15, 13.0, 12.0))
-        return MTLLanguageVersion2_1;
-    if (ANGLE_APPLE_AVAILABLE_XCI(10.13, 13.0, 11.0))
-        return MTLLanguageVersion2_0;
-    if (ANGLE_APPLE_AVAILABLE_XCI(10.12, 13.0, 10.0))
-        return MTLLanguageVersion1_2;
-    if (ANGLE_APPLE_AVAILABLE_XCI(10.11, 13.0, 9.0))
-        return MTLLanguageVersion1_1;
-#    if TARGET_OS_IOS
-    if (ANGLE_APPLE_AVAILABLE_I(9.0))
-        return MTLLanguageVersion1_0;
-#    endif
-    return MTLLanguageVersion1_1;
-}
-#endif
 
 AutoObjCPtr<id<MTLLibrary>> CreateShaderLibrary(id<MTLDevice> metalDevice,
                                                 const char *source,
                                                 size_t sourceLen,
+                                                NSDictionary<NSString *, NSObject *> * substitutionMacros,
+                                                bool enableFastMath,
                                                 AutoObjCPtr<NSError *> *errorOut)
 {
     ANGLE_MTL_OBJC_SCOPE
@@ -519,19 +589,18 @@ AutoObjCPtr<id<MTLLibrary>> CreateShaderLibrary(id<MTLDevice> metalDevice,
                                                  freeWhenDone:NO];
         auto options     = [[[MTLCompileOptions alloc] init] ANGLE_MTL_AUTORELEASE];
         // Mark all positions in VS with attribute invariant as non-optimizable
-#if (defined(__MAC_11_0) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_11_0) ||        \
-    (defined(__IPHONE_14_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_14_0) || \
-    (defined(__TVOS_14_0) && __TV_OS_VERSION_MAX_ALLOWED >= __TVOS_14_0)
+#if (defined(__MAC_11_0) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_11_0) ||\
+    (defined(__IPHONE_14_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_14_0) ||\
+    (defined(__TVOS_14_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_14_0)
         options.preserveInvariance = true;
 #else
         // No preserveInvariance available compiling from source, so just disable fastmath.
         options.fastMathEnabled = false;
 #endif
+        options.languageVersion = GetUserSetOrHighestMSLVersion(options.languageVersion);
         // TODO(jcunningham): workaround for intel driver not preserving invariance on all shaders
-        if ([metalDevice.name rangeOfString:@"Intel"].location != NSNotFound)
-        {
-            options.fastMathEnabled = false;
-        }
+        options.fastMathEnabled &= enableFastMath;
+        options.preprocessorMacros = substitutionMacros;
         auto library = [metalDevice newLibraryWithSource:nsSource options:options error:&nsError];
         if (angle::GetEnvironmentVar(kANGLEPrintMSLEnv)[0] == '1')
         {
@@ -1232,5 +1301,52 @@ angle::Result GetTriangleFanIndicesCount(ContextMtl *context,
     return angle::Result::Continue;
 }
 
+angle::Result CreateMslShader(mtl::Context *context,
+                              id<MTLLibrary> shaderLib,
+                              NSString * shaderName,
+                              MTLFunctionConstantValues *funcConstants,
+                              id<MTLFunction> *shaderOut)
+{
+    NSError *nsErr = nil;
+
+    id<MTLFunction> mtlShader;
+    if (funcConstants)
+    {
+        mtlShader = [shaderLib newFunctionWithName:shaderName
+                                    constantValues:funcConstants
+                                             error:&nsErr];
+    }
+    else
+    {
+        mtlShader = [shaderLib newFunctionWithName:shaderName];
+    }
+
+    [mtlShader ANGLE_MTL_AUTORELEASE];
+    if (nsErr && !mtlShader)
+    {
+        std::ostringstream ss;
+        ss << "Internal error compiling Metal shader:\n"
+           << nsErr.localizedDescription.UTF8String << "\n";
+
+        ERR() << ss.str();
+
+        ANGLE_MTL_CHECK(context, false, GL_INVALID_OPERATION);
+    }
+    *shaderOut = mtlShader;
+    return angle::Result::Continue;
+}
+
+angle::Result CreateMslShader(Context *context,
+                              id<MTLLibrary> shaderLib,
+                              NSString * shaderName,
+                              MTLFunctionConstantValues *funcConstants,
+                              AutoObjCPtr<id<MTLFunction>> *shaderOut)
+{
+    id<MTLFunction> outFunction;
+    ANGLE_TRY(CreateMslShader(context, shaderLib, shaderName, funcConstants, &outFunction));
+    shaderOut->retainAssign(outFunction);
+    return angle::Result::Continue;
+    
+}
 }  // namespace mtl
 }  // namespace rx

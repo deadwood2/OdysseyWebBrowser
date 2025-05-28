@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -65,8 +65,6 @@
 #import "ThemeMac.h"
 #import "TimeRanges.h"
 #import "UTIUtilities.h"
-#import "UserAgentScripts.h"
-#import "UserAgentStyleSheets.h"
 #import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
 #import <CoreServices/CoreServices.h>
@@ -153,10 +151,9 @@ constexpr Seconds progressAnimationRepeatInterval = 33_ms; // 30 fps
 
     // FIXME: This is a workaround for <rdar://problem/11385461>. When that bug is resolved, we should remove this code,
     // as well as the internal method overrides below.
-    CFMutableDictionaryRef coreUIDrawOptions = CFDictionaryCreateMutableCopy(NULL, 0, defaultOptions);
-    CFDictionarySetValue(coreUIDrawOptions, CFSTR("borders only"), kCFBooleanTrue);
-    CFAutorelease(coreUIDrawOptions);
-    return coreUIDrawOptions;
+    auto coreUIDrawOptions = adoptCF(CFDictionaryCreateMutableCopy(NULL, 0, defaultOptions));
+    CFDictionarySetValue(coreUIDrawOptions.get(), CFSTR("borders only"), kCFBooleanTrue);
+    return coreUIDrawOptions.autorelease();
 }
 
 - (CFDictionaryRef)_coreUIDrawOptionsWithFrame:(NSRect)cellFrame inView:(NSView *)controlView includeFocus:(BOOL)includeFocus
@@ -169,12 +166,6 @@ constexpr Seconds progressAnimationRepeatInterval = 33_ms; // 30 fps
     return [self _adjustedCoreUIDrawOptionsForDrawingBordersOnly:[super _coreUIDrawOptionsWithFrame:cellFrame inView:controlView includeFocus:includeFocus maskOnly:maskOnly]];
 }
 
-@end
-
-@interface WebCoreRenderThemeBundle : NSObject
-@end
-
-@implementation WebCoreRenderThemeBundle
 @end
 
 #if ENABLE(DATALIST_ELEMENT)
@@ -291,64 +282,6 @@ NSView *RenderThemeMac::documentViewFor(const RenderObject& o) const
     LocalDefaultSystemAppearance localAppearance(o.useDarkAppearance());
     ControlStates states(extractControlStatesForRenderer(o));
     return ThemeMac::ensuredView(&o.view().frameView(), states);
-}
-
-String RenderThemeMac::mediaControlsStyleSheet()
-{
-    if (m_legacyMediaControlsStyleSheet.isEmpty())
-        m_legacyMediaControlsStyleSheet = [NSString stringWithContentsOfFile:[[NSBundle bundleForClass:[WebCoreRenderThemeBundle class]] pathForResource:@"mediaControlsApple" ofType:@"css"] encoding:NSUTF8StringEncoding error:nil];
-    return m_legacyMediaControlsStyleSheet;
-}
-
-String RenderThemeMac::modernMediaControlsStyleSheet()
-{
-    if (RuntimeEnabledFeatures::sharedFeatures().modernMediaControlsEnabled()) {
-        if (m_mediaControlsStyleSheet.isEmpty())
-            m_mediaControlsStyleSheet = [NSString stringWithContentsOfFile:[[NSBundle bundleForClass:[WebCoreRenderThemeBundle class]] pathForResource:@"modern-media-controls" ofType:@"css" inDirectory:@"modern-media-controls"] encoding:NSUTF8StringEncoding error:nil];
-        return m_mediaControlsStyleSheet;
-    }
-    return emptyString();
-}
-
-void RenderThemeMac::purgeCaches()
-{
-    m_legacyMediaControlsScript.clearImplIfNotShared();
-    m_mediaControlsScript.clearImplIfNotShared();
-    m_legacyMediaControlsStyleSheet.clearImplIfNotShared();
-    m_mediaControlsStyleSheet.clearImplIfNotShared();
-
-    RenderTheme::purgeCaches();
-}
-
-String RenderThemeMac::mediaControlsScript()
-{
-    if (RuntimeEnabledFeatures::sharedFeatures().modernMediaControlsEnabled()) {
-        if (m_mediaControlsScript.isEmpty()) {
-            NSBundle *bundle = [NSBundle bundleForClass:[WebCoreRenderThemeBundle class]];
-            NSString *localizedStrings = [NSString stringWithContentsOfFile:[bundle pathForResource:@"modern-media-controls-localized-strings" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil];
-            NSString *script = [NSString stringWithContentsOfFile:[bundle pathForResource:@"modern-media-controls" ofType:@"js" inDirectory:@"modern-media-controls"] encoding:NSUTF8StringEncoding error:nil];
-            m_mediaControlsScript = makeString(String { localizedStrings }, String { script });
-        }
-        return m_mediaControlsScript;
-    }
-
-    if (m_legacyMediaControlsScript.isEmpty()) {
-        NSBundle *bundle = [NSBundle bundleForClass:[WebCoreRenderThemeBundle class]];
-        NSString *localizedStrings = [NSString stringWithContentsOfFile:[bundle pathForResource:@"mediaControlsLocalizedStrings" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil];
-        NSString *script = [NSString stringWithContentsOfFile:[bundle pathForResource:@"mediaControlsApple" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil];
-        m_legacyMediaControlsScript = makeString(String { localizedStrings }, String { script });
-    }
-    return m_legacyMediaControlsScript;
-}
-
-String RenderThemeMac::mediaControlsBase64StringForIconNameAndType(const String& iconName, const String& iconType)
-{
-    if (!RuntimeEnabledFeatures::sharedFeatures().modernMediaControlsEnabled())
-        return emptyString();
-
-    NSString *directory = @"modern-media-controls/images";
-    NSBundle *bundle = [NSBundle bundleForClass:[WebCoreRenderThemeBundle class]];
-    return [[NSData dataWithContentsOfFile:[bundle pathForResource:iconName ofType:iconType inDirectory:directory]] base64EncodedStringWithOptions:0];
 }
 
 Color RenderThemeMac::platformActiveSelectionBackgroundColor(OptionSet<StyleColor::Options> options) const
@@ -470,6 +403,31 @@ Color RenderThemeMac::platformAppHighlightColor(OptionSet<StyleColor::Options>) 
     return SRGBA<uint8_t> { 255, 238, 190 };
 }
 #endif
+
+Color RenderThemeMac::platformDefaultButtonTextColor(OptionSet<StyleColor::Options> options) const
+{
+    LocalDefaultSystemAppearance localAppearance(options.contains(StyleColor::Options::UseDarkAppearance));
+    return colorFromNSColor([NSColor alternateSelectedControlTextColor]);
+}
+
+static Color activeButtonTextColor()
+{
+    // FIXME: <rdar://problem/77572622> There is no single corresponding NSColor for ActiveButtonText.
+    // Instead, the NSColor used is dependent on NSButtonCell's interiorBackgroundStyle. Consequently,
+    // we need to create an NSButtonCell just to determine the correct color.
+
+    auto cell = adoptNS([[NSButtonCell alloc] init]);
+    [cell setBezelStyle:NSBezelStyleRounded];
+    [cell setHighlighted:YES];
+
+    NSColor *activeButtonTextColor;
+    if ([cell interiorBackgroundStyle] == NSBackgroundStyleEmphasized)
+        activeButtonTextColor = [NSColor alternateSelectedControlTextColor];
+    else
+        activeButtonTextColor = [NSColor controlTextColor];
+
+    return semanticColorFromNSColor(activeButtonTextColor);
+}
 
 static SRGBA<uint8_t> menuBackgroundColor()
 {
@@ -709,8 +667,7 @@ Color RenderThemeMac::systemColor(CSSValueID cssValueID, OptionSet<StyleColor::O
 
         switch (cssValueID) {
         case CSSValueActivebuttontext:
-            // No corresponding NSColor for this so we use a hard coded value.
-            return Color::white;
+            return activeButtonTextColor();
 
         case CSSValueButtonface:
         case CSSValueThreedface:
@@ -891,10 +848,10 @@ void RenderThemeMac::updateEnabledState(NSCell* cell, const RenderObject& o)
         [cell setEnabled:enabled];
 }
 
-void RenderThemeMac::updateFocusedState(NSCell* cell, const RenderObject& o)
+void RenderThemeMac::updateFocusedState(NSCell *cell, const RenderObject* o)
 {
     bool oldFocused = [cell showsFirstResponder];
-    bool focused = isFocused(o) && o.style().outlineStyleIsAuto() == OutlineIsAuto::On;
+    bool focused = o && isFocused(*o) && o->style().outlineStyleIsAuto() == OutlineIsAuto::On;
     if (focused != oldFocused)
         [cell setShowsFirstResponder:focused];
 }
@@ -1217,7 +1174,7 @@ bool RenderThemeMac::paintMeter(const RenderObject& renderObject, const PaintInf
     NSLevelIndicatorCell* cell = levelIndicatorFor(downcast<RenderMeter>(renderObject));
     GraphicsContextStateSaver stateSaver(paintInfo.context());
 
-    [cell drawWithFrame:rect inView:documentViewFor(renderObject)];
+    paintCellAndSetFocusedElementNeedsRepaintIfNecessary(cell, renderObject, paintInfo, rect);
     [cell setControlView:nil];
     return false;
 }
@@ -1358,7 +1315,7 @@ bool RenderThemeMac::paintProgressBar(const RenderObject& renderObject, const Pa
     const auto& renderProgress = downcast<RenderProgress>(renderObject);
     float deviceScaleFactor = renderObject.document().deviceScaleFactor();
     bool isIndeterminate = renderProgress.position() < 0;
-    auto imageBuffer = ImageBuffer::createCompatibleBuffer(inflatedRect.size(), deviceScaleFactor, DestinationColorSpace::SRGB, paintInfo.context());
+    auto imageBuffer = ImageBuffer::createCompatibleBuffer(inflatedRect.size(), deviceScaleFactor, DestinationColorSpace::SRGB(), paintInfo.context());
     if (!imageBuffer)
         return true;
 
@@ -1793,8 +1750,7 @@ bool RenderThemeMac::paintSliderThumb(const RenderObject& o, const PaintInfo& pa
     // Update the various states we respond to.
     updateEnabledState(sliderThumbCell, o);
     auto focusDelegate = is<Element>(o.node()) ? downcast<Element>(*o.node()).focusDelegate() : nullptr;
-    if (focusDelegate)
-        updateFocusedState(sliderThumbCell, *focusDelegate->renderer());
+    updateFocusedState(sliderThumbCell, focusDelegate ? focusDelegate->renderer() : nullptr);
 
     // Update the pressed state using the NSCell tracking methods, since that's how NSSliderCell keeps track of it.
     bool oldPressed;
@@ -1891,7 +1847,7 @@ void RenderThemeMac::setSearchCellState(const RenderObject& o, const IntRect&)
 
     // Update the various states we respond to.
     updateEnabledState(search, o);
-    updateFocusedState(search, o);
+    updateFocusedState(search, &o);
 }
 
 const IntSize* RenderThemeMac::searchFieldSizes() const
@@ -2091,6 +2047,8 @@ bool RenderThemeMac::paintSearchFieldResultsButton(const RenderBox& box, const P
         return adjustedLocalBounds;
     };
 
+    if (!box.element())
+        return false;
     Element* input = box.element()->shadowHost();
     if (!input)
         input = box.element();
@@ -2145,15 +2103,20 @@ int RenderThemeMac::sliderTickOffsetFromTrackCenter() const
 }
 #endif
 
-const int sliderThumbWidth = 15;
-const int sliderThumbHeight = 15;
+// FIXME (<rdar://problem/80870479>): Ideally, this constant should be obtained from AppKit using -[NSSliderCell knobThickness].
+// However, the method currently returns an incorrect value, both with and without a control view associated with the cell.
+#if HAVE(LARGE_CONTROL_SIZE)
+constexpr int sliderThumbThickness = 17;
+#else
+constexpr int sliderThumbThickness = 15;
+#endif
 
 void RenderThemeMac::adjustSliderThumbSize(RenderStyle& style, const Element*) const
 {
     float zoomLevel = style.effectiveZoom();
     if (style.appearance() == SliderThumbHorizontalPart || style.appearance() == SliderThumbVerticalPart) {
-        style.setWidth(Length(static_cast<int>(sliderThumbWidth * zoomLevel), LengthType::Fixed));
-        style.setHeight(Length(static_cast<int>(sliderThumbHeight * zoomLevel), LengthType::Fixed));
+        style.setWidth(Length(static_cast<int>(sliderThumbThickness * zoomLevel), LengthType::Fixed));
+        style.setHeight(Length(static_cast<int>(sliderThumbThickness * zoomLevel), LengthType::Fixed));
     }
 }
 

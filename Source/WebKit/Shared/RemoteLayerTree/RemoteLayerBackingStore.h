@@ -52,7 +52,13 @@ public:
     RemoteLayerBackingStore(PlatformCALayerRemote*);
     ~RemoteLayerBackingStore();
 
-    void ensureBackingStore(WebCore::FloatSize, float scale, bool acceleratesDrawing, bool deepColor, bool isOpaque);
+    enum class Type : uint8_t {
+        IOSurface,
+        Bitmap
+    };
+
+    enum class IncludeDisplayList : bool { No, Yes };
+    void ensureBackingStore(Type, WebCore::FloatSize, float scale, bool deepColor, bool isOpaque, IncludeDisplayList);
 
     void setNeedsDisplay(const WebCore::IntRect);
     void setNeedsDisplay();
@@ -61,7 +67,7 @@ public:
 
     WebCore::FloatSize size() const { return m_size; }
     float scale() const { return m_scale; }
-    bool acceleratesDrawing() const { return m_acceleratesDrawing; }
+    Type type() const { return m_type; }
     bool isOpaque() const { return m_isOpaque; }
     unsigned bytesPerPixel() const;
 
@@ -80,7 +86,7 @@ public:
         return !!m_frontBuffer.imageBuffer;
     }
 
-    std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher> takePendingFlusher();
+    Vector<std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher>> takePendingFlushers();
 
     enum class BufferType {
         Front,
@@ -98,8 +104,9 @@ private:
     void clearBackingStore();
     void swapToValidFrontBuffer();
 
+    bool supportsPartialRepaint();
+
     WebCore::PixelFormat pixelFormat() const;
-    WebCore::IntSize backingStoreSize() const;
 
     PlatformCALayerRemote* m_layer;
 
@@ -111,6 +118,9 @@ private:
 
     struct Buffer {
         RefPtr<WebCore::ImageBuffer> imageBuffer;
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+        RefPtr<WebCore::ImageBuffer> displayListImageBuffer;
+#endif
         bool isVolatile = false;
 
         explicit operator bool() const
@@ -124,11 +134,15 @@ private:
     Buffer m_frontBuffer;
     Buffer m_backBuffer;
     Buffer m_secondaryBackBuffer;
-    Optional<ImageBufferBackendHandle> m_bufferHandle;
+    std::optional<ImageBufferBackendHandle> m_bufferHandle;
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+    std::optional<ImageBufferBackendHandle> m_displayListBufferHandle;
+#endif
 
-    std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher> m_frontBufferFlusher;
+    Vector<std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher>> m_frontBufferFlushers;
 
-    bool m_acceleratesDrawing { false };
+    Type m_type;
+    IncludeDisplayList m_includeDisplayList { IncludeDisplayList::No };
     bool m_deepColor { false };
 
     WebCore::RepaintRectList m_paintingRects;
@@ -137,3 +151,23 @@ private:
 };
 
 } // namespace WebKit
+
+namespace WTF {
+
+template<> struct EnumTraits<WebKit::RemoteLayerBackingStore::Type> {
+    using values = EnumValues<
+        WebKit::RemoteLayerBackingStore::Type,
+        WebKit::RemoteLayerBackingStore::Type::IOSurface,
+        WebKit::RemoteLayerBackingStore::Type::Bitmap
+    >;
+};
+
+template<> struct EnumTraits<WebKit::RemoteLayerBackingStore::IncludeDisplayList> {
+    using values = EnumValues<
+        WebKit::RemoteLayerBackingStore::IncludeDisplayList,
+        WebKit::RemoteLayerBackingStore::IncludeDisplayList::No,
+        WebKit::RemoteLayerBackingStore::IncludeDisplayList::Yes
+    >;
+};
+
+} // namespace WTF

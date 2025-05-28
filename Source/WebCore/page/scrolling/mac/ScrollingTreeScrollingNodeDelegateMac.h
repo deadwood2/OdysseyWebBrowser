@@ -30,6 +30,7 @@
 #if ENABLE(ASYNC_SCROLLING) && PLATFORM(MAC)
 
 #include "ScrollController.h"
+#include <wtf/RunLoop.h>
 
 OBJC_CLASS NSScrollerImp;
 
@@ -54,11 +55,9 @@ public:
     void willDoProgrammaticScroll(const FloatPoint&);
     void currentScrollPositionChanged();
 
-#if ENABLE(CSS_SCROLL_SNAP)
     bool activeScrollSnapIndexDidChange() const;
-    unsigned activeScrollSnapIndexForAxis(ScrollEventAxis) const;
+    std::optional<unsigned> activeScrollSnapIndexForAxis(ScrollEventAxis) const;
     bool isScrollSnapInProgress() const;
-#endif
 
     bool isRubberBandInProgress() const;
 
@@ -73,6 +72,9 @@ private:
 
     // ScrollControllerClient.
     std::unique_ptr<ScrollControllerTimer> createTimer(Function<void()>&&) final;
+    void startAnimationCallback(ScrollController&) final;
+    void stopAnimationCallback(ScrollController&) final;
+
     bool allowsHorizontalStretching(const PlatformWheelEvent&) const final;
     bool allowsVerticalStretching(const PlatformWheelEvent&) const final;
     IntSize stretchAmount() const final;
@@ -88,8 +90,8 @@ private:
     void adjustScrollPositionToBoundsIfNecessary() final;
 
     bool scrollPositionIsNotRubberbandingEdge(const FloatPoint&) const;
+    void scrollControllerAnimationTimerFired();
 
-#if ENABLE(CSS_SCROLL_SNAP)
     FloatPoint scrollOffset() const override;
     void immediateScrollOnAxis(ScrollEventAxis, float delta) override;
     float pageScaleFactor() const override;
@@ -97,16 +99,17 @@ private:
     void didStopScrollSnapAnimation() final;
     LayoutSize scrollExtent() const override;
     FloatSize viewportSize() const override;
-#endif
 
     void releaseReferencesToScrollerImpsOnTheMainThread();
 
     ScrollController m_scrollController;
-    
-    bool m_inMomentumPhase { false };
 
     RetainPtr<NSScrollerImp> m_verticalScrollerImp;
     RetainPtr<NSScrollerImp> m_horizontalScrollerImp;
+
+    std::unique_ptr<RunLoop::Timer<ScrollingTreeScrollingNodeDelegateMac>> m_scrollControllerAnimationTimer;
+
+    bool m_inMomentumPhase { false };
 };
 
 } // namespace WebCore

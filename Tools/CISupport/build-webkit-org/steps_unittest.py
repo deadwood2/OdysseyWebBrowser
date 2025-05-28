@@ -237,7 +237,7 @@ class TestKillOldProcesses(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/CISupport/kill-old-processes', 'buildbot'],
+                command=['python3', './Tools/CISupport/kill-old-processes', 'buildbot'],
             ) + 0,
         )
         self.expectOutcome(result=SUCCESS, state_string='killed old processes')
@@ -250,7 +250,7 @@ class TestKillOldProcesses(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/CISupport/kill-old-processes', 'buildbot'],
+                command=['python3', './Tools/CISupport/kill-old-processes', 'buildbot'],
             ) + 2
             + ExpectShell.log('stdio', stdout='Unexpected error.'),
         )
@@ -276,7 +276,7 @@ class TestCleanBuildIfScheduled(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/CISupport/clean-build', '--platform=ios-14', '--release'],
+                command=['python3', 'Tools/CISupport/clean-build', '--platform=ios-14', '--release'],
             ) + 0,
         )
         self.expectOutcome(result=SUCCESS, state_string='deleted WebKitBuild directory')
@@ -292,7 +292,7 @@ class TestCleanBuildIfScheduled(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/CISupport/clean-build', '--platform=ios-simulator-14', '--debug'],
+                command=['python3', 'Tools/CISupport/clean-build', '--platform=ios-simulator-14', '--debug'],
             ) + 2
             + ExpectShell.log('stdio', stdout='Unexpected error.'),
         )
@@ -420,7 +420,7 @@ class TestCompileWebKit(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['perl', './Tools/Scripts/build-webkit', '--release', '--gtk'],
+                command=['perl', './Tools/Scripts/build-webkit', '--release', '--prefix=/app/webkit/WebKitBuild/Release/install', '--gtk'],
             ) + 0,
         )
         self.expectOutcome(result=SUCCESS, state_string='compiled')
@@ -513,7 +513,7 @@ class TestShowIdentifier(BuildStepMixinAdditions, unittest.TestCase):
             ExpectShell(workdir='wkdir',
                         timeout=600,
                         logEnviron=False,
-                        command=['python', 'Tools/Scripts/git-webkit', 'find', 'r272692']) +
+                        command=['python3', 'Tools/Scripts/git-webkit', 'find', 'r272692']) +
             ExpectShell.log('stdio', stdout='Identifier: 233939@main') +
             0,
         )
@@ -529,7 +529,7 @@ class TestShowIdentifier(BuildStepMixinAdditions, unittest.TestCase):
             ExpectShell(workdir='wkdir',
                         timeout=600,
                         logEnviron=False,
-                        command=['python', 'Tools/Scripts/git-webkit', 'find', 'r272692']) +
+                        command=['python3', 'Tools/Scripts/git-webkit', 'find', 'r272692']) +
             ExpectShell.log('stdio', stdout='Unexpected failure') +
             2,
         )
@@ -702,7 +702,7 @@ class TestRunLLDBWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
+                command=['python3', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
             ) + 0,
         )
         self.expectOutcome(result=SUCCESS, state_string='lldb-webkit-test')
@@ -716,7 +716,7 @@ class TestRunLLDBWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
+                command=['python3', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
             ) + 2,
         )
         self.expectOutcome(result=FAILURE, state_string='lldb-webkit-test (failure)')
@@ -730,7 +730,7 @@ class TestRunLLDBWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
+                command=['python3', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
             ) + 2
             + ExpectShell.log('stdio', stdout='FAILED (failures=2, errors=0)'),
         )
@@ -745,7 +745,7 @@ class TestRunLLDBWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
+                command=['python3', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
             ) + 2
             + ExpectShell.log('stdio', stdout='FAILED (failures=0, errors=2)'),
         )
@@ -760,7 +760,7 @@ class TestRunLLDBWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=True,
-                command=['python', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
+                command=['python3', './Tools/Scripts/test-lldb-webkit', '--verbose', '--no-build', '--release'],
             ) + 2
             + ExpectShell.log('stdio', stdout='FAILED (failures=30, errors=2)'),
         )
@@ -793,7 +793,7 @@ class TestRunWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=False,
-                command=['python', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
+                command=['python3', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
                          '--no-new-test-results', '--clobber-old-results',
                          '--builder-name', 'iOS-14-Simulator-WK2-Tests-EWS',
                          '--build-number', '101', '--buildbot-worker', 'ews100',
@@ -817,7 +817,7 @@ class TestRunWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=False,
-                command=['python', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
+                command=['python3', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
                          '--no-new-test-results', '--clobber-old-results',
                          '--builder-name', 'iOS-14-Simulator-WK2-Tests-EWS',
                          '--build-number', '101', '--buildbot-worker', 'ews100',
@@ -844,7 +844,7 @@ class TestRunWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=False,
-                command=['python', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
+                command=['python3', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
                          '--no-new-test-results', '--clobber-old-results',
                          '--builder-name', 'iOS-14-Simulator-WK2-Tests-EWS',
                          '--build-number', '101', '--buildbot-worker', 'ews100',
@@ -869,7 +869,7 @@ class TestRunWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=False,
-                command=['python', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
+                command=['python3', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
                          '--no-new-test-results', '--clobber-old-results',
                          '--builder-name', 'iOS-14-Simulator-WK2-Tests-EWS',
                          '--build-number', '101', '--buildbot-worker', 'ews100',
@@ -894,7 +894,7 @@ class TestRunWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
                 workdir='wkdir',
                 timeout=1200,
                 logEnviron=False,
-                command=['python', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
+                command=['python3', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
                          '--no-new-test-results', '--clobber-old-results',
                          '--builder-name', 'iOS-14-Simulator-WK2-Tests-EWS',
                          '--build-number', '101', '--buildbot-worker', 'ews100',
@@ -908,4 +908,418 @@ class TestRunWebKitTests(BuildStepMixinAdditions, unittest.TestCase):
             + ExpectShell.log('stdio', stdout='Unexpected error.'),
         )
         self.expectOutcome(result=EXCEPTION, state_string='layout-tests (exception)')
+        return self.runStep()
+
+
+class TestRunWebKit1Tests(BuildStepMixinAdditions, unittest.TestCase):
+    def setUp(self):
+        self.longMessage = True
+        self.jsonFileName = 'layout-test-results/full_results.json'
+        os.environ['RESULTS_SERVER_API_KEY'] = 'test-api-key'
+        return self.setUpBuildStep()
+
+    def tearDown(self):
+        del os.environ['RESULTS_SERVER_API_KEY']
+        return self.tearDownBuildStep()
+
+    def configureStep(self):
+        self.setupStep(RunWebKit1Tests())
+        self.setProperty('buildername', 'Apple-iOS-14-Simulator-Debug-Build')
+        self.setProperty('buildnumber', '101')
+        self.setProperty('workername', 'bot100')
+
+    def test_success(self):
+        self.configureStep()
+        self.setProperty('fullPlatform', 'ios-simulator')
+        self.setProperty('configuration', 'debug')
+        self.expectRemoteCommands(
+            ExpectShell(
+                workdir='wkdir',
+                logEnviron=False,
+                command=['python3', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
+                         '--no-new-test-results', '--clobber-old-results',
+                         '--builder-name', 'Apple-iOS-14-Simulator-Debug-Build',
+                         '--build-number', '101', '--buildbot-worker', 'bot100',
+                         '--buildbot-master', CURRENT_HOSTNAME,
+                         '--report', RESULTS_WEBKIT_URL,
+                         '--exit-after-n-crashes-or-timeouts', '50',
+                         '--exit-after-n-failures', '500',
+                         '--debug', '--dump-render-tree', '--results-directory', 'layout-test-results', '--debug-rwt-logging'],
+                env={'RESULTS_SERVER_API_KEY': 'test-api-key'}
+            ) + 0,
+        )
+        self.expectOutcome(result=SUCCESS, state_string='layout-tests')
+        return self.runStep()
+
+    def test_failure(self):
+        self.configureStep()
+        self.setProperty('fullPlatform', 'ios-14')
+        self.setProperty('configuration', 'release')
+        self.expectRemoteCommands(
+            ExpectShell(
+                workdir='wkdir',
+                logEnviron=False,
+                command=['python3', './Tools/Scripts/run-webkit-tests', '--no-build', '--no-show-results',
+                         '--no-new-test-results', '--clobber-old-results',
+                         '--builder-name', 'Apple-iOS-14-Simulator-Debug-Build',
+                         '--build-number', '101', '--buildbot-worker', 'bot100',
+                         '--buildbot-master', CURRENT_HOSTNAME,
+                         '--report', RESULTS_WEBKIT_URL,
+                         '--exit-after-n-crashes-or-timeouts', '50',
+                         '--exit-after-n-failures', '500',
+                         '--release', '--dump-render-tree', '--results-directory', 'layout-test-results', '--debug-rwt-logging'],
+                env={'RESULTS_SERVER_API_KEY': 'test-api-key'}
+            ) + ExpectShell.log('stdio', stdout='9 failures found.')
+            + 2,
+        )
+        self.expectOutcome(result=FAILURE, state_string='layout-tests (failure)')
+        return self.runStep()
+
+
+class TestRunJavaScriptCoreTests(BuildStepMixinAdditions, unittest.TestCase):
+    def setUp(self):
+        self.longMessage = True
+        os.environ['RESULTS_SERVER_API_KEY'] = 'test-api-key'
+        self.jsonFileName = 'jsc_results.json'
+        return self.setUpBuildStep()
+
+    def tearDown(self):
+        del os.environ['RESULTS_SERVER_API_KEY']
+        return self.tearDownBuildStep()
+
+    def configureStep(self, platform=None, fullPlatform=None, configuration=None):
+        self.setupStep(RunJavaScriptCoreTests())
+        if platform:
+            self.setProperty('platform', platform)
+        if fullPlatform:
+            self.setProperty('fullPlatform', fullPlatform)
+        if configuration:
+            self.setProperty('configuration', configuration)
+        self.setProperty('buildername', 'JSC-Tests')
+        self.setProperty('buildnumber', '101')
+        self.setProperty('workername', 'bot100')
+
+    def test_success(self):
+        self.configureStep(platform='mac', fullPlatform='mac-highsierra', configuration='release')
+        self.expectRemoteCommands(
+            ExpectShell(workdir='wkdir',
+                        logEnviron=False,
+                        command=['perl', './Tools/Scripts/run-javascriptcore-tests', '--no-build', '--no-fail-fast', '--json-output={0}'.format(self.jsonFileName), '--release', '--builder-name', 'JSC-Tests', '--build-number', '101', '--buildbot-worker', 'bot100', '--buildbot-master', CURRENT_HOSTNAME, '--report', 'https://results.webkit.org'],
+                        logfiles={'json': self.jsonFileName},
+                        env={'RESULTS_SERVER_API_KEY': 'test-api-key'}
+                        )
+            + 0,
+        )
+        self.expectOutcome(result=SUCCESS, state_string='jscore-test')
+        return self.runStep()
+
+    def test_failure(self):
+        self.configureStep(platform='mac', fullPlatform='mac-highsierra', configuration='debug')
+        self.expectRemoteCommands(
+            ExpectShell(workdir='wkdir',
+                        logEnviron=False,
+                        command=['perl', './Tools/Scripts/run-javascriptcore-tests', '--no-build', '--no-fail-fast', '--json-output={0}'.format(self.jsonFileName), '--debug', '--builder-name', 'JSC-Tests', '--build-number', '101', '--buildbot-worker', 'bot100', '--buildbot-master', CURRENT_HOSTNAME, '--report', 'https://results.webkit.org'],
+                        logfiles={'json': self.jsonFileName},
+                        env={'RESULTS_SERVER_API_KEY': 'test-api-key'}
+                        )
+            + ExpectShell.log('stdio', stdout='Results for JSC stress tests:\n 9 failures found.')
+            + 2,
+        )
+        self.expectOutcome(result=FAILURE, state_string='9 JSC tests failed')
+        return self.runStep()
+
+
+class TestSetPermissions(BuildStepMixinAdditions, unittest.TestCase):
+    def setUp(self):
+        self.longMessage = True
+        return self.setUpBuildStep()
+
+    def tearDown(self):
+        return self.tearDownBuildStep()
+
+    def test_success(self):
+        self.setupStep(SetPermissions())
+        self.setProperty('result_directory', 'public_html/results/Apple-BigSur-Release-WK2-Tests/r277034 (2346)')
+        self.expectLocalCommands(
+            ExpectMasterShellCommand(command=['chmod', 'a+rx', 'public_html/results/Apple-BigSur-Release-WK2-Tests/r277034 (2346)'])
+            + 0,
+        )
+        self.expectOutcome(result=SUCCESS, state_string='Ran')
+        return self.runStep()
+
+    def test_failure(self):
+        self.setupStep(SetPermissions())
+        self.setProperty('result_directory', 'testdir')
+        self.expectLocalCommands(
+            ExpectMasterShellCommand(command=['chmod', 'a+rx', 'testdir'])
+            + 1,
+        )
+        self.expectOutcome(result=FAILURE, state_string='failed (1) (failure)')
+        return self.runStep()
+
+
+class TestSVNCleanup(BuildStepMixinAdditions, unittest.TestCase):
+    def setUp(self):
+        self.longMessage = True
+        return self.setUpBuildStep()
+
+    def tearDown(self):
+        return self.tearDownBuildStep()
+
+    def test_success(self):
+        self.setupStep(SVNCleanup())
+        self.expectRemoteCommands(
+            ExpectShell(
+                workdir='wkdir',
+                timeout=600,
+                logEnviron=False,
+                command=['svn', 'cleanup'],
+            ) + 0,
+        )
+        self.expectOutcome(result=SUCCESS, state_string='Run svn cleanup')
+        return self.runStep()
+
+    def test_failure(self):
+        self.setupStep(SVNCleanup())
+        self.expectRemoteCommands(
+            ExpectShell(
+                workdir='wkdir',
+                timeout=600,
+                logEnviron=False,
+                command=['svn', 'cleanup'],
+            ) + 2
+            + ExpectShell.log('stdio', stdout='Unexpected error.'),
+        )
+        self.expectOutcome(result=FAILURE, state_string='Run svn cleanup (failure)')
+        return self.runStep()
+
+
+class TestPrintConfiguration(BuildStepMixinAdditions, unittest.TestCase):
+    def setUp(self):
+        self.longMessage = True
+        return self.setUpBuildStep()
+
+    def tearDown(self):
+        return self.tearDownBuildStep()
+
+    def test_success_mac(self):
+        self.setupStep(PrintConfiguration())
+        self.setProperty('buildername', 'macOS-High-Sierra-Release-WK2-Tests-EWS')
+        self.setProperty('platform', 'mac-highsierra')
+
+        self.expectRemoteCommands(
+            ExpectShell(command=['hostname'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='ews150.apple.com'),
+            ExpectShell(command=['df', '-hl'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='''Filesystem     Size   Used  Avail Capacity iused  ifree %iused  Mounted on
+/dev/disk1s1  119Gi   95Gi   23Gi    81%  937959 9223372036853837848    0%   /
+/dev/disk1s4  119Gi   20Ki   23Gi     1%       0 9223372036854775807    0%   /private/var/vm
+/dev/disk0s3  119Gi   22Gi   97Gi    19%  337595          4294629684    0%   /Volumes/Data'''),
+            ExpectShell(command=['date'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='Tue Apr  9 15:30:52 PDT 2019'),
+            ExpectShell(command=['sw_vers'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='''ProductName:	Mac OS X
+ProductVersion:	10.13.4
+BuildVersion:	17E199'''),
+            ExpectShell(command=['xcodebuild', '-sdk', '-version'], workdir='wkdir', timeout=60, logEnviron=False)
+            + ExpectShell.log('stdio', stdout='''MacOSX10.13.sdk - macOS 10.13 (macosx10.13)
+SDKVersion: 10.13
+Path: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.13.sdk
+PlatformVersion: 1.1
+PlatformPath: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform
+ProductBuildVersion: 17E189
+ProductCopyright: 1983-2018 Apple Inc.
+ProductName: Mac OS X
+ProductUserVisibleVersion: 10.13.4
+ProductVersion: 10.13.4
+
+Xcode 9.4.1
+Build version 9F2000''')
+            + 0,
+            ExpectShell(command=['uptime'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout=' 6:31  up 1 day, 19:05, 24 users, load averages: 4.17 7.23 5.45'),
+        )
+        self.expectOutcome(result=SUCCESS, state_string='OS: High Sierra (10.13.4), Xcode: 9.4.1')
+        return self.runStep()
+
+    def test_success_ios_simulator(self):
+        self.setupStep(PrintConfiguration())
+        self.setProperty('buildername', 'macOS-Sierra-Release-WK2-Tests-EWS')
+        self.setProperty('platform', 'ios-simulator-12')
+
+        self.expectRemoteCommands(
+            ExpectShell(command=['hostname'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='ews152.apple.com'),
+            ExpectShell(command=['df', '-hl'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='''Filesystem     Size   Used  Avail Capacity iused  ifree %iused  Mounted on
+/dev/disk1s1  119Gi   95Gi   23Gi    81%  937959 9223372036853837848    0%   /
+/dev/disk1s4  119Gi   20Ki   23Gi     1%       0 9223372036854775807    0%   /private/var/vm
+/dev/disk0s3  119Gi   22Gi   97Gi    19%  337595          4294629684    0%   /Volumes/Data'''),
+            ExpectShell(command=['date'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='Tue Apr  9 15:30:52 PDT 2019'),
+            ExpectShell(command=['sw_vers'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='''ProductName:	Mac OS X
+ProductVersion:	10.15.6
+BuildVersion:	19H2'''),
+            ExpectShell(command=['xcodebuild', '-sdk', '-version'], workdir='wkdir', timeout=60, logEnviron=False)
+            + ExpectShell.log('stdio', stdout='''iPhoneSimulator13.4.sdk - Simulator - iOS 13.4 (iphonesimulator13.4)
+SDKVersion: 13.4
+Path: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator13.4.sdk
+PlatformVersion: 13.4
+PlatformPath: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform
+BuildID: BB4C82AE-5F8A-11EA-A1A5-838AD03DDE06
+ProductBuildVersion: 17E255
+ProductCopyright: 1983-2020 Apple Inc.
+ProductName: iPhone OS
+ProductVersion: 13.4
+
+Xcode 11.7
+Build version 10E125''')
+            + 0,
+            ExpectShell(command=['uptime'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout=' 6:31  up 1 day, 19:05, 24 users, load averages: 4.17 7.23 5.45'),
+        )
+        self.expectOutcome(result=SUCCESS, state_string='OS: Catalina (10.15.6), Xcode: 11.7')
+        return self.runStep()
+
+    def test_success_webkitpy(self):
+        self.setupStep(PrintConfiguration())
+        self.setProperty('platform', '*')
+
+        self.expectRemoteCommands(
+            ExpectShell(command=['hostname'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['df', '-hl'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['date'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['sw_vers'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='''ProductName:	Mac OS X
+ProductVersion:	10.13.6
+BuildVersion:	17G7024'''),
+            ExpectShell(command=['xcodebuild', '-sdk', '-version'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='''Xcode 10.2\nBuild version 10E125'''),
+            ExpectShell(command=['uptime'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout=' 6:31  up 22 seconds, 12:05, 2 users, load averages: 3.17 7.23 5.45'),
+        )
+        self.expectOutcome(result=SUCCESS, state_string='OS: High Sierra (10.13.6), Xcode: 10.2')
+        return self.runStep()
+
+    def test_success_linux_wpe(self):
+        self.setupStep(PrintConfiguration())
+        self.setProperty('platform', 'wpe')
+
+        self.expectRemoteCommands(
+            ExpectShell(command=['hostname'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='ews190'),
+            ExpectShell(command=['df', '-hl'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='''Filesystem     Size   Used  Avail Capacity iused  ifree %iused  Mounted on
+/dev/disk0s3  119Gi   22Gi   97Gi    19%  337595          4294629684    0%   /'''),
+            ExpectShell(command=['date'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='Tue Apr  9 15:30:52 PDT 2019'),
+            ExpectShell(command=['uname', '-a'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout='''Linux kodama-ews 5.0.4-arch1-1-ARCH #1 SMP PREEMPT Sat Mar 23 21:00:33 UTC 2019 x86_64 GNU/Linux'''),
+            ExpectShell(command=['uptime'], workdir='wkdir', timeout=60, logEnviron=False) + 0
+            + ExpectShell.log('stdio', stdout=' 6:31  up 22 seconds, 12:05, 2 users, load averages: 3.17 7.23 5.45'),
+        )
+        self.expectOutcome(result=SUCCESS, state_string='Printed configuration')
+        return self.runStep()
+
+    def test_success_linux_gtk(self):
+        self.setupStep(PrintConfiguration())
+        self.setProperty('platform', 'gtk')
+
+        self.expectRemoteCommands(
+            ExpectShell(command=['hostname'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['df', '-hl'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['date'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['uname', '-a'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['uptime'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+        )
+        self.expectOutcome(result=SUCCESS, state_string='Printed configuration')
+        return self.runStep()
+
+    def test_success_win(self):
+        self.setupStep(PrintConfiguration())
+        self.setProperty('platform', 'win')
+
+        self.expectRemoteCommands(
+            ExpectShell(command=['hostname'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['df', '-hl'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+        )
+        self.expectOutcome(result=SUCCESS, state_string='Printed configuration')
+        return self.runStep()
+
+    def test_failure(self):
+        self.setupStep(PrintConfiguration())
+        self.setProperty('platform', 'ios-12')
+        self.expectRemoteCommands(
+            ExpectShell(command=['hostname'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['df', '-hl'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['date'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+            ExpectShell(command=['sw_vers'], workdir='wkdir', timeout=60, logEnviron=False) + 1
+            + ExpectShell.log('stdio', stdout='''Upon execvpe sw_vers ['sw_vers'] in environment id 7696545650400
+:Traceback (most recent call last):
+  File "/usr/lib/python2.7/site-packages/twisted/internet/process.py", line 445, in _fork
+    environment)
+  File "/usr/lib/python2.7/site-packages/twisted/internet/process.py", line 523, in _execChild
+    os.execvpe(executable, args, environment)
+  File "/usr/lib/python2.7/os.py", line 355, in execvpe
+    _execvpe(file, args, env)
+  File "/usr/lib/python2.7/os.py", line 382, in _execvpe
+    func(fullname, *argrest)
+OSError: [Errno 2] No such file or directory'''),
+            ExpectShell(command=['xcodebuild', '-sdk', '-version'], workdir='wkdir', timeout=60, logEnviron=False)
+            + ExpectShell.log('stdio', stdout='''Upon execvpe xcodebuild ['xcodebuild', '-sdk', '-version'] in environment id 7696545612416
+:Traceback (most recent call last):
+  File "/usr/lib/python2.7/site-packages/twisted/internet/process.py", line 445, in _fork
+    environment)
+  File "/usr/lib/python2.7/site-packages/twisted/internet/process.py", line 523, in _execChild
+    os.execvpe(executable, args, environment)
+  File "/usr/lib/python2.7/os.py", line 355, in execvpe
+    _execvpe(file, args, env)
+  File "/usr/lib/python2.7/os.py", line 382, in _execvpe
+    func(fullname, *argrest)
+OSError: [Errno 2] No such file or directory''')
+            + 1,
+            ExpectShell(command=['uptime'], workdir='wkdir', timeout=60, logEnviron=False) + 0,
+        )
+        self.expectOutcome(result=FAILURE, state_string='Failed to print configuration')
+        return self.runStep()
+
+
+class TestInstallBuiltProduct(BuildStepMixinAdditions, unittest.TestCase):
+    def setUp(self):
+        self.longMessage = True
+        return self.setUpBuildStep()
+
+    def tearDown(self):
+        return self.tearDownBuildStep()
+
+    def test_success(self):
+        self.setupStep(InstallBuiltProduct())
+        self.setProperty('fullPlatform', 'ios-14')
+        self.setProperty('configuration', 'release')
+        self.expectRemoteCommands(
+            ExpectShell(workdir='wkdir',
+                        command=['python3', 'Tools/Scripts/install-built-product', '--platform=ios-14', '--release'],
+                        logEnviron=True,
+                        timeout=1200,
+                        )
+            + 0,
+        )
+        self.expectOutcome(result=SUCCESS, state_string='Installed Built Product')
+        return self.runStep()
+
+    def test_failure(self):
+        self.setupStep(InstallBuiltProduct())
+        self.setProperty('fullPlatform', 'ios-14')
+        self.setProperty('configuration', 'debug')
+        self.expectRemoteCommands(
+            ExpectShell(workdir='wkdir',
+                        command=['python3', 'Tools/Scripts/install-built-product', '--platform=ios-14', '--debug'],
+                        logEnviron=True,
+                        timeout=1200,
+                        )
+            + ExpectShell.log('stdio', stdout='Unexpected error.')
+            + 2,
+        )
+        self.expectOutcome(result=FAILURE, state_string='Installed Built Product (failure)')
         return self.runStep()

@@ -89,7 +89,10 @@
 #endif
 
 #ifdef __cplusplus
+// The TestJSC executable doesn't use gtest it uses glib's testing
+#if !defined(BUILDING_TestJSC) && !defined(NO_GTEST_USAGE)
 #include <gtest/gtest.h>
+#endif
 #include <wtf/Assertions.h>
 #undef new
 #undef delete

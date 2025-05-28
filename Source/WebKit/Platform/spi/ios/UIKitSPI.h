@@ -108,6 +108,10 @@
 #import <UIKit/UIContextMenuInteraction_Private.h>
 #endif
 
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+#import <UIKit/_UIDatePickerOverlayPresentation.h>
+#endif
+
 #if ENABLE(DRAG_SUPPORT)
 #import <UIKit/NSItemProvider+UIKitAdditions_Private.h>
 #endif
@@ -200,6 +204,10 @@ WTF_EXTERN_C_END
 - (BOOL)_appAdoptsUISceneLifecycle;
 @end
 
+@interface UIColor ()
++ (UIColor *)systemBackgroundColor;
+@end
+
 typedef NS_ENUM(NSInteger, UIDatePickerPrivateMode)  {
     UIDatePickerModeYearAndMonth = 4269,
 };
@@ -215,12 +223,37 @@ typedef NS_ENUM(NSInteger, UIDatePickerStyle) {
 #if HAVE(UIDATEPICKER_STYLE)
 @property (nonatomic, readwrite, assign) UIDatePickerStyle preferredDatePickerStyle;
 #endif
+- (UIEdgeInsets)_appliedInsetsToEdgeOfContent;
 @end
+
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+
+typedef NS_ENUM(NSInteger, _UIDatePickerOverlayAnchor) {
+    _UIDatePickerOverlayAnchorSourceRect = 2
+};
+
+@interface _UIDatePickerOverlayPresentation : NSObject
+
+- (instancetype)initWithSourceView:(UIView *)sourceView;
+- (void)presentDatePicker:(UIDatePicker *)datePicker onDismiss:(void(^)(BOOL retargeted))dismissHandler;
+- (void)dismissPresentationAnimated:(BOOL)animated;
+
+@property (nonatomic, weak, readonly) UIView *sourceView;
+@property (nonatomic, assign) CGRect sourceRect;
+@property (nonatomic, assign) _UIDatePickerOverlayAnchor overlayAnchor;
+@property (nonatomic, strong) UIView *accessoryView;
+@property (nonatomic, assign) BOOL accessoryViewIgnoresDefaultInsets;
+
+@end
+
+#endif
 
 @interface UIDevice ()
 - (void)setOrientation:(UIDeviceOrientation)orientation animated:(BOOL)animated;
 @property (nonatomic, readonly, retain) NSString *buildVersion;
 @end
+
+static const UIUserInterfaceIdiom UIUserInterfaceIdiomWatch = (UIUserInterfaceIdiom)4;
 
 typedef enum {
     kUIKeyboardInputRepeat                 = 1 << 0,
@@ -321,6 +354,10 @@ typedef enum {
 + (UIKeyboardImpl *)activeInstance;
 + (UIKeyboardImpl *)sharedInstance;
 + (CGSize)defaultSizeForInterfaceOrientation:(UIInterfaceOrientation)orientation;
+- (BOOL)handleKeyTextCommandForCurrentEvent;
+- (BOOL)handleKeyAppCommandForCurrentEvent;
+- (BOOL)handleKeyInputMethodCommandForCurrentEvent;
+- (BOOL)isCallingInputDelegate;
 - (void)addInputString:(NSString *)string withFlags:(NSUInteger)flags;
 - (void)addInputString:(NSString *)string withFlags:(NSUInteger)flags withInputManagerHint:(NSString *)hint;
 - (BOOL)autocorrectSpellingEnabled;
@@ -380,6 +417,7 @@ typedef enum {
 - (void)_wheelChangedWithEvent:(UIEvent *)event;
 - (void)_beginPinningInputViews;
 - (void)_endPinningInputViews;
+
 @end
 
 @class FBSDisplayConfiguration;
@@ -448,12 +486,6 @@ typedef NS_ENUM(NSUInteger, UIScrollPhase) {
 - (CGSize)_legacy_sizeWithFont:(UIFont *)font minFontSize:(CGFloat)minFontSize actualFontSize:(CGFloat *)actualFontSize forWidth:(CGFloat)width lineBreakMode:(NSLineBreakMode)lineBreakMode;
 @end
 
-@interface UIGestureRecognizer ()
-#if PLATFORM(IOS) && !defined(__IPHONE_13_4)
-@property (nonatomic, readonly, getter=_modifierFlags) UIKeyModifierFlags modifierFlags;
-#endif
-@end
-
 #if HAVE(UI_HOVER_EVENT_RESPONDABLE)
 
 @protocol _UIHoverEventRespondable <NSObject>
@@ -512,9 +544,7 @@ typedef enum {
 - (void)insertDictationResult:(NSArray *)dictationResult withCorrectionIdentifier:(id)correctionIdentifier;
 - (void)replaceRangeWithTextWithoutClosingTyping:(UITextRange *)range replacementText:(NSString *)text;
 - (void)setBottomBufferHeight:(CGFloat)bottomBuffer;
-#if USE(UIKIT_KEYBOARD_ADDITIONS)
 - (void)modifierFlagsDidChangeFrom:(UIKeyModifierFlags)oldFlags to:(UIKeyModifierFlags)newFlags;
-#endif
 @property (nonatomic) UITextGranularity selectionGranularity;
 @required
 - (BOOL)hasContent;
@@ -618,12 +648,6 @@ typedef NS_ENUM (NSInteger, _UIBackdropMaskViewFlags) {
     _UIBackdropMaskViewAll = _UIBackdropMaskViewGrayscaleTint | _UIBackdropMaskViewColorTint | _UIBackdropMaskViewFilters,
 };
 
-#if PLATFORM(MACCATALYST)
-typedef NS_ENUM(NSUInteger, UIFocusRingType) {
-    UIFocusRingTypeNone = 1,
-};
-#endif
-
 @interface UIView ()
 + (BOOL)_isInAnimationBlock;
 - (CGSize)size;
@@ -635,13 +659,11 @@ typedef NS_ENUM(NSUInteger, UIFocusRingType) {
 @property (nonatomic, setter=_setContinuousCornerRadius:) CGFloat _continuousCornerRadius;
 - (void)insertSubview:(UIView *)view above:(UIView *)sibling;
 - (void)viewWillMoveToSuperview:(UIView *)newSuperview;
+- (void)_didRemoveSubview:(UIView *)subview;
 - (CGSize)convertSize:(CGSize)size toView:(UIView *)view;
 - (void)_removeAllAnimations:(BOOL)includeSubviews;
 - (UIColor *)_inheritedInteractionTintColor;
 - (NSString *)recursiveDescription;
-#if PLATFORM(MACCATALYST)
-@property (nonatomic, getter=_focusRingType, setter=_setFocusRingType:) UIFocusRingType focusRingType;
-#endif
 @end
 
 @protocol UISelectionInteractionAssistant
@@ -698,6 +720,13 @@ typedef NS_ENUM(NSInteger, UIWKGestureType) {
 @property (nonatomic, copy) NSString *contextAfterSelection;
 @property (nonatomic, copy) NSString *markedText;
 @property (nonatomic, assign) NSRange rangeInMarkedText;
+@end
+
+@interface UITextSelectionView : UIView
+@end
+
+@interface UITextInteractionAssistant (SPI)
+@property (nonatomic, readonly) UITextSelectionView *selectionView;
 @end
 
 @interface UIWKTextInteractionAssistant : UITextInteractionAssistant <UIResponderStandardEditActions>
@@ -1103,11 +1132,14 @@ WTF_EXTERN_C_END
 
 #endif
 
+@protocol TIPreferencesControllerActions;
+
 @interface UIKeyboardPreferencesController : NSObject
 + (UIKeyboardPreferencesController *)sharedPreferencesController;
 - (void)setValue:(id)value forPreferenceKey:(NSString *)key;
 - (BOOL)boolForPreferenceKey:(NSString *)key;
 - (id)valueForPreferenceKey:(NSString *)key;
+@property (nonatomic, readonly) UIKeyboardPreferencesController<TIPreferencesControllerActions> *preferencesActions;
 @end
 
 @interface UIMenuItem (UIMenuController_SPI)
@@ -1206,20 +1238,22 @@ typedef NS_OPTIONS(NSInteger, UIWKDocumentRequestFlags) {
 
 typedef NS_ENUM(NSUInteger, _UIContextMenuLayout) {
     _UIContextMenuLayoutActionsOnly = 1,
+    _UIContextMenuLayoutPreviewOnly = 2,
     _UIContextMenuLayoutCompactMenu = 3,
     _UIContextMenuLayoutAutomatic = 100,
 };
 
 @interface _UIContextMenuStyle : NSObject <NSCopying>
 @property (nonatomic) _UIContextMenuLayout preferredLayout;
+@property (nonatomic) UIEdgeInsets preferredEdgeInsets;
 @property (nonatomic) BOOL hasInteractivePreview;
+@property (nonatomic) BOOL prefersCenteredPreviewWhenActionsAreAbsent;
+@property (nonatomic) BOOL ignoresDefaultSizingRules;
+@property (nonatomic, strong) NSArray *preferredBackgroundEffects;
 + (instancetype)defaultStyle;
 @end
 
 #if USE(UICONTEXTMENU)
-@interface UITargetedPreview ()
-@property (nonatomic, strong, setter=_setOverridePositionTrackingView:) UIView *overridePositionTrackingView;
-@end
 
 @interface UIContextMenuInteraction ()
 @property (nonatomic, readonly) UIGestureRecognizer *gestureRecognizerForFailureRelationships;
@@ -1375,14 +1409,13 @@ typedef NS_ENUM(NSUInteger, _UIContextMenuLayout) {
 - (CGFloat)getVerticalOverlapForView:(UIView *)view usingKeyboardInfo:(NSDictionary *)info;
 @end
 
+@class TIKeyboardCandidate;
+@class TIKeyboardInput;
+
 @interface UIKeyboardImpl (IPI)
 - (void)setInitialDirection;
 - (void)prepareKeyboardInputModeFromPreferences:(UIKeyboardInputMode *)lastUsedMode;
-- (BOOL)handleKeyTextCommandForCurrentEvent;
-- (BOOL)handleKeyAppCommandForCurrentEvent;
-- (BOOL)handleKeyInputMethodCommandForCurrentEvent;
-- (BOOL)isCallingInputDelegate;
-- (BOOL)delegateSupportsImagePaste;
+- (void)syncInputManagerToAcceptedAutocorrection:(TIKeyboardCandidate *)autocorrection forInput:(TIKeyboardInput *)inputEvent;
 @property (nonatomic, readonly) UIKeyboardInputMode *currentInputModeInPreference;
 @end
 
@@ -1440,6 +1473,14 @@ typedef NS_ENUM(NSUInteger, _UIContextMenuLayout) {
 @property (nonatomic, copy, setter=_setSuggestedColors:) NSArray<UIColor *> *_suggestedColors;
 @end
 
+#if HAVE(UI_FOCUS_EFFECT)
+@class UIFocusEffect;
+
+@interface UIView (Staging_75759822)
+@property (nonatomic, readwrite, copy) UIFocusEffect *focusEffect;
+@end
+#endif
+
 WTF_EXTERN_C_BEGIN
 
 BOOL UIKeyboardEnabledInputModesAllowOneToManyShortcuts(void);
@@ -1490,6 +1531,7 @@ extern NSString * const UIPreviewDataAttachmentListIsContentManaged;
 #endif
 
 UIEdgeInsets UIEdgeInsetsAdd(UIEdgeInsets lhs, UIEdgeInsets rhs, UIRectEdge);
+UIEdgeInsets UIEdgeInsetsSubtract(UIEdgeInsets lhs, UIEdgeInsets rhs, UIRectEdge);
 
 extern NSString *const UIBacklightLevelChangedNotification;
 

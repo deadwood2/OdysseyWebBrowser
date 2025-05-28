@@ -56,7 +56,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface WKSecureCodingArchivingDelegate : NSObject <NSKeyedArchiverDelegate, NSKeyedUnarchiverDelegate>
 @end
 
-@interface WKSecureCodingURLWrapper : NSObject <NSSecureCoding>
+@interface WKSecureCodingURLWrapper : NSURL <NSSecureCoding>
 - (instancetype _Nullable)initWithURL:(NSURL *)wrappedURL;
 @property (nonatomic, readonly) NSURL * wrappedURL;
 @end
@@ -123,7 +123,7 @@ static constexpr NSString *baseURLKey = @"WK.baseURL";
 
 - (_Nullable instancetype)initWithCoder:(NSCoder *)coder
 {
-    auto selfPtr = adoptNS([super init]);
+    auto selfPtr = adoptNS([super initWithString:@""]);
     if (!selfPtr)
         return nil;
 
@@ -149,7 +149,7 @@ static constexpr NSString *baseURLKey = @"WK.baseURL";
 
 - (_Nullable instancetype)initWithURL:(NSURL *)url
 {
-    if (self = [super init])
+    if (self = [super initWithString:@""])
         m_wrappedURL = url;
 
     return self;
@@ -236,36 +236,36 @@ static void encodeArrayInternal(Encoder& encoder, NSArray *array)
         return;
     }
 
-    HashSet<NSUInteger> invalidIndicies;
+    HashSet<NSUInteger> invalidIndices;
     for (NSUInteger i = 0; i < array.count; ++i) {
         id value = array[i];
 
         // Ignore values we don't support.
         ASSERT(isSerializableValue(value));
         if (!isSerializableValue(value))
-            invalidIndicies.add(i);
+            invalidIndices.add(i);
     }
 
-    encoder << static_cast<uint64_t>(array.count - invalidIndicies.size());
+    encoder << static_cast<uint64_t>(array.count - invalidIndices.size());
 
     for (NSUInteger i = 0; i < array.count; ++i) {
-        if (invalidIndicies.contains(i))
+        if (invalidIndices.contains(i))
             continue;
         encodeObject(encoder, array[i]);
     }
 }
 
-static Optional<RetainPtr<id>> decodeArrayInternal(Decoder& decoder, NSArray<Class> *allowedClasses)
+static std::optional<RetainPtr<id>> decodeArrayInternal(Decoder& decoder, NSArray<Class> *allowedClasses)
 {
     uint64_t size;
     if (!decoder.decode(size))
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto array = adoptNS([[NSMutableArray alloc] init]);
     for (uint64_t i = 0; i < size; ++i) {
         auto value = decodeObject(decoder, allowedClasses);
-        if (!value)
-            return WTF::nullopt;
+        if (!value || !value.value())
+            return std::nullopt;
         [array addObject:value.value().get()];
     }
 
@@ -280,11 +280,11 @@ static inline void encodeColorInternal(Encoder& encoder, NSColor *color)
     encoder << colorFromNSColor(color);
 }
 
-static inline Optional<RetainPtr<id>> decodeColorInternal(Decoder& decoder)
+static inline std::optional<RetainPtr<id>> decodeColorInternal(Decoder& decoder)
 {
     Color color;
     if (!decoder.decode(color))
-        return WTF::nullopt;
+        return std::nullopt;
     return { nsColor(color) };
 }
 #else
@@ -293,11 +293,11 @@ static inline void encodeColorInternal(Encoder& encoder, UIColor *color)
     encoder << colorFromUIColor(color);
 }
 
-static inline Optional<RetainPtr<id>> decodeColorInternal(Decoder& decoder)
+static inline std::optional<RetainPtr<id>> decodeColorInternal(Decoder& decoder)
 {
     Color color;
     if (!decoder.decode(color))
-        return WTF::nullopt;
+        return std::nullopt;
     return { adoptNS([[UIColor alloc] initWithCGColor:cachedCGColor(color)]) };
 }
 #endif
@@ -306,14 +306,14 @@ static inline Optional<RetainPtr<id>> decodeColorInternal(Decoder& decoder)
 
 static inline void encodeDataInternal(Encoder& encoder, NSData *data)
 {
-    encode(encoder, (__bridge CFDataRef)data);
+    encoder << (__bridge CFDataRef)data;
 }
 
-static inline Optional<RetainPtr<id>> decodeDataInternal(Decoder& decoder)
+static inline std::optional<RetainPtr<id>> decodeDataInternal(Decoder& decoder)
 {
     RetainPtr<CFDataRef> data;
-    if (!decode(decoder, data))
-        return WTF::nullopt;
+    if (!decoder.decode(data))
+        return std::nullopt;
     return { adoptNS((NSData *)data.leakRef()) };
 }
 
@@ -321,14 +321,14 @@ static inline Optional<RetainPtr<id>> decodeDataInternal(Decoder& decoder)
 
 static inline void encodeDateInternal(Encoder& encoder, NSDate *date)
 {
-    encode(encoder, (__bridge CFDateRef)date);
+    encoder << (__bridge CFDateRef)date;
 }
 
-static inline Optional<RetainPtr<id>> decodeDateInternal(Decoder& decoder)
+static inline std::optional<RetainPtr<id>> decodeDateInternal(Decoder& decoder)
 {
     RetainPtr<CFDateRef> date;
-    if (!decode(decoder, date))
-        return WTF::nullopt;
+    if (!decoder.decode(date))
+        return std::nullopt;
     return { adoptNS((NSDate *)date.leakRef()) };
 }
 
@@ -366,21 +366,21 @@ static void encodeDictionaryInternal(Encoder& encoder, NSDictionary *dictionary)
     }
 }
 
-static Optional<RetainPtr<id>> decodeDictionaryInternal(Decoder& decoder, NSArray<Class> *allowedClasses)
+static std::optional<RetainPtr<id>> decodeDictionaryInternal(Decoder& decoder, NSArray<Class> *allowedClasses)
 {
     uint64_t size;
     if (!decoder.decode(size))
-        return WTF::nullopt;
+        return std::nullopt;
 
     RetainPtr<NSMutableDictionary> dictionary = adoptNS([[NSMutableDictionary alloc] initWithCapacity:size]);
     for (uint64_t i = 0; i < size; ++i) {
         auto key = decodeObject(decoder, allowedClasses);
         if (!key)
-            return WTF::nullopt;
+            return std::nullopt;
 
         auto value = decodeObject(decoder, allowedClasses);
         if (!value)
-            return WTF::nullopt;
+            return std::nullopt;
 
         [dictionary setObject:value.value().get() forKey:key.value().get()];
     }
@@ -395,11 +395,11 @@ static inline void encodeFontInternal(Encoder& encoder, CocoaFont *font)
     encode(encoder, font.fontDescriptor.fontAttributes);
 }
 
-static Optional<RetainPtr<id>> decodeFontInternal(Decoder& decoder)
+static std::optional<RetainPtr<id>> decodeFontInternal(Decoder& decoder)
 {
     RetainPtr<NSDictionary> fontAttributes;
     if (!decode(decoder, fontAttributes))
-        return WTF::nullopt;
+        return std::nullopt;
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS
 
@@ -414,14 +414,14 @@ static Optional<RetainPtr<id>> decodeFontInternal(Decoder& decoder)
 
 static inline void encodeNumberInternal(Encoder& encoder, NSNumber *number)
 {
-    encode(encoder, (__bridge CFNumberRef)number);
+    encoder << (__bridge CFNumberRef)number;
 }
 
-static inline Optional<RetainPtr<id>> decodeNumberInternal(Decoder& decoder)
+static inline std::optional<RetainPtr<id>> decodeNumberInternal(Decoder& decoder)
 {
     RetainPtr<CFNumberRef> number;
-    if (!decode(decoder, number))
-        return WTF::nullopt;
+    if (!decoder.decode(number))
+        return std::nullopt;
     return { adoptNS((NSNumber *)number.leakRef()) };
 }
 
@@ -438,18 +438,18 @@ static void encodeSecureCodingInternal(Encoder& encoder, id <NSObject, NSSecureC
     [archiver finishEncoding];
     [archiver setDelegate:nil];
 
-    encode(encoder, (__bridge CFDataRef)[archiver encodedData]);
+    encoder << (__bridge CFDataRef)[archiver encodedData];
 }
 
-static Optional<RetainPtr<id>> decodeSecureCodingInternal(Decoder& decoder, NSArray<Class> *allowedClasses)
+static std::optional<RetainPtr<id>> decodeSecureCodingInternal(Decoder& decoder, NSArray<Class> *allowedClasses)
 {
     ASSERT(allowedClasses && allowedClasses.count);
     if (!allowedClasses || !allowedClasses.count)
-        return WTF::nullopt;
+        return std::nullopt;
 
     RetainPtr<CFDataRef> data;
-    if (!decode(decoder, data))
-        return WTF::nullopt;
+    if (!decoder.decode(data))
+        return std::nullopt;
 
     auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:(__bridge NSData *)data.get() error:nullptr]);
     unarchiver.get().decodingFailurePolicy = NSDecodingFailurePolicyRaiseException;
@@ -466,7 +466,7 @@ static Optional<RetainPtr<id>> decodeSecureCodingInternal(Decoder& decoder, NSAr
         return { result };
     } @catch (NSException *exception) {
         LOG_ERROR("Failed to decode object of classes %@: %@", allowedClasses, exception);
-        return WTF::nullopt;
+        return std::nullopt;
     } @finally {
         [unarchiver finishDecoding];
         unarchiver.get().delegate = nil;
@@ -477,14 +477,14 @@ static Optional<RetainPtr<id>> decodeSecureCodingInternal(Decoder& decoder, NSAr
 
 static inline void encodeStringInternal(Encoder& encoder, NSString *string)
 {
-    encode(encoder, (__bridge CFStringRef)string);
+    encoder << (__bridge CFStringRef)string;
 }
 
-static inline Optional<RetainPtr<id>> decodeStringInternal(Decoder& decoder)
+static inline std::optional<RetainPtr<id>> decodeStringInternal(Decoder& decoder)
 {
     RetainPtr<CFStringRef> string;
-    if (!decode(decoder, string))
-        return WTF::nullopt;
+    if (!decoder.decode(string))
+        return std::nullopt;
     return { adoptNS((NSString *)string.leakRef()) };
 }
 
@@ -492,14 +492,14 @@ static inline Optional<RetainPtr<id>> decodeStringInternal(Decoder& decoder)
 
 static inline void encodeURLInternal(Encoder& encoder, NSURL *URL)
 {
-    encode(encoder, (__bridge CFURLRef)URL);
+    encoder << (__bridge CFURLRef)URL;
 }
 
-static inline Optional<RetainPtr<id>> decodeURLInternal(Decoder& decoder)
+static inline std::optional<RetainPtr<id>> decodeURLInternal(Decoder& decoder)
 {
     RetainPtr<CFURLRef> URL;
-    if (!decode(decoder, URL))
-        return WTF::nullopt;
+    if (!decoder.decode(URL))
+        return std::nullopt;
     return { adoptNS((NSURL *)URL.leakRef()) };
 }
 
@@ -552,17 +552,17 @@ void encodeObject(Encoder& encoder, id object)
     ASSERT_NOT_REACHED();
 }
 
-Optional<RetainPtr<id>> decodeObject(Decoder& decoder, NSArray<Class> *allowedClasses)
+std::optional<RetainPtr<id>> decodeObject(Decoder& decoder, NSArray<Class> *allowedClasses)
 {
     bool isNull;
     if (!decoder.decode(isNull))
-        return WTF::nullopt;
+        return std::nullopt;
     if (isNull)
         return { nullptr };
 
     NSType type;
     if (!decoder.decode(type))
-        return WTF::nullopt;
+        return std::nullopt;
 
     switch (type) {
     case NSType::Array:
@@ -590,7 +590,7 @@ Optional<RetainPtr<id>> decodeObject(Decoder& decoder, NSArray<Class> *allowedCl
     }
 
     ASSERT_NOT_REACHED();
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 } // namespace IPC

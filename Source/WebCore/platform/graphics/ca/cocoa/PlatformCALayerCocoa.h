@@ -53,6 +53,7 @@ public:
     PlatformCALayer* superlayer() const override;
     void removeFromSuperlayer() override;
     void setSublayers(const PlatformCALayerList&) override;
+    PlatformCALayerList sublayersForLogging() const override;
     void removeAllSublayers() override;
     void appendSublayer(PlatformCALayer&) override;
     void insertSublayer(PlatformCALayer&, size_t index) override;
@@ -178,7 +179,15 @@ public:
 
 #if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
     bool isSeparated() const override;
-    void setSeparated(bool) override;
+    void setIsSeparated(bool) override;
+
+#if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
+    bool isSeparatedPortal() const override;
+    void setIsSeparatedPortal(bool) override;
+
+    bool isDescendentOfSeparatedPortal() const override;
+    void setIsDescendentOfSeparatedPortal(bool) override;
+#endif
 #endif
 
     TiledBacking* tiledBacking() override;

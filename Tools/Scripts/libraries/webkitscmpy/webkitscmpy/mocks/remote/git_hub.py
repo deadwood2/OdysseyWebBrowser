@@ -23,7 +23,6 @@
 import os
 import json
 
-from datetime import datetime
 from webkitcorepy import mocks
 from webkitscmpy import Commit, remote as scmremote
 
@@ -32,7 +31,7 @@ class GitHub(mocks.Requests):
     top = None
 
     def __init__(
-        self, remote='github.example.com/WebKit/webkit', datafile=None,
+        self, remote='github.example.com/WebKit/WebKit', datafile=None,
         default_branch='main', git_svn=False,
     ):
         if not scmremote.GitHub.is_webserver('https://{}'.format(remote)):
@@ -40,6 +39,7 @@ class GitHub(mocks.Requests):
 
         self.default_branch = default_branch
         self.remote = remote
+        self.forks = []
         hostname = self.remote.split('/')[0]
         self.api_remote = 'api.{hostname}/repos/{repo}'.format(
             hostname=hostname,
@@ -58,12 +58,13 @@ class GitHub(mocks.Requests):
 
         self.head = self.commits[self.default_branch][-1]
         self.tags = {}
+        self.pull_requests = []
         self._environment = None
 
     def __enter__(self):
         prefix = self.remote.split('/')[0].replace('.', '_').upper()
         username_key = '{}_USERNAME'.format(prefix)
-        token_key = '{}_ACCESS_TOKEN'.format(prefix)
+        token_key = '{}_TOKEN'.format(prefix)
         self._environment = {
             username_key: os.environ.get(username_key),
             token_key: os.environ.get(token_key),
@@ -104,7 +105,7 @@ class GitHub(mocks.Requests):
         if delta < commit.identifier:
             return self.commits[commit.branch][commit.identifier - delta - 1]
         delta -= commit.identifier
-        if delta < commit.branch_point:
+        if commit.branch_point and delta < commit.branch_point:
             return self.commits[self.default_branch][commit.branch_point - delta - 1]
         return None
 
@@ -133,7 +134,55 @@ class GitHub(mocks.Requests):
             } for reference, commit in (self.commits if type == 'branches' else self.tags).items()
         ], url=url)
 
+    def _commits_response(self, url, ref):
+        from datetime import datetime, timedelta
+
+        base = self.commit(ref)
+        if not base:
+            return mocks.Response(
+                status_code=404,
+                url=url,
+                text=json.dumps(dict(message='No commit found for SHA: {}'.format(ref))),
+            )
+
+        response = []
+        for branch in [self.default_branch] if base.branch == self.default_branch else [base.branch, self.default_branch]:
+            in_range = False
+            previous = None
+            for commit in reversed(self.commits[branch]):
+                if commit.hash == ref:
+                    in_range = True
+                if not in_range:
+                    continue
+                previous = commit
+                response.append({
+                    'sha': commit.hash,
+                    'commit': {
+                        'author': {
+                            'name': commit.author.name,
+                            'email': commit.author.email,
+                            'date': datetime.utcfromtimestamp(commit.timestamp - timedelta(hours=7).seconds).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        }, 'committer': {
+                            'name': commit.author.name,
+                            'email': commit.author.email,
+                            'date': datetime.utcfromtimestamp(commit.timestamp - timedelta(hours=7).seconds).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        }, 'message': commit.message + ('\ngit-svn-id: https://svn.example.org/repository/webkit/{}@{} 268f45cc-cd09-0410-ab3c-d52691b4dbfc\n'.format(
+                            'trunk' if commit.branch == self.default_branch else commit.branch, commit.revision,
+                        ) if commit.revision else ''),
+                        'url': 'https://{}/git/commits/{}'.format(self.api_remote, commit.hash),
+                    }, 'url': 'https://{}/commits/{}'.format(self.api_remote, commit.hash),
+                    'html_url': 'https://{}/commit/{}'.format(self.remote, commit.hash),
+                })
+            if branch != self.default_branch:
+                for commit in reversed(self.commits[self.default_branch]):
+                    if previous.branch_point == commit.identifier:
+                        ref = commit.hash
+
+        return mocks.Response.fromJson(response, url=url)
+
     def _commit_response(self, url, ref):
+        from datetime import datetime, timedelta
+
         commit = self.commit(ref)
         if not commit:
             return mocks.Response(
@@ -147,12 +196,14 @@ class GitHub(mocks.Requests):
                 'author': {
                     'name': commit.author.name,
                     'email': commit.author.email,
-                    'date': datetime.fromtimestamp(commit.timestamp).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'date': datetime.utcfromtimestamp(commit.timestamp - timedelta(hours=7).seconds).strftime('%Y-%m-%dT%H:%M:%SZ'),
                 }, 'committer': {
                     'name': commit.author.name,
                     'email': commit.author.email,
-                    'date': datetime.fromtimestamp(commit.timestamp).strftime('%Y-%m-%dT%H:%M:%SZ'),
-                }, 'message': commit.message,
+                    'date': datetime.utcfromtimestamp(commit.timestamp - timedelta(hours=7).seconds).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                }, 'message': commit.message + ('\ngit-svn-id: https://svn.example.org/repository/webkit/{}@{} 268f45cc-cd09-0410-ab3c-d52691b4dbfc\n'.format(
+                    'trunk' if commit.branch == self.default_branch else commit.branch, commit.revision,
+                ) if commit.revision else ''),
                 'url': 'https://{}/git/commits/{}'.format(self.api_remote, commit.hash),
             }, 'url': 'https://{}/commits/{}'.format(self.api_remote, commit.hash),
             'html_url': 'https://{}/commit/{}'.format(self.remote, commit.hash),
@@ -206,11 +257,11 @@ class GitHub(mocks.Requests):
             '    <div class="Box-header Box-header--blue position-relative">\n'
             '        <h2 class="sr-only">Latest commit</h2>\n'
             '        <div class="..." data-issue-and-pr-hovercards-enabled>\n'
-            '            <include-fragment src="/WebKit/webkit/tree-commit/{ref}" aria-label="Loading latest commit">\n'
+            '            <include-fragment src="/{project}/tree-commit/{ref}" aria-label="Loading latest commit">\n'
             '            </include-fragment>\n'
             '        <ul class="list-style-none d-flex">\n'
             '            <li class="ml-0 ml-md-3">\n'
-            '                <a data-pjax href="/WebKit/webkit/commits/{ref}">\n'
+            '                <a data-pjax href="/{project}/commits/{ref}">\n'
             '                    <svg class="octicon octicon-history text-gray"><path></path></svg>\n'
             '                    <span class="d-none d-sm-inline">\n'
             '                        <strong>{count}</strong>\n'
@@ -224,15 +275,17 @@ class GitHub(mocks.Requests):
             '</div>\n'
             '...\n'
             '</html>\n'.format(
+                project='/'.join(self.remote.split('/')[1:]),
                 ref=commit.hash,
                 count=commit.identifier + (commit.branch_point or 0),
             ), url=url
         )
 
-    def request(self, method, url, data=None, **kwargs):
+    def request(self, method, url, data=None, params=None, auth=None, json=None, **kwargs):
         if not url.startswith('http://') and not url.startswith('https://'):
             return mocks.Response.create404(url)
 
+        params = params or {}
         stripped_url = url.split('://')[-1]
 
         # Top-level API request
@@ -242,6 +295,10 @@ class GitHub(mocks.Requests):
         # Branches/Tags
         if stripped_url in ['{}/branches'.format(self.api_remote), '{}/tags'.format(self.api_remote)]:
             return self._list_refs_response(url=url, type=stripped_url.split('/')[-1])
+
+        # Return a commit and it's parents
+        if stripped_url == '{}/commits'.format(self.api_remote) and params.get('sha'):
+            return self._commits_response(url=url, ref=params['sha'])
 
         # Extract single commit
         if stripped_url.startswith('{}/commits/'.format(self.api_remote)):
@@ -259,5 +316,81 @@ class GitHub(mocks.Requests):
         # Find the number of parents a commit has
         if stripped_url.startswith('{}/tree/'.format(self.remote)):
             return self._parents_of_request(url=url, ref=stripped_url.split('/')[-1])
+
+        # Check for existance of forked repo
+        if stripped_url.startswith('{}/repos'.format(self.api_remote.split('/')[0])) and stripped_url.split('/')[-1] == self.remote.split('/')[-1]:
+            username = stripped_url.split('/')[-2]
+            if username in self.forks or username == self.remote.split('/')[-2]:
+                return mocks.Response.fromJson(dict(
+                    owmer=dict(
+                        login=username,
+                    ), fork=username in self.forks,
+                    name=stripped_url.split('/')[-1],
+                    full_name='/'.join(stripped_url.split('/')[-2:]),
+                ), url=url)
+            return mocks.Response.create404(url)
+
+        # Add fork
+        if stripped_url.startswith('{}/forks'.format(self.api_remote)) and method == 'POST':
+            username = (json or {}).get('owner', None)
+            if username:
+                self.forks.append(username)
+            return mocks.Response.fromJson({}) if username else mocks.Response.create404(url)
+
+        # All pull-requests
+        pr_base = '{}/pulls'.format(self.api_remote)
+        if method == 'GET' and stripped_url == pr_base:
+            prs = []
+            for candidate in self.pull_requests:
+                state = params.get('state', 'all')
+                if state != 'all' and candidate.get('state', 'closed') != state:
+                    continue
+                base = params.get('base')
+                if base and candidate.get('base', {}).get('ref') != base:
+                    continue
+                head = params.get('head')
+                if head and head not in [candidate.get('head', {}).get('ref'), candidate.get('head', {}).get('label')]:
+                    continue
+                prs.append(candidate)
+            return mocks.Response.fromJson(prs)
+
+        # Create/update pull-request
+        pr = dict()
+        if method == 'POST' and auth and stripped_url.startswith(pr_base):
+            if json.get('title'):
+                pr['title'] = json['title']
+            if json.get('body'):
+                pr['body'] = json['body']
+            if json.get('head'):
+                pr['head'] = dict(
+                    label=json['head'],
+                    ref=json['head'].split(':')[-1],
+                    user=dict(login=auth.username),
+                )
+            if json.get('base'):
+                pr['base'] = dict(
+                    label='{}:{}'.format(self.remote.split('/')[-2], json['base']),
+                    ref=json['base'],
+                    user=dict(login=self.remote.split('/')[-2]),
+                )
+
+        # Create specifically
+        if method == 'POST' and auth and stripped_url == pr_base:
+            pr['number'] = 1 + max([0] + [pr.get('number', 0) for pr in self.pull_requests])
+            pr['user'] = dict(login=auth.username)
+            self.pull_requests.append(pr)
+            return mocks.Response.fromJson(pr)
+
+        # Update specifically
+        if method == 'POST' and auth and stripped_url.startswith(pr_base):
+            number = int(stripped_url.split('/')[-1])
+            existing = None
+            for i in range(len(self.pull_requests)):
+                if self.pull_requests[i].get('number') == number:
+                    existing = i
+            if existing is None:
+                return mocks.Response.create404(url)
+            self.pull_requests[existing].update(pr)
+            return mocks.Response.fromJson(self.pull_requests[i])
 
         return mocks.Response.create404(url)

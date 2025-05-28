@@ -27,6 +27,7 @@
 
 #include <wtf/Assertions.h>
 #include "Connection.h"
+#include <wtf/UniqueRef.h>
 
 namespace IPC {
 
@@ -43,8 +44,8 @@ public:
     {
         static_assert(!U::isSync, "Message is sync!");
 
-        auto encoder = makeUnique<Encoder>(U::name(), destinationID);
-        *encoder << message.arguments();
+        auto encoder = makeUniqueRef<Encoder>(U::name(), destinationID);
+        encoder.get() << message.arguments();
         
         return sendMessage(WTFMove(encoder), sendOptions);
     }
@@ -57,7 +58,7 @@ public:
     using SendSyncResult = Connection::SendSyncResult;
 
     template<typename T>
-    SendSyncResult sendSync(T&& message, typename T::Reply&& reply, Seconds timeout = Seconds::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { })
+    SendSyncResult sendSync(T&& message, typename T::Reply&& reply, Timeout timeout = Seconds::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { })
     {
         static_assert(T::isSync, "Message is not sync!");
 
@@ -65,7 +66,7 @@ public:
     }
 
     template<typename T>
-    SendSyncResult sendSync(T&& message, typename T::Reply&& reply, uint64_t destinationID, Seconds timeout = Seconds::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { })
+    SendSyncResult sendSync(T&& message, typename T::Reply&& reply, uint64_t destinationID, Timeout timeout = Timeout::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { })
     {
         if (auto* connection = messageSenderConnection())
             return connection->sendSync(WTFMove(message), WTFMove(reply), destinationID, timeout, sendSyncOptions);
@@ -74,7 +75,7 @@ public:
     }
 
     template<typename U, typename T>
-    SendSyncResult sendSync(U&& message, typename U::Reply&& reply, ObjectIdentifier<T> destinationID, Seconds timeout = Seconds::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { })
+    SendSyncResult sendSync(U&& message, typename U::Reply&& reply, ObjectIdentifier<T> destinationID, Timeout timeout = Timeout::infinity(), OptionSet<SendSyncOption> sendSyncOptions = { })
     {
         return sendSync<U>(std::forward<U>(message), WTFMove(reply), destinationID.toUInt64(), timeout, sendSyncOptions);
     }
@@ -90,10 +91,10 @@ public:
     {
         COMPILE_ASSERT(!T::isSync, AsyncMessageExpected);
 
-        auto encoder = makeUnique<IPC::Encoder>(T::name(), destinationID);
+        auto encoder = makeUniqueRef<IPC::Encoder>(T::name(), destinationID);
         uint64_t listenerID = IPC::nextAsyncReplyHandlerID();
-        *encoder << listenerID;
-        *encoder << message.arguments();
+        encoder.get() << listenerID;
+        encoder.get() << message.arguments();
         sendMessage(WTFMove(encoder), sendOptions, {{ [completionHandler = WTFMove(completionHandler)] (IPC::Decoder* decoder) mutable {
             if (decoder && decoder->isValid())
                 T::callReply(*decoder, WTFMove(completionHandler));
@@ -103,7 +104,7 @@ public:
         return listenerID;
     }
 
-    virtual bool sendMessage(std::unique_ptr<Encoder>, OptionSet<SendOption>, Optional<std::pair<CompletionHandler<void(IPC::Decoder*)>, uint64_t>>&& = WTF::nullopt);
+    virtual bool sendMessage(UniqueRef<Encoder>&&, OptionSet<SendOption>, std::optional<std::pair<CompletionHandler<void(IPC::Decoder*)>, uint64_t>>&& = std::nullopt);
 
 private:
     virtual Connection* messageSenderConnection() const = 0;

@@ -48,7 +48,7 @@ constexpr unsigned kMaxFFTPow2Size = 24;
 
 static Lock fftSetupsLock;
 
-static Vector<FFTSetup>& fftSetups()
+static Vector<FFTSetup>& fftSetups() WTF_REQUIRES_LOCK(fftSetupsLock)
 {
     ASSERT(fftSetupsLock.isHeld());
     static NeverDestroyed<Vector<FFTSetup>> fftSetups(kMaxFFTPow2Size, nullptr);
@@ -136,7 +136,7 @@ FFTSetup FFTFrame::fftSetupForSize(unsigned fftSize)
     auto pow2size = static_cast<size_t>(log2(fftSize));
     ASSERT(pow2size < kMaxFFTPow2Size);
 
-    auto locker = holdLock(fftSetupsLock);
+    Locker locker { fftSetupsLock };
     auto& fftSetup = fftSetups().at(pow2size);
     if (!fftSetup)
         fftSetup = vDSP_create_fftsetup(pow2size, FFT_RADIX2);

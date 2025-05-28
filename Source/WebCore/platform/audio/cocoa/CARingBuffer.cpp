@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,8 +29,10 @@
 #if ENABLE(WEB_AUDIO) && USE(MEDIATOOLBOX)
 
 #include "CAAudioStreamDescription.h"
+#include "Logging.h"
 #include <Accelerate/Accelerate.h>
 #include <CoreAudio/CoreAudioTypes.h>
+#include <wtf/CheckedArithmetic.h>
 #include <wtf/MathExtras.h>
 
 const uint32_t kGeneralRingTimeBoundsQueueSize = 32;
@@ -58,26 +60,45 @@ CARingBuffer::CARingBuffer(UniqueRef<CARingBufferStorage>&& storage)
 {
 }
 
-CARingBuffer::CARingBuffer(UniqueRef<CARingBufferStorage>&& storage, const CAAudioStreamDescription& format, size_t frameCount)
-    : m_buffers(WTFMove(storage))
+static CheckedSize computeCapacityBytes(const CAAudioStreamDescription& format, size_t frameCount)
 {
-    allocate(format, frameCount);
+    CheckedSize capacityBytes = format.bytesPerFrame();
+    capacityBytes *= frameCount;
+    return capacityBytes;
 }
 
-void CARingBuffer::allocate(const CAAudioStreamDescription& format, size_t frameCount)
+static CheckedSize computeSizeForBuffers(const CAAudioStreamDescription& format, size_t frameCount)
+{
+    auto sizeForBuffers = computeCapacityBytes(format, frameCount);
+    sizeForBuffers *= format.numberOfChannelStreams();
+    return sizeForBuffers;
+}
+
+UniqueRef<CARingBuffer> CARingBuffer::adoptStorage(UniqueRef<CARingBufferStorage>&& storage, const CAAudioStreamDescription& format, size_t frameCount)
+{
+    // Validate the parameters as they may be coming from an untrusted process.
+    auto expectedStorageSize = computeSizeForBuffers(format, frameCount);
+    if (expectedStorageSize.hasOverflowed()) {
+        RELEASE_LOG_FAULT(Media, "CARingBuffer::adoptStorage: Overflowed when trying to compute the storage size");
+        return makeUniqueRef<CARingBuffer>();
+    }
+    if (storage->size() < expectedStorageSize) {
+        RELEASE_LOG_FAULT(Media, "CARingBuffer::adoptStorage: Storage size is insufficient for format and frameCount");
+        return makeUniqueRef<CARingBuffer>();
+    }
+
+    auto ringBuffer = makeUniqueRef<CARingBuffer>(WTFMove(storage));
+    ringBuffer->initializeAfterAllocation(format, frameCount);
+    return ringBuffer;
+}
+
+void CARingBuffer::initializeAfterAllocation(const CAAudioStreamDescription& format, size_t frameCount)
 {
     m_description = format;
-    deallocate();
-
-    frameCount = WTF::roundUpToPowerOfTwo(frameCount);
-
     m_channelCount = format.numberOfChannelStreams();
     m_bytesPerFrame = format.bytesPerFrame();
     m_frameCount = frameCount;
-    m_frameCountMask = frameCount - 1;
-    m_capacityBytes = m_bytesPerFrame * frameCount;
-
-    m_buffers->allocate(m_capacityBytes * m_channelCount, format, frameCount);
+    m_capacityBytes = computeCapacityBytes(format, frameCount);
 
     m_pointers.resize(m_channelCount);
     Byte* channelData = static_cast<Byte*>(m_buffers->data());
@@ -88,6 +109,26 @@ void CARingBuffer::allocate(const CAAudioStreamDescription& format, size_t frame
     }
 
     flush();
+}
+
+bool CARingBuffer::allocate(const CAAudioStreamDescription& format, size_t frameCount)
+{
+    deallocate();
+    frameCount = WTF::roundUpToPowerOfTwo(frameCount);
+
+    auto sizeForBuffers = computeSizeForBuffers(format, frameCount);
+    if (sizeForBuffers.hasOverflowed()) {
+        RELEASE_LOG_FAULT(Media, "CARingBuffer::allocate: Overflowed when trying to compute the storage size");
+        return false;
+    }
+
+    if (UNLIKELY(!m_buffers->allocate(sizeForBuffers, format, frameCount))) {
+        RELEASE_LOG_FAULT(Media, "CARingBuffer::allocate: Failed to allocate buffer of the requested size: %lu", sizeForBuffers.value());
+        return false;
+    }
+
+    initializeAfterAllocation(format, frameCount);
+    return true;
 }
 
 void CARingBuffer::deallocate()
@@ -178,9 +219,18 @@ void CARingBuffer::flush()
     m_buffers->flush();
 }
 
+bool CARingBufferStorageVector::allocate(size_t byteCount, const CAAudioStreamDescription&, size_t)
+{
+    if (!m_buffer.tryReserveCapacity(byteCount))
+        return false;
+
+    m_buffer.grow(byteCount);
+    return true;
+}
+
 void CARingBufferStorageVector::flush()
 {
-    LockHolder locker(m_currentFrameBoundsLock);
+    Locker locker { m_currentFrameBoundsLock };
     for (auto& timeBounds : m_timeBoundsQueue) {
         timeBounds.m_startFrame = 0;
         timeBounds.m_endFrame = 0;
@@ -254,7 +304,7 @@ void CARingBuffer::setCurrentFrameBounds(uint64_t startTime, uint64_t endTime)
 
 void CARingBufferStorageVector::setCurrentFrameBounds(uint64_t startTime, uint64_t endTime)
 {
-    LockHolder locker(m_currentFrameBoundsLock);
+    Locker locker { m_currentFrameBoundsLock };
     uint32_t nextPtr = m_timeBoundsQueuePtr.load() + 1;
     uint32_t index = nextPtr & kGeneralRingTimeBoundsQueueMask;
 
@@ -275,7 +325,7 @@ void CARingBuffer::getCurrentFrameBoundsWithoutUpdate(uint64_t& startFrame, uint
     m_buffers->getCurrentFrameBounds(startFrame, endFrame);
 }
 
-void CARingBufferStorageVector::getCurrentFrameBounds(uint64_t& startFrame, uint64_t& endFrame)
+SUPPRESS_TSAN void CARingBufferStorageVector::getCurrentFrameBounds(uint64_t& startFrame, uint64_t& endFrame)
 {
     uint32_t curPtr = m_timeBoundsQueuePtr.load();
     uint32_t index = curPtr & kGeneralRingTimeBoundsQueueMask;
@@ -307,7 +357,7 @@ uint64_t CARingBuffer::currentStartFrame() const
     return m_buffers->currentStartFrame();
 }
 
-uint64_t CARingBufferStorageVector::currentStartFrame() const
+SUPPRESS_TSAN uint64_t CARingBufferStorageVector::currentStartFrame() const
 {
     uint32_t index = m_timeBoundsQueuePtr.load() & kGeneralRingTimeBoundsQueueMask;
     return m_timeBoundsQueue[index].m_startFrame;
@@ -318,7 +368,7 @@ uint64_t CARingBuffer::currentEndFrame() const
     return m_buffers->currentEndFrame();
 }
 
-uint64_t CARingBufferStorageVector::currentEndFrame() const
+SUPPRESS_TSAN uint64_t CARingBufferStorageVector::currentEndFrame() const
 {
     uint32_t index = m_timeBoundsQueuePtr.load() & kGeneralRingTimeBoundsQueueMask;
     return m_timeBoundsQueue[index].m_endFrame;

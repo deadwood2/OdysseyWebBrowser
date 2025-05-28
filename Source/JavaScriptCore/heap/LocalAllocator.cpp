@@ -33,13 +33,17 @@
 #include "Options.h"
 #include "SuperSampler.h"
 
+#if OS(MORPHOS)
+extern "C" { void oomCrash(); }
+#endif
+
 namespace JSC {
 
 LocalAllocator::LocalAllocator(BlockDirectory* directory)
     : m_directory(directory)
     , m_freeList(directory->m_cellSize)
 {
-    auto locker = holdLock(directory->m_localAllocatorsLock);
+    Locker locker { directory->m_localAllocatorsLock };
     directory->m_localAllocators.append(this);
 }
 
@@ -54,7 +58,7 @@ void LocalAllocator::reset()
 LocalAllocator::~LocalAllocator()
 {
     if (isOnList()) {
-        auto locker = holdLock(m_directory->m_localAllocatorsLock);
+        Locker locker { m_directory->m_localAllocatorsLock };
         remove();
     }
     
@@ -143,7 +147,7 @@ void* LocalAllocator::allocateSlowCase(Heap& heap, GCDeferralContext* deferralCo
     MarkedBlock::Handle* block = m_directory->tryAllocateBlock(heap);
     if (!block) {
         if (failureMode == AllocationFailureMode::Assert)
-            RELEASE_ASSERT_NOT_REACHED();
+            oomCrash();
         else
             return nullptr;
     }

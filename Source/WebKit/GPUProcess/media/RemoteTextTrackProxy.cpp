@@ -65,10 +65,10 @@ TextTrackPrivateRemoteConfiguration& RemoteTextTrackProxy::configuration()
     configuration->label = m_trackPrivate->label();
     configuration->language = m_trackPrivate->language();
     configuration->trackIndex = m_trackPrivate->trackIndex();
+    configuration->inBandMetadataTrackDispatchType = m_trackPrivate->inBandMetadataTrackDispatchType();
     configuration->startTimeVariance = m_trackPrivate->startTimeVariance();
 
     configuration->cueFormat = m_trackPrivate->cueFormat();
-    configuration->mode = m_trackPrivate->mode();
     configuration->isClosedCaptions = m_trackPrivate->isClosedCaptions();
     configuration->isSDH = m_trackPrivate->isSDH();
     configuration->containsOnlyForcedSubtitles = m_trackPrivate->containsOnlyForcedSubtitles();
@@ -113,7 +113,7 @@ void RemoteTextTrackProxy::addDataCue(const MediaTime& start, const MediaTime& e
     if (!m_connectionToWebProcess)
         return;
 
-    m_connectionToWebProcess->connection().send(Messages::MediaPlayerPrivateRemote::AddDataCue(m_identifier, start, end, IPC::DataReference(reinterpret_cast<const uint8_t*>(data), length)), m_mediaPlayerIdentifier);
+    m_connectionToWebProcess->connection().send(Messages::MediaPlayerPrivateRemote::AddDataCue(m_identifier, start, end, IPC::DataReference(static_cast<const uint8_t*>(data), length)), m_mediaPlayerIdentifier);
 }
 
 #if ENABLE(DATACUE_VALUE)
@@ -174,12 +174,12 @@ void RemoteTextTrackProxy::parseWebVTTFileHeader(String&& header)
     m_connectionToWebProcess->connection().send(Messages::MediaPlayerPrivateRemote::ParseWebVTTFileHeader(m_identifier, header), m_mediaPlayerIdentifier);
 }
 
-void RemoteTextTrackProxy::parseWebVTTCueData(const char* data, unsigned length)
+void RemoteTextTrackProxy::parseWebVTTCueData(const uint8_t* data, unsigned length)
 {
     if (!m_connectionToWebProcess)
         return;
 
-    m_connectionToWebProcess->connection().send(Messages::MediaPlayerPrivateRemote::ParseWebVTTCueData(m_identifier, IPC::DataReference(reinterpret_cast<const uint8_t*>(data), length)), m_mediaPlayerIdentifier);
+    m_connectionToWebProcess->connection().send(Messages::MediaPlayerPrivateRemote::ParseWebVTTCueData(m_identifier, IPC::DataReference(data, length)), m_mediaPlayerIdentifier);
 }
 
 void RemoteTextTrackProxy::parseWebVTTCueData(ISOWebVTTCue&& cueData)

@@ -202,7 +202,7 @@ angle::Result FramebufferMtl::clearBufferfi(const gl::Context *context,
 const gl::InternalFormat &FramebufferMtl::getImplementationColorReadFormat(
     const gl::Context *context) const
 {
-    return GetReadAttachmentInfo(context, getColorReadRenderTarget(context));
+    return GetReadAttachmentInfo(context, getColorReadRenderTargetNoCache(context));
 }
 
 angle::Result FramebufferMtl::readPixels(const gl::Context *context,
@@ -248,7 +248,7 @@ angle::Result FramebufferMtl::readPixels(const gl::Context *context,
     if (params.packBuffer)
     {
         // If PBO is active, pixels is treated as offset.
-        params.offset = reinterpret_cast<ptrdiff_t>(pixels);
+        params.offset = reinterpret_cast<ptrdiff_t>(pixels) + outputSkipBytes;
     }
 
     if (mFlipY)
@@ -506,7 +506,6 @@ bool FramebufferMtl::checkStatus(const gl::Context *context) const
     {
         return checkPackedDepthStencilAttachment();
     }
-
     return true;
 }
 
@@ -642,6 +641,30 @@ RenderTargetMtl *FramebufferMtl::getColorReadRenderTarget(const gl::Context *con
     return mColorRenderTargets[mState.getReadIndex()];
 }
 
+RenderTargetMtl *FramebufferMtl::getColorReadRenderTargetNoCache(const gl::Context *context) const
+{
+    if (mState.getReadIndex() >= mColorRenderTargets.size())
+    {
+        return nullptr;
+    }
+
+    if (mBackbuffer)
+    {
+        //If we have a backbuffer/window surface, we can take the old path here and return
+        //the cached color render target.
+        return getColorReadRenderTarget(context);
+    }
+    //If we have no backbuffer, get the attachment from state color attachments, as it may have changed before syncing.
+    const gl::FramebufferAttachment * attachment = mState.getColorAttachment(mState.getReadIndex());
+    RenderTargetMtl * currentTarget = nullptr;
+    if(attachment->getRenderTarget(context, attachment->getRenderToTextureSamples(),
+                                &currentTarget) == angle::Result::Stop)
+    {
+        return nullptr;
+    }
+    return currentTarget;
+}
+
 int FramebufferMtl::getSamples() const
 {
     return mRenderPassDesc.sampleCount;
@@ -708,14 +731,15 @@ mtl::RenderCommandEncoder *FramebufferMtl::ensureRenderPassStarted(const gl::Con
 }
 
 void FramebufferMtl::setLoadStoreActionOnRenderPassFirstStart(
-    mtl::RenderPassAttachmentDesc *attachmentOut)
+    mtl::RenderPassAttachmentDesc *attachmentOut, const bool forceDepthStencilMultisampleLoad)
 {
     ASSERT(mRenderPassCleanStart);
 
     mtl::RenderPassAttachmentDesc &attachment = *attachmentOut;
 
-    if (attachment.storeAction == MTLStoreActionDontCare ||
-        attachment.storeAction == MTLStoreActionMultisampleResolve)
+    if (!forceDepthStencilMultisampleLoad &&
+       (attachment.storeAction == MTLStoreActionDontCare ||
+        attachment.storeAction == MTLStoreActionMultisampleResolve))
     {
         // If we previously discarded attachment's content, then don't need to load it.
         attachment.loadAction = MTLLoadActionDontCare;
@@ -727,17 +751,7 @@ void FramebufferMtl::setLoadStoreActionOnRenderPassFirstStart(
 
     if (attachment.hasImplicitMSTexture())
     {
-        if (mBackbuffer)
-        {
-            // Default action for default framebuffer is resolve and keep MS texture's content.
-            // We only discard MS texture's content at the end of the frame. See onFrameEnd().
-            attachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
-        }
-        else
-        {
-            // Default action is resolve but don't keep MS texture's content.
-            attachment.storeAction = MTLStoreActionMultisampleResolve;
-        }
+        attachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
     }
     else
     {
@@ -749,16 +763,20 @@ void FramebufferMtl::onStartedDrawingToFrameBuffer(const gl::Context *context)
 {
     mRenderPassCleanStart = true;
 
+    // If any of the render targets need to load their multisample textures, we should do the same for depth/stencil.
+    bool forceDepthStencilMultisampleLoad = false;
+
     // Compute loadOp based on previous storeOp and reset storeOp flags:
     for (mtl::RenderPassColorAttachmentDesc &colorAttachment : mRenderPassDesc.colorAttachments)
     {
-        setLoadStoreActionOnRenderPassFirstStart(&colorAttachment);
+        forceDepthStencilMultisampleLoad |= colorAttachment.storeAction == MTLStoreActionStoreAndMultisampleResolve;
+        setLoadStoreActionOnRenderPassFirstStart(&colorAttachment, false);
     }
     // Depth load/store
-    setLoadStoreActionOnRenderPassFirstStart(&mRenderPassDesc.depthAttachment);
+    setLoadStoreActionOnRenderPassFirstStart(&mRenderPassDesc.depthAttachment, forceDepthStencilMultisampleLoad);
 
     // Stencil load/store
-    setLoadStoreActionOnRenderPassFirstStart(&mRenderPassDesc.stencilAttachment);
+    setLoadStoreActionOnRenderPassFirstStart(&mRenderPassDesc.stencilAttachment, forceDepthStencilMultisampleLoad);
 }
 
 void FramebufferMtl::onFrameEnd(const gl::Context *context)
@@ -1337,6 +1355,10 @@ angle::Result FramebufferMtl::readPixelsImpl(const gl::Context *context,
     {
         texture = renderTarget->getTexture();
         // For non-default framebuffer, MSAA read pixels is disallowed.
+        if(!texture)
+        {
+            return angle::Result::Stop;
+        }
         ANGLE_MTL_CHECK(contextMtl, texture->samples() == 1, GL_INVALID_OPERATION);
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc.  All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -214,39 +214,43 @@ PlatformSpeechSynthesizer::~PlatformSpeechSynthesizer()
     [m_platformSpeechWrapper.get() invalidate];
 }
 
-static NSArray *speechSynthesisGetVoiceIdentifiers()
+static RetainPtr<CFArrayRef> speechSynthesisGetVoiceIdentifiers()
 {
     // Get all the voices offered by TTS.
     // By default speech only returns "premium" voices, which does not include all the
     // international voices. This allows us to offer speech synthesis for all supported languages.
-    return CFBridgingRelease(CopySpeechSynthesisVoicesForMode((__bridge CFArrayRef)@[ @"VoiceGroupDefault", @"VoiceGroupCompact" ]));
+    return adoptCF(CopySpeechSynthesisVoicesForMode((__bridge CFArrayRef)@[ @"VoiceGroupDefault", @"VoiceGroupCompact" ]));
 }
 
-static NSString *speechSynthesisGetDefaultVoiceIdentifierForLocale(NSLocale *userLocale)
+static RetainPtr<CFStringRef> speechSynthesisGetDefaultVoiceIdentifierForLocale(NSLocale *userLocale)
 {
     if (!userLocale)
         return nil;
 
-    return (__bridge NSString *)GetIdentifierStringForPreferredVoiceInListWithLocale((__bridge CFArrayRef)speechSynthesisGetVoiceIdentifiers(), (__bridge CFLocaleRef)userLocale);
+#if HAVE(SPEECHSYNTHESIS_MONTEREY_SPI) && USE(APPLE_INTERNAL_SDK)
+    return adoptCF(CopyIdentifierStringForPreferredVoiceInListWithLocale(speechSynthesisGetVoiceIdentifiers().get(), (__bridge CFLocaleRef)userLocale));
+#else
+    return GetIdentifierStringForPreferredVoiceInListWithLocale(speechSynthesisGetVoiceIdentifiers().get(), (__bridge CFLocaleRef)userLocale);
+#endif
 }
 
 void PlatformSpeechSynthesizer::initializeVoiceList()
 {
-    NSArray *availableVoices = speechSynthesisGetVoiceIdentifiers();
-    NSUInteger count = [availableVoices count];
+    auto availableVoices = speechSynthesisGetVoiceIdentifiers();
+    NSUInteger count = [(__bridge NSArray *)availableVoices.get() count];
     for (NSUInteger k = 0; k < count; k++) {
-        NSString *voiceName = [availableVoices objectAtIndex:k];
+        NSString *voiceName = [(__bridge NSArray *)availableVoices.get() objectAtIndex:k];
         NSDictionary *attributes = [NSSpeechSynthesizer attributesForVoice:voiceName];
 
         NSString *voiceURI = [attributes objectForKey:NSVoiceIdentifier];
         NSString *name = [attributes objectForKey:NSVoiceName];
         NSString *language = [attributes objectForKey:NSVoiceLocaleIdentifier];
-        NSString *defaultVoiceURI = speechSynthesisGetDefaultVoiceIdentifierForLocale(adoptNS([[NSLocale alloc] initWithLocaleIdentifier:language]).get());
+        auto defaultVoiceURI = speechSynthesisGetDefaultVoiceIdentifierForLocale(adoptNS([[NSLocale alloc] initWithLocaleIdentifier:language]).get());
 
         // Change to BCP-47 format as defined by spec.
         language = [language stringByReplacingOccurrencesOfString:@"_" withString:@"-"];
 
-        bool isDefault = [defaultVoiceURI isEqualToString:voiceURI];
+        bool isDefault = [(__bridge NSString *)defaultVoiceURI.get() isEqualToString:voiceURI];
 
         m_voiceList.append(PlatformSpeechSynthesisVoice::create(voiceURI, name, language, true, isDefault));
     }

@@ -102,6 +102,7 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::sentenceAtOffset(int) { return 
 #endif
 
 #if !PLATFORM(MAC) || !HAVE(ACCESSIBILITY)
+int AccessibilityUIElement::lineIndexForTextMarker(AccessibilityTextMarker*) const { return -1; }
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::textMarkerRangeForRange(unsigned, unsigned) { return nullptr; }
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::selectedTextMarkerRange() { return nullptr; }
 void AccessibilityUIElement::resetSelectedTextMarkerRange() { }
@@ -115,6 +116,7 @@ bool AccessibilityUIElement::isOnScreen() const { return true; }
 JSRetainPtr<JSStringRef> AccessibilityUIElement::domIdentifier() const { return nullptr; }
 JSRetainPtr<JSStringRef> AccessibilityUIElement::currentStateValue() const { return nullptr; }
 JSRetainPtr<JSStringRef> AccessibilityUIElement::sortDirection() const { return nullptr; }
+JSRetainPtr<JSStringRef> AccessibilityUIElement::lineRectsAndText() const { return { }; }
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::leftWordTextMarkerRangeForTextMarker(AccessibilityTextMarker*) { return nullptr; }
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::rightWordTextMarkerRangeForTextMarker(AccessibilityTextMarker*) { return nullptr; }
 RefPtr<AccessibilityTextMarker> AccessibilityUIElement::previousWordStartTextMarkerForTextMarker(AccessibilityTextMarker*) { return nullptr; }
@@ -127,7 +129,10 @@ RefPtr<AccessibilityTextMarker> AccessibilityUIElement::nextSentenceEndTextMarke
 RefPtr<AccessibilityTextMarker> AccessibilityUIElement::previousSentenceStartTextMarkerForTextMarker(AccessibilityTextMarker*) { return nullptr; }
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::misspellingTextMarkerRange(AccessibilityTextMarkerRange*, bool) { return nullptr; }
 void AccessibilityUIElement::dismiss() { }
+JSValueRef AccessibilityUIElement::children() const { return { }; }
+JSValueRef AccessibilityUIElement::detailsElements() const { return { }; }
 JSValueRef AccessibilityUIElement::errorMessageElements() const { return { }; }
+JSValueRef AccessibilityUIElement::imageOverlayElements() const { return { }; }
 JSRetainPtr<JSStringRef> AccessibilityUIElement::embeddedImageDescription() const { return nullptr; }
 #endif
 

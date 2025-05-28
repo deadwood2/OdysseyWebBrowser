@@ -29,6 +29,7 @@
 #if ENABLE(GPU_PROCESS) && ENABLE(LEGACY_ENCRYPTED_MEDIA)
 
 #include "GPUConnectionToWebProcess.h"
+#include "GPUProcess.h"
 #include "RemoteLegacyCDMProxy.h"
 #include "RemoteLegacyCDMProxyMessages.h"
 #include "RemoteLegacyCDMSessionProxy.h"
@@ -57,7 +58,7 @@ RemoteLegacyCDMFactoryProxy::~RemoteLegacyCDMFactoryProxy()
         m_gpuConnectionToWebProcess->messageReceiverMap().removeMessageReceiver(Messages::RemoteLegacyCDMProxy::messageReceiverName(), proxy.key.toUInt64());
 }
 
-void RemoteLegacyCDMFactoryProxy::createCDM(const String& keySystem, Optional<MediaPlayerIdentifier>&& optionalPlayerId, CompletionHandler<void(RemoteLegacyCDMIdentifier&&)>&& completion)
+void RemoteLegacyCDMFactoryProxy::createCDM(const String& keySystem, std::optional<MediaPlayerIdentifier>&& optionalPlayerId, CompletionHandler<void(RemoteLegacyCDMIdentifier&&)>&& completion)
 {
     auto privateCDM = LegacyCDM::create(keySystem);
     if (!privateCDM) {
@@ -75,7 +76,7 @@ void RemoteLegacyCDMFactoryProxy::createCDM(const String& keySystem, Optional<Me
     completion(WTFMove(identifier));
 }
 
-void RemoteLegacyCDMFactoryProxy::supportsKeySystem(const String& keySystem, Optional<String> mimeType, CompletionHandler<void(bool)>&& completion)
+void RemoteLegacyCDMFactoryProxy::supportsKeySystem(const String& keySystem, std::optional<String> mimeType, CompletionHandler<void(bool)>&& completion)
 {
     if (mimeType)
         completion(LegacyCDM::keySystemSupportsMimeType(keySystem, *mimeType));
@@ -95,16 +96,18 @@ void RemoteLegacyCDMFactoryProxy::didReceiveCDMSessionMessage(IPC::Connection& c
         session->didReceiveMessage(connection, decoder);
 }
 
-void RemoteLegacyCDMFactoryProxy::didReceiveSyncCDMMessage(IPC::Connection& connection, IPC::Decoder& decoder, std::unique_ptr<IPC::Encoder>& encoder)
+bool RemoteLegacyCDMFactoryProxy::didReceiveSyncCDMMessage(IPC::Connection& connection, IPC::Decoder& decoder, UniqueRef<IPC::Encoder>& encoder)
 {
     if (auto* proxy = m_proxies.get(makeObjectIdentifier<RemoteLegacyCDMIdentifierType>(decoder.destinationID())))
-        proxy->didReceiveSyncMessage(connection, decoder, encoder);
+        return proxy->didReceiveSyncMessage(connection, decoder, encoder);
+    return false;
 }
 
-void RemoteLegacyCDMFactoryProxy::didReceiveSyncCDMSessionMessage(IPC::Connection& connection, IPC::Decoder& decoder, std::unique_ptr<IPC::Encoder>& encoder)
+bool RemoteLegacyCDMFactoryProxy::didReceiveSyncCDMSessionMessage(IPC::Connection& connection, IPC::Decoder& decoder, UniqueRef<IPC::Encoder>& encoder)
 {
     if (auto* session = m_sessions.get(makeObjectIdentifier<RemoteLegacyCDMSessionIdentifierType>(decoder.destinationID())))
-        session->didReceiveSyncMessage(connection, decoder, encoder);
+        return session->didReceiveSyncMessage(connection, decoder, encoder);
+    return false;
 }
 
 void RemoteLegacyCDMFactoryProxy::addProxy(RemoteLegacyCDMIdentifier identifier, std::unique_ptr<RemoteLegacyCDMProxy>&& proxy)
@@ -149,6 +152,9 @@ void RemoteLegacyCDMFactoryProxy::removeSession(RemoteLegacyCDMSessionIdentifier
 
     ASSERT(m_sessions.contains(identifier));
     m_sessions.remove(identifier);
+
+    if (m_gpuConnectionToWebProcess && allowsExitUnderMemoryPressure())
+        m_gpuConnectionToWebProcess->gpuProcess().tryExitIfUnusedAndUnderMemoryPressure();
 }
 
 RemoteLegacyCDMSessionProxy* RemoteLegacyCDMFactoryProxy::getSession(const RemoteLegacyCDMSessionIdentifier& identifier) const
@@ -157,6 +163,11 @@ RemoteLegacyCDMSessionProxy* RemoteLegacyCDMFactoryProxy::getSession(const Remot
     if (results != m_sessions.end())
         return results->value.get();
     return nullptr;
+}
+
+bool RemoteLegacyCDMFactoryProxy::allowsExitUnderMemoryPressure() const
+{
+    return m_sessions.isEmpty();
 }
 
 }

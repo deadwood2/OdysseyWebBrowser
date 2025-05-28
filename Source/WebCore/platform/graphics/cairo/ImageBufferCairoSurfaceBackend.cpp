@@ -34,9 +34,8 @@
 #include "CairoOperations.h"
 #include "Color.h"
 #include "GraphicsContext.h"
-#include "GraphicsContextImplCairo.h"
 #include "ImageBufferUtilitiesCairo.h"
-#include "ImageData.h"
+#include "PixelBuffer.h"
 #include <cairo.h>
 
 #if USE(CAIRO)
@@ -46,17 +45,14 @@ namespace WebCore {
 ImageBufferCairoSurfaceBackend::ImageBufferCairoSurfaceBackend(const Parameters& parameters, RefPtr<cairo_surface_t>&& surface)
     : ImageBufferCairoBackend(parameters)
     , m_surface(WTFMove(surface))
+    , m_context(m_surface.get())
 {
     ASSERT(cairo_surface_status(m_surface.get()) == CAIRO_STATUS_SUCCESS);
-
-    RefPtr<cairo_t> cr = adoptRef(cairo_create(m_surface.get()));
-    m_platformContext.setCr(cr.get());
-    m_context = makeUnique<GraphicsContext>(GraphicsContextImplCairo::createFactory(m_platformContext));
 }
 
 GraphicsContext& ImageBufferCairoSurfaceBackend::context() const
 {
-    return *m_context;
+    return m_context;
 }
 
 IntSize ImageBufferCairoSurfaceBackend::backendSize() const
@@ -103,31 +99,14 @@ RefPtr<NativeImage> ImageBufferCairoSurfaceBackend::cairoSurfaceCoerceToImage() 
     return copyNativeImage(copyBehavior);
 }
 
-Vector<uint8_t> ImageBufferCairoSurfaceBackend::toBGRAData() const
+std::optional<PixelBuffer> ImageBufferCairoSurfaceBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect) const
 {
-    auto nativeImage = cairoSurfaceCoerceToImage();
-    auto surface = nativeImage ? nativeImage->platformImage() : nullptr;
-    cairo_surface_flush(surface.get());
-
-    Vector<uint8_t> imageData;
-    if (cairo_surface_status(surface.get()))
-        return imageData;
-
-    auto pixels = cairo_image_surface_get_data(surface.get());
-    imageData.append(pixels, cairo_image_surface_get_stride(surface.get()) *
-        cairo_image_surface_get_height(surface.get()));
-
-    return imageData;
+    return ImageBufferBackend::getPixelBuffer(outputFormat, srcRect, cairo_image_surface_get_data(m_surface.get()));
 }
 
-RefPtr<ImageData> ImageBufferCairoSurfaceBackend::getImageData(AlphaPremultiplication outputFormat, const IntRect& srcRect) const
+void ImageBufferCairoSurfaceBackend::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
 {
-    return ImageBufferBackend::getImageData(outputFormat, srcRect, cairo_image_surface_get_data(m_surface.get()));
-}
-
-void ImageBufferCairoSurfaceBackend::putImageData(AlphaPremultiplication inputFormat, const ImageData& imageData, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
-{
-    ImageBufferBackend::putImageData(inputFormat, imageData, srcRect, destPoint, destFormat, cairo_image_surface_get_data(m_surface.get()));
+    ImageBufferBackend::putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat, cairo_image_surface_get_data(m_surface.get()));
 
     IntRect srcRectScaled = toBackendCoordinates(srcRect);
     IntPoint destPointScaled = toBackendCoordinates(destPoint);

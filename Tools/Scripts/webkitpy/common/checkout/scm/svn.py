@@ -53,10 +53,17 @@ class SVNRepository(object):
     svn_server_host = svn_server_host
     svn_server_realm = svn_server_realm
 
-    def has_authorization_for_realm(self, realm, home_directory=os.getenv("HOME")):
+    def has_authorization_for_realm(self, realm, home_directory=None):
         # If we are working on a file:// repository realm will be None
         if realm is None:
             return True
+
+        # Find the user's home directory
+        if home_directory is None:
+            home_directory = os.path.expanduser("~")
+            if home_directory == "~":
+                return False
+
         # ignore false positives for methods implemented in the mixee class. pylint: disable=E1101
         # Assumes find and grep are installed.
         if not os.path.isdir(os.path.join(home_directory, ".subversion")):
@@ -137,7 +144,7 @@ class SVN(SCM, SVNRepository):
 
     @staticmethod
     def commit_success_regexp():
-        return "^Committed revision (?P<svn_revision>\d+)\.$"
+        return r"^Committed revision (?P<svn_revision>\d+)\.$"
 
     def _run_svn(self, args, **kwargs):
         return self.run([self.executable_name] + args, **kwargs)
@@ -251,7 +258,7 @@ class SVN(SCM, SVNRepository):
         except ScriptError:
             return []
         for line in log_output.splitlines():
-            match = re.search('^r(?P<revision>\d+) ', line)
+            match = re.search(r'^r(?P<revision>\d+) ', line)
             if not match:
                 continue
             revisions.append(int(match.group('revision')))
@@ -327,29 +334,21 @@ class SVN(SCM, SVNRepository):
         # FIXME: This should probably use cwd=self.checkout_root
         return self._run_svn(['diff', '-c', revision], decode_output=False)
 
-    def _bogus_dir_name(self):
-        rnd = ''.join(random.sample(string.ascii_letters, 5))
-        if sys.platform.startswith("win"):
-            parent_dir = tempfile.gettempdir()
-        else:
-            parent_dir = sys.path[0]  # tempdir is not secure.
-        return os.path.join(parent_dir, "temp_svn_config_" + rnd)
-
     def _setup_bogus_dir(self, log):
-        self._bogus_dir = self._bogus_dir_name()
-        if not os.path.exists(self._bogus_dir):
-            os.mkdir(self._bogus_dir)
-            self._delete_bogus_dir = True
-        else:
-            self._delete_bogus_dir = False
+        if self._bogus_dir:
+            self._teardown_bogus_dir(log)
+
+        self._bogus_dir = tempfile.mkdtemp()
         if log:
             log.debug('  Html: temp config dir: "%s".', self._bogus_dir)
 
     def _teardown_bogus_dir(self, log):
-        if self._delete_bogus_dir:
-            shutil.rmtree(self._bogus_dir, True)
-            if log:
-                log.debug('  Html: removed temp config dir: "%s".', self._bogus_dir)
+        if not self._bogus_dir:
+            return
+
+        shutil.rmtree(self._bogus_dir, True)
+        if log:
+            log.debug('  Html: removed temp config dir: "%s".', self._bogus_dir)
         self._bogus_dir = None
 
     def diff_for_file(self, path, log=None):

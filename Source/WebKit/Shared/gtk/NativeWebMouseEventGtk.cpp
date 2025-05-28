@@ -31,13 +31,13 @@
 
 namespace WebKit {
 
-NativeWebMouseEvent::NativeWebMouseEvent(GdkEvent* event, int eventClickCount, Optional<WebCore::FloatSize> delta)
+NativeWebMouseEvent::NativeWebMouseEvent(GdkEvent* event, int eventClickCount, std::optional<WebCore::FloatSize> delta)
     : WebMouseEvent(WebEventFactory::createWebMouseEvent(event, eventClickCount, delta))
     , m_nativeEvent(gdk_event_copy(event))
 {
 }
 
-NativeWebMouseEvent::NativeWebMouseEvent(GdkEvent* event, const WebCore::IntPoint& position, int eventClickCount, Optional<WebCore::FloatSize> delta)
+NativeWebMouseEvent::NativeWebMouseEvent(GdkEvent* event, const WebCore::IntPoint& position, int eventClickCount, std::optional<WebCore::FloatSize> delta)
     : WebMouseEvent(WebEventFactory::createWebMouseEvent(event, position, position, eventClickCount, delta))
     , m_nativeEvent(gdk_event_copy(event))
 {
@@ -48,13 +48,13 @@ NativeWebMouseEvent::NativeWebMouseEvent(const WebCore::IntPoint& position)
 {
 }
 
-NativeWebMouseEvent::NativeWebMouseEvent(Type type, Button button, unsigned short buttons, const WebCore::IntPoint& position, const WebCore::IntPoint& globalPosition, int clickCount, OptionSet<Modifier> modifiers, Optional<WebCore::FloatSize> delta, WebCore::PointerID pointerId, const String& pointerType)
-    : WebMouseEvent(type, button, buttons, position, globalPosition, delta.valueOr(WebCore::FloatSize()).width(), delta.valueOr(WebCore::FloatSize()).height(), 0, clickCount, modifiers, WallTime::now(), 0, NoTap, pointerId, pointerType)
+NativeWebMouseEvent::NativeWebMouseEvent(Type type, Button button, unsigned short buttons, const WebCore::IntPoint& position, const WebCore::IntPoint& globalPosition, int clickCount, OptionSet<Modifier> modifiers, std::optional<WebCore::FloatSize> delta, WebCore::PointerID pointerId, const String& pointerType, WebCore::PlatformMouseEvent::IsTouch isTouchEvent)
+    : WebMouseEvent(type, button, buttons, position, globalPosition, delta.value_or(WebCore::FloatSize()).width(), delta.value_or(WebCore::FloatSize()).height(), 0, clickCount, modifiers, WallTime::now(), 0, NoTap, isTouchEvent, pointerId, pointerType)
 {
 }
 
 NativeWebMouseEvent::NativeWebMouseEvent(const NativeWebMouseEvent& event)
-    : WebMouseEvent(event.type(), event.button(), event.buttons(), event.position(), event.globalPosition(), event.deltaX(), event.deltaY(), event.deltaZ(), event.clickCount(), event.modifiers(), event.timestamp(), 0, NoTap, event.pointerId(), event.pointerType())
+    : WebMouseEvent(event.type(), event.button(), event.buttons(), event.position(), event.globalPosition(), event.deltaX(), event.deltaY(), event.deltaZ(), event.clickCount(), event.modifiers(), event.timestamp(), 0, NoTap, event.isTouchEvent(), event.pointerId(), event.pointerType())
     , m_nativeEvent(event.nativeEvent() ? gdk_event_copy(const_cast<GdkEvent*>(event.nativeEvent())) : nullptr)
 {
 }

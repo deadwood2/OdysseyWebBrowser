@@ -21,18 +21,23 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import json
+import os
 import shutil
 import tempfile
-import unittest
 
 from datetime import datetime
-from webkitcorepy import OutputCapture
+from webkitcorepy import OutputCapture, testing
 from webkitcorepy.mocks import Time as MockTime
 from webkitscmpy import program, mocks
 
 
-class TestFind(unittest.TestCase):
-    path = '/mock/repository'
+class TestFind(testing.PathTestCase):
+    basepath = 'mock/repository'
+
+    def setUp(self):
+        super(TestFind, self).setUp()
+        os.mkdir(os.path.join(self.path, '.git'))
+        os.mkdir(os.path.join(self.path, '.svn'))
 
     def test_basic_git(self):
         with OutputCapture() as captured, mocks.local.Git(self.path), mocks.local.Svn(), MockTime:
@@ -40,7 +45,7 @@ class TestFind(unittest.TestCase):
                 args=('find', 'HEAD', '-q'),
                 path=self.path,
             ))
-        self.assertEqual(captured.stdout.getvalue(), '4@main | bae5d1e90999 | 6th commit\n')
+        self.assertEqual(captured.stdout.getvalue(), '5@main | d8bce26fa65c | Patch Series\n')
 
     def test_basic_git_svn(self):
         with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
@@ -48,7 +53,7 @@ class TestFind(unittest.TestCase):
                 args=('find', 'HEAD', '-q'),
                 path=self.path,
             ))
-        self.assertEqual(captured.stdout.getvalue(), '4@main | bae5d1e90999, r6 | 6th commit\n')
+        self.assertEqual(captured.stdout.getvalue(), '5@main | d8bce26fa65c, r9 | Patch Series\n')
 
     def test_basic_svn(self):
         with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(self.path), MockTime:
@@ -104,7 +109,7 @@ class TestFind(unittest.TestCase):
                 args=('find', '790725a6', '-q'),
                 path=self.path,
             ))
-        self.assertEqual(captured.stdout.getvalue(), '2.3@branch-b | 790725a6d79e | 8th commit\n')
+        self.assertEqual(captured.stdout.getvalue(), '2.3@branch-b | 790725a6d79e | 7th commit\n')
 
     def test_revision_svn(self):
         with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(self.path), MockTime:
@@ -136,10 +141,10 @@ class TestFind(unittest.TestCase):
             captured.stdout.getvalue(),
             '''Title: 4th commit
 Author: Jonathan Bedard <jbedard@apple.com>
-Identifier: 3@main
 Date: {}
 Revision: 4
 Hash: 1abe25b443e9
+Identifier: 3@main
 '''.format(datetime.fromtimestamp(1601663000).strftime('%a %b %d %H:%M:%S %Y')),
         )
 
@@ -153,12 +158,12 @@ Hash: 1abe25b443e9
             captured.stdout.getvalue(),
             '''Title: 4th commit
 Author: Jonathan Bedard <jbedard@apple.com>
-Identifier: 3@main
 Date: {}
 Revision: 4
 Hash: 1abe25b443e9
+Identifier: 3@main
     4th commit
-    svn-id: https://svn.example.org/repository/repository/trunk@4 268f45cc-cd09-0410-ab3c-d52691b4dbfc
+    git-svn-id: https://svn.example.org/repository/repository/trunk@4 268f45cc-cd09-0410-ab3c-d52691b4dbfc
 '''.format(datetime.fromtimestamp(1601663000).strftime('%a %b %d %H:%M:%S %Y')),
         )
 
@@ -179,8 +184,9 @@ Hash: 1abe25b443e9
                     name='Jonathan Bedard',
                     emails=['jbedard@apple.com'],
                 ), timestamp=1601663000,
+                order=0,
                 branch='main',
-                message='4th commit\nsvn-id: https://svn.example.org/repository/repository/trunk@4 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
+                message='4th commit\ngit-svn-id: https://svn.example.org/repository/repository/trunk@4 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
             ))
 
     def test_tag_svn(self):
@@ -199,7 +205,7 @@ Hash: 1abe25b443e9
                 args=('find', 'tag-1', '-q'),
                 path=self.path,
             ))
-        self.assertEqual(captured.stdout.getvalue(), '2.2@branch-a | 621652add7fc, r7 | 7th commit\n')
+        self.assertEqual(captured.stdout.getvalue(), '2.2@branch-a | 621652add7fc, r6 | 7th commit\n')
 
     def test_no_log_svn(self):
         with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(self.path), MockTime:
@@ -215,7 +221,7 @@ Hash: 1abe25b443e9
                 args=('find', 'main', '--no-log', '-q'),
                 path=self.path,
             ))
-        self.assertEqual(captured.stdout.getvalue(), '4@main | bae5d1e90999, r6\n')
+        self.assertEqual(captured.stdout.getvalue(), '5@main | d8bce26fa65c, r9\n')
 
     def test_timezone_svn(self):
         with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(self.path, utc_offset='-0600'), MockTime:
@@ -227,8 +233,36 @@ Hash: 1abe25b443e9
             captured.stdout.getvalue(),
             '''Title: 4th commit
 Author: jbedard@apple.com <jbedard@apple.com>
-Identifier: 3@trunk
 Date: {}
 Revision: 4
-'''.format(datetime.fromtimestamp(1601686700).strftime('%a %b %d %H:%M:%S %Y')),
+Identifier: 3@trunk
+'''.format(datetime.fromtimestamp(1601684700).strftime('%a %b %d %H:%M:%S %Y')),
         )
+
+
+class TestInfo(testing.TestCase):
+    path = '/mock/repository'
+
+    def test_basic_git(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path), mocks.local.Svn(), MockTime:
+            self.assertEqual(0, program.main(
+                args=('info', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '5@main | d8bce26fa65c | Patch Series\n')
+
+    def test_basic_git_svn(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True), mocks.local.Svn(), MockTime:
+            self.assertEqual(0, program.main(
+                args=('info', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '5@main | d8bce26fa65c, r9 | Patch Series\n')
+
+    def test_basic_svn(self):
+        with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(self.path), MockTime:
+            self.assertEqual(0, program.main(
+                args=('info', '-q'),
+                path=self.path,
+            ))
+        self.assertEqual(captured.stdout.getvalue(), '4@trunk | r6 | 6th commit\n')

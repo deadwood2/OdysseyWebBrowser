@@ -25,14 +25,14 @@
 
 #pragma once
 
-#if ENABLE(INDEXED_DATABASE)
-
 #include "Connection.h"
 
 #include "WebIDBConnectionToClient.h"
 #include <WebCore/IDBServer.h>
 #include <WebCore/StorageQuotaManager.h>
 #include <wtf/CrossThreadTaskHandler.h>
+#include <wtf/RefCounter.h>
+#include <wtf/WeakHashSet.h>
 
 namespace WebCore {
 class StorageQuotaManager;
@@ -43,7 +43,7 @@ class IDBServer;
 
 namespace WebKit {
 
-class WebIDBServer final : public CrossThreadTaskHandler, public IPC::Connection::ThreadMessageReceiverRefCounted {
+class WebIDBServer final : public IPC::Connection::WorkQueueMessageReceiver {
 public:
     static Ref<WebIDBServer> create(PAL::SessionID, const String& directory, WebCore::IDBServer::IDBServer::StorageQuotaManagerSpaceRequester&&);
 
@@ -52,14 +52,15 @@ public:
     void closeAndDeleteDatabasesForOrigins(const Vector<WebCore::SecurityOriginData>&, CompletionHandler<void()>&& callback);
     void renameOrigin(const WebCore::SecurityOriginData&, const WebCore::SecurityOriginData&, CompletionHandler<void()>&&);
 
-    void suspend();
+    enum class SuspensionCondition : bool { Always, IfIdle };
+    bool suspend(SuspensionCondition = SuspensionCondition::Always);
     void resume();
 
     // Message handlers.
     void openDatabase(const WebCore::IDBRequestData&);
     void deleteDatabase(const WebCore::IDBRequestData&);
     void abortTransaction(const WebCore::IDBResourceIdentifier&);
-    void commitTransaction(const WebCore::IDBResourceIdentifier&);
+    void commitTransaction(const WebCore::IDBResourceIdentifier&, uint64_t pendingRequestCount);
     void didFinishHandlingVersionChangeTransaction(uint64_t databaseConnectionIdentifier, const WebCore::IDBResourceIdentifier&);
     void createObjectStore(const WebCore::IDBRequestData&, const WebCore::IDBObjectStoreInfo&);
     void deleteObjectStore(const WebCore::IDBRequestData&, const String& objectStoreName);
@@ -87,23 +88,23 @@ public:
     void removeConnection(IPC::Connection&);
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
-    void dispatchToThread(WTF::Function<void()>&&);
-    void close();
+    void close(CompletionHandler<void()>&& = { });
 
-    bool hasConnection() const { return !m_connections.isEmpty(); }
 private:
     WebIDBServer(PAL::SessionID, const String& directory, WebCore::IDBServer::IDBServer::StorageQuotaManagerSpaceRequester&&);
     ~WebIDBServer();
 
     void postTask(WTF::Function<void()>&&);
+    void postTaskReply(Function<void()>&&);
 
-    std::unique_ptr<WebCore::IDBServer::IDBServer> m_server;
+    Ref<WorkQueue> m_queue;
+
+    Lock m_serverLock;
+    std::unique_ptr<WebCore::IDBServer::IDBServer> m_server WTF_GUARDED_BY_LOCK(m_serverLock);
     bool m_isSuspended { false };
 
     HashMap<IPC::Connection::UniqueID, std::unique_ptr<WebIDBConnectionToClient>> m_connectionMap;
-    HashSet<IPC::Connection*> m_connections;
+    WeakHashSet<IPC::Connection> m_connections; // Only used on the main thread.
 };
 
 } // namespace WebKit
-
-#endif

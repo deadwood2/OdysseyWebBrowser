@@ -31,7 +31,7 @@
 namespace WebKit {
 using namespace WebCore;
 
-UserMediaPermissionRequestProxy::UserMediaPermissionRequestProxy(UserMediaPermissionRequestManagerProxy& manager, uint64_t userMediaID, FrameIdentifier mainFrameID, FrameIdentifier frameID, Ref<WebCore::SecurityOrigin>&& userMediaDocumentOrigin, Ref<WebCore::SecurityOrigin>&& topLevelDocumentOrigin, Vector<WebCore::CaptureDevice>&& audioDevices, Vector<WebCore::CaptureDevice>&& videoDevices, WebCore::MediaStreamRequest&& request, CompletionHandler<void(bool)>&& decisionCompletionHandler)
+UserMediaPermissionRequestProxy::UserMediaPermissionRequestProxy(UserMediaPermissionRequestManagerProxy& manager, UserMediaRequestIdentifier userMediaID, FrameIdentifier mainFrameID, FrameIdentifier frameID, Ref<WebCore::SecurityOrigin>&& userMediaDocumentOrigin, Ref<WebCore::SecurityOrigin>&& topLevelDocumentOrigin, Vector<WebCore::CaptureDevice>&& audioDevices, Vector<WebCore::CaptureDevice>&& videoDevices, WebCore::MediaStreamRequest&& request, CompletionHandler<void(bool)>&& decisionCompletionHandler)
     : m_manager(&manager)
     , m_userMediaID(userMediaID)
     , m_mainFrameID(mainFrameID)
@@ -155,12 +155,10 @@ void UserMediaPermissionRequestProxy::prompt()
         return;
     }
 
-    OptionSet<MediaPermissionType> requestedTypes;
+    MediaPermissionReason reason = MediaPermissionReason::Camera;
     if (requiresAudioCapture())
-        requestedTypes.add(MediaPermissionType::Audio);
-    if (requiresVideoCapture())
-        requestedTypes.add(MediaPermissionType::Video);
-    alertForPermission(m_manager->page(), MediaPermissionReason::UserMedia, requestedTypes, topLevelDocumentSecurityOrigin().data(), [this, protectedThis = makeRef(*this)](bool granted) {
+        reason = requiresVideoCapture() ? MediaPermissionReason::CameraAndMicrophone : MediaPermissionReason::Microphone;
+    alertForPermission(m_manager->page(), reason, topLevelDocumentSecurityOrigin().data(), [this, protectedThis = makeRef(*this)](bool granted) {
         if (!granted)
             deny(UserMediaAccessDenialReason::PermissionDenied);
         else

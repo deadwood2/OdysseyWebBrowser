@@ -230,6 +230,11 @@ NS_ASSUME_NONNULL_END
 
 #endif // USE(APPLE_INTERNAL_SDK)
 
+#if PLATFORM(IOS_FAMILY)
+@interface AVPlayerController ()
+@property (NS_NONATOMIC_IOSONLY) double defaultPlaybackRate;
+@end
+#endif // PLATFORM(IOS_FAMILY)
 
 #if HAVE(AVOBSERVATIONCONTROLLER)
 #if USE(APPLE_INTERNAL_SDK)
@@ -324,6 +329,7 @@ __attribute__((availability(macosx, obsoleted = 10.13))) @interface AVFunctionBa
 @property (readonly, getter=isPictureInPictureActive) BOOL pictureInPictureActive;
 @property (readonly) BOOL canTogglePictureInPicture;
 - (void)togglePictureInPicture;
+@property (nonatomic, readonly) BOOL canSeek;
 
 typedef NS_ENUM(NSInteger, AVTouchBarMediaSelectionOptionType) {
     AVTouchBarMediaSelectionOptionTypeRegular,

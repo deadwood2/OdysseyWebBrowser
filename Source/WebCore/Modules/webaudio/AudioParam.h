@@ -32,7 +32,6 @@
 #include "AudioParamTimeline.h"
 #include "AudioSummingJunction.h"
 #include "AutomationRate.h"
-#include "WebKitAudioContext.h"
 #include <JavaScriptCore/Float32Array.h>
 #include <sys/types.h>
 #include <wtf/LoggerHelper.h>
@@ -45,9 +44,11 @@ class AudioNodeOutput;
 
 enum class AutomationRateMode : bool { Fixed, Variable };
 
+// jacek: changed the inheritance order, GCC miscompiles this badly otherwise
+// test with http://tdolphin.org/games/krecio.miecio/
 class AudioParam final
-    : public AudioSummingJunction
-    , public RefCounted<AudioParam>
+    : public RefCounted<AudioParam>
+    , public AudioSummingJunction
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
@@ -143,6 +144,7 @@ private:
     float m_smoothedValue;
     
     AudioParamTimeline m_timeline;
+    Ref<AudioBus> m_summingBus;
 
 #if !RELEASE_LOG_DISABLED
     mutable Ref<const Logger> m_logger;

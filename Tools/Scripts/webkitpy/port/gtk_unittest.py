@@ -36,7 +36,6 @@ from webkitpy.common.system.executive_mock import MockExecutive
 from webkitpy.common.system.filesystem_mock import MockFileSystem
 from webkitpy.port.config import clear_cached_configuration
 from webkitpy.port.gtk import GtkPort
-from webkitpy.port.pulseaudio_sanitizer_mock import PulseAudioSanitizerMock
 from webkitpy.port import port_testcase
 from webkitpy.thirdparty.mock import Mock
 from webkitpy.tool.mocktool import MockOptions
@@ -47,12 +46,6 @@ from webkitcorepy import OutputCapture
 class GtkPortTest(port_testcase.PortTestCase):
     port_name = 'gtk'
     port_maker = GtkPort
-
-    # Additionally mocks out the PulseAudioSanitizer methods.
-    def make_port(self, host=None, port_name=None, options=None, os_name=None, os_version=None, **kwargs):
-        port = super(GtkPortTest, self).make_port(host, port_name, options, os_name, os_version, **kwargs)
-        port._pulseaudio_sanitizer = PulseAudioSanitizerMock()
-        return port
 
     def test_default_baseline_search_path(self):
         port = self.make_port()
@@ -101,3 +94,44 @@ class GtkPortTest(port_testcase.PortTestCase):
         self.assertEqual(configuration['platform'], 'GTK')
         self.assertEqual(configuration['style'], 'release')
         self.assertEqual(configuration['version_name'], 'Xvfb')
+
+    def test_gtk4_expectations_binary_only(self):
+        port = self.make_port()
+        port._filesystem = MockFileSystem({
+            "/mock-build/lib/libwebkit2gtk-5.0.so": ""
+        })
+        with OutputCapture() as _:
+            self.assertEquals(port.expectations_files(),
+                              ['/mock-checkout/LayoutTests/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/wk2/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/glib/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/gtk/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/gtk4/TestExpectations'])
+
+    def test_gtk3_expectations_binary_only(self):
+        port = self.make_port()
+        port._filesystem = MockFileSystem({
+            "/mock-build/lib/libwebkit2gtk-4.0.so": ""
+        })
+
+        with OutputCapture() as _:
+            self.assertEquals(port.expectations_files(),
+                              ['/mock-checkout/LayoutTests/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/wk2/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/glib/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/gtk/TestExpectations'])
+
+    def test_gtk_expectations_both_binaries(self):
+        port = self.make_port()
+        port._filesystem = MockFileSystem({
+            "/mock-build/lib/libwebkit2gtk-4.0.so": "",
+            "/mock-build/lib/libwebkit2gtk-5.0.so": ""
+        })
+
+        with OutputCapture() as captured:
+            self.assertEquals(port.expectations_files(),
+                              ['/mock-checkout/LayoutTests/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/wk2/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/glib/TestExpectations',
+                               '/mock-checkout/LayoutTests/platform/gtk/TestExpectations'])
+            self.assertEquals(captured.root.log.getvalue(), 'Multiple WebKit2GTK libraries found. Skipping GTK4 detection.\n')

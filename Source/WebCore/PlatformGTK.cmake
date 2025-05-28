@@ -27,6 +27,7 @@ list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/page/gtk"
     "${WEBCORE_DIR}/platform/adwaita"
     "${WEBCORE_DIR}/platform/generic"
+    "${WEBCORE_DIR}/platform/glib"
     "${WEBCORE_DIR}/platform/gtk"
     "${WEBCORE_DIR}/platform/graphics/egl"
     "${WEBCORE_DIR}/platform/graphics/glx"
@@ -53,6 +54,8 @@ endif ()
 list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
     platform/adwaita/ScrollbarThemeAdwaita.h
 
+    platform/glib/ApplicationGLib.h
+
     platform/graphics/x11/PlatformDisplayX11.h
     platform/graphics/x11/XErrorTrapper.h
     platform/graphics/x11/XUniquePtr.h
@@ -67,6 +70,8 @@ list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
 
     platform/text/enchant/TextCheckerEnchant.h
 )
+
+set(CSS_VALUE_PLATFORM_DEFINES "HAVE_OS_DARK_MODE_SUPPORT=1")
 
 list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
     ${WEBCORE_DIR}/Modules/mediacontrols/mediaControlsAdwaita.css
@@ -97,6 +102,12 @@ list(APPEND WebCore_LIBRARIES
     ${X11_Xt_LIB}
     GTK::GTK
 )
+
+if (USE_LCMS)
+    list(APPEND WebCore_LIBRARIES
+        LCMS2::LCMS2
+    )
+endif ()
 
 if (USE_WPE_RENDERER)
     list(APPEND WebCore_LIBRARIES

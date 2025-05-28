@@ -1,5 +1,10 @@
 set(jsc_SOURCES ../jsc.cpp)
-set(jsc_LIBRARIES ${CMAKE_DL_LIBS})
+if (NOT "${PORT}" STREQUAL "MorphOS")
+    set(jsc_LIBRARIES $(jsc_LIBRARIES)
+        ${CMAKE_DL_LIBS}
+    )
+endif ()
+
 set(jsc_FRAMEWORKS
     JavaScriptCore
     WTF

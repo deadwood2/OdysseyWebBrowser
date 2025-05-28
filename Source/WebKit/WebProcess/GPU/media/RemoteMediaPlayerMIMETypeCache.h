@@ -30,7 +30,6 @@
 #include <WebCore/MediaPlayerEnums.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
-#include <wtf/Optional.h>
 #include <wtf/text/StringHash.h>
 
 namespace WebCore {
@@ -55,8 +54,10 @@ public:
 private:
     RemoteMediaPlayerManager& m_manager;
     WebCore::MediaPlayerEnums::MediaEngineIdentifier m_engineIdentifier;
-    Optional<HashMap<String, WebCore::MediaPlayerEnums::SupportsType, ASCIICaseInsensitiveHash>> m_supportsTypeAndCodecsCache;
-    Optional<HashSet<String, ASCIICaseInsensitiveHash>> m_supportedTypesCache;
+
+    using SupportedTypesAndCodecsKey = std::tuple<String, bool, bool>;
+    std::optional<HashMap<SupportedTypesAndCodecsKey, WebCore::MediaPlayerEnums::SupportsType>> m_supportsTypeAndCodecsCache;
+    std::optional<HashSet<String, ASCIICaseInsensitiveHash>> m_supportedTypesCache;
 };
 
 } // namespace WebKit

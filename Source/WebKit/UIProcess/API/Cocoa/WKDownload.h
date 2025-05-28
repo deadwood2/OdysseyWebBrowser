@@ -33,7 +33,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-WK_CLASS_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA))
+WK_CLASS_AVAILABLE(macos(11.3), ios(14.5))
 @interface WKDownload : NSObject<NSProgressReporting>
 
 /* @abstract The request used to initiate this download.

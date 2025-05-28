@@ -29,6 +29,7 @@
 #include "JSDOMConvertAny.h"
 #include "JSDOMConvertStrings.h"
 #include "JSDOMExceptionHandling.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMOperation.h"
 #include "JSDOMSetLike.h"
 #include "JSDOMWrapperCache.h"
@@ -99,6 +100,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestSetLikePrototype, JSTestSetLikePrototy
 
 using JSTestSetLikeDOMConstructor = JSDOMConstructorNotConstructable<JSTestSetLike>;
 
+template<> const ClassInfo JSTestSetLikeDOMConstructor::s_info = { "TestSetLike", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestSetLikeDOMConstructor) };
+
 template<> JSValue JSTestSetLikeDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -111,8 +114,6 @@ template<> void JSTestSetLikeDOMConstructor::initializeProperties(VM& vm, JSDOMG
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestSetLike"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestSetLikeDOMConstructor::s_info = { "TestSetLike", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestSetLikeDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -168,23 +169,13 @@ JSObject* JSTestSetLike::prototype(VM& vm, JSDOMGlobalObject& globalObject)
 
 JSValue JSTestSetLike::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestSetLikeDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestSetLikeDOMConstructor, DOMConstructorID::TestSetLike>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 void JSTestSetLike::destroy(JSC::JSCell* cell)
 {
     JSTestSetLike* thisObject = static_cast<JSTestSetLike*>(cell);
     thisObject->JSTestSetLike::~JSTestSetLike();
-}
-
-template<> inline JSTestSetLike* IDLAttribute<JSTestSetLike>::cast(JSGlobalObject& lexicalGlobalObject, EncodedJSValue thisValue)
-{
-    return jsDynamicCast<JSTestSetLike*>(JSC::getVM(&lexicalGlobalObject), JSValue::decode(thisValue));
-}
-
-template<> inline JSTestSetLike* IDLOperation<JSTestSetLike>::cast(JSGlobalObject& lexicalGlobalObject, CallFrame& callFrame)
-{
-    return jsDynamicCast<JSTestSetLike*>(JSC::getVM(&lexicalGlobalObject), callFrame.thisValue());
 }
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestSetLikeConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
@@ -204,9 +195,9 @@ static inline JSValue jsTestSetLike_sizeGetter(JSGlobalObject& lexicalGlobalObje
     RELEASE_AND_RETURN(throwScope, (toJS<IDLAny>(lexicalGlobalObject, throwScope, forwardSizeToSetLike(lexicalGlobalObject, thisObject))));
 }
 
-JSC_DEFINE_CUSTOM_GETTER(jsTestSetLike_size, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
+JSC_DEFINE_CUSTOM_GETTER(jsTestSetLike_size, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestSetLike>::get<jsTestSetLike_sizeGetter>(*lexicalGlobalObject, thisValue, "size");
+    return IDLAttribute<JSTestSetLike>::get<jsTestSetLike_sizeGetter>(*lexicalGlobalObject, thisValue, attributeName);
 }
 
 static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_hasBody(JSC::JSGlobalObject* lexicalGlobalObject, JSC::CallFrame* callFrame, typename IDLOperation<JSTestSetLike>::ClassParameter castedThis)
@@ -220,7 +211,7 @@ static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_hasBody(JSC::JS
     EnsureStillAliveScope argument0 = callFrame->uncheckedArgument(0);
     auto key = convert<IDLDOMString>(*lexicalGlobalObject, argument0.value());
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardHasToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(key)))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardHasToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(key)))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikePrototypeFunction_has, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -234,7 +225,7 @@ static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_entriesBody(JSC
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardEntriesToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardEntriesToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikePrototypeFunction_entries, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -248,7 +239,7 @@ static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_keysBody(JSC::J
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardKeysToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardKeysToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikePrototypeFunction_keys, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -262,7 +253,7 @@ static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_valuesBody(JSC:
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardValuesToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardValuesToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikePrototypeFunction_values, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -281,7 +272,7 @@ static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_forEachBody(JSC
     EnsureStillAliveScope argument0 = callFrame->uncheckedArgument(0);
     auto callback = convert<IDLAny>(*lexicalGlobalObject, argument0.value());
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardForEachToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(callback)))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardForEachToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(callback)))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikePrototypeFunction_forEach, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -300,7 +291,7 @@ static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_addBody(JSC::JS
     EnsureStillAliveScope argument0 = callFrame->uncheckedArgument(0);
     auto key = convert<IDLDOMString>(*lexicalGlobalObject, argument0.value());
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardAddToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(key)))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardAddToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(key)))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikePrototypeFunction_add, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -314,9 +305,7 @@ static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_clearBody(JSC::
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
-    throwScope.release();
-    forwardClearToSetLike(*lexicalGlobalObject, *callFrame, *castedThis);
-    return JSValue::encode(jsUndefined());
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardClearToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikePrototypeFunction_clear, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -335,7 +324,7 @@ static inline JSC::EncodedJSValue jsTestSetLikePrototypeFunction_deleteBody(JSC:
     EnsureStillAliveScope argument0 = callFrame->uncheckedArgument(0);
     auto key = convert<IDLDOMString>(*lexicalGlobalObject, argument0.value());
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardDeleteToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(key)))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardDeleteToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(key)))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikePrototypeFunction_delete, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))

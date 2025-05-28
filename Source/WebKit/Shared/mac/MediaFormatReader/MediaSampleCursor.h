@@ -29,6 +29,8 @@
 
 #include "CoreMediaWrapped.h"
 #include <WebCore/SampleMap.h>
+#include <wtf/Identified.h>
+#include <wtf/Lock.h>
 #include <wtf/MediaTime.h>
 #include <wtf/Variant.h>
 
@@ -48,8 +50,8 @@ class MediaTrackReader;
 
 class MediaSampleCursor : public CoreMediaWrapped<MediaSampleCursor>, ThreadSafeIdentified<MediaSampleCursor> {
 public:
-    using DecodeOrderIterator = DecodeOrderSampleMap::iterator;
-    using PresentationOrderIterator = PresentationOrderSampleMap::iterator;
+    using DecodeOrderIterator = WebCore::DecodeOrderSampleMap::iterator;
+    using PresentationOrderIterator = WebCore::PresentationOrderSampleMap::iterator;
     using Locator = Variant<MediaTime, DecodeOrderIterator, PresentationOrderIterator>;
 
     struct Timing {
@@ -71,9 +73,9 @@ private:
     MediaSampleCursor(Allocator&&, MediaTrackReader&, Locator);
     MediaSampleCursor(Allocator&&, const MediaSampleCursor&);
 
-    template<typename OrderedMap> Optional<typename OrderedMap::iterator> locateIterator(OrderedMap&, bool hasAllSamples) const;
-    WebCore::MediaSample* locateMediaSample(WebCore::SampleMap&, bool hasAllSamples) const;
-    Timing locateTiming(WebCore::SampleMap&, bool hasAllSamples) const;
+    template<typename OrderedMap> std::optional<typename OrderedMap::iterator> locateIterator(OrderedMap&, bool hasAllSamples) const WTF_REQUIRES_LOCK(m_locatorLock);
+    WebCore::MediaSample* locateMediaSample(WebCore::SampleMap&, bool hasAllSamples) const WTF_REQUIRES_LOCK(m_locatorLock);
+    Timing locateTiming(WebCore::SampleMap&, bool hasAllSamples) const WTF_REQUIRES_LOCK(m_locatorLock);
 
     template<typename Function> OSStatus getSampleMap(Function&&) const;
     template<typename Function> OSStatus getMediaSample(Function&&) const;
@@ -105,7 +107,7 @@ private:
     WTFLogChannel& logChannel() const;
 
     Ref<MediaTrackReader> m_trackReader;
-    mutable Locator m_locator;
+    mutable Locator m_locator WTF_GUARDED_BY_LOCK(m_locatorLock);
     mutable Lock m_locatorLock;
     Ref<const WTF::Logger> m_logger;
     const void* m_logIdentifier;

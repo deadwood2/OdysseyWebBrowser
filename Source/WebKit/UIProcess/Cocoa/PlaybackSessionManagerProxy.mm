@@ -121,6 +121,18 @@ void PlaybackSessionModelContext::endScanning()
         m_manager->endScanning(m_contextId);
 }
 
+void PlaybackSessionModelContext::setDefaultPlaybackRate(double defaultPlaybackRate)
+{
+    if (m_manager)
+        m_manager->setDefaultPlaybackRate(m_contextId, defaultPlaybackRate);
+}
+
+void PlaybackSessionModelContext::setPlaybackRate(double playbackRate)
+{
+    if (m_manager)
+        m_manager->setPlaybackRate(m_contextId, playbackRate);
+}
+
 void PlaybackSessionModelContext::selectAudioMediaOption(uint64_t optionId)
 {
     if (m_manager)
@@ -194,12 +206,13 @@ void PlaybackSessionModelContext::bufferedTimeChanged(double bufferedTime)
         client->bufferedTimeChanged(bufferedTime);
 }
 
-void PlaybackSessionModelContext::rateChanged(bool isPlaying, float playbackRate)
+void PlaybackSessionModelContext::rateChanged(OptionSet<WebCore::PlaybackSessionModel::PlaybackState> playbackState, double playbackRate, double defaultPlaybackRate)
 {
-    m_isPlaying = isPlaying;
+    m_playbackState = playbackState;
     m_playbackRate = playbackRate;
+    m_defaultPlaybackRate = defaultPlaybackRate;
     for (auto* client : m_clients)
-        client->rateChanged(isPlaying, playbackRate);
+        client->rateChanged(m_playbackState, m_playbackRate, m_defaultPlaybackRate);
 }
 
 void PlaybackSessionModelContext::seekableRangesChanged(WebCore::TimeRanges& seekableRanges, double lastModifiedTime, double liveUpdateInterval)
@@ -476,9 +489,9 @@ void PlaybackSessionManagerProxy::playbackStartedTimeChanged(PlaybackSessionCont
     ensureModel(contextId).playbackStartedTimeChanged(playbackStartedTime);
 }
 
-void PlaybackSessionManagerProxy::rateChanged(PlaybackSessionContextIdentifier contextId, bool isPlaying, double rate)
+void PlaybackSessionManagerProxy::rateChanged(PlaybackSessionContextIdentifier contextId, OptionSet<WebCore::PlaybackSessionModel::PlaybackState> playbackState, double rate, double defaultPlaybackRate)
 {
-    ensureModel(contextId).rateChanged(isPlaying, rate);
+    ensureModel(contextId).rateChanged(playbackState, rate, defaultPlaybackRate);
 }
 
 void PlaybackSessionManagerProxy::pictureInPictureSupportedChanged(PlaybackSessionContextIdentifier contextId, bool supported)
@@ -548,6 +561,16 @@ void PlaybackSessionManagerProxy::beginScanningBackward(PlaybackSessionContextId
 void PlaybackSessionManagerProxy::endScanning(PlaybackSessionContextIdentifier contextId)
 {
     m_page->send(Messages::PlaybackSessionManager::EndScanning(contextId));
+}
+
+void PlaybackSessionManagerProxy::setDefaultPlaybackRate(PlaybackSessionContextIdentifier contextId, double defaultPlaybackRate)
+{
+    m_page->send(Messages::PlaybackSessionManager::SetDefaultPlaybackRate(contextId, defaultPlaybackRate));
+}
+
+void PlaybackSessionManagerProxy::setPlaybackRate(PlaybackSessionContextIdentifier contextId, double playbackRate)
+{
+    m_page->send(Messages::PlaybackSessionManager::SetPlaybackRate(contextId, playbackRate));
 }
 
 void PlaybackSessionManagerProxy::selectAudioMediaOption(PlaybackSessionContextIdentifier contextId, uint64_t index)

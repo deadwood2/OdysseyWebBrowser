@@ -36,9 +36,13 @@ class ImageBufferCGBitmapBackend : public ImageBufferCGBackend {
     WTF_MAKE_ISO_ALLOCATED(ImageBufferCGBitmapBackend);
     WTF_MAKE_NONCOPYABLE(ImageBufferCGBitmapBackend);
 public:
-    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, CGColorSpaceRef, const HostWindow*);
-    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const HostWindow*);
-    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const GraphicsContext&);
+    WEBCORE_EXPORT static IntSize calculateSafeBackendSize(const Parameters&);
+    WEBCORE_EXPORT static size_t calculateMemoryCost(const Parameters&);
+
+    WEBCORE_EXPORT static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const HostWindow*);
+
+    // FIXME: Rename to createUsingColorSpaceOfGraphicsContext() (or something like that).
+    WEBCORE_EXPORT static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const GraphicsContext&);
 
     GraphicsContext& context() const override;
 
@@ -46,15 +50,13 @@ public:
 
     RefPtr<NativeImage> copyNativeImage(BackingStoreCopy = CopyBackingStore) const override;
 
-    Vector<uint8_t> toBGRAData() const override;
-
-    RefPtr<ImageData> getImageData(AlphaPremultiplication outputFormat, const IntRect&) const override;
-    void putImageData(AlphaPremultiplication inputFormat, const ImageData&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
-
-    static constexpr bool isOriginAtUpperLeftCorner = true;
+    std::optional<PixelBuffer> getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect&) const override;
+    void putPixelBuffer(const PixelBuffer&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
 
 private:
     ImageBufferCGBitmapBackend(const Parameters&, void* data, RetainPtr<CGDataProviderRef>&&, std::unique_ptr<GraphicsContext>&&);
+
+    unsigned bytesPerRow() const override;
 
     void* m_data;
     RetainPtr<CGDataProviderRef> m_dataProvider;

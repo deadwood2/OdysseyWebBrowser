@@ -34,8 +34,24 @@
 
 gboolean webkitWebViewAuthenticate(WebKitWebView* webView, WebKitAuthenticationRequest* request)
 {
-    CredentialStorageMode credentialStorageMode = webkit_authentication_request_can_save_credentials(request) ? AllowPersistentStorage : DisallowPersistentStorage;
-    webkitWebViewBaseAddDialog(WEBKIT_WEB_VIEW_BASE(webView), webkitAuthenticationDialogNew(request, credentialStorageMode));
+    switch (webkit_authentication_request_get_scheme(request)) {
+    case WEBKIT_AUTHENTICATION_SCHEME_DEFAULT:
+    case WEBKIT_AUTHENTICATION_SCHEME_HTTP_BASIC:
+    case WEBKIT_AUTHENTICATION_SCHEME_HTTP_DIGEST:
+    case WEBKIT_AUTHENTICATION_SCHEME_HTML_FORM:
+    case WEBKIT_AUTHENTICATION_SCHEME_NTLM:
+    case WEBKIT_AUTHENTICATION_SCHEME_NEGOTIATE:
+    case WEBKIT_AUTHENTICATION_SCHEME_SERVER_TRUST_EVALUATION_REQUESTED:
+    case WEBKIT_AUTHENTICATION_SCHEME_UNKNOWN: {
+        CredentialStorageMode credentialStorageMode = webkit_authentication_request_can_save_credentials(request) ? AllowPersistentStorage : DisallowPersistentStorage;
+        webkitWebViewBaseAddDialog(WEBKIT_WEB_VIEW_BASE(webView), webkitAuthenticationDialogNew(request, credentialStorageMode));
+        break;
+    }
+    case WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_REQUESTED:
+    case WEBKIT_AUTHENTICATION_SCHEME_CLIENT_CERTIFICATE_PIN_REQUESTED:
+        webkit_authentication_request_authenticate(request, nullptr);
+        break;
+    }
 
     return TRUE;
 }
@@ -463,5 +479,42 @@ void webkit_web_view_get_background_color(WebKitWebView* webView, GdkRGBA* rgba)
     g_return_if_fail(rgba);
 
     auto& page = *webkitWebViewBaseGetPage(reinterpret_cast<WebKitWebViewBase*>(webView));
-    *rgba = page.backgroundColor().valueOr(WebCore::Color::white);
+    *rgba = page.backgroundColor().value_or(WebCore::Color::white);
+}
+
+guint createShowOptionMenuSignal(WebKitWebViewClass* webViewClass)
+{
+    /**
+     * WebKitWebView::show-option-menu:
+     * @web_view: the #WebKitWebView on which the signal is emitted
+     * @menu: the #WebKitOptionMenu
+     * @event: the #GdkEvent that triggered the menu, or %NULL
+     * @rectangle: the option element area
+     *
+     * This signal is emitted when a select element in @web_view needs to display a
+     * dropdown menu. This signal can be used to show a custom menu, using @menu to get
+     * the details of all items that should be displayed. The area of the element in the
+     * #WebKitWebView is given as @rectangle parameter, it can be used to position the
+     * menu. If this was triggered by a user interaction, like a mouse click,
+     * @event parameter provides the #GdkEvent.
+     * To handle this signal asynchronously you should keep a ref of the @menu.
+     *
+     * The default signal handler will pop up a #GtkMenu.
+     *
+     * Returns: %TRUE to stop other handlers from being invoked for the event.
+     *   %FALSE to propagate the event further.
+     *
+     * Since: 2.18
+     */
+    return g_signal_new(
+        "show-option-menu",
+        G_TYPE_FROM_CLASS(webViewClass),
+        G_SIGNAL_RUN_LAST,
+        G_STRUCT_OFFSET(WebKitWebViewClass, show_option_menu),
+        g_signal_accumulator_true_handled, nullptr,
+        g_cclosure_marshal_generic,
+        G_TYPE_BOOLEAN, 3,
+        WEBKIT_TYPE_OPTION_MENU,
+        GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE,
+        GDK_TYPE_RECTANGLE | G_SIGNAL_TYPE_STATIC_SCOPE);
 }

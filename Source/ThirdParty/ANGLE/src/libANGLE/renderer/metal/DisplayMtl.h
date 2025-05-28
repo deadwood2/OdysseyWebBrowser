@@ -86,6 +86,10 @@ class DisplayMtl : public DisplayImpl
 
     ShareGroupImpl *createShareGroup() override;
 
+    ExternalImageSiblingImpl *createExternalImageSibling(const gl::Context *context,
+                                                         EGLenum target,
+                                                         EGLClientBuffer buffer,
+                                                         const egl::AttributeMap &attribs) override;
     gl::Version getMaxSupportedESVersion() const override;
     gl::Version getMaxConformantESVersion() const override;
 
@@ -99,6 +103,11 @@ class DisplayMtl : public DisplayImpl
     void populateFeatureList(angle::FeatureList *features) override;
 
     bool isValidNativeWindow(EGLNativeWindowType window) const override;
+
+    egl::Error validateImageClientBuffer(const gl::Context *context,
+                                         EGLenum target,
+                                         EGLClientBuffer clientBuffer,
+                                         const egl::AttributeMap &attribs) const override;
 
     egl::ConfigSet generateConfigs() override;
 
@@ -165,10 +174,11 @@ class DisplayMtl : public DisplayImpl
     void initializeTextureCaps() const;
     void initializeFeatures();
     void initializeLimitations();
-
+    EGLenum EGLDrawingBufferTextureTarget();
+    mtl::AutoObjCPtr<id<MTLDevice>> getMetalDeviceMatchingAttribute(const egl::AttributeMap &attribs);
     angle::Result initializeShaderLibrary();
 
-    mtl::AutoObjCPtr<id<MTLDevice>> mMetalDevice = nil;
+    mtl::AutoObjCPtr<id<MTLDevice>> mMetalDevice;
     uint32_t mMetalDeviceVendorId                = 0;
 
     mtl::CommandQueue mCmdQueue;

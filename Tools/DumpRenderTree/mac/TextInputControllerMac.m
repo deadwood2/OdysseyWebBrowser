@@ -40,7 +40,6 @@
 #import <WebKit/WebFrameView.h>
 #import <WebKit/WebHTMLViewPrivate.h>
 #import <WebKit/WebScriptObject.h>
-#import <WebKit/WebTypesInternal.h>
 #import <WebKit/WebView.h>
 #import <WebKit/WebViewPrivate.h>
 #import <pal/spi/mac/NSTextInputContextSPI.h>
@@ -285,9 +284,14 @@
     [super dealloc];
 }
 
+- (WebFrame *)selectedOrMainFrame
+{
+    return webView.selectedFrame ?: webView.mainFrame;
+}
+
 - (NSObject <NSTextInput> *)textInput
 {
-    NSView <NSTextInput> *view = inputMethodView ? inputMethodView : (id)[[[webView mainFrame] frameView] documentView];
+    NSView <NSTextInput> *view = inputMethodView ?: (id)self.selectedOrMainFrame.frameView.documentView;
     return [view conformsToProtocol:@protocol(NSTextInput)] ? view : nil;
 }
 

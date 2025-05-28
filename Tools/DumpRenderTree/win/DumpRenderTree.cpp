@@ -101,7 +101,6 @@ static bool dumpPixelsForAllTests = false;
 static bool dumpPixelsForCurrentTest = false;
 static bool threaded = false;
 static bool dumpTree = true;
-static bool useTimeoutWatchdog = true;
 static bool forceComplexText = false;
 static bool dumpAllPixels;
 static bool useAcceleratedDrawing = true; // Not used
@@ -133,6 +132,7 @@ HWND webViewWindow;
 RefPtr<TestRunner> gTestRunner;
 
 UINT_PTR waitToDumpWatchdog = 0;
+bool useTimeoutWatchdog = true;
 
 void setPersistentUserStyleSheetLocation(CFStringRef url)
 {
@@ -837,12 +837,15 @@ static void resetWebPreferencesToConsistentValues(IWebPreferences* preferences)
 {
     ASSERT(preferences);
 
-    enableExperimentalFeatures(preferences);
-
     preferences->setAutosaves(FALSE);
 
     COMPtr<IWebPreferencesPrivate8> prefsPrivate(Query, preferences);
     ASSERT(prefsPrivate);
+
+    prefsPrivate->resetForTesting();
+
+    enableExperimentalFeatures(preferences);
+
     prefsPrivate->setFullScreenEnabled(TRUE);
 
 #ifdef USE_MAC_FONTS
@@ -1044,8 +1047,13 @@ static void resetWebViewToConsistentStateBeforeTesting(const WTR::TestOptions& o
 
     COMPtr<IWebPreferences> preferences;
     if (SUCCEEDED(webView->preferences(&preferences))) {
+        COMPtr<IWebPreferencesPrivate8> prefsPrivate { Query, preferences };
+        prefsPrivate->startBatchingUpdates();
+
         resetWebPreferencesToConsistentValues(preferences.get());
         setWebPreferencesForTestOptions(preferences.get(), options);
+
+        prefsPrivate->stopBatchingUpdates();
     }
 
     TestRunner::setSerializeHTTPLoads(false);
@@ -1098,7 +1106,7 @@ static void sizeWebViewForCurrentTest()
 
 static String findFontFallback(const char* pathOrUrl)
 {
-    String pathToFontFallback = FileSystem::directoryName(pathOrUrl);
+    String pathToFontFallback = FileSystem::parentPath(pathOrUrl);
 
     wchar_t fullPath[_MAX_PATH];
     if (!_wfullpath(fullPath, pathToFontFallback.wideCharacters().data(), _MAX_PATH))
@@ -1240,6 +1248,8 @@ static void runTest(const string& inputLine)
     sizeWebViewForCurrentTest();
     ::gTestRunner->setIconDatabaseEnabled(false);
     ::gTestRunner->clearAllApplicationCaches();
+
+    ::gTestRunner->clearAllDatabases();
 
     if (shouldLogFrameLoadDelegates(pathOrURL.c_str()))
         ::gTestRunner->setDumpFrameLoadCallbacks(true);

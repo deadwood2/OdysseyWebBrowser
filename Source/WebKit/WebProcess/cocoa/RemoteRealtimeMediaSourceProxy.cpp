@@ -41,12 +41,16 @@
 #include <WebCore/WebAudioBufferList.h>
 
 namespace WebKit {
-using namespace PAL;
 using namespace WebCore;
+
+RemoteRealtimeMediaSourceProxy::~RemoteRealtimeMediaSourceProxy()
+{
+    failApplyConstraintCallbacks("Source terminated"_s);
+}
 
 IPC::Connection* RemoteRealtimeMediaSourceProxy::connection()
 {
-    ASSERT(isMainThread());
+    ASSERT(isMainRunLoop());
 #if ENABLE(GPU_PROCESS)
     if (m_shouldCaptureInGPUProcess)
         return &WebProcess::singleton().ensureGPUProcessConnection().connection();

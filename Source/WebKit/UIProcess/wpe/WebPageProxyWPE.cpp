@@ -54,10 +54,9 @@ void WebPageProxy::bindAccessibilityTree(const String& plugID)
 #endif
 }
 
-void WebPageProxy::updateEditorState(const EditorState& editorState)
+void WebPageProxy::didUpdateEditorState(const EditorState&, const EditorState& newEditorState)
 {
-    m_editorState = editorState;
-    if (!editorState.shouldIgnoreSelectionChanges)
+    if (!newEditorState.shouldIgnoreSelectionChanges)
         pageClient().selectionDidChange();
 }
 
@@ -71,7 +70,7 @@ void WebPageProxy::sendMessageToWebView(UserMessage&& message)
     sendMessageToWebViewWithReply(WTFMove(message), [](UserMessage&&) { });
 }
 
-void WebPageProxy::setInputMethodState(Optional<InputMethodState>&& state)
+void WebPageProxy::setInputMethodState(std::optional<InputMethodState>&& state)
 {
     static_cast<PageClientImpl&>(pageClient()).setInputMethodState(WTFMove(state));
 }

@@ -28,17 +28,18 @@
 
 #if ENABLE(WEBM_FORMAT_READER)
 
+#include "Logging.h"
 #include "MediaFormatReader.h"
 #include "MediaSampleByteRange.h"
 #include "MediaSampleCursor.h"
 #include <WebCore/AudioTrackPrivate.h>
 #include <WebCore/InbandTextTrackPrivate.h>
-#include <WebCore/Logging.h>
 #include <WebCore/MediaDescription.h>
 #include <WebCore/SampleMap.h>
 #include <WebCore/VideoTrackPrivate.h>
 #include <pal/avfoundation/MediaTimeAVFoundation.h>
 #include <wtf/LoggerHelper.h>
+#include <wtf/WorkQueue.h>
 
 #include <pal/cocoa/MediaToolboxSoftLink.h>
 
@@ -46,7 +47,6 @@ WTF_DECLARE_CF_TYPE_TRAIT(MTPluginTrackReader);
 
 namespace WebKit {
 
-using namespace PAL;
 using namespace WebCore;
 
 CMBaseClassID MediaTrackReader::wrapperClassID()
@@ -59,7 +59,7 @@ CoreMediaWrapped<MediaTrackReader>* MediaTrackReader::unwrap(CMBaseObjectRef obj
     return unwrap(checked_cf_cast<WrapperRef>(object));
 }
 
-RefPtr<MediaTrackReader> MediaTrackReader::create(Allocator&& allocator, const MediaFormatReader& formatReader, CMMediaType mediaType, uint64_t trackID, Optional<bool> enabled)
+RefPtr<MediaTrackReader> MediaTrackReader::create(Allocator&& allocator, const MediaFormatReader& formatReader, CMMediaType mediaType, uint64_t trackID, std::optional<bool> enabled)
 {
     return adoptRef(new (allocator) MediaTrackReader(WTFMove(allocator), formatReader, mediaType, trackID, enabled));
 }
@@ -70,7 +70,7 @@ WorkQueue& MediaTrackReader::storageQueue()
     return queue;
 }
 
-MediaTrackReader::MediaTrackReader(Allocator&& allocator, const MediaFormatReader& formatReader, CMMediaType mediaType, uint64_t trackID, Optional<bool> enabled)
+MediaTrackReader::MediaTrackReader(Allocator&& allocator, const MediaFormatReader& formatReader, CMMediaType mediaType, uint64_t trackID, std::optional<bool> enabled)
     : CoreMediaWrapped(WTFMove(allocator))
     , m_trackID(trackID)
     , m_mediaType(mediaType)
@@ -78,7 +78,7 @@ MediaTrackReader::MediaTrackReader(Allocator&& allocator, const MediaFormatReade
     , m_logger(formatReader.logger())
     , m_logIdentifier(formatReader.nextTrackReaderLogIdentifier(trackID))
 {
-    ASSERT(!isMainThread());
+    ASSERT(!isMainRunLoop());
 
     ALWAYS_LOG(LOGIDENTIFIER, mediaTypeString(), " ", trackID);
     if (enabled)
@@ -87,6 +87,7 @@ MediaTrackReader::MediaTrackReader(Allocator&& allocator, const MediaFormatReade
 
 MediaTime MediaTrackReader::greatestPresentationTime() const
 {
+    Locker locker { m_sampleStorageLock };
     auto& sampleMap = m_sampleStorage->sampleMap;
     if (sampleMap.empty())
         return MediaTime::invalidTime();
@@ -97,8 +98,8 @@ MediaTime MediaTrackReader::greatestPresentationTime() const
 
 void MediaTrackReader::addSample(Ref<MediaSample>&& sample, MTPluginByteSourceRef byteSource)
 {
-    ASSERT(!isMainThread());
-    auto locker = holdLock(m_sampleStorageLock);
+    ASSERT(!isMainRunLoop());
+    Locker locker { m_sampleStorageLock };
     if (!m_sampleStorage)
         m_sampleStorage = makeUnique<SampleStorage>();
 
@@ -116,20 +117,21 @@ void MediaTrackReader::addSample(Ref<MediaSample>&& sample, MTPluginByteSourceRe
 
 void MediaTrackReader::waitForSample(Function<bool(SampleMap&, bool)>&& predicate) const
 {
-    auto locker = holdLock(m_sampleStorageLock);
+    Locker locker { m_sampleStorageLock };
     if (!m_sampleStorage)
         m_sampleStorage = makeUnique<SampleStorage>();
     m_sampleStorageCondition.wait(m_sampleStorageLock, [predicate = WTFMove(predicate), this] {
+        assertIsHeld(m_sampleStorageLock);
         return predicate(m_sampleStorage->sampleMap, m_sampleStorage->hasAllSamples);
     });
 }
 
 void MediaTrackReader::finishParsing()
 {
-    ASSERT(!isMainThread());
+    ASSERT(!isMainRunLoop());
 
     ALWAYS_LOG(LOGIDENTIFIER);
-    auto locker = holdLock(m_sampleStorageLock);
+    Locker locker { m_sampleStorageLock };
     if (!m_sampleStorage)
         m_sampleStorage = makeUnique<SampleStorage>();
     m_sampleStorage->hasAllSamples = true;
@@ -157,29 +159,21 @@ const char* MediaTrackReader::mediaTypeString() const
 
 OSStatus MediaTrackReader::copyProperty(CFStringRef key, CFAllocatorRef allocator, void* copiedValue)
 {
-    // Don't block waiting for media if the we know the enabled state.
-    if (CFEqual(key, PAL::get_MediaToolbox_kMTPluginTrackReaderProperty_Enabled()) && m_isEnabled != Enabled::Unknown) {
-        *reinterpret_cast<CFBooleanRef*>(copiedValue) = retainPtr(m_isEnabled == Enabled::True ? kCFBooleanTrue : kCFBooleanFalse).leakRef();
+    // Don't block waiting for media to answer requests for the enabled state.
+    if (CFEqual(key, PAL::get_MediaToolbox_kMTPluginTrackReaderProperty_Enabled())) {
+        // Assume that a track without an explicit enabled state is enabled by default,
+        // to avoid blocking waiting for media data to be appended.
+        *reinterpret_cast<CFBooleanRef*>(copiedValue) = m_isEnabled == Enabled::False ? kCFBooleanFalse : kCFBooleanTrue;
         return noErr;
     }
 
-    auto locker = holdLock(m_sampleStorageLock);
+    Locker locker { m_sampleStorageLock };
     m_sampleStorageCondition.wait(m_sampleStorageLock, [&] {
+        assertIsHeld(m_sampleStorageLock);
         return !!m_sampleStorage;
     });
 
     auto& sampleMap = m_sampleStorage->sampleMap;
-
-    if (CFEqual(key, PAL::get_MediaToolbox_kMTPluginTrackReaderProperty_Enabled())) {
-        if (m_isEnabled == Enabled::Unknown) {
-            m_isEnabled = sampleMap.empty() ? Enabled::False : Enabled::True;
-            if (m_isEnabled == Enabled::False)
-                ERROR_LOG(LOGIDENTIFIER, "ignoring empty ", mediaTypeString(), " track");
-        }
-
-        *reinterpret_cast<CFBooleanRef*>(copiedValue) = retainPtr(m_isEnabled == Enabled::True ? kCFBooleanTrue : kCFBooleanFalse).leakRef();
-        return noErr;
-    }
 
     if (sampleMap.empty()) {
         ERROR_LOG(LOGIDENTIFIER, "sample table empty when asked for ", String(key));
@@ -207,10 +201,8 @@ OSStatus MediaTrackReader::copyProperty(CFStringRef key, CFAllocatorRef allocato
 
 void MediaTrackReader::finalize()
 {
-    auto locker = holdLock(m_sampleStorageLock);
-    storageQueue().dispatch([sampleStorage = std::exchange(m_sampleStorage, nullptr)]() mutable {
-        sampleStorage = nullptr;
-    });
+    Locker locker { m_sampleStorageLock };
+    storageQueue().dispatch([sampleStorage = std::exchange(m_sampleStorage, nullptr)] { });
     CoreMediaWrapped<MediaTrackReader>::finalize();
 }
 
@@ -241,7 +233,7 @@ OSStatus MediaTrackReader::createCursorAtLastSampleInDecodeOrder(MTPluginSampleC
 
 WTFLogChannel& MediaTrackReader::logChannel() const
 {
-    return WebCore::LogMedia;
+    return JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, Media);
 }
 
 const void* MediaTrackReader::nextSampleCursorLogIdentifier(uint64_t cursorID) const

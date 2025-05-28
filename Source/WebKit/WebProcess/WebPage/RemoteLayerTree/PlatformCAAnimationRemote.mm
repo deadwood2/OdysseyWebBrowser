@@ -98,61 +98,6 @@ static NSString * const WKExplicitBeginTimeFlag = @"WKPlatformCAAnimationExplici
 namespace WebKit {
 using namespace WebCore;
 
-void PlatformCAAnimationRemote::KeyframeValue::encode(IPC::Encoder& encoder) const
-{
-    encoder << keyType;
-
-    switch (keyType) {
-    case NumberKeyType:
-        encoder << number;
-        break;
-    case ColorKeyType:
-        encoder << color;
-        break;
-    case PointKeyType:
-        encoder << point;
-        break;
-    case TransformKeyType:
-        encoder << transform;
-        break;
-    case FilterKeyType:
-        encoder << *filter.get();
-        break;
-    }
-}
-
-Optional<PlatformCAAnimationRemote::KeyframeValue> PlatformCAAnimationRemote::KeyframeValue::decode(IPC::Decoder& decoder)
-{
-    PlatformCAAnimationRemote::KeyframeValue value;
-    if (!decoder.decode(value.keyType))
-        return WTF::nullopt;
-
-    switch (value.keyType) {
-    case NumberKeyType:
-        if (!decoder.decode(value.number))
-            return WTF::nullopt;
-        break;
-    case ColorKeyType:
-        if (!decoder.decode(value.color))
-            return WTF::nullopt;
-        break;
-    case PointKeyType:
-        if (!decoder.decode(value.point))
-            return WTF::nullopt;
-        break;
-    case TransformKeyType:
-        if (!decoder.decode(value.transform))
-            return WTF::nullopt;
-        break;
-    case FilterKeyType:
-        if (!decodeFilterOperation(decoder, value.filter))
-            return WTF::nullopt;
-        break;
-    }
-
-    return WTFMove(value);
-}
-
 static void encodeTimingFunction(IPC::Encoder& encoder, TimingFunction* timingFunction)
 {
     switch (timingFunction->type()) {
@@ -174,36 +119,36 @@ static void encodeTimingFunction(IPC::Encoder& encoder, TimingFunction* timingFu
     }
 }
 
-static Optional<RefPtr<TimingFunction>> decodeTimingFunction(IPC::Decoder& decoder)
+static std::optional<RefPtr<TimingFunction>> decodeTimingFunction(IPC::Decoder& decoder)
 {
     TimingFunction::TimingFunctionType type;
     if (!decoder.decode(type))
-        return WTF::nullopt;
+        return std::nullopt;
 
     RefPtr<TimingFunction> timingFunction;
     switch (type) {
     case TimingFunction::LinearFunction:
         timingFunction = LinearTimingFunction::create();
         if (!decoder.decode(*static_cast<LinearTimingFunction*>(timingFunction.get())))
-            return WTF::nullopt;
+            return std::nullopt;
         break;
 
     case TimingFunction::CubicBezierFunction:
         timingFunction = CubicBezierTimingFunction::create();
         if (!decoder.decode(*static_cast<CubicBezierTimingFunction*>(timingFunction.get())))
-            return WTF::nullopt;
+            return std::nullopt;
         break;
 
     case TimingFunction::StepsFunction:
         timingFunction = StepsTimingFunction::create();
         if (!decoder.decode(*static_cast<StepsTimingFunction*>(timingFunction.get())))
-            return WTF::nullopt;
+            return std::nullopt;
         break;
 
     case TimingFunction::SpringFunction:
         timingFunction = SpringTimingFunction::create();
         if (!decoder.decode(*static_cast<SpringTimingFunction*>(timingFunction.get())))
-            return WTF::nullopt;
+            return std::nullopt;
         break;
     }
 
@@ -245,71 +190,71 @@ void PlatformCAAnimationRemote::Properties::encode(IPC::Encoder& encoder) const
     encoder << animations;
 }
 
-Optional<PlatformCAAnimationRemote::Properties> PlatformCAAnimationRemote::Properties::decode(IPC::Decoder& decoder)
+std::optional<PlatformCAAnimationRemote::Properties> PlatformCAAnimationRemote::Properties::decode(IPC::Decoder& decoder)
 {
     PlatformCAAnimationRemote::Properties properties;
     if (!decoder.decode(properties.keyPath))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.animationType))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.beginTime))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.duration))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.timeOffset))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.repeatCount))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.speed))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.fillMode))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.valueFunction))
-        return WTF::nullopt;
+        return std::nullopt;
 
     bool hasTimingFunction;
     if (!decoder.decode(hasTimingFunction))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (hasTimingFunction) {
         if (auto timingFunction = decodeTimingFunction(decoder))
             properties.timingFunction = WTFMove(*timingFunction);
         else
-            return WTF::nullopt;
+            return std::nullopt;
     }
 
     if (!decoder.decode(properties.autoReverses))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.removedOnCompletion))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.additive))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.reverseTimingFunctions))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.hasExplicitBeginTime))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.keyValues))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!decoder.decode(properties.keyTimes))
-        return WTF::nullopt;
+        return std::nullopt;
 
     uint64_t numTimingFunctions;
     if (!decoder.decode(numTimingFunctions))
-        return WTF::nullopt;
+        return std::nullopt;
     
     if (numTimingFunctions) {
         properties.timingFunctions.reserveInitialCapacity(numTimingFunctions);
@@ -318,12 +263,12 @@ Optional<PlatformCAAnimationRemote::Properties> PlatformCAAnimationRemote::Prope
             if (auto timingFunction = decodeTimingFunction(decoder))
                 properties.timingFunctions.uncheckedAppend(WTFMove(*timingFunction));
             else
-                return WTF::nullopt;
+                return std::nullopt;
         }
     }
 
     if (!decoder.decode(properties.animations))
-        return WTF::nullopt;
+        return std::nullopt;
 
     return WTFMove(properties);
 }
@@ -731,27 +676,24 @@ void PlatformCAAnimationRemote::copyAnimationsFrom(const PlatformCAAnimation& va
     m_properties.animations = other.m_properties.animations;
 }
 
-static NSObject* animationValueFromKeyframeValue(const PlatformCAAnimationRemote::KeyframeValue& keyframeValue)
+static RetainPtr<NSObject> animationValueFromKeyframeValue(const PlatformCAAnimationRemote::KeyframeValue& keyframeValue)
 {
-    switch (keyframeValue.keyframeType()) {
-    case PlatformCAAnimationRemote::KeyframeValue::NumberKeyType:
-        return @(keyframeValue.numberValue());
-            
-    case PlatformCAAnimationRemote::KeyframeValue::ColorKeyType: {
-        auto [r, g, b, a] = keyframeValue.colorValue().toSRGBALossy<uint8_t>();
-        return @[ @(r), @(g), @(b), @(a) ];
-    }
-
-    case PlatformCAAnimationRemote::KeyframeValue::PointKeyType: {
-        FloatPoint3D point = keyframeValue.pointValue();
-        return @[ @(point.x()), @(point.y()), @(point.z()) ];
-    }
-    case PlatformCAAnimationRemote::KeyframeValue::TransformKeyType:
-        return [NSValue valueWithCATransform3D:keyframeValue.transformValue()];
-            
-    case PlatformCAAnimationRemote::KeyframeValue::FilterKeyType:
-        return PlatformCAFilters::filterValueForOperation(keyframeValue.filterValue(), 0 /* unused */).autorelease();
-    }
+    return WTF::switchOn(keyframeValue,
+        [&](const float number) -> RetainPtr<NSObject> { return @(number); },
+        [&](const WebCore::Color color) -> RetainPtr<NSObject> {
+            auto [r, g, b, a] =  color.toSRGBALossy<uint8_t>();
+            return @[ @(r), @(g), @(b), @(a) ];
+        },
+        [&](const WebCore::FloatPoint3D point) -> RetainPtr<NSObject> {
+            return @[ @(point.x()), @(point.y()), @(point.z()) ];
+        },
+        [&](const WebCore::TransformationMatrix matrix) -> RetainPtr<NSObject> {
+            return [NSValue valueWithCATransform3D:matrix];
+        },
+        [&](const RefPtr<WebCore::FilterOperation> filter) -> RetainPtr<NSObject> {
+            return PlatformCAFilters::filterValueForOperation(filter.get(), 0 /* unused */);
+        }
+    );
 }
 
 static RetainPtr<CAAnimation> createAnimation(CALayer *layer, RemoteLayerTreeHost* layerTreeHost, const PlatformCAAnimationRemote::Properties& properties)
@@ -762,8 +704,8 @@ static RetainPtr<CAAnimation> createAnimation(CALayer *layer, RemoteLayerTreeHos
         auto basicAnimation = [CABasicAnimation animationWithKeyPath:properties.keyPath];
 
         if (properties.keyValues.size() > 1) {
-            [basicAnimation setFromValue:animationValueFromKeyframeValue(properties.keyValues[0])];
-            [basicAnimation setToValue:animationValueFromKeyframeValue(properties.keyValues[1])];
+            [basicAnimation setFromValue:animationValueFromKeyframeValue(properties.keyValues[0]).get()];
+            [basicAnimation setToValue:animationValueFromKeyframeValue(properties.keyValues[1]).get()];
         }
 
         if (properties.timingFunctions.size())
@@ -815,8 +757,8 @@ static RetainPtr<CAAnimation> createAnimation(CALayer *layer, RemoteLayerTreeHos
         auto springAnimation = [CASpringAnimation animationWithKeyPath:properties.keyPath];
 
         if (properties.keyValues.size() > 1) {
-            [springAnimation setFromValue:animationValueFromKeyframeValue(properties.keyValues[0])];
-            [springAnimation setToValue:animationValueFromKeyframeValue(properties.keyValues[1])];
+            [springAnimation setFromValue:animationValueFromKeyframeValue(properties.keyValues[0]).get()];
+            [springAnimation setToValue:animationValueFromKeyframeValue(properties.keyValues[1]).get()];
         }
 
         if (properties.timingFunctions.size()) {
@@ -885,35 +827,6 @@ void PlatformCAAnimationRemote::updateLayerAnimations(CALayer *layer, RemoteLaye
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
-TextStream& operator<<(TextStream&ts, const PlatformCAAnimationRemote::KeyframeValue& value)
-{
-    switch (value.keyframeType()) {
-    case PlatformCAAnimationRemote::KeyframeValue::NumberKeyType:
-        ts << "number=" << value.numberValue();
-        break;
-    case PlatformCAAnimationRemote::KeyframeValue::ColorKeyType:
-        ts << "color=";
-        ts << value.colorValue();
-        break;
-    case PlatformCAAnimationRemote::KeyframeValue::PointKeyType:
-        ts << "point=";
-        ts << value.pointValue();
-        break;
-    case PlatformCAAnimationRemote::KeyframeValue::TransformKeyType:
-        ts << "transform=";
-        ts << value.transformValue();
-        break;
-    case PlatformCAAnimationRemote::KeyframeValue::FilterKeyType:
-        ts << "filter=";
-        if (value.filterValue())
-            ts << *value.filterValue();
-        else
-            ts << "null";
-        break;
-    }
-    return ts;
-}
-
 TextStream& operator<<(TextStream& ts, const PlatformCAAnimationRemote::Properties& animation)
 {
     ts << "type=";
@@ -974,9 +887,18 @@ TextStream& operator<<(TextStream& ts, const PlatformCAAnimationRemote::Properti
         if (i < animation.timingFunctions.size() && animation.timingFunctions[i])
             ts.dumpProperty<const TimingFunction&>("timing function", *animation.timingFunctions[i]);
 
-        if (i < animation.keyValues.size())
-            ts.dumpProperty("value", animation.keyValues[i]);
-
+        if (i < animation.keyValues.size()) {
+            ts.startGroup();
+            ts << "value ";
+            WTF::switchOn(animation.keyValues[i],
+                [&](const float number) { ts << "number=" << number; },
+                [&](const WebCore::Color color) { ts << "color=" << color; },
+                [&](const WebCore::FloatPoint3D point) { ts << "point=" << point; },
+                [&](const WebCore::TransformationMatrix matrix) { ts << "transform=" << matrix; },
+                [&](const RefPtr<WebCore::FilterOperation> filter) { ts << "filter=" << ValueOrNull(filter.get()); }
+            );
+            ts.endGroup();
+        }
         ts << ")";
     }
 

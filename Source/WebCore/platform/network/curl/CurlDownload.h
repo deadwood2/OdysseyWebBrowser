@@ -33,6 +33,7 @@
 #include "CurlRequestClient.h"
 #include "ResourceRequest.h"
 #include "ResourceResponse.h"
+#include "NetworkingContext.h"
 
 namespace WebCore {
 
@@ -44,7 +45,7 @@ public:
     virtual void didReceiveResponse(const ResourceResponse&) { }
     virtual void didReceiveDataOfLength(int) { }
     virtual void didFinish() { }
-    virtual void didFail() { }
+    virtual void didFail(const ResourceError &) { }
 };
 
 class CurlDownload final : public ThreadSafeRefCounted<CurlDownload>, public CurlRequestClient {
@@ -55,18 +56,25 @@ public:
     void ref() override { ThreadSafeRefCounted<CurlDownload>::ref(); }
     void deref() override { ThreadSafeRefCounted<CurlDownload>::deref(); }
 
-    void init(CurlDownloadListener&, const URL&);
+    void init(CurlDownloadListener&, const URL&, RefPtr<NetworkingContext>);
     void init(CurlDownloadListener&, ResourceHandle*, const ResourceRequest&, const ResourceResponse&);
 
     void setListener(CurlDownloadListener* listener) { m_listener = listener; }
 
     void start();
+    void resume();
     bool cancel();
+    bool isCancelled() { return m_isCancelled; }
+
+    void setDeleteTmpFile(bool deleteTmpFile);
+    const String& tmpFilePath(void) const { return m_tmpPath; };
+    long long resumeOffset();
 
     bool deletesFileUponFailure() const { return m_deletesFileUponFailure; }
     void setDeletesFileUponFailure(bool deletesFileUponFailure) { m_deletesFileUponFailure = deletesFileUponFailure; }
 
     void setDestination(const String& destination) { m_destination = destination; }
+    void setUserPassword(const String& user, const String &password) { m_user = user; m_password = password; }
 
 private:
     Ref<CurlRequest> createCurlRequest(ResourceRequest&);
@@ -85,9 +93,15 @@ private:
     ResourceRequest m_request;
     ResourceResponse m_response;
     bool m_deletesFileUponFailure { false };
+    bool m_deleteTmpFile { false };
+    bool m_isResume { false };
     String m_destination;
+    String m_tmpPath;
+    String m_user;
+    String m_password;
     unsigned m_redirectCount { 0 };
     RefPtr<CurlRequest> m_curlRequest;
+    RefPtr<NetworkingContext> m_context;
 };
 
 } // namespace WebCore

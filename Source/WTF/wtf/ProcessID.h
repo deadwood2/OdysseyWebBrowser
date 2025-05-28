@@ -33,10 +33,17 @@
 #include <windows.h>
 #endif
 
+#if OS(MORPHOS)
+#include <exec/tasks.h>
+#include <proto/exec.h>
+#endif
+
 namespace WTF {
 
 #if OS(WINDOWS)
 using ProcessID = int;
+#elif OS(MORPHOS)
+using ProcessID = ULONG;
 #else
 using ProcessID = pid_t;
 #endif
@@ -45,6 +52,8 @@ inline ProcessID getCurrentProcessID()
 {
 #if OS(WINDOWS)
     return GetCurrentProcessId();
+#elif OS(MORPHOS)
+	return FindTask(0)->tc_ETask->UniqueID;
 #else
     return getpid();
 #endif

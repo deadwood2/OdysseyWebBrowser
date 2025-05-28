@@ -53,6 +53,7 @@
 #import <WebCore/HTTPCookieAcceptPolicyCocoa.h>
 #import <WebCore/PluginData.h>
 #import <WebCore/RegistrableDomain.h>
+#import <WebCore/WebCoreObjCExtras.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
@@ -99,6 +100,9 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKProcessPool.class, self))
+        return;
+
     _processPool->~WebProcessPool();
 
     [super dealloc];
@@ -172,7 +176,7 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 + (NSArray<WKProcessPool *> *)_allProcessPoolsForTesting
 {
     return createNSArray(WebKit::WebProcessPool::allProcessPools(), [] (auto& pool) {
-        return wrapper(*pool);
+        return wrapper(pool.get());
     }).autorelease();
 }
 
@@ -387,6 +391,16 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 #endif
 }
 
+- (BOOL)_requestWebProcessTermination:(pid_t)pid
+{
+    for (auto& process : _processPool->processes()) {
+        if (process->processIdentifier() == pid)
+            process->requestTermination(WebKit::ProcessTerminationReason::RequestedByClient);
+        return YES;
+    }
+    return NO;
+}
+
 - (void)_makeNextWebProcessLaunchFailForTesting
 {
     _processPool->setShouldMakeNextWebProcessLaunchFailForTesting(true);
@@ -468,6 +482,11 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 #if ENABLE(GAMEPAD)
     WebKit::UIGamepadProvider::setUsesGameControllerFramework();
 #endif
+}
+
++ (void)_setLinkedOnOrBeforeEverythingForTesting
+{
+    setApplicationSDKVersion(0);
 }
 
 + (void)_setLinkedOnOrAfterEverythingForTesting

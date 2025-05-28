@@ -108,6 +108,7 @@ class DisplayMtl;
 class ContextMtl;
 class FramebufferMtl;
 class BufferMtl;
+class ImageMtl;
 class VertexArrayMtl;
 class TextureMtl;
 class ProgramMtl;
@@ -131,6 +132,7 @@ constexpr MTLBlitOption kBlitOptionRowLinearPVRTC          = MTLBlitOptionRowLin
 #endif
 
 #if defined(__IPHONE_13_0) || defined(__MAC_10_15)
+#    define ANGLE_MTL_SWIZZLE_AVAILABLE 1
 using TextureSwizzleChannels                   = MTLTextureSwizzleChannels;
 using RenderStages                             = MTLRenderStages;
 constexpr MTLRenderStages kRenderStageVertex   = MTLRenderStageVertex;
@@ -169,6 +171,13 @@ struct ImplTypeHelper<egl::Display>
 {
     using ImplType = DisplayMtl;
 };
+
+template <>
+struct ImplTypeHelper<egl::Image>
+{
+    using ImplType = ImageMtl;
+};
+
 template <typename T>
 using GetImplType = typename ImplTypeHelper<T>::ImplType;
 
@@ -199,10 +208,16 @@ class WrappedObject
 
     void retainAssign(T obj)
     {
-        T retained = obj;
 #if !__has_feature(objc_arc)
+        T retained = obj;
         [retained retain];
 #endif
+        release();
+        mMetalObject = obj;
+    }
+
+    void unretainAssign(T obj)
+    {
         release();
         mMetalObject = obj;
     }
@@ -219,6 +234,21 @@ class WrappedObject
     T mMetalObject = nil;
 };
 
+// Because ARC enablement is a compile-time choice, and we compile this header
+// both ways, we need a separate copy of our code when ARC is enabled.
+#if __has_feature(objc_arc)
+#define adoptObjCObj adoptObjCObjArc
+#endif
+
+template <typename T>
+class AutoObjCPtr;
+
+template <typename T>
+using AutoObjCObj = AutoObjCPtr<T *>;
+
+template <typename U>
+AutoObjCObj<U> adoptObjCObj(U* NS_RELEASES_ARGUMENT) __attribute__((__warn_unused_result__));
+
 // This class is similar to WrappedObject, however, it allows changing the
 // internal pointer with public methods.
 template <typename T>
@@ -229,7 +259,7 @@ class AutoObjCPtr : public WrappedObject<T>
 
     AutoObjCPtr() {}
 
-    AutoObjCPtr(const std::nullptr_t &theNull) {}
+    AutoObjCPtr(std::nullptr_t) {}
 
     AutoObjCPtr(const AutoObjCPtr &src) { this->retainAssign(src.get()); }
 
@@ -262,7 +292,7 @@ class AutoObjCPtr : public WrappedObject<T>
         return *this;
     }
 
-    AutoObjCPtr &operator=(const std::nullptr_t &theNull)
+    AutoObjCPtr &operator=(std::nullptr_t)
     {
         this->set(nil);
         return *this;
@@ -272,7 +302,7 @@ class AutoObjCPtr : public WrappedObject<T>
 
     bool operator==(T rhs) const { return this->get() == rhs; }
 
-    bool operator==(const std::nullptr_t &theNull) const { return this->get(); }
+    bool operator==(std::nullptr_t) const { return this->get() == nullptr; }
 
     inline operator bool() { return this->get(); }
 
@@ -280,9 +310,17 @@ class AutoObjCPtr : public WrappedObject<T>
 
     bool operator!=(T rhs) const { return this->get() != rhs; }
 
+    bool operator!=(std::nullptr_t) const { return this->get() != nullptr; }
+
     using ParentType::retainAssign;
 
+    template <typename U>
+    friend AutoObjCObj<U> adoptObjCObj(U* NS_RELEASES_ARGUMENT) __attribute__((__warn_unused_result__));
+
   private:
+    enum AdoptTag { Adopt };
+    AutoObjCPtr(T src, AdoptTag) { this->unretainAssign(src); }
+
     void transfer(AutoObjCPtr &&src)
     {
         this->retainAssign(std::move(src.get()));
@@ -290,14 +328,26 @@ class AutoObjCPtr : public WrappedObject<T>
     }
 };
 
-template <typename T>
-using AutoObjCObj = AutoObjCPtr<T *>;
+template <typename U>
+inline AutoObjCObj<U> adoptObjCObj(U* NS_RELEASES_ARGUMENT src)
+{
+#if __has_feature(objc_arc)
+    return src;
+#elif defined(OBJC_NO_GC)
+    return AutoObjCPtr<U*>(src, AutoObjCPtr<U*>::Adopt);
+#else
+#error "ObjC GC not supported."
+#endif
+}
+
 
 // NOTE: SharedEvent is only declared on iOS 12.0+ or mac 10.14+
 #if defined(__IPHONE_12_0) || defined(__MAC_10_14)
+#define ANGLE_MTL_EVENT_AVAILABLE 1
 using SharedEventRef = AutoObjCPtr<id<MTLSharedEvent>>;
 #else
-using SharedEventRef                                       = AutoObjCObj<NSObject>;
+#define ANGLE_MTL_EVENT_AVAILABLE 0
+using SharedEventRef = AutoObjCObj<NSObject>;
 #endif
 
 // The native image index used by Metal back-end,  the image index uses native mipmap level instead

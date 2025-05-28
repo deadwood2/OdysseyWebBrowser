@@ -25,6 +25,7 @@
 #include "JSTestCallbackInterface.h"
 
 #include "JSDOMConstructorNotConstructable.h"
+#include "JSDOMConvertBase.h"
 #include "JSDOMConvertBoolean.h"
 #include "JSDOMConvertBufferSource.h"
 #include "JSDOMConvertInterface.h"
@@ -33,6 +34,7 @@
 #include "JSDOMConvertStrings.h"
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMGlobalObject.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMStringList.h"
 #include "JSTestNode.h"
 #include "JSTestObj.h"
@@ -64,14 +66,14 @@ template<> JSString* convertEnumerationToJS(JSGlobalObject& lexicalGlobalObject,
     return jsStringWithCache(lexicalGlobalObject.vm(), convertEnumerationToString(enumerationValue));
 }
 
-template<> Optional<TestCallbackInterface::Enum> parseEnumeration<TestCallbackInterface::Enum>(JSGlobalObject& lexicalGlobalObject, JSValue value)
+template<> std::optional<TestCallbackInterface::Enum> parseEnumeration<TestCallbackInterface::Enum>(JSGlobalObject& lexicalGlobalObject, JSValue value)
 {
     auto stringValue = value.toWTFString(&lexicalGlobalObject);
     if (stringValue == "value1")
         return TestCallbackInterface::Enum::Value1;
     if (stringValue == "value2")
         return TestCallbackInterface::Enum::Value2;
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 template<> const char* expectedEnumerationValues<TestCallbackInterface::Enum>()
@@ -151,6 +153,8 @@ static const HashTableValue JSTestCallbackInterfaceConstructorTableValues[] =
 static_assert(TestCallbackInterface::CONSTANT1 == 1, "CONSTANT1 in TestCallbackInterface does not match value from IDL");
 static_assert(TestCallbackInterface::CONSTANT2 == 2, "CONSTANT2 in TestCallbackInterface does not match value from IDL");
 
+template<> const ClassInfo JSTestCallbackInterfaceDOMConstructor::s_info = { "TestCallbackInterface", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestCallbackInterfaceDOMConstructor) };
+
 template<> JSValue JSTestCallbackInterfaceDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -165,11 +169,9 @@ template<> void JSTestCallbackInterfaceDOMConstructor::initializeProperties(VM& 
     reifyStaticProperties(vm, nullptr, JSTestCallbackInterfaceConstructorTableValues, *this);
 }
 
-template<> const ClassInfo JSTestCallbackInterfaceDOMConstructor::s_info = { "TestCallbackInterface", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestCallbackInterfaceDOMConstructor) };
-
 JSValue JSTestCallbackInterface::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestCallbackInterfaceDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestCallbackInterfaceDOMConstructor, DOMConstructorID::TestCallbackInterface>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 CallbackResult<typename IDLUndefined::ImplementationType> JSTestCallbackInterface::callbackWithNoParam()

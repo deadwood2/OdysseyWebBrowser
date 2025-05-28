@@ -33,7 +33,9 @@
 #import "WKNSData.h"
 #import "WKNSURLAuthenticationChallenge.h"
 #import "WKWebViewInternal.h"
+#import "WebPageProxy.h"
 #import <Foundation/Foundation.h>
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/WeakObjCPtr.h>
 
 class DownloadClient final : public API::DownloadClient {
@@ -195,10 +197,8 @@ private:
 
 - (WKWebView *)webView
 {
-    auto* page = _download->originatingPage();
-    if (!page)
-        return nil;
-    return fromWebPageProxy(*page);
+    auto page = _download->originatingPage();
+    return page ? page->cocoaView().autorelease() : nil;
 }
 
 - (id <WKDownloadDelegate>)delegate
@@ -226,13 +226,9 @@ private:
 
         downloadProgress.cancellable = YES;
         downloadProgress.cancellationHandler = makeBlockPtr([weakSelf = WeakObjCPtr<WKDownload> { self }] () mutable {
-            if (!RunLoop::isMain()) {
-                RunLoop::main().dispatch([weakSelf = WTFMove(weakSelf)] {
-                    [weakSelf cancel:nil];
-                });
-                return;
-            }
-            [weakSelf cancel:nil];
+            ensureOnMainRunLoop([weakSelf = WTFMove(weakSelf)] {
+                [weakSelf cancel:nil];
+            });
         }).get();
 
         _download->setProgress(downloadProgress);
@@ -242,6 +238,8 @@ private:
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKDownload.class, self))
+        return;
     _download->~DownloadProxy();
     [super dealloc];
 }

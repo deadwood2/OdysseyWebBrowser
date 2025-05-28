@@ -32,8 +32,7 @@
 #include "WebPageProxy.h"
 #include <WebCore/BackingStoreBackendCairoImpl.h>
 #include <WebCore/CairoUtilities.h>
-#include <WebCore/GraphicsContextImplCairo.h>
-#include <WebCore/PlatformContextCairo.h>
+#include <WebCore/GraphicsContextCairo.h>
 #include <WebCore/RefPtrCairo.h>
 #include <cairo.h>
 
@@ -83,8 +82,7 @@ void BackingStore::incorporateUpdate(ShareableBitmap* bitmap, const UpdateInfo& 
 
     // Paint all update rects.
     IntPoint updateRectLocation = updateInfo.updateRectBounds.location();
-    RefPtr<cairo_t> cairoContext = adoptRef(cairo_create(m_backend->surface()));
-    GraphicsContext graphicsContext(GraphicsContextImplCairo::createFactory(cairoContext.get()));
+    GraphicsContextCairo graphicsContext(m_backend->surface());
 
     // When m_webPageProxy.drawsBackground() is false, bitmap contains transparent parts as a background of the webpage.
     // For such case, bitmap must be drawn using CompositeOperator::Copy to overwrite the existing surface.

@@ -34,18 +34,19 @@
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKWebViewConfiguration.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
+#import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
 
 static bool hasReceivedCorrectCaptureState = false;
 
 @interface MediaStreamTrackDetachedUIDelegate : UserMediaCaptureUIDelegate
-- (void)_webView:(WKWebView *)webView mediaCaptureStateDidChange:(_WKMediaCaptureState)state;
+- (void)_webView:(WKWebView *)webView mediaCaptureStateDidChange:(_WKMediaCaptureStateDeprecated)state;
 @end
 
 @implementation MediaStreamTrackDetachedUIDelegate
-- (void)_webView:(WKWebView *)webView mediaCaptureStateDidChange:(_WKMediaCaptureState)state
+- (void)_webView:(WKWebView *)webView mediaCaptureStateDidChange:(_WKMediaCaptureStateDeprecated)state
 {
-    if (state == _WKMediaCaptureStateActiveMicrophone)
+    if (state == _WKMediaCaptureStateDeprecatedActiveMicrophone)
         hasReceivedCorrectCaptureState = true;
 }
 @end

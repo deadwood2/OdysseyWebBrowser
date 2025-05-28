@@ -40,9 +40,10 @@ from webkitcorepy import log
 from webkitcorepy.version import Version
 
 if sys.version_info > (3, 0):
+    from html.parser import HTMLParser
+    from importlib import machinery as importmachinery
     from urllib.request import urlopen
     from urllib.error import URLError
-    from html.parser import HTMLParser
 else:
     from urllib2 import urlopen, URLError
     from HTMLParser import HTMLParser
@@ -96,18 +97,30 @@ class Package(object):
 
         def download(self):
             AutoInstall._verify_index()
-            response = AutoInstall._request(self.link)
-            try:
-                if response.code != 200:
-                    raise IOError('Failed to retrieve Python module with response code {}'.format(response.code))
-                with open(self.path, 'wb') as file:
-                    while True:
-                        data = response.read(2 ** 13)
-                        if not data:
-                            break
-                        file.write(data)
-            finally:
-                response.close()
+            count = 0
+            while count <= (AutoInstall.times_to_retry or 0):
+                response = None
+                try:
+                    response = AutoInstall._request(self.link)
+                    if not response or response.code != 200:
+                        raise IOError('Failed to retrieve Python module with response code {}'.format(response.code))
+                    with open(self.path, 'wb') as file:
+                        while True:
+                            data = response.read(2 ** 13)
+                            if not data:
+                                break
+                            file.write(data)
+                    return
+                except (IOError, URLError) as e:
+                    if count > (AutoInstall.times_to_retry or 0):
+                        raise
+                    else:
+                        AutoInstall.log(str(e))
+                        AutoInstall.log('Failed to download {}, retrying'.format(self.name))
+                finally:
+                    if response:
+                        response.close()
+                    count += 1
 
         def unpack(self, target):
             if not os.path.isfile(self.path):
@@ -138,6 +151,18 @@ class Package(object):
         self.wheel = wheel
         self.aliases = aliases or []
         self.implicit_deps = implicit_deps or []
+
+    def __repr__(self):
+        return ("Package("
+                "import_name={self.name!r}, "
+                "version={self.version!r}, "
+                "pypi_name={self.pypi_name!r}, "
+                "slow_install={self.slow_install!r}, "
+                "wheel={self.wheel!r}, "
+                "aliases={self.aliases!r}, "
+                "implicit_deps={self.implicit_deps!r}"
+                ")"
+                ).format(self=self)
 
     @property
     def location(self):
@@ -232,9 +257,10 @@ class Package(object):
         if self.is_cached():
             return
 
-        # Make sure that setuptools and wheel are installed, since setup.py relies on it
-        if self.name not in ['setuptools', 'wheel']:
+        # Make sure that setuptools, setuptools_scm and wheel are installed, since setup.py relies on it
+        if self.name not in ['setuptools', 'setuptools_scm', 'wheel']:
             AutoInstall.install('setuptools')
+            AutoInstall.install('setuptools_scm')
             AutoInstall.install('wheel')
 
         # In some cases a package may check if another package is installed without actually
@@ -268,37 +294,45 @@ class Package(object):
                 if self.slow_install:
                     AutoInstall.log('{} is known to be slow to install'.format(archive))
 
-                with open(os.devnull, 'w') as devnull:
-                    subprocess.check_call(
-                        [
-                            sys.executable,
-                            os.path.join(candidate, 'setup.py'),
-                            'install',
-                            '--home={}'.format(install_location),
-                            '--root=/',
-                            '--prefix=',
-                            '--install-lib={}'.format(install_location),
-                            '--install-scripts={}'.format(os.path.join(install_location, 'bin')),
-                            '--install-data={}'.format(os.path.join(install_location, 'data')),
-                            '--install-headers={}'.format(os.path.join(install_location, 'headers')),
-                        ],
-                        cwd=candidate,
-                        env=dict(
-                            HTTP_PROXY=os.environ.get('HTTP_PROXY', ''),
-                            HTTPS_PROXY=os.environ.get('HTTPS_PROXY', ''),
-                            PATH=os.environ.get('PATH', ''),
-                            PATHEXT=os.environ.get('PATHEXT', ''),
-                            PYTHONPATH=install_location,
-                            SYSTEMROOT=os.environ.get('SYSTEMROOT', ''),
-                        ) if not sys.platform.startswith('win')
-                        else dict(
-                            # Windows setuptools needs environment from vcvars
-                            os.environ,
-                            PYTHONPATH=install_location,
-                        ),
-                        stdout=devnull,
-                        stderr=devnull,
-                    )
+                log_location = os.path.join(temp_location, 'log.txt')
+                try:
+                    with open(log_location, 'w') as setup_log:
+                        subprocess.check_call(
+                            [
+                                os.environ.get('AUTOINSTALL_PYTHON_EXECUTABLE', sys.executable),
+                                os.path.join(candidate, 'setup.py'),
+                                'install',
+                                '--home={}'.format(install_location),
+                                '--root=/',
+                                '--prefix=',
+                                '--install-lib={}'.format(install_location),
+                                '--install-scripts={}'.format(os.path.join(install_location, 'bin')),
+                                '--install-data={}'.format(os.path.join(install_location, 'data')),
+                                '--install-headers={}'.format(os.path.join(install_location, 'headers')),
+                            ],
+                            cwd=candidate,
+                            env=dict(
+                                HTTP_PROXY=os.environ.get('HTTP_PROXY', ''),
+                                HTTPS_PROXY=os.environ.get('HTTPS_PROXY', ''),
+                                PATH=os.environ.get('PATH', ''),
+                                PATHEXT=os.environ.get('PATHEXT', ''),
+                                PYTHONPATH=install_location,
+                                SYSTEMROOT=os.environ.get('SYSTEMROOT', ''),
+                            ) if not sys.platform.startswith('win')
+                            else dict(
+                                # Windows setuptools needs environment from vcvars
+                                os.environ,
+                                PYTHONPATH=install_location,
+                            ),
+                            stdout=setup_log,
+                            stderr=setup_log,
+                        )
+
+                except subprocess.CalledProcessError:
+                    with open(log_location, 'r') as setup_log:
+                        for line in setup_log.readlines():
+                            sys.stderr.write(line)
+                    raise
 
                 # If we have a package inside another package (like zope.interface), the top-level package needs an __init__.py
                 location = os.path.join(AutoInstall.directory, self.name.split('.')[0])
@@ -357,6 +391,7 @@ class AutoInstall(object):
     directory = None
     index = _default_pypi_index()
     timeout = 30
+    times_to_retry = 1
     version = Version(sys.version_info[0], sys.version_info[1], sys.version_info[2])
     packages = defaultdict(list)
     manifest = {}
@@ -497,22 +532,22 @@ class AutoInstall(object):
 
     @classmethod
     def register(cls, package, local=False):
-        if isinstance(package, str):
-            if cls.packages.get(package):
-                return cls.packages[package]
-            else:
-                package = Package(package)
-        elif isinstance(package, Package):
+        if isinstance(package, Package):
             if cls.packages.get(package.name):
                 if cls.packages.get(package.name)[0].version != package.version:
                     raise ValueError('Registered version of {} uses {}, but requested version uses {}'.format(package.name, cls.packages.get(package.name)[0].version, package.version))
                 return cls.packages.get(package.name)
         else:
-            raise ValueError('Expected package to be str or Package, not {}'.format(type(package)))
+            raise ValueError('Expected package to be Package, not {}'.format(type(package)))
+
+        if not isinstance(local, bool):
+            raise ValueError('Expected local to be bool, not {}'.format(type(local)))
 
         # If inside the WebKit checkout, a local library is likely checked in at Tools/Scripts/libraries.
         # When we detect such a library, we should not register it to be auto-installed
-        if local and package.name != 'autoinstalled':
+        if local:
+            if package.name == 'autoinstalled':
+                raise ValueError("local package name 'autoinstalled' is forbidden")
             libraries = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             checkout_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(libraries))))
             for candidate in [
@@ -525,6 +560,12 @@ class AutoInstall(object):
                     continue
                 sys.path.insert(0, candidate)
                 return [package]
+            else:
+                raise ValueError("unable find local package {}".format(package.name))
+        assert not local  # this should follow from the above
+
+        if package.version is None:
+            raise ValueError("trying to install non-local package {} with unspecified version".format(package.name))
 
         for alias in package.aliases:
             cls.packages[alias].append(package)
@@ -533,7 +574,13 @@ class AutoInstall(object):
 
     @classmethod
     def install(cls, package):
-        return all([to_install.install() for to_install in cls.register(package)])
+        if isinstance(package, str):
+            # we want this to throw if it hasn't been previously registered; in the case
+            # that this is being called from cls.find_module it should always exist
+            packages = cls.packages[package]
+        else:
+            packages = cls.register(package)
+        return all([to_install.install() for to_install in packages])
 
     @classmethod
     def install_everything(cls):
@@ -545,11 +592,31 @@ class AutoInstall(object):
     @classmethod
     def find_module(cls, fullname, path=None):
         if not cls.enabled() or path is not None:
-            return
+            return None
 
         name = fullname.split('.')[0]
-        if cls.packages.get(name):
-            cls.install(name)
+        if not cls.packages.get(name) or not cls.directory:
+            return None
+
+        cls.install(name)
+        if sys.version_info < (3, 0):
+            # Python 2 works fine with the default module finder, once we've installed the module in question
+            return None
+
+        path = cls.directory
+        for part in fullname.split('.'):
+            path = os.path.join(path, part)
+            for ext in ('', '.py', '.pyc', '.py3', '.pyo'):
+                candidate = '{}{}'.format(path, ext)
+                if os.path.exists(candidate):
+                    path = candidate
+                    break
+            if not os.path.isdir(path):
+                break
+        if os.path.isdir(path):
+            path = os.path.join(path, '__init__.py')
+
+        return importmachinery.SourceFileLoader(name, path)
 
     @classmethod
     def tags(cls):

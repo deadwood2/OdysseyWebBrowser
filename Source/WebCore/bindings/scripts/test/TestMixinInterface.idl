@@ -38,12 +38,12 @@
     attribute Node mixinNodeAttribute;
 
     undefined mixinOperation();
-    [CallWith=ScriptExecutionContext, MayThrowException] TestObj mixinComplexOperation(DOMString strArg, TestObj objArg);
+    [CallWith=ScriptExecutionContext] TestObj mixinComplexOperation(DOMString strArg, TestObj objArg);
     [Custom] undefined mixinCustomOperation();
     [Conditional=Condition11] undefined mixinConditionalOperation();
     [EnabledBySetting=TestSetting] undefined mixinSettingsConditionalOperation();
     [ResultField=nodes] sequence<Node> mixinResultFieldOperation();
 
     const unsigned short MIXIN_CONSTANT = 1;
-    [Reflect=CONST_IMPL] const unsigned short MIXIN_REFLECTED_CONSTANT = 2;
+    [ImplementedAs=CONST_IMPL] const unsigned short MIXIN_REFLECTED_CONSTANT = 2;
 };

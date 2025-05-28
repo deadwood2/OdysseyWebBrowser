@@ -66,7 +66,7 @@ GCC_NO_COMMON_BLOCKS = YES;
 GCC_OBJC_CALL_CXX_CDTORS = YES;
 GCC_PRECOMPILE_PREFIX_HEADER = YES;
 ENABLE_STRICT_OBJC_MSGSEND = YES;
-GCC_PREPROCESSOR_DEFINITIONS = $(DEBUG_DEFINES) $(inherited);
+GCC_PREPROCESSOR_DEFINITIONS = $(DEBUG_DEFINES) $(inherited) PAS_BMALLOC;
 GCC_STRICT_ALIASING = YES;
 GCC_THREADSAFE_STATICS = NO;
 GCC_TREAT_WARNINGS_AS_ERRORS = YES;
@@ -94,14 +94,13 @@ GCC_WARN_UNINITIALIZED_AUTOS = YES;
 GCC_WARN_UNUSED_FUNCTION = YES;
 GCC_WARN_UNUSED_VARIABLE = YES;
 PREBINDING = NO;
-WARNING_CFLAGS = -Wall -Wextra -Wcast-qual -Wchar-subscripts -Wconditional-uninitialized -Wextra-tokens -Wformat=2 -Winit-self -Wmissing-format-attribute -Wmissing-noreturn -Wpacked -Wpointer-arith -Wredundant-decls -Wundef -Wwrite-strings -Wexit-time-destructors -Wglobal-constructors -Wtautological-compare -Wimplicit-fallthrough -Wvla -Wliteral-conversion;
+WARNING_CFLAGS = -Wall -Wextra -Wcast-qual -Wchar-subscripts -Wconditional-uninitialized -Wextra-tokens -Wformat=2 -Winit-self -Wmissing-format-attribute -Wmissing-noreturn -Wpacked -Wpointer-arith -Wredundant-decls -Wundef -Wwrite-strings -Wexit-time-destructors -Wglobal-constructors -Wtautological-compare -Wimplicit-fallthrough -Wvla -Wliteral-conversion -Wthread-safety -Wno-typedef-redefinition;
 
 TARGET_MACOS_LEGACY_VERSION_IDENTIFIER = $(TARGET_MACOS_LEGACY_VERSION_IDENTIFIER_$(MACOSX_DEPLOYMENT_TARGET:base))
 TARGET_MACOS_LEGACY_VERSION_IDENTIFIER_10 = 10$(MACOSX_DEPLOYMENT_TARGET:suffix:identifier)
 
 TARGET_MAC_OS_X_VERSION_MAJOR = $(TARGET_MAC_OS_X_VERSION_MAJOR_$(TARGET_MACOS_LEGACY_VERSION_IDENTIFIER))
 TARGET_MAC_OS_X_VERSION_MAJOR_ = $(MACOSX_DEPLOYMENT_TARGET:base:base)0000
-TARGET_MAC_OS_X_VERSION_MAJOR_10_13 = 101300
 TARGET_MAC_OS_X_VERSION_MAJOR_10_14 = 101400
 TARGET_MAC_OS_X_VERSION_MAJOR_10_15 = 101500
 

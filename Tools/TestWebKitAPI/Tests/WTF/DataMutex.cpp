@@ -30,8 +30,6 @@
 #define ENABLE_DATA_MUTEX_CHECKS 1
 #include <wtf/DataMutex.h>
 
-using namespace WTF;
-
 namespace TestWebKitAPI {
 
 struct MyStructure {
@@ -42,9 +40,9 @@ TEST(WTF_DataMutex, TakingTheMutex)
 {
     DataMutex<MyStructure> myDataMutex;
 
-    OwnerAwareLock* mutex;
+    Lock* mutex;
     {
-        DataMutex<MyStructure>::LockedWrapper wrapper(myDataMutex);
+        DataMutexLocker wrapper { myDataMutex };
         mutex = &wrapper.mutex();
         ASSERT_TRUE(mutex->isLocked());
         wrapper->number = 5;
@@ -57,16 +55,18 @@ TEST(WTF_DataMutex, TakingTheMutex)
     ASSERT_FALSE(mutex->isLocked());
 
     {
-        DataMutex<MyStructure>::LockedWrapper wrapper(myDataMutex);
+        DataMutexLocker wrapper { myDataMutex };
         EXPECT_EQ(wrapper->number, 5);
     }
 }
 
+// FIXME: Tests using ASSERT_DEATH currently panic on playstation
+#if !PLATFORM(PLAYSTATION)
 TEST(WTF_DataMutex, RunUnlockedIllegalAccessDeathTest)
 {
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     DataMutex<MyStructure> myDataMutex;
-    DataMutex<MyStructure>::LockedWrapper wrapper(myDataMutex);
+    DataMutexLocker wrapper { myDataMutex };
     wrapper->number = 5;
 
     ASSERT_DEATH(wrapper.runUnlocked([&]() {
@@ -78,8 +78,9 @@ TEST(WTF_DataMutex, DoubleLockDeathTest)
 {
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     DataMutex<MyStructure> myDataMutex;
-    DataMutex<MyStructure>::LockedWrapper wrapper1(myDataMutex);
-    ASSERT_DEATH(DataMutex<MyStructure>::LockedWrapper wrapper2(myDataMutex), "");
+    DataMutexLocker wrapper1 { myDataMutex };
+    ASSERT_DEATH(DataMutexLocker wrapper2 { myDataMutex }, "");
 }
+#endif
 
 } // namespace TestWebKitAPI

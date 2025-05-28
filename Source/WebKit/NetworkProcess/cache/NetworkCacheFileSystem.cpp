@@ -55,28 +55,12 @@ namespace NetworkCache {
 
 void traverseDirectory(const String& path, const Function<void (const String&, DirectoryEntryType)>& function)
 {
-    auto entries = FileSystem::listDirectory(path, "*"_s);
+    auto entries = FileSystem::listDirectory(path);
     for (auto& entry : entries) {
-        auto type = FileSystem::fileIsDirectory(entry, FileSystem::ShouldFollowSymbolicLinks::No) ? DirectoryEntryType::Directory : DirectoryEntryType::File;
-        function(FileSystem::pathGetFileName(entry), type);
+        auto entryPath = FileSystem::pathByAppendingComponent(path, entry);
+        auto type = FileSystem::fileType(entryPath) == FileSystem::FileType::Directory ? DirectoryEntryType::Directory : DirectoryEntryType::File;
+        function(entry, type);
     }
-}
-
-void deleteDirectoryRecursively(const String& path)
-{
-    traverseDirectory(path, [&path](const String& name, DirectoryEntryType type) {
-        String entryPath = FileSystem::pathByAppendingComponent(path, name);
-        switch (type) {
-        case DirectoryEntryType::File:
-            FileSystem::deleteFile(entryPath);
-            break;
-        case DirectoryEntryType::Directory:
-            deleteDirectoryRecursively(entryPath);
-            break;
-        // This doesn't follow symlinks.
-        }
-    });
-    FileSystem::deleteEmptyDirectory(path);
 }
 
 FileTimes fileTimes(const String& path)
@@ -98,9 +82,9 @@ FileTimes fileTimes(const String& path)
     return { WallTime::fromRawSeconds(g_ascii_strtoull(birthtimeString, nullptr, 10)),
         WallTime::fromRawSeconds(g_file_info_get_attribute_uint64(fileInfo.get(), "time::modified")) };
 #elif OS(WINDOWS)
-    auto createTime = FileSystem::getFileCreationTime(path);
-    auto modifyTime = FileSystem::getFileModificationTime(path);
-    return { createTime.valueOr(WallTime()), modifyTime.valueOr(WallTime()) };
+    auto createTime = FileSystem::fileCreationTime(path);
+    auto modifyTime = FileSystem::fileModificationTime(path);
+    return { createTime.value_or(WallTime()), modifyTime.value_or(WallTime()) };
 #endif
 }
 
@@ -112,18 +96,7 @@ void updateFileModificationTimeIfNeeded(const String& path)
         if (WallTime::now() - times.modification < 1_h)
             return;
     }
-#if !OS(WINDOWS)
-    // This really updates both the access time and the modification time.
-    utimes(FileSystem::fileSystemRepresentation(path).data(), nullptr);
-#else
-    FILETIME time;
-    GetSystemTimeAsFileTime(&time);
-    auto file = CreateFile(path.wideCharacters().data(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE)
-        return;
-    SetFileTime(file, &time, &time, &time);
-    CloseHandle(file);
-#endif
+    FileSystem::updateFileModificationTime(path);
 }
 
 }

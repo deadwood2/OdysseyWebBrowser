@@ -11,6 +11,7 @@ list(APPEND WTF_PUBLIC_HEADERS
     WeakObjCPtr.h
 
     cf/CFURLExtras.h
+    cf/SpanCF.h
     cf/TypeCastsCF.h
 
     cocoa/CrashReporter.h
@@ -18,6 +19,7 @@ list(APPEND WTF_PUBLIC_HEADERS
     cocoa/NSURLExtras.h
     cocoa/RuntimeApplicationChecksCocoa.h
     cocoa/SoftLinking.h
+    cocoa/SpanCocoa.h
     cocoa/VectorCocoa.h
 
     darwin/WeakLinking.h
@@ -41,11 +43,13 @@ list(APPEND WTF_PUBLIC_HEADERS
 
     spi/mac/MetadataSPI.h
 
+    text/cf/StringConcatenateCF.h
     text/cf/TextBreakIteratorCF.h
 )
 
 list(APPEND WTF_SOURCES
     BlockObjCExceptions.mm
+    TranslatedProcess.cpp
 
     cf/CFURLExtras.cpp
     cf/FileSystemCF.cpp
@@ -60,7 +64,7 @@ list(APPEND WTF_SOURCES
     cocoa/Entitlements.mm
     cocoa/FileSystemCocoa.mm
     cocoa/LanguageCocoa.mm
-    cocoa/MachSemaphore.cpp
+    cocoa/LoggingCocoa.mm
     cocoa/MachSendRight.cpp
     cocoa/MainThreadCocoa.mm
     cocoa/MemoryFootprintCocoa.cpp
@@ -106,6 +110,3 @@ list(APPEND WTF_SOURCES
     ${WTF_DERIVED_SOURCES_DIR}/mach_excServer.c
     ${WTF_DERIVED_SOURCES_DIR}/mach_excUser.c
 )
-
-WEBKIT_CREATE_FORWARDING_HEADERS(WebKitLegacy DIRECTORIES ${WebKitLegacy_FORWARDING_HEADERS_DIRECTORIES} FILES ${WebKitLegacy_FORWARDING_HEADERS_FILES})
-WEBKIT_CREATE_FORWARDING_HEADERS(WebKit DIRECTORIES ${FORWARDING_HEADERS_DIR}/WebKitLegacy)

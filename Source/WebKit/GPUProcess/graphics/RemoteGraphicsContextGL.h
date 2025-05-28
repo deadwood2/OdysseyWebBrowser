@@ -31,14 +31,20 @@
 #include "GPUConnectionToWebProcess.h"
 #include "GraphicsContextGLIdentifier.h"
 #include "RemoteRenderingBackend.h"
+#include "ScopedWebGLRenderingResourcesRequest.h"
 #include "StreamServerConnection.h"
 #include <WebCore/ExtensionsGL.h>
 #include <WebCore/GraphicsContextGLOpenGL.h>
 #include <WebCore/NotImplemented.h>
+#include <wtf/ThreadAssertions.h>
 #include <wtf/WeakPtr.h>
 
 #if PLATFORM(COCOA)
 #include <WebCore/GraphicsContextGLIOSurfaceSwapChain.h>
+#endif
+
+#if PLATFORM(MAC)
+#include <CoreGraphics/CGDisplayConfiguration.h>
 #endif
 
 #if PLATFORM(COCOA)
@@ -61,6 +67,9 @@ public:
 
     // IPC::StreamServerConnection<RemoteGraphicsContextGL> template contract implementation.
     void didReceiveStreamMessage(IPC::StreamServerConnectionBase&, IPC::Decoder&);
+#if PLATFORM(MAC)
+    void displayWasReconfigured();
+#endif
 
 protected:
     RemoteGraphicsContextGL(GPUConnectionToWebProcess&, GraphicsContextGLIdentifier, RemoteRenderingBackend&, IPC::StreamConnectionBuffer&&);
@@ -92,17 +101,22 @@ protected:
     void paintRenderingResultsToCanvas(WebCore::RenderingResourceIdentifier, CompletionHandler<void()>&&);
     void paintCompositedResultsToCanvas(WebCore::RenderingResourceIdentifier, CompletionHandler<void()>&&);
     void copyTextureFromMedia(WebCore::MediaPlayerIdentifier, uint32_t texture, uint32_t target, int32_t level, uint32_t internalFormat, uint32_t format, uint32_t type, bool premultiplyAlpha, bool flipY, CompletionHandler<void(bool)>&&);
+    void simulateEventForTesting(WebCore::GraphicsContextGL::SimulatedEventForTesting);
 
 #include "RemoteGraphicsContextGLFunctionsGenerated.h" // NOLINT
 
-    void paintImageDataToImageBuffer(RefPtr<WebCore::ImageData>&&, WebCore::RenderingResourceIdentifier, CompletionHandler<void()>&&);
+    void paintPixelBufferToImageBuffer(std::optional<WebCore::PixelBuffer>&&, WebCore::RenderingResourceIdentifier, CompletionHandler<void()>&&);
 
     WeakPtr<GPUConnectionToWebProcess> m_gpuConnectionToWebProcess;
     RefPtr<IPC::StreamServerConnection<RemoteGraphicsContextGL>> m_streamConnection;
-    RefPtr<WebCore::GraphicsContextGLOpenGL> m_context;
+    RefPtr<WebCore::GraphicsContextGLOpenGL> m_context WTF_GUARDED_BY_LOCK(m_streamThread);
     GraphicsContextGLIdentifier m_graphicsContextGLIdentifier;
     Ref<RemoteRenderingBackend> m_renderingBackend;
+    ScopedWebGLRenderingResourcesRequest m_renderingResourcesRequest;
+    NO_UNIQUE_ADDRESS ThreadAssertion m_streamThread;
 };
+
+IPC::StreamConnectionWorkQueue& remoteGraphicsContextGLStreamWorkQueue();
 
 } // namespace WebKit
 

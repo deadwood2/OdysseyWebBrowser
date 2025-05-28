@@ -28,6 +28,7 @@
 #include "JSDOMConstructorNotConstructable.h"
 #include "JSDOMConvertStrings.h"
 #include "JSDOMExceptionHandling.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMWrapperCache.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreJSClientData.h"
@@ -83,6 +84,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestNamedDeleterThrowingExceptionPrototype
 
 using JSTestNamedDeleterThrowingExceptionDOMConstructor = JSDOMConstructorNotConstructable<JSTestNamedDeleterThrowingException>;
 
+template<> const ClassInfo JSTestNamedDeleterThrowingExceptionDOMConstructor::s_info = { "TestNamedDeleterThrowingException", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestNamedDeleterThrowingExceptionDOMConstructor) };
+
 template<> JSValue JSTestNamedDeleterThrowingExceptionDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -95,8 +98,6 @@ template<> void JSTestNamedDeleterThrowingExceptionDOMConstructor::initializePro
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestNamedDeleterThrowingException"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestNamedDeleterThrowingExceptionDOMConstructor::s_info = { "TestNamedDeleterThrowingException", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestNamedDeleterThrowingExceptionDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -142,7 +143,7 @@ JSObject* JSTestNamedDeleterThrowingException::prototype(VM& vm, JSDOMGlobalObje
 
 JSValue JSTestNamedDeleterThrowingException::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestNamedDeleterThrowingExceptionDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestNamedDeleterThrowingExceptionDOMConstructor, DOMConstructorID::TestNamedDeleterThrowingException>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 void JSTestNamedDeleterThrowingException::destroy(JSC::JSCell* cell)
@@ -153,17 +154,16 @@ void JSTestNamedDeleterThrowingException::destroy(JSC::JSCell* cell)
 
 bool JSTestNamedDeleterThrowingException::getOwnPropertySlot(JSObject* object, JSGlobalObject* lexicalGlobalObject, PropertyName propertyName, PropertySlot& slot)
 {
+    auto throwScope = DECLARE_THROW_SCOPE(JSC::getVM(lexicalGlobalObject));
     auto* thisObject = jsCast<JSTestNamedDeleterThrowingException*>(object);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     using GetterIDLType = IDLDOMString;
-    auto getterFunctor = [] (auto& thisObject, auto propertyName) -> Optional<typename GetterIDLType::ImplementationType> {
-        auto result = thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
-        if (!GetterIDLType::isNullValue(result))
-            return typename GetterIDLType::ImplementationType { GetterIDLType::extractValueFromNullable(result) };
-        return WTF::nullopt;
-    };
+    auto getterFunctor = visibleNamedPropertyItemAccessorFunctor<GetterIDLType, JSTestNamedDeleterThrowingException>([] (JSTestNamedDeleterThrowingException& thisObject, PropertyName propertyName) -> decltype(auto) {
+        return thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
+    });
     if (auto namedProperty = accessVisibleNamedProperty<LegacyOverrideBuiltIns::No>(*lexicalGlobalObject, *thisObject, propertyName, getterFunctor)) {
-        auto value = toJS<IDLDOMString>(*lexicalGlobalObject, WTFMove(namedProperty.value()));
+        auto value = toJS<IDLDOMString>(*lexicalGlobalObject, throwScope, WTFMove(namedProperty.value()));
+        RETURN_IF_EXCEPTION(throwScope, false);
         slot.setValue(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly), value);
         return true;
     }
@@ -173,18 +173,17 @@ bool JSTestNamedDeleterThrowingException::getOwnPropertySlot(JSObject* object, J
 bool JSTestNamedDeleterThrowingException::getOwnPropertySlotByIndex(JSObject* object, JSGlobalObject* lexicalGlobalObject, unsigned index, PropertySlot& slot)
 {
     VM& vm = JSC::getVM(lexicalGlobalObject);
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     auto* thisObject = jsCast<JSTestNamedDeleterThrowingException*>(object);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     auto propertyName = Identifier::from(vm, index);
     using GetterIDLType = IDLDOMString;
-    auto getterFunctor = [] (auto& thisObject, auto propertyName) -> Optional<typename GetterIDLType::ImplementationType> {
-        auto result = thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
-        if (!GetterIDLType::isNullValue(result))
-            return typename GetterIDLType::ImplementationType { GetterIDLType::extractValueFromNullable(result) };
-        return WTF::nullopt;
-    };
+    auto getterFunctor = visibleNamedPropertyItemAccessorFunctor<GetterIDLType, JSTestNamedDeleterThrowingException>([] (JSTestNamedDeleterThrowingException& thisObject, PropertyName propertyName) -> decltype(auto) {
+        return thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
+    });
     if (auto namedProperty = accessVisibleNamedProperty<LegacyOverrideBuiltIns::No>(*lexicalGlobalObject, *thisObject, propertyName, getterFunctor)) {
-        auto value = toJS<IDLDOMString>(*lexicalGlobalObject, WTFMove(namedProperty.value()));
+        auto value = toJS<IDLDOMString>(*lexicalGlobalObject, throwScope, WTFMove(namedProperty.value()));
+        RETURN_IF_EXCEPTION(throwScope, false);
         slot.setValue(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly), value);
         return true;
     }

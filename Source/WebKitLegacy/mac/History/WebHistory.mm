@@ -32,10 +32,8 @@
 #import "WebHistoryItemInternal.h"
 #import "WebKitLogging.h"
 #import "WebNSURLExtras.h"
-#import "WebTypesInternal.h"
 #import "WebVisitedLinkStore.h"
 #import <WebCore/HistoryItem.h>
-#import <WebCore/PageGroup.h>
 #import <pal/spi/cocoa/NSCalendarDateSPI.h>
 
 #if PLATFORM(IOS_FAMILY)

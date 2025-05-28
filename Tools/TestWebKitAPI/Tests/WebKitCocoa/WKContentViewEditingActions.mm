@@ -27,11 +27,14 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#import "InstanceMethodSwizzler.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
 #import "UIKitSPI.h"
+#import "WKWebViewConfigurationExtras.h"
+#import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WebKit.h>
 #import <wtf/RetainPtr.h>
 
@@ -71,4 +74,67 @@ TEST(WebKit, InvokeShareWithoutSelection)
     [webView waitForNextPresentationUpdate];
 }
 
-#endif
+#if ENABLE(IMAGE_ANALYSIS)
+
+#if ENABLE(APP_HIGHLIGHTS)
+
+TEST(WebKit, AppHighlightsInImageOverlays)
+{
+    auto configuration = retainPtr([WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES]);
+    [configuration _setAppHighlightsEnabled:YES];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    [webView synchronouslyLoadTestPageNamed:@"simple-image-overlay"];
+    [webView stringByEvaluatingJavaScript:@"selectImageOverlay()"];
+    [webView waitForNextPresentationUpdate];
+
+    auto createHighlightForCurrentQuickNoteWithRangeSelector = NSSelectorFromString(@"createHighlightForCurrentQuickNoteWithRange:");
+    auto createHighlightForNewQuickNoteWithRangeSelector = NSSelectorFromString(@"createHighlightForNewQuickNoteWithRange:");
+
+    auto contentView = [webView textInputContentView];
+    EXPECT_NULL([contentView targetForAction:createHighlightForCurrentQuickNoteWithRangeSelector withSender:nil]);
+    EXPECT_NULL([contentView targetForAction:createHighlightForNewQuickNoteWithRangeSelector withSender:nil]);
+
+    [webView synchronouslyLoadTestPageNamed:@"simple"];
+    [webView selectAll:nil];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_EQ([contentView targetForAction:createHighlightForCurrentQuickNoteWithRangeSelector withSender:nil], contentView);
+    EXPECT_EQ([contentView targetForAction:createHighlightForNewQuickNoteWithRangeSelector withSender:nil], contentView);
+}
+
+#endif // ENABLE(APP_HIGHLIGHTS)
+
+static BOOL gCanPerformActionWithSenderResult = NO;
+static BOOL canPerformActionWithSender(id /* instance */, SEL, SEL /* action */, id /* sender */)
+{
+    return gCanPerformActionWithSenderResult;
+}
+
+TEST(WebKit, CaptureTextFromCamera)
+{
+    gCanPerformActionWithSenderResult = YES;
+    InstanceMethodSwizzler swizzler { UIResponder.class, @selector(canPerformAction:withSender:), reinterpret_cast<IMP>(canPerformActionWithSender) };
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    auto contentView = [webView textInputContentView];
+
+    [webView synchronouslyLoadHTMLString:@"<input value='foo' autofocus>"];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_EQ([webView targetForAction:@selector(captureTextFromCamera:) withSender:nil], contentView);
+    EXPECT_TRUE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+
+    [webView selectAll:nil];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+
+    [webView collapseToEnd];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_TRUE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+
+    gCanPerformActionWithSenderResult = NO;
+    EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+}
+
+#endif // ENABLE(IMAGE_ANALYSIS)
+
+#endif // PLATFORM(IOS_FAMILY)

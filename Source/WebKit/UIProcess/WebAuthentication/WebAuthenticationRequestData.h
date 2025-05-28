@@ -50,7 +50,7 @@ struct WebAuthenticationRequestData {
     WeakPtr<WebPageProxy> page;
     WebAuthenticationPanelResult panelResult { WebAuthenticationPanelResult::Unavailable };
     RefPtr<API::WebAuthenticationPanel> panel;
-    WTF::Optional<WebCore::GlobalFrameIdentifier> frameID;
+    std::optional<WebCore::GlobalFrameIdentifier> frameID;
     WebKit::FrameInfoData frameInfo;
 
     bool processingUserGesture;
@@ -59,6 +59,7 @@ struct WebAuthenticationRequestData {
 };
 
 WebCore::ClientDataType getClientDataType(const Variant<WebCore::PublicKeyCredentialCreationOptions, WebCore::PublicKeyCredentialRequestOptions>&);
+WebCore::UserVerificationRequirement getUserVerificationRequirement(const Variant<WebCore::PublicKeyCredentialCreationOptions, WebCore::PublicKeyCredentialRequestOptions>&);
 
 } // namespace WebKit
 

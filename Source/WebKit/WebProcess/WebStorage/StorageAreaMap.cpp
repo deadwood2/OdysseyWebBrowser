@@ -81,7 +81,7 @@ String StorageAreaMap::item(const String& key)
 void StorageAreaMap::setItem(Frame* sourceFrame, StorageAreaImpl* sourceArea, const String& key, const String& value, bool& quotaException)
 {
     auto& map = ensureMap();
-    ASSERT(map.hasOneRef());
+    ASSERT(!map.isShared());
 
     String oldValue;
     quotaException = false;
@@ -103,7 +103,7 @@ void StorageAreaMap::setItem(Frame* sourceFrame, StorageAreaImpl* sourceArea, co
 void StorageAreaMap::removeItem(WebCore::Frame* sourceFrame, StorageAreaImpl* sourceArea, const String& key)
 {
     auto& map = ensureMap();
-    ASSERT(map.hasOneRef());
+    ASSERT(!map.isShared());
 
     String oldValue;
     map.removeItem(key, oldValue);
@@ -126,7 +126,7 @@ void StorageAreaMap::clear(WebCore::Frame* sourceFrame, StorageAreaImpl* sourceA
     resetValues();
 
     m_hasPendingClear = true;
-    m_map = StorageMap::create(m_quotaInBytes);
+    m_map = makeUnique<StorageMap>(m_quotaInBytes);
 
     if (m_mapID)
         WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::StorageManagerSet::Clear(*m_mapID, sourceArea->identifier(), m_currentSeed, sourceFrame->document()->url().string()), 0);
@@ -153,7 +153,7 @@ StorageMap& StorageAreaMap::ensureMap()
     connect();
 
     if (!m_map) {
-        m_map = StorageMap::create(m_quotaInBytes);
+        m_map = makeUnique<StorageMap>(m_quotaInBytes);
 
         if (m_mapID) {
             // We need to use a IPC::UnboundedSynchronousIPCScope to prevent UIProcess hangs in case we receive a synchronous IPC from the UIProcess while we're waiting for a response
@@ -218,7 +218,7 @@ bool StorageAreaMap::shouldApplyChangeForKey(const String& key) const
 
 void StorageAreaMap::applyChange(const String& key, const String& newValue)
 {
-    ASSERT(!m_map || m_map->hasOneRef());
+    ASSERT(!m_map || !m_map->isShared());
 
     // There is at least one clear pending we don't want to apply any changes until we get the corresponding DidClear messages.
     if (m_hasPendingClear)
@@ -226,7 +226,7 @@ void StorageAreaMap::applyChange(const String& key, const String& newValue)
 
     if (!key) {
         // A null key means clear.
-        auto newMap = StorageMap::create(m_quotaInBytes);
+        auto newMap = makeUnique<StorageMap>(m_quotaInBytes);
 
         // Any changes that were made locally after the clear must still be kept around in the new map.
         for (auto& change : m_pendingValueChanges) {
@@ -258,7 +258,7 @@ void StorageAreaMap::applyChange(const String& key, const String& newValue)
     m_map->setItemIgnoringQuota(key, newValue);
 }
 
-void StorageAreaMap::dispatchStorageEvent(const Optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
+void StorageAreaMap::dispatchStorageEvent(const std::optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
 {
     if (!storageAreaImplID) {
         // This storage event originates from another process so we need to apply the change to our storage area map.
@@ -276,7 +276,7 @@ void StorageAreaMap::clearCache()
     resetValues();
 }
 
-static Vector<RefPtr<Frame>> framesForEventDispatching(Page& page, SecurityOrigin& origin, StorageType storageType, const Optional<StorageAreaImplIdentifier>& storageAreaImplID)
+static Vector<RefPtr<Frame>> framesForEventDispatching(Page& page, SecurityOrigin& origin, StorageType storageType, const std::optional<StorageAreaImplIdentifier>& storageAreaImplID)
 {
     Vector<RefPtr<Frame>> frames;
     page.forEachDocument([&](auto& document) {
@@ -313,7 +313,7 @@ static Vector<RefPtr<Frame>> framesForEventDispatching(Page& page, SecurityOrigi
     return frames;
 }
 
-void StorageAreaMap::dispatchSessionStorageEvent(const Optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
+void StorageAreaMap::dispatchSessionStorageEvent(const std::optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
 {
     // Namespace IDs for session storage namespaces are equivalent to web page IDs
     // so we can get the right page here.
@@ -329,13 +329,13 @@ void StorageAreaMap::dispatchSessionStorageEvent(const Optional<StorageAreaImplI
     StorageEventDispatcher::dispatchSessionStorageEventsToFrames(*page, frames, key, oldValue, newValue, urlString, m_securityOrigin->data());
 }
 
-void StorageAreaMap::dispatchLocalStorageEvent(const Optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
+void StorageAreaMap::dispatchLocalStorageEvent(const std::optional<StorageAreaImplIdentifier>& storageAreaImplID, const String& key, const String& oldValue, const String& newValue, const String& urlString)
 {
     ASSERT(isLocalStorage(type()));
 
     Vector<RefPtr<Frame>> frames;
 
-    // Namespace IDs for local storage namespaces are equivalent to web page group IDs.
+    // Namespace IDs for local storage namespaces are currently equivalent to web page group IDs.
     auto& pageGroup = *WebProcess::singleton().webPageGroup(m_namespace.pageGroupID())->corePageGroup();
     for (auto& page : pageGroup.pages())
         frames.appendVector(framesForEventDispatching(page, m_securityOrigin, StorageType::Local, storageAreaImplID));

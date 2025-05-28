@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,7 +47,7 @@ public:
     using Arguments = std::tuple<const RefPtr<WebCore::ImageData>&>;
 
     static IPC::MessageName name() { return IPC::MessageName::TestWithImageData_SendImageData; }
-    static const bool isSync = false;
+    static constexpr bool isSync = false;
 
     explicit SendImageData(const RefPtr<WebCore::ImageData>& s0)
         : m_arguments(s0)
@@ -68,7 +68,7 @@ public:
     using Arguments = std::tuple<>;
 
     static IPC::MessageName name() { return IPC::MessageName::TestWithImageData_ReceiveImageData; }
-    static const bool isSync = true;
+    static constexpr bool isSync = true;
 
     static constexpr auto callbackThread = WTF::CompletionHandlerCallThread::ConstructionThread;
     using Reply = std::tuple<RefPtr<WebCore::ImageData>&>;

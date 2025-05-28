@@ -40,8 +40,12 @@ int testFunctionOverrides()
     JSC::initialize();
 
     const char* oldFunctionOverrides = Options::functionOverrides();
-    
+
+#if OS(MORPHOS)
+    Options::functionOverrides() = "PROGDIR:testapiScripts/testapi-function-overrides.js";
+#else
     Options::functionOverrides() = "./testapiScripts/testapi-function-overrides.js";
+#endif
     JSC::FunctionOverrides::reinstallOverrides();
 
     JSGlobalContextRef context = JSGlobalContextCreateInGroup(nullptr, nullptr);

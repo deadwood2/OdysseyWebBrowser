@@ -42,48 +42,40 @@
 
 namespace WebKit {
 
-#if PLATFORM(COCOA) && HAVE(SYSTEM_FEATURE_FLAGS)
+#if PLATFORM(COCOA)
 
 // Because of <rdar://problem/60608008>, WebKit has to parse the feature flags plist file
-bool isFeatureFlagEnabled(const String& featureName)
-{
-    BOOL isWebKitBundleFromStagedFramework = [[[NSBundle mainBundle] bundlePath] hasPrefix:@"/Library/Apple/System/Library/StagedFrameworks/WebKit"];
-
-    if (!isWebKitBundleFromStagedFramework)
-        return _os_feature_enabled_impl("WebKit", (const char*)featureName.utf8().data());
-
-    static NSDictionary* dictionary = [[NSDictionary dictionaryWithContentsOfFile:@"/Library/Apple/System/Library/FeatureFlags/Domain/WebKit.plist"] retain];
-
-    if (![[dictionary objectForKey:featureName] objectForKey:@"Enabled"])
-        return _os_feature_enabled_impl("WebKit", (const char*)featureName.characters8());
-
-    return [[[dictionary objectForKey:featureName] objectForKey:@"Enabled"] isKindOfClass:[NSNumber class]] && [[[dictionary objectForKey:featureName] objectForKey:@"Enabled"] boolValue];
-}
-
-#endif
-
-#if ENABLE(WEBGPU)
-
-bool defaultWebGPUEnabled()
+bool isFeatureFlagEnabled(const char* featureName, bool defaultValue)
 {
 #if HAVE(SYSTEM_FEATURE_FLAGS)
-    return isFeatureFlagEnabled("WebGPU");
-#endif
 
-    return false;
+#if PLATFORM(MAC)
+    static bool isSystemWebKit = [] {
+        auto *bundle = [NSBundle bundleForClass:NSClassFromString(@"WebResource")];
+        return [bundle.bundlePath hasPrefix:@"/System/"];
+    }();
+
+    return isSystemWebKit ? _os_feature_enabled_impl("WebKit", featureName) : defaultValue;
+#else
+    UNUSED_PARAM(defaultValue);
+    return _os_feature_enabled_impl("WebKit", featureName);
+#endif // PLATFORM(MAC)
+
+#else
+
+    UNUSED_PARAM(featureName);
+    return defaultValue;
+
+#endif // HAVE(SYSTEM_FEATURE_FLAGS)
 }
 
-#endif // ENABLE(WEBGPU)
+#endif
 
 #if HAVE(INCREMENTAL_PDF_APIS)
 
 bool defaultIncrementalPDFEnabled()
 {
-#if HAVE(SYSTEM_FEATURE_FLAGS)
-    return isFeatureFlagEnabled("incremental_pdf");
-#endif
-
-    return false;
+    return isFeatureFlagEnabled("incremental_pdf", false);
 }
 
 #endif
@@ -92,11 +84,7 @@ bool defaultIncrementalPDFEnabled()
 
 bool defaultWebXREnabled()
 {
-#if HAVE(SYSTEM_FEATURE_FLAGS)
-    return isFeatureFlagEnabled("WebXR");
-#endif
-
-    return false;
+    return isFeatureFlagEnabled("WebXR", false);
 }
 
 #endif // ENABLE(WEBXR)
@@ -221,18 +209,6 @@ bool defaultNeedsKeyboardEventDisambiguationQuirks()
     return needsQuirks;
 }
 
-bool defaultEnforceCSSMIMETypeInNoQuirksMode()
-{
-    static bool needsQuirk = !_CFAppVersionCheckLessThan(CFSTR("com.apple.iWeb"), -1, 2.1);
-    return needsQuirk;
-}
-
-bool defaultNeedsIsLoadingInAPISenseQuirk()
-{
-    static bool needsQuirk = _CFAppVersionCheckLessThan(CFSTR("com.apple.iAdProducer"), -1, 2.1);
-    return needsQuirk;
-}
-
 #endif // PLATFORM(MAC)
 
 bool defaultAttachmentElementEnabled()
@@ -298,5 +274,33 @@ bool defaultWheelEventGesturesBecomeNonBlocking()
 }
 
 #endif
+
+#if ENABLE(MEDIA_SOURCE)
+
+bool defaultWebMParserEnabled()
+{
+    return isFeatureFlagEnabled("webm_parser", true);
+}
+
+bool defaultWebMWebAudioEnabled()
+{
+    return isFeatureFlagEnabled("webm_webaudio", false);
+}
+
+#endif // ENABLE(MEDIA_SOURCE)
+
+#if ENABLE(VP9)
+
+bool defaultVP8DecoderEnabled()
+{
+    return isFeatureFlagEnabled("vp8_decoder", true);
+}
+
+bool defaultVP9DecoderEnabled()
+{
+    return isFeatureFlagEnabled("vp9_decoder", true);
+}
+
+#endif // ENABLE(VP9)
 
 } // namespace WebKit

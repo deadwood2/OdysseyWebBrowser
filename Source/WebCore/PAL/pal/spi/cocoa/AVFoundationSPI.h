@@ -41,7 +41,11 @@
 #import <AVFoundation/AVPlayerLayer_Private.h>
 
 #if ENABLE(MEDIA_SOURCE)
+#if PLATFORM(IOS_FAMILY_SIMULATOR)
+#import "AVStreamDataParserSPI.h"
+#else
 #import <AVFoundation/AVStreamDataParser.h>
+#endif
 #endif
 
 #if PLATFORM(IOS_FAMILY)
@@ -334,6 +338,11 @@ NS_ASSUME_NONNULL_END
 
 #if __has_include(<AVFoundation/AVSampleBufferAudioRenderer.h>)
 #import <AVFoundation/AVSampleBufferAudioRenderer.h>
+NS_ASSUME_NONNULL_BEGIN
+@interface AVSampleBufferAudioRenderer (AVSampleBufferAudioRendererWebKitOnly)
+- (void)setIsUnaccompaniedByVisuals:(BOOL)audioOnly SPI_AVAILABLE(macos(12.0)) API_UNAVAILABLE(ios, tvos, watchos);
+@end
+NS_ASSUME_NONNULL_END
 #else
 
 NS_ASSUME_NONNULL_BEGIN
@@ -348,6 +357,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)stopRequestingMediaData;
 - (void)setVolume:(float)volume;
 - (void)setMuted:(BOOL)muted;
+- (void)setIsUnaccompaniedByVisuals:(BOOL)audioOnly SPI_AVAILABLE(macos(12.0)) API_UNAVAILABLE(ios, tvos, watchos);
 @property (nonatomic, copy) NSString *audioTimePitchAlgorithm;
 @end
 
@@ -383,6 +393,8 @@ NS_ASSUME_NONNULL_BEGIN
 @interface AVAudioSession (AVAudioSessionPrivate)
 - (instancetype)initAuxiliarySession;
 @property (readonly) NSString* routingContextUID;
+@property (readonly) BOOL eligibleForBTSmartRoutingConsideration;
+- (BOOL)setEligibleForBTSmartRoutingConsideration:(BOOL)inValue error:(NSError **)outError;
 @end
 
 NS_ASSUME_NONNULL_END

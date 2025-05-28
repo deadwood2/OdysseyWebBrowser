@@ -36,6 +36,7 @@
 #include "WebPageCreationParameters.h"
 #include "WebPreferencesKeys.h"
 #include <WebCore/Frame.h>
+#include <WebCore/FrameView.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/Page.h>
 #include <WebCore/PageOverlayController.h>
@@ -43,7 +44,7 @@
 #include <WebCore/Settings.h>
 
 #if USE(DIRECT2D)
-#include <WebCore/GraphicsContextImplDirect2D.h>
+#include <WebCore/GraphicsContextDirect2D.h>
 #include <WebCore/PlatformContextDirect2D.h>
 #include <d2d1.h>
 #include <d3d11_1.h>
@@ -211,7 +212,7 @@ void DrawingAreaCoordinatedGraphics::forceRepaint()
 #if USE(COORDINATED_GRAPHICS)
         layerHostDidFlushLayers();
 #endif
-        }
+    }
 }
 
 void DrawingAreaCoordinatedGraphics::forceRepaintAsync(WebPage& page, CompletionHandler<void()>&& completionHandler)
@@ -241,6 +242,8 @@ void DrawingAreaCoordinatedGraphics::setLayerTreeStateIsFrozen(bool isFrozen)
         m_exitCompositingTimer.stop();
     else if (m_wantsToExitAcceleratedCompositingMode)
         exitAcceleratedCompositingModeSoon();
+    else if (!m_layerTreeHost)
+        scheduleDisplay();
 }
 
 void DrawingAreaCoordinatedGraphics::updatePreferences(const WebPreferencesStore& store)
@@ -360,7 +363,7 @@ void DrawingAreaCoordinatedGraphics::triggerRenderingUpdate()
         scheduleDisplay();
 }
 
-#if USE(COORDINATED_GRAPHICS)
+#if USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_TEXTURE_MAPPER)
 void DrawingAreaCoordinatedGraphics::layerHostDidFlushLayers()
 {
     ASSERT(m_layerTreeHost);
@@ -424,6 +427,7 @@ void DrawingAreaCoordinatedGraphics::updateBackingStoreState(uint64_t stateID, b
         m_webPage.finalizeRenderingUpdate({ });
         m_webPage.flushPendingEditorStateUpdate();
         m_webPage.scrollMainFrameIfNotAtMaxScrollPosition(scrollOffset);
+        m_webPage.didUpdateRendering();
 
         if (m_layerTreeHost)
             m_layerTreeHost->sizeDidChange(m_webPage.size());
@@ -481,6 +485,44 @@ void DrawingAreaCoordinatedGraphics::didUpdate()
     // Display if needed. We call displayTimerFired here since it will throttle updates to 60fps.
     displayTimerFired();
 }
+
+#if PLATFORM(GTK)
+void DrawingAreaCoordinatedGraphics::adjustTransientZoom(double scale, FloatPoint origin)
+{
+    if (!m_transientZoom) {
+        FrameView& frameView = *m_webPage.mainFrameView();
+        FloatRect unobscuredContentRect = frameView.unobscuredContentRectIncludingScrollbars();
+
+        m_transientZoom = true;
+        m_transientZoomInitialOrigin = unobscuredContentRect.location();
+    }
+
+    if (m_layerTreeHost) {
+        m_layerTreeHost->adjustTransientZoom(scale, origin);
+        return;
+    }
+
+    // We can't do transient zoom for non-AC mode, so just zoom in place instead.
+
+    FloatPoint unscrolledOrigin(origin);
+    unscrolledOrigin.moveBy(-m_transientZoomInitialOrigin);
+
+    m_webPage.scalePage(scale / m_webPage.viewScaleFactor(), roundedIntPoint(-unscrolledOrigin));
+}
+
+void DrawingAreaCoordinatedGraphics::commitTransientZoom(double scale, FloatPoint origin)
+{
+    if (m_layerTreeHost)
+        m_layerTreeHost->commitTransientZoom(scale, origin);
+
+    FloatPoint unscrolledOrigin(origin);
+    unscrolledOrigin.moveBy(-m_transientZoomInitialOrigin);
+
+    m_webPage.scalePage(scale / m_webPage.viewScaleFactor(), roundedIntPoint(-unscrolledOrigin));
+
+    m_transientZoom = false;
+}
+#endif
 
 void DrawingAreaCoordinatedGraphics::sendDidUpdateBackingStoreState()
 {
@@ -591,7 +633,7 @@ void DrawingAreaCoordinatedGraphics::enterAcceleratedCompositingMode(GraphicsLay
     auto changeWindowScreen = [&] {
         // In order to ensure that we get a unique DisplayRefreshMonitor per-DrawingArea (necessary because ThreadedDisplayRefreshMonitor
         // is driven by the ThreadedCompositor of the drawing area), give each page a unique DisplayID derived from WebPage's unique ID.
-        m_webPage.windowScreenDidChange(m_layerTreeHost->displayID(), WTF::nullopt);
+        m_webPage.windowScreenDidChange(m_layerTreeHost->displayID(), std::nullopt);
     };
 
     ASSERT(!m_layerTreeHost);
@@ -647,7 +689,7 @@ void DrawingAreaCoordinatedGraphics::exitAcceleratedCompositingMode()
     m_discardPreviousLayerTreeHostTimer.startOneShot(5_s);
 
     // Always use the primary display ID (0) when not in accelerated compositing mode.
-    m_webPage.windowScreenDidChange(0, WTF::nullopt);
+    m_webPage.windowScreenDidChange(0, std::nullopt);
 
     m_dirtyRegion = m_webPage.bounds();
 
@@ -730,7 +772,11 @@ void DrawingAreaCoordinatedGraphics::display()
         return;
     }
 
-    send(Messages::DrawingAreaProxy::Update(m_backingStoreStateID, updateInfo));
+    if (m_compositingAccordingToProxyMessages) {
+        send(Messages::DrawingAreaProxy::ExitAcceleratedCompositingMode(m_backingStoreStateID, updateInfo));
+        m_compositingAccordingToProxyMessages = false;
+    } else
+        send(Messages::DrawingAreaProxy::Update(m_backingStoreStateID, updateInfo));
     m_isWaitingForDidUpdate = true;
     m_scheduledWhileWaitingForDidUpdate = false;
 }
@@ -819,6 +865,8 @@ void DrawingAreaCoordinatedGraphics::display(UpdateInfo& updateInfo)
 #if USE(DIRECT2D)
     bitmap->leakSharedResource(); // It will be destroyed in the UIProcess.
 #endif
+
+    m_webPage.didUpdateRendering();
 
     // Layout can trigger more calls to setNeedsDisplay and we don't want to process them
     // until the UI process has painted the update, so we stop the timer here.

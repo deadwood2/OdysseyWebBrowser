@@ -57,6 +57,7 @@ public:
         virtual IPC::Connection& connection() = 0;
         virtual bool willStartCapture(WebCore::CaptureDevice::DeviceType) const = 0;
         virtual Logger& logger() = 0;
+        virtual bool setCaptureAttributionString() { return true; }
     };
     explicit UserMediaCaptureManagerProxy(UniqueRef<ConnectionProxy>&&);
     ~UserMediaCaptureManagerProxy();
@@ -66,6 +67,8 @@ public:
     void setOrientation(uint64_t);
 
     void didReceiveMessageFromGPUProcess(IPC::Connection& connection, IPC::Decoder& decoder) { didReceiveMessage(connection, decoder); }
+
+    bool hasSourceProxies() const;
 
 private:
     // IPC::MessageReceiver

@@ -31,6 +31,7 @@
 #import "TestUIDelegate.h"
 #import "Utilities.h"
 #import "WKWebViewConfigurationExtras.h"
+#import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/RetainPtr.h>
@@ -230,5 +231,44 @@ TEST(Preconnect, H2PingFromWebCoreNSURLSession)
 }
 
 #endif // HAVE(PRECONNECT_PING)
+
+static void verifyPreconnectDisabled(void(*disabler)(WKWebViewConfiguration *))
+{
+    size_t connectionCount { 0 };
+    HTTPServer server([&](Connection) {
+        connectionCount++;
+    });
+    NSString *html = [NSString stringWithFormat:@"<link rel='preconnect' href='http://127.0.0.1:%d'>", server.port()];
+
+    {
+        auto configuration = adoptNS([WKWebViewConfiguration new]);
+        disabler(configuration.get());
+        auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]);
+        [webView loadHTMLString:html baseURL:nil];
+        [webView _test_waitForDidFinishNavigation];
+        Util::spinRunLoop(10);
+        usleep(10000);
+        Util::spinRunLoop(10);
+        EXPECT_EQ(connectionCount, 0u);
+    }
+
+    {
+        auto webView = adoptNS([WKWebView new]);
+        [webView loadHTMLString:html baseURL:nil];
+        [webView _test_waitForDidFinishNavigation];
+        while (connectionCount != 1)
+            Util::spinRunLoop();
+    }
+}
+
+TEST(Preconnect, DisablePreconnect)
+{
+    verifyPreconnectDisabled([] (WKWebViewConfiguration *configuration) {
+        configuration._allowedNetworkHosts = [NSSet set];
+    });
+    verifyPreconnectDisabled([] (WKWebViewConfiguration *configuration) {
+        configuration._loadsSubresources = NO;
+    });
+}
 
 }

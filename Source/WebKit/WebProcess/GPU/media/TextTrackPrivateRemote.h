@@ -34,10 +34,6 @@
 #include <WebCore/InbandTextTrackPrivate.h>
 #include <WebCore/MediaPlayerIdentifier.h>
 
-namespace IPC {
-class Connection;
-}
-
 namespace WebCore {
 class InbandGenericCue;
 class ISOWebVTTCue;
@@ -45,15 +41,16 @@ class ISOWebVTTCue;
 
 namespace WebKit {
 
+class GPUProcessConnection;
 class MediaPlayerPrivateRemote;
 
 class TextTrackPrivateRemote final : public WebCore::InbandTextTrackPrivate {
     WTF_MAKE_NONCOPYABLE(TextTrackPrivateRemote)
 public:
 
-    static Ref<TextTrackPrivateRemote> create(IPC::Connection& connection, WebCore::MediaPlayerIdentifier playerIdentifier, TrackPrivateRemoteIdentifier idendifier, TextTrackPrivateRemoteConfiguration&& configuration)
+    static Ref<TextTrackPrivateRemote> create(GPUProcessConnection& gpuProcessConnection, WebCore::MediaPlayerIdentifier playerIdentifier, TrackPrivateRemoteIdentifier idendifier, TextTrackPrivateRemoteConfiguration&& configuration)
     {
-        return adoptRef(*new TextTrackPrivateRemote(connection, playerIdentifier, idendifier, WTFMove(configuration)));
+        return adoptRef(*new TextTrackPrivateRemote(gpuProcessConnection, playerIdentifier, idendifier, WTFMove(configuration)));
     }
 
     void addDataCue(MediaTime&& start, MediaTime&& end, IPC::DataReference&&);
@@ -81,16 +78,13 @@ public:
     AtomString label() const final { return m_label; }
     AtomString language() const final { return m_language; }
     int trackIndex() const final { return m_trackIndex; }
-
-    using TextTrackCueFormat = WebCore::InbandTextTrackPrivate::CueFormat;
-    TextTrackCueFormat cueFormat() const final { return m_format; }
+    AtomString inBandMetadataTrackDispatchType() const final { return m_inBandMetadataTrackDispatchType; }
 
     using TextTrackKind = WebCore::InbandTextTrackPrivate::Kind;
     TextTrackKind kind() const final { return m_kind; }
 
     using TextTrackMode = WebCore::InbandTextTrackPrivate::Mode;
     void setMode(TextTrackMode) final;
-    TextTrackMode mode() const final { return m_mode; }
 
     bool isClosedCaptions() const final { return m_isClosedCaptions; }
     bool isSDH() const final { return m_isSDH; }
@@ -98,22 +92,22 @@ public:
     bool isMainProgramContent() const final { return m_isMainProgramContent; }
     bool isEasyToRead() const final { return m_isEasyToRead; }
     bool isDefault() const final { return m_isDefault; }
+    MediaTime startTimeVariance() const final { return m_startTimeVariance; }
 
 private:
-    TextTrackPrivateRemote(IPC::Connection&, WebCore::MediaPlayerIdentifier, TrackPrivateRemoteIdentifier, TextTrackPrivateRemoteConfiguration&&);
+    TextTrackPrivateRemote(GPUProcessConnection&, WebCore::MediaPlayerIdentifier, TrackPrivateRemoteIdentifier, TextTrackPrivateRemoteConfiguration&&);
 
-    IPC::Connection& m_connection;
+    WeakPtr<GPUProcessConnection> m_gpuProcessConnection;
     AtomString m_id;
     AtomString m_label;
     AtomString m_language;
     int m_trackIndex { -1 };
+    AtomString m_inBandMetadataTrackDispatchType;
     MediaTime m_startTimeVariance { MediaTime::zeroTime() };
     WebCore::MediaPlayerIdentifier m_playerIdentifier;
     TrackPrivateRemoteIdentifier m_identifier;
 
-    TextTrackCueFormat m_format { TextTrackCueFormat::Generic };
     TextTrackKind m_kind { TextTrackKind::None };
-    TextTrackMode m_mode { TextTrackMode::Disabled };
     bool m_isClosedCaptions { false };
     bool m_isSDH { false };
     bool m_containsOnlyForcedSubtitles { false };

@@ -36,6 +36,12 @@
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
+#if PLATFORM(COCOA)
+#include <wtf/RetainPtr.h>
+#endif
+
+OBJC_CLASS NSDictionary;
+
 namespace WebKit {
 
 class SandboxInitializationParameters;
@@ -70,6 +76,7 @@ public:
         removeMessageReceiver(messageReceiverName, destinationID.toUInt64());
     }
 
+    void mainThreadPing(CompletionHandler<void()>&&);
     void setProcessSuppressionEnabled(bool);
 
 #if PLATFORM(COCOA)
@@ -106,6 +113,11 @@ protected:
 
     virtual void stopRunLoop();
 
+#if USE(OS_STATE)
+    void registerWithStateDumper(ASCIILiteral title);
+    virtual RetainPtr<NSDictionary> additionalStateForDiagnosticReport() const { return { }; }
+#endif // USE(OS_STATE)
+
 #if USE(APPKIT)
     static void stopNSAppRunLoop();
 #endif
@@ -120,7 +132,7 @@ protected:
     void didReceiveMemoryPressureEvent(bool isCritical);
 #endif
 
-    static Optional<std::pair<IPC::Connection::Identifier, IPC::Attachment>> createIPCConnectionPair();
+    static std::optional<std::pair<IPC::Connection::Identifier, IPC::Attachment>> createIPCConnectionPair();
 
 private:
     virtual bool shouldOverrideQuarantine() { return true; }
@@ -137,7 +149,7 @@ private:
 
     void terminationTimerFired();
 
-    void platformInitialize();
+    void platformInitialize(const AuxiliaryProcessInitializationParameters&);
     void platformStopRunLoop();
 
     // The timeout, in seconds, before this process will be terminated if termination
@@ -163,7 +175,9 @@ private:
 struct AuxiliaryProcessInitializationParameters {
     String uiProcessName;
     String clientIdentifier;
-    Optional<WebCore::ProcessIdentifier> processIdentifier;
+    String clientBundleIdentifier;
+    uint32_t clientSDKVersion;
+    std::optional<WebCore::ProcessIdentifier> processIdentifier;
     IPC::Connection::Identifier connectionIdentifier;
     HashMap<String, String> extraInitializationData;
     WebCore::AuxiliaryProcessType processType;

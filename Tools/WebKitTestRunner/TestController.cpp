@@ -143,7 +143,7 @@ void TestController::navigationDidBecomeDownloadShared(WKDownloadRef download, c
     WKDownloadClientV0 client {
         { 0, clientInfo },
         TestController::downloadDidReceiveServerRedirectToURL,
-        nullptr, // didReceiveAuthenticationChallenge
+        TestController::downloadDidReceiveAuthenticationChallenge,
         TestController::decideDestinationWithSuggestedFilename,
         nullptr, // didWriteData
         TestController::downloadDidFinish,
@@ -319,9 +319,9 @@ static void printFrame(WKPageRef page, WKFrameRef frame, const void*)
     WKPageEndPrinting(page);
 }
 
-static bool shouldAllowDeviceOrientationAndMotionAccess(WKPageRef, WKSecurityOriginRef origin, const void*)
+static bool shouldAllowDeviceOrientationAndMotionAccess(WKPageRef, WKSecurityOriginRef origin, WKFrameInfoRef frame, const void*)
 {
-    return TestController::singleton().handleDeviceOrientationAndMotionAccessRequest(origin);
+    return TestController::singleton().handleDeviceOrientationAndMotionAccessRequest(origin, frame);
 }
 
 // A placeholder to tell WebKit the client is WebKitTestRunner.
@@ -468,13 +468,13 @@ WKPageRef TestController::createOtherPage(PlatformWebView* parentView, WKPageCon
         nullptr, // renderingProgressDidChange
         canAuthenticateAgainstProtectionSpace,
         didReceiveAuthenticationChallenge,
-        processDidCrash,
+        nullptr, // webProcessDidCrash
         copyWebCryptoMasterKey,
         didBeginNavigationGesture,
         willEndNavigationGesture,
         didEndNavigationGesture,
         didRemoveNavigationGestureSnapshot,
-        nullptr, // webProcessDidTerminate
+        webProcessDidTerminate, // webProcessDidTerminate
         nullptr, // contentRuleListNotification
         copySignedPublicKeyAndChallengeString,
         navigationActionDidBecomeDownload,
@@ -533,11 +533,9 @@ void TestController::initialize(int argc, const char* argv[])
     m_allowedHosts = options.allowedHosts;
     m_checkForWorldLeaks = options.checkForWorldLeaks;
     m_allowAnyHTTPSCertificateForAllowedHosts = options.allowAnyHTTPSCertificateForAllowedHosts;
+    m_enableAllExperimentalFeatures = options.enableAllExperimentalFeatures;
     m_globalFeatures = std::move(options.features);
 
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    m_accessibilityIsolatedTreeMode = options.accessibilityIsolatedTreeMode;
-#endif
     m_usingServerMode = (m_paths.size() == 1 && m_paths[0] == "-");
     if (m_usingServerMode)
         m_printSeparators = true;
@@ -590,7 +588,6 @@ void TestController::configureWebsiteDataStoreTemporaryDirectories(WKWebsiteData
         WKWebsiteDataStoreConfigurationSetCacheStorageDirectory(configuration, toWK(makeString(temporaryFolder, pathSeparator, "CacheStorage", pathSeparator, randomNumber)).get());
         WKWebsiteDataStoreConfigurationSetIndexedDBDatabaseDirectory(configuration, toWK(makeString(temporaryFolder, pathSeparator, "Databases", pathSeparator, "IndexedDB", pathSeparator, randomNumber)).get());
         WKWebsiteDataStoreConfigurationSetLocalStorageDirectory(configuration, toWK(makeString(temporaryFolder, pathSeparator, "LocalStorage", pathSeparator, randomNumber)).get());
-        WKWebsiteDataStoreConfigurationSetWebSQLDatabaseDirectory(configuration, toWK(makeString(temporaryFolder, pathSeparator, "Databases", pathSeparator, "WebSQL", pathSeparator, randomNumber)).get());
         WKWebsiteDataStoreConfigurationSetMediaKeysStorageDirectory(configuration, toWK(makeString(temporaryFolder, pathSeparator, "MediaKeys", pathSeparator, randomNumber)).get());
         WKWebsiteDataStoreConfigurationSetResourceLoadStatisticsDirectory(configuration, toWK(makeString(temporaryFolder, pathSeparator, "ResourceLoadStatistics", pathSeparator, randomNumber)).get());
         WKWebsiteDataStoreConfigurationSetServiceWorkerRegistrationDirectory(configuration, toWK(makeString(temporaryFolder, pathSeparator, "ServiceWorkers", pathSeparator, randomNumber)).get());
@@ -812,13 +809,13 @@ void TestController::createWebViewWithOptions(const TestOptions& options)
         nullptr, // renderingProgressDidChange
         canAuthenticateAgainstProtectionSpace,
         didReceiveAuthenticationChallenge,
-        processDidCrash,
+        nullptr,
         copyWebCryptoMasterKey,
         didBeginNavigationGesture,
         willEndNavigationGesture,
         didEndNavigationGesture,
         didRemoveNavigationGestureSnapshot,
-        nullptr, // webProcessDidTerminate
+        webProcessDidTerminate, // webProcessDidTerminate
         nullptr, // contentRuleListNotification
         copySignedPublicKeyAndChallengeString,
         navigationActionDidBecomeDownload,
@@ -875,87 +872,38 @@ void TestController::ensureViewSupportsOptionsForTest(const TestInvocation& test
         TestInvocation::dumpWebProcessUnresponsiveness("<unknown> - TestController::run - Failed to reset state to consistent values\n");
 }
 
+template<typename F> static void batchUpdatePreferences(WKPreferencesRef preferences, F&& functor)
+{
+    WKPreferencesStartBatchingUpdates(preferences);
+    functor(preferences);
+    WKPreferencesEndBatchingUpdates(preferences);
+}
+
 void TestController::resetPreferencesToConsistentValues(const TestOptions& options)
 {
-    // Reset preferences
-    WKPreferencesRef preferences = platformPreferences();
-    WKPreferencesResetTestRunnerOverrides(preferences);
+    batchUpdatePreferences(platformPreferences(), [options, enableAllExperimentalFeatures = m_enableAllExperimentalFeatures] (auto preferences) {
+        WKPreferencesResetTestRunnerOverrides(preferences);
 
-    WKPreferencesEnableAllExperimentalFeatures(preferences);
-    WKPreferencesResetAllInternalDebugFeatures(preferences);
+        if (enableAllExperimentalFeatures)
+            WKPreferencesEnableAllExperimentalFeatures(preferences);
 
-    // FIXME: Convert these to default values for TestOptions.
-    WKPreferencesSetProcessSwapOnNavigationEnabled(preferences, options.shouldEnableProcessSwapOnNavigation());
-    WKPreferencesSetOfflineWebApplicationCacheEnabled(preferences, true);
-    WKPreferencesSetSubpixelAntialiasedLayerTextEnabled(preferences, false);
-    WKPreferencesSetWebAudioEnabled(preferences, true);
-    WKPreferencesSetMediaDevicesEnabled(preferences, true);
-    WKPreferencesSetWebRTCMDNSICECandidatesEnabled(preferences, false);
-    WKPreferencesSetDeveloperExtrasEnabled(preferences, true);
-    WKPreferencesSetJavaScriptRuntimeFlags(preferences, kWKJavaScriptRuntimeFlagsAllEnabled);
-    WKPreferencesSetFullScreenEnabled(preferences, true);
-    WKPreferencesSetAsynchronousPluginInitializationEnabled(preferences, false);
-    WKPreferencesSetAsynchronousPluginInitializationEnabledForAllPlugins(preferences, false);
-    WKPreferencesSetArtificialPluginInitializationDelayEnabled(preferences, false);
-    WKPreferencesSetTabsToLinks(preferences, false);
-    WKPreferencesSetInteractiveFormValidationEnabled(preferences, true);
-    WKPreferencesSetDataTransferItemsEnabled(preferences, true);
-    WKPreferencesSetCustomPasteboardDataEnabled(preferences, true);
-    WKPreferencesSetDialogElementEnabled(preferences, true);
-    WKPreferencesSetDefaultTextEncodingName(preferences, toWK("ISO-8859-1").get());
-    WKPreferencesSetMinimumFontSize(preferences, 0);
-    WKPreferencesSetStandardFontFamily(preferences, toWK("Times").get());
-    WKPreferencesSetCursiveFontFamily(preferences, toWK("Apple Chancery").get());
-    WKPreferencesSetFantasyFontFamily(preferences, toWK("Papyrus").get());
-    WKPreferencesSetFixedFontFamily(preferences, toWK("Courier").get());
-    WKPreferencesSetPictographFontFamily(preferences, toWK("Apple Color Emoji").get());
-    WKPreferencesSetSansSerifFontFamily(preferences, toWK("Helvetica").get());
-    WKPreferencesSetSerifFontFamily(preferences, toWK("Times").get());
-    WKPreferencesSetAsynchronousSpellCheckingEnabled(preferences, false);
-    WKPreferencesSetMediaSourceEnabled(preferences, true);
-    WKPreferencesSetSourceBufferChangeTypeEnabled(preferences, true);
-    WKPreferencesSetHighlightAPIEnabled(preferences, true);
-    WKPreferencesSetHiddenPageDOMTimerThrottlingEnabled(preferences, false);
-    WKPreferencesSetHiddenPageCSSAnimationSuspensionEnabled(preferences, false);
-    WKPreferencesSetStorageBlockingPolicy(preferences, kWKAllowAllStorage); // FIXME: We should be testing the default.
-    WKPreferencesSetIsNSURLSessionWebSocketEnabled(preferences, false);
-    WKPreferencesSetFetchAPIKeepAliveEnabled(preferences, true);
-    WKPreferencesSetMediaPreloadingEnabled(preferences, true);
-    WKPreferencesSetExposeSpeakersEnabled(preferences, true);
-    WKPreferencesSetMediaPlaybackAllowsInline(preferences, true);
-    WKPreferencesSetInlineMediaPlaybackRequiresPlaysInlineAttribute(preferences, false);
-    WKPreferencesSetRemotePlaybackEnabled(preferences, true);
-    WKPreferencesSetBeaconAPIEnabled(preferences, true);
-    WKPreferencesSetDirectoryUploadEnabled(preferences, true);
-    WKPreferencesSetMockCaptureDevicesEnabled(preferences, true);
-    WKPreferencesSetLargeImageAsyncDecodingEnabled(preferences, false);
-    WKPreferencesSetStorageAccessAPIEnabled(preferences, true);
-    WKPreferencesSetAccessibilityObjectModelEnabled(preferences, true);
-    WKPreferencesSetCSSOMViewScrollingAPIEnabled(preferences, true);
-    WKPreferencesSetMediaCapabilitiesEnabled(preferences, true);
-    WKPreferencesSetRestrictedHTTPResponseAccess(preferences, true);
-    WKPreferencesSetServerTimingEnabled(preferences, true);
-    WKPreferencesSetWebSQLDisabled(preferences, false);
-    WKPreferencesSetMediaPlaybackRequiresUserGesture(preferences, false);
-    WKPreferencesSetVideoPlaybackRequiresUserGesture(preferences, false);
-    WKPreferencesSetAudioPlaybackRequiresUserGesture(preferences, false);
-#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    WKPreferencesSetIsAccessibilityIsolatedTreeEnabled(preferences, accessibilityIsolatedTreeMode());
-#endif
+        WKPreferencesResetAllInternalDebugFeatures(preferences);
 
-    platformResetPreferencesToConsistentValues();
+        WKPreferencesSetProcessSwapOnNavigationEnabled(preferences, options.shouldEnableProcessSwapOnNavigation());
+        WKPreferencesSetStorageBlockingPolicy(preferences, kWKAllowAllStorage); // FIXME: We should be testing the default.
+    
+        for (const auto& [key, value] : options.boolWebPreferenceFeatures())
+            WKPreferencesSetBoolValueForKeyForTesting(preferences, value, toWK(key).get());
 
-    for (const auto& [key, value] : options.boolWebPreferenceFeatures())
-        WKPreferencesSetBoolValueForKeyForTesting(preferences, value, toWK(key).get());
+        for (const auto& [key, value] : options.doubleWebPreferenceFeatures())
+            WKPreferencesSetDoubleValueForKeyForTesting(preferences, value, toWK(key).get());
 
-    for (const auto& [key, value] : options.doubleWebPreferenceFeatures())
-        WKPreferencesSetDoubleValueForKeyForTesting(preferences, value, toWK(key).get());
+        for (const auto& [key, value] : options.uint32WebPreferenceFeatures())
+            WKPreferencesSetUInt32ValueForKeyForTesting(preferences, value, toWK(key).get());
 
-    for (const auto& [key, value] : options.uint32WebPreferenceFeatures())
-        WKPreferencesSetUInt32ValueForKeyForTesting(preferences, value, toWK(key).get());
-
-    for (const auto& [key, value] : options.stringWebPreferenceFeatures())
-        WKPreferencesSetStringValueForKeyForTesting(preferences, toWK(value).get(), toWK(key).get());
+        for (const auto& [key, value] : options.stringWebPreferenceFeatures())
+            WKPreferencesSetStringValueForKeyForTesting(preferences, toWK(value).get(), toWK(key).get());
+    });
 }
 
 bool TestController::resetStateToConsistentValues(const TestOptions& options, ResetStage resetStage)
@@ -980,7 +928,7 @@ bool TestController::resetStateToConsistentValues(const TestOptions& options, Re
     setValue(resetMessageBody, "AllowedHosts", allowedHostsValue);
 
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
-    setValue(resetMessageBody, "AccessibilityIsolatedTree", m_accessibilityIsolatedTreeMode);
+    setValue(resetMessageBody, "AccessibilityIsolatedTree", options.accessibilityIsolatedTreeMode());
 #endif
 
     auto jscOptions = options.jscOptions();
@@ -1036,7 +984,10 @@ bool TestController::resetStateToConsistentValues(const TestOptions& options, Re
 
     WKPageClearWheelEventTestMonitor(m_mainWebView->page());
 
+    // GStreamer uses fakesink to avoid sound output during testing and doing this creates trouble with volume events.
+#if !USE(GSTREAMER)
     WKPageSetMediaVolume(m_mainWebView->page(), 0);
+#endif
 
     WKPageClearUserMediaState(m_mainWebView->page());
 
@@ -1130,6 +1081,7 @@ bool TestController::resetStateToConsistentValues(const TestOptions& options, Re
         updateLiveDocumentsAfterTest();
 #if PLATFORM(COCOA)
         clearApplicationBundleIdentifierTestingOverride();
+        clearAppPrivacyReportTestingData();
 #endif
         clearBundleIdentifierInNetworkProcess();
     }
@@ -1174,10 +1126,17 @@ void TestController::dumpResponse(const String& result)
 void TestController::findAndDumpWebKitProcessIdentifiers()
 {
 #if PLATFORM(COCOA)
-    dumpResponse(makeString(TestController::webProcessName(), ": ",
-        WKPageGetProcessIdentifier(TestController::singleton().mainWebView()->page()), '\n',
-        TestController::networkProcessName(), ": ",
-        WKWebsiteDataStoreGetNetworkProcessIdentifier(websiteDataStore()), '\n'));
+    auto page = TestController::singleton().mainWebView()->page();
+    dumpResponse(makeString(
+        TestController::webProcessName(), ": "
+        , WKPageGetProcessIdentifier(page), '\n'
+        , TestController::networkProcessName(), ": "
+        , WKWebsiteDataStoreGetNetworkProcessIdentifier(websiteDataStore()), '\n'
+#if ENABLE(GPU_PROCESS)
+        , TestController::gpuProcessName(), ": "
+        , WKPageGetGPUProcessIdentifier(page), '\n'
+#endif
+    ));
 #else
     dumpResponse("\n"_s);
 #endif
@@ -1259,6 +1218,18 @@ const char* TestController::networkProcessName()
     return "WPENetworkProcess";
 #else
     return "NetworkProcess";
+#endif
+}
+
+const char* TestController::gpuProcessName()
+{
+    // FIXME: Find a way to not hardcode the process name.
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(IOS_FAMILY_SIMULATOR)
+    return "com.apple.WebKit.GPU";
+#elif PLATFORM(COCOA)
+    return "com.apple.WebKit.GPU.Development";
+#else
+    return "GPUProcess";
 #endif
 }
 
@@ -1683,6 +1654,14 @@ void TestController::didReceiveMessageFromInjectedBundle(WKStringRef messageName
             return;
         }
 
+#if PLATFORM(GTK)
+        if (WKStringIsEqualToUTF8CString(subMessageName, "SetWheelHasPreciseDeltas")) {
+            auto hasPreciseDeltas = booleanValue(dictionary, "HasPreciseDeltas");
+            m_eventSenderProxy->setWheelHasPreciseDeltas(hasPreciseDeltas);
+            return;
+        }
+#endif
+
         ASSERT_NOT_REACHED();
     }
 
@@ -1828,6 +1807,27 @@ void TestController::didReceiveSynchronousMessageFromInjectedBundle(WKStringRef 
             return completionHandler(nullptr);
         }
 #endif
+
+#if ENABLE(MAC_GESTURE_EVENTS)
+        if (WKStringIsEqualToUTF8CString(subMessageName, "ScaleGestureStart")) {
+            auto scale = doubleValue(dictionary, "Scale");
+            m_eventSenderProxy->scaleGestureStart(scale);
+            return completionHandler(nullptr);
+        }
+
+        if (WKStringIsEqualToUTF8CString(subMessageName, "ScaleGestureChange")) {
+            auto scale = doubleValue(dictionary, "Scale");
+            m_eventSenderProxy->scaleGestureChange(scale);
+            return completionHandler(nullptr);
+        }
+
+        if (WKStringIsEqualToUTF8CString(subMessageName, "ScaleGestureEnd")) {
+            auto scale = doubleValue(dictionary, "Scale");
+            m_eventSenderProxy->scaleGestureEnd(scale);
+            return completionHandler(nullptr);
+        }
+#endif // ENABLE(MAC_GESTURE_EVENTS)
+
         ASSERT_NOT_REACHED();
     }
 
@@ -1912,9 +1912,9 @@ void TestController::didReceiveAuthenticationChallenge(WKPageRef page, WKAuthent
     static_cast<TestController*>(const_cast<void*>(clientInfo))->didReceiveAuthenticationChallenge(page, /*frame,*/ authenticationChallenge);
 }
 
-void TestController::processDidCrash(WKPageRef page, const void* clientInfo)
+void TestController::webProcessDidTerminate(WKPageRef page, WKProcessTerminationReason reason, const void* clientInfo)
 {
-    static_cast<TestController*>(const_cast<void*>(clientInfo))->processDidCrash();
+    static_cast<TestController*>(const_cast<void*>(clientInfo))->webProcessDidTerminate(reason);
 }
 
 void TestController::didBeginNavigationGesture(WKPageRef page, const void *clientInfo)
@@ -2163,7 +2163,7 @@ WKStringRef TestController::decideDestinationWithSuggestedFilename(WKDownloadRef
     if (suggestedFilename.isEmpty())
         suggestedFilename = "Unknown";
     
-    String destination = temporaryFolder + "/" + suggestedFilename;
+    String destination = temporaryFolder + pathSeparator + suggestedFilename;
     if (FileSystem::fileExists(destination))
         FileSystem::deleteFile(destination);
 
@@ -2199,12 +2199,40 @@ void TestController::downloadDidFail(WKDownloadRef, WKErrorRef error)
     m_currentInvocation->notifyDownloadDone();
 }
 
-void TestController::processDidCrash()
+void TestController::downloadDidReceiveAuthenticationChallenge(WKDownloadRef, WKAuthenticationChallengeRef authenticationChallenge, const void *clientInfo)
+{
+    static_cast<TestController*>(const_cast<void*>(clientInfo))->didReceiveAuthenticationChallenge(nullptr, authenticationChallenge);
+}
+
+void TestController::webProcessDidTerminate(WKProcessTerminationReason reason)
 {
     // This function can be called multiple times when crash logs are being saved on Windows, so
     // ensure we only print the crashed message once.
     if (!m_didPrintWebProcessCrashedMessage) {
         pid_t pid = WKPageGetProcessIdentifier(m_mainWebView->page());
+        fprintf(stderr, "%s terminated (pid %ld) ", webProcessName(), static_cast<long>(pid));
+        switch (reason) {
+        case kWKProcessTerminationReasonExceededMemoryLimit:
+            fprintf(stderr, "because the memory limit was exceeded\n");
+            break;
+        case kWKProcessTerminationReasonExceededCPULimit:
+            fprintf(stderr, "because the cpu limit was exceeded\n");
+            break;
+        case kWKProcessTerminationReasonRequestedByClient:
+            fprintf(stderr, "because the client requested\n");
+            break;
+        case kWKProcessTerminationReasonCrash:
+            fprintf(stderr, "because the process crashed\n");
+            break;
+        default:
+            fprintf(stderr, "for an unknown reason\n");
+        }
+
+        if (reason == kWKProcessTerminationReasonRequestedByClient) {
+            fflush(stderr);
+            return;
+        }
+
         fprintf(stderr, "#CRASHED - %s (pid %ld)\n", webProcessName(), static_cast<long>(pid));
         fflush(stderr);
         m_didPrintWebProcessCrashedMessage = true;
@@ -2246,7 +2274,7 @@ void TestController::setGeolocationPermission(bool enabled)
     decidePolicyForGeolocationPermissionRequestIfPossible();
 }
 
-void TestController::setMockGeolocationPosition(double latitude, double longitude, double accuracy, Optional<double> altitude, Optional<double> altitudeAccuracy, Optional<double> heading, Optional<double> speed, Optional<double> floorLevel)
+void TestController::setMockGeolocationPosition(double latitude, double longitude, double accuracy, std::optional<double> altitude, std::optional<double> altitudeAccuracy, std::optional<double> heading, std::optional<double> speed, std::optional<double> floorLevel)
 {
     m_geolocationProvider->setPosition(latitude, longitude, accuracy, altitude, altitudeAccuracy, heading, speed, floorLevel);
 }
@@ -2401,9 +2429,10 @@ void TestController::handleCheckOfUserMediaPermissionForOrigin(WKFrameRef frame,
     WKUserMediaPermissionCheckSetUserMediaAccessInfo(checkRequest, toWK(salt).get(), settingsForOrigin(originHash).persistentPermission());
 }
 
-bool TestController::handleDeviceOrientationAndMotionAccessRequest(WKSecurityOriginRef origin)
+bool TestController::handleDeviceOrientationAndMotionAccessRequest(WKSecurityOriginRef origin, WKFrameInfoRef frame)
 {
-    m_currentInvocation->outputText(makeString("Received device orientation & motion access request for security origin \"", originUserVisibleName(origin), "\".\n"));
+    auto frameOrigin = adoptWK(WKFrameInfoCopySecurityOrigin(frame));
+    m_currentInvocation->outputText(makeString("Received device orientation & motion access request for top level origin \"", originUserVisibleName(origin), "\", with frame origin \"", originUserVisibleName(frameOrigin.get()), "\".\n"));
     return m_shouldAllowDeviceOrientationAndMotionAccess;
 }
 
@@ -2716,6 +2745,20 @@ unsigned TestController::imageCountInGeneralPasteboard() const
 }
 
 void TestController::removeAllSessionCredentials()
+{
+}
+
+bool TestController::didLoadAppInitiatedRequest()
+{
+    return false;
+}
+
+bool TestController::didLoadNonAppInitiatedRequest()
+{
+    return false;
+}
+
+void TestController::clearAppPrivacyReportTestingData()
 {
 }
 
@@ -3079,10 +3122,10 @@ void TestController::setStatisticsMergeStatistic(WKStringRef host, WKStringRef t
     m_currentInvocation->didMergeStatistic();
 }
 
-void TestController::setStatisticsExpiredStatistic(WKStringRef host, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent)
+void TestController::setStatisticsExpiredStatistic(WKStringRef host, unsigned numberOfOperatingDaysPassed, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent)
 {
     ResourceStatisticsCallbackContext context(*this);
-    WKWebsiteDataStoreSetStatisticsExpiredStatistic(websiteDataStore(), host, hadUserInteraction, isScheduledForAllButCookieDataRemoval, isPrevalent, &context, resourceStatisticsVoidResultCallback);
+    WKWebsiteDataStoreSetStatisticsExpiredStatistic(websiteDataStore(), host, numberOfOperatingDaysPassed, hadUserInteraction, isScheduledForAllButCookieDataRemoval, isPrevalent, &context, resourceStatisticsVoidResultCallback);
     runUntil(context.done, noTimeout);
     m_currentInvocation->didSetExpiredStatistic();
 }
@@ -3623,6 +3666,13 @@ void TestController::markAttributedPrivateClickMeasurementsAsExpiredForTesting()
     runUntil(callbackContext.done, noTimeout);
 }
 
+void TestController::setPrivateClickMeasurementEphemeralMeasurementForTesting(bool value)
+{
+    PrivateClickMeasurementVoidCallbackContext callbackContext(*this);
+    WKPageSetPrivateClickMeasurementEphemeralMeasurementForTesting(m_mainWebView->page(), value, privateClickMeasurementVoidCallback, &callbackContext);
+    runUntil(callbackContext.done, noTimeout);
+}
+
 void TestController::simulateResourceLoadStatisticsSessionRestart()
 {
     PrivateClickMeasurementVoidCallbackContext callbackContext(*this);
@@ -3644,10 +3694,10 @@ void TestController::setPrivateClickMeasurementTokenSignatureURLForTesting(WKURL
     runUntil(callbackContext.done, noTimeout);
 }
 
-void TestController::setPrivateClickMeasurementAttributionReportURLForTesting(WKURLRef url)
+void TestController::setPrivateClickMeasurementAttributionReportURLsForTesting(WKURLRef sourceURL, WKURLRef destinationURL)
 {
     PrivateClickMeasurementVoidCallbackContext callbackContext(*this);
-    WKPageSetPrivateClickMeasurementAttributionReportURLForTesting(m_mainWebView->page(), url, privateClickMeasurementVoidCallback, &callbackContext);
+    WKPageSetPrivateClickMeasurementAttributionReportURLsForTesting(m_mainWebView->page(), sourceURL, destinationURL, privateClickMeasurementVoidCallback, &callbackContext);
     runUntil(callbackContext.done, noTimeout);
 }
 
@@ -3658,16 +3708,22 @@ void TestController::markPrivateClickMeasurementsAsExpiredForTesting()
     runUntil(callbackContext.done, noTimeout);
 }
 
-void TestController::setFraudPreventionValuesForTesting(WKStringRef secretToken, WKStringRef unlinkableToken, WKStringRef signature, WKStringRef keyID)
+void TestController::setPCMFraudPreventionValuesForTesting(WKStringRef unlinkableToken, WKStringRef secretToken, WKStringRef signature, WKStringRef keyID)
 {
     PrivateClickMeasurementVoidCallbackContext callbackContext(*this);
-    WKPageSetFraudPreventionValuesForTesting(m_mainWebView->page(), secretToken, unlinkableToken, signature, keyID, privateClickMeasurementVoidCallback, &callbackContext);
+    WKPageSetPCMFraudPreventionValuesForTesting(m_mainWebView->page(), unlinkableToken, secretToken, signature, keyID, privateClickMeasurementVoidCallback, &callbackContext);
     runUntil(callbackContext.done, noTimeout);
 }
 
 WKURLRef TestController::currentTestURL() const
 {
     return m_currentInvocation ? m_currentInvocation->url() : nullptr;
+}
+
+void TestController::setShouldAllowDeviceOrientationAndMotionAccess(bool value)
+{
+    m_shouldAllowDeviceOrientationAndMotionAccess = value;
+    WKWebsiteDataStoreClearAllDeviceOrientationPermissions(websiteDataStore());
 }
 
 } // namespace WTR

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -60,6 +60,7 @@ WK_CLASS_AVAILABLE(macos(10.13), ios(11.0))
 @property (nonatomic, copy, setter=_setWebSQLDatabaseDirectory:) NSURL *_webSQLDatabaseDirectory;
 @property (nonatomic, copy, setter=_setCookieStorageFile:) NSURL *_cookieStorageFile;
 @property (nonatomic, copy, setter=_setResourceLoadStatisticsDirectory:) NSURL *_resourceLoadStatisticsDirectory WK_API_AVAILABLE(macos(10.13.4), ios(11.3));
+@property (nonatomic, nullable, copy) NSURL *privateClickMeasurementStorageDirectory WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA));
 @property (nonatomic, copy, setter=_setCacheStorageDirectory:) NSURL *_cacheStorageDirectory WK_API_AVAILABLE(macos(10.13.4), ios(11.3));
 @property (nonatomic, copy, setter=_setServiceWorkerRegistrationDirectory:) NSURL *_serviceWorkerRegistrationDirectory WK_API_AVAILABLE(macos(10.13.4), ios(11.3));
 @property (nonatomic) BOOL serviceWorkerProcessTerminationDelayEnabled WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
@@ -72,8 +73,9 @@ WK_CLASS_AVAILABLE(macos(10.13), ios(11.0))
 @property (nonatomic) NSUInteger testSpeedMultiplier WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
 @property (nonatomic) BOOL suppressesConnectionTerminationOnSystemChange WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
 @property (nonatomic) BOOL allowsServerPreconnect WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
-@property (nonatomic, nullable, copy, setter=setHSTSStorageDirectory:) NSURL *hstsStorageDirectory WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA));
-@property (nonatomic) BOOL enableInAppBrowserPrivacyForTesting WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA));
+@property (nonatomic, nullable, copy, setter=setHSTSStorageDirectory:) NSURL *hstsStorageDirectory WK_API_AVAILABLE(macos(12.0), ios(15.0));
+@property (nonatomic) BOOL enableInAppBrowserPrivacyForTesting WK_API_AVAILABLE(macos(12.0), ios(15.0));
+@property (nonatomic) BOOL allowsHSTSWithUntrustedRootCertificate WK_API_AVAILABLE(macos(12.0), ios(15.0));
 
 @property (nonatomic, nullable, copy) NSURL *alternativeServicesStorageDirectory WK_API_AVAILABLE(macos(11.0), ios(14.0));
 

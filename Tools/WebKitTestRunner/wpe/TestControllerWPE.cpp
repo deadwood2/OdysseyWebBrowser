@@ -26,6 +26,7 @@
 #include "config.h"
 #include "TestController.h"
 
+#include "PlatformWebView.h"
 #include <glib.h>
 #include <wtf/RunLoop.h>
 #include <wtf/glib/GUniquePtr.h>
@@ -130,10 +131,7 @@ const char* TestController::platformLibraryPathForTesting()
 
 void TestController::platformConfigureViewForTest(const TestInvocation&)
 {
-}
-
-void TestController::platformResetPreferencesToConsistentValues()
-{
+    WKPageSetApplicationNameForUserAgent(mainWebView()->page(), WKStringCreateWithUTF8CString("WebKitTestRunnerWPE"));
 }
 
 bool TestController::platformResetStateToConsistentValues(const TestOptions&)
@@ -144,7 +142,7 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions&)
 TestFeatures TestController::platformSpecificFeatureDefaultsForTest(const TestCommand&) const
 {
     TestFeatures features;
-    features.boolWebPreferenceFeatures.insert({ "ModernMediaControlsEnabled", false });
+    features.boolWebPreferenceFeatures.insert({ "AsyncOverflowScrollingEnabled", true });
     return features;
 }
 

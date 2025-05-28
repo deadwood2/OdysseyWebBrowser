@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,6 +47,9 @@ WebsiteDataStoreConfiguration::WebsiteDataStoreConfiguration(IsPersistent isPers
         setResourceLoadStatisticsDirectory(WebsiteDataStore::defaultResourceLoadStatisticsDirectory());
         setDeviceIdHashSaltsStorageDirectory(WebsiteDataStore::defaultDeviceIdHashSaltsStorageDirectory());
         setJavaScriptConfigurationDirectory(WebsiteDataStore::defaultJavaScriptConfigurationDirectory());
+#if HAVE(ARKIT_INLINE_PREVIEW)
+        setModelElementCacheDirectory(WebsiteDataStore::defaultModelElementCacheDirectory());
+#endif
     }
 }
 
@@ -73,6 +76,7 @@ Ref<WebsiteDataStoreConfiguration> WebsiteDataStoreConfiguration::copy() const
     copy->m_alternativeServicesDirectory = this->m_alternativeServicesDirectory;
     copy->m_deviceIdHashSaltsStorageDirectory = this->m_deviceIdHashSaltsStorageDirectory;
     copy->m_resourceLoadStatisticsDirectory = this->m_resourceLoadStatisticsDirectory;
+    copy->m_privateClickMeasurementStorageDirectory = this->m_privateClickMeasurementStorageDirectory;
     copy->m_javaScriptConfigurationDirectory = this->m_javaScriptConfigurationDirectory;
     copy->m_cookieStorageFile = this->m_cookieStorageFile;
     copy->m_sourceApplicationBundleIdentifier = this->m_sourceApplicationBundleIdentifier;
@@ -93,9 +97,13 @@ Ref<WebsiteDataStoreConfiguration> WebsiteDataStoreConfiguration::copy() const
     copy->m_preventsSystemHTTPProxyAuthentication = this->m_preventsSystemHTTPProxyAuthentication;
     copy->m_standaloneApplicationURL = this->m_standaloneApplicationURL;
     copy->m_enableInAppBrowserPrivacyForTesting = this->m_enableInAppBrowserPrivacyForTesting;
+    copy->m_allowsHSTSWithUntrustedRootCertificate = this->m_allowsHSTSWithUntrustedRootCertificate;
 #if PLATFORM(COCOA)
     if (m_proxyConfiguration)
         copy->m_proxyConfiguration = adoptCF(CFDictionaryCreateCopy(nullptr, this->m_proxyConfiguration.get()));
+#endif
+#if HAVE(ARKIT_INLINE_PREVIEW)
+    copy->m_modelElementCacheDirectory = this->m_modelElementCacheDirectory;
 #endif
 
     return copy;

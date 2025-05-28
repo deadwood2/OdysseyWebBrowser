@@ -29,7 +29,6 @@
 #import <WebKitLegacy/WebDownload.h>
 
 #import "NetworkStorageSessionMap.h"
-#import "WebTypesInternal.h"
 #import <Foundation/NSURLAuthenticationChallenge.h>
 #import <WebCore/AuthenticationMac.h>
 #import <WebCore/Credential.h>
@@ -41,6 +40,7 @@
 #import <pal/spi/cocoa/NSURLDownloadSPI.h>
 #import <wtf/Assertions.h>
 #import <wtf/MainThread.h>
+#import <wtf/WorkQueue.h>
 #import <wtf/spi/darwin/dyldSPI.h>
 
 static bool shouldCallOnNetworkThread()
@@ -65,8 +65,11 @@ static void callOnDelegateThreadAndWait(Callable&& work)
 {
     if (shouldCallOnNetworkThread() || isMainThread())
         work();
-    else
-        dispatch_sync(dispatch_get_main_queue(), work);
+    else {
+        WorkQueue::main().dispatchSync([work = WTFMove(work)]() mutable {
+            work();
+        });
+    }
 }
 
 using namespace WebCore;

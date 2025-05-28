@@ -65,6 +65,7 @@ String applicationBundleIdentifier()
     ASSERT(identifier.isNull() || RunLoop::isMain());
     if (identifier.isNull())
         identifier = bundleIdentifier();
+    ASSERT_WITH_MESSAGE(!isInAuxiliaryProcess() || !!identifier, "applicationBundleIsEqualTo() and applicationBundleStartsWith() must not be called before setApplicationBundleIdentifier() in auxiliary processes");
     return identifier.isNull() ? String([[NSBundle mainBundle] bundleIdentifier]) : identifier;
 }
 
@@ -77,7 +78,7 @@ void setApplicationBundleIdentifier(const String& identifier)
 void setApplicationBundleIdentifierOverride(const String& identifier)
 {
     ASSERT(RunLoop::isMain());
-    ASSERT_WITH_MESSAGE(!applicationBundleIdentifierOverrideWasQueried, "applicationBundleIsEqualTo() and applicationBundleStartsWith() should not be called before setApplicationBundleIdentifier()");
+    ASSERT_WITH_MESSAGE(!applicationBundleIdentifierOverrideWasQueried, "applicationBundleIsEqualTo() and applicationBundleStartsWith() must not be called before setApplicationBundleIdentifierOverride()");
     bundleIdentifierOverride() = identifier;
 }
 
@@ -95,6 +96,12 @@ static bool applicationBundleIsEqualTo(const String& bundleIdentifierString)
     return applicationBundleIdentifier() == bundleIdentifierString;
 }
 
+bool CocoaApplication::isIBooks()
+{
+    static bool isIBooks = applicationBundleIsEqualTo("com.apple.iBooksX"_s) || applicationBundleIsEqualTo("com.apple.iBooks"_s);
+    return isIBooks;
+}
+
 #if PLATFORM(MAC)
 
 bool MacApplication::isSafari()
@@ -109,12 +116,6 @@ bool MacApplication::isAppleMail()
 {
     static bool isAppleMail = applicationBundleIsEqualTo("com.apple.mail"_s);
     return isAppleMail;
-}
-
-bool MacApplication::isIBooks()
-{
-    static bool isIBooks = applicationBundleIsEqualTo("com.apple.iBooksX"_s);
-    return isIBooks;
 }
 
 bool MacApplication::isITunes()
@@ -272,12 +273,6 @@ bool IOSApplication::isWebProcess()
     return isInWebProcess();
 }
 
-bool IOSApplication::isIBooks()
-{
-    static bool isIBooks = applicationBundleIsEqualTo("com.apple.iBooks"_s);
-    return isIBooks;
-}
-
 bool IOSApplication::isIBooksStorytime()
 {
     static bool isIBooksStorytime = applicationBundleIsEqualTo("com.apple.TVBooks"_s);
@@ -432,6 +427,12 @@ bool IOSApplication::isWechat()
 {
     static bool isWechat = applicationBundleIsEqualTo("com.tencent.xin"_s);
     return isWechat;
+}
+
+bool IOSApplication::isLutron()
+{
+    static bool isLutronApp = applicationBundleIsEqualTo("com.lutron.lsb"_s);
+    return isLutronApp;
 }
 
 #endif

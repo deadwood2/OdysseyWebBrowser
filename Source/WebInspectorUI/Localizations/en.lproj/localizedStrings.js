@@ -77,6 +77,8 @@ localizedStrings["%s total"] = "%s total";
 localizedStrings["%s transferred"] = "%s transferred";
 /* A single value expressed as a percentage where the value has already been converted from a number to a string. */
 localizedStrings["%s%% @ Font Details Sidebar"] = "%s%%";
+/* Scope bar button that filter for dynamic resource loads, like from the 'fetch' method. */
+localizedStrings["%s/Fetch @ Network Tab Table Filter"] = "%s/Fetch";
 localizedStrings["%s:"] = "%s:";
 localizedStrings["(%s)"] = "(%s)";
 localizedStrings["(Action %s)"] = "(Action %s)";
@@ -152,6 +154,8 @@ localizedStrings["All Timeouts @ Event Breakpoint"] = "All Timeouts";
 localizedStrings["All items in \u0022%s\u0022 must be error objects"] = "All items in \u0022%s\u0022 must be error objects";
 localizedStrings["All items in \u0022%s\u0022 must be non-empty strings"] = "All items in \u0022%s\u0022 must be non-empty strings";
 localizedStrings["All items in \u0022%s\u0022 must be valid DOM nodes"] = "All items in \u0022%s\u0022 must be valid DOM nodes";
+/* Label for setting that allows the user to inspect the Web Inspector user interface. */
+localizedStrings["Allow Inspecting Web Inspector @ Experimental Settings"] = "Allow Inspecting Web Inspector";
 localizedStrings["Allow Media Capture on Insecure Sites"] = "Allow Media Capture on Insecure Sites";
 /* Property title for `font-variant-alternates`. */
 localizedStrings["Alternate Glyphs @ Font Details Sidebar Property"] = "Alternate Glyphs";
@@ -178,6 +182,8 @@ localizedStrings["Application Cache"] = "Application Cache";
 /* Approximate count of events */
 localizedStrings["Approximate Number"] = "~%s";
 localizedStrings["Area"] = "Area";
+/* Label for option to toggle the area names setting for CSS grid overlays */
+localizedStrings["Area names @ Layout Panel Overlay Options"] = "Area Names";
 localizedStrings["Assertion"] = "Assertion";
 localizedStrings["Assertion Failed"] = "Assertion Failed";
 localizedStrings["Assertion Failed: %s"] = "Assertion Failed: %s";
@@ -247,10 +253,10 @@ localizedStrings["CSP Hash"] = "CSP Hash";
 localizedStrings["CSS Animation"] = "CSS Animation";
 localizedStrings["CSS Animations"] = "CSS Animations";
 localizedStrings["CSS Canvas"] = "CSS Canvas";
-localizedStrings["CSS Changes:"] = "CSS Changes:";
 localizedStrings["CSS Transition"] = "CSS Transition";
 localizedStrings["CSS Transitions"] = "CSS Transitions";
 localizedStrings["CSS canvas \u201C%s\u201D"] = "CSS canvas \u201C%s\u201D";
+localizedStrings["CSS:"] = "CSS:";
 localizedStrings["Cached"] = "Cached";
 localizedStrings["Call Frames Truncated"] = "Call Frames Truncated";
 localizedStrings["Call Stack"] = "Call Stack";
@@ -309,12 +315,16 @@ localizedStrings["Clear watch expressions"] = "Clear watch expressions";
 localizedStrings["Click Listener"] = "Click Listener";
 localizedStrings["Click to create a Local Override from this content"] = "Click to create a Local Override from this content";
 localizedStrings["Click to import a file and create a Local Override\nShift-click to create a Local Override from this content"] = "Click to import a file and create a Local Override\nShift-click to create a Local Override from this content";
+/* Title of text button that resets the gesture controls in the image resource content view. */
+localizedStrings["Click to reset @ Image Resource Content View Gesture Controls"] = "Click to reset";
 localizedStrings["Click to select a color"] = "Click to select a color";
 localizedStrings["Click to select a color\nShift-click to switch color formats"] = "Click to select a color\nShift-click to switch color formats";
 localizedStrings["Click to show %d error in the Console"] = "Click to show %d error in the Console";
 localizedStrings["Click to show %d errors in the Console"] = "Click to show %d errors in the Console";
 localizedStrings["Click to show %d warning in the Console"] = "Click to show %d warning in the Console";
 localizedStrings["Click to show %d warnings in the Console"] = "Click to show %d warnings in the Console";
+/* Tooltip to show purpose of the CSS documentation button */
+localizedStrings["Click to show documentation @ CSS Documentation Button"] = "Click to show documentation";
 localizedStrings["Click to view variable value\nShift-click to replace variable with value"] = "Click to view variable value\nShift-click to replace variable with value";
 localizedStrings["Clickable"] = "Clickable";
 localizedStrings["Clients"] = "Clients";
@@ -454,6 +464,8 @@ localizedStrings["Details Sidebars: @ Settings Elements Pane"] = "Details Sideba
 localizedStrings["Device %d"] = "Device %d";
 localizedStrings["Device Settings"] = "Device Settings";
 localizedStrings["Diagnoses common accessibility problems affecting screen readers and other assistive technology."] = "Diagnoses common accessibility problems affecting screen readers and other assistive technology.";
+/* Category label for experimental settings related to Web Inspector diagnostics. */
+localizedStrings["Diagnostics: @ Experimental Settings"] = "Diagnostics:";
 /* Property value for `font-variant-numeric: diagonal-fractions`. */
 localizedStrings["Diagonal Fractions @ Font Details Sidebar Property Value"] = "Diagonal Fractions";
 localizedStrings["Dimensions"] = "Dimensions";
@@ -545,6 +557,7 @@ localizedStrings["Element has opacity applied and composited descendants"] = "El
 localizedStrings["Element has perspective applied"] = "Element has perspective applied";
 localizedStrings["Element is <canvas>"] = "Element is <canvas>";
 localizedStrings["Element is <iframe>"] = "Element is <iframe>";
+localizedStrings["Element is <model>"] = "Element is <model>";
 localizedStrings["Element is <video>"] = "Element is <video>";
 localizedStrings["Element is a plug-in"] = "Element is a plug-in";
 localizedStrings["Element is a stacking context and has composited descendants with CSS blending applied"] = "Element is a stacking context and has composited descendants with CSS blending applied";
@@ -842,6 +855,10 @@ localizedStrings["Light @ Settings General Appearance"] = "Light";
 localizedStrings["Line %d"] = "Line %d";
 localizedStrings["Line %d:%d"] = "Line %d:%d";
 localizedStrings["Line Number"] = "Line Number";
+/* Label for option to toggle the line names setting for CSS grid overlays */
+localizedStrings["Line names @ Layout Panel Overlay Options"] = "Line Names";
+/* Label for option to toggle the line numbers setting for CSS grid overlays */
+localizedStrings["Line numbers @ Layout Panel Overlay Options"] = "Line Numbers";
 localizedStrings["Line wrapping:"] = "Line wrapping:";
 localizedStrings["Linear Gradient"] = "Linear Gradient";
 /* Property value for `font-variant-numeric: lining-nums`. */
@@ -1010,8 +1027,11 @@ localizedStrings["Online"] = "Online";
 localizedStrings["Only show resources with issues"] = "Only show resources with issues";
 localizedStrings["Only show visual actions"] = "Only show visual actions";
 localizedStrings["Open"] = "Open";
-localizedStrings["Open in New Tab"] = "Open in New Tab";
+/* Context menu item for opening the target item in a new window. */
+localizedStrings["Open in New Window @ Context Menu Item"] = "Open in New Window";
 localizedStrings["Option-click to show source"] = "Option-click to show source";
+/* Tooltip with instructions on how to show all hidden CSS variables */
+localizedStrings["Option-click to show unused CSS variables from all rules @ Styles Sidebar Panel Tooltip"] = "Option-click to show unused CSS variables from all rules";
 localizedStrings["Options"] = "Options";
 /* Property value for `font-variant-numeric: ordinal`. */
 localizedStrings["Ordinal Letter Forms @ Font Details Sidebar Property Value"] = "Ordinal Letter Forms";
@@ -1033,8 +1053,8 @@ localizedStrings["PDF"] = "PDF";
 localizedStrings["PNG"] = "PNG";
 localizedStrings["Page"] = "Page";
 localizedStrings["Page Issue"] = "Page Issue";
-/* Heading for list of grid overlay settings */
-localizedStrings["Page Overlay Settings @ Layout Panel Section Header"] = "Grid Overlay Settings";
+/* Heading for list of grid overlay options */
+localizedStrings["Page Overlay Options @ Layout Panel Section Header"] = "Page Overlay Options";
 /* Heading for list of grid nodes */
 localizedStrings["Page Overlays @ Layout Sidebar Section Header"] = "Grid Overlays";
 localizedStrings["Page navigated at %s"] = "Page navigated at %s";
@@ -1303,40 +1323,36 @@ localizedStrings["Shadow Content (%s)"] = "Shadow Content (%s)";
 localizedStrings["Shared Focus"] = "Shared Focus";
 localizedStrings["Shortest property path to %s"] = "Shortest property path to %s";
 localizedStrings["Show %d More"] = "Show %d More";
+/* Text label for button to reveal one unused CSS variable */
+localizedStrings["Show %d unused CSS variable (singular) @ Styles Sidebar Panel"] = "Show %d unused CSS variable";
+/* Text label for button to reveal multiple unused CSS variables */
+localizedStrings["Show %d unused CSS variables (plural) @ Styles Sidebar Panel"] = "Show %d unused CSS variables";
 localizedStrings["Show All"] = "Show All";
 localizedStrings["Show All (%d More)"] = "Show All (%d More)";
 localizedStrings["Show All Nodes (%d More)"] = "Show All Nodes (%d More)";
 localizedStrings["Show Console"] = "Show Console";
 localizedStrings["Show Console tab"] = "Show Console tab";
 localizedStrings["Show Elements"] = "Show Elements";
-localizedStrings["Show Layout panel"] = "Show Layout panel";
 localizedStrings["Show Path"] = "Show Path";
 localizedStrings["Show Remaining (%d)"] = "Show Remaining (%d)";
 localizedStrings["Show Scope Chain on pause"] = "Show Scope Chain on pause";
 localizedStrings["Show all actions"] = "Show all actions";
 localizedStrings["Show all resources"] = "Show all resources";
-/* Label for option to toggle the area names setting for CSS grid overlays */
-localizedStrings["Show area names @ Layers Panel Grid Overlay Setting"] = "Show area names";
+localizedStrings["Show changes only for selected node"] = "Show changes only for selected node";
 localizedStrings["Show compositing borders"] = "Show compositing borders";
 /* Label for option to toggle the extended lines setting for CSS grid overlays */
-localizedStrings["Show extended lines @ Layers Panel Grid Overlay Setting"] = "Show extended lines";
+localizedStrings["Show extended lines @ Layout Panel Overlay Options"] = "Extended Grid Lines";
 localizedStrings["Show full certificate"] = "Show full certificate";
 localizedStrings["Show hidden tabs"] = "Show hidden tabs";
 /* Settings tab checkbox label for whether the independent styles sidebar should be shown */
 localizedStrings["Show independent Styles sidebar @ Settings Elements Pane"] = "Show independent Styles sidebar";
 localizedStrings["Show jump to effective property button"] = "Show jump to effective property button";
 localizedStrings["Show jump to variable declaration button"] = "Show jump to variable declaration button";
-/* Label for option to toggle the line names setting for CSS grid overlays */
-localizedStrings["Show line names @ Layers Panel Grid Overlay Setting"] = "Show line names";
-/* Label for option to toggle the line numbers setting for CSS grid overlays */
-localizedStrings["Show line numbers @ Layers Panel Grid Overlay Setting"] = "Show line numbers";
-localizedStrings["Show only for selected node"] = "Show only for selected node";
 localizedStrings["Show page rulers and node border lines"] = "Show page rulers and node border lines";
+localizedStrings["Show property syntax in documentation popover"] = "Show property syntax in documentation popover";
 localizedStrings["Show rulers"] = "Show rulers";
 localizedStrings["Show the details sidebar (%s)"] = "Show the details sidebar (%s)";
 localizedStrings["Show the navigation sidebar (%s)"] = "Show the navigation sidebar (%s)";
-/* Label for option to toggle the track sizes setting for CSS grid overlays */
-localizedStrings["Show track sizes @ Layers Panel Grid Overlay Setting"] = "Show track sizes";
 /* Settings tab checkbox label for whether the transparency grid is shown by default */
 localizedStrings["Show transparency grid (settings label)"] = "Show transparency grid";
 /* Tooltip for showing the checkered transparency grid under images and canvases */
@@ -1548,6 +1564,8 @@ localizedStrings["Totals:"] = "Totals:";
 localizedStrings["Trace"] = "Trace";
 localizedStrings["Trace: %s"] = "Trace: %s";
 localizedStrings["Traces:"] = "Traces:";
+/* Label for option to toggle the track sizes setting for CSS grid overlays */
+localizedStrings["Track sizes @ Layout Panel Overlay Options"] = "Track Sizes";
 /* Property value for `font-variant-alternates: traditional`. */
 localizedStrings["Traditional Forms @ Font Details Sidebar Property Value"] = "Traditional Forms";
 /* Amount of data sent over the network for a single resource */
@@ -1698,6 +1716,10 @@ localizedStrings["XHR Breakpoint\u2026"] = "XHR Breakpoint\u2026";
 localizedStrings["XHRs"] = "XHRs";
 localizedStrings["XPath"] = "XPath";
 localizedStrings["Yes"] = "Yes";
+/* Title of image button that increases the zoom of the image resource content view. */
+localizedStrings["Zoom In @ Image Resource Content View Gesture Controls"] = "Zoom In";
+/* Title of image button that decreases the zoom of the image resource content view. */
+localizedStrings["Zoom Out @ Image Resource Content View Gesture Controls"] = "Zoom Out";
 localizedStrings["Zoom:"] = "Zoom:";
 localizedStrings["\u0022%s\u0022 has a non-array \u0022%s\u0022 value"] = "\u0022%s\u0022 has a non-array \u0022%s\u0022 value";
 localizedStrings["\u0022%s\u0022 has a non-number \u0022%s\u0022 value"] = "\u0022%s\u0022 has a non-number \u0022%s\u0022 value";
@@ -1713,6 +1735,8 @@ localizedStrings["\u0022%s\u0022 must be an %s"] = "\u0022%s\u0022 must be an %s
 localizedStrings["\u0022%s\u0022 threw an error"] = "\u0022%s\u0022 threw an error";
 localizedStrings["\u201C%s\u201D Event Fired"] = "\u201C%s\u201D Event Fired";
 localizedStrings["\u201C%s\u201D Profile Recorded"] = "\u201C%s\u201D Profile Recorded";
+/* Shown in the 'Type' column of the Network Table for resources loaded via the Beacon API. */
+localizedStrings["beacon @ Network Tab Resource Type Column Value"] = "beacon";
 /* Part of the 'Blackboxed - %d call frame' label shown in the debugger call stack when paused instead of subsequent call frames that have been blackboxed. */
 localizedStrings["call frame @ Debugger Call Stack"] = "%d call frame";
 /* Part of the 'Blackboxed - %d call frames' label shown in the debugger call stack when paused instead of subsequent call frames that have been blackboxed. */
@@ -1720,8 +1744,16 @@ localizedStrings["call frames @ Debugger Call Stack"] = "%d call frames";
 localizedStrings["computed"] = "computed";
 localizedStrings["default"] = "default";
 localizedStrings["default prevented"] = "default prevented";
+/* Shown in the 'Type' column of the Network Table for document resources. */
+localizedStrings["document @ Network Tab Resource Type Column Value"] = "document";
 localizedStrings["ensuring that common debugging functions are available on every page via the Console"] = "ensuring that common debugging functions are available on every page via the Console";
+/* Shown in the 'Type' column of the Network Table for resources loaded via the 'fetch' method. */
+localizedStrings["fetch @ Network Tab Resource Type Column Value"] = "fetch";
+/* Shown in the 'Type' column of the Network Table for font resources. */
+localizedStrings["font @ Network Tab Resource Type Column Value"] = "font";
 localizedStrings["for changes to take effect"] = "for changes to take effect";
+/* Shown in the 'Type' column of the Network Table for image resources. */
+localizedStrings["image @ Network Tab Resource Type Column Value"] = "image";
 localizedStrings["invalid HAR"] = "invalid HAR";
 localizedStrings["invalid JSON"] = "invalid JSON";
 localizedStrings["key"] = "key";
@@ -1732,12 +1764,18 @@ localizedStrings["non-number %s"] = "non-number %s";
 localizedStrings["non-object %s"] = "non-object %s";
 localizedStrings["non-string %s"] = "non-string %s";
 localizedStrings["originally %s"] = "originally %s";
+/* Shown in the 'Type' column of the Network Table for resources that don't fall into any of the other known types/categories. */
+localizedStrings["other @ Network Tab Resource Type Column Value"] = "other";
 localizedStrings["overriding built-in functions to log call traces or add %s statements"] = "overriding built-in functions to log call traces or add %s statements";
+/* Shown in the 'Type' column of the Network Table for resources loaded via '<a ping>' elements. */
+localizedStrings["ping @ Network Tab Resource Type Column Value"] = "ping";
 localizedStrings["popup"] = "popup";
 localizedStrings["popup, toggle"] = "popup, toggle";
 localizedStrings["requestAnimationFrame Fired"] = "requestAnimationFrame Fired";
 localizedStrings["setInterval Fired"] = "setInterval Fired";
 localizedStrings["setTimeout Fired"] = "setTimeout Fired";
+/* Shown in the 'Type' column of the Network Table for WebSocket resources. */
+localizedStrings["socket @ Network Tab Resource Type Column Value"] = "socket";
 localizedStrings["space"] = "space";
 localizedStrings["spaces"] = "spaces";
 localizedStrings["time before stopping"] = "time before stopping";

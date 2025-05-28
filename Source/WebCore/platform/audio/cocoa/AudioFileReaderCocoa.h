@@ -31,11 +31,71 @@
 
 #if ENABLE(WEB_AUDIO)
 
+#include <CoreAudio/CoreAudioTypes.h>
+#include <optional>
+#include <wtf/LoggerHelper.h>
+#include <wtf/RefPtr.h>
+
+using ExtAudioFileRef = struct OpaqueExtAudioFile*;
+using AudioFileID = struct OpaqueAudioFileID*;
+typedef struct opaqueCMSampleBuffer* CMSampleBufferRef;
+
 namespace WebCore {
 
-WARN_UNUSED_RETURN AudioBufferList* tryCreateAudioBufferList(size_t numberOfBuffers);
-void destroyAudioBufferList(AudioBufferList*);
-bool validateAudioBufferList(AudioBufferList*);
+class AudioBus;
+class SourceBufferParserWebM;
+class AudioFileReaderWebMData;
+
+// Wrapper class for AudioFile and ExtAudioFile CoreAudio APIs for reading files and in-memory versions of them...
+
+class AudioFileReader
+#if !RELEASE_LOG_DISABLED
+    : public LoggerHelper
+#endif
+{
+public:
+    AudioFileReader(const void* data, size_t dataSize);
+    ~AudioFileReader();
+
+    RefPtr<AudioBus> createBus(float sampleRate, bool mixToMono); // Returns nullptr on error
+
+    const void* data() const { return m_data; }
+    size_t dataSize() const { return m_dataSize; }
+
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const final { return m_logger.get(); }
+    const void* logIdentifier() const final { return m_logIdentifier; }
+    WTFLogChannel& logChannel() const final;
+    const char* logClassName() const final { return "AudioFileReaderCocoa"; }
+#endif
+
+private:
+#if ENABLE(MEDIA_SOURCE)
+    bool isMaybeWebM(const uint8_t* data, size_t dataSize) const;
+    std::unique_ptr<AudioFileReaderWebMData> demuxWebMData(const uint8_t* data, size_t dataSize) const;
+    Vector<AudioStreamPacketDescription> getPacketDescriptions(CMSampleBufferRef) const;
+    std::optional<size_t> decodeWebMData(AudioBufferList&, size_t numberOfFrames, const AudioStreamBasicDescription& inFormat, const AudioStreamBasicDescription& outFormat) const;
+#endif
+    static OSStatus readProc(void* clientData, SInt64 position, UInt32 requestCount, void* buffer, UInt32* actualCount);
+    static SInt64 getSizeProc(void* clientData);
+    ssize_t numberOfFrames() const;
+    std::optional<AudioStreamBasicDescription> fileDataFormat() const;
+    AudioStreamBasicDescription clientDataFormat(const AudioStreamBasicDescription& inFormat, float sampleRate) const;
+
+    const void* m_data = { nullptr };
+    size_t m_dataSize = { 0 };
+
+    AudioFileID m_audioFileID = { nullptr };
+    ExtAudioFileRef m_extAudioFileRef = { nullptr };
+
+    std::unique_ptr<AudioFileReaderWebMData> m_webmData;
+
+#if !RELEASE_LOG_DISABLED
+    const Ref<Logger> m_logger;
+    const void* m_logIdentifier;
+#endif
+
+};
 
 }
 

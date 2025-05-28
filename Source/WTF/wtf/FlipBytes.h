@@ -24,6 +24,7 @@
  */
 
 #pragma once
+#include <optional>
 
 namespace WTF {
 
@@ -91,6 +92,42 @@ inline T flipBytes(T value)
             uint64_t word;
         } u;
         u.original = value;
+        u.word = flipBytes(u.word);
+        return u.original;
+    }
+    RELEASE_ASSERT_NOT_REACHED();
+    return T();
+}
+
+template<typename T>
+inline T flipBytes(std::optional<T> value)
+{
+    if (sizeof(*value) == 1)
+        return *value;
+    if (sizeof(*value) == 2) {
+        union {
+            T original;
+            uint16_t word;
+        } u;
+        u.original = *value;
+        u.word = flipBytes(u.word);
+        return u.original;
+    }
+    if (sizeof(*value) == 4) {
+        union {
+            T original;
+            uint32_t word;
+        } u;
+        u.original = *value;
+        u.word = flipBytes(u.word);
+        return u.original;
+    }
+    if (sizeof(*value) == 8) {
+        union {
+            T original;
+            uint64_t word;
+        } u;
+        u.original = *value;
         u.word = flipBytes(u.word);
         return u.original;
     }

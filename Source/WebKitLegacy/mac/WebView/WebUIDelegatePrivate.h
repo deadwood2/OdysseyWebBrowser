@@ -107,6 +107,10 @@ enum {
     WebMenuItemTagToggleVideoFullscreen,
     WebMenuItemTagShareMenu,
     WebMenuItemTagToggleVideoEnhancedFullscreen,
+    WebMenuItemTagAddHighlightToCurrentQuickNote,
+    WebMenuItemTagAddHighlightToNewQuickNote,
+    WebMenuItemTagRevealImage,
+    WebMenuItemTagTranslate,
 };
 
 // Deprecated; remove when there are no more clients.

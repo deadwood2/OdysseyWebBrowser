@@ -61,10 +61,10 @@ static ApplePayPaymentPass::ActivationState convert(PKPaymentPassActivationState
     }
 }
 
-static Optional<ApplePayPaymentPass> convert(PKPaymentPass *paymentPass)
+static std::optional<ApplePayPaymentPass> convert(PKPaymentPass *paymentPass)
 {
     if (!paymentPass)
-        return WTF::nullopt;
+        return std::nullopt;
 
     ApplePayPaymentPass result;
 
@@ -81,7 +81,7 @@ static Optional<ApplePayPaymentPass> convert(PKPaymentPass *paymentPass)
     return result;
 }
 
-static Optional<ApplePayPaymentMethod::Type> convert(PKPaymentMethodType paymentMethodType)
+static std::optional<ApplePayPaymentMethod::Type> convert(PKPaymentMethodType paymentMethodType)
 {
     switch (paymentMethodType) {
     case PKPaymentMethodTypeDebit:
@@ -93,7 +93,8 @@ static Optional<ApplePayPaymentMethod::Type> convert(PKPaymentMethodType payment
     case PKPaymentMethodTypeStore:
         return ApplePayPaymentMethod::Type::Store;
     case PKPaymentMethodTypeUnknown:
-        return WTF::nullopt;
+    default:
+        return std::nullopt;
     }
 }
 
@@ -114,10 +115,10 @@ static void convert(CNLabeledValue<CNPostalAddress*> *postalAddress, ApplePayPay
     result.countryCode = postalAddress.value.ISOCountryCode;
 }
 
-static Optional<ApplePayPaymentContact> convert(CNContact *billingContact)
+static std::optional<ApplePayPaymentContact> convert(CNContact *billingContact)
 {
     if (!billingContact)
-        return WTF::nullopt;
+        return std::nullopt;
 
     ApplePayPaymentContact result;
     

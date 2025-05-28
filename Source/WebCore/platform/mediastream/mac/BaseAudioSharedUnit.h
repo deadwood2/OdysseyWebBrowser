@@ -28,7 +28,6 @@
 #if ENABLE(MEDIA_STREAM)
 
 #include "RealtimeMediaSourceCapabilities.h"
-#include <pal/cf/CoreMediaSoftLink.h>
 #include <wtf/Function.h>
 #include <wtf/HashSet.h>
 #include <wtf/MediaTime.h>

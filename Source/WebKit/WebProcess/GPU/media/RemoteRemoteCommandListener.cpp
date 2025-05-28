@@ -31,6 +31,7 @@
 #include "GPUConnectionToWebProcessMessages.h"
 #include "GPUProcessProxy.h"
 #include "RemoteRemoteCommandListenerMessages.h"
+#include "RemoteRemoteCommandListenerProxyMessages.h"
 #include "WebProcess.h"
 
 namespace WebKit {
@@ -47,26 +48,58 @@ RemoteRemoteCommandListener::RemoteRemoteCommandListener(RemoteCommandListenerCl
     , m_process(webProcess)
     , m_identifier(RemoteRemoteCommandListenerIdentifier::generate())
 {
-    auto& connection = WebProcess::singleton().ensureGPUProcessConnection();
-    connection.addClient(*this);
-    connection.messageReceiverMap().addMessageReceiver(Messages::RemoteRemoteCommandListener::messageReceiverName(), m_identifier.toUInt64(), *this);
-    connection.connection().send(Messages::GPUConnectionToWebProcess::CreateRemoteCommandListener(m_identifier), { });
+    ensureGPUProcessConnection();
 }
 
 RemoteRemoteCommandListener::~RemoteRemoteCommandListener()
 {
-    auto& connection = WebProcess::singleton().ensureGPUProcessConnection();
-    connection.messageReceiverMap().removeMessageReceiver(*this);
-    connection.connection().send(Messages::GPUConnectionToWebProcess::ReleaseRemoteCommandListener(m_identifier), 0);
+    if (m_gpuProcessConnection) {
+        m_gpuProcessConnection->messageReceiverMap().removeMessageReceiver(*this);
+        m_gpuProcessConnection->connection().send(Messages::GPUConnectionToWebProcess::ReleaseRemoteCommandListener(m_identifier), 0);
+    }
 }
 
-void RemoteRemoteCommandListener::gpuProcessConnectionDidClose(GPUProcessConnection&)
+GPUProcessConnection& RemoteRemoteCommandListener::ensureGPUProcessConnection()
 {
+    if (!m_gpuProcessConnection) {
+        m_gpuProcessConnection = makeWeakPtr(m_process.ensureGPUProcessConnection());
+        m_gpuProcessConnection->addClient(*this);
+        m_gpuProcessConnection->messageReceiverMap().addMessageReceiver(Messages::RemoteRemoteCommandListener::messageReceiverName(), m_identifier.toUInt64(), *this);
+        m_gpuProcessConnection->connection().send(Messages::GPUConnectionToWebProcess::CreateRemoteCommandListener(m_identifier), { });
+    }
+    return *m_gpuProcessConnection;
+}
+
+void RemoteRemoteCommandListener::gpuProcessConnectionDidClose(GPUProcessConnection& gpuProcessConnection)
+{
+    gpuProcessConnection.removeClient(*this);
+    gpuProcessConnection.messageReceiverMap().removeMessageReceiver(*this);
+    m_gpuProcessConnection = nullptr;
+
+    // FIXME: GPUProcess will be relaunched/RemoteCommandListener re-created when calling updateSupportedCommands().
+    // FIXME: Should we relaunch the GPUProcess pro-actively and re-create the RemoteCommandListener?
 }
 
 void RemoteRemoteCommandListener::didReceiveRemoteControlCommand(WebCore::PlatformMediaSession::RemoteControlCommandType type, const PlatformMediaSession::RemoteCommandArgument& argument)
 {
-    m_client.didReceiveRemoteControlCommand(type, argument);
+    client().didReceiveRemoteControlCommand(type, argument);
+}
+
+void RemoteRemoteCommandListener::updateSupportedCommands()
+{
+    auto& supportedCommands = this->supportedCommands();
+    if (m_currentCommands == supportedCommands && m_currentSupportSeeking == supportsSeeking())
+        return;
+
+    m_currentCommands = supportedCommands;
+    m_currentSupportSeeking = supportsSeeking();
+
+    Vector<PlatformMediaSession::RemoteControlCommandType> commands;
+    commands.reserveInitialCapacity(supportedCommands.size());
+    for (auto command : supportedCommands)
+        commands.uncheckedAppend(command);
+
+    ensureGPUProcessConnection().connection().send(Messages::RemoteRemoteCommandListenerProxy::UpdateSupportedCommands { WTFMove(commands), m_currentSupportSeeking }, m_identifier);
 }
 
 }

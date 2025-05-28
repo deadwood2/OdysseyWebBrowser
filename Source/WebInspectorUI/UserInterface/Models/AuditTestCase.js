@@ -77,19 +77,6 @@ WI.AuditTestCase = class AuditTestCase extends WI.AuditTestBase
         return new WI.AuditTestCase(payload.name, payload.test, options);
     }
 
-    static stringifyFunction(func, indentLevel)
-    {
-        let string = func.toString();
-
-        // Remove spaces to make the function look unindented.
-        string = string.replaceAll(new RegExp(`^ {${indentLevel}}`, "gm"), "");
-
-        // Replace remaining indentations with the user set indent string.
-        string = string.replaceAll(/^    /gm, WI.indentString());
-
-        return string;
-    }
-
     // Public
 
     get test()
@@ -100,7 +87,6 @@ WI.AuditTestCase = class AuditTestCase extends WI.AuditTestBase
     set test(test)
     {
         console.assert(this.editable);
-        console.assert(WI.auditManager.editing);
         console.assert(typeof test === "string", test);
 
         if (test === this._test)

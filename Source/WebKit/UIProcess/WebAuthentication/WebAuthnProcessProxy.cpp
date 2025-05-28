@@ -56,16 +56,16 @@ WebAuthnProcessProxy& WebAuthnProcessProxy::singleton()
     ASSERT(RunLoop::isMain());
 
     static std::once_flag onceFlag;
-    static LazyNeverDestroyed<WebAuthnProcessProxy> webAuthnProcess;
+    static LazyNeverDestroyed<Ref<WebAuthnProcessProxy>> webAuthnProcess;
 
     std::call_once(onceFlag, [] {
-        webAuthnProcess.construct();
+        webAuthnProcess.construct(adoptRef(*new WebAuthnProcessProxy));
 
         WebAuthnProcessCreationParameters parameters;
 
         // Initialize the WebAuthn process.
-        webAuthnProcess->send(Messages::WebAuthnProcess::InitializeWebAuthnProcess(parameters), 0);
-        webAuthnProcess->updateProcessAssertion();
+        webAuthnProcess.get()->send(Messages::WebAuthnProcess::InitializeWebAuthnProcess(parameters), 0);
+        webAuthnProcess.get()->updateProcessAssertion();
     });
 
     return webAuthnProcess.get();
@@ -168,14 +168,12 @@ void WebAuthnProcessProxy::updateProcessAssertion()
     if (hasAnyForegroundWebProcesses) {
         if (!ProcessThrottler::isValidForegroundActivity(m_activityFromWebProcesses)) {
             m_activityFromWebProcesses = throttler().foregroundActivity("WebAuthn for foreground view(s)"_s);
-            send(Messages::WebAuthnProcess::ProcessDidTransitionToForeground(), 0);
         }
         return;
     }
     if (hasAnyBackgroundWebProcesses) {
         if (!ProcessThrottler::isValidBackgroundActivity(m_activityFromWebProcesses)) {
             m_activityFromWebProcesses = throttler().backgroundActivity("WebAuthn for background view(s)"_s);
-            send(Messages::WebAuthnProcess::ProcessDidTransitionToBackground(), 0);
         }
         return;
     }

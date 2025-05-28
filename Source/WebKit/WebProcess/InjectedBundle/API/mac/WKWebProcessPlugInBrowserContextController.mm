@@ -61,6 +61,7 @@
 #import <WebCore/Frame.h>
 #import <WebCore/HTMLFormElement.h>
 #import <WebCore/HTMLInputElement.h>
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/WeakObjCPtr.h>
 
 @interface NSObject (WKDeprecatedDelegateMethods)
@@ -369,6 +370,9 @@ static void setUpResourceLoadClient(WKWebProcessPlugInBrowserContextController *
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKWebProcessPlugInBrowserContextController.class, self))
+        return;
+
     if (_remoteObjectRegistry)
         [_remoteObjectRegistry _invalidate];
 
@@ -579,7 +583,7 @@ static inline WKEditorInsertAction toWK(WebCore::EditorInsertAction action)
         }
 
     private:
-        bool shouldInsertText(WebKit::WebPage&, const WTF::String& text, const Optional<WebCore::SimpleRange>& rangeToReplace, WebCore::EditorInsertAction action) final
+        bool shouldInsertText(WebKit::WebPage&, const WTF::String& text, const std::optional<WebCore::SimpleRange>& rangeToReplace, WebCore::EditorInsertAction action) final
         {
             if (!m_delegateMethods.shouldInsertText)
                 return true;
@@ -587,7 +591,7 @@ static inline WKEditorInsertAction toWK(WebCore::EditorInsertAction action)
             return [m_controller->_editingDelegate.get() _webProcessPlugInBrowserContextController:m_controller shouldInsertText:text replacingRange:wrapper(*WebKit::createHandle(rangeToReplace)) givenAction:toWK(action)];
         }
 
-        bool shouldChangeSelectedRange(WebKit::WebPage&, const Optional<WebCore::SimpleRange>& fromRange, const Optional<WebCore::SimpleRange>& toRange, WebCore::Affinity affinity, bool stillSelecting) final
+        bool shouldChangeSelectedRange(WebKit::WebPage&, const std::optional<WebCore::SimpleRange>& fromRange, const std::optional<WebCore::SimpleRange>& toRange, WebCore::Affinity affinity, bool stillSelecting) final
         {
             if (!m_delegateMethods.shouldChangeSelectedRange)
                 return true;
@@ -611,7 +615,7 @@ static inline WKEditorInsertAction toWK(WebCore::EditorInsertAction action)
             [m_controller->_editingDelegate.get() _webProcessPlugInBrowserContextControllerDidChangeByEditing:m_controller];
         }
 
-        void willWriteToPasteboard(WebKit::WebPage&, const Optional<WebCore::SimpleRange>& range) final
+        void willWriteToPasteboard(WebKit::WebPage&, const std::optional<WebCore::SimpleRange>& range) final
         {
             if (!m_delegateMethods.willWriteToPasteboard)
                 return;
@@ -619,7 +623,7 @@ static inline WKEditorInsertAction toWK(WebCore::EditorInsertAction action)
             [m_controller->_editingDelegate.get() _webProcessPlugInBrowserContextController:m_controller willWriteRangeToPasteboard:wrapper(WebKit::createHandle(range).get())];
         }
 
-        void getPasteboardDataForRange(WebKit::WebPage&, const Optional<WebCore::SimpleRange>& range, Vector<String>& pasteboardTypes, Vector<RefPtr<WebCore::SharedBuffer>>& pasteboardData) final
+        void getPasteboardDataForRange(WebKit::WebPage&, const std::optional<WebCore::SimpleRange>& range, Vector<String>& pasteboardTypes, Vector<RefPtr<WebCore::SharedBuffer>>& pasteboardData) final
         {
             if (!m_delegateMethods.getPasteboardDataForRange)
                 return;
@@ -690,6 +694,11 @@ static inline WKEditorInsertAction toWK(WebCore::EditorInsertAction action)
 - (BOOL)_usesNonPersistentWebsiteDataStore
 {
     return _page->usesEphemeralSession();
+}
+
+- (NSString *)_groupIdentifier
+{
+    return _page->pageGroup()->identifier();
 }
 
 @end

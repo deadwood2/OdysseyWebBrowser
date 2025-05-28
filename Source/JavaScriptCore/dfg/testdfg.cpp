@@ -32,6 +32,10 @@
 #include <wtf/DataLog.h>
 #include <wtf/text/StringCommon.h>
 
+#if OS(MORPHOS)
+unsigned long __stack = 2 * 1024 * 1024;
+#endif
+
 // We don't have a NO_RETURN_DUE_TO_EXIT, nor should we. That's ridiculous.
 static bool hiddenTruthBecauseNoReturnIsStupid() { return true; }
 

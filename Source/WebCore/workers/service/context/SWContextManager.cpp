@@ -33,6 +33,10 @@
 #include "ServiceWorkerClientIdentifier.h"
 #include "ServiceWorkerGlobalScope.h"
 
+#if OS(MORPHOS)
+#include <proto/exec.h>
+#endif
+
 namespace WebCore {
 
 SWContextManager& SWContextManager::singleton()
@@ -55,7 +59,7 @@ auto SWContextManager::connection() const -> Connection*
 void SWContextManager::registerServiceWorkerThreadForInstall(Ref<ServiceWorkerThreadProxy>&& serviceWorkerThreadProxy)
 {
     auto serviceWorkerIdentifier = serviceWorkerThreadProxy->identifier();
-    auto jobDataIdentifier = serviceWorkerThreadProxy->thread().contextData().jobDataIdentifier;
+    auto jobDataIdentifier = serviceWorkerThreadProxy->thread().jobDataIdentifier();
     auto* threadProxy = serviceWorkerThreadProxy.ptr();
     auto result = m_workerMap.add(serviceWorkerIdentifier, WTFMove(serviceWorkerThreadProxy));
     ASSERT_UNUSED(result, result.isNewEntry);
@@ -65,7 +69,7 @@ void SWContextManager::registerServiceWorkerThreadForInstall(Ref<ServiceWorkerTh
     });
 }
 
-void SWContextManager::startedServiceWorker(Optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, const String& exceptionMessage, bool doesHandleFetch)
+void SWContextManager::startedServiceWorker(std::optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, const String& exceptionMessage, bool doesHandleFetch)
 {
     if (m_serviceWorkerCreationCallback)
         m_serviceWorkerCreationCallback(serviceWorkerIdentifier.toUInt64());
@@ -84,8 +88,8 @@ ServiceWorkerThreadProxy* SWContextManager::serviceWorkerThreadProxy(ServiceWork
 void SWContextManager::postMessageToServiceWorker(ServiceWorkerIdentifier destination, MessageWithMessagePorts&& message, ServiceWorkerOrClientData&& sourceData)
 {
     auto* serviceWorker = m_workerMap.get(destination);
-    ASSERT(serviceWorker);
-    ASSERT(!serviceWorker->isTerminatingOrTerminated());
+    if (!serviceWorker)
+        return;
 
     // FIXME: We should pass valid MessagePortChannels.
     serviceWorker->postMessageToServiceWorker(WTFMove(message), WTFMove(sourceData));
@@ -118,6 +122,12 @@ void SWContextManager::terminateWorker(ServiceWorkerIdentifier identifier, Secon
         return;
     }
     stopWorker(*serviceWorker, timeout, WTFMove(completionHandler));
+}
+
+void SWContextManager::didSaveScriptsToDisk(ServiceWorkerIdentifier identifier, ScriptBuffer&& script, HashMap<URL, ScriptBuffer>&& importedScripts)
+{
+    if (auto serviceWorker = m_workerMap.get(identifier))
+        serviceWorker->didSaveScriptsToDisk(WTFMove(script), WTFMove(importedScripts));
 }
 
 void SWContextManager::stopWorker(ServiceWorkerThreadProxy& serviceWorker, Seconds timeout, Function<void()>&& completionHandler)
@@ -166,7 +176,12 @@ void SWContextManager::serviceWorkerFailedToTerminate(ServiceWorkerIdentifier se
     UNUSED_PARAM(serviceWorkerIdentifier);
     RELEASE_LOG_ERROR(ServiceWorker, "Failed to terminate service worker with identifier %s, killing the service worker process", serviceWorkerIdentifier.loggingString().utf8().data());
     ASSERT_NOT_REACHED();
+#if OS(MORPHOS)
+	dprintf("Failed to terminate service worker with identifier %s, freezing the service worker process", serviceWorkerIdentifier.loggingString().utf8().data());
+	Wait(0);
+#else
     _exit(EXIT_FAILURE);
+#endif
 }
 
 SWContextManager::ServiceWorkerTerminationRequest::ServiceWorkerTerminationRequest(SWContextManager& manager, ServiceWorkerIdentifier serviceWorkerIdentifier, Seconds timeout)

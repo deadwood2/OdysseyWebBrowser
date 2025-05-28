@@ -43,7 +43,7 @@
     if (!jsStringRef)
         return nil;
 
-    return CFBridgingRelease(JSStringCopyCFString(kCFAllocatorDefault, jsStringRef));
+    return adoptCF(JSStringCopyCFString(kCFAllocatorDefault, jsStringRef)).bridgingAutorelease();
 }
 
 - (JSRetainPtr<JSStringRef>)createJSStringRef
@@ -69,6 +69,13 @@ static JSObjectRef makeJSArray(JSContextRef context, NSArray *array)
     for (NSUInteger i = 0; i < count; i++)
         arguments[i] = makeValueRefForValue(context, [array objectAtIndex:i]);
     return JSObjectMakeArray(context, count, arguments, nullptr);
+}
+
+JSObjectRef makeJSArray(NSArray *array)
+{
+    WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
+    JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
+    return makeJSArray(context, array);
 }
 
 static JSObjectRef makeJSObject(JSContextRef context, NSDictionary *dictionary)

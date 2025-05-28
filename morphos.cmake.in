@@ -1,0 +1,25 @@
+SET(CMAKE_SYSTEM_NAME Generic)
+SET(CMAKE_SYSTEM_VERSION 1)
+SET(CMAKE_SYSTEM_PROCESSOR ppc)
+
+SET(CMAKE_C_COMPILER /gg/bin/ppc-morphos-gcc-9)
+SET(CMAKE_CXX_COMPILER /gg/bin/ppc-morphos-g++-9)
+
+SET(CMAKE_CXX_FLAGS "-O3 -DNDEBUG -g0 -gstabs1 -gz -feliminate-unused-debug-symbols -noixemul -mlongcall -mno-sched-prolog -Wno-ignored-attributes -Wno-unused-but-set-parameter")
+SET(CMAKE_CXX_FLAGS_RELEASE "")
+SET(CMAKE_CXX_FLAGS_DEBUG "-noixemul -mlongcall -mno-sched-prolog -Wno-ignored-attributes -Wno-unused-but-set-parameter")
+SET(CMAKE_CXX_FLAGS_RELEASE_INIT "")
+
+SET(CMAKE_C_FLAGS "-O3 -noixemul -mlongcall -mno-sched-prolog -Wno-ignored-attributes")
+SET(CMAKE_C_FLAGS_DEBUG "-noixemul -mlongcall -mno-sched-prolog -Wno-ignored-attributes")
+
+SET(CMAKE_MODULE_LINKER_FLAGS "-noixemul")
+SET(CMAKE_FIND_LIBRARY_SUFFIXES "*.a")
+
+SET(CMAKE_FIND_ROOT_PATH _IN_ROOTPATH)
+SET(CMAKE_LIBRARY_PATH _IN_ROOTPATH/gen/host/libnix/lib)
+SET(CMAKE_INCLUDE_PATH _IN_ROOTPATH/gen/host/libnix/include)
+
+SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

@@ -222,6 +222,7 @@ PRINTED
                 branch='main',
                 identifier='1@main',
                 timestamp=1000,
+                order=0,
                 author=dict(
                     name='Jonathan Bedard',
                     emails=['jbedard@apple.com'],
@@ -232,7 +233,7 @@ PRINTED
                 identifier='1@main',
                 timestamp=1000,
                 author=contributor,
-                message='Message'
+                message='Message',
             ), cls=Commit.Encoder))
         )
 
@@ -252,3 +253,48 @@ PRINTED
         commit_b = Commit(**dictionary)
 
         self.assertEqual(commit_a, commit_b)
+
+    def test_from_json(self):
+        self.assertEqual(
+            Commit.from_json(dict(
+                repository_id='webkit',
+                id=1234,
+                timestamp=1000,
+            )), Commit(
+                repository_id='webkit',
+                revision=1234,
+                timestamp=1000,
+            ),
+        )
+
+        self.assertEqual(
+            Commit.from_json(dict(
+                repository_id='webkit',
+                id='c3bd784f8b88bd03f64467ddd3304ed8be28acbe',
+                timestamp=2000,
+            )), Commit(
+                repository_id='webkit',
+                hash='c3bd784f8b88bd03f64467ddd3304ed8be28acbe',
+                timestamp=2000,
+            ),
+        )
+
+    def test_from_json_str(self):
+        contributor = Contributor.from_scm_log('Author: jbedard@apple.com <jbedard@apple.com>')
+        self.assertEqual(
+            Commit.from_json('''{
+    "revision": 1,
+    "hash": "c3bd784f8b88bd03f64467ddd3304ed8be28acbe",
+    "identifier": "1@main",
+    "timestamp": 1000,
+    "author": "jbedard@apple.com",
+    "message": "Message"
+}'''), Commit(
+                revision=1,
+                hash='c3bd784f8b88bd03f64467ddd3304ed8be28acbe',
+                identifier='1@main',
+                timestamp=1000,
+                author=Contributor.Encoder().default(contributor),
+                message='Message'
+            ),
+        )

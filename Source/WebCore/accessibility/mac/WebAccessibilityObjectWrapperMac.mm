@@ -81,10 +81,6 @@
 #import <pal/spi/cocoa/NSAccessibilitySPI.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
-#if ENABLE(TREE_DEBUGGING)
-#import <wtf/text/StringBuilder.h>
-#endif
-
 using namespace WebCore;
 
 // Cell Tables
@@ -547,6 +543,10 @@ using namespace WebCore;
 #define NSAccessibilityEmbeddedImageDescriptionAttribute @"AXEmbeddedImageDescription"
 #endif
 
+#ifndef NSAccessibilityImageOverlayElementsAttribute
+#define NSAccessibilityImageOverlayElementsAttribute @"AXImageOverlayElements"
+#endif
+
 extern "C" AXUIElementRef NSAccessibilityCreateAXUIElementRef(id element);
 
 @implementation WebAccessibilityObjectWrapper
@@ -713,11 +713,11 @@ static AccessibilityTextOperation accessibilityTextOperationForParameterizedAttr
     return operation;
 }
 
-static std::pair<Optional<SimpleRange>, AccessibilitySearchDirection> accessibilityMisspellingSearchCriteriaForParameterizedAttribute(AXObjectCache* axObjectCache, const NSDictionary *params)
+static std::pair<std::optional<SimpleRange>, AccessibilitySearchDirection> accessibilityMisspellingSearchCriteriaForParameterizedAttribute(AXObjectCache* axObjectCache, const NSDictionary *params)
 {
     ASSERT(isMainThread());
 
-    std::pair<Optional<SimpleRange>, AccessibilitySearchDirection> criteria;
+    std::pair<std::optional<SimpleRange>, AccessibilitySearchDirection> criteria;
 
     ASSERT(AXObjectIsTextMarkerRange([params objectForKey:@"AXStartTextMarkerRange"]));
     criteria.first = rangeForTextMarkerRange(axObjectCache, (AXTextMarkerRangeRef)[params objectForKey:@"AXStartTextMarkerRange"]);
@@ -733,7 +733,7 @@ static std::pair<Optional<SimpleRange>, AccessibilitySearchDirection> accessibil
 
 #pragma mark Text Marker helpers
 
-static id nextTextMarkerForCharacterOffset(AXObjectCache* cache, CharacterOffset& characterOffset)
+static RetainPtr<AXTextMarkerRef> nextTextMarkerForCharacterOffset(AXObjectCache* cache, CharacterOffset& characterOffset)
 {
     if (!cache)
         return nil;
@@ -742,10 +742,10 @@ static id nextTextMarkerForCharacterOffset(AXObjectCache* cache, CharacterOffset
     cache->textMarkerDataForNextCharacterOffset(textMarkerData, characterOffset);
     if (!textMarkerData.axID)
         return nil;
-    return CFBridgingRelease(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData, sizeof(textMarkerData)));
+    return adoptCF(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData, sizeof(textMarkerData)));
 }
 
-static id previousTextMarkerForCharacterOffset(AXObjectCache* cache, CharacterOffset& characterOffset)
+static RetainPtr<AXTextMarkerRef> previousTextMarkerForCharacterOffset(AXObjectCache* cache, CharacterOffset& characterOffset)
 {
     if (!cache)
         return nil;
@@ -754,15 +754,15 @@ static id previousTextMarkerForCharacterOffset(AXObjectCache* cache, CharacterOf
     cache->textMarkerDataForPreviousCharacterOffset(textMarkerData, characterOffset);
     if (!textMarkerData.axID)
         return nil;
-    return CFBridgingRelease(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData, sizeof(textMarkerData)));
+    return adoptCF(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData, sizeof(textMarkerData)));
 }
 
-- (id)nextTextMarkerForCharacterOffset:(CharacterOffset&)characterOffset
+- (RetainPtr<AXTextMarkerRef>)nextTextMarkerForCharacterOffset:(CharacterOffset&)characterOffset
 {
     return nextTextMarkerForCharacterOffset(self.axBackingObject->axObjectCache(), characterOffset);
 }
 
-- (id)previousTextMarkerForCharacterOffset:(CharacterOffset&)characterOffset
+- (RetainPtr<AXTextMarkerRef>)previousTextMarkerForCharacterOffset:(CharacterOffset&)characterOffset
 {
     return previousTextMarkerForCharacterOffset(self.axBackingObject->axObjectCache(), characterOffset);
 }
@@ -776,7 +776,7 @@ static id previousTextMarkerForCharacterOffset(AXObjectCache* cache, CharacterOf
     return backingObject ? (id)textMarkerForVisiblePosition(backingObject->axObjectCache(), position) : nil;
 }
 
-- (id)textMarkerForFirstPositionInTextControl:(HTMLTextFormControlElement &)textControl
+- (RetainPtr<AXTextMarkerRef>)textMarkerForFirstPositionInTextControl:(HTMLTextFormControlElement &)textControl
 {
     ASSERT(isMainThread());
 
@@ -792,7 +792,7 @@ static id previousTextMarkerForCharacterOffset(AXObjectCache* cache, CharacterOf
     if (!textMarkerData)
         return nil;
 
-    return CFBridgingRelease(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData.value(), sizeof(textMarkerData.value())));
+    return adoptCF(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData.value(), sizeof(textMarkerData.value())));
 }
 
 // When modifying attributed strings, the range can come from a source which may provide faulty information (e.g. the spell checker).
@@ -1018,11 +1018,8 @@ static void AXAttributeStringSetElement(NSMutableAttributedString* attrString, N
         if ([attribute isEqualToString:NSAccessibilityAttachmentTextAttribute] && object->isAttachment() && [objectWrapper attachmentView])
             objectWrapper = [objectWrapper attachmentView];
         
-        AXUIElementRef axElement = NSAccessibilityCreateAXUIElementRef(objectWrapper);
-        if (axElement) {
-            [attrString addAttribute:attribute value:(__bridge id)axElement range:range];
-            CFRelease(axElement);
-        }
+        if (auto axElement = adoptCF(NSAccessibilityCreateAXUIElementRef(objectWrapper)))
+            [attrString addAttribute:attribute value:(__bridge id)axElement.get() range:range];
     } else
         [attrString removeAttribute:attribute range:range];
 }
@@ -1154,29 +1151,29 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 
     // All elements should get ShowMenu and ScrollToVisible.
     // But certain earlier VoiceOver versions do not support scroll to visible, and it confuses them to see it in the list.
-    static NSArray *defaultElementActions = [@[NSAccessibilityShowMenuAction, NSAccessibilityScrollToVisibleAction] retain];
+    static NeverDestroyed<RetainPtr<NSArray>> defaultElementActions = @[NSAccessibilityShowMenuAction, NSAccessibilityScrollToVisibleAction];
 
     // Action elements allow Press.
     // The order is important to VoiceOver, which expects the 'default' action to be the first action. In this case the default action should be press.
-    static NSArray *actionElementActions = [@[NSAccessibilityPressAction, NSAccessibilityShowMenuAction, NSAccessibilityScrollToVisibleAction] retain];
+    static NeverDestroyed<RetainPtr<NSArray>> actionElementActions = @[NSAccessibilityPressAction, NSAccessibilityShowMenuAction, NSAccessibilityScrollToVisibleAction];
 
     // Menu elements allow Press and Cancel.
-    static NSArray *menuElementActions = [[actionElementActions arrayByAddingObject:NSAccessibilityCancelAction] retain];
+    static NeverDestroyed<RetainPtr<NSArray>> menuElementActions = [actionElementActions.get() arrayByAddingObject:NSAccessibilityCancelAction];
 
     // Slider elements allow Increment/Decrement.
-    static NSArray *sliderActions = [[defaultElementActions arrayByAddingObjectsFromArray:@[NSAccessibilityIncrementAction, NSAccessibilityDecrementAction]] retain];
+    static NeverDestroyed<RetainPtr<NSArray>> sliderActions = [defaultElementActions.get() arrayByAddingObjectsFromArray:@[NSAccessibilityIncrementAction, NSAccessibilityDecrementAction]];
 
     NSArray *actions;
     if (backingObject->supportsPressAction())
-        actions = actionElementActions;
+        actions = actionElementActions.get().get();
     else if (backingObject->isMenuRelated())
-        actions = menuElementActions;
+        actions = menuElementActions.get().get();
     else if (backingObject->isSlider())
-        actions = sliderActions;
+        actions = sliderActions.get().get();
     else if (backingObject->isAttachment())
         actions = [[self attachmentView] accessibilityActionNames];
     else
-        actions = defaultElementActions;
+        actions = defaultElementActions.get().get();
 
     return actions;
 }
@@ -1567,8 +1564,9 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
         [tempArray addObject:NSAccessibilityVerticalScrollBarAttribute];
         return tempArray;
     }());
-    static auto imageAttrs =  makeNeverDestroyed([] {
+    static auto imageAttrs = makeNeverDestroyed([] {
         auto tempArray = adoptNS([[NSMutableArray alloc] initWithArray:attributes.get().get()]);
+        [tempArray addObject:NSAccessibilityImageOverlayElementsAttribute];
         [tempArray addObject:NSAccessibilityEmbeddedImageDescriptionAttribute];
         [tempArray addObject:NSAccessibilityURLAttribute];
         return tempArray;
@@ -1681,18 +1679,17 @@ static void convertToVector(NSArray* array, AccessibilityObject::AccessibilityCh
     }
 }
 
-- (AXTextMarkerRangeRef)textMarkerRangeForSelection
+- (AXTextMarkerRangeRef)selectedTextMarkerRange
 {
     return Accessibility::retrieveAutoreleasedValueFromMainThread<AXTextMarkerRangeRef>([protectedSelf = retainPtr(self)] () -> RetainPtr<AXTextMarkerRangeRef> {
         auto* backingObject = protectedSelf.get().axBackingObject;
         if (!backingObject)
             return nil;
 
-        VisibleSelection selection = backingObject->selection();
-        if (selection.isNone())
+        auto selectedVisiblePositionRange = backingObject->selectedVisiblePositionRange();
+        if (selectedVisiblePositionRange.isNull())
             return nil;
-
-        return textMarkerRangeFromVisiblePositions(backingObject->axObjectCache(), selection.visibleStart(), selection.visibleEnd());
+        return textMarkerRangeFromVisiblePositions(backingObject->axObjectCache(), selectedVisiblePositionRange.start, selectedVisiblePositionRange.end);
     });
 }
 
@@ -2243,23 +2240,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
             return backingObject->isPasswordField() ? nil : [NSValue valueWithRange: NSMakeRange(0, backingObject->textLength())];
 
         if ([attributeName isEqualToString:NSAccessibilityInsertionPointLineNumberAttribute]) {
-            // if selectionEnd > 0, then there is selected text and this question should not be answered
-            if (backingObject->isPasswordField() || backingObject->selectionEnd() > 0)
-                return nil;
-
-            auto* focusedObject = backingObject->focusedUIElement();
-            if (focusedObject != backingObject)
-                return nil;
-
-            int lineNumber = Accessibility::retrieveValueFromMainThread<int>([protectedSelf = retainPtr(self)] () -> int {
-                auto* backingObject = protectedSelf.get().axBackingObject;
-                if (!backingObject)
-                    return -1;
-
-                auto focusedPosition = backingObject->visiblePositionForIndex(backingObject->selectionStart(), true);
-                return backingObject->lineForPosition(focusedPosition);
-            });
-
+            int lineNumber = backingObject->insertionPointLineNumber();
             return lineNumber >= 0 ? @(lineNumber) : nil;
         }
     }
@@ -2389,6 +2370,18 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
         return [self position];
     if ([attributeName isEqualToString:NSAccessibilityPathAttribute])
         return [self path];
+
+    if ([attributeName isEqualToString:@"AXLineRectsAndText"]) {
+        return Accessibility::retrieveAutoreleasedValueFromMainThread<NSArray *>([protectedSelf = retainPtr(self)] () -> RetainPtr<NSArray> {
+            return protectedSelf.get().lineRectsAndText;
+        });
+    }
+
+    if ([attributeName isEqualToString:NSAccessibilityImageOverlayElementsAttribute]) {
+        auto imageOverlayElements = backingObject->imageOverlayElements();
+        return imageOverlayElements ? convertToNSArray(*imageOverlayElements) : nil;
+    }
+
     if ([attributeName isEqualToString:NSAccessibilityEmbeddedImageDescriptionAttribute])
         return backingObject->embeddedImageDescription();
 
@@ -2616,7 +2609,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
         return NSAccessibilityVerticalOrientationValue;
 
     if ([attributeName isEqualToString:@"AXSelectedTextMarkerRange"])
-        return (id)[self textMarkerRangeForSelection];
+        return (id)[self selectedTextMarkerRange];
 
     if ([attributeName isEqualToString:@"AXStartTextMarker"]) {
         return Accessibility::retrieveAutoreleasedValueFromMainThread<id>([protectedSelf = retainPtr(self)] () -> RetainPtr<id> {
@@ -2662,13 +2655,8 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
     }
 
     if ([attributeName isEqualToString:NSAccessibilityTitleUIElementAttribute]) {
-        if (!backingObject->exposesTitleUIElement())
-            return nil;
-
-        AXCoreObject* obj = backingObject->titleUIElement();
-        if (obj)
-            return obj->wrapper();
-        return nil;
+        auto* object = backingObject->titleUIElement();
+        return object ? object->wrapper() : nil;
     }
 
     if ([attributeName isEqualToString:NSAccessibilityValueDescriptionAttribute])
@@ -3452,12 +3440,6 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
     });
 }
 
-- (AXTextMarkerRangeRef)textMarkerRangeForNSRange:(const NSRange&)range
-{
-    auto* backingObject = self.updateObjectBackingStore;
-    return backingObject ? backingObject->textMarkerRangeForNSRange(range) : nil;
-}
-
 // FIXME: No reason for this to be a method instead of a function; can get document from range.
 - (NSRange)_convertToNSRange:(const SimpleRange&)range
 {
@@ -3574,14 +3556,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 
 static void formatForDebugger(const VisiblePositionRange& range, char* buffer, unsigned length)
 {
-    StringBuilder result;
-    
-    result.appendLiteral("from ");
-    result.append(range.start.debugDescription());
-    result.appendLiteral(" to ");
-    result.append(range.end.debugDescription());
-    
-    strlcpy(buffer, result.toString().utf8().data(), length);
+    strlcpy(buffer, makeString("from ", range.start.debugDescription(), " to ", range.end.debugDescription()).utf8().data(), length);
 }
 #endif
 
@@ -3615,7 +3590,7 @@ enum class TextUnit {
             return nil;
 
         auto characterOffset = characterOffsetForTextMarker(cache, textMarker);
-        Optional<SimpleRange> range;
+        std::optional<SimpleRange> range;
         switch (textUnit) {
         case TextUnit::LeftWord:
             range = cache->leftWordRange(characterOffset);
@@ -3834,6 +3809,8 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
         return convertToNSArray(results);
     }
 
+    // TextMarker attributes.
+
     if ([attribute isEqualToString:NSAccessibilityEndTextMarkerForBoundsParameterizedAttribute]) {
         return Accessibility::retrieveAutoreleasedValueFromMainThread<id>([&rect, protectedSelf = retainPtr(self)] () -> RetainPtr<id> {
             auto* backingObject = protectedSelf.get().axBackingObject;
@@ -3867,6 +3844,10 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
             return (id)textMarkerForCharacterOffset(cache, characterOffset);
         });
     }
+
+    // TextMarkerRange attributes.
+    if ([attribute isEqualToString:@"AXTextMarkerRangeForNSRange"])
+        return (id)backingObject->textMarkerRangeForNSRange(range);
 
     if ([attribute isEqualToString:NSAccessibilityLineTextMarkerRangeForTextMarkerParameterizedAttribute])
         return (id)[self lineTextMarkerRangeForTextMarker:textMarker forUnit:TextUnit::Line];
@@ -4099,7 +4080,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
                 return nil;
 
             CharacterOffset characterOffset = characterOffsetForTextMarker(cache, textMarker);
-            return [protectedSelf nextTextMarkerForCharacterOffset:characterOffset];
+            return [protectedSelf nextTextMarkerForCharacterOffset:characterOffset].bridgingAutorelease();
         });
     }
 
@@ -4114,7 +4095,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
                 return nil;
 
             CharacterOffset characterOffset = characterOffsetForTextMarker(cache, textMarker);
-            return [protectedSelf previousTextMarkerForCharacterOffset:characterOffset];
+            return [protectedSelf previousTextMarkerForCharacterOffset:characterOffset].bridgingAutorelease();
         });
     }
 

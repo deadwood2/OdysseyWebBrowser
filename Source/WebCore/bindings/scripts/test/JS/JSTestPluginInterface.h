@@ -63,9 +63,11 @@ public:
         return subspaceForImpl(vm);
     }
     static JSC::IsoSubspace* subspaceForImpl(JSC::VM& vm);
+    DECLARE_VISIT_CHILDREN;
+
     static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
 public:
-    static constexpr unsigned StructureFlags = Base::StructureFlags | JSC::InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | JSC::OverridesGetCallData | JSC::OverridesGetOwnPropertySlot | JSC::ProhibitsPropertyCaching;
+    static constexpr unsigned StructureFlags = Base::StructureFlags | JSC::InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | JSC::OverridesGetCallData | JSC::OverridesGetOwnPropertySlot | JSC::OverridesPut | JSC::ProhibitsPropertyCaching;
 protected:
     JSTestPluginInterface(JSC::Structure*, JSDOMGlobalObject&, Ref<TestPluginInterface>&&);
 

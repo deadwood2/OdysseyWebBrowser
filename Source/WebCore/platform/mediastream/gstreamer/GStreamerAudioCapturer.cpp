@@ -45,17 +45,13 @@ GStreamerAudioCapturer::GStreamerAudioCapturer(GStreamerCaptureDevice device)
 }
 
 GStreamerAudioCapturer::GStreamerAudioCapturer()
-    : GStreamerCapturer("appsrc", adoptGRef(gst_caps_new_simple("audio/x-raw", "rate", G_TYPE_INT, AudioCaptureSampleRate, nullptr)))
+    : GStreamerCapturer("appsrc", adoptGRef(gst_caps_new_simple("audio/x-raw", "rate", G_TYPE_INT, AudioCaptureSampleRate, nullptr)), CaptureDevice::DeviceType::Microphone)
 {
 }
 
 GstElement* GStreamerAudioCapturer::createConverter()
 {
-    auto converter = gst_parse_bin_from_description("audioconvert ! audioresample", TRUE, nullptr);
-
-    ASSERT(converter);
-
-    return converter;
+    return makeGStreamerBin("audioconvert ! audioresample", true);
 }
 
 bool GStreamerAudioCapturer::setSampleRate(int sampleRate)

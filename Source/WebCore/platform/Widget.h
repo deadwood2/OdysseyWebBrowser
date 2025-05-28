@@ -116,7 +116,7 @@ public:
 
     WEBCORE_EXPORT virtual void setFocus(bool);
 
-    void setCursor(const Cursor&);
+    virtual void setCursor(const Cursor&);
 
     WEBCORE_EXPORT virtual void show();
     WEBCORE_EXPORT virtual void hide();
@@ -174,6 +174,8 @@ public:
     // Whether transforms affect the frame rect. FIXME: We get rid of this and have
     // the frame rects be the same no matter what transforms are applied.
     virtual bool transformsAffectFrameRect() { return true; }
+
+    virtual void willBeDestroyed() { }
 
 #if PLATFORM(COCOA)
     NSView* getOuterView() const;

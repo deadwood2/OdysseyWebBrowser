@@ -144,6 +144,7 @@ typedef enum {
 
 @interface CATransaction ()
 + (void)addCommitHandler:(void(^)(void))block forPhase:(CATransactionPhase)phase;
++ (void)activate;
 + (CATransactionPhase)currentPhase;
 + (void)synchronize;
 + (uint32_t)currentState;
@@ -160,6 +161,12 @@ typedef enum {
 
 @interface CAMediaTimingFunction ()
 - (float)_solveForInput:(float)t;
+@end
+
+@interface CAPortalLayer : CALayer
+@property (weak) CALayer *sourceLayer;
+@property BOOL matchesPosition;
+@property BOOL matchesTransform;
 @end
 
 #endif // __OBJC__

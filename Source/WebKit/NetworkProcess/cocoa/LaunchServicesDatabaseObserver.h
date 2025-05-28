@@ -55,8 +55,8 @@ private:
     void initializeConnection(IPC::Connection*) final;
 
     RetainPtr<id> m_observer;
-    Vector<OSObjectPtr<xpc_connection_t>> m_connections;
     Lock m_connectionsLock;
+    Vector<OSObjectPtr<xpc_connection_t>> m_connections WTF_GUARDED_BY_LOCK(m_connectionsLock);
 };
 
 }

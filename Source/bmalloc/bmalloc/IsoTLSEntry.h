@@ -30,6 +30,10 @@
 #include "IsoTLSLayout.h"
 #include <climits>
 
+#if BOS(MORPHOS) && !defined(UINT32_MAX)
+#   define UINT32_MAX      ((uint32_t)(4294967295U))
+#endif
+
 namespace bmalloc {
 
 class IsoTLS;

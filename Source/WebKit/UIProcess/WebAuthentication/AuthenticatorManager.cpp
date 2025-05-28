@@ -38,6 +38,7 @@
 #include "WebPreferencesKeys.h"
 #include "WebProcessProxy.h"
 #include <WebCore/AuthenticatorAssertionResponse.h>
+#include <WebCore/AuthenticatorAttachment.h>
 #include <WebCore/AuthenticatorTransport.h>
 #include <WebCore/PublicKeyCredentialCreationOptions.h>
 #include <WebCore/WebAuthenticationConstants.h>
@@ -52,7 +53,7 @@ namespace {
 const unsigned maxTimeOutValue = 120000;
 
 // FIXME(188625): Support BLE authenticators.
-static AuthenticatorManager::TransportSet collectTransports(const Optional<PublicKeyCredentialCreationOptions::AuthenticatorSelectionCriteria>& authenticatorSelection)
+static AuthenticatorManager::TransportSet collectTransports(const std::optional<PublicKeyCredentialCreationOptions::AuthenticatorSelectionCriteria>& authenticatorSelection)
 {
     AuthenticatorManager::TransportSet result;
     if (!authenticatorSelection || !authenticatorSelection->authenticatorAttachment) {
@@ -65,12 +66,12 @@ static AuthenticatorManager::TransportSet collectTransports(const Optional<Publi
         return result;
     }
 
-    if (authenticatorSelection->authenticatorAttachment == PublicKeyCredentialCreationOptions::AuthenticatorAttachment::Platform) {
+    if (authenticatorSelection->authenticatorAttachment == AuthenticatorAttachment::Platform) {
         auto addResult = result.add(AuthenticatorTransport::Internal);
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
         return result;
     }
-    if (authenticatorSelection->authenticatorAttachment == PublicKeyCredentialCreationOptions::AuthenticatorAttachment::CrossPlatform) {
+    if (authenticatorSelection->authenticatorAttachment == AuthenticatorAttachment::CrossPlatform) {
         auto addResult = result.add(AuthenticatorTransport::Usb);
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
         addResult = result.add(AuthenticatorTransport::Nfc);
@@ -87,7 +88,7 @@ static AuthenticatorManager::TransportSet collectTransports(const Optional<Publi
 // If it is not specified or any of its credentials doesn't specify its own. We should discover all.
 // This is a variant of Step. 18.*.4 from https://www.w3.org/TR/webauthn/#discover-from-external-source
 // as of 7 August 2018.
-static AuthenticatorManager::TransportSet collectTransports(const Vector<PublicKeyCredentialDescriptor>& allowCredentials)
+static AuthenticatorManager::TransportSet collectTransports(const Vector<PublicKeyCredentialDescriptor>& allowCredentials, const std::optional<AuthenticatorAttachment>& authenticatorAttachment)
 {
     AuthenticatorManager::TransportSet result;
     if (allowCredentials.isEmpty()) {
@@ -97,7 +98,6 @@ static AuthenticatorManager::TransportSet collectTransports(const Vector<PublicK
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
         addResult = result.add(AuthenticatorTransport::Nfc);
         ASSERT_UNUSED(addResult, addResult.isNewEntry);
-        return result;
     }
 
     for (auto& allowCredential : allowCredentials) {
@@ -105,24 +105,37 @@ static AuthenticatorManager::TransportSet collectTransports(const Vector<PublicK
             result.add(AuthenticatorTransport::Internal);
             result.add(AuthenticatorTransport::Usb);
             result.add(AuthenticatorTransport::Nfc);
-            return result;
+
+            break;
         }
 
         for (const auto& transport : allowCredential.transports) {
             if (transport == AuthenticatorTransport::Ble)
                 continue;
+
             result.add(transport);
+
             if (result.size() >= AuthenticatorManager::maxTransportNumber)
-                return result;
+                break;
         }
     }
 
-    ASSERT(result.size() < AuthenticatorManager::maxTransportNumber);
+    if (authenticatorAttachment) {
+        if (authenticatorAttachment == AuthenticatorAttachment::Platform) {
+            result.remove(AuthenticatorTransport::Usb);
+            result.remove(AuthenticatorTransport::Nfc);
+        }
+
+        if (authenticatorAttachment == AuthenticatorAttachment::CrossPlatform)
+            result.remove(AuthenticatorTransport::Internal);
+    }
+
+    ASSERT(result.size() <= AuthenticatorManager::maxTransportNumber);
     return result;
 }
 
 // Only roaming authenticators are supported for Google legacy AppID support.
-static void processGoogleLegacyAppIdSupportExtension(const Optional<AuthenticationExtensionsClientInputs>& extensions, AuthenticatorManager::TransportSet& transports)
+static void processGoogleLegacyAppIdSupportExtension(const std::optional<AuthenticationExtensionsClientInputs>& extensions, AuthenticatorManager::TransportSet& transports)
 {
     if (!extensions) {
         // AuthenticatorCoordinator::create should always set it.
@@ -139,6 +152,13 @@ static String getRpId(const Variant<PublicKeyCredentialCreationOptions, PublicKe
     if (WTF::holds_alternative<PublicKeyCredentialCreationOptions>(options))
         return WTF::get<PublicKeyCredentialCreationOptions>(options).rp.id;
     return WTF::get<PublicKeyCredentialRequestOptions>(options).rpId;
+}
+
+static String getUserName(const Variant<PublicKeyCredentialCreationOptions, PublicKeyCredentialRequestOptions>& options)
+{
+    if (WTF::holds_alternative<PublicKeyCredentialCreationOptions>(options))
+        return WTF::get<PublicKeyCredentialCreationOptions>(options).user.name;
+    return emptyString();
 }
 
 } // namespace
@@ -174,7 +194,7 @@ void AuthenticatorManager::handleRequest(WebAuthenticationRequestData&& data, Ca
     runPresenter();
 }
 
-void AuthenticatorManager::cancelRequest(const PageIdentifier& pageID, const Optional<FrameIdentifier>& frameID)
+void AuthenticatorManager::cancelRequest(const PageIdentifier& pageID, const std::optional<FrameIdentifier>& frameID)
 {
     if (!m_pendingCompletionHandler)
         return;
@@ -405,14 +425,14 @@ void AuthenticatorManager::startDiscovery(const TransportSet& transports)
 
 void AuthenticatorManager::initTimeOutTimer()
 {
-    Optional<unsigned> timeOutInMs;
+    std::optional<unsigned> timeOutInMs;
     WTF::switchOn(m_pendingRequestData.options, [&](const PublicKeyCredentialCreationOptions& options) {
         timeOutInMs = options.timeout;
     }, [&](const PublicKeyCredentialRequestOptions& options) {
         timeOutInMs = options.timeout;
     });
 
-    unsigned timeOutInMsValue = std::min(maxTimeOutValue, timeOutInMs.valueOr(maxTimeOutValue));
+    unsigned timeOutInMsValue = std::min(maxTimeOutValue, timeOutInMs.value_or(maxTimeOutValue));
     m_requestTimeOutTimer.startOneShot(Seconds::fromMilliseconds(timeOutInMsValue));
 }
 
@@ -440,7 +460,7 @@ void AuthenticatorManager::runPanel()
         return;
     }
 
-    m_pendingRequestData.panel = API::WebAuthenticationPanel::create(*this, getRpId(options), transports, getClientDataType(options));
+    m_pendingRequestData.panel = API::WebAuthenticationPanel::create(*this, getRpId(options), transports, getClientDataType(options), getUserName(options));
     auto& panel = *m_pendingRequestData.panel;
     page->uiClient().runWebAuthenticationPanel(*page, panel, *frame, FrameInfoData { m_pendingRequestData.frameInfo }, [transports = WTFMove(transports), weakPanel = makeWeakPtr(panel), weakThis = makeWeakPtr(*this), this] (WebAuthenticationPanelResult result) {
         // The panel address is used to determine if the current pending request is still the same.
@@ -467,8 +487,13 @@ void AuthenticatorManager::runPresenter()
     if (m_mode == Mode::Native)
         return;
 
+    runPresenterInternal(transports);
+}
+
+void AuthenticatorManager::runPresenterInternal(const TransportSet& transports)
+{
     auto& options = m_pendingRequestData.options;
-    m_presenter = makeUnique<AuthenticatorPresenterCoordinator>(*this, getRpId(options), transports, getClientDataType(options));
+    m_presenter = makeUnique<AuthenticatorPresenterCoordinator>(*this, getRpId(options), transports, getClientDataType(options), getUserName(options));
 }
 
 void AuthenticatorManager::invokePendingCompletionHandler(Respond&& respond)
@@ -500,7 +525,7 @@ auto AuthenticatorManager::getTransports() const -> TransportSet
         transports = collectTransports(options.authenticatorSelection);
         processGoogleLegacyAppIdSupportExtension(options.extensions, transports);
     }, [&](const PublicKeyCredentialRequestOptions& options) {
-        transports = collectTransports(options.allowCredentials);
+        transports = collectTransports(options.allowCredentials, options.authenticatorAttachment);
     });
     filterTransports(transports);
     return transports;

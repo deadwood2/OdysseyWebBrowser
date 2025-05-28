@@ -29,9 +29,10 @@
 #import "CocoaImage.h"
 #import "WKSharedAPICast.h"
 #import "WKWebProcessPlugInFrameInternal.h"
+#import "WebImage.h"
 #import <WebCore/HTMLTextFormControlElement.h>
 #import <WebCore/IntRect.h>
-#import <WebKit/WebImage.h>
+#import <WebCore/WebCoreObjCExtras.h>
 
 @implementation WKWebProcessPlugInNodeHandle {
     API::ObjectStorage<WebKit::InjectedBundleNodeHandle> _nodeHandle;
@@ -39,6 +40,8 @@
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKWebProcessPlugInNodeHandle.class, self))
+        return;
     _nodeHandle->~InjectedBundleNodeHandle();
     [super dealloc];
 }
@@ -62,7 +65,7 @@
 
 - (CocoaImage *)renderedImageWithOptions:(WKSnapshotOptions)options width:(NSNumber *)width
 {
-    Optional<float> optionalWidth;
+    std::optional<float> optionalWidth;
     if (width)
         optionalWidth = width.floatValue;
 
@@ -172,6 +175,11 @@ static _WKAutoFillButtonType toWKAutoFillButtonType(WebCore::AutoFillButtonType 
 - (BOOL)isSelectElement
 {
     return _nodeHandle->isSelectElement();
+}
+
+- (BOOL)isSelectableTextNode
+{
+    return _nodeHandle->isSelectableTextNode();
 }
 
 - (BOOL)isTextField

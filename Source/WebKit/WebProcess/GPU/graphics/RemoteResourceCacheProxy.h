@@ -27,6 +27,7 @@
 
 #if ENABLE(GPU_PROCESS)
 
+#include "RenderingUpdateID.h"
 #include <WebCore/NativeImage.h>
 #include <WebCore/RenderingResourceIdentifier.h>
 #include <wtf/HashMap.h>
@@ -49,26 +50,47 @@ public:
     WebCore::ImageBuffer* cachedImageBuffer(WebCore::RenderingResourceIdentifier);
     void releaseImageBuffer(WebCore::RenderingResourceIdentifier);
 
-    void cacheNativeImage(WebCore::NativeImage&);
+    void recordNativeImageUse(WebCore::NativeImage&);
+    void recordFontUse(WebCore::Font&);
+    void recordImageBufferUse(WebCore::ImageBuffer&);
 
-    using ImageBufferHashMap = HashMap<WebCore::RenderingResourceIdentifier, WeakPtr<WebCore::ImageBuffer>>;
-    const ImageBufferHashMap& imageBuffers() const { return m_imageBuffers; }
+    void finalizeRenderingUpdate();
 
-    void cacheFont(WebCore::Font&);
-    void didFinalizeRenderingUpdate();
+    void remoteResourceCacheWasDestroyed();
+    void releaseAllRemoteFonts();
     void releaseMemory();
 
 private:
-    using NativeImageHashMap = HashMap<WebCore::RenderingResourceIdentifier, WeakPtr<WebCore::NativeImage>>;
+    struct ImageBufferState {
+        WeakPtr<WebCore::ImageBuffer> imageBuffer;
+        uint64_t useCount;
+    };
+    using ImageBufferHashMap = HashMap<WebCore::RenderingResourceIdentifier, ImageBufferState>;
+
+    struct NativeImageState {
+        WeakPtr<WebCore::NativeImage> image;
+        uint64_t useCount;
+    };
+    using NativeImageHashMap = HashMap<WebCore::RenderingResourceIdentifier, NativeImageState>;
+
+    struct FontState {
+        RenderingUpdateID lastRenderingUpdateVersionUsedWithin;
+        uint64_t useCount;
+    };
+    using FontHashMap = HashMap<WebCore::RenderingResourceIdentifier, FontState>;
     
     void releaseNativeImage(WebCore::RenderingResourceIdentifier) override;
+    void clearNativeImageMap();
+
+    void finalizeRenderingUpdateForFonts();
+    void prepareForNextRenderingUpdate();
+    void clearFontMap();
 
     ImageBufferHashMap m_imageBuffers;
     NativeImageHashMap m_nativeImages;
+    FontHashMap m_fonts;
 
-    HashMap<WebCore::RenderingResourceIdentifier, uint64_t> m_fontIdentifierToLastRenderingUpdateVersionMap;
     unsigned m_numberOfFontsUsedInCurrentRenderingUpdate { 0 };
-    uint64_t m_currentRenderingUpdateVersion { 1 };
 
     RemoteRenderingBackendProxy& m_remoteRenderingBackendProxy;
 };

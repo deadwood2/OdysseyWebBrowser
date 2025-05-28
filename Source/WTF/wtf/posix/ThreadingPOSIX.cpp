@@ -73,6 +73,20 @@
 #include <sys/syscall.h>
 #endif
 
+#if OS(MORPHOS)
+#include <semaphore.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <pthread.h>
+extern "C" {
+int pthread_setname_np(pthread_t thread, const char *name);
+#include <exec/tasks.h>
+#include <exec/libraries.h>
+#include <exec/system.h>
+#include <proto/exec.h>
+}
+#endif
+
 namespace WTF {
 
 static Lock globalSuspendLock;
@@ -114,6 +128,7 @@ static LazyNeverDestroyed<Semaphore> globalSemaphoreForSuspendResume;
 
 static std::atomic<Thread*> targetThread { nullptr };
 
+#if !OS(MORPHOS)
 void Thread::signalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
 {
     // Touching a global variable atomic types from signal handlers is allowed.
@@ -171,7 +186,7 @@ void Thread::signalHandlerSuspendResume(int, siginfo_t*, void* ucontext)
     // Allow resume caller to see that this thread is resumed.
     globalSemaphoreForSuspendResume->post();
 }
-
+#endif
 #endif // !OS(DARWIN)
 
 void Thread::initializePlatformThreading()
@@ -189,6 +204,7 @@ void Thread::initializePlatformThreading()
 #if !OS(DARWIN)
     globalSemaphoreForSuspendResume.construct(0);
 
+#if !OS(MORPHOS)
     // Signal handlers are process global configuration.
     // Intentionally block sigThreadSuspendResume in the handler.
     // sigThreadSuspendResume will be allowed in the handler by sigsuspend.
@@ -216,6 +232,7 @@ void Thread::initializePlatformThreading()
     bool signalIsInstalled = attemptToSetSignal(g_wtfConfig.sigThreadSuspendResume);
     RELEASE_ASSERT(signalIsInstalled);
 #endif
+#endif
 }
 
 #if OS(LINUX)
@@ -227,7 +244,7 @@ ThreadIdentifier Thread::currentID()
 
 void Thread::initializeCurrentThreadEvenIfNonWTFCreated()
 {
-#if !OS(DARWIN)
+#if !OS(DARWIN) && !OS(MORPHOS)
     RELEASE_ASSERT(g_wtfConfig.isThreadSuspendResumeSignalConfigured);
     sigset_t mask;
     sigemptyset(&mask);
@@ -260,7 +277,7 @@ dispatch_qos_class_t Thread::dispatchQOSClass(QOS qos)
 }
 #endif
 
-bool Thread::establishHandle(NewThreadContext* context, Optional<size_t> stackSize, QOS qos)
+bool Thread::establishHandle(NewThreadContext* context, std::optional<size_t> stackSize, QOS qos)
 {
     pthread_t threadHandle;
     pthread_attr_t attr;
@@ -288,6 +305,22 @@ void Thread::initializeCurrentThreadInternal(const char* threadName)
     pthread_setname_np(normalizeThreadName(threadName));
 #elif OS(LINUX)
     prctl(PR_SET_NAME, normalizeThreadName(threadName));
+#elif OS(MORPHOS)
+	char nameBuffer[256];
+	strcpy(nameBuffer, "WkWebView:");
+	stccpy(nameBuffer + 10, threadName, sizeof(nameBuffer) - 10);
+	pthread_setname_np(pthread_self(), nameBuffer);
+	// Enable priority changes with MorphOS libpthread
+#ifdef SCHED_MORPHOS
+	// The priority changes are only necessary with the old scheduler
+	ULONG flag;
+	if (!NewGetSystemAttrsA(&flag, sizeof(flag), SYSTEMINFOTYPE_NEWSCHEDULER, NULL) ||
+	    !flag)
+	{
+		const struct sched_param param = {FindTask(NULL)->tc_Node.ln_Pri};
+		pthread_setschedparam(pthread_self(), SCHED_MORPHOS, &param);
+	}
+#endif
 #else
     UNUSED_PARAM(threadName);
 #endif
@@ -297,7 +330,7 @@ void Thread::initializeCurrentThreadInternal(const char* threadName)
 void Thread::changePriority(int delta)
 {
 #if HAVE(PTHREAD_SETSCHEDPARAM)
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
 
     int policy;
     struct sched_param param;
@@ -315,18 +348,22 @@ int Thread::waitForCompletion()
 {
     pthread_t handle;
     {
-        auto locker = holdLock(m_mutex);
+        Locker locker { m_mutex };
         handle = m_handle;
     }
 
-    int joinResult = pthread_join(handle, 0);
+	int joinResult;
+	do
+	{
+    	joinResult = pthread_join(handle, 0);
+	} while (joinResult == EINTR);
 
     if (joinResult == EDEADLK)
         LOG_ERROR("Thread %p was found to be deadlocked trying to quit", this);
     else if (joinResult)
         LOG_ERROR("Thread %p was unable to be joined.\n", this);
 
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     ASSERT(joinableState() == Joinable);
 
     // If the thread has already exited, then do nothing. If the thread hasn't exited yet, then just signal that we've already joined on it.
@@ -339,7 +376,7 @@ int Thread::waitForCompletion()
 
 void Thread::detach()
 {
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     int detachResult = pthread_detach(m_handle);
     if (detachResult)
         LOG_ERROR("Thread %p was unable to be detached\n", this);
@@ -360,9 +397,16 @@ Thread& Thread::initializeCurrentTLS()
     return initializeTLS(WTFMove(thread));
 }
 
+#ifdef __MORPHOS__
+Thread* Thread::getUserDataThreadPointer()
+{
+    return (Thread *)FindTask(NULL)->tc_UserData;
+}
+#endif
+
 bool Thread::signal(int signalNumber)
 {
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     if (hasExited())
         return false;
     int errNo = pthread_kill(m_handle, signalNumber);
@@ -383,13 +427,13 @@ auto Thread::suspend() -> Expected<void, PlatformSuspendError>
     // Your issuing thread (A) attempts to suspend the target thread (B). Then, you will suspend the thread (C) additionally.
     // This case frequently happens if you stop threads to perform stack scanning. But thread (B) may hold the lock of thread (C).
     // In that case, dead lock happens. Using global lock here avoids this dead lock.
-    LockHolder locker(globalSuspendLock);
+    Locker locker { globalSuspendLock };
 #if OS(DARWIN)
     kern_return_t result = thread_suspend(m_platformThread);
     if (result != KERN_SUCCESS)
         return makeUnexpected(result);
     return { };
-#else
+#elif !OS(MORPHOS)
     if (!m_suspendCount) {
         targetThread.store(this);
 
@@ -407,17 +451,17 @@ auto Thread::suspend() -> Expected<void, PlatformSuspendError>
         }
     }
     ++m_suspendCount;
-    return { };
 #endif
+    return { };
 }
 
 void Thread::resume()
 {
     // During resume, suspend or resume should not be executed from the other threads.
-    LockHolder locker(globalSuspendLock);
+    Locker locker { globalSuspendLock };
 #if OS(DARWIN)
     thread_resume(m_platformThread);
-#else
+#elif !OS(MORPHOS)
     if (m_suspendCount == 1) {
         // When allowing sigThreadSuspendResume interrupt in the signal handler by sigsuspend and SigThreadSuspendResume is actually issued,
         // the signal handler itself will be called once again.
@@ -472,7 +516,7 @@ static ThreadStateMetadata threadStateMetadata()
 
 size_t Thread::getRegisters(PlatformRegisters& registers)
 {
-    LockHolder locker(globalSuspendLock);
+    Locker locker { globalSuspendLock };
 #if OS(DARWIN)
     auto metadata = threadStateMetadata();
     kern_return_t result = thread_get_state(m_platformThread, metadata.flavor, (thread_state_t)&registers, &metadata.userCount);
@@ -491,12 +535,24 @@ size_t Thread::getRegisters(PlatformRegisters& registers)
 
 void Thread::establishPlatformSpecificHandle(pthread_t handle)
 {
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     m_handle = handle;
 #if OS(DARWIN)
     m_platformThread = pthread_mach_thread_np(handle);
 #endif
 }
+
+#if OS(MORPHOS)
+void Thread::deleteTLSKey()
+{
+#if !HAVE(FAST_TLS)
+    // Make sure that the Thread::destructTLS is not called for the main thread
+    threadSpecificSet(s_key, NULL);
+    // Actually delete the TLS key
+    threadSpecificKeyDelete(s_key);
+#endif
+}
+#endif
 
 #if !HAVE(FAST_TLS)
 void Thread::initializeTLSKey()
@@ -512,6 +568,7 @@ Thread& Thread::initializeTLS(Ref<Thread>&& thread)
 #if !HAVE(FAST_TLS)
     ASSERT(s_key != InvalidThreadSpecificKey);
     threadSpecificSet(s_key, &threadInTLS);
+    FindTask(NULL)->tc_UserData = &threadInTLS;
 #else
     _pthread_setspecific_direct(WTF_THREAD_DATA_KEY, &threadInTLS);
     pthread_key_init_np(WTF_THREAD_DATA_KEY, &destructTLS);
@@ -589,8 +646,7 @@ bool ThreadCondition::timedWait(Mutex& mutex, WallTime absoluteTime)
         return false;
 
     if (absoluteTime > WallTime::fromRawSeconds(INT_MAX)) {
-        wait(mutex);
-        return true;
+        return pthread_cond_wait(&m_condition, &mutex.impl()) == 0;
     }
 
     double rawSeconds = absoluteTime.secondsSinceEpoch().value();

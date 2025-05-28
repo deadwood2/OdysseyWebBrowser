@@ -30,7 +30,6 @@
 #include <wtf/Function.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/Noncopyable.h>
-#include <wtf/Optional.h>
 #include <wtf/Seconds.h>
 #include <wtf/Threading.h>
 #include <wtf/Vector.h>
@@ -71,7 +70,7 @@ public:
 private:
     virtual void fired() = 0;
 
-    virtual Optional<MonotonicTime> alignedFireTime(MonotonicTime) const { return WTF::nullopt; }
+    virtual std::optional<MonotonicTime> alignedFireTime(MonotonicTime) const { return std::nullopt; }
 
     void checkConsistency() const;
     void checkHeapIndex() const;
@@ -109,6 +108,7 @@ private:
 class Timer : public TimerBase {
     WTF_MAKE_FAST_ALLOCATED;
 public:
+#ifndef __MORPHOS_DISABLE
     static void schedule(Seconds delay, WTF::Function<void()>&& function)
     {
         auto* timer = new Timer([] { });
@@ -124,7 +124,7 @@ public:
         : m_function(std::bind(function, &object))
     {
     }
-
+#endif
     Timer(WTF::Function<void ()>&& function)
         : m_function(WTFMove(function))
     {

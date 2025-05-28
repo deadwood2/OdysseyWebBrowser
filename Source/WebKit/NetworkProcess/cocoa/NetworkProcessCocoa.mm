@@ -45,6 +45,7 @@
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/CallbackAggregator.h>
+#import <wtf/FileSystem.h>
 #import <wtf/ProcessPrivilege.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
@@ -73,9 +74,6 @@ static void initializeNetworkSettings()
 
 void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessCreationParameters& parameters)
 {
-    WebCore::setApplicationBundleIdentifier(parameters.uiProcessBundleIdentifier);
-    setApplicationSDKVersion(parameters.uiProcessSDKVersion);
-
 #if PLATFORM(IOS_FAMILY)
     SandboxExtension::consumePermanently(parameters.cookieStorageDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.containerCachesDirectoryExtensionHandle);
@@ -93,6 +91,9 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
     setSharedHTTPCookieStorage(parameters.uiProcessCookieStorageIdentifier);
 #endif
 
+    // Allow the network process to materialize files stored in the cloud so that loading/reading such files actually succeeds.
+    FileSystem::setAllowsMaterializingDatalessFiles(true, FileSystem::PolicyScope::Process);
+
     // FIXME: Most of what this function does for cache size gets immediately overridden by setCacheModel().
     // - memory cache size passed from UI process is always ignored;
     // - disk cache size passed from UI process is effectively a minimum size.
@@ -108,15 +109,22 @@ void NetworkProcess::platformInitializeNetworkProcessCocoa(const NetworkProcessC
 RetainPtr<CFDataRef> NetworkProcess::sourceApplicationAuditData() const
 {
 #if USE(SOURCE_APPLICATION_AUDIT_DATA)
+    if (auto auditToken = sourceApplicationAuditToken())
+        return adoptCF(CFDataCreate(nullptr, (const UInt8*)&*auditToken, sizeof(*auditToken)));
+#endif
+
+    return nullptr;
+}
+
+std::optional<audit_token_t> NetworkProcess::sourceApplicationAuditToken() const
+{
+#if USE(SOURCE_APPLICATION_AUDIT_DATA)
     ASSERT(parentProcessConnection());
     if (!parentProcessConnection())
-        return nullptr;
-    Optional<audit_token_t> auditToken = parentProcessConnection()->getAuditToken();
-    if (!auditToken)
-        return nullptr;
-    return adoptCF(CFDataCreate(nullptr, (const UInt8*)&*auditToken, sizeof(*auditToken)));
+        return { };
+    return parentProcessConnection()->getAuditToken();
 #else
-    return nullptr;
+    return { };
 #endif
 }
 
@@ -191,9 +199,9 @@ void NetworkProcess::clearHSTSCache(PAL::SessionID sessionID, WallTime modifiedS
 void NetworkProcess::clearDiskCache(WallTime modifiedSince, CompletionHandler<void()>&& completionHandler)
 {
     if (!m_clearCacheDispatchGroup)
-        m_clearCacheDispatchGroup = dispatch_group_create();
+        m_clearCacheDispatchGroup = adoptOSObject(dispatch_group_create());
 
-    auto group = m_clearCacheDispatchGroup;
+    auto group = m_clearCacheDispatchGroup.get();
     dispatch_group_async(group, dispatch_get_main_queue(), makeBlockPtr([this, protectedThis = makeRef(*this), modifiedSince, completionHandler = WTFMove(completionHandler)] () mutable {
         auto aggregator = CallbackAggregator::create(WTFMove(completionHandler));
         forEachNetworkSession([modifiedSince, &aggregator](NetworkSession& session) {
@@ -211,7 +219,7 @@ void NetworkProcess::setSharedHTTPCookieStorage(const Vector<uint8_t>& identifie
 }
 #endif
 
-void NetworkProcess::flushCookies(const PAL::SessionID& sessionID, CompletionHandler<void()>&& completionHandler)
+void NetworkProcess::flushCookies(PAL::SessionID sessionID, CompletionHandler<void()>&& completionHandler)
 {
     platformFlushCookies(sessionID, WTFMove(completionHandler));
 }
@@ -226,28 +234,13 @@ void saveCookies(NSHTTPCookieStorage *cookieStorage, CompletionHandler<void()>&&
     }).get()];
 }
 
-void NetworkProcess::platformFlushCookies(const PAL::SessionID& sessionID, CompletionHandler<void()>&& completionHandler)
+void NetworkProcess::platformFlushCookies(PAL::SessionID sessionID, CompletionHandler<void()>&& completionHandler)
 {
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
     if (auto* networkStorageSession = storageSession(sessionID))
         saveCookies(networkStorageSession->nsCookieStorage(), WTFMove(completionHandler));
     else
         completionHandler();
-}
-
-void NetworkProcess::platformProcessDidTransitionToBackground()
-{
-}
-
-void NetworkProcess::platformProcessDidTransitionToForeground()
-{
-}
-
-NetworkHTTPSUpgradeChecker& NetworkProcess::networkHTTPSUpgradeChecker()
-{
-    if (!m_networkHTTPSUpgradeChecker)
-        m_networkHTTPSUpgradeChecker = makeUnique<NetworkHTTPSUpgradeChecker>();
-    return *m_networkHTTPSUpgradeChecker;
 }
 
 } // namespace WebKit

@@ -29,6 +29,7 @@
 #include <WebCore/Font.h>
 #include <WebCore/FontAttributes.h>
 #include <WebCore/FontCache.h>
+#include <WebCore/FontCustomPlatformData.h>
 #include <WebCore/FontDescription.h>
 #include <wtf/win/GDIObject.h>
 
@@ -41,77 +42,100 @@ void ArgumentCoder<FontAttributes>::encodePlatformData(Encoder&, const FontAttri
     ASSERT_NOT_REACHED();
 }
 
-Optional<FontAttributes> ArgumentCoder<FontAttributes>::decodePlatformData(Decoder&, FontAttributes&)
+std::optional<FontAttributes> ArgumentCoder<FontAttributes>::decodePlatformData(Decoder&, FontAttributes&)
 {
     ASSERT_NOT_REACHED();
-    return WTF::nullopt;
+    return std::nullopt;
 }
+
+template<> struct ArgumentCoder<LOGFONT> {
+    static void encode(Encoder& encoder, const LOGFONT& logFont)
+    {
+        encoder.encodeFixedLengthData(reinterpret_cast<const uint8_t*>(&logFont), sizeof logFont, 1);
+    }
+    static std::optional<LOGFONT> decode(Decoder& decoder)
+    {
+        LOGFONT logFont;
+        if (!decoder.decodeFixedLengthData(reinterpret_cast<uint8_t*>(&logFont), sizeof(logFont), 1))
+            return std::nullopt;
+        return logFont;
+    }
+};
 
 void ArgumentCoder<Ref<Font>>::encodePlatformData(Encoder& encoder, const Ref<Font>& font)
 {
     const auto& platformData = font->platformData();
-    encoder << platformData.orientation();
-    encoder << platformData.widthVariant();
-    encoder << platformData.textRenderingMode();
     encoder << platformData.size();
     encoder << platformData.syntheticBold();
     encoder << platformData.syntheticOblique();
-    encoder << platformData.familyName();
+
+    const auto& creationData = platformData.creationData();
+    encoder << static_cast<bool>(creationData);
+    if (creationData) {
+        encoder << creationData->fontFaceData;
+        encoder << creationData->itemInCollection;
+    }
+
+    LOGFONT logFont;
+    GetObject(platformData.hfont(), sizeof logFont, &logFont);
+    encoder << logFont;
 }
 
-Optional<FontPlatformData> ArgumentCoder<Ref<Font>>::decodePlatformData(Decoder& decoder)
+std::optional<FontPlatformData> ArgumentCoder<Ref<Font>>::decodePlatformData(Decoder& decoder)
 {
-    Optional<FontOrientation> orientation;
-    decoder >> orientation;
-    if (!orientation.hasValue())
-        return WTF::nullopt;
-
-    Optional<FontWidthVariant> widthVariant;
-    decoder >> widthVariant;
-    if (!widthVariant.hasValue())
-        return WTF::nullopt;
-
-    Optional<TextRenderingMode> textRenderingMode;
-    decoder >> textRenderingMode;
-    if (!textRenderingMode.hasValue())
-        return WTF::nullopt;
-
-    Optional<float> size;
+    std::optional<float> size;
     decoder >> size;
-    if (!size.hasValue())
-        return WTF::nullopt;
+    if (!size)
+        return std::nullopt;
 
-    Optional<bool> syntheticBold;
+    std::optional<bool> syntheticBold;
     decoder >> syntheticBold;
-    if (!syntheticBold.hasValue())
-        return WTF::nullopt;
+    if (!syntheticBold)
+        return std::nullopt;
 
-    Optional<bool> syntheticOblique;
+    std::optional<bool> syntheticOblique;
     decoder >> syntheticOblique;
-    if (!syntheticOblique.hasValue())
-        return WTF::nullopt;
+    if (!syntheticOblique)
+        return std::nullopt;
 
-    Optional<String> familyName;
-    decoder >> familyName;
-    if (!familyName.hasValue())
-        return WTF::nullopt;
+    std::optional<bool> includesCreationData;
+    decoder >> includesCreationData;
+    if (!includesCreationData)
+        return std::nullopt;
 
-    FontDescription description;
-    description.setOrientation(*orientation);
-    description.setWidthVariant(*widthVariant);
-    description.setTextRenderingMode(*textRenderingMode);
-    description.setComputedSize(*size);
-    RefPtr<Font> font = FontCache::singleton().fontForFamily(description, *familyName);
-    if (!font)
-        return WTF::nullopt;
+    std::unique_ptr<FontCustomPlatformData> fontCustomPlatformData;
+    FontPlatformData::CreationData* creationData = nullptr;
+
+    if (includesCreationData.value()) {
+        std::optional<Ref<SharedBuffer>> fontFaceData;
+        decoder >> fontFaceData;
+        if (!fontFaceData)
+            return std::nullopt;
+
+        std::optional<String> itemInCollection;
+        decoder >> itemInCollection;
+        if (!itemInCollection)
+            return std::nullopt;
+
+        fontCustomPlatformData = createFontCustomPlatformData(fontFaceData.value(), itemInCollection.value());
+        if (!fontCustomPlatformData)
+            return std::nullopt;
+        creationData = &fontCustomPlatformData->creationData;
+    }
+
+    std::optional<LOGFONT> logFont;
+    decoder >> logFont;
+    if (!logFont)
+        return std::nullopt;
+
+    if (fontCustomPlatformData)
+        wcscpy_s(logFont->lfFaceName, LF_FACESIZE, fontCustomPlatformData->name.wideCharacters().data());
     
-    LOGFONT logFont;
-    GetObject(font->platformData().hfont(), sizeof logFont, &logFont);
-    auto gdiFont = adoptGDIObject(CreateFontIndirect(&logFont));
+    auto gdiFont = adoptGDIObject(CreateFontIndirect(&*logFont));
     if (!gdiFont)
-        return WTF::nullopt;
-    
-    return FontPlatformData(WTFMove(gdiFont), *size, *syntheticBold, *syntheticOblique, false);
+        return std::nullopt;
+
+    return FontPlatformData(WTFMove(gdiFont), *size, *syntheticBold, *syntheticOblique, false, creationData);
 }
 
 } // namespace IPC

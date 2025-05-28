@@ -26,15 +26,17 @@
 #import "config.h"
 #import "WKWebProcessPlugInPageGroupInternal.h"
 
-#import "WKBundlePageGroup.h"
 #import "WKAPICast.h"
 #import "WKNSString.h"
 #import "WKRetainPtr.h"
 #import "WebPageGroupProxy.h"
+#import <WebCore/WebCoreObjCExtras.h>
 
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 @implementation WKWebProcessPlugInPageGroup {
     API::ObjectStorage<WebKit::WebPageGroupProxy> _bundlePageGroup;
 }
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 
 - (NSString *)identifier
 {
@@ -43,6 +45,8 @@
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKWebProcessPlugInPageGroup.class, self))
+        return;
     _bundlePageGroup->~WebPageGroupProxy();
     [super dealloc];
 }

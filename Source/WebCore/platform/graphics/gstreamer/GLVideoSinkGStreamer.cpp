@@ -40,20 +40,18 @@ using namespace WebCore;
 enum {
     PROP_0,
     PROP_STATS,
-    PROP_HANDLES_ROTATION_TAGS,
     PROP_LAST
 };
 
 struct _WebKitGLVideoSinkPrivate {
     GRefPtr<GstElement> appSink;
     MediaPlayerPrivateGStreamer* mediaPlayerPrivate;
-    bool handlesRotationTags;
 };
 
 GST_DEBUG_CATEGORY_STATIC(webkit_gl_video_sink_debug);
 #define GST_CAT_DEFAULT webkit_gl_video_sink_debug
 
-#define GST_GL_CAPS_FORMAT "{ RGBx, RGBA, I420, Y444, YV12, Y41B, Y42B, NV12, NV21, VUYA }"
+#define GST_GL_CAPS_FORMAT "{ A420, RGBx, RGBA, I420, Y444, YV12, Y41B, Y42B, NV12, NV21, VUYA }"
 static GstStaticPadTemplate sinkTemplate = GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS, GST_STATIC_CAPS_ANY);
 
 #define webkit_gl_video_sink_parent_class parent_class
@@ -66,7 +64,7 @@ static void webKitGLVideoSinkConstructed(GObject* object)
 
     WebKitGLVideoSink* sink = WEBKIT_GL_VIDEO_SINK(object);
 
-    sink->priv->appSink = gst_element_factory_make("appsink", "webkit-gl-video-appsink");
+    sink->priv->appSink = makeGStreamerElement("appsink", "webkit-gl-video-appsink");
     ASSERT(sink->priv->appSink);
     g_object_set(sink->priv->appSink.get(), "enable-last-sample", FALSE, "emit-signals", TRUE, "max-buffers", 1, nullptr);
 
@@ -81,16 +79,8 @@ static void webKitGLVideoSinkConstructed(GObject* object)
     if (imxVideoConvertG2D)
         gst_bin_add(GST_BIN_CAST(sink), imxVideoConvertG2D);
 
-    GstElement* upload = gst_element_factory_make("glupload", nullptr);
-    GstElement* colorconvert = gst_element_factory_make("glcolorconvert", nullptr);
-
-    GstElement* videoFlip = gst_element_factory_make("glvideoflip", nullptr);
-    sink->priv->handlesRotationTags = videoFlip;
-
-    if (videoFlip) {
-        gst_util_set_object_arg(G_OBJECT(videoFlip), "method", "automatic");
-        gst_bin_add(GST_BIN_CAST(sink), videoFlip);
-    }
+    GstElement* upload = makeGStreamerElement("glupload", nullptr);
+    GstElement* colorconvert = makeGStreamerElement("glcolorconvert", nullptr);
 
     ASSERT(upload);
     ASSERT(colorconvert);
@@ -122,10 +112,7 @@ static void webKitGLVideoSinkConstructed(GObject* object)
         gst_element_link(imxVideoConvertG2D, upload);
     gst_element_link(upload, colorconvert);
 
-    if (videoFlip)
-        gst_element_link_many(colorconvert, videoFlip, sink->priv->appSink.get(), nullptr);
-    else
-        gst_element_link(colorconvert, sink->priv->appSink.get());
+    gst_element_link(colorconvert, sink->priv->appSink.get());
 
     GstElement* sinkElement =
         [&] {
@@ -147,17 +134,19 @@ void webKitGLVideoSinkFinalize(GObject* object)
     if (priv->mediaPlayerPrivate)
         g_signal_handlers_disconnect_by_data(priv->appSink.get(), priv->mediaPlayerPrivate);
 
+    GST_DEBUG_OBJECT(object, "WebKitGLVideoSink finalized.");
+
     GST_CALL_PARENT(G_OBJECT_CLASS, finalize, (object));
 }
 
-Optional<GRefPtr<GstContext>> requestGLContext(const char* contextType)
+std::optional<GRefPtr<GstContext>> requestGLContext(const char* contextType)
 {
     auto& sharedDisplay = PlatformDisplay::sharedDisplayForCompositing();
     auto* gstGLDisplay = sharedDisplay.gstGLDisplay();
     auto* gstGLContext = sharedDisplay.gstGLContext();
 
     if (!(gstGLDisplay && gstGLContext))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!g_strcmp0(contextType, GST_GL_DISPLAY_CONTEXT_TYPE)) {
         GstContext* displayContext = gst_context_new(GST_GL_DISPLAY_CONTEXT_TYPE, TRUE);
@@ -172,7 +161,7 @@ Optional<GRefPtr<GstContext>> requestGLContext(const char* contextType)
         return adoptGRef(appContext);
     }
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 static bool setGLContext(GstElement* elementSink, const char* contextType)
@@ -180,7 +169,7 @@ static bool setGLContext(GstElement* elementSink, const char* contextType)
     GRefPtr<GstContext> oldContext = gst_element_get_context(elementSink, contextType);
     if (!oldContext) {
         auto newContext = requestGLContext(contextType);
-        if (!newContext.hasValue())
+        if (!newContext)
             return false;
         gst_element_set_context(elementSink, newContext->get());
     }
@@ -220,9 +209,6 @@ static void webKitGLVideoSinkGetProperty(GObject* object, guint propertyId, GVal
             gst_value_set_structure(value, stats.get());
         }
         break;
-    case PROP_HANDLES_ROTATION_TAGS:
-        g_value_set_boolean(value, sink->priv->handlesRotationTags);
-        break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propertyId, paramSpec);
         RELEASE_ASSERT_NOT_REACHED();
@@ -245,9 +231,6 @@ static void webkit_gl_video_sink_class_init(WebKitGLVideoSinkClass* klass)
     g_object_class_install_property(objectClass, PROP_STATS, g_param_spec_boxed("stats", "Statistics",
         "Sink Statistics", GST_TYPE_STRUCTURE, static_cast<GParamFlags>(G_PARAM_READABLE | G_PARAM_STATIC_STRINGS)));
 
-    g_object_class_install_property(objectClass, PROP_HANDLES_ROTATION_TAGS, g_param_spec_boolean("handles-rotation-tags", "Handles Rotation Tags",
-        "True if the sink is relying on glvideoflip to handle frame rotation", FALSE, static_cast<GParamFlags>(G_PARAM_READABLE | G_PARAM_STATIC_STRINGS)));
-
     elementClass->change_state = GST_DEBUG_FUNCPTR(webKitGLVideoSinkChangeState);
 }
 
@@ -258,11 +241,15 @@ void webKitGLVideoSinkSetMediaPlayerPrivate(WebKitGLVideoSink* sink, MediaPlayer
     priv->mediaPlayerPrivate = player;
     g_signal_connect(priv->appSink.get(), "new-sample", G_CALLBACK(+[](GstElement* sink, MediaPlayerPrivateGStreamer* player) -> GstFlowReturn {
         GRefPtr<GstSample> sample = adoptGRef(gst_app_sink_pull_sample(GST_APP_SINK(sink)));
+        GstBuffer* buffer = gst_sample_get_buffer(sample.get());
+        GST_TRACE_OBJECT(sink, "new-sample with PTS=%" GST_TIME_FORMAT, GST_TIME_ARGS(GST_BUFFER_PTS(buffer)));
         player->triggerRepaint(sample.get());
         return GST_FLOW_OK;
     }), player);
     g_signal_connect(priv->appSink.get(), "new-preroll", G_CALLBACK(+[](GstElement* sink, MediaPlayerPrivateGStreamer* player) -> GstFlowReturn {
         GRefPtr<GstSample> sample = adoptGRef(gst_app_sink_pull_preroll(GST_APP_SINK(sink)));
+        GstBuffer* buffer = gst_sample_get_buffer(sample.get());
+        GST_DEBUG_OBJECT(sink, "new-preroll with PTS=%" GST_TIME_FORMAT, GST_TIME_ARGS(GST_BUFFER_PTS(buffer)));
         player->triggerRepaint(sample.get());
         return GST_FLOW_OK;
     }), player);

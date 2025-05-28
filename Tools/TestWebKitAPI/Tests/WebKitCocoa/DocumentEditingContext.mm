@@ -139,18 +139,6 @@ static UIWKDocumentRequest *makeRequest(UIWKDocumentRequestFlags flags, UITextGr
     TestWebKitAPI::Util::run(&finished);
 }
 
-- (NSArray<_WKTextInputContext *> *)synchronouslyRequestTextInputContextsInRect:(CGRect)rect
-{
-    __block bool finished = false;
-    __block RetainPtr<NSArray<_WKTextInputContext *>> result;
-    [self _requestTextInputContextsInRect:rect completionHandler:^(NSArray<_WKTextInputContext *> *contexts) {
-        result = contexts;
-        finished = true;
-    }];
-    TestWebKitAPI::Util::run(&finished);
-    return result.autorelease();
-}
-
 - (UITextPlaceholder *)synchronouslyInsertTextPlaceholderWithSize:(CGSize)size
 {
     __block bool finished = false;
@@ -1175,7 +1163,7 @@ TEST(DocumentEditingContext, RequestLastTwoSentences)
 
 // MARK: Tests using paragraph granularity
 
-constexpr NSString * const threeParagraphsExample = @"<pre id='text' style='width: 32em' contenteditable>The first sentence in the first paragraph. The second sentence in the first paragraph. The third sentence in the first paragraph.\nThe first sentence in the second paragraph. The second sentence in the second paragraph. The third sentence in the second paragraph.\nThe first sentence in the third paragraph. The second sentence in the third paragraph. The third sentence in the third paragraph.</pre>";
+constexpr NSString * const threeParagraphsExample = @"<p id='text' style='width: 32em; white-space: pre-wrap; word-break: break-all' contenteditable>The first sentence in the first paragraph. The second sentence in the first paragraph. The third sentence in the first paragraph.\nThe first sentence in the second paragraph. The second sentence in the second paragraph. The third sentence in the second paragraph.\nThe first sentence in the third paragraph. The second sentence in the third paragraph. The third sentence in the third paragraph.</pre>";
 
 TEST(DocumentEditingContext, RequestFirstParagraph)
 {
@@ -1320,7 +1308,7 @@ TEST(DocumentEditingContext, RequestLastLine)
 
     auto *context = [webView synchronouslyRequestDocumentContext:makeRequest(UIWKDocumentRequestText, UITextGranularityLine, 1)];
     EXPECT_NOT_NULL(context);
-    EXPECT_NSSTRING_EQ("third sentence in the third paragraph.", context.contextBefore);
+    EXPECT_NSSTRING_EQ("sentence in the third paragraph.", context.contextBefore);
     EXPECT_NULL(context.selectedText);
     EXPECT_NULL(context.contextAfter);
 }

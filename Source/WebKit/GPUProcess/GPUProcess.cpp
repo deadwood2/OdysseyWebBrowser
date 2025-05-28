@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,6 +35,7 @@
 #include "GPUConnectionToWebProcess.h"
 #include "GPUProcessConnectionParameters.h"
 #include "GPUProcessCreationParameters.h"
+#include "GPUProcessProxyMessages.h"
 #include "GPUProcessSessionParameters.h"
 #include "Logging.h"
 #include "SandboxExtension.h"
@@ -45,8 +46,10 @@
 #include <WebCore/MemoryRelease.h>
 #include <WebCore/NowPlayingManager.h>
 #include <WebCore/RuntimeApplicationChecks.h>
+#include <WebCore/RuntimeEnabledFeatures.h>
 #include <wtf/Algorithms.h>
 #include <wtf/CallbackAggregator.h>
+#include <wtf/LogInitialization.h>
 #include <wtf/MemoryPressureHandler.h>
 #include <wtf/OptionSet.h>
 #include <wtf/ProcessPrivilege.h>
@@ -73,18 +76,39 @@
 namespace WebKit {
 using namespace WebCore;
 
+// We wouldn't want the GPUProcess to repeatedly exit then relaunch when under memory pressure. In particular, we need to make sure the
+// WebProcess has a change to schedule work after the GPUProcess get launched. For this reason, we make sure that the GPUProcess never
+// idle-exits less than 5 seconds after getting launched. This amount of time should be sufficient for the WebProcess to schedule work
+// work in the GPUProcess.
+constexpr Seconds minimumLifetimeBeforeIdleExit { 5_s };
 
 GPUProcess::GPUProcess(AuxiliaryProcessInitializationParameters&& parameters)
+    : m_idleExitTimer(*this, &GPUProcess::tryExitIfUnused)
 {
     initialize(WTFMove(parameters));
+    RELEASE_LOG(Process, "%p - GPUProcess::GPUProcess:", this);
 }
 
 GPUProcess::~GPUProcess()
 {
 }
 
-void GPUProcess::createGPUConnectionToWebProcess(ProcessIdentifier identifier, PAL::SessionID sessionID, GPUProcessConnectionParameters&& parameters, CompletionHandler<void(Optional<IPC::Attachment>&&)>&& completionHandler)
+void GPUProcess::didReceiveMessage(IPC::Connection& connection, IPC::Decoder& decoder)
 {
+    if (messageReceiverMap().dispatchMessage(connection, decoder))
+        return;
+
+    if (decoder.messageReceiverName() == Messages::AuxiliaryProcess::messageReceiverName()) {
+        AuxiliaryProcess::didReceiveMessage(connection, decoder);
+        return;
+    }
+
+    didReceiveGPUProcessMessage(connection, decoder);
+}
+
+void GPUProcess::createGPUConnectionToWebProcess(ProcessIdentifier identifier, PAL::SessionID sessionID, GPUProcessConnectionParameters&& parameters, CompletionHandler<void(std::optional<IPC::Attachment>&&)>&& completionHandler)
+{
+    RELEASE_LOG(Process, "%p - GPUProcess::createGPUConnectionToWebProcess: processIdentifier=%" PRIu64, this, identifier.toUInt64());
     auto ipcConnection = createIPCConnectionPair();
     if (!ipcConnection) {
         completionHandler({ });
@@ -97,6 +121,12 @@ void GPUProcess::createGPUConnectionToWebProcess(ProcessIdentifier identifier, P
     // FIXME: We should refactor code to go from WebProcess -> GPUProcess -> UIProcess when getUserMedia is called instead of going from WebProcess -> UIProcess directly.
     auto access = m_mediaCaptureAccessMap.take(identifier);
     newConnection->updateCaptureAccess(access.allowAudioCapture, access.allowVideoCapture, access.allowDisplayCapture);
+    newConnection->setOrientationForMediaCapture(m_orientation);
+#endif
+
+#if ENABLE(IPC_TESTING_API)
+    if (parameters.ignoreInvalidMessageForTesting)
+        newConnection->connection().setIgnoreInvalidMessageForTesting();
 #endif
 
     ASSERT(!m_webProcessConnections.contains(identifier));
@@ -107,8 +137,10 @@ void GPUProcess::createGPUConnectionToWebProcess(ProcessIdentifier identifier, P
 
 void GPUProcess::removeGPUConnectionToWebProcess(GPUConnectionToWebProcess& connection)
 {
+    RELEASE_LOG(Process, "%p - GPUProcess::removeGPUConnectionToWebProcess: processIdentifier=%" PRIu64, this, connection.webProcessIdentifier().toUInt64());
     ASSERT(m_webProcessConnections.contains(connection.webProcessIdentifier()));
     m_webProcessConnections.remove(connection.webProcessIdentifier());
+    tryExitIfUnusedAndUnderMemoryPressure();
 }
 
 void GPUProcess::connectionToWebProcessClosed(IPC::Connection& connection)
@@ -120,13 +152,62 @@ bool GPUProcess::shouldTerminate()
     return m_webProcessConnections.isEmpty();
 }
 
+bool GPUProcess::canExitUnderMemoryPressure() const
+{
+    ASSERT(isMainRunLoop());
+    for (auto& webProcessConnection : m_webProcessConnections.values()) {
+        if (!webProcessConnection->allowsExitUnderMemoryPressure())
+            return false;
+    }
+    return true;
+}
+
+void GPUProcess::tryExitIfUnusedAndUnderMemoryPressure()
+{
+    ASSERT(isMainRunLoop());
+    if (!MemoryPressureHandler::singleton().isUnderMemoryPressure())
+        return;
+
+    tryExitIfUnused();
+}
+
+void GPUProcess::tryExitIfUnused()
+{
+    ASSERT(isMainRunLoop());
+    if (!canExitUnderMemoryPressure()) {
+        m_idleExitTimer.stop();
+        return;
+    }
+
+    // To avoid exiting the GPUProcess too aggressively while under memory pressure and make sure the WebProcess gets a
+    // change to schedule work, we don't exit if we've been running for less than |minimumLifetimeBeforeIdleExit|.
+    // In case of simulated memory pressure, we ignore this rule to avoid flakiness in our benchmarks and tests.
+    auto lifetime = MonotonicTime::now() - m_creationTime;
+    if (lifetime < minimumLifetimeBeforeIdleExit && !MemoryPressureHandler::singleton().isSimulatingMemoryPressure()) {
+        RELEASE_LOG(Process, "GPUProcess::tryExitIfUnused: GPUProcess is idle and under memory pressure but it is not exiting because it has just launched");
+        // Check again after the process have lived long enough (minimumLifetimeBeforeIdleExit) to see if the GPUProcess
+        // can idle-exit then.
+        if (!m_idleExitTimer.isActive())
+            m_idleExitTimer.startOneShot(minimumLifetimeBeforeIdleExit - lifetime);
+        return;
+    }
+    m_idleExitTimer.stop();
+
+    RELEASE_LOG(Process, "GPUProcess::tryExitIfUnused: GPUProcess is exiting because we are under memory pressure and the process is no longer useful.");
+    parentProcessConnection()->send(Messages::GPUProcessProxy::ProcessIsReadyToExit(), 0);
+}
+
 void GPUProcess::lowMemoryHandler(Critical critical, Synchronous synchronous)
 {
+    RELEASE_LOG(Process, "GPUProcess::lowMemoryHandler: critical=%d, synchronous=%d", critical == Critical::Yes, synchronous == Synchronous::Yes);
+    tryExitIfUnused();
+
     WebCore::releaseGraphicsMemory(critical, synchronous);
 }
 
 void GPUProcess::initializeGPUProcess(GPUProcessCreationParameters&& parameters)
 {
+    RELEASE_LOG(Process, "%p - GPUProcess::initializeGPUProcess:", this);
     WTF::Thread::setCurrentThreadIsUserInitiated();
     AtomString::init();
 
@@ -142,23 +223,19 @@ void GPUProcess::initializeGPUProcess(GPUProcessCreationParameters&& parameters)
 
 #if ENABLE(MEDIA_STREAM)
     setMockCaptureDevicesEnabled(parameters.useMockCaptureDevices);
-    SandboxExtension::consumePermanently(parameters.cameraSandboxExtensionHandle);
+#if PLATFORM(MAC)
     SandboxExtension::consumePermanently(parameters.microphoneSandboxExtensionHandle);
-#if PLATFORM(IOS)
-    SandboxExtension::consumePermanently(parameters.tccSandboxExtensionHandle);
 #endif
-#endif
+#endif // ENABLE(MEDIA_STREAM)
 
 #if USE(SANDBOX_EXTENSIONS_FOR_CACHE_AND_TEMP_DIRECTORY_ACCESS)
     SandboxExtension::consumePermanently(parameters.containerCachesDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.containerTemporaryDirectoryExtensionHandle);
 #endif
-    
-#if HAVE(VISIBILITY_PROPAGATION_VIEW)
-    m_contextForVisibilityPropagation = LayerHostingContext::createForExternalHostingProcess({
-        m_canShowWhileLocked
-    });
-    send(Messages::GPUProcessProxy::DidCreateContextForVisibilityPropagation(m_contextForVisibilityPropagation->contextID()));
+#if PLATFORM(IOS_FAMILY)
+    SandboxExtension::consumePermanently(parameters.compilerServiceExtensionHandles);
+    SandboxExtension::consumePermanently(parameters.dynamicIOKitExtensionHandles);
+    SandboxExtension::consumePermanently(parameters.dynamicMachExtensionHandles);
 #endif
 
 #if HAVE(CGIMAGESOURCE_WITH_SET_ALLOWABLE_TYPES)
@@ -166,10 +243,20 @@ void GPUProcess::initializeGPUProcess(GPUProcessCreationParameters&& parameters)
     CGImageSourceSetAllowableTypes(emptyArray.get());
 #endif
 
+#if !LOG_DISABLED || !RELEASE_LOG_DISABLED
+    WTF::logChannels().initializeLogChannelsIfNecessary(parameters.wtfLoggingChannels);
+    WebCore::logChannels().initializeLogChannelsIfNecessary(parameters.webCoreLoggingChannels);
+    WebKit::logChannels().initializeLogChannelsIfNecessary(parameters.webKitLoggingChannels);
+#endif
+
     // Match the QoS of the UIProcess since the GPU process is doing rendering on its behalf.
     WTF::Thread::setCurrentThreadIsUserInteractive(0);
 
     WebCore::setPresentingApplicationPID(parameters.parentPID);
+
+#if USE(OS_STATE)
+    registerWithStateDumper("GPUProcess state"_s);
+#endif
 }
 
 void GPUProcess::prepareToSuspend(bool isSuspensionImminent, CompletionHandler<void()>&& completionHandler)
@@ -190,14 +277,6 @@ void GPUProcess::resume()
 {
 }
 
-void GPUProcess::processDidTransitionToForeground()
-{
-}
-
-void GPUProcess::processDidTransitionToBackground()
-{
-}
-
 GPUConnectionToWebProcess* GPUProcess::webProcessConnection(ProcessIdentifier identifier) const
 {
     return m_webProcessConnections.get(identifier);
@@ -211,6 +290,7 @@ void GPUProcess::setMockCaptureDevicesEnabled(bool isEnabled)
 
 void GPUProcess::setOrientationForMediaCapture(uint64_t orientation)
 {
+    m_orientation = orientation;
     for (auto& connection : m_webProcessConnections.values())
         connection->setOrientationForMediaCapture(orientation);
 }
@@ -228,6 +308,18 @@ void GPUProcess::updateCaptureAccess(bool allowAudioCapture, bool allowVideoCapt
     access.allowDisplayCapture |= allowDisplayCapture;
 
     completionHandler();
+}
+
+void GPUProcess::updateCaptureOrigin(const WebCore::SecurityOriginData& originData, ProcessIdentifier processID)
+{
+    if (auto* connection = webProcessConnection(processID))
+        connection->updateCaptureOrigin(originData);
+}
+
+void GPUProcess::updateSandboxAccess(const Vector<SandboxExtension::Handle>& extensions)
+{
+    for (auto& extension : extensions)
+        SandboxExtension::consumePermanently(extension);
 }
 
 void GPUProcess::addMockMediaDevice(const WebCore::MockMediaDevice& device)
@@ -248,6 +340,14 @@ void GPUProcess::removeMockMediaDevice(const String& persistentId)
 void GPUProcess::resetMockMediaDevices()
 {
     MockRealtimeMediaSourceCenter::resetDevices();
+}
+#endif
+
+#if PLATFORM(MAC)
+void GPUProcess::displayConfigurationChanged(CGDirectDisplayID displayID, CGDisplayChangeSummaryFlags flags)
+{
+    for (auto& connection : m_webProcessConnections.values())
+        connection->displayConfigurationChanged(displayID, flags);
 }
 #endif
 
@@ -304,12 +404,6 @@ RemoteAudioSessionProxyManager& GPUProcess::audioSessionManager() const
 #endif
 
 #if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
-WorkQueue& GPUProcess::audioMediaStreamTrackRendererQueue()
-{
-    if (!m_audioMediaStreamTrackRendererQueue)
-        m_audioMediaStreamTrackRendererQueue = WorkQueue::create("RemoteAudioMediaStreamTrackRenderer", WorkQueue::Type::Serial, WorkQueue::QOS::UserInteractive);
-    return *m_audioMediaStreamTrackRendererQueue;
-}
 WorkQueue& GPUProcess::videoMediaStreamTrackRendererQueue()
 {
     if (!m_videoMediaStreamTrackRendererQueue)
@@ -348,6 +442,46 @@ void GPUProcess::enableVP9Decoders(bool shouldEnableVP8Decoder, bool shouldEnabl
         WebCore::registerWebKitVP9Decoder();
 #endif
     }
+}
+#endif
+
+#if ENABLE(MEDIA_SOURCE)
+void GPUProcess::setWebMParserEnabled(bool enabled)
+{
+    if (m_webMParserEnabled == enabled)
+        return;
+    m_webMParserEnabled = enabled;
+    WebCore::RuntimeEnabledFeatures::sharedFeatures().setWebMParserEnabled(m_webMParserEnabled);
+}
+#endif
+
+#if ENABLE(WEBM_FORMAT_READER)
+void GPUProcess::setWebMFormatReaderEnabled(bool enabled)
+{
+    if (m_webMFormatReaderEnabled == enabled)
+        return;
+    m_webMFormatReaderEnabled = enabled;
+    PlatformMediaSessionManager::setWebMFormatReaderEnabled(m_webMParserEnabled);
+}
+#endif
+
+#if ENABLE(OPUS)
+void GPUProcess::setOpusDecoderEnabled(bool enabled)
+{
+    if (m_opusEnabled == enabled)
+        return;
+    m_opusEnabled = enabled;
+    PlatformMediaSessionManager::setOpusDecoderEnabled(m_opusEnabled);
+}
+#endif
+
+#if ENABLE(VORBIS)
+void GPUProcess::setVorbisDecoderEnabled(bool enabled)
+{
+    if (m_vorbisEnabled == enabled)
+        return;
+    m_vorbisEnabled = enabled;
+    PlatformMediaSessionManager::setVorbisDecoderEnabled(m_vorbisEnabled);
 }
 #endif
 

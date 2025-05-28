@@ -31,6 +31,9 @@
 #include "StorageManager.h"
 #include <WebCore/SecurityOriginData.h>
 #include <pal/SessionID.h>
+#include <wtf/Condition.h>
+#include <wtf/Lock.h>
+#include <wtf/SuspendableWorkQueue.h>
 #include <wtf/WeakPtr.h>
 
 using WebCore::SecurityOriginData;
@@ -39,7 +42,7 @@ namespace WebKit {
 
 class SandboxExtension;
 
-using ConnectToStorageAreaCallback = CompletionHandler<void(const Optional<StorageAreaIdentifier>&)>;
+using ConnectToStorageAreaCallback = CompletionHandler<void(const std::optional<StorageAreaIdentifier>&)>;
 using GetValuesCallback = CompletionHandler<void(const HashMap<String, String>&)>;
 using GetOriginsCallback = CompletionHandler<void(HashSet<WebCore::SecurityOriginData>&&)>;
 using GetOriginDetailsCallback = CompletionHandler<void(Vector<LocalStorageDatabaseTracker::OriginDetails>&&)>;
@@ -57,6 +60,7 @@ public:
     void addConnection(IPC::Connection&);
     void removeConnection(IPC::Connection&);
 
+    void handleLowMemoryWarning();
     void waitUntilTasksFinished();
     void waitUntilSyncingLocalStorageFinished();
     void suspend(CompletionHandler<void()>&&);
@@ -72,10 +76,12 @@ public:
     void renameOrigin(PAL::SessionID, const URL&, const URL&, CompletionHandler<void()>&&);
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>& replyEncoder);
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>& replyEncoder);
 
 private:
     StorageManagerSet();
+
+    void flushLocalStorage();
 
     // Message Handlers
     void connectToLocalStorageArea(IPC::Connection&, PAL::SessionID , StorageNamespaceIdentifier, SecurityOriginData&&, ConnectToStorageAreaCallback&&);
@@ -93,16 +99,7 @@ private:
     HashMap<StorageAreaIdentifier, WeakPtr<StorageArea>> m_storageAreas;
 
     HashSet<IPC::Connection::UniqueID> m_connections;
-    Ref<WorkQueue> m_queue;
-
-    enum class State {
-        Running,
-        WillSuspend,
-        Suspended
-    };
-    State m_state { State::Running };
-    Lock m_stateLock;
-    Condition m_stateChangeCondition;
+    Ref<SuspendableWorkQueue> m_queue;
 };
 
 } // namespace WebKit

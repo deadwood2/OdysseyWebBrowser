@@ -113,6 +113,7 @@ interface TestRunner {
     undefined repaintSweepHorizontally();
     undefined display();
     undefined displayAndTrackRepaints();
+    undefined displayOnLoadFinish();
 
     // Failed load condition testing
     undefined forceImmediateCompletion();
@@ -178,6 +179,9 @@ interface TestRunner {
     undefined addChromeInputField(object callback);
     undefined removeChromeInputField(object callback);
     undefined focusWebView(object callback);
+    undefined setTextInChromeInputField(DOMString text, object callback);
+    undefined getSelectedTextInChromeInputField(object callback);
+    undefined selectChromeInputField(object callback);
 
     // Window/view state
     undefined setBackingScaleFactor(double backingScaleFactor, object callback);
@@ -294,7 +298,7 @@ interface TestRunner {
     undefined setStatisticsPrevalentResourceForDebugMode(DOMString hostName, object completionHandler);
     undefined setStatisticsLastSeen(DOMString hostName, double seconds, object completionHandler);
     undefined setStatisticsMergeStatistic(DOMString hostName, DOMString topFrameDomain1, DOMString topFrameDomain2, double lastSeen, boolean hadUserInteraction, double mostRecentUserInteraction, boolean isGrandfathered, boolean isPrevalent, boolean isVeryPrevalent, unsigned long dataRecordsRemoved, object completionHandler);
-    undefined setStatisticsExpiredStatistic(DOMString hostName, boolean hadUserInteraction, boolean isScheduledForAllButCookieDataRemoval, boolean isPrevalent, object completionHandler);
+    undefined setStatisticsExpiredStatistic(DOMString hostName, unsigned long numberOfOperatingDaysPassed, boolean hadUserInteraction, boolean isScheduledForAllButCookieDataRemoval, boolean isPrevalent, object completionHandler);
     undefined setStatisticsPrevalentResource(DOMString hostName, boolean value, object completionHandler);
     undefined setStatisticsVeryPrevalentResource(DOMString hostName, boolean value, object completionHandler);
     boolean isStatisticsPrevalentResource(DOMString hostName);
@@ -384,6 +388,8 @@ interface TestRunner {
     boolean hasAppBoundSession();
     undefined clearAppBoundSession();
     undefined setAppBoundDomains(object originsArray, object callback);
+    boolean didLoadAppInitiatedRequest();
+    boolean didLoadNonAppInitiatedRequest();
 
     undefined injectUserScript(DOMString string);
     readonly attribute unsigned long userScriptInjectedCount;
@@ -402,12 +408,13 @@ interface TestRunner {
     undefined clearPrivateClickMeasurementsThroughWebsiteDataRemoval();
     undefined setPrivateClickMeasurementOverrideTimerForTesting(boolean value);
     undefined markAttributedPrivateClickMeasurementsAsExpiredForTesting();
+    undefined setPrivateClickMeasurementEphemeralMeasurementForTesting(boolean value);
     undefined simulateResourceLoadStatisticsSessionRestart();
     undefined setPrivateClickMeasurementTokenPublicKeyURLForTesting(DOMString url);
     undefined setPrivateClickMeasurementTokenSignatureURLForTesting(DOMString url);
-    undefined setPrivateClickMeasurementAttributionReportURLForTesting(DOMString url);
+    undefined setPrivateClickMeasurementAttributionReportURLsForTesting(DOMString sourceURLString, DOMString destinationURLString);
     undefined markPrivateClickMeasurementsAsExpiredForTesting();
-    undefined setFraudPreventionValuesForTesting(DOMString secretToken, DOMString unlinkableToken, DOMString signature, DOMString keyID);
+    undefined setPrivateClickMeasurementFraudPreventionValuesForTesting(DOMString unlinkableToken, DOMString secretToken, DOMString signature, DOMString keyID);
 
     // SpeechRecognition
     undefined setIsSpeechRecognitionPermissionGranted(boolean value);

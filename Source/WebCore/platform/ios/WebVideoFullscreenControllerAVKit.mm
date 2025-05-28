@@ -42,8 +42,10 @@
 #import "WebCoreThreadRun.h"
 #import <QuartzCore/CoreAnimation.h>
 #import <UIKit/UIView.h>
-#import <pal/ios/UIKitSoftLink.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
+#import <wtf/WorkQueue.h>
+
+#import <pal/ios/UIKitSoftLink.h>
 
 using namespace WebCore;
 
@@ -147,6 +149,8 @@ private:
     void beginScanningForward() override;
     void beginScanningBackward() override;
     void endScanning() override;
+    void setDefaultPlaybackRate(double) override;
+    void setPlaybackRate(double) override;
     void selectAudioMediaOption(uint64_t) override;
     void selectLegibleMediaOption(uint64_t) override;
     double duration() const override;
@@ -154,8 +158,10 @@ private:
     double currentTime() const override;
     double bufferedTime() const override;
     bool isPlaying() const override;
+    bool isStalled() const override;
     bool isScrubbing() const override { return false; }
-    float playbackRate() const override;
+    double defaultPlaybackRate() const override;
+    double playbackRate() const override;
     Ref<TimeRanges> seekableRanges() const override;
     double seekableTimeRangesLastModifiedTime() const override;
     double liveUpdateInterval() const override;
@@ -178,7 +184,7 @@ private:
     void durationChanged(double) override;
     void currentTimeChanged(double currentTime, double anchorTime) override;
     void bufferedTimeChanged(double) override;
-    void rateChanged(bool isPlaying, float playbackRate) override;
+    void rateChanged(OptionSet<PlaybackSessionModel::PlaybackState>, double playbackRate, double defaultPlaybackRate) override;
     void seekableRangesChanged(const TimeRanges&, double lastModifiedTime, double liveUpdateInterval) override;
     void canPlayFastReverseChanged(bool) override;
     void audioMediaSelectionOptionsChanged(const Vector<MediaSelectionOption>& options, uint64_t selectedIndex) override;
@@ -231,7 +237,7 @@ VideoFullscreenControllerContext::~VideoFullscreenControllerContext()
         m_playbackModel = nullptr;
         m_fullscreenModel = nullptr;
     } else
-        dispatch_sync(dispatch_get_main_queue(), WTFMove(notifyClientsModelWasDestroyed));
+        WorkQueue::main().dispatchSync(WTFMove(notifyClientsModelWasDestroyed));
 }
 
 #pragma mark VideoFullscreenChangeObserver
@@ -411,17 +417,17 @@ void VideoFullscreenControllerContext::bufferedTimeChanged(double bufferedTime)
         client->bufferedTimeChanged(bufferedTime);
 }
 
-void VideoFullscreenControllerContext::rateChanged(bool isPlaying, float playbackRate)
+void VideoFullscreenControllerContext::rateChanged(OptionSet<PlaybackSessionModel::PlaybackState> playbackState, double playbackRate, double defaultPlaybackRate)
 {
     if (WebThreadIsCurrent()) {
-        RunLoop::main().dispatch([protectedThis = makeRefPtr(this), isPlaying, playbackRate] {
-            protectedThis->rateChanged(isPlaying, playbackRate);
+        RunLoop::main().dispatch([protectedThis = makeRefPtr(this), playbackState, playbackRate, defaultPlaybackRate] {
+            protectedThis->rateChanged(playbackState, playbackRate, defaultPlaybackRate);
         });
         return;
     }
 
     for (auto& client : m_playbackClients)
-        client->rateChanged(isPlaying, playbackRate);
+        client->rateChanged(playbackState, playbackRate, defaultPlaybackRate);
 }
 
 void VideoFullscreenControllerContext::hasVideoChanged(bool hasVideo)
@@ -836,6 +842,24 @@ void VideoFullscreenControllerContext::endScanning()
     });
 }
 
+void VideoFullscreenControllerContext::setDefaultPlaybackRate(double defaultPlaybackRate)
+{
+    ASSERT(isUIThread());
+    WebThreadRun([protectedThis = makeRefPtr(this), this, defaultPlaybackRate] {
+        if (m_playbackModel)
+            m_playbackModel->setDefaultPlaybackRate(defaultPlaybackRate);
+    });
+}
+
+void VideoFullscreenControllerContext::setPlaybackRate(double playbackRate)
+{
+    ASSERT(isUIThread());
+    WebThreadRun([protectedThis = makeRefPtr(this), this, playbackRate] {
+        if (m_playbackModel)
+            m_playbackModel->setPlaybackRate(playbackRate);
+    });
+}
+
 void VideoFullscreenControllerContext::selectAudioMediaOption(uint64_t index)
 {
     ASSERT(isUIThread());
@@ -878,7 +902,19 @@ bool VideoFullscreenControllerContext::isPlaying() const
     return m_playbackModel ? m_playbackModel->isPlaying() : false;
 }
 
-float VideoFullscreenControllerContext::playbackRate() const
+bool VideoFullscreenControllerContext::isStalled() const
+{
+    ASSERT(isUIThread());
+    return m_playbackModel ? m_playbackModel->isStalled() : false;
+}
+
+double VideoFullscreenControllerContext::defaultPlaybackRate() const
+{
+    ASSERT(isUIThread());
+    return m_playbackModel ? m_playbackModel->defaultPlaybackRate() : 0;
+}
+
+double VideoFullscreenControllerContext::playbackRate() const
 {
     ASSERT(isUIThread());
     return m_playbackModel ? m_playbackModel->playbackRate() : 0;

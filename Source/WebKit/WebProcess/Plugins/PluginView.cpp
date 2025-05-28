@@ -129,7 +129,7 @@ private:
     // NetscapePluginStreamLoaderClient
     void willSendRequest(NetscapePlugInStreamLoader*, ResourceRequest&&, const ResourceResponse& redirectResponse, CompletionHandler<void(ResourceRequest&&)>&&) override;
     void didReceiveResponse(NetscapePlugInStreamLoader*, const ResourceResponse&) override;
-    void didReceiveData(NetscapePlugInStreamLoader*, const char*, int) override;
+    void didReceiveData(NetscapePlugInStreamLoader*, const uint8_t*, int) override;
     void didFail(NetscapePlugInStreamLoader*, const ResourceError&) override;
     void didFinishLoading(NetscapePlugInStreamLoader*) override;
 
@@ -188,17 +188,9 @@ static String buildHTTPHeaders(const ResourceResponse& response, long long& expe
         return String();
 
     StringBuilder header;
-    header.appendLiteral("HTTP ");
-    header.appendNumber(response.httpStatusCode());
-    header.append(' ');
-    header.append(response.httpStatusText());
-    header.append('\n');
-    for (auto& field : response.httpHeaderFields()) {
-        header.append(field.key);
-        header.appendLiteral(": ");
-        header.append(field.value);
-        header.append('\n');
-    }
+    header.append("HTTP ", response.httpStatusCode(), ' ', response.httpStatusText(), '\n');
+    for (auto& field : response.httpHeaderFields())
+        header.append(field.key, ": ", field.value, '\n');
 
     // If the content is encoded (most likely compressed), then don't send its length to the plugin,
     // which is only interested in the decoded length, not yet known at the moment.
@@ -245,7 +237,7 @@ void PluginView::Stream::didReceiveResponse(NetscapePlugInStreamLoader*, const R
     m_pluginView->m_plugin->streamDidReceiveResponse(m_streamID, responseURL, streamLength, lastModifiedDateMS(response), mimeType, headers, response.suggestedFilename());
 }
 
-void PluginView::Stream::didReceiveData(NetscapePlugInStreamLoader*, const char* bytes, int length)
+void PluginView::Stream::didReceiveData(NetscapePlugInStreamLoader*, const uint8_t* bytes, int length)
 {
     m_pluginView->m_plugin->streamDidReceiveData(m_streamID, bytes, length);
 }
@@ -413,7 +405,7 @@ void PluginView::manualLoadDidReceiveResponse(const ResourceResponse& response)
     m_plugin->manualStreamDidReceiveResponse(responseURL, streamLength, lastModifiedDateMS(response), mimeType, headers, response.suggestedFilename());
 }
 
-void PluginView::manualLoadDidReceiveData(const char* bytes, int length)
+void PluginView::manualLoadDidReceiveData(const uint8_t* bytes, int length)
 {
     // The plug-in can be null here if it failed to initialize.
     if (!m_plugin)
@@ -1163,7 +1155,7 @@ void PluginView::performFrameLoadURLRequest(URLRequest* request)
         return;
     }
 
-    UserGestureIndicator gestureIndicator(request->allowPopups() ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : WTF::nullopt);
+    UserGestureIndicator gestureIndicator(request->allowPopups() ? std::optional<ProcessingUserGestureState>(ProcessingUserGesture) : std::nullopt);
 
     // First, try to find a target frame.
     Frame* targetFrame = frame->loader().findFrameForNavigation(request->target());
@@ -1443,7 +1435,7 @@ bool PluginView::evaluate(NPObject* npObject, const String& scriptString, NPVari
     // protect the plug-in view from destruction.
     NPRuntimeObjectMap::PluginProtector pluginProtector(&m_npRuntimeObjectMap);
 
-    UserGestureIndicator gestureIndicator(allowPopups ? Optional<ProcessingUserGestureState>(ProcessingUserGesture) : WTF::nullopt);
+    UserGestureIndicator gestureIndicator(allowPopups ? std::optional<ProcessingUserGestureState>(ProcessingUserGesture) : std::nullopt);
     return m_npRuntimeObjectMap.evaluate(npObject, scriptString, result);
 }
 

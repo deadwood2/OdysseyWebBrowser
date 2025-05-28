@@ -31,14 +31,15 @@
 #import "LayerHostingContext.h"
 #import "MediaPlayerPrivateRemoteMessages.h"
 #import <QuartzCore/QuartzCore.h>
-#import <WebCore/IntSize.h>
+#import <WebCore/FloatSize.h>
+#import <WebCore/IOSurface.h>
 #import <wtf/MachSendRight.h>
 
 namespace WebKit {
 
-static void setVideoInlineSizeIfPossible(LayerHostingContext& context, const WebCore::IntSize& size)
+static void setVideoInlineSizeIfPossible(LayerHostingContext& context, const WebCore::FloatSize& size)
 {
-    if (!context.rootLayer())
+    if (!context.rootLayer() || size.isEmpty())
         return;
 
     // We do not want animations here.
@@ -48,12 +49,14 @@ static void setVideoInlineSizeIfPossible(LayerHostingContext& context, const Web
     [CATransaction commit];
 }
 
-void RemoteMediaPlayerProxy::prepareForPlayback(bool privateMode, WebCore::MediaPlayerEnums::Preload preload, bool preservesPitch, bool prepareForRendering, float videoContentScale, CompletionHandler<void(Optional<LayerHostingContextID>&& inlineLayerHostingContextId)>&& completionHandler)
+void RemoteMediaPlayerProxy::prepareForPlayback(bool privateMode, WebCore::MediaPlayerEnums::Preload preload, bool preservesPitch, bool prepareForRendering, float videoContentScale, WebCore::DynamicRangeMode preferredDynamicRangeMode, CompletionHandler<void(std::optional<LayerHostingContextID>&& inlineLayerHostingContextId)>&& completionHandler)
 {
     m_player->setPrivateBrowsingMode(privateMode);
     m_player->setPreload(preload);
     m_player->setPreservesPitch(preservesPitch);
-    m_player->prepareForRendering();
+    m_player->setPreferredDynamicRangeMode(preferredDynamicRangeMode);
+    if (prepareForRendering)
+        m_player->prepareForRendering();
     m_videoContentScale = videoContentScale;
     if (!m_inlineLayerHostingContext)
         m_inlineLayerHostingContext = LayerHostingContext::createForExternalHostingProcess();
@@ -63,17 +66,57 @@ void RemoteMediaPlayerProxy::prepareForPlayback(bool privateMode, WebCore::Media
 void RemoteMediaPlayerProxy::mediaPlayerFirstVideoFrameAvailable()
 {
     // Initially the size of the platformLayer may be 0x0 because we do not provide mediaPlayerContentBoxRect() in this class.
-    m_inlineLayerHostingContext->setRootLayer(m_player->platformLayer());
     setVideoInlineSizeIfPossible(*m_inlineLayerHostingContext, m_videoInlineSize);
     m_webProcessConnection->send(Messages::MediaPlayerPrivateRemote::FirstVideoFrameAvailable(), m_id);
 }
 
-void RemoteMediaPlayerProxy::setVideoInlineSizeFenced(const WebCore::IntSize& size, const WTF::MachSendRight& machSendRight)
+void RemoteMediaPlayerProxy::mediaPlayerRenderingModeChanged()
+{
+    m_inlineLayerHostingContext->setRootLayer(m_player->platformLayer());
+    m_webProcessConnection->send(Messages::MediaPlayerPrivateRemote::RenderingModeChanged(), m_id);
+}
+void RemoteMediaPlayerProxy::setVideoInlineSizeFenced(const WebCore::FloatSize& size, const WTF::MachSendRight& machSendRight)
 {
     m_inlineLayerHostingContext->setFencePort(machSendRight.sendRight());
 
     m_videoInlineSize = size;
     setVideoInlineSizeIfPossible(*m_inlineLayerHostingContext, size);
+}
+
+void RemoteMediaPlayerProxy::nativeImageForCurrentTime(CompletionHandler<void(std::optional<WTF::MachSendRight>&&)>&& completionHandler)
+{
+    if (!m_player) {
+        completionHandler(std::nullopt);
+        return;
+    }
+
+    auto nativeImage = m_player->nativeImageForCurrentTime();
+    if (!nativeImage) {
+        completionHandler(std::nullopt);
+        return;
+    }
+
+    auto platformImage = nativeImage->platformImage();
+    if (!platformImage) {
+        completionHandler(std::nullopt);
+        return;
+    }
+
+    auto surface = WebCore::IOSurface::createFromImage(platformImage.get());
+    if (!surface) {
+        completionHandler(std::nullopt);
+        return;
+    }
+
+    completionHandler(surface->createSendRight());
+}
+
+void RemoteMediaPlayerProxy::pixelBufferForCurrentTime(CompletionHandler<void(RetainPtr<CVPixelBufferRef>&&)>&& completionHandler)
+{
+    RetainPtr<CVPixelBufferRef> result;
+    if (m_player)
+        result = m_player->pixelBufferForCurrentTime();
+    completionHandler(WTFMove(result));
 }
 
 } // namespace WebKit

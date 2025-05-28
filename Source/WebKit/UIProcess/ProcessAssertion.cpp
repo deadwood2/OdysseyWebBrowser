@@ -29,12 +29,14 @@
 #if !PLATFORM(IOS_FAMILY)
 
 #include "WKBase.h"
+#include <wtf/RunLoop.h>
 
 namespace WebKit {
 
-ProcessAssertion::ProcessAssertion(ProcessID pid, const String&, ProcessAssertionType assertionType)
+ProcessAssertion::ProcessAssertion(ProcessID pid, const String& reason, ProcessAssertionType assertionType)
     : m_assertionType(assertionType)
     , m_pid(pid)
+    , m_reason(reason)
 {
 }
 
@@ -43,6 +45,16 @@ ProcessAssertion::~ProcessAssertion() = default;
 bool ProcessAssertion::isValid() const
 {
     return true;
+}
+
+void ProcessAssertion::acquireAsync(CompletionHandler<void()>&& completionHandler)
+{
+    if (completionHandler)
+        RunLoop::main().dispatch(WTFMove(completionHandler));
+}
+
+void ProcessAssertion::acquireSync()
+{
 }
 
 ProcessAndUIAssertion::ProcessAndUIAssertion(ProcessID pid, const String& reason, ProcessAssertionType assertionType)

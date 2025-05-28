@@ -217,7 +217,10 @@ class Separator : public TIntermRebuild
         {
             return true;
         }
-        ASSERT(expr.getType().getBasicType() != TBasicType::EbtVoid);
+        if((expr.getType().getBasicType() == TBasicType::EbtVoid))
+        {
+            return true;
+        }
         return false;
     }
 
@@ -234,7 +237,7 @@ class Separator : public TIntermRebuild
             return;
         }
         auto &bindingMap = getCurrBindingMap();
-        const Name name  = mIdGen.createNewName("");
+        const Name name = mIdGen.createNewName();
         auto *var =
             new TVariable(&mSymbolTable, name.rawName(), &newExpr.getType(), name.symbolType());
         auto *decl = new TIntermDeclaration(var, &newExpr);
@@ -398,7 +401,7 @@ class Separator : public TIntermRebuild
 
         if (op == TOperator::EOpLogicalAnd || op == TOperator::EOpLogicalOr)
         {
-            const Name name = mIdGen.createNewName("");
+            const Name name = mIdGen.createNewName();
             auto *var = new TVariable(&mSymbolTable, name.rawName(), new TType(TBasicType::EbtBool),
                                       name.symbolType());
 
@@ -469,7 +472,7 @@ class Separator : public TIntermRebuild
         TIntermTyped *then  = node.getTrueExpression();
         TIntermTyped *else_ = node.getFalseExpression();
 
-        const Name name = mIdGen.createNewName("");
+        const Name name = mIdGen.createNewName();
         auto *var =
             new TVariable(&mSymbolTable, name.rawName(), &node.getType(), name.symbolType());
 
@@ -616,7 +619,6 @@ class Separator : public TIntermRebuild
 
     PostResult visitGlobalQualifierDeclarationPost(TIntermGlobalQualifierDeclaration &node) override
     {
-        ASSERT(false);  // These should be scrubbed from AST before rewriter is called.
         pushStmt(node);
         return node;
     }

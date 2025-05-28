@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -30,6 +30,93 @@
  */
 
 WI.CSSKeywordCompletions = {};
+
+WI.CSSKeywordCompletions.forPartialPropertyName = function(text, {caretPosition, allowEmptyPrefix} = {})
+{
+    caretPosition ??= text.length;
+    allowEmptyPrefix ??= false;
+
+    // FIXME: <webkit.org/b/227157> Styles: Support completions mid-token.
+    if (caretPosition !== caretPosition)
+        return {prefix: text, completions: []};
+
+    if (!text.length && allowEmptyPrefix)
+        return {prefix: text, completions: WI.CSSCompletions.cssNameCompletions.values};
+    return {prefix: text, completions:WI.CSSCompletions.cssNameCompletions.startsWith(text)};
+};
+
+WI.CSSKeywordCompletions.forPartialPropertyValue = function(text, propertyName, {caretPosition, additionalFunctionValueCompletionsProvider} = {})
+{
+    caretPosition ??= text.length;
+
+    console.assert(caretPosition >= 0 && caretPosition <= text.length, text, caretPosition);
+    if (caretPosition < 0 || caretPosition > text.length)
+        return {prefix: "", completions: []};
+
+    if (!text.length)
+        return {prefix: "", completions: WI.CSSKeywordCompletions.forProperty(propertyName).values};
+
+    let tokens = WI.tokenizeCSSValue(text);
+
+    // Find the token that the cursor is either in or at the end of.
+    let indexOfTokenAtCaret = -1;
+    let passedCharacters = 0;
+    for (let i = 0; i < tokens.length; ++i) {
+        passedCharacters += tokens[i].value.length;
+        if (passedCharacters >= caretPosition) {
+            indexOfTokenAtCaret = i;
+            break;
+        }
+    }
+
+    let tokenAtCaret = tokens[indexOfTokenAtCaret];
+    console.assert(tokenAtCaret, text, caretPosition);
+    if (!tokenAtCaret)
+        return {prefix: "", completions: []};
+
+    if (tokenAtCaret.type && /\b(comment|string)\b/.test(tokenAtCaret.type))
+        return {prefix: "", completions: []};
+
+    let currentTokenValue = tokenAtCaret.value.trim();
+    let caretIsInMiddleOfToken = caretPosition !== passedCharacters;
+
+    // FIXME: <webkit.org/b/227157 Styles: Support completions mid-token.
+    // If the cursor was in middle of a token or the next token starts with a valid character for a value, we are effectively mid-token.
+    let tokenAfterCaret = tokens[indexOfTokenAtCaret + 1];
+    if ((caretIsInMiddleOfToken && currentTokenValue.length) || (!caretIsInMiddleOfToken && tokenAfterCaret && /[a-zA-Z0-9-]/.test(tokenAfterCaret.value[0])))
+        return {prefix: "", completions: []};
+
+    // If the current token value is a comma or opening parenthesis, treat it as if we are at the start of a new token.
+    if (currentTokenValue === "(" || currentTokenValue === ",")
+        currentTokenValue = "";
+
+    let functionName = null;
+    let preceedingFunctionDepth = 0;
+    for (let i = indexOfTokenAtCaret; i >= 0; --i) {
+        let value = tokens[i].value;
+
+        // There may be one or more complete functions between the cursor and the current scope's functions name.
+        if (value === ")")
+            ++preceedingFunctionDepth;
+        else if (value === "(") {
+            if (preceedingFunctionDepth)
+                --preceedingFunctionDepth;
+            else {
+                functionName = tokens[i - 1]?.value;
+                break;
+            }
+        }
+    }
+
+    if (functionName) {
+        let completions = WI.CSSKeywordCompletions.forFunction(functionName);
+        let contextualValueCompletions = additionalFunctionValueCompletionsProvider?.(functionName) || [];
+        completions.addValues(contextualValueCompletions);
+        return {prefix: currentTokenValue, completions: completions.startsWith(currentTokenValue)};
+    }
+
+    return {prefix: currentTokenValue, completions: WI.CSSKeywordCompletions.forProperty(propertyName).startsWith(currentTokenValue)};
+};
 
 WI.CSSKeywordCompletions.forProperty = function(propertyName)
 {
@@ -313,7 +400,8 @@ WI.CSSKeywordCompletions._colors = [
     "paleturquoise", "palevioletred", "papayawhip", "peachpuff", "peru", "pink", "plum", "powderblue", "rebeccapurple", "rosybrown",
     "royalblue", "saddlebrown", "salmon", "sandybrown", "seagreen", "seashell", "sienna", "skyblue", "slateblue",
     "slategray", "slategrey", "snow", "springgreen", "steelblue", "tan", "thistle", "tomato", "turquoise", "violet",
-    "wheat", "whitesmoke", "yellowgreen", "rgb()", "rgba()", "hsl()", "hsla()", "color()",
+    "wheat", "whitesmoke", "yellowgreen", "rgb()", "rgba()", "hsl()", "hsla()", "color()", "hwb()", "lch()", "lab()",
+    "color-mix()", "color-contrast()",
 ];
 
 WI.CSSKeywordCompletions._colorAwareProperties = new Set([
@@ -373,8 +461,23 @@ WI.CSSKeywordCompletions._propertyKeywordMap = {
     "baseline-shift": [
         "baseline", "sub", "super"
     ],
+    "block-size": [
+        "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "calc()",
+    ],
+    "border-block-end-width": [
+        "medium", "thick", "thin", "calc()",
+    ],
+    "border-block-start-width": [
+        "medium", "thick", "thin", "calc()",
+    ],
     "border-bottom-width": [
         "medium", "thick", "thin", "calc()"
+    ],
+    "border-inline-end-width": [
+        "medium", "thick", "thin", "calc()",
+    ],
+    "border-inline-start-width": [
+        "medium", "thick", "thin", "calc()",
     ],
     "font-stretch": [
         "normal", "wider", "narrower", "ultra-condensed", "extra-condensed", "condensed", "semi-condensed",
@@ -441,14 +544,35 @@ WI.CSSKeywordCompletions._propertyKeywordMap = {
     "hanging-punctuation": [
         "none", "first", "last", "allow-end", "force-end"
     ],
+    "inline-size": [
+        "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "calc()",
+    ],
     "overflow": [
         "hidden", "auto", "visible", "scroll", "marquee", "-webkit-paged-x", "-webkit-paged-y"
     ],
     "-webkit-box-reflect": [
         "none", "left", "right", "above", "below"
     ],
+    "margin-block": [
+        "auto",
+    ],
+    "margin-block-end": [
+        "auto",
+    ],
+    "margin-block-start": [
+        "auto",
+    ],
     "margin-bottom": [
         "auto"
+    ],
+    "margin-inline": [
+        "auto",
+    ],
+    "margin-inline-end": [
+        "auto",
+    ],
+    "margin-inline-start": [
+        "auto",
     ],
     "font-weight": [
         "normal", "bold", "bolder", "lighter", "100", "200", "300", "400", "500", "600", "700", "800", "900"
@@ -556,11 +680,23 @@ WI.CSSKeywordCompletions._propertyKeywordMap = {
     "min-width": [
         "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "calc()"
     ],
+    "max-block-size": [
+        "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "none", "calc()",
+    ],
     "max-height": [
         "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "none", "calc()"
     ],
+    "max-inline-size": [
+        "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "none", "calc()",
+    ],
+    "min-block-size": [
+        "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "calc()",
+    ],
     "min-height": [
         "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "calc()"
+    ],
+    "min-inline-size": [
+        "auto", "intrinsic", "min-intrinsic", "min-content", "-webkit-min-content", "max-content", "-webkit-max-content", "-webkit-fill-available", "fit-content", "-webkit-fit-content", "calc()",
     ],
     "letter-spacing": [
         "normal", "calc()"

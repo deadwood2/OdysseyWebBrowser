@@ -1,4 +1,4 @@
-// Copyright (C) 2019 Apple Inc. All rights reserved.
+// Copyright (C) 2019-2021 Apple Inc. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -21,7 +21,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 // THE POSSIBILITY OF SUCH DAMAGE.
 
-import {queryToParams} from '/assets/js/common.js';
+import {queryToParams, escapeHTML} from '/assets/js/common.js';
 
 // These are flipped delibrately, it makes the fromQuery function return configurations in an
 // intuitive order.
@@ -186,7 +186,7 @@ class Configuration {
             result += ' (' + this.sdk + ')';
 
         if (result)
-            return result.substr(1);
+            return escapeHTML(result.substr(1));
         return 'All';
     }
     compare(configuration) {
@@ -207,7 +207,7 @@ class Configuration {
 
                 if (this[key] !== null && configuration[key] !== null) {
                     if (typeof this[key] === 'string') {
-                        if (key === 'version_name' && this[key].startsWith(configuration[key]))
+                        if (key === 'version_name' && (this[key].startsWith(configuration[key]) || configuration[key].startsWith(this[key])))
                             result = 0;
                         else
                             result = this[key].localeCompare(configuration[key]);

@@ -26,13 +26,10 @@
 #include "config.h"
 #include "WebIDBServer.h"
 
+#include "Logging.h"
 #include "WebIDBConnectionToClient.h"
 #include "WebIDBServerMessages.h"
-#include <WebCore/SQLiteDatabaseTracker.h>
 #include <WebCore/StorageQuotaManager.h>
-#include <wtf/threads/BinarySemaphore.h>
-
-#if ENABLE(INDEXED_DATABASE)
 
 namespace WebKit {
 
@@ -42,21 +39,22 @@ Ref<WebIDBServer> WebIDBServer::create(PAL::SessionID sessionID, const String& d
 }
 
 WebIDBServer::WebIDBServer(PAL::SessionID sessionID, const String& directory, WebCore::IDBServer::IDBServer::StorageQuotaManagerSpaceRequester&& spaceRequester)
-    : CrossThreadTaskHandler("com.apple.WebKit.IndexedDBServer", WTF::CrossThreadTaskHandler::AutodrainedPoolForRunLoop::Use)
+    : m_queue(WorkQueue::create("com.apple.WebKit.IndexedDBServer"))
 {
     ASSERT(RunLoop::isMain());
 
-    BinarySemaphore semaphore;
-    postTask([this, protectedThis = makeRef(*this), &semaphore, sessionID, directory = directory.isolatedCopy(), spaceRequester = WTFMove(spaceRequester)] () mutable {
-        m_server = makeUnique<WebCore::IDBServer::IDBServer>(sessionID, directory, WTFMove(spaceRequester));
-        semaphore.signal();
+    postTask([this, protectedThis = makeRef(*this), sessionID, directory = directory.isolatedCopy(), spaceRequester = WTFMove(spaceRequester)] () mutable {
+        ASSERT(!RunLoop::isMain());
+
+        Locker locker { m_serverLock };
+        m_server = makeUnique<WebCore::IDBServer::IDBServer>(sessionID, directory, WTFMove(spaceRequester), m_serverLock);
     });
-    semaphore.wait();
 }
 
 WebIDBServer::~WebIDBServer()
 {
     ASSERT(RunLoop::isMain());
+    ASSERT(!m_isSuspended);
 }
 
 void WebIDBServer::getOrigins(CompletionHandler<void(HashSet<WebCore::SecurityOriginData>&&)>&& callback)
@@ -66,10 +64,10 @@ void WebIDBServer::getOrigins(CompletionHandler<void(HashSet<WebCore::SecurityOr
     postTask([this, protectedThis = makeRef(*this), callback = WTFMove(callback)]() mutable {
         ASSERT(!RunLoop::isMain());
 
-        LockHolder locker(m_server->lock());
-        postTaskReply(CrossThreadTask([callback = WTFMove(callback), origins = crossThreadCopy(m_server->getOrigins())]() mutable {
+        Locker locker { m_serverLock };
+        postTaskReply([callback = WTFMove(callback), origins = crossThreadCopy(m_server->getOrigins())]() mutable {
             callback(WTFMove(origins));
-        }));
+        });
     });
 }
 
@@ -80,11 +78,11 @@ void WebIDBServer::closeAndDeleteDatabasesModifiedSince(WallTime modificationTim
     postTask([this, protectedThis = makeRef(*this), modificationTime, callback = WTFMove(callback)]() mutable {
         ASSERT(!RunLoop::isMain());
 
-        LockHolder locker(m_server->lock());
+        Locker locker { m_serverLock };
         m_server->closeAndDeleteDatabasesModifiedSince(modificationTime);
-        postTaskReply(CrossThreadTask([callback = WTFMove(callback)]() mutable {
+        postTaskReply([callback = WTFMove(callback)]() mutable {
             callback();
-        }));
+        });
     });
 }
 
@@ -95,11 +93,11 @@ void WebIDBServer::closeAndDeleteDatabasesForOrigins(const Vector<WebCore::Secur
     postTask([this, protectedThis = makeRef(*this), originDatas = originDatas.isolatedCopy(), callback = WTFMove(callback)] () mutable {
         ASSERT(!RunLoop::isMain());
 
-        LockHolder locker(m_server->lock());
+        Locker locker { m_serverLock };
         m_server->closeAndDeleteDatabasesForOrigins(originDatas);
-        postTaskReply(CrossThreadTask([callback = WTFMove(callback)]() mutable {
+        postTaskReply([callback = WTFMove(callback)]() mutable {
             callback();
-        }));
+        });
     });
 }
 
@@ -110,40 +108,62 @@ void WebIDBServer::renameOrigin(const WebCore::SecurityOriginData& oldOrigin, co
     postTask([this, protectedThis = makeRef(*this), oldOrigin = oldOrigin.isolatedCopy(), newOrigin = newOrigin.isolatedCopy(), callback = WTFMove(callback)] () mutable {
         ASSERT(!RunLoop::isMain());
 
-        LockHolder locker(m_server->lock());
+        Locker locker { m_serverLock };
         m_server->renameOrigin(oldOrigin, newOrigin);
-        postTaskReply(CrossThreadTask(WTFMove(callback)));
+        postTaskReply([callback = WTFMove(callback)]() mutable {
+            callback();
+        });
     });
 }
 
-void WebIDBServer::suspend()
+bool WebIDBServer::suspend(SuspensionCondition suspensionCondition) WTF_IGNORES_THREAD_SAFETY_ANALYSIS
 {
     ASSERT(RunLoop::isMain());
 
     if (m_isSuspended)
-        return;
+        return true;
+
+    RELEASE_LOG(ProcessSuspension, "%p - WebIDBServer::suspend(), suspensionCondition=%s", this, suspensionCondition == SuspensionCondition::Always ? "Always" : "IfIdle");
 
     m_isSuspended = true;
-    m_server->lock().lock();
-    m_server->stopDatabaseActivitiesOnMainThread();
+    m_serverLock.lock();
+
+    if (!m_server)
+        return true;
+
+    if (suspensionCondition == SuspensionCondition::Always) {
+        m_server->stopDatabaseActivitiesOnMainThread();
+        return true;
+    }
+
+    // Suspend to avoid starting new transactions if there is no ongoing transaction.
+    if (!m_server->hasDatabaseActivitiesOnMainThread())
+        return true;
+
+    // Resume to allow ongoing transactions to be finished.
+    m_serverLock.unlock();
+    m_isSuspended = false;
+    return false;
 }
 
-void WebIDBServer::resume()
+void WebIDBServer::resume() WTF_IGNORES_THREAD_SAFETY_ANALYSIS
 {
     ASSERT(RunLoop::isMain());
 
     if (!m_isSuspended)
         return;
 
+    RELEASE_LOG(ProcessSuspension, "%p - WebIDBServer::resume()", this);
+
     m_isSuspended = false;
-    m_server->lock().unlock();
+    m_serverLock.unlock();
 }
 
 void WebIDBServer::openDatabase(const WebCore::IDBRequestData& requestData)
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->openDatabase(requestData);
 }
 
@@ -151,7 +171,7 @@ void WebIDBServer::deleteDatabase(const WebCore::IDBRequestData& requestData)
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->deleteDatabase(requestData);
 }
 
@@ -159,23 +179,23 @@ void WebIDBServer::abortTransaction(const WebCore::IDBResourceIdentifier& transa
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->abortTransaction(transactionIdentifier);
 }
 
-void WebIDBServer::commitTransaction(const WebCore::IDBResourceIdentifier& transactionIdentifier)
+void WebIDBServer::commitTransaction(const WebCore::IDBResourceIdentifier& transactionIdentifier, uint64_t pendingRequestCount)
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
-    m_server->commitTransaction(transactionIdentifier);
+    Locker locker { m_serverLock };
+    m_server->commitTransaction(transactionIdentifier, pendingRequestCount);
 }
 
 void WebIDBServer::didFinishHandlingVersionChangeTransaction(uint64_t databaseConnectionIdentifier, const WebCore::IDBResourceIdentifier& transactionIdentifier)
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->didFinishHandlingVersionChangeTransaction(databaseConnectionIdentifier, transactionIdentifier);
 }
 
@@ -183,7 +203,7 @@ void WebIDBServer::createObjectStore(const WebCore::IDBRequestData& requestData,
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->createObjectStore(requestData, objectStoreInfo);
 }
 
@@ -191,7 +211,7 @@ void WebIDBServer::deleteObjectStore(const WebCore::IDBRequestData& requestData,
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->deleteObjectStore(requestData, objectStoreName);
 }
 
@@ -199,7 +219,7 @@ void WebIDBServer::renameObjectStore(const WebCore::IDBRequestData& requestData,
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->renameObjectStore(requestData, objectStoreIdentifier, newName);
 }
 
@@ -207,7 +227,7 @@ void WebIDBServer::clearObjectStore(const WebCore::IDBRequestData& requestData, 
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->clearObjectStore(requestData, objectStoreIdentifier);
 }
 
@@ -215,7 +235,7 @@ void WebIDBServer::createIndex(const WebCore::IDBRequestData& requestData, const
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->createIndex(requestData, indexInfo);
 }
 
@@ -223,7 +243,7 @@ void WebIDBServer::deleteIndex(const WebCore::IDBRequestData& requestData, uint6
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->deleteIndex(requestData, objectStoreIdentifier, indexName);
 }
 
@@ -231,7 +251,7 @@ void WebIDBServer::renameIndex(const WebCore::IDBRequestData& requestData, uint6
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->renameIndex(requestData, objectStoreIdentifier, indexIdentifier, newName);
 }
 
@@ -239,7 +259,7 @@ void WebIDBServer::putOrAdd(const WebCore::IDBRequestData& requestData, const We
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->putOrAdd(requestData, keyData, value, overWriteMode);
 }
 
@@ -247,7 +267,7 @@ void WebIDBServer::getRecord(const WebCore::IDBRequestData& requestData, const W
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->getRecord(requestData, getRecordData);
 }
 
@@ -255,7 +275,7 @@ void WebIDBServer::getAllRecords(const WebCore::IDBRequestData& requestData, con
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->getAllRecords(requestData, getAllRecordsData);
 }
 
@@ -263,7 +283,7 @@ void WebIDBServer::getCount(const WebCore::IDBRequestData& requestData, const We
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->getCount(requestData, keyRangeData);
 }
 
@@ -271,7 +291,7 @@ void WebIDBServer::deleteRecord(const WebCore::IDBRequestData& requestData, cons
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->deleteRecord(requestData, keyRangeData);
 }
 
@@ -279,7 +299,7 @@ void WebIDBServer::openCursor(const WebCore::IDBRequestData& requestData, const 
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->openCursor(requestData, cursorInfo);
 }
 
@@ -287,7 +307,7 @@ void WebIDBServer::iterateCursor(const WebCore::IDBRequestData& requestData, con
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->iterateCursor(requestData, iterateCursorData);
 }
 
@@ -295,7 +315,7 @@ void WebIDBServer::establishTransaction(uint64_t databaseConnectionIdentifier, c
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->establishTransaction(databaseConnectionIdentifier, transactionInfo);
 }
 
@@ -303,7 +323,7 @@ void WebIDBServer::databaseConnectionPendingClose(uint64_t databaseConnectionIde
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->databaseConnectionPendingClose(databaseConnectionIdentifier);
 }
 
@@ -311,7 +331,7 @@ void WebIDBServer::databaseConnectionClosed(uint64_t databaseConnectionIdentifie
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->databaseConnectionClosed(databaseConnectionIdentifier);
 }
 
@@ -319,7 +339,7 @@ void WebIDBServer::abortOpenAndUpgradeNeeded(uint64_t databaseConnectionIdentifi
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->abortOpenAndUpgradeNeeded(databaseConnectionIdentifier, transactionIdentifier);
 }
 
@@ -327,7 +347,7 @@ void WebIDBServer::didFireVersionChangeEvent(uint64_t databaseConnectionIdentifi
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->didFireVersionChangeEvent(databaseConnectionIdentifier, requestIdentifier, connectionClosed);
 }
 
@@ -335,7 +355,7 @@ void WebIDBServer::openDBRequestCancelled(const WebCore::IDBRequestData& request
 {
     ASSERT(!RunLoop::isMain());
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->openDBRequestCancelled(requestData);
 }
 
@@ -346,7 +366,7 @@ void WebIDBServer::getAllDatabaseNamesAndVersions(IPC::Connection& connection, c
     auto* webIDBConnection = m_connectionMap.get(connection.uniqueID());
     ASSERT(webIDBConnection);
 
-    LockHolder locker(m_server->lock());
+    Locker locker { m_serverLock };
     m_server->getAllDatabaseNamesAndVersions(webIDBConnection->identifier(), requestIdentifier, origin);
 }
 
@@ -361,25 +381,27 @@ void WebIDBServer::addConnection(IPC::Connection& connection, WebCore::ProcessId
 
         ASSERT_UNUSED(isNewEntry, isNewEntry);
 
-        LockHolder locker(m_server->lock());
+        Locker locker { m_serverLock };
         m_server->registerConnection(iter->value->connectionToClient());
     });
-    m_connections.add(&connection);
-    connection.addThreadMessageReceiver(Messages::WebIDBServer::messageReceiverName(), this);
+    m_connections.add(connection);
+    connection.addWorkQueueMessageReceiver(Messages::WebIDBServer::messageReceiverName(), m_queue.get(), this);
 }
 
 void WebIDBServer::removeConnection(IPC::Connection& connection)
 {
     ASSERT(RunLoop::isMain());
 
-    m_connections.remove(&connection);
-    connection.removeThreadMessageReceiver(Messages::WebIDBServer::messageReceiverName());
+    if (!m_connections.remove(connection))
+        return;
+
+    connection.removeWorkQueueMessageReceiver(Messages::WebIDBServer::messageReceiverName());
     postTask([this, protectedThis = makeRef(*this), connectionID = connection.uniqueID()] {
         auto connection = m_connectionMap.take(connectionID);
 
         ASSERT(connection);
 
-        LockHolder locker(m_server->lock());
+        Locker locker { m_serverLock };
         m_server->unregisterConnection(connection->connectionToClient());
     });
 }
@@ -388,34 +410,38 @@ void WebIDBServer::postTask(Function<void()>&& task)
 {
     ASSERT(RunLoop::isMain());
 
-    CrossThreadTaskHandler::postTask(CrossThreadTask(WTFMove(task)));
+    m_queue->dispatch(WTFMove(task));
 }
 
-void WebIDBServer::dispatchToThread(Function<void()>&& task)
+void WebIDBServer::postTaskReply(Function<void()>&& taskReply)
 {
-    CrossThreadTaskHandler::postTask(CrossThreadTask(WTFMove(task)));
+    ASSERT(!RunLoop::isMain());
+
+    RunLoop::main().dispatch(WTFMove(taskReply));
 }
 
-void WebIDBServer::close()
+void WebIDBServer::close(CompletionHandler<void()>&& completionHandler)
 {
     ASSERT(RunLoop::isMain());
 
     // Remove the references held by IPC::Connection.
-    for (auto* connection : m_connections)
-        connection->removeThreadMessageReceiver(Messages::WebIDBServer::messageReceiverName());
+    for (auto& connection : m_connections)
+        connection.removeWorkQueueMessageReceiver(Messages::WebIDBServer::messageReceiverName());
 
-    CrossThreadTaskHandler::setCompletionCallback([protectedThis = makeRef(*this)]() mutable {
-        ASSERT(!RunLoop::isMain());
-        callOnMainRunLoop([protectedThis = WTFMove(protectedThis)]() mutable { });
-    });
-
-    postTask([this]() mutable {
+    // Dispatch last task to clean up.
+    postTask([this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)]() mutable {
         m_connectionMap.clear();
-        m_server = nullptr;
 
-        CrossThreadTaskHandler::kill();
+        {
+            Locker locker { m_serverLock };
+            m_server = nullptr;
+        }
+
+        postTaskReply([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler)]() mutable {
+            if (completionHandler)
+                completionHandler();
+        });
     });
 }
 
 } // namespace WebKit
-#endif

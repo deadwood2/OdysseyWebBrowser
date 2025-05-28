@@ -33,6 +33,8 @@ messages -> PlaybackSessionManager {
     BeginScanningForward(WebKit::PlaybackSessionContextIdentifier contextId)
     BeginScanningBackward(WebKit::PlaybackSessionContextIdentifier contextId)
     EndScanning(WebKit::PlaybackSessionContextIdentifier contextId)
+    SetDefaultPlaybackRate(WebKit::PlaybackSessionContextIdentifier contextId, float defaultPlaybackRate)
+    SetPlaybackRate(WebKit::PlaybackSessionContextIdentifier contextId, float playbackRate)
     SelectAudioMediaOption(WebKit::PlaybackSessionContextIdentifier contextId, uint64_t index)
     SelectLegibleMediaOption(WebKit::PlaybackSessionContextIdentifier contextId, uint64_t index)
     HandleControlledElementIDRequest(WebKit::PlaybackSessionContextIdentifier contextId)

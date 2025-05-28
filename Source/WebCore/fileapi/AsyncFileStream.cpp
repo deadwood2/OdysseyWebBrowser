@@ -81,15 +81,19 @@ static void callOnFileThread(Function<void ()>&& function)
             for (;;) {
                 AutodrainedPool pool;
 
-                auto function = queue.get().waitForMessage();
+                if (auto function = queue.get().waitForMessage()) {
 
-                // This can never be null because we never kill the MessageQueue.
-                ASSERT(function);
+#if !OS(MORPHOS)
+                    // This can never be null because we never kill the MessageQueue.
+                    ASSERT(function);
 
-                // This can bever be null because we never queue a function that is null.
-                ASSERT(*function);
-
-                (*function)();
+                    // This can bever be null because we never queue a function that is null.
+                    ASSERT(*function);
+#endif
+                    (*function)();
+                }
+                else
+                    break;
             }
         });
     });
@@ -136,7 +140,7 @@ void AsyncFileStream::perform(WTF::Function<WTF::Function<void(FileStreamClient&
     });
 }
 
-void AsyncFileStream::getSize(const String& path, Optional<WallTime> expectedModificationTime)
+void AsyncFileStream::getSize(const String& path, std::optional<WallTime> expectedModificationTime)
 {
     // FIXME: Explicit return type here and in all the other cases like this below is a workaround for a deficiency
     // in the Windows compiler at the time of this writing. Could remove it if that is resolved.
@@ -167,7 +171,7 @@ void AsyncFileStream::close()
     });
 }
 
-void AsyncFileStream::read(char* buffer, int length)
+void AsyncFileStream::read(void* buffer, int length)
 {
     perform([buffer, length](FileStream& stream) -> WTF::Function<void(FileStreamClient&)> {
         int bytesRead = stream.read(buffer, length);

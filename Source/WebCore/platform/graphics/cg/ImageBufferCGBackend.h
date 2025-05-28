@@ -28,11 +28,16 @@
 #if USE(CG)
 
 #include "ImageBufferBackend.h"
+#include <wtf/Forward.h>
+
+typedef struct CGImage* CGImageRef;
 
 namespace WebCore {
 
 class WEBCORE_EXPORT ImageBufferCGBackend : public ImageBufferBackend {
 public:
+    static unsigned calculateBytesPerRow(const IntSize& backendSize);
+
     RefPtr<Image> copyImage(BackingStoreCopy = CopyBackingStore, PreserveResolution = PreserveResolution::No) const override;
     RefPtr<Image> sinkIntoImage(PreserveResolution) override;
 
@@ -41,23 +46,22 @@ public:
     
     void clipToMask(GraphicsContext&, const FloatRect& destRect) override;
 
-    String toDataURL(const String& mimeType, Optional<double> quality, PreserveResolution) const override;
-    Vector<uint8_t> toData(const String& mimeType, Optional<double> quality) const override;
+    String toDataURL(const String& mimeType, std::optional<double> quality, PreserveResolution) const override;
+    Vector<uint8_t> toData(const String& mimeType, std::optional<double> quality) const override;
 
     std::unique_ptr<ThreadSafeImageBufferFlusher> createFlusher() override;
+
+    static constexpr bool isOriginAtBottomLeftCorner = true;
 
 protected:
     using ImageBufferBackend::ImageBufferBackend;
 
     static RetainPtr<CGColorSpaceRef> contextColorSpace(const GraphicsContext&);
     void setupContext() const;
-    virtual RetainPtr<CFDataRef> toCFData(const String& mimeType, Optional<double> quality, PreserveResolution) const;
 
-#if USE(ACCELERATE)
-    void copyImagePixels(
-        AlphaPremultiplication srcAlphaFormat, PixelFormat srcPixelFormat, unsigned srcBytesPerRow, uint8_t* srcRows,
-        AlphaPremultiplication destAlphaFormat, PixelFormat destPixelFormat, unsigned destBytesPerRow, uint8_t* destRows, const IntSize&) const override;
-#endif
+    virtual void prepareToDrawIntoContext(GraphicsContext&);
+
+    virtual RetainPtr<CGImageRef> copyCGImageForEncoding(CFStringRef destinationUTI, PreserveResolution) const;
 };
 
 } // namespace WebCore

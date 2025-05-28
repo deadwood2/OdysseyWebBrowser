@@ -35,6 +35,7 @@
 #include <WebCore/GStreamerCommon.h>
 #endif
 
+#include <WebCore/ApplicationGLib.h>
 #include <WebCore/MemoryCache.h>
 
 #if PLATFORM(WAYLAND)
@@ -105,6 +106,15 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& para
 #if PLATFORM(GTK) && !USE(GTK4)
     setUseSystemAppearanceForScrollbars(parameters.useSystemAppearanceForScrollbars);
 #endif
+
+    if (parameters.memoryPressureHandlerConfiguration)
+        MemoryPressureHandler::singleton().setConfiguration(WTFMove(*parameters.memoryPressureHandlerConfiguration));
+
+    if (!parameters.applicationID.isEmpty())
+        WebCore::setApplicationID(parameters.applicationID);
+
+    if (!parameters.applicationName.isEmpty())
+        WebCore::setApplicationName(parameters.applicationName);
 }
 
 void WebProcess::platformSetWebsiteDataStoreParameters(WebProcessDataStoreParameters&&)
@@ -127,5 +137,17 @@ void WebProcess::setUseSystemAppearanceForScrollbars(bool useSystemAppearanceFor
     static_cast<ScrollbarThemeGtk&>(ScrollbarTheme::theme()).setUseSystemAppearance(useSystemAppearanceForScrollbars);
 }
 #endif
+
+void WebProcess::grantAccessToAssetServices(WebKit::SandboxExtension::Handle&&)
+{
+}
+
+void WebProcess::revokeAccessToAssetServices()
+{
+}
+
+void WebProcess::switchFromStaticFontRegistryToUserFontRegistry(WebKit::SandboxExtension::Handle&&)
+{
+}
 
 } // namespace WebKit

@@ -50,8 +50,13 @@ public:
 
     void callOnWorkerThread(WTF::Function<void()>&&);
 
+#if OS(MORPHOS)
+	void stopCurlThread();
+#endif
+
 private:
-    void startThreadIfNeeded();
+    void startOrWakeUpThread();
+    void wakeUpThreadIfPossible();
     void stopThreadIfNoMoreJobRunning();
     void stopThread();
 
@@ -67,12 +72,15 @@ private:
     Lock m_mutex;
     RefPtr<Thread> m_thread;
     bool m_runThread { false };
-
+#if OS(MORPHOS)
+	bool m_stopped { false };
+#endif
     Vector<Function<void()>> m_taskQueue;
     HashSet<CurlRequestSchedulerClient*> m_activeJobs;
     HashMap<CURL*, CurlRequestSchedulerClient*> m_clientMaps;
 
-    std::unique_ptr<CurlMultiHandle> m_curlMultiHandle;
+    Lock m_multiHandleMutex;
+    std::optional<CurlMultiHandle> m_curlMultiHandle;
 
     long m_maxConnects;
     long m_maxTotalConnections;

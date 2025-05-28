@@ -24,10 +24,15 @@
  */
 
 #import "WKWebViewInternal.h"
+#import "_WKTapHandlingResult.h"
 
 @class UIScrollEvent;
 
 #if PLATFORM(IOS_FAMILY)
+
+namespace WebKit {
+enum class TapHandlingResult : uint8_t;
+}
 
 @interface WKWebView (WKViewInternalIOS)
 
@@ -57,8 +62,8 @@
 - (void)_layerTreeCommitComplete;
 
 - (void)_couldNotRestorePageState;
-- (void)_restorePageScrollPosition:(Optional<WebCore::FloatPoint>)scrollPosition scrollOrigin:(WebCore::FloatPoint)scrollOrigin previousObscuredInset:(WebCore::FloatBoxExtent)insets scale:(double)scale;
-- (void)_restorePageStateToUnobscuredCenter:(Optional<WebCore::FloatPoint>)center scale:(double)scale; // FIXME: needs scroll origin?
+- (void)_restorePageScrollPosition:(std::optional<WebCore::FloatPoint>)scrollPosition scrollOrigin:(WebCore::FloatPoint)scrollOrigin previousObscuredInset:(WebCore::FloatBoxExtent)insets scale:(double)scale;
+- (void)_restorePageStateToUnobscuredCenter:(std::optional<WebCore::FloatPoint>)center scale:(double)scale; // FIXME: needs scroll origin?
 
 - (RefPtr<WebKit::ViewSnapshot>)_takeViewSnapshot;
 
@@ -148,5 +153,7 @@
 @property (nonatomic, readonly) int32_t _deviceOrientation;
 
 @end
+
+_WKTapHandlingResult wkTapHandlingResult(WebKit::TapHandlingResult);
 
 #endif // PLATFORM(IOS_FAMILY)

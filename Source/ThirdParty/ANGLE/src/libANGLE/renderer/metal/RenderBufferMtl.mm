@@ -10,6 +10,7 @@
 #include "libANGLE/renderer/metal/RenderBufferMtl.h"
 
 #include "libANGLE/renderer/metal/ContextMtl.h"
+#include "libANGLE/renderer/metal/ImageMtl.h"
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
 
@@ -74,12 +75,12 @@ angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
 
     if ((mTexture == nullptr || !mTexture->valid()) && (width != 0 && height != 0))
     {
-        if (actualSamples == 1 || (mFormat.hasDepthAndStencilBits() && mFormat.getCaps().resolve))
+        if (actualSamples == 1 || (mFormat.getCaps().resolve))
         {
             ANGLE_TRY(mtl::Texture::Make2DTexture(contextMtl, mFormat, static_cast<uint32_t>(width),
                                                   static_cast<uint32_t>(height), 1,
                                                   /* renderTargetOnly */ false,
-                                                  /* allowFormatView */ false, &mTexture));
+                                                  /* allowFormatView */ mFormat.hasDepthAndStencilBits(), &mTexture));
 
             // Use implicit resolve for depth stencil texture whenever possible. This is because
             // for depth stencil texture, if stencil needs to be blitted, a formatted clone has
@@ -93,7 +94,7 @@ angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
                     contextMtl, mFormat, static_cast<uint32_t>(width),
                     static_cast<uint32_t>(height), actualSamples,
                     /* renderTargetOnly */ true,
-                    /* allowFormatView */ false, &mImplicitMSTexture));
+                    /* allowFormatView */ mFormat.hasDepthAndStencilBits(), &mImplicitMSTexture));
             }
         }
         else
@@ -102,7 +103,7 @@ angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
                                                     static_cast<uint32_t>(width),
                                                     static_cast<uint32_t>(height), actualSamples,
                                                     /* renderTargetOnly */ false,
-                                                    /* allowFormatView */ false, &mTexture));
+                                                    /* allowFormatView */ mFormat.hasDepthAndStencilBits(), &mTexture));
         }
 
         mRenderTarget.setWithImplicitMSTexture(mTexture, mImplicitMSTexture, mtl::kZeroNativeMipLevel, 0, mFormat);
@@ -110,7 +111,6 @@ angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
         // For emulated channels that GL texture intends to not have,
         // we need to initialize their content.
         bool emulatedChannels = mtl::IsFormatEmulated(mFormat);
-        bool isDepthStencil = mFormat.hasDepthOrStencilBits();
         if (emulatedChannels)
         {
             gl::ImageIndex index;
@@ -131,10 +131,10 @@ angle::Result RenderbufferMtl::setStorageImpl(const gl::Context *context,
                                                          mtl::ImageNativeIndex(gl::ImageIndex::Make2DMultisample(), 0)));
             }
         }  // if (emulatedChannels)
+        bool isDepthStencil = mFormat.hasDepthOrStencilBits();
         if(isDepthStencil)
         {
             gl::ImageIndex index;
-
             if (actualSamples > 1)
             {
                 index = gl::ImageIndex::Make2DMultisample();
@@ -176,9 +176,20 @@ angle::Result RenderbufferMtl::setStorageMultisample(const gl::Context *context,
 angle::Result RenderbufferMtl::setStorageEGLImageTarget(const gl::Context *context,
                                                         egl::Image *image)
 {
-    // NOTE(hqle): Support EGLimage
-    UNIMPLEMENTED();
-    return angle::Result::Stop;
+    releaseTexture();
+
+    ContextMtl *contextMtl = mtl::GetImpl(context);
+
+    ImageMtl *imageMtl = mtl::GetImpl(image);
+    mTexture           = imageMtl->getTexture();
+
+    const angle::FormatID angleFormatId =
+        angle::Format::InternalFormatToID(image->getFormat().info->sizedInternalFormat);
+    mFormat = contextMtl->getPixelFormat(angleFormatId);
+
+    mRenderTarget.set(mTexture, mtl::kZeroNativeMipLevel, 0, mFormat);
+
+    return angle::Result::Continue;
 }
 
 angle::Result RenderbufferMtl::getAttachmentRenderTarget(const gl::Context *context,

@@ -67,6 +67,7 @@
 #import "WebPolicyDelegate.h"
 #import "WebPolicyDelegatePrivate.h"
 #import "WebPreferences.h"
+#import "WebPreferencesInternal.h"
 #import "WebResourceLoadDelegate.h"
 #import "WebResourceLoadDelegatePrivate.h"
 #import "WebScriptWorldInternal.h"
@@ -204,14 +205,14 @@ WebFrameLoaderClient::WebFrameLoaderClient(WebFrame *webFrame)
 {
 }
 
-Optional<WebCore::PageIdentifier> WebFrameLoaderClient::pageID() const
+std::optional<WebCore::PageIdentifier> WebFrameLoaderClient::pageID() const
 {
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-Optional<WebCore::FrameIdentifier> WebFrameLoaderClient::frameID() const
+std::optional<WebCore::FrameIdentifier> WebFrameLoaderClient::frameID() const
 {
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 WebFrameLoaderClient::~WebFrameLoaderClient()
@@ -693,7 +694,7 @@ void WebFrameLoaderClient::dispatchDidReceiveTitle(const WebCore::StringWithDire
     }
 }
 
-void WebFrameLoaderClient::dispatchDidCommitLoad(Optional<WebCore::HasInsecureContent>, Optional<WebCore::UsedLegacyTLS>)
+void WebFrameLoaderClient::dispatchDidCommitLoad(std::optional<WebCore::HasInsecureContent>, std::optional<WebCore::UsedLegacyTLS>)
 {
     // Tell the client we've committed this URL.
     ASSERT([m_webFrame->_private->webFrameView documentView] != nil);
@@ -854,7 +855,7 @@ void WebFrameLoaderClient::dispatchShow()
     [[webView _UIDelegateForwarder] webViewShow:webView];
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& request, WebCore::PolicyCheckIdentifier identifier, const String&, WebCore::FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& request, WebCore::PolicyCheckIdentifier identifier, const String&, WebCore::BrowsingContextGroupSwitchDecision, WebCore::FramePolicyFunction&& function)
 {
     WebView *webView = getWebView(m_webFrame.get());
 
@@ -1004,7 +1005,7 @@ void WebFrameLoaderClient::didReplaceMultipartContent()
 #endif
 }
 
-void WebFrameLoaderClient::committedLoad(WebCore::DocumentLoader* loader, const char* data, int length)
+void WebFrameLoaderClient::committedLoad(WebCore::DocumentLoader* loader, const uint8_t* data, int length)
 {
     auto nsData = adoptNS([[NSData alloc] initWithBytesNoCopy:(void*)data length:length freeWhenDone:NO]);
     [dataSource(loader) _receivedData:nsData.get()];
@@ -1562,7 +1563,7 @@ NSDictionary *WebFrameLoaderClient::actionDictionary(const WebCore::NavigationAc
         nil];
 
     if (auto mouseEventData = action.mouseEventData()) {
-        constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
+        constexpr OptionSet<HitTestRequest::Type> hitType { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::Active, HitTestRequest::Type::DisallowUserAgentShadowContent, HitTestRequest::Type::AllowChildFrameContent };
         auto element = adoptNS([[WebElementDictionary alloc] initWithHitTestResult:core(m_webFrame.get())->eventHandler().hitTestResultAtPoint(mouseEventData->absoluteLocation, hitType)]);
         [result setObject:element.get() forKey:WebActionElementKey];
 
@@ -1938,7 +1939,7 @@ RefPtr<WebCore::Widget> WebFrameLoaderClient::createPlugin(const WebCore::IntSiz
             if ([pluginPackage isKindOfClass:[WebPluginPackage class]])
                 view = pluginView(m_webFrame.get(), (WebPluginPackage *)pluginPackage, attributeKeys.get(), createNSArray(paramValues).get(), baseURL, kit(&element), loadManually);
 #if ENABLE(NETSCAPE_PLUGIN_API)
-            else if ([pluginPackage isKindOfClass:[WebNetscapePluginPackage class]]) {
+            else if ([pluginPackage isKindOfClass:[WebNetscapePluginPackage class]] && [webView.preferences _boolValueForKey:@"WebKitNPAPIPlugInsEnabledForTestingInWebKitLegacy"]) {
                 auto pluginView = adoptNS([[NETSCAPE_PLUGIN_VIEW alloc]
                     initWithFrame:NSMakeRect(0, 0, size.width(), size.height())
                     pluginPackage:(WebNetscapePluginPackage *)pluginPackage

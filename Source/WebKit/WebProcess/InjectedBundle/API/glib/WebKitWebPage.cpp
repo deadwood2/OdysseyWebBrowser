@@ -59,7 +59,6 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/glib/WTFGType.h>
 #include <wtf/text/CString.h>
-#include <wtf/text/StringBuilder.h>
 
 using namespace WebKit;
 using namespace WebCore;
@@ -79,9 +78,11 @@ enum {
 
 enum {
     PROP_0,
-
-    PROP_URI
+    PROP_URI,
+    N_PROPERTIES,
 };
+
+static GParamSpec* sObjProperties[N_PROPERTIES] = { nullptr, };
 
 struct _WebKitWebPagePrivate {
     WebPage* webPage;
@@ -149,7 +150,7 @@ static void webkitWebPageSetURI(WebKitWebPage* webPage, const CString& uri)
         return;
 
     webPage->priv->uri = uri;
-    g_object_notify(G_OBJECT(webPage), "uri");
+    g_object_notify_by_pspec(G_OBJECT(webPage), sObjProperties[PROP_URI]);
 }
 
 static void webkitWebPageDidSendConsoleMessage(WebKitWebPage* webPage, MessageSource source, MessageLevel level, const String& message, unsigned lineNumber, const String& sourceID)
@@ -281,13 +282,8 @@ private:
 
         // Post on the console as well to be consistent with the inspector.
         if (response.httpStatusCode() >= 400) {
-            StringBuilder errorMessage;
-            errorMessage.appendLiteral("Failed to load resource: the server responded with a status of ");
-            errorMessage.appendNumber(response.httpStatusCode());
-            errorMessage.appendLiteral(" (");
-            errorMessage.append(response.httpStatusText());
-            errorMessage.append(')');
-            webkitWebPageDidSendConsoleMessage(m_webPage, MessageSource::Network, MessageLevel::Error, errorMessage.toString(), 0, response.url().string());
+            String errorMessage = makeString("Failed to load resource: the server responded with a status of ", response.httpStatusCode(), " (", response.httpStatusText(), ')');
+            webkitWebPageDidSendConsoleMessage(m_webPage, MessageSource::Network, MessageLevel::Error, errorMessage, 0, response.url().string());
         }
     }
 
@@ -318,13 +314,9 @@ private:
 
         // Post on the console as well to be consistent with the inspector.
         if (!error.isCancellation()) {
-            StringBuilder errorMessage;
-            errorMessage.appendLiteral("Failed to load resource");
-            if (!error.localizedDescription().isEmpty()) {
-                errorMessage.appendLiteral(": ");
-                errorMessage.append(error.localizedDescription());
-            }
-            webkitWebPageDidSendConsoleMessage(m_webPage, MessageSource::Network, MessageLevel::Error, errorMessage.toString(), 0, error.failingURL().string());
+            auto errorDescription = error.localizedDescription();
+            auto errorMessage = makeString("Failed to load resource", errorDescription.isEmpty() ? "" : ": ", errorDescription);
+            webkitWebPageDidSendConsoleMessage(m_webPage, MessageSource::Network, MessageLevel::Error, errorMessage, 0, error.failingURL().string());
         }
     }
 
@@ -448,15 +440,15 @@ static void webkit_web_page_class_init(WebKitWebPageClass* klass)
      *
      * The current active URI of the #WebKitWebPage.
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_URI,
+    sObjProperties[PROP_URI] =
         g_param_spec_string(
             "uri",
             _("URI"),
             _("The current active URI of the web page"),
             0,
-            WEBKIT_PARAM_READABLE));
+            WEBKIT_PARAM_READABLE);
+
+    g_object_class_install_properties(gObjectClass, N_PROPERTIES, sObjProperties);
 
     /**
      * WebKitWebPage::document-loaded:

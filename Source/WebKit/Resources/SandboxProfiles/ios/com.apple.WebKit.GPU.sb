@@ -1,4 +1,4 @@
-; Copyright (C) 2010-2019 Apple Inc. All rights reserved.
+; Copyright (C) 2010-2021 Apple Inc. All rights reserved.
 ;
 ; Redistribution and use in source and binary forms, with or without
 ; modification, are permitted provided that the following conditions
@@ -23,6 +23,7 @@
 
 (version 1)
 (deny default (with partial-symbolication))
+(deny nvram*)
 (allow system-audit file-read-metadata)
 
 ;;;
@@ -87,7 +88,17 @@
 
 (define-once (framebuffer-access)
     (allow iokit-open
-           (iokit-user-client-class "IOMobileFramebufferUserClient"))
+           (iokit-user-client-class "IOMobileFramebufferUserClient")
+           (when (defined? 'iokit-external-method)
+               (apply-message-filter
+                   (deny (with telemetry)
+                       iokit-async-external-method
+                       iokit-external-trap)
+                   (allow
+                       iokit-external-method)
+               )
+           )
+    )
     (mobile-preferences-read "com.apple.iokit.IOMobileGraphicsFamily"))
 
 (define-once (asset-access . options)
@@ -247,12 +258,12 @@
 ;;; Declare that the application uses the OpenGL, Metal, and CoreML hardware & frameworks.
 ;;;
 (define-once (opengl)
-    (allow iokit-open
+    ;; Items not seen in testing
+    (deny iokit-open (with telemetry)
            (iokit-connection "IOGPU")
            (iokit-user-client-class
                 "AGXCommandQueue"
                 "AGXDevice"
-                "AGXDeviceUserClient"
                 "AGXSharedUserClient"
                 "IOAccelContext"
                 "IOAccelDevice"
@@ -261,6 +272,11 @@
                 "IOAccelContext2"
                 "IOAccelDevice2"
                 "IOAccelSharedUserClient2"))
+
+    (allow iokit-open
+           (iokit-connection "IOGPU")
+           (iokit-user-client-class
+                "AGXDeviceUserClient"))
 
     (allow iokit-get-properties
         (iokit-property "IOGLBundleName")
@@ -273,9 +289,6 @@
 
     (allow sysctl-read
            (sysctl-name #"kern.bootsessionuuid"))
-
-    (allow mach-lookup (with report) (with telemetry)
-        (xpc-service-name-prefix "com.apple.AGXCompilerService"))
 
     (allow mach-lookup
        ;; <rdar://problem/47268166>
@@ -302,10 +315,11 @@
         (with-filter (system-attribute apple-internal)
             ;; <rdar://problem/8565035>
             ;; <rdar://problem/23857452>
+            ;; <rdar://problem/72317112>
             (allow file-read* file-map-executable
                    (subpath "/AppleInternal")
                    (subpath "/usr/local/lib")
-                   (subpath "/usr/appleinternal/lib/sanitizers")))
+                   (subpath "/usr/appleinternal/lib")))
             (with-elevated-precedence
                 (allow file-read* file-map-executable file-issue-extension
                    (front-user-home-subpath "/XcodeBuiltProducts")))
@@ -339,22 +353,6 @@
 
     (allow file-read* file-write-data file-ioctl
            (literal "/dev/aes_0")))
-
-(define-once (logd-diagnostic-paths)
-    (require-any
-        (subpath "/private/var/db/diagnostics")
-        (subpath "/private/var/db/timesync")
-        (subpath "/private/var/db/uuidtext")
-        (subpath "/private/var/userdata/diagnostics")))
-(define-once (logd-diagnostic-client)
-    (with-filter
-        (require-all
-            (require-any
-                (require-entitlement "com.apple.private.logging.diagnostic")
-                (require-entitlement "com.apple.diagnosticd.diagnostic"))
-            (extension "com.apple.logd.read-only"))
-        (allow file-read*
-               (logd-diagnostic-paths))))
 
 (define required-etc-files
   (literal "/private/etc/fstab"
@@ -390,10 +388,6 @@
         "com.apple.coreanimation"
         "com.apple.mt"
         "com.apple.preferences.sounds")
-
-    (allow mach-lookup (with report) (with telemetry)
-        (global-name "com.apple.frontboard.systemappservices")                 ; -[UIViewServiceInterface _createProcessAssertion] -> SBSProcessIDForDisplayIdentifier()
-    )
 
     (allow mach-lookup
         (global-name "com.apple.CARenderServer"))
@@ -473,7 +467,8 @@
 
     (mobile-preferences-read "kCFPreferencesAnyApplication")
     (allow file-read*
-           (front-user-home-literal "/Library/Preferences/.GlobalPreferences.plist"))
+           (front-user-home-literal "/Library/Preferences/.GlobalPreferences.plist")
+           (front-user-home-literal "/Library/Preferences/.GlobalPreferences_m.plist"))
 
     (allow file-read*
            (literal "/private/var/Managed Preferences/mobile/.GlobalPreferences.plist"))
@@ -568,7 +563,7 @@
     (global-name "com.apple.logd.events")
     (global-name "com.apple.distributed_notifications@1v3")
     (global-name "com.apple.aggregated")
-    (global-name "com.apple.cfprefsd.daemon"))
+)
 
 (allow mach-lookup (with report) (with telemetry)
     (global-name "com.apple.tccd"))
@@ -605,13 +600,22 @@
 
 (with-filter (system-attribute apple-internal)
     (allow sysctl-read sysctl-write
-           (sysctl-name "vm.footprint_suspend")))
+           (sysctl-name "vm.footprint_suspend"))
+    (allow nvram-get (nvram-variable "emu")) ;; <rdar://problem/78363040>
+)
 
 (allow mach-lookup (with report) (with telemetry)
        (global-name "com.apple.system.logger"))
 
-(allow file-read-metadata network-outbound
+(allow file-read-metadata
        (literal "/private/var/run/syslog"))
+
+;; ObjC map_images needs to send logging data to syslog. <rdar://problem/39778918>
+(with-filter (system-attribute apple-internal)
+    (allow network-outbound
+       (literal "/private/var/run/syslog")
+    )
+)
 
 (allow mach-lookup
        (global-name "com.apple.system.notification_center"))
@@ -620,8 +624,6 @@
 
 (allow mach-lookup (with report) (with telemetry)
     (global-name "com.apple.diagnosticd"))
-
-(logd-diagnostic-client)
 
 (managed-configuration-read-public)
 
@@ -712,9 +714,6 @@
 ;; <rdar://problem/7344719&26323449> LaunchServices app icons
 (allow file-read*
     (well-known-system-group-container-subpath "/systemgroup.com.apple.lsd.iconscache"))
-(allow mach-lookup (with report) (with telemetry)
-    (xpc-service-name "com.apple.iconservices")
-    (global-name "com.apple.iconservices"))
 
 (allow-preferences-common)
 
@@ -758,25 +757,88 @@
 ;;; End UIKit-apps.sb content
 ;;;
 
+;; In CFPrefs direct mode, access to preference files is required.
+(allow file-read*
+    (home-literal
+        "/Library/Preferences/com.apple.Accessibility.plist"
+        "/Library/Preferences/com.apple.AdLib.plist"
+        "/Library/Preferences/com.apple.EmojiPreferences.plist"
+        "/Library/Preferences/com.apple.InputModePreferences.plist"
+        "/Library/Preferences/com.apple.LaunchServices.plist"
+        "/Library/Preferences/com.apple.Metal.plist"
+        "/Library/Preferences/com.apple.MobileAsset.plist"
+        "/Library/Preferences/com.apple.Preferences.plist"
+        "/Library/Preferences/com.apple.PrototypeTools.plist"
+        "/Library/Preferences/com.apple.SpeakSelection.plist"
+        "/Library/Preferences/com.apple.UIKit.plist"
+        "/Library/Preferences/com.apple.VoiceOverTouch.plist"
+        "/Library/Preferences/com.apple.WebFoundation.plist"
+        "/Library/Preferences/com.apple.WebUI.plist"
+        "/Library/Preferences/com.apple.airplay.plist"
+        "/Library/Preferences/com.apple.audio.virtualaudio.plist"
+        "/Library/Preferences/com.apple.avfoundation.plist"
+        "/Library/Preferences/com.apple.avfoundation.frecents.plist"
+        "/Library/Preferences/com.apple.avfoundation.videoperformancehud.plist"
+        "/Library/Preferences/com.apple.avkit.plist"
+        "/Library/Preferences/com.apple.coreanimation.plist"
+        "/Library/Preferences/com.apple.coreaudio.plist"
+        "/Library/Preferences/com.apple.coremedia.plist"
+        "/Library/Preferences/com.apple.corevideo.plist"
+        "/Library/Preferences/com.apple.da.plist"
+        "/Library/Preferences/com.apple.keyboard.plist"
+        "/Library/Preferences/com.apple.lookup.shared.plist"
+        "/Library/Preferences/com.apple.mediaaccessibility.plist"
+        "/Library/Preferences/com.apple.mediaaccessibility.public.plist"
+        "/Library/Preferences/com.apple.mediaremote.plist"
+        "/Library/Preferences/com.apple.mobileipod.plist"
+        "/Library/Preferences/com.apple.mt.plist"
+        "/Library/Preferences/com.apple.hangtracer.plist"
+        "/Library/Preferences/com.apple.iokit.IOMobileGraphicsFamily.plist"
+        "/Library/Preferences/com.apple.itunesstored.plist"
+        "/Library/Preferences/com.apple.opengl.plist"
+        "/Library/Preferences/com.apple.preferences.sounds.plist"
+        "/Library/Preferences/com.apple.security.plist"
+        "/Library/Preferences/com.apple.voiceservices.plist"
+        "/Library/Preferences/com.apple.voiceservices.logging.plist"
+    )
+)
+
 (deny sysctl*)
 (allow sysctl-read
     (sysctl-name
         "hw.activecpu"
         "hw.availcpu"
+        "hw.cacheconfig" ;; <rdar://problem/78213563>
         "hw.cachelinesize"
+        "hw.cachesize" ;; <rdar://problem/78213563>
+        "hw.cpufamily" ;; <rdar://problem/15721872>
+        "hw.cpusubfamily"
+        "hw.cputhreadtype"
         "hw.cputype"
+        "hw.l1dcachesize" ;; <rdar://problem/15721872>
+        "hw.l1icachesize" ;; <rdar://problem/15721872>
         "hw.l2cachesize"
+        "hw.l3cachesize" ;; <rdar://problem/15721872>
         "hw.logicalcpu"
         "hw.logicalcpu_max"
         "hw.ncpu"
+        "hw.nperflevels" ;; <rdar://problem/76782530>
+        "hw.pagesize" ;; <rdar://problem/76782530>
         "hw.machine"
         "hw.memsize"
         "hw.model"
+        "hw.ncpu"
+        "hw.nperflevels"
+        "hw.pagesize" ;; <rdar://problem/76782530>
         "hw.pagesize_compat"
         "hw.physicalcpu"
         "hw.physicalcpu_max"
+        "hw.physmem" ;; <rdar://problem/76782530>
+        "hw.product" ;; <rdar://problem/81334849>
+        "hw.vectorunit" ;; <rdar://problem/76782530>
         "kern.bootargs"
         "kern.hostname"
+        "kern.hv_vmm_present"
         "kern.memorystatus_level"
         "kern.osproductversion"
         "kern.osrelease"
@@ -785,7 +847,10 @@
         "kern.secure_kernel"
         "kern.version"
         "sysctl.name2oid"
-        "vm.footprint_suspend"))
+        "vm.footprint_suspend")
+    (sysctl-name-prefix "hw.optional.") ;; <rdar://problem/70973527>
+    (sysctl-name-prefix "hw.perflevel") ;; <rdar://problem/76782530>
+)
 
 (allow iokit-get-properties
     (iokit-property-regex #"^AAPL,(DisplayPipe|OpenCLdisabled|IOGraphics_LER(|_RegTag_1|_RegTag_0|_Busy_2)|alias-policy|boot-display|display-alias|mux-switch-state|ndrv-dev|primary-display|slot-name)")
@@ -825,13 +890,24 @@
     (iokit-property "oled-display") ;; <rdar://problem/51322072>
     (iokit-property "product-description") ;; <rdar://problem/49497788>
     (iokit-property "product-id")
-    (iokit-property "region-info") ;; <rdar://problem/52903475>
-    (iokit-property "regulatory-model-number") ;; <rdar://problem/52903475>
     (iokit-property "soc-generation") ;; <rdar://problem/52903476>
     (iokit-property "software-behavior")
     (iokit-property "vendor-id")
     (iokit-property "udid-version") ;; <rdar://problem/52903475>
     (iokit-property "ui-pip") ;; <rdar://problem/48867037>
+)
+
+; IOPlatformExpertDevice
+(with-filter (iokit-registry-entry-class "IOPlatformExpertDevice")
+    (allow iokit-get-properties
+        (iokit-property
+            "model"
+            "model-number"
+            "platform-name" ;; <rdar://problem/79334360>
+            "region-info" ;; <rdar://problem/52903475>
+            "regulatory-model-number" ;; <rdar://problem/52903475>
+        )
+    )
 )
 
 ;; Read-only preferences and data
@@ -867,9 +943,13 @@
 (media-accessibility-support)
 
 ;; Various services required by CFNetwork and other frameworks
-(allow mach-lookup
-    (global-name "com.apple.PowerManagement.control")
+(allow mach-lookup (with telemetry-backtrace)
     (global-name "com.apple.analyticsd"))
+
+;; Silence reports about things we do not want access to:
+(deny mach-lookup (with no-report)
+    (global-name "com.apple.fontservicesd")
+)
 
 (deny file-write-create (vnode-type SYMLINK))
 (deny file-read-xattr file-write-xattr (xattr-regex #"^com\.apple\.security\.private\."))
@@ -884,14 +964,61 @@
     (literal "/usr/local/lib/log") ; <rdar://problem/36629495>
 )
 
+(allow mach-lookup
+    (require-all
+        (extension "com.apple.webkit.extension.mach")
+        (global-name
+            "com.apple.PowerManagement.control"
+            "com.apple.frontboard.systemappservices"
+            "com.apple.iconservices"
+        )
+    )
+)
+
+(allow iokit-open
+    (require-all
+        (extension "com.apple.webkit.extension.iokit")
+        (iokit-user-client-class
+            "AGXCommandQueue"
+            "AGXDevice"
+            "AGXSharedUserClient"
+            "IOAccelContext"
+            "IOAccelDevice"
+            "IOAccelSharedUserClient"
+            "IOAccelSubmitter2"
+            "IOAccelContext2"
+            "IOAccelDevice2"
+            "IOAccelSharedUserClient2"
+        )
+    )
+)
+
 (deny mach-lookup (with no-log)
     (xpc-service-name "com.apple.audio.toolbox.reporting.service")
+)
+
+(deny mach-lookup (with telemetry-backtrace)
+    (xpc-service-name "com.apple.iconservices")
+    (global-name
+        "com.apple.PowerManagement.control"
+        "com.apple.iconservices"
+        "com.apple.frontboard.systemappservices"
+    )
+)
+
+(allow mach-lookup
+    (global-name "com.apple.systemstatus.activityattribution")
 )
 
 (allow mach-lookup
     (require-all
         (extension "com.apple.webkit.extension.mach")
-        (global-name "com.apple.iphone.axserver-systemwide" "com.apple.tccd" "com.apple.AGXCompilerService")))
+        (global-name "com.apple.iphone.axserver-systemwide" "com.apple.tccd")))
+
+(allow mach-lookup
+    (require-all
+        (extension "com.apple.webkit.extension.mach")
+        (xpc-service-name-prefix "com.apple.AGXCompilerService")))
 
 (media-capture-support)
 

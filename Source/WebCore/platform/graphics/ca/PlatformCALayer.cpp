@@ -198,6 +198,10 @@ LayerPool& PlatformCALayer::layerPool()
     return *sharedPool;
 }
 
+void PlatformCALayer::dumpAdditionalProperties(TextStream&, OptionSet<PlatformLayerTreeAsTextFlags>)
+{
+}
+
 TextStream& operator<<(TextStream& ts, PlatformCALayer::LayerType layerType)
 {
     switch (layerType) {
@@ -245,6 +249,11 @@ TextStream& operator<<(TextStream& ts, PlatformCALayer::LayerType layerType)
     case PlatformCALayer::LayerTypeDarkSystemBackdropLayer:
         ts << "dark-system-backdrop-layer";
         break;
+#if ENABLE(MODEL_ELEMENT)
+    case PlatformCALayer::LayerTypeModelLayer:
+        ts << "model-layer";
+        break;
+#endif
     }
     return ts;
 }

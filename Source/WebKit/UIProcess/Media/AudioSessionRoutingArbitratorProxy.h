@@ -32,6 +32,10 @@
 #include <wtf/WallTime.h>
 #include <wtf/WeakPtr.h>
 
+#if HAVE(AVAUDIO_ROUTING_ARBITER)
+#import <WebCore/SharedRoutingArbitrator.h>
+#endif
+
 namespace WebKit {
 
 class WebProcessProxy;
@@ -50,7 +54,7 @@ public:
 
     using RoutingArbitrationError = WebCore::AudioSessionRoutingArbitrationClient::RoutingArbitrationError;
     using DefaultRouteChanged = WebCore::AudioSessionRoutingArbitrationClient::DefaultRouteChanged;
-    using ArbitrationCallback = CompletionHandler<void(RoutingArbitrationError, DefaultRouteChanged)>;
+    using ArbitrationCallback = WebCore::AudioSessionRoutingArbitrationClient::ArbitrationCallback;
 
     enum class ArbitrationStatus : uint8_t {
         None,
@@ -70,9 +74,13 @@ private:
     void endRoutingArbitration();
 
     WebProcessProxy& m_process;
-    WebCore::AudioSession::CategoryType m_category { WebCore::AudioSession::None };
+    WebCore::AudioSession::CategoryType m_category { WebCore::AudioSession::CategoryType::None };
     ArbitrationStatus m_arbitrationStatus { ArbitrationStatus::None };
     WallTime m_arbitrationUpdateTime;
+
+#if HAVE(AVAUDIO_ROUTING_ARBITER)
+    UniqueRef<WebCore::SharedRoutingArbitrator::Token> m_token;
+#endif
 };
 
 }

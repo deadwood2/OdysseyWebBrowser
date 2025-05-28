@@ -119,7 +119,6 @@ angle::Result Texture::Make2DTexture(ContextMtl *context,
                                                                width:width
                                                               height:height
                                                            mipmapped:mips == 0 || mips > 1];
-
         return MakeTexture(context, format, desc, mips, renderTargetOnly, allowFormatView, refOut);
     }  // ANGLE_MTL_OBJC_SCOPE
 }
@@ -283,6 +282,10 @@ angle::Result Texture::MakeTexture(ContextMtl *context,
                                    bool memoryLess,
                                    TextureRef *refOut)
 {
+    if(desc.pixelFormat == MTLPixelFormatInvalid)
+    {
+        return angle::Result::Stop;
+    }
     refOut->reset(new Texture(context, desc, mips, renderTargetOnly, allowFormatView, memoryLess));
 
     if (!refOut || !refOut->get())
@@ -386,6 +389,9 @@ Texture::Texture(ContextMtl *context,
             {
                 desc.usage = desc.usage | MTLTextureUsageShaderWrite;
             }
+        }
+        if(desc.pixelFormat == MTLPixelFormatDepth32Float_Stencil8){
+          ASSERT(allowFormatView);
         }
 
         if (allowFormatView)
@@ -551,7 +557,7 @@ void Texture::replaceRegion(ContextMtl *context,
     // NOTE(hqle): what if multiple contexts on multiple threads are using this texture?
     if (this->isBeingUsedByGPU(context))
     {
-        context->flushCommandBufer();
+        context->flushCommandBuffer(mtl::NoWait);
     }
 
     cmdQueue.ensureResourceReadyForCPU(this);
@@ -586,7 +592,7 @@ void Texture::getBytes(ContextMtl *context,
     // NOTE(hqle): what if multiple contexts on multiple threads are using this texture?
     if (this->isBeingUsedByGPU(context))
     {
-        context->flushCommandBufer();
+        context->flushCommandBuffer(mtl::NoWait);
     }
 
     cmdQueue.ensureResourceReadyForCPU(this);
@@ -1002,7 +1008,7 @@ uint8_t *Buffer::mapWithOpt(ContextMtl *context, bool readonly, bool noSync)
 
         if (this->isBeingUsedByGPU(context))
         {
-            context->flushCommandBufer();
+            context->flushCommandBuffer(mtl::NoWait);
         }
 
         cmdQueue.ensureResourceReadyForCPU(this);

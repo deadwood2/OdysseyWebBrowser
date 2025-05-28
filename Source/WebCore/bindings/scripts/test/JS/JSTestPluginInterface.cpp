@@ -26,6 +26,7 @@
 #include "JSDOMBinding.h"
 #include "JSDOMConstructorNotConstructable.h"
 #include "JSDOMExceptionHandling.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMWrapperCache.h"
 #include "JSPluginElementFunctions.h"
 #include "ScriptExecutionContext.h"
@@ -82,6 +83,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestPluginInterfacePrototype, JSTestPlugin
 
 using JSTestPluginInterfaceDOMConstructor = JSDOMConstructorNotConstructable<JSTestPluginInterface>;
 
+template<> const ClassInfo JSTestPluginInterfaceDOMConstructor::s_info = { "TestPluginInterface", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestPluginInterfaceDOMConstructor) };
+
 template<> JSValue JSTestPluginInterfaceDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -94,8 +97,6 @@ template<> void JSTestPluginInterfaceDOMConstructor::initializeProperties(VM& vm
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestPluginInterface"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestPluginInterfaceDOMConstructor::s_info = { "TestPluginInterface", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestPluginInterfaceDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -141,7 +142,7 @@ JSObject* JSTestPluginInterface::prototype(VM& vm, JSDOMGlobalObject& globalObje
 
 JSValue JSTestPluginInterface::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestPluginInterfaceDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestPluginInterfaceDOMConstructor, DOMConstructorID::TestPluginInterface>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 void JSTestPluginInterface::destroy(JSC::JSCell* cell)
@@ -181,6 +182,8 @@ bool JSTestPluginInterface::put(JSCell* cell, JSGlobalObject* lexicalGlobalObjec
     auto* thisObject = jsCast<JSTestPluginInterface*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
 
+    if (UNLIKELY(thisObject != putPropertySlot.thisValue()))
+        return JSObject::put(thisObject, lexicalGlobalObject, propertyName, value, putPropertySlot);
     auto throwScope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
 
     bool putResult = false;
@@ -253,6 +256,19 @@ IGNORE_WARNINGS_END
 IGNORE_WARNINGS_END
     return space;
 }
+
+template<typename Visitor>
+void JSTestPluginInterface::visitChildrenImpl(JSCell* cell, Visitor& visitor)
+{
+    auto* thisObject = jsCast<JSTestPluginInterface*>(cell);
+    ASSERT_GC_OBJECT_INHERITS(thisObject, info());
+    Base::visitChildren(thisObject, visitor);
+#if PLATFORM(COCOA)
+    thisObject->wrapped().pluginReplacementScriptObject().visit(visitor);
+#endif
+}
+
+DEFINE_VISIT_CHILDREN(JSTestPluginInterface);
 
 void JSTestPluginInterface::analyzeHeap(JSCell* cell, HeapAnalyzer& analyzer)
 {

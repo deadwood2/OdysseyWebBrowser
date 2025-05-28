@@ -29,10 +29,18 @@
 #include <wtf/glib/GRefPtr.h>
 
 typedef struct _GVariant GVariant;
+typedef struct _GTlsCertificate GTlsCertificate;
 
 namespace IPC {
 
-void encode(Encoder&, GVariant*);
-Optional<GRefPtr<GVariant>> decode(Decoder&);
+template<> struct ArgumentCoder<GRefPtr<GVariant>> {
+    static void encode(Encoder&, GRefPtr<GVariant>);
+    static std::optional<GRefPtr<GVariant>> decode(Decoder&);
+};
+
+template<> struct ArgumentCoder<GRefPtr<GTlsCertificate>> {
+    static void encode(Encoder&, GRefPtr<GTlsCertificate>);
+    static std::optional<GRefPtr<GTlsCertificate>> decode(Decoder&);
+};
 
 } // namespace IPC

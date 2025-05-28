@@ -26,6 +26,7 @@
 #pragma once
 
 #include "NetworkDataTask.h"
+#include "NetworkLoadParameters.h"
 #include <WebCore/DataURLDecoder.h>
 #include <WebCore/FrameIdentifier.h>
 #include <WebCore/NetworkLoadMetrics.h>
@@ -40,15 +41,15 @@ namespace WebKit {
 
 class NetworkDataTaskSoup final : public NetworkDataTask {
 public:
-    static Ref<NetworkDataTask> create(NetworkSession& session, NetworkDataTaskClient& client, const WebCore::ResourceRequest& request, WebCore::FrameIdentifier frameID, WebCore::PageIdentifier pageID, WebCore::StoredCredentialsPolicy storedCredentialsPolicy, WebCore::ContentSniffingPolicy shouldContentSniff, WebCore::ContentEncodingSniffingPolicy shouldContentEncodingSniff, bool shouldClearReferrerOnHTTPSToHTTPRedirect, bool dataTaskIsForMainFrameNavigation)
+    static Ref<NetworkDataTask> create(NetworkSession& session, NetworkDataTaskClient& client, const NetworkLoadParameters& parameters)
     {
-        return adoptRef(*new NetworkDataTaskSoup(session, client, request, frameID, pageID, storedCredentialsPolicy, shouldContentSniff, shouldContentEncodingSniff, shouldClearReferrerOnHTTPSToHTTPRedirect, dataTaskIsForMainFrameNavigation));
+        return adoptRef(*new NetworkDataTaskSoup(session, client, parameters));
     }
 
     ~NetworkDataTaskSoup();
 
 private:
-    NetworkDataTaskSoup(NetworkSession&, NetworkDataTaskClient&, const WebCore::ResourceRequest&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebCore::StoredCredentialsPolicy, WebCore::ContentSniffingPolicy, WebCore::ContentEncodingSniffingPolicy, bool shouldClearReferrerOnHTTPSToHTTPRedirect, bool dataTaskIsForMainFrameNavigation);
+    NetworkDataTaskSoup(NetworkSession&, NetworkDataTaskClient&, const NetworkLoadParameters&);
 
     void cancel() override;
     void resume() override;
@@ -57,6 +58,8 @@ private:
 
     void setPendingDownloadLocation(const String&, SandboxExtension::Handle&&, bool /*allowOverwrite*/) override;
     String suggestedFilename() const override;
+
+    void setPriority(WebCore::ResourceLoadPriority) override;
 
     void timeoutFired();
     void startTimeout();
@@ -75,6 +78,10 @@ private:
     void didSendRequest(GRefPtr<GInputStream>&&);
     void dispatchDidReceiveResponse();
     void dispatchDidCompleteWithError(const WebCore::ResourceError&);
+
+#if !USE(SOUP2)
+    static void preconnectCallback(SoupSession*, GAsyncResult*, NetworkDataTaskSoup*);
+#endif
 
 #if USE(SOUP2)
     static gboolean tlsConnectionAcceptCertificateCallback(GTlsConnection*, GTlsCertificate*, GTlsCertificateFlags, NetworkDataTaskSoup*);
@@ -95,6 +102,8 @@ private:
 #endif
     void authenticate(WebCore::AuthenticationChallenge&&);
     void continueAuthenticate(WebCore::AuthenticationChallenge&&);
+    void completeAuthentication(const WebCore::AuthenticationChallenge&, const WebCore::Credential&);
+    void cancelAuthentication(const WebCore::AuthenticationChallenge&);
 
     static void skipInputStreamForRedirectionCallback(GInputStream*, GAsyncResult*, NetworkDataTaskSoup*);
     void skipInputStreamForRedirection();
@@ -122,6 +131,14 @@ private:
 #endif
     void didWriteBodyData(uint64_t bytesSent);
 
+#if !USE(SOUP2)
+    static void wroteHeadersCallback(SoupMessage*, NetworkDataTaskSoup*);
+    static void wroteBodyCallback(SoupMessage*, NetworkDataTaskSoup*);
+    static void gotBodyCallback(SoupMessage*, NetworkDataTaskSoup*);
+    static gboolean requestCertificateCallback(SoupMessage*, GTlsClientConnection*, NetworkDataTaskSoup*);
+    static gboolean requestCertificatePasswordCallback(SoupMessage*, GTlsPassword*, NetworkDataTaskSoup*);
+#endif
+
     void download();
     static void writeDownloadCallback(GOutputStream*, GAsyncResult*, NetworkDataTaskSoup*);
     void writeDownload();
@@ -132,8 +149,11 @@ private:
 
     void didFail(const WebCore::ResourceError&);
 
+#if USE(SOUP2)
     static void networkEventCallback(SoupMessage*, GSocketClientEvent, GIOStream*, NetworkDataTaskSoup*);
     void networkEvent(GSocketClientEvent, GIOStream*);
+#endif
+
 #if SOUP_CHECK_VERSION(2, 49, 91)
     static void startingCallback(SoupMessage*, NetworkDataTaskSoup*);
 #else
@@ -159,34 +179,34 @@ private:
     static void enumerateFileChildrenCallback(GFile*, GAsyncResult*, NetworkDataTaskSoup*);
     void didReadFile(GRefPtr<GInputStream>&&);
 
-    void didReadDataURL(Optional<WebCore::DataURLDecoder::Result>&&);
+    void didReadDataURL(std::optional<WebCore::DataURLDecoder::Result>&&);
 
     WebCore::FrameIdentifier m_frameID;
     WebCore::PageIdentifier m_pageID;
     State m_state { State::Suspended };
     WebCore::ContentSniffingPolicy m_shouldContentSniff;
+    PreconnectOnly m_shouldPreconnectOnly { PreconnectOnly::No };
     GRefPtr<SoupMessage> m_soupMessage;
     GRefPtr<GFile> m_file;
     GRefPtr<GInputStream> m_inputStream;
     GRefPtr<SoupMultipartInputStream> m_multipartInputStream;
     GRefPtr<GCancellable> m_cancellable;
     GRefPtr<GAsyncResult> m_pendingResult;
-    Optional<WebCore::DataURLDecoder::Result> m_pendingDataURLResult;
+    std::optional<WebCore::DataURLDecoder::Result> m_pendingDataURLResult;
     WebCore::ProtectionSpace m_protectionSpaceForPersistentStorage;
     WebCore::Credential m_credentialForPersistentStorage;
     WebCore::ResourceRequest m_currentRequest;
     WebCore::ResourceResponse m_response;
     CString m_sniffedContentType;
-    Vector<char> m_readBuffer;
-    unsigned m_redirectCount { 0 };
+    Vector<uint8_t> m_readBuffer;
     uint64_t m_bodyDataTotalBytesSent { 0 };
     GRefPtr<GFile> m_downloadDestinationFile;
     GRefPtr<GFile> m_downloadIntermediateFile;
     GRefPtr<GOutputStream> m_downloadOutputStream;
     bool m_allowOverwriteDownload { false };
     WebCore::NetworkLoadMetrics m_networkLoadMetrics;
-    MonotonicTime m_startTime;
     bool m_isBlockingCookies { false };
+    RefPtr<WebCore::SecurityOrigin> m_sourceOrigin;
     RunLoop::Timer<NetworkDataTaskSoup> m_timeoutSource;
 };
 

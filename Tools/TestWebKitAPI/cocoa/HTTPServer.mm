@@ -30,7 +30,9 @@
 #import <wtf/BlockPtr.h>
 #import <wtf/CompletionHandler.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/SHA1.h>
 #import <wtf/ThreadSafeRefCounted.h>
+#import <wtf/text/Base64.h>
 #import <wtf/text/StringBuilder.h>
 #import <wtf/text/WTFString.h>
 
@@ -50,7 +52,7 @@ struct HTTPServer::RequestData : public ThreadSafeRefCounted<RequestData, WTF::D
     Vector<Connection> connections;
 };
 
-RetainPtr<nw_parameters_t> HTTPServer::listenerParameters(Protocol protocol, CertificateVerifier&& verifier, RetainPtr<SecIdentityRef>&& customTestIdentity, Optional<uint16_t> port)
+RetainPtr<nw_parameters_t> HTTPServer::listenerParameters(Protocol protocol, CertificateVerifier&& verifier, RetainPtr<SecIdentityRef>&& customTestIdentity, std::optional<uint16_t> port)
 {
     if (protocol != Protocol::Http && !customTestIdentity)
         customTestIdentity = testIdentity();
@@ -107,7 +109,7 @@ void HTTPServer::cancel()
         connection.cancel();
 }
 
-HTTPServer::HTTPServer(std::initializer_list<std::pair<String, HTTPResponse>> responses, Protocol protocol, CertificateVerifier&& verifier, RetainPtr<SecIdentityRef>&& identity, Optional<uint16_t> port)
+HTTPServer::HTTPServer(std::initializer_list<std::pair<String, HTTPResponse>> responses, Protocol protocol, CertificateVerifier&& verifier, RetainPtr<SecIdentityRef>&& identity, std::optional<uint16_t> port)
     : m_requestData(adoptRef(*new RequestData(responses)))
     , m_listener(adoptNS(nw_listener_create(listenerParameters(protocol, WTFMove(verifier), WTFMove(identity), port).get())))
     , m_protocol(protocol)
@@ -172,6 +174,8 @@ size_t HTTPServer::totalRequests() const
 static String statusText(unsigned statusCode)
 {
     switch (statusCode) {
+    case 101:
+        return "Switching Protocols"_s;
     case 200:
         return "OK"_s;
     case 301:
@@ -278,9 +282,9 @@ NSURLRequest *HTTPServer::request(const String& path) const
     return [NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:format, port(), path.utf8().data()]]];
 }
 
-void Connection::receiveBytes(CompletionHandler<void(Vector<uint8_t>&&)>&& completionHandler) const
+void Connection::receiveBytes(CompletionHandler<void(Vector<uint8_t>&&)>&& completionHandler, size_t minimumSize) const
 {
-    nw_connection_receive(m_connection.get(), 1, std::numeric_limits<uint32_t>::max(), makeBlockPtr([connection = *this, completionHandler = WTFMove(completionHandler)](dispatch_data_t content, nw_content_context_t, bool, nw_error_t error) mutable {
+    nw_connection_receive(m_connection.get(), minimumSize, std::numeric_limits<uint32_t>::max(), makeBlockPtr([connection = *this, completionHandler = WTFMove(completionHandler)](dispatch_data_t content, nw_content_context_t, bool, nw_error_t error) mutable {
         if (error || !content)
             return completionHandler({ });
         completionHandler(vectorFromData(content));
@@ -321,6 +325,34 @@ void Connection::send(RetainPtr<dispatch_data_t>&& message, CompletionHandler<vo
         if (completionHandler)
             completionHandler();
     }).get());
+}
+
+void Connection::webSocketHandshake(CompletionHandler<void()>&& connectionHandler)
+{
+    receiveHTTPRequest([connection = Connection(*this), connectionHandler = WTFMove(connectionHandler)] (Vector<char>&& request) mutable {
+
+        auto webSocketAcceptValue = [] (const Vector<char>& request) {
+            constexpr auto* keyHeaderField = "Sec-WebSocket-Key: ";
+            const char* keyBegin = strnstr(request.data(), keyHeaderField, request.size()) + strlen(keyHeaderField);
+            ASSERT(keyBegin);
+            const char* keyEnd = strnstr(keyBegin, "\r\n", request.size() + (keyBegin - request.data()));
+            ASSERT(keyEnd);
+
+            constexpr auto* webSocketKeyGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+            SHA1 sha1;
+            sha1.addBytes(reinterpret_cast<const uint8_t*>(keyBegin), keyEnd - keyBegin);
+            sha1.addBytes(reinterpret_cast<const uint8_t*>(webSocketKeyGUID), strlen(webSocketKeyGUID));
+            SHA1::Digest hash;
+            sha1.computeHash(hash);
+            return base64EncodeToString(hash.data(), SHA1::hashSize);
+        };
+
+        connection.send(HTTPResponse(101, {
+            { "Upgrade", "websocket" },
+            { "Connection", "Upgrade" },
+            { "Sec-WebSocket-Accept", webSocketAcceptValue(request) }
+        }).serialize(HTTPResponse::IncludeContentLength::No), WTFMove(connectionHandler));
+    });
 }
 
 void Connection::terminate()

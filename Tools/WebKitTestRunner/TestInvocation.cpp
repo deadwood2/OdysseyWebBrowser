@@ -80,6 +80,7 @@ TestInvocation::TestInvocation(WKURLRef url, const TestOptions& options)
     : m_options(options)
     , m_url(url)
     , m_waitToDumpWatchdogTimer(RunLoop::main(), this, &TestInvocation::waitToDumpWatchdogTimerFired)
+    , m_waitForPostDumpWatchdogTimer(RunLoop::main(), this, &TestInvocation::waitForPostDumpWatchdogTimerFired)
 {
     m_urlString = toWTFString(adoptWK(WKURLCopyString(m_url.get())).get());
 
@@ -357,7 +358,25 @@ void TestInvocation::didReceiveMessageFromInjectedBundle(WKStringRef messageName
         postPageMessage("CallRemoveChromeInputFieldCallback");
         return;
     }
-    
+
+    if (WKStringIsEqualToUTF8CString(messageName, "SetTextInChromeInputField")) {
+        TestController::singleton().mainWebView()->setTextInChromeInputField(toWTFString(stringValue(messageBody)));
+        postPageMessage("CallSetTextInChromeInputFieldCallback");
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "SelectChromeInputField")) {
+        TestController::singleton().mainWebView()->selectChromeInputField();
+        postPageMessage("CallSelectChromeInputFieldCallback");
+        return;
+    }
+
+    if (WKStringIsEqualToUTF8CString(messageName, "GetSelectedTextInChromeInputField")) {
+        auto selectedText = TestController::singleton().mainWebView()->getSelectedTextInChromeInputField();
+        postPageMessage("CallGetSelectedTextInChromeInputFieldCallback", toWK(selectedText));
+        return;
+    }
+
     if (WKStringIsEqualToUTF8CString(messageName, "FocusWebView")) {
         TestController::singleton().mainWebView()->makeWebViewFirstResponder();
         postPageMessage("CallFocusWebViewCallback");
@@ -677,10 +696,11 @@ void TestInvocation::didReceiveMessageFromInjectedBundle(WKStringRef messageName
     if (WKStringIsEqualToUTF8CString(messageName, "SetStatisticsExpiredStatistic")) {
         auto messageBodyDictionary = dictionaryValue(messageBody);
         auto hostName = stringValue(messageBodyDictionary, "HostName");
+        auto numberOfOperatingDaysPassed = uint64Value(messageBodyDictionary, "NumberOfOperatingDaysPassed");
         auto hadUserInteraction = booleanValue(messageBodyDictionary, "HadUserInteraction");
         auto isScheduledForAllButCookieDataRemoval = booleanValue(messageBodyDictionary, "IsScheduledForAllButCookieDataRemoval");
         auto isPrevalent = booleanValue(messageBodyDictionary, "IsPrevalent");
-        TestController::singleton().setStatisticsExpiredStatistic(hostName, hadUserInteraction, isScheduledForAllButCookieDataRemoval, isPrevalent);
+        TestController::singleton().setStatisticsExpiredStatistic(hostName, numberOfOperatingDaysPassed, hadUserInteraction, isScheduledForAllButCookieDataRemoval, isPrevalent);
         return;
     }
 
@@ -1063,7 +1083,13 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         bool statisticInDatabaseOnce = TestController::singleton().isStatisticsOnlyInDatabaseOnce(subHost, topHost);
         return adoptWK(WKBooleanCreate(statisticInDatabaseOnce));
     }
-    
+
+    if (WKStringIsEqualToUTF8CString(messageName, "DidLoadAppInitiatedRequest"))
+        return adoptWK(WKBooleanCreate(TestController::singleton().didLoadAppInitiatedRequest()));
+
+    if (WKStringIsEqualToUTF8CString(messageName, "DidLoadNonAppInitiatedRequest"))
+        return adoptWK(WKBooleanCreate(TestController::singleton().didLoadNonAppInitiatedRequest()));
+
     if (WKStringIsEqualToUTF8CString(messageName, "SetStatisticsGrandfathered")) {
         auto messageBodyDictionary = dictionaryValue(messageBody);
         auto hostName = stringValue(messageBodyDictionary, "HostName");
@@ -1334,6 +1360,11 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         return nullptr;
     }
     
+    if (WKStringIsEqualToUTF8CString(messageName, "SetPrivateClickMeasurementEphemeralMeasurementForTesting")) {
+        TestController::singleton().setPrivateClickMeasurementEphemeralMeasurementForTesting(booleanValue(messageBody));
+        return nullptr;
+    }
+    
     if (WKStringIsEqualToUTF8CString(messageName, "SimulateResourceLoadStatisticsSessionRestart")) {
         TestController::singleton().simulateResourceLoadStatisticsSessionRestart();
         return nullptr;
@@ -1351,9 +1382,11 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         return nullptr;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "SetPrivateClickMeasurementAttributionReportURLForTesting")) {
-        ASSERT(WKGetTypeID(messageBody) == WKURLGetTypeID());
-        TestController::singleton().setPrivateClickMeasurementAttributionReportURLForTesting(static_cast<WKURLRef>(messageBody));
+    if (WKStringIsEqualToUTF8CString(messageName, "SetPrivateClickMeasurementAttributionReportURLsForTesting")) {
+        auto testDictionary = dictionaryValue(messageBody);
+        auto sourceURL = adoptWK(WKURLCreateWithUTF8CString(toWTFString(stringValue(testDictionary, "SourceURLString")).utf8().data()));
+        auto destinationURL = adoptWK(WKURLCreateWithUTF8CString(toWTFString(stringValue(testDictionary, "AttributeOnURLString")).utf8().data()));
+        TestController::singleton().setPrivateClickMeasurementAttributionReportURLsForTesting(sourceURL.get(), destinationURL.get());
         return nullptr;
     }
 
@@ -1362,14 +1395,14 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         return nullptr;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "SetFraudPreventionValuesForTesting")) {
+    if (WKStringIsEqualToUTF8CString(messageName, "SetPCMFraudPreventionValuesForTesting")) {
         auto testDictionary = dictionaryValue(messageBody);
-        auto secretToken = stringValue(testDictionary, "SecretToken");
         auto unlinkableToken = stringValue(testDictionary, "UnlinkableToken");
+        auto secretToken = stringValue(testDictionary, "SecretToken");
         auto signature = stringValue(testDictionary, "Signature");
         auto keyID = stringValue(testDictionary, "KeyID");
 
-        TestController::singleton().setFraudPreventionValuesForTesting(secretToken, unlinkableToken, signature, keyID);
+        TestController::singleton().setPCMFraudPreventionValuesForTesting(unlinkableToken, secretToken, signature, keyID);
         return nullptr;
     }
 
@@ -1378,12 +1411,12 @@ WKRetainPtr<WKTypeRef> TestInvocation::didReceiveSynchronousMessageFromInjectedB
         return nullptr;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "setIsSpeechRecognitionPermissionGranted")) {
+    if (WKStringIsEqualToUTF8CString(messageName, "SetIsSpeechRecognitionPermissionGranted")) {
         TestController::singleton().setIsSpeechRecognitionPermissionGranted(booleanValue(messageBody));
         return nullptr;
     }
 
-    if (WKStringIsEqualToUTF8CString(messageName, "setIsMediaKeySystemPermissionGranted")) {
+    if (WKStringIsEqualToUTF8CString(messageName, "SetIsMediaKeySystemPermissionGranted")) {
         TestController::singleton().setIsMediaKeySystemPermissionGranted(booleanValue(messageBody));
         return nullptr;
     }
@@ -1602,13 +1635,36 @@ void TestInvocation::invalidateWaitToDumpWatchdogTimer()
 void TestInvocation::waitToDumpWatchdogTimerFired()
 {
     invalidateWaitToDumpWatchdogTimer();
+    
+    outputText("FAIL: Timed out waiting for notifyDone to be called\n\n");
+
+    postPageMessage("ForceImmediateCompletion");
+
+    initializeWaitForPostDumpWatchdogTimerIfNeeded();
+}
+
+void TestInvocation::initializeWaitForPostDumpWatchdogTimerIfNeeded()
+{
+    if (m_waitForPostDumpWatchdogTimer.isActive())
+        return;
+
+    m_waitForPostDumpWatchdogTimer.startOneShot(shortTimeout());
+}
+
+void TestInvocation::invalidateWaitForPostDumpWatchdogTimer()
+{
+    m_waitForPostDumpWatchdogTimer.stop();
+}
+
+void TestInvocation::waitForPostDumpWatchdogTimerFired()
+{
+    invalidateWaitForPostDumpWatchdogTimer();
 
 #if PLATFORM(COCOA)
     char buffer[1024];
     snprintf(buffer, sizeof(buffer), "#PID UNRESPONSIVE - %s (pid %d)\n", getprogname(), getpid());
     outputText(buffer);
 #endif
-    outputText("FAIL: Timed out waiting for notifyDone to be called\n\n");
     done();
 }
 
@@ -1623,6 +1679,7 @@ void TestInvocation::done()
 {
     m_gotFinalMessage = true;
     invalidateWaitToDumpWatchdogTimer();
+    invalidateWaitForPostDumpWatchdogTimer();
     RunLoop::main().dispatch([] {
         TestController::singleton().notifyDone();
     });

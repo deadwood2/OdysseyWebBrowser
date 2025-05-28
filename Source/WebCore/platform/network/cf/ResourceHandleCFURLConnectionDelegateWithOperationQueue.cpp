@@ -32,6 +32,7 @@
 #include "AuthenticationChallenge.h"
 #include "Logging.h"
 #include "MIMETypeRegistry.h"
+#include "NetworkLoadMetrics.h"
 #include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceResponse.h"
@@ -110,8 +111,8 @@ static CFRunLoopRef getRunLoop()
 
             // Must add a source to the run loop to prevent CFRunLoopRun() from exiting.
             CFRunLoopSourceContext ctxt = { 0, (void*)1 /*must be non-null*/, 0, 0, 0, 0, 0, 0, 0, emptyPerform };
-            CFRunLoopSourceRef bogusSource = CFRunLoopSourceCreate(0, 0, &ctxt);
-            CFRunLoopAddSource(runLoop, bogusSource, kCFRunLoopDefaultMode);
+            auto bogusSource = adoptCF(CFRunLoopSourceCreate(0, 0, &ctxt));
+            CFRunLoopAddSource(runLoop, bogusSource.get(), kCFRunLoopDefaultMode);
             sem.signal();
 
             while (true)
@@ -131,15 +132,13 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::setupConnectionSch
     CFURLConnectionScheduleDownloadWithRunLoop(connection, runLoop, kCFRunLoopDefaultMode);
 }
 
-CFURLRequestRef ResourceHandleCFURLConnectionDelegateWithOperationQueue::willSendRequest(CFURLRequestRef cfRequest, CFURLResponseRef originalRedirectResponse)
+RetainPtr<CFURLRequestRef> ResourceHandleCFURLConnectionDelegateWithOperationQueue::willSendRequest(CFURLRequestRef cfRequest, CFURLResponseRef originalRedirectResponse)
 {
     // If the protocols of the new request and the current request match, this is not an HSTS redirect and we don't need to synthesize a redirect response.
     if (!originalRedirectResponse) {
         RetainPtr<CFStringRef> newScheme = adoptCF(CFURLCopyScheme(CFURLRequestGetURL(cfRequest)));
-        if (CFStringCompare(newScheme.get(), m_originalScheme.get(), kCFCompareCaseInsensitive) == kCFCompareEqualTo) {
-            CFRetain(cfRequest);
+        if (CFStringCompare(newScheme.get(), m_originalScheme.get(), kCFCompareCaseInsensitive) == kCFCompareEqualTo)
             return cfRequest;
-        }
     }
 
     ASSERT(!isMainThread());
@@ -172,7 +171,7 @@ CFURLRequestRef ResourceHandleCFURLConnectionDelegateWithOperationQueue::willSen
         callOnMainThread(WTFMove(work));
     m_semaphore.wait();
 
-    return m_requestResult.leakRef();
+    return std::exchange(m_requestResult, nullptr);
 }
 
 void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didReceiveResponse(CFURLConnectionRef connection, CFURLResponseRef cfResponse)
@@ -240,7 +239,7 @@ void ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFinishLoading()
 
         LOG(Network, "CFNet - ResourceHandleCFURLConnectionDelegateWithOperationQueue::didFinishLoading(handle=%p) (%s)", handle, handle->firstRequest().url().string().utf8().data());
 
-        handle->client()->didFinishLoading(handle);
+        handle->client()->didFinishLoading(handle, NetworkLoadMetrics { });
         if (protectedThis->m_messageQueue) {
             protectedThis->m_messageQueue->kill();
             protectedThis->m_messageQueue = nullptr;

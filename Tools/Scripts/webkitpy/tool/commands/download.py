@@ -31,6 +31,8 @@ import logging
 
 from webkitpy.tool import steps
 
+from webkitcorepy.string_utils import pluralize
+
 from webkitpy.common.checkout.changelog import ChangeLog
 from webkitpy.common.config import urls
 from webkitpy.common.net.bugzilla import Bugzilla
@@ -39,7 +41,6 @@ from webkitpy.tool.commands.abstractsequencedcommand import AbstractSequencedCom
 from webkitpy.tool.commands.deprecatedcommand import DeprecatedCommand
 from webkitpy.tool.commands.stepsequence import StepSequence
 from webkitpy.tool.comments import bug_comment_from_commit_text
-from webkitpy.tool.grammar import pluralize
 from webkitpy.tool.multicommandtool import Command
 
 _log = logging.getLogger(__name__)
@@ -81,18 +82,6 @@ class Build(AbstractSequencedCommand):
 
 
 @DeprecatedCommand
-class BuildAndTest(AbstractSequencedCommand):
-    name = "build-and-test"
-    help_text = "Update working copy, build, and run the tests"
-    steps = [
-        steps.DiscardLocalChanges,
-        steps.Update,
-        steps.Build,
-        steps.RunTests,
-    ]
-
-
-@DeprecatedCommand
 class CheckPatchRelevance(AbstractSequencedCommand):
     name = "check-patch-relevance"
     help_text = "Check if this patch needs to be tested"
@@ -112,7 +101,6 @@ class Land(AbstractSequencedCommand):
         steps.ValidateReviewer,
         steps.ValidateChangeLogs,  # We do this after UpdateChangeLogsWithReviewer to avoid not having to cache the diff twice.
         steps.Build,
-        steps.RunTests,
         steps.Commit,
         steps.CloseBugForLandDiff,
     ]
@@ -140,7 +128,6 @@ class LandCowhand(AbstractSequencedCommand):
         steps.CheckStyle,
         steps.ConfirmDiff,
         steps.Build,
-        steps.RunTests,
         steps.Commit,
         steps.CloseBugForLandDiff,
     ]
@@ -158,7 +145,6 @@ class LandCowboy(LandCowhand):
         LandCowhand._prepare_state(self, options, args, tool)
 
 
-@DeprecatedCommand
 class CheckStyleLocal(AbstractSequencedCommand):
     name = "check-style-local"
     help_text = "Run check-webkit-style on the current working directory diff"
@@ -189,7 +175,7 @@ class AbstractPatchProcessingCommand(Command):
 
         # It's nice to print out total statistics.
         bugs_to_patches = self._collect_patches_by_bug(patches)
-        _log.info("Processing %s from %s." % (pluralize(len(patches), "patch"), pluralize(len(bugs_to_patches), "bug")))
+        _log.info("Processing %s from %s." % (pluralize(len(patches), 'patch', plural='patches'), pluralize(len(bugs_to_patches), "bug")))
 
         for patch in patches:
             self._process_patch(patch, options, args, tool)
@@ -233,13 +219,13 @@ class ProcessBugsMixin(object):
         all_patches = []
         for bug_id in args:
             patches = tool.bugs.fetch_bug(bug_id).reviewed_patches()
-            _log.info("%s found on bug %s." % (pluralize(len(patches), "reviewed patch"), bug_id))
+            _log.info("%s found on bug %s." % (pluralize(len(patches), 'reviewed patch', plural='reviewed patches'), bug_id))
             all_patches += patches
         if not all_patches:
             _log.info("No reviewed patches found, looking for unreviewed patches.")
             for bug_id in args:
                 patches = tool.bugs.fetch_bug(bug_id).patches()
-                _log.info("%s found on bug %s." % (pluralize(len(patches), "patch"), bug_id))
+                _log.info("%s found on bug %s." % (pluralize(len(patches), 'patch', plural='patches'), bug_id))
                 all_patches += patches
         return all_patches
 
@@ -251,7 +237,7 @@ class ProcessURLsMixin(object):
             bug_id = urls.parse_bug_id(url)
             if bug_id:
                 patches = tool.bugs.fetch_bug(bug_id).patches()
-                _log.info("%s found on bug %s." % (pluralize(len(patches), "patch"), bug_id))
+                _log.info("%s found on bug %s." % (pluralize(len(patches), 'patch', plural='patches'), bug_id))
                 all_patches += patches
 
             attachment_id = urls.parse_attachment_id(url)
@@ -283,20 +269,6 @@ class BuildAttachment(AbstractPatchSequencingCommand, ProcessAttachmentsMixin):
         steps.Update,
         steps.ApplyPatch,
         steps.Build,
-    ]
-
-
-@DeprecatedCommand
-class BuildAndTestAttachment(AbstractPatchSequencingCommand, ProcessAttachmentsMixin):
-    name = "build-and-test-attachment"
-    help_text = "Apply, build, and test patches from bugzilla"
-    argument_names = "ATTACHMENT_ID [ATTACHMENT_IDS]"
-    main_steps = [
-        steps.DiscardLocalChanges,
-        steps.Update,
-        steps.ApplyPatch,
-        steps.Build,
-        steps.RunTests,
     ]
 
 
@@ -350,7 +322,6 @@ class AbstractPatchLandingCommand(AbstractPatchSequencingCommand):
         steps.ValidateChangeLogs,
         steps.ValidateReviewer,
         steps.Build,
-        steps.RunTests,
         steps.Commit,
         steps.ClosePatch,
         steps.CloseBug,
@@ -491,7 +462,7 @@ class CreateRevert(AbstractRevertPrepCommand):
     def _prepare_state(self, options, args, tool):
         state = AbstractRevertPrepCommand._prepare_state(self, options, args, tool)
         state["bug_title"] = "REGRESSION(r%s): %s" % (state["revision"], state["reason"])
-        state["bug_description"] = "%s broke the build:\n%s" % (urls.view_revision_url(state["revision"]), state["reason"])
+        state["bug_description"] = "%s introduced a regression:\n%s" % (urls.view_revision_url(state["revision"]), state["reason"])
         # FIXME: If we had more context here, we could link to other open bugs
         #        that mention the test that regressed.
         if options.parent_command == "sheriff-bot":

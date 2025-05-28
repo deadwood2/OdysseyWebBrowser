@@ -79,8 +79,8 @@ void SpeechRecognitionRemoteRealtimeMediaSource::setStorage(const SharedMemory::
 {
     m_description = description;
 
-    m_ringBuffer = makeUnique<WebCore::CARingBuffer>(makeUniqueRef<ReadOnlySharedRingBufferStorage>(handle), description, numberOfFrames);
-    m_buffer = makeUnique<WebCore::WebAudioBufferList>(description, numberOfFrames);
+    m_ringBuffer = WebCore::CARingBuffer::adoptStorage(makeUniqueRef<ReadOnlySharedRingBufferStorage>(handle), description, numberOfFrames).moveToUniquePtr();
+    m_buffer = makeUnique<WebCore::WebAudioBufferList>(description);
 }
 
 #endif

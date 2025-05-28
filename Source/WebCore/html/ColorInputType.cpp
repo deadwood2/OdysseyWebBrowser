@@ -69,10 +69,10 @@ static bool isValidSimpleColor(StringView string)
 }
 
 // https://html.spec.whatwg.org/multipage/common-microsyntaxes.html#rules-for-parsing-simple-colour-values
-static Optional<SRGBA<uint8_t>> parseSimpleColorValue(StringView string)
+static std::optional<SRGBA<uint8_t>> parseSimpleColorValue(StringView string)
 {
     if (!isValidSimpleColor(string))
-        return WTF::nullopt;
+        return std::nullopt;
     return { { toASCIIHexValue(string[1], string[2]), toASCIIHexValue(string[3], string[4]), toASCIIHexValue(string[5], string[6]) } };
 }
 
@@ -136,6 +136,7 @@ Color ColorInputType::valueAsColor() const
 
 void ColorInputType::createShadowSubtreeAndUpdateInnerTextElementEditability(ContainerNode::ChildChange::Source source, bool)
 {
+    ASSERT(needsShadowSubtree());
     ASSERT(element());
     ASSERT(element()->shadowRoot());
 
@@ -163,6 +164,14 @@ void ColorInputType::setValue(const String& value, bool valueChanged, TextFieldE
     updateColorSwatch();
     if (m_chooser)
         m_chooser->setSelectedColor(valueAsColor());
+}
+
+void ColorInputType::attributeChanged(const QualifiedName& name)
+{
+    if (name == valueAttr)
+        updateColorSwatch();
+
+    InputType::attributeChanged(name);
 }
 
 void ColorInputType::handleDOMActivateEvent(Event& event)

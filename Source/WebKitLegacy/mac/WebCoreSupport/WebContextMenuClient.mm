@@ -43,6 +43,7 @@
 #import <WebCore/BitmapImage.h>
 #import <WebCore/ContextMenu.h>
 #import <WebCore/ContextMenuController.h>
+#import <WebCore/DestinationColorSpace.h>
 #import <WebCore/Document.h>
 #import <WebCore/Frame.h>
 #import <WebCore/FrameView.h>
@@ -147,6 +148,15 @@ bool WebContextMenuClient::clientFloatRectForNode(Node& node, FloatRect& rect) c
     return true;
 }
 
+#if HAVE(TRANSLATION_UI_SERVICES)
+
+void WebContextMenuClient::handleTranslation(const TranslationContextMenuInfo& info)
+{
+    [m_webView _handleContextMenuTranslation:info];
+}
+
+#endif
+
 #if ENABLE(SERVICE_CONTROLS)
 
 void WebContextMenuClient::sharingServicePickerWillBeDestroyed(WebSharingServicePickerController &)
@@ -204,7 +214,7 @@ RetainPtr<NSImage> WebContextMenuClient::imageForCurrentSharingServicePickerItem
         return nil;
 
     // This is effectively a snapshot, and will be painted in an unaccelerated fashion in line with FrameSnapshotting.
-    auto buffer = ImageBuffer::create(rect.size(), RenderingMode::Unaccelerated);
+    auto buffer = ImageBuffer::create(rect.size(), RenderingMode::Unaccelerated, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
     if (!buffer)
         return nil;
 

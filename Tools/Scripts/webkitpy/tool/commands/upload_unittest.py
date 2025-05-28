@@ -1,5 +1,5 @@
 # Copyright (C) 2009 Google Inc. All rights reserved.
-# Copyright (C) 2018, 2019 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -32,7 +32,7 @@ from webkitpy.tool.commands.commandtest import CommandsTest
 from webkitpy.tool.commands.upload import *
 from webkitpy.tool.mocktool import MockOptions, MockTool
 
-from webkitscmpy import mocks, Commit
+from webkitcorepy import mocks
 
 
 class UploadCommandsTest(CommandsTest):
@@ -67,6 +67,7 @@ Bug 50002 has no non-obsolete patches, ignoring.
         options.check_style_filter = None
         options.comment = None
         options.description = "MOCK description"
+        options.fast_cq = False
         options.non_interactive = False
         options.request_commit = False
         options.review = True
@@ -149,6 +150,7 @@ MOCK add_patch_to_bug: bug_id=50000, description=Patch for landing, mark_for_rev
         options.check_style_filter = None
         options.comment = None
         options.description = "MOCK description"
+        options.fast_cq = False
         options.non_interactive = False
         options.request_commit = False
         options.review = True
@@ -164,6 +166,29 @@ MOCK: user.open_url: http://example.com/50000
 """
         self.assert_execute_outputs(Upload(), [50000], options=options, expected_logs=expected_logs)
 
+    def test_upload_fast_cq(self):
+        options = MockOptions()
+        options.cc = None
+        options.check_style = True
+        options.check_style_filter = None
+        options.comment = None
+        options.description = "MOCK description"
+        options.fast_cq = True
+        options.non_interactive = False
+        options.request_commit = False
+        options.review = True
+        options.submit_to_ews = False
+        options.sort_xcode_project = False
+        options.suggest_reviewers = False
+        expected_logs = """MOCK: user.open_url: file://...
+Was that diff correct?
+Obsoleting 2 old patches on bug 50000
+MOCK reassign_bug: bug_id=50000, assignee=None
+MOCK add_patch_to_bug: bug_id=50000, description=[fast-cq] MOCK description, mark_for_review=True, mark_for_commit_queue=False, mark_for_landing=False
+MOCK: user.open_url: http://example.com/50000
+"""
+        self.assert_execute_outputs(Upload(), [50000], options=options, expected_logs=expected_logs)
+
     def test_upload_with_no_review_and_ews(self):
         options = MockOptions()
         options.cc = None
@@ -171,6 +196,7 @@ MOCK: user.open_url: http://example.com/50000
         options.check_style_filter = None
         options.comment = None
         options.description = 'MOCK description'
+        options.fast_cq = False
         options.non_interactive = False
         options.request_commit = False
         options.review = False
@@ -206,14 +232,12 @@ Committed r9876 (5@main): <https://commits.webkit.org/5@main>
 --- End comment ---
 
 """
-        with mocks.remote.Svn('svn.webkit.org/repository/webkit') as repo:
-            repo.commits['trunk'].append(Commit(
-                author=dict(name='Justin Garcia', emails=['justin.garcia@apple.com']),
-                identifier='5@trunk',
+        with mocks.Requests('commits.webkit.org', **{
+            'r9876/json': mocks.Response.fromJson(dict(
+                identifier='5@main',
                 revision=9876,
-                timestamp=1601668000,
-                message='Patch by opendarwin.org@mitzpettel.com\n    Reviewed by darin and hyatt\n',
-            ))
+            )),
+        }):
             self.assert_execute_outputs(MarkBugFixed(), [], expected_logs=expected_logs, tool=tool, options=options)
 
     def test_edit_changelog(self):

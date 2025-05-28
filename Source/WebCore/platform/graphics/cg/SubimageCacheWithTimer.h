@@ -53,7 +53,7 @@ public:
         MonotonicTime lastAccessTime;
     };
 
-    struct SubimageCacheEntryTraits : WTF::GenericHashTraits<SubimageCacheEntry> {
+    struct SubimageCacheEntryTraits : HashTraits<SubimageCacheEntry> {
         typedef HashTraits<RetainPtr<CGImageRef>> ImageTraits;
 
         static const bool emptyValueIsZero = true;
@@ -94,13 +94,13 @@ private:
 
     RetainPtr<CGImageRef> subimage(CGImageRef, const FloatRect&);
     void clearImageAndSubimages(CGImageRef);
-    void prune();
+    void prune() WTF_REQUIRES_LOCK(m_lock);
     void clearAll();
 
     Lock m_lock;
-    HashCountedSet<CGImageRef> m_imageCounts;
-    SubimageCacheHashSet m_cache;
-    RunLoop::Timer<SubimageCacheWithTimer> m_timer;
+    HashCountedSet<CGImageRef> m_imageCounts WTF_GUARDED_BY_LOCK(m_lock);
+    SubimageCacheHashSet m_cache WTF_GUARDED_BY_LOCK(m_lock);
+    RunLoop::Timer<SubimageCacheWithTimer> m_timer WTF_GUARDED_BY_LOCK(m_lock);
 
     static SubimageCacheWithTimer& subimageCache();
     static bool subimageCacheExists();

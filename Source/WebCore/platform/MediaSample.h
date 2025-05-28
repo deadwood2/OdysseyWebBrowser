@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef MediaSample_h
-#define MediaSample_h
+#pragma once
 
 #include "FloatSize.h"
 #include <JavaScriptCore/TypedArrays.h>
@@ -40,6 +39,10 @@ typedef const struct opaqueCMFormatDescription *CMFormatDescriptionRef;
 
 namespace WebCore {
 
+namespace Acinerella {
+    class AcinerellaPackage;
+}
+
 class MockSampleBox;
 
 struct PlatformSample {
@@ -49,16 +52,18 @@ struct PlatformSample {
         CMSampleBufferType,
         GStreamerSampleType,
         ByteRangeSampleType,
+        MorphOSSampleType,
     } type;
     union {
         MockSampleBox* mockSampleBox;
         CMSampleBufferRef cmSampleBuffer;
         GstSample* gstSample;
         std::pair<MTPluginByteSourceRef, CMFormatDescriptionRef> byteRangeSample;
+        Acinerella::AcinerellaPackage* mosSample;
     } sample;
 };
 
-class WEBCORE_EXPORT MediaSample : public ThreadSafeRefCounted<MediaSample> {
+class MediaSample : public ThreadSafeRefCounted<MediaSample> {
 public:
     virtual ~MediaSample() = default;
 
@@ -73,7 +78,11 @@ public:
     virtual void setTimestamps(const MediaTime&, const MediaTime&) = 0;
     virtual bool isDivisable() const = 0;
     enum DivideFlags { BeforePresentationTime, AfterPresentationTime };
-    virtual std::pair<RefPtr<MediaSample>, RefPtr<MediaSample>> divide(const MediaTime& presentationTime) = 0;
+    enum class UseEndTime : bool {
+        DoNotUse,
+        Use,
+    };
+    virtual std::pair<RefPtr<MediaSample>, RefPtr<MediaSample>> divide(const MediaTime& presentationTime, UseEndTime = UseEndTime::DoNotUse) = 0;
     virtual Ref<MediaSample> createNonDisplayingCopy() const = 0;
 
     virtual RefPtr<JSC::Uint8ClampedArray> getRGBAImageData() const { return nullptr; }
@@ -92,7 +101,7 @@ public:
         size_t byteOffset { 0 };
         size_t byteLength { 0 };
     };
-    virtual Optional<ByteRange> byteRange() const = 0;
+    virtual std::optional<ByteRange> byteRange() const = 0;
 
     enum class VideoRotation {
         None = 0,
@@ -148,5 +157,3 @@ struct LogArgument<WebCore::MediaSample> {
 };
 
 } // namespace WTF
-
-#endif

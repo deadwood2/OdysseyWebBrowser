@@ -41,13 +41,13 @@ namespace WebCore {
 struct MediaCapabilitiesInfo;
 struct VideoConfiguration;
 
-WEBCORE_EXPORT extern void registerWebKitVP9Decoder();
-WEBCORE_EXPORT extern void registerWebKitVP8Decoder();
-WEBCORE_EXPORT extern void registerSupplementalVP9Decoder();
-extern bool isVP9DecoderAvailable();
-extern bool isVP8DecoderAvailable();
-extern bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord&);
-extern bool validateVPParameters(VPCodecConfigurationRecord&, MediaCapabilitiesInfo&, const VideoConfiguration&);
+WEBCORE_EXPORT void registerWebKitVP9Decoder();
+WEBCORE_EXPORT void registerWebKitVP8Decoder();
+WEBCORE_EXPORT void registerSupplementalVP9Decoder();
+bool isVP9DecoderAvailable();
+bool isVP8DecoderAvailable();
+bool isVPCodecConfigurationRecordSupported(const VPCodecConfigurationRecord&);
+std::optional<MediaCapabilitiesInfo> validateVPParameters(const VPCodecConfigurationRecord&, const VideoConfiguration&);
 
 RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVP9HeaderParser(const vp9_parser::Vp9HeaderParser&, const webm::Element<webm::Colour>&);
 
@@ -64,24 +64,24 @@ struct VP8FrameHeader {
     bool needsClamping { false };
 };
 
-Optional<VP8FrameHeader> parseVP8FrameHeader(uint8_t* frameData, size_t frameSize);
+std::optional<VP8FrameHeader> parseVP8FrameHeader(uint8_t* frameData, size_t frameSize);
 RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVP8Header(const VP8FrameHeader&, const webm::Element<webm::Colour>&);
 
 class WEBCORE_EXPORT VP9TestingOverrides {
 public:
     static VP9TestingOverrides& singleton();
 
-    void setHardwareDecoderDisabled(Optional<bool>&&);
-    Optional<bool> hardwareDecoderDisabled() { return m_hardwareDecoderDisabled; }
+    void setHardwareDecoderDisabled(std::optional<bool>&&);
+    std::optional<bool> hardwareDecoderDisabled() { return m_hardwareDecoderDisabled; }
 
-    void setVP9ScreenSizeAndScale(Optional<ScreenDataOverrides>&&);
-    Optional<ScreenDataOverrides> vp9ScreenSizeAndScale()  { return m_screenSizeAndScale; }
+    void setVP9ScreenSizeAndScale(std::optional<ScreenDataOverrides>&&);
+    std::optional<ScreenDataOverrides> vp9ScreenSizeAndScale()  { return m_screenSizeAndScale; }
 
     void setConfigurationChangedCallback(std::function<void()>&&);
 
 private:
-    Optional<bool> m_hardwareDecoderDisabled;
-    Optional<ScreenDataOverrides> m_screenSizeAndScale;
+    std::optional<bool> m_hardwareDecoderDisabled;
+    std::optional<ScreenDataOverrides> m_screenSizeAndScale;
     WTF::Function<void()> m_configurationChangedCallback;
 };
 

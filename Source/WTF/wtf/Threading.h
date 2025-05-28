@@ -38,6 +38,7 @@
 #include <wtf/Function.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
+#include <wtf/Lock.h>
 #include <wtf/PlatformRegisters.h>
 #include <wtf/Ref.h>
 #include <wtf/RefPtr.h>
@@ -58,6 +59,12 @@
 
 #if HAVE(QOS_CLASSES)
 #include <dispatch/dispatch.h>
+#endif
+
+// X11 headers define a bunch of macros with common terms, interfering with WebCore and WTF enum values.
+// As a workaround, we explicitly undef them here.
+#if defined(None)
+#undef None
 #endif
 
 namespace WTF {
@@ -116,8 +123,8 @@ public:
     static Thread& current();
 
     // Set of all WTF::Thread created threads.
-    WTF_EXPORT_PRIVATE static HashSet<Thread*>& allThreads(const LockHolder&);
-    WTF_EXPORT_PRIVATE static Lock& allThreadsMutex();
+    WTF_EXPORT_PRIVATE static HashSet<Thread*>& allThreads() WTF_REQUIRES_LOCK(allThreadsLock());
+    WTF_EXPORT_PRIVATE static Lock& allThreadsLock() WTF_RETURNS_LOCK(s_allThreadsLock);
 
     WTF_EXPORT_PRIVATE unsigned numberOfThreadGroups();
 
@@ -253,13 +260,20 @@ public:
 
     struct NewThreadContext;
     static void entryPoint(NewThreadContext*);
+
+#if OS(MORPHOS)
+    // Final clean up for this class as a while.
+    // Must method must be called after last sub-thread has terminated.
+    static void deleteTLSKey();
+#endif
+
 protected:
     Thread();
 
     void initializeInThread();
 
     // Internal platform-specific Thread establishment implementation.
-    bool establishHandle(NewThreadContext*, Optional<size_t> stackSize, QOS);
+    bool establishHandle(NewThreadContext*, std::optional<size_t> stackSize, QOS);
 
 #if USE(PTHREADS)
     void establishPlatformSpecificHandle(PlatformThreadHandle);
@@ -267,7 +281,7 @@ protected:
     void establishPlatformSpecificHandle(PlatformThreadHandle, ThreadIdentifier);
 #endif
 
-#if USE(PTHREADS) && !OS(DARWIN)
+#if USE(PTHREADS) && !OS(DARWIN) && !OS(MORPHOS)
     static void signalHandlerSuspendResume(int, siginfo_t*, void* ucontext);
 #endif
 
@@ -327,6 +341,12 @@ protected:
 #else
     static Thread* currentMayBeNull();
 #endif
+
+#ifdef __MORPHOS__
+    static Thread* getUserDataThreadPointer();
+#endif
+
+    static Lock s_allThreadsLock;
 
     JoinableState m_joinableState { Joinable };
     bool m_isShuttingDown : 1;
@@ -394,6 +414,10 @@ inline Thread* Thread::currentMayBeNull()
 }
 #endif
 
+#if OS(MORPHOS)
+extern "C" { void *get_thread_pointer(void); }
+#endif
+
 inline Thread& Thread::current()
 {
     // WRT WebCore:
@@ -406,8 +430,16 @@ inline Thread& Thread::current()
     if (UNLIKELY(Thread::s_key == InvalidThreadSpecificKey))
         WTF::initialize();
 #endif
+#if OS(MORPHOS)
+    Thread* thread = getUserDataThreadPointer();
+    if (!thread)
+        thread = currentMayBeNull();
+    if (thread)
+        return *thread;
+#else
     if (auto* thread = currentMayBeNull())
         return *thread;
+#endif
     return initializeCurrentTLS();
 }
 

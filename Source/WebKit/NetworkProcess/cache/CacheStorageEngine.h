@@ -93,7 +93,7 @@ public:
     void readFile(const String& filename, CompletionHandler<void(const NetworkCache::Data&, int error)>&&);
     void removeFile(const String& filename);
     void writeSizeFile(const String&, uint64_t size, CompletionHandler<void()>&&);
-    static Optional<uint64_t> readSizeFile(const String&);
+    static std::optional<uint64_t> readSizeFile(const String&);
 
     const String& rootPath() const { return m_rootPath; }
     const NetworkCache::Salt& salt() const { return m_salt.value(); }
@@ -110,7 +110,7 @@ private:
     void clearAllCachesFromDisk(CompletionHandler<void()>&&);
     void clearCachesForOrigin(const WebCore::SecurityOriginData&, CompletionHandler<void()>&&);
     void clearCachesForOriginFromDisk(const WebCore::SecurityOriginData&, CompletionHandler<void()>&&);
-    void deleteDirectoryRecursivelyOnBackgroundThread(const String& path, CompletionHandler<void()>&&);
+    void deleteNonEmptyDirectoryOnBackgroundThread(const String& path, CompletionHandler<void()>&&);
 
     void clearMemoryRepresentation(const WebCore::ClientOrigin&, WebCore::DOMCacheEngine::CompletionCallback&&);
     String representation();
@@ -150,7 +150,7 @@ private:
     uint64_t m_nextCacheIdentifier { 0 };
     String m_rootPath;
     RefPtr<WorkQueue> m_ioQueue;
-    Optional<NetworkCache::Salt> m_salt;
+    std::optional<NetworkCache::Salt> m_salt;
     HashMap<CacheIdentifier, LockCount> m_cacheLocks;
     Vector<WebCore::DOMCacheEngine::CompletionCallback> m_initializationCallbacks;
     HashMap<uint64_t, WebCore::DOMCacheEngine::CompletionCallback> m_pendingWriteCallbacks;

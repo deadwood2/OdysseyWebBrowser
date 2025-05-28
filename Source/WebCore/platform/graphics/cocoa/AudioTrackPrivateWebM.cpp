@@ -51,18 +51,18 @@ AtomString AudioTrackPrivateWebM::id() const
     return m_trackID;
 }
 
-Optional<uint64_t> AudioTrackPrivateWebM::trackUID() const
+std::optional<uint64_t> AudioTrackPrivateWebM::trackUID() const
 {
     if (m_track.track_uid.is_present())
         return m_track.track_uid.value();
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-Optional<bool> AudioTrackPrivateWebM::defaultEnabled() const
+std::optional<bool> AudioTrackPrivateWebM::defaultEnabled() const
 {
     if (m_track.is_enabled.is_present())
         return m_track.is_enabled.value();
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 AtomString AudioTrackPrivateWebM::label() const
@@ -84,6 +84,26 @@ int AudioTrackPrivateWebM::trackIndex() const
     if (m_track.track_number.is_present())
         return m_track.track_number.value();
     return 0;
+}
+
+std::optional<MediaTime> AudioTrackPrivateWebM::codecDelay() const
+{
+    if (!m_track.codec_delay.is_present())
+        return { };
+    constexpr uint32_t k_us_in_seconds = 1000000000;
+    return MediaTime(m_track.codec_delay.value(), k_us_in_seconds);
+}
+
+void AudioTrackPrivateWebM::setDiscardPadding(const MediaTime& discardPadding)
+{
+    m_discardPadding = discardPadding;
+}
+
+std::optional<MediaTime> AudioTrackPrivateWebM::discardPadding() const
+{
+    if (m_discardPadding.isInvalid() || m_discardPadding < MediaTime())
+        return { };
+    return m_discardPadding;
 }
 
 }

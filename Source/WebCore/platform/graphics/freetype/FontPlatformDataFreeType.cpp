@@ -34,8 +34,10 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_TRUETYPE_TABLES_H
+#if !OS(MORPHOS)
 #include <hb-ft.h>
 #include <hb-ot.h>
+#endif
 #include <wtf/MathExtras.h>
 #include <wtf/text/WTFString.h>
 
@@ -262,7 +264,7 @@ RefPtr<SharedBuffer> FontPlatformData::openTypeTable(uint32_t table) const
     if (FT_Load_Sfnt_Table(freeTypeFace, tag, 0, 0, &tableSize))
         return nullptr;
 
-    Vector<char> data(tableSize);
+    Vector<uint8_t> data(tableSize);
     FT_ULong expectedTableSize = tableSize;
     FT_Error error = FT_Load_Sfnt_Table(freeTypeFace, tag, 0, reinterpret_cast<FT_Byte*>(data.data()), &tableSize);
     if (error || tableSize != expectedTableSize)

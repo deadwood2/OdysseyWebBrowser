@@ -50,6 +50,9 @@ typedef unsigned WKJavaScriptRuntimeFlagSet;
 // Creates a copy with no identifier.
 WK_EXPORT WKPreferencesRef WKPreferencesCreateCopy(WKPreferencesRef);
 
+WK_EXPORT void WKPreferencesStartBatchingUpdates(WKPreferencesRef);
+WK_EXPORT void WKPreferencesEndBatchingUpdates(WKPreferencesRef);
+
 WK_EXPORT void WKPreferencesEnableAllExperimentalFeatures(WKPreferencesRef);
 WK_EXPORT void WKPreferencesSetExperimentalFeatureForKey(WKPreferencesRef, bool, WKStringRef);
 WK_EXPORT void WKPreferencesResetAllInternalDebugFeatures(WKPreferencesRef);
@@ -199,10 +202,6 @@ WK_EXPORT bool WKPreferencesGetDirectoryUploadEnabled(WKPreferencesRef);
 // Defaults to false on iOS, true elsewhere.
 WK_EXPORT void WKPreferencesSetMediaControlsScaleWithPageZoom(WKPreferencesRef preferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetMediaControlsScaleWithPageZoom(WKPreferencesRef preferencesRef);
-
-// Defaults to false.
-WK_EXPORT void WKPreferencesSetModernMediaControlsEnabled(WKPreferencesRef preferencesRef, bool flag);
-WK_EXPORT bool WKPreferencesGetModernMediaControlsEnabled(WKPreferencesRef preferencesRef);
 
 // Defaults to false.
 WK_EXPORT void WKPreferencesSetShowsToolTipOverTruncatedText(WKPreferencesRef preferencesRef, bool flag);
@@ -547,7 +546,7 @@ WK_EXPORT bool WKPreferencesGetSyntheticEditingCommandsEnabled(WKPreferencesRef)
 WK_EXPORT void WKPreferencesSetCSSOMViewScrollingAPIEnabled(WKPreferencesRef, bool);
 WK_EXPORT bool WKPreferencesGetCSSOMViewScrollingAPIEnabled(WKPreferencesRef);
 
-// Defaults to false.
+// Defaults to true.
 WK_EXPORT void WKPreferencesSetShouldAllowUserInstalledFonts(WKPreferencesRef, bool flag);
 WK_EXPORT bool WKPreferencesGetShouldAllowUserInstalledFonts(WKPreferencesRef);
 

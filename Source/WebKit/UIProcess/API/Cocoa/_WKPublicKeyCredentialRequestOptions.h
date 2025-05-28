@@ -28,6 +28,7 @@
 #import <WebKit/WKFoundation.h>
 
 #import <Foundation/Foundation.h>
+#import <WebKit/_WKAuthenticatorAttachment.h>
 #import <WebKit/_WKUserVerificationRequirement.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -35,7 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class _WKAuthenticationExtensionsClientInputs;
 @class _WKPublicKeyCredentialDescriptor;
 
-WK_CLASS_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA))
+WK_CLASS_AVAILABLE(macos(12.0), ios(15.0))
 @interface _WKPublicKeyCredentialRequestOptions : NSObject
 
 @property (nullable, nonatomic, copy) NSNumber *timeout;
@@ -43,6 +44,8 @@ WK_CLASS_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA))
 @property (nullable, nonatomic, copy) NSArray<_WKPublicKeyCredentialDescriptor *> *allowCredentials;
 /*!@discussion The default value is _WKUserVerificationRequirementPreferred.*/
 @property (nonatomic) _WKUserVerificationRequirement userVerification;
+/*!@discussion The default value is _WKAuthenticatorAttachmentAll.*/
+@property (nonatomic) _WKAuthenticatorAttachment authenticatorAttachment;
 @property (nullable, nonatomic, strong) _WKAuthenticationExtensionsClientInputs *extensions;
 
 @end

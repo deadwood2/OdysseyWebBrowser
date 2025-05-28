@@ -53,49 +53,61 @@ void StreamServerConnectionBase::stopReceivingMessagesImpl(ReceiverName receiver
 void StreamServerConnectionBase::enqueueMessage(Connection&, std::unique_ptr<Decoder>&& message)
 {
     {
-        auto locker = holdLock(m_outOfStreamMessagesLock);
+        Locker locker { m_outOfStreamMessagesLock };
         m_outOfStreamMessages.append(WTFMove(message));
     }
     m_workQueue.wakeUp();
 }
 
-Optional<StreamServerConnectionBase::Span> StreamServerConnectionBase::tryAquire()
+std::optional<StreamServerConnectionBase::Span> StreamServerConnectionBase::tryAcquire()
 {
-    size_t receiverLimit = sharedSenderOffset().load(std::memory_order_acquire);
-    if (receiverLimit == StreamConnectionBuffer::senderOffsetReceiverIsSleepingTag)
-        return WTF::nullopt;
-    auto result = alignedSpan(m_receiverOffset, receiverLimit);
+    ServerLimit serverLimit = sharedServerLimit().load(std::memory_order_acquire);
+    if (serverLimit == ServerLimit::serverIsSleepingTag)
+        return std::nullopt;
+
+    auto result = alignedSpan(m_serverOffset, clampedLimit(serverLimit));
     if (result.size < minimumMessageSize) {
-        receiverLimit = sharedSenderOffset().compareExchangeStrong(receiverLimit, StreamConnectionBuffer::senderOffsetReceiverIsSleepingTag, std::memory_order_acq_rel, std::memory_order_acq_rel);
-        ASSERT(!(receiverLimit & StreamConnectionBuffer::senderOffsetReceiverIsSleepingTag));
-        receiverLimit = clampedLimit(receiverLimit);
-        result = alignedSpan(m_receiverOffset, receiverLimit);
+        serverLimit = sharedServerLimit().compareExchangeStrong(serverLimit, ServerLimit::serverIsSleepingTag, std::memory_order_acq_rel, std::memory_order_acq_rel);
+        result = alignedSpan(m_serverOffset, clampedLimit(serverLimit));
     }
 
-    if (result.size >= minimumMessageSize)
-        return result;
-    return WTF::nullopt;
+    if (result.size < minimumMessageSize)
+        return std::nullopt;
+
+    return result;
+}
+
+StreamServerConnectionBase::Span StreamServerConnectionBase::acquireAll()
+{
+    return alignedSpan(0, dataSize() - 1);
 }
 
 void StreamServerConnectionBase::release(size_t readSize)
 {
     ASSERT(readSize);
     readSize = std::max(readSize, minimumMessageSize);
-    size_t receiverOffset = wrapOffset(alignOffset(m_receiverOffset) + readSize);
+    ServerOffset serverOffset = static_cast<ServerOffset>(wrapOffset(alignOffset(m_serverOffset) + readSize));
 
-#if PLATFORM(COCOA)
-    size_t oldReceiverOffset = sharedReceiverOffset().exchange(receiverOffset, std::memory_order_acq_rel);
-    // If the sender wrote over receiverOffset, it means the sender is waiting.
-    if (oldReceiverOffset == StreamConnectionBuffer::receiverOffsetSenderIsWaitingTag)
-        m_buffer.senderWaitSemaphore().signal();
+    ServerOffset oldServerOffset = sharedServerOffset().exchange(serverOffset, std::memory_order_acq_rel);
+    // If the client wrote over serverOffset, it means the client is waiting.
+    if (oldServerOffset == ServerOffset::clientIsWaitingTag)
+        m_buffer.clientWaitSemaphore().signal();
     else
-        ASSERT(!(oldReceiverOffset & StreamConnectionBuffer::receiverOffsetSenderIsWaitingTag));
-#else
-    sharedReceiverOffset().store(receiverOffset, std::memory_order_release);
-    // IPC::Semaphore not implemented for the platform. Client will poll and yield.
-#endif
+        ASSERT(!(oldServerOffset & ServerOffset::clientIsWaitingTag));
 
-    m_receiverOffset = receiverOffset;
+    m_serverOffset = serverOffset;
+}
+
+void StreamServerConnectionBase::releaseAll()
+{
+    sharedServerLimit().store(static_cast<ServerLimit>(0), std::memory_order_release);
+    ServerOffset oldServerOffset = sharedServerOffset().exchange(static_cast<ServerOffset>(0), std::memory_order_acq_rel);
+    // If the client wrote over serverOffset, it means the client is waiting.
+    if (oldServerOffset == ServerOffset::clientIsWaitingTag)
+        m_buffer.clientWaitSemaphore().signal();
+    else
+        ASSERT(!(oldServerOffset & ServerOffset::clientIsWaitingTag));
+    m_serverOffset = 0;
 }
 
 StreamServerConnectionBase::Span StreamServerConnectionBase::alignedSpan(size_t offset, size_t limit)
@@ -121,10 +133,12 @@ size_t StreamServerConnectionBase::size(size_t offset, size_t limit)
     return dataSize() - offset;
 }
 
-size_t StreamServerConnectionBase::clampedLimit(size_t untrustedLimit) const
+size_t StreamServerConnectionBase::clampedLimit(ServerLimit serverLimit) const
 {
-    ASSERT(untrustedLimit < (dataSize() - 1));
-    return std::min(untrustedLimit, dataSize() - 1);
+    ASSERT(!(serverLimit & ServerLimit::serverIsSleepingTag));
+    size_t limit = static_cast<size_t>(serverLimit);
+    ASSERT(limit <= dataSize() - 1);
+    return std::min(limit, dataSize() - 1);
 }
 
 }

@@ -97,6 +97,7 @@ PlatformWebView::~PlatformWebView()
 {
     if (::IsWindow(m_window))
         ::DestroyWindow(m_window);
+    WKRelease(m_view);
 }
 
 void PlatformWebView::resizeTo(unsigned width, unsigned height, WebViewSizingMode)
@@ -144,7 +145,7 @@ void PlatformWebView::setWindowFrame(WKRect frame, WebViewSizingMode)
         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
 
     UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS;
-    if (m_options.shouldShowWebView())
+    if (m_options.shouldShowWindow())
         flags |= SWP_NOMOVE;
     ::SetWindowPos(
         m_window,
@@ -166,6 +167,19 @@ void PlatformWebView::addChromeInputField()
 
 void PlatformWebView::removeChromeInputField()
 {
+}
+
+void PlatformWebView::setTextInChromeInputField(const String&)
+{
+}
+
+void PlatformWebView::selectChromeInputField()
+{
+}
+
+String PlatformWebView::getSelectedTextInChromeInputField()
+{
+    return { };
 }
 
 void PlatformWebView::addToWindow()

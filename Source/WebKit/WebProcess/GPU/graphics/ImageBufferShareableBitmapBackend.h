@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,10 +31,6 @@
 #include <WebCore/PlatformImageBufferBackend.h>
 #include <wtf/IsoMalloc.h>
 
-namespace WebCore {
-class ImageData;
-}
-
 namespace WebKit {
 
 class ShareableBitmap;
@@ -43,6 +39,11 @@ class ImageBufferShareableBitmapBackend : public WebCore::PlatformImageBufferBac
     WTF_MAKE_ISO_ALLOCATED(ImageBufferShareableBitmapBackend);
     WTF_MAKE_NONCOPYABLE(ImageBufferShareableBitmapBackend);
 public:
+    static ShareableBitmap::Configuration configuration(const Parameters&);
+    static WebCore::IntSize calculateSafeBackendSize(const Parameters&);
+    static unsigned calculateBytesPerRow(const Parameters&, const WebCore::IntSize& backendSize);
+    static size_t calculateMemoryCost(const Parameters&);
+
     static std::unique_ptr<ImageBufferShareableBitmapBackend> create(const Parameters&, const WebCore::HostWindow*);
     static std::unique_ptr<ImageBufferShareableBitmapBackend> create(const Parameters&, ImageBufferBackendHandle);
 
@@ -57,9 +58,8 @@ public:
     RefPtr<WebCore::NativeImage> copyNativeImage(WebCore::BackingStoreCopy = WebCore::CopyBackingStore) const override;
     RefPtr<WebCore::Image> copyImage(WebCore::BackingStoreCopy = WebCore::CopyBackingStore, WebCore::PreserveResolution = WebCore::PreserveResolution::No) const override;
 
-    Vector<uint8_t> toBGRAData() const override;
-    RefPtr<WebCore::ImageData> getImageData(WebCore::AlphaPremultiplication outputFormat, const WebCore::IntRect&) const override;
-    void putImageData(WebCore::AlphaPremultiplication inputFormat, const WebCore::ImageData&, const WebCore::IntRect& srcRect, const WebCore::IntPoint& destPoint, WebCore::AlphaPremultiplication destFormat) override;
+    std::optional<WebCore::PixelBuffer> getPixelBuffer(const WebCore::PixelBufferFormat& outputFormat, const WebCore::IntRect&) const override;
+    void putPixelBuffer(const WebCore::PixelBuffer&, const WebCore::IntRect& srcRect, const WebCore::IntPoint& destPoint, WebCore::AlphaPremultiplication destFormat) override;
 
 private:
     unsigned bytesPerRow() const override;

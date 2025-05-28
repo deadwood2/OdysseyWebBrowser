@@ -34,6 +34,7 @@
 #import "_WKInternalDebugFeatureInternal.h"
 #import <WebCore/SecurityOrigin.h>
 #import <WebCore/Settings.h>
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/RetainPtr.h>
 
 @implementation WKPreferences
@@ -49,6 +50,9 @@
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKPreferences.class, self))
+        return;
+
     _preferences->~WebPreferences();
 
     [super dealloc];
@@ -74,7 +78,6 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 #if PLATFORM(MAC)
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [coder encodeBool:self.javaEnabled forKey:@"javaEnabled"];
-    [coder encodeBool:self.plugInsEnabled forKey:@"plugInsEnabled"];
 ALLOW_DEPRECATED_DECLARATIONS_END
     [coder encodeBool:self.tabFocusesLinks forKey:@"tabFocusesLinks"];
 #endif
@@ -96,7 +99,6 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 #if PLATFORM(MAC)
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     self.javaEnabled = [coder decodeBoolForKey:@"javaEnabled"];
-    self.plugInsEnabled = [coder decodeBoolForKey:@"plugInsEnabled"];
 ALLOW_DEPRECATED_DECLARATIONS_END
     self.tabFocusesLinks = [coder decodeBoolForKey:@"tabFocusesLinks"];
 #endif
@@ -141,7 +143,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     _preferences->setJavaScriptCanOpenWindowsAutomatically(javaScriptCanOpenWindowsAutomatically);
 }
 
-- (BOOL)textInteractionEnabled
+- (BOOL)isTextInteractionEnabled
 {
     return _preferences->textInteractionEnabled();
 }
@@ -1489,6 +1491,32 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
     _preferences->setMediaSessionEnabled(mediaSessionEnabled);
 }
 
+- (BOOL)_isExtensibleSSOEnabled
+{
+#if HAVE(APP_SSO)
+    return _preferences->isExtensibleSSOEnabled();
+#else
+    return false;
+#endif
+}
+
+- (void)_setExtensibleSSOEnabled:(BOOL)extensibleSSOEnabled
+{
+#if HAVE(APP_SSO)
+    _preferences->setExtensibleSSOEnabled(extensibleSSOEnabled);
+#endif
+}
+
+- (BOOL)_requiresPageVisibilityToPlayAudio
+{
+    return _preferences->requiresPageVisibilityToPlayAudio();
+}
+
+- (void)_setRequiresPageVisibilityToPlayAudio:(BOOL)requires
+{
+    _preferences->setRequiresPageVisibilityToPlayAudio(requires);
+}
+
 @end
 
 
@@ -1508,12 +1536,13 @@ static WebCore::EditableLinkBehavior toEditableLinkBehavior(_WKEditableLinkBehav
 
 - (BOOL)plugInsEnabled
 {
-    return _preferences->pluginsEnabled();
+    return NO;
 }
 
 - (void)setPlugInsEnabled:(BOOL)plugInsEnabled
 {
-    _preferences->setPluginsEnabled(plugInsEnabled);
+    if (plugInsEnabled)
+        RELEASE_LOG_FAULT(Plugins, "Application attempted to enable NPAPI plug ins, which are no longer supported");
 }
 
 #endif

@@ -60,27 +60,81 @@ WebURLSchemeTask::~WebURLSchemeTask()
     ASSERT(RunLoop::isMain());
 }
 
+ResourceRequest WebURLSchemeTask::request() const
+{
+    ASSERT(RunLoop::isMain());
+    Locker locker { m_requestLock };
+    return m_request;
+}
+
+auto WebURLSchemeTask::willPerformRedirection(ResourceResponse&& response, ResourceRequest&& request,  Function<void(ResourceRequest&&)>&& completionHandler) -> ExceptionType
+{
+    ASSERT(RunLoop::isMain());
+
+    if (m_stopped)
+        return m_shouldSuppressTaskStoppedExceptions ? ExceptionType::None : ExceptionType::TaskAlreadyStopped;
+
+    if (m_completed)
+        return ExceptionType::CompleteAlreadyCalled;
+
+    if (m_dataSent)
+        return ExceptionType::DataAlreadySent;
+
+    if (m_responseSent)
+        return ExceptionType::RedirectAfterResponse;
+
+    if (m_waitingForRedirectCompletionHandlerCallback)
+        return ExceptionType::WaitingForRedirectCompletionHandler;
+
+    if (isSync())
+        m_syncResponse = response;
+
+    {
+        Locker locker { m_requestLock };
+        m_request = request;
+    }
+
+    auto* page = WebProcessProxy::webPage(m_pageProxyID);
+    if (!page)
+        return ExceptionType::None;
+
+    m_waitingForRedirectCompletionHandlerCallback = true;
+
+    Function<void(ResourceRequest&&)> innerCompletionHandler = [protectedThis = makeRef(*this), this, completionHandler = WTFMove(completionHandler)] (ResourceRequest&& request) mutable {
+        m_waitingForRedirectCompletionHandlerCallback = false;
+        if (!m_stopped && !m_completed)
+            completionHandler(WTFMove(request));
+    };
+
+    page->sendWithAsyncReply(Messages::WebPage::URLSchemeTaskWillPerformRedirection(m_urlSchemeHandler->identifier(), m_identifier, response, request), WTFMove(innerCompletionHandler));
+
+    return ExceptionType::None;
+}
+
 auto WebURLSchemeTask::didPerformRedirection(WebCore::ResourceResponse&& response, WebCore::ResourceRequest&& request) -> ExceptionType
 {
     ASSERT(RunLoop::isMain());
 
     if (m_stopped)
-        return ExceptionType::TaskAlreadyStopped;
-    
+        return m_shouldSuppressTaskStoppedExceptions ? ExceptionType::None : ExceptionType::TaskAlreadyStopped;
+
     if (m_completed)
         return ExceptionType::CompleteAlreadyCalled;
-    
+
     if (m_dataSent)
         return ExceptionType::DataAlreadySent;
-    
+
     if (m_responseSent)
         return ExceptionType::RedirectAfterResponse;
-    
+
+    if (m_waitingForRedirectCompletionHandlerCallback)
+        return ExceptionType::WaitingForRedirectCompletionHandler;
+
     if (isSync())
         m_syncResponse = response;
 
     {
-        LockHolder locker(m_requestLock);
+        Locker locker { m_requestLock };
         m_request = request;
     }
 
@@ -94,7 +148,7 @@ auto WebURLSchemeTask::didReceiveResponse(const ResourceResponse& response) -> E
     ASSERT(RunLoop::isMain());
 
     if (m_stopped)
-        return ExceptionType::TaskAlreadyStopped;
+        return m_shouldSuppressTaskStoppedExceptions ? ExceptionType::None : ExceptionType::TaskAlreadyStopped;
 
     if (m_completed)
         return ExceptionType::CompleteAlreadyCalled;
@@ -102,9 +156,10 @@ auto WebURLSchemeTask::didReceiveResponse(const ResourceResponse& response) -> E
     if (m_dataSent)
         return ExceptionType::DataAlreadySent;
 
-    m_responseSent = true;
+    if (m_waitingForRedirectCompletionHandlerCallback)
+        return ExceptionType::WaitingForRedirectCompletionHandler;
 
-    response.includeCertificateInfo();
+    m_responseSent = true;
 
     if (isSync())
         m_syncResponse = response;
@@ -118,13 +173,16 @@ auto WebURLSchemeTask::didReceiveData(Ref<SharedBuffer>&& buffer) -> ExceptionTy
     ASSERT(RunLoop::isMain());
 
     if (m_stopped)
-        return ExceptionType::TaskAlreadyStopped;
+        return m_shouldSuppressTaskStoppedExceptions ? ExceptionType::None : ExceptionType::TaskAlreadyStopped;
 
     if (m_completed)
         return ExceptionType::CompleteAlreadyCalled;
 
     if (!m_responseSent)
         return ExceptionType::NoResponseSent;
+
+    if (m_waitingForRedirectCompletionHandlerCallback)
+        return ExceptionType::WaitingForRedirectCompletionHandler;
 
     m_dataSent = true;
 
@@ -145,7 +203,7 @@ auto WebURLSchemeTask::didComplete(const ResourceError& error) -> ExceptionType
     ASSERT(RunLoop::isMain());
 
     if (m_stopped)
-        return ExceptionType::TaskAlreadyStopped;
+        return m_shouldSuppressTaskStoppedExceptions ? ExceptionType::None : ExceptionType::TaskAlreadyStopped;
 
     if (m_completed)
         return ExceptionType::CompleteAlreadyCalled;
@@ -153,14 +211,15 @@ auto WebURLSchemeTask::didComplete(const ResourceError& error) -> ExceptionType
     if (!m_responseSent && error.isNull())
         return ExceptionType::NoResponseSent;
 
+    if (m_waitingForRedirectCompletionHandlerCallback && error.isNull())
+        return ExceptionType::WaitingForRedirectCompletionHandler;
+
     m_completed = true;
     
     if (isSync()) {
-        Vector<char> data;
-        if (m_syncData) {
-            data.resize(m_syncData->size());
-            memcpy(data.data(), reinterpret_cast<const char*>(m_syncData->data()), m_syncData->size());
-        }
+        Vector<uint8_t> data;
+        if (m_syncData)
+            data = { m_syncData->data(), m_syncData->size() };
 
         m_syncCompletionHandler(m_syncResponse, error, WTFMove(data));
         m_syncData = nullptr;
@@ -182,7 +241,7 @@ void WebURLSchemeTask::pageDestroyed()
     m_stopped = true;
     
     if (isSync()) {
-        LockHolder locker(m_requestLock);
+        Locker locker { m_requestLock };
         m_syncCompletionHandler({ }, failedCustomProtocolSyncLoad(m_request), { });
     }
 }
@@ -195,7 +254,7 @@ void WebURLSchemeTask::stop()
     m_stopped = true;
 
     if (isSync()) {
-        LockHolder locker(m_requestLock);
+        Locker locker { m_requestLock };
         m_syncCompletionHandler({ }, failedCustomProtocolSyncLoad(m_request), { });
     }
 }
@@ -203,7 +262,7 @@ void WebURLSchemeTask::stop()
 #if PLATFORM(COCOA)
 NSURLRequest *WebURLSchemeTask::nsRequest() const
 {
-    LockHolder locker(m_requestLock);
+    Locker locker { m_requestLock };
     return m_request.nsURLRequest(WebCore::HTTPBodyUpdatePolicy::UpdateHTTPBody);
 }
 #endif

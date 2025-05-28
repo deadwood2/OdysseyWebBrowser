@@ -27,11 +27,11 @@ from cassandra.auth import PlainTextAuthProvider
 from fakeredis import FakeStrictRedis
 from redis import StrictRedis
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from resultsdbpy.model.cassandra_context import CassandraContext
 from resultsdbpy.model.casserole import CasseroleNodes, CasseroleRedis
-from resultsdbpy.model.ci_context import BuildbotURLFactory, BuildbotEightURLFactory
+from resultsdbpy.model.ci_context import BuildbotURLFactory
 from resultsdbpy.model.mock_cassandra_context import MockCassandraContext
 from resultsdbpy.model.model import Model
 from resultsdbpy.model.repository import WebKitRepository

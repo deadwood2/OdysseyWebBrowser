@@ -30,18 +30,20 @@
 
 #include <mutex>
 #include <pal/spi/cg/CoreGraphicsSPI.h>
+#include <wtf/NeverDestroyed.h>
+#include <wtf/RetainPtr.h>
 
 namespace WebCore {
 
 template<const CFStringRef& colorSpaceNameGlobalConstant> static CGColorSpaceRef namedColorSpace()
 {
-    static CGColorSpaceRef colorSpace;
+    static NeverDestroyed<RetainPtr<CGColorSpaceRef>> colorSpace;
     static std::once_flag onceFlag;
     std::call_once(onceFlag, [] {
-        colorSpace = CGColorSpaceCreateWithName(colorSpaceNameGlobalConstant);
-        ASSERT(colorSpace);
+        colorSpace.get() = adoptCF(CGColorSpaceCreateWithName(colorSpaceNameGlobalConstant));
+        ASSERT(colorSpace.get());
     });
-    return colorSpace;
+    return colorSpace.get().get();
 }
 
 CGColorSpaceRef sRGBColorSpaceRef()
@@ -105,6 +107,46 @@ CGColorSpaceRef xyzColorSpaceRef()
     return namedColorSpace<kCGColorSpaceGenericXYZ>();
 }
 #endif
+
+std::optional<ColorSpace> colorSpaceForCGColorSpace(CGColorSpaceRef colorSpace)
+{
+    if (CGColorSpaceEqualToColorSpace(colorSpace, sRGBColorSpaceRef()))
+        return ColorSpace::SRGB;
+
+#if HAVE(CORE_GRAPHICS_ADOBE_RGB_1998_COLOR_SPACE)
+    if (CGColorSpaceEqualToColorSpace(colorSpace, adobeRGB1998ColorSpaceRef()))
+        return ColorSpace::A98RGB;
+#endif
+
+#if HAVE(CORE_GRAPHICS_DISPLAY_P3_COLOR_SPACE)
+    if (CGColorSpaceEqualToColorSpace(colorSpace, displayP3ColorSpaceRef()))
+        return ColorSpace::DisplayP3;
+#endif
+
+    // FIXME: labColorSpaceRef() not implemented.
+
+#if HAVE(CORE_GRAPHICS_LINEAR_SRGB_COLOR_SPACE)
+    if (CGColorSpaceEqualToColorSpace(colorSpace, linearSRGBColorSpaceRef()))
+        return ColorSpace::LinearSRGB;
+#endif
+
+#if HAVE(CORE_GRAPHICS_ROMMRGB_COLOR_SPACE)
+    if (CGColorSpaceEqualToColorSpace(colorSpace, ROMMRGBColorSpaceRef()))
+        return ColorSpace::ProPhotoRGB;
+#endif
+
+#if HAVE(CORE_GRAPHICS_ITUR_2020_COLOR_SPACE)
+    if (CGColorSpaceEqualToColorSpace(colorSpace, ITUR_2020ColorSpaceRef()))
+        return ColorSpace::Rec2020;
+#endif
+
+#if HAVE(CORE_GRAPHICS_XYZ_COLOR_SPACE)
+    if (CGColorSpaceEqualToColorSpace(colorSpace, xyzColorSpaceRef()))
+        return ColorSpace::XYZ_D50;
+#endif
+
+    return std::nullopt;
+}
 
 }
 

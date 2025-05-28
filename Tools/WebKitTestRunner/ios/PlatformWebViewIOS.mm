@@ -91,11 +91,6 @@ static Vector<WebKitTestRunnerWindow *> allWindows;
     [super dealloc];
 }
 
-- (BOOL)isKeyWindow
-{
-    return [super isKeyWindow] && (_platformWebView ? _platformWebView->windowIsKey() : YES);
-}
-
 - (void)setFrameOrigin:(CGPoint)point
 {
     _fakeOrigin = point;
@@ -140,9 +135,18 @@ static CGRect viewRectForWindowRect(CGRect, PlatformWebView::WebViewSizingMode);
 } // namespace WTR
 
 @interface PlatformWebViewController : UIViewController
+@property (nonatomic) CGFloat horizontalSystemMinimumLayoutMargin;
 @end
 
 @implementation PlatformWebViewController
+
+- (NSDirectionalEdgeInsets)systemMinimumLayoutMargins
+{
+    auto layoutMargins = [super systemMinimumLayoutMargins];
+    layoutMargins.leading = self.horizontalSystemMinimumLayoutMargin;
+    layoutMargins.trailing = self.horizontalSystemMinimumLayoutMargin;
+    return layoutMargins;
+}
 
 - (void)viewWillTransitionToSize:(CGSize)toSize withTransitionCoordinator:(id <UIViewControllerTransitionCoordinator>)coordinator
 {
@@ -209,7 +213,9 @@ PlatformWebView::PlatformWebView(WKWebViewConfiguration* configuration, const Te
     m_window.backgroundColor = [UIColor lightGrayColor];
     m_window.platformWebView = this;
 
-    [m_window setRootViewController:adoptNS([[PlatformWebViewController alloc] init]).get()];
+    auto webViewController = adoptNS([[PlatformWebViewController alloc] init]);
+    [webViewController setHorizontalSystemMinimumLayoutMargin:options.horizontalSystemMinimumLayoutMargin()];
+    [m_window setRootViewController:webViewController.get()];
 
     m_view = [[TestRunnerWKWebView alloc] initWithFrame:viewRectForWindowRect(rect, WebViewSizingMode::Default) configuration:configuration];
 
@@ -240,8 +246,24 @@ PlatformWindow PlatformWebView::keyWindow()
 void PlatformWebView::setWindowIsKey(bool isKey)
 {
     m_windowIsKey = isKey;
-    if (isKey && !m_window.keyWindow)
+
+    if (isKey && !m_window.keyWindow) {
+        [m_otherWindow setHidden:YES];
         [m_window makeKeyWindow];
+        return;
+    }
+
+    if (!isKey && m_window.keyWindow) {
+        if (!m_otherWindow) {
+            m_otherWindow = adoptNS([[UIWindow alloc] initWithWindowScene:m_window.windowScene]);
+            [m_otherWindow setFrame:CGRectMake(-1, -1, 1, 1)];
+        }
+        // On iOS, there's no API to force a UIWindow to resign key window. However, we can instead
+        // cause the test runner window to resign key window by making a different window (in this
+        // case, m_otherWindow) the key window.
+        [m_otherWindow setHidden:NO];
+        [m_otherWindow makeKeyWindow];
+    }
 }
 
 void PlatformWebView::addToWindow()
@@ -299,17 +321,39 @@ void PlatformWebView::didInitializeClients()
     setWindowFrame(wkFrame);
 }
 
+static UITextField *chromeInputField(UIWindow *window)
+{
+    return (UITextField *)[window viewWithTag:1];
+}
+
 void PlatformWebView::addChromeInputField()
 {
-    auto textField = adoptNS([[UITextField alloc] initWithFrame:CGRectMake(0, 0, 100, 20)]);
+    auto textField = adoptNS([[UITextField alloc] initWithFrame:CGRectMake(0, 0, 320, 64)]);
     [textField setTag:1];
     [m_window addSubview:textField.get()];
 }
 
+void PlatformWebView::setTextInChromeInputField(const String& text)
+{
+    chromeInputField(m_window).text = text;
+}
+
+void PlatformWebView::selectChromeInputField()
+{
+    auto textField = chromeInputField(m_window);
+    [textField becomeFirstResponder];
+    [textField selectAll:nil];
+}
+
+String PlatformWebView::getSelectedTextInChromeInputField()
+{
+    auto textField = chromeInputField(m_window);
+    return [textField textInRange:textField.selectedTextRange];
+}
+
 void PlatformWebView::removeChromeInputField()
 {
-    UITextField* textField = (UITextField*)[m_window viewWithTag:1];
-    if (textField) {
+    if (auto textField = chromeInputField(m_window)) {
         [textField removeFromSuperview];
         makeWebViewFirstResponder();
     }

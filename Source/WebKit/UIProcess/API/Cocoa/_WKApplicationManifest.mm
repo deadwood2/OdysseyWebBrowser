@@ -26,8 +26,20 @@
 #import "config.h"
 #import "_WKApplicationManifestInternal.h"
 
+#import "CocoaColor.h"
 #import <WebCore/ApplicationManifest.h>
 #import <WebCore/ApplicationManifestParser.h>
+#import <WebCore/Color.h>
+#import <WebCore/ColorCocoa.h>
+#import <WebCore/WebCoreObjCExtras.h>
+
+#if PLATFORM(IOS_FAMILY)
+#import "UIKitSPI.h"
+#endif
+
+#if PLATFORM(MAC)
+#import "AppKitSPI.h"
+#endif
 
 @implementation _WKApplicationManifest
 
@@ -46,6 +58,7 @@
     NSURL *scopeURL = [aDecoder decodeObjectOfClass:[NSURL class] forKey:@"scope"];
     NSInteger display = [aDecoder decodeIntegerForKey:@"display"];
     NSURL *startURL = [aDecoder decodeObjectOfClass:[NSURL class] forKey:@"start_url"];
+    CocoaColor *themeColor = [aDecoder decodeObjectOfClass:[CocoaColor class] forKey:@"theme_color"];
 
     WebCore::ApplicationManifest coreApplicationManifest {
         WTF::String(name),
@@ -53,7 +66,8 @@
         WTF::String(description),
         URL(scopeURL),
         static_cast<WebCore::ApplicationManifest::Display>(display),
-        URL(startURL)
+        URL(startURL),
+        WebCore::roundAndClampToSRGBALossy(themeColor.CGColor),
     };
 
     API::Object::constructInWrapper<API::ApplicationManifest>(self, WTFMove(coreApplicationManifest));
@@ -63,6 +77,9 @@
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(_WKApplicationManifest.class, self))
+        return;
+
     _applicationManifest->~ApplicationManifest();
 
     [super dealloc];
@@ -76,6 +93,7 @@
     [aCoder encodeObject:self.scope forKey:@"scope"];
     [aCoder encodeInteger:static_cast<NSInteger>(_applicationManifest->applicationManifest().display) forKey:@"display"];
     [aCoder encodeObject:self.startURL forKey:@"start_url"];
+    [aCoder encodeObject:self.themeColor forKey:@"theme_color"];
 }
 
 + (_WKApplicationManifest *)applicationManifestFromJSON:(NSString *)json manifestURL:(NSURL *)manifestURL documentURL:(NSURL *)documentURL
@@ -117,6 +135,11 @@ static NSString *nullableNSString(const WTF::String& string)
 - (NSURL *)startURL
 {
     return _applicationManifest->applicationManifest().startURL;
+}
+
+- (CocoaColor *)themeColor
+{
+    return WebCore::platformColor(_applicationManifest->applicationManifest().themeColor);
 }
 
 - (_WKApplicationManifestDisplayMode)displayMode
@@ -178,6 +201,11 @@ static NSString *nullableNSString(const WTF::String& string)
 }
 
 - (NSURL *)startURL
+{
+    return nil;
+}
+
+- (CocoaColor *)themeColor
 {
     return nil;
 }

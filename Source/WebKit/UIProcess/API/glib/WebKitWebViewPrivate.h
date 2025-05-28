@@ -66,7 +66,7 @@ String webkitWebViewGetCurrentScriptDialogMessage(WebKitWebView*);
 void webkitWebViewSetCurrentScriptDialogUserInput(WebKitWebView*, const String&);
 void webkitWebViewAcceptCurrentScriptDialog(WebKitWebView*);
 void webkitWebViewDismissCurrentScriptDialog(WebKitWebView*);
-Optional<WebKitScriptDialogType> webkitWebViewGetCurrentScriptDialogType(WebKitWebView*);
+std::optional<WebKitScriptDialogType> webkitWebViewGetCurrentScriptDialogType(WebKitWebView*);
 void webkitWebViewMakePermissionRequest(WebKitWebView*, WebKitPermissionRequest*);
 void webkitWebViewMakePolicyDecision(WebKitWebView*, WebKitPolicyDecisionType, WebKitPolicyDecision*);
 void webkitWebViewMouseTargetChanged(WebKitWebView*, const WebKit::WebHitTestResultData&, OptionSet<WebKit::WebEvent::Modifier>);
@@ -91,6 +91,7 @@ void webkitWebViewInsecureContentDetected(WebKitWebView*, WebKitInsecureContentE
 bool webkitWebViewEmitShowNotification(WebKitWebView*, WebKitNotification*);
 void webkitWebViewWebProcessTerminated(WebKitWebView*, WebKitWebProcessTerminationReason);
 void webkitWebViewIsPlayingAudioChanged(WebKitWebView*);
+void webkitWebViewMediaCaptureStateDidChange(WebKitWebView*, WebCore::MediaProducer::MediaStateFlags);
 void webkitWebViewSelectionDidChange(WebKitWebView*);
 void webkitWebViewRequestInstallMissingMediaPlugins(WebKitWebView*, WebKit::InstallMissingMediaPluginsPermissionRequest&);
 WebKitWebsiteDataManager* webkitWebViewGetWebsiteDataManager(WebKitWebView*);
@@ -120,3 +121,6 @@ void webkitWebViewSetComposition(WebKitWebView*, const String&, const Vector<Web
 void webkitWebViewConfirmComposition(WebKitWebView*, const String&);
 void webkitWebViewCancelComposition(WebKitWebView*, const String&);
 void webkitWebViewDeleteSurrounding(WebKitWebView*, int offset, unsigned characterCount);
+void webkitWebViewSetIsWebProcessResponsive(WebKitWebView*, bool);
+
+guint createShowOptionMenuSignal(WebKitWebViewClass*);

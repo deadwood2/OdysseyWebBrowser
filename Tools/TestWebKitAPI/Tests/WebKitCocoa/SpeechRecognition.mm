@@ -45,9 +45,9 @@ static RetainPtr<WKWebView> createdWebView;
 
 @interface SpeechRecognitionUIDelegate : NSObject<WKUIDelegatePrivate>
 - (void)_webView:(WKWebView *)webView requestSpeechRecognitionPermissionForOrigin:(WKSecurityOrigin *)origin decisionHandler:(void (^)(BOOL))decisionHandler;
-- (void)_webView:(WKWebView *)webView requestMediaCapturePermission:(BOOL)audio video:(BOOL)video decisionHandler:(void (^)(_WKPermissionDecision))decisionHandler;
+- (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision decision))decisionHandler;
 - (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures;
-- (void)_webView:(WKWebView *)webView mediaCaptureStateDidChange:(_WKMediaCaptureState)state;
+- (void)_webView:(WKWebView *)webView mediaCaptureStateDidChange:(_WKMediaCaptureStateDeprecated)state;
 @end
 
 @implementation SpeechRecognitionUIDelegate
@@ -57,10 +57,10 @@ static RetainPtr<WKWebView> createdWebView;
     decisionHandler(shouldGrantPermissionRequest);
 }
 
-- (void)_webView:(WKWebView *)webView requestMediaCapturePermission:(BOOL)audio video:(BOOL)video decisionHandler:(void (^)(_WKPermissionDecision))decisionHandler
+- (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision decision))decisionHandler
 {
     permissionRequested = true;
-    decisionHandler(shouldGrantPermissionRequest ? _WKPermissionDecisionGrant : _WKPermissionDecisionDeny);
+    decisionHandler(shouldGrantPermissionRequest ? WKPermissionDecisionGrant : WKPermissionDecisionDeny);
 }
 
 - (void)_webView:(WKWebView *)webView requestMediaCaptureAuthorization: (_WKCaptureDevices)devices decisionHandler:(void (^)(BOOL))decisionHandler
@@ -75,9 +75,9 @@ static RetainPtr<WKWebView> createdWebView;
     return createdWebView.get();
 }
 
-- (void)_webView:(WKWebView *)webView mediaCaptureStateDidChange:(_WKMediaCaptureState)state
+- (void)_webView:(WKWebView *)webView mediaCaptureStateDidChange:(_WKMediaCaptureStateDeprecated)state
 {
-    isCapturing = state == _WKMediaCaptureStateActiveMicrophone;
+    isCapturing = state == _WKMediaCaptureStateDeprecatedActiveMicrophone;
     captureStateDidChange = true;
 }
 @end

@@ -32,7 +32,6 @@
 #include <wtf/CompletionHandler.h>
 #include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
-#include <wtf/WorkQueue.h>
 
 namespace WebCore {
 class KeyedDecoder;
@@ -47,13 +46,13 @@ namespace WebKit {
 // This is always constructed / used / destroyed on the WebResourceLoadStatisticsStore's statistics queue.
 class ResourceLoadStatisticsMemoryStore final : public ResourceLoadStatisticsStore {
 public:
-    ResourceLoadStatisticsMemoryStore(WebResourceLoadStatisticsStore&, WorkQueue&, ShouldIncludeLocalhost);
+    ResourceLoadStatisticsMemoryStore(WebResourceLoadStatisticsStore&, SuspendableWorkQueue&, ShouldIncludeLocalhost);
 
     void clear(CompletionHandler<void()>&&) override;
     bool isEmpty() const override;
 
     Vector<WebResourceLoadStatisticsStore::ThirdPartyData> aggregatedThirdPartyData() const override;
-    const HashMap<RegistrableDomain, WebCore::ResourceLoadStatistics>& data() const { return m_resourceStatisticsMap; }
+    const HashMap<RegistrableDomain, UniqueRef<WebCore::ResourceLoadStatistics>>& data() const { return m_resourceStatisticsMap; }
 
     std::unique_ptr<WebCore::KeyedEncoder> createEncoderFromData() const;
     void mergeWithDataFromDecoder(WebCore::KeyedDecoder&);
@@ -92,7 +91,7 @@ public:
 
     bool areAllThirdPartyCookiesBlockedUnder(const TopFrameDomain&) override;
     CookieAccess cookieAccess(const ResourceLoadStatistics&, const TopFrameDomain&);
-    void hasStorageAccess(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&) override;
+    void hasStorageAccess(const SubFrameDomain&, const TopFrameDomain&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&) override;
     void requestStorageAccess(SubFrameDomain&&, TopFrameDomain&&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebCore::StorageAccessScope, CompletionHandler<void(StorageAccessStatus)>&&) override;
     void grantStorageAccess(SubFrameDomain&&, TopFrameDomain&&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebCore::StorageAccessPromptWasShown, WebCore::StorageAccessScope, CompletionHandler<void(WebCore::StorageAccessWasGranted)>&&) override;
 
@@ -106,18 +105,7 @@ public:
     void setLastSeen(const RegistrableDomain&, Seconds) override;
     void removeDataForDomain(const RegistrableDomain&) override;
     Vector<RegistrableDomain> allDomains() const final;
-    void insertExpiredStatisticForTesting(const RegistrableDomain&, bool hasUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent) override;
-
-    // Private Click Measurement is not implemented in the ITP memory store.
-    void insertPrivateClickMeasurement(WebCore::PrivateClickMeasurement&&, PrivateClickMeasurementAttributionType) override { };
-    void markAllUnattributedPrivateClickMeasurementAsExpiredForTesting() override { };
-    Optional<Seconds> attributePrivateClickMeasurement(const WebCore::PrivateClickMeasurement::SourceSite&, const WebCore::PrivateClickMeasurement::AttributeOnSite&, WebCore::PrivateClickMeasurement::AttributionTriggerData&&) override { return { }; };
-    Vector<WebCore::PrivateClickMeasurement> allAttributedPrivateClickMeasurement() override { return { }; };
-    void clearPrivateClickMeasurement(Optional<RegistrableDomain>) override { };
-    void clearExpiredPrivateClickMeasurement() override { };
-    String privateClickMeasurementToString() override { return String(); };
-    void clearSentAttribution(WebCore::PrivateClickMeasurement&&) override { };
-    void markAttributedPrivateClickMeasurementsAsExpiredForTesting() override { };
+    void insertExpiredStatisticForTesting(const RegistrableDomain&, unsigned numberOfOperatingDaysPassed, bool hasUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent) override;
 
 private:
     void includeTodayAsOperatingDateIfNecessary() override;
@@ -138,7 +126,7 @@ private:
     void incrementRecordsDeletedCountForDomains(HashSet<RegistrableDomain>&&) override;
     void setPrevalentResource(ResourceLoadStatistics&, ResourceLoadPrevalence);
     unsigned recursivelyGetAllDomainsThatHaveRedirectedToThisDomain(const ResourceLoadStatistics&, HashSet<RedirectedToDomain>&, unsigned numberOfRecursiveCalls) const;
-    void grantStorageAccessInternal(SubFrameDomain&&, TopFrameDomain&&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, WebCore::StorageAccessPromptWasShown, WebCore::StorageAccessScope, CompletionHandler<void(WebCore::StorageAccessWasGranted)>&&);
+    void grantStorageAccessInternal(SubFrameDomain&&, TopFrameDomain&&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, WebCore::StorageAccessPromptWasShown, WebCore::StorageAccessScope, CompletionHandler<void(WebCore::StorageAccessWasGranted)>&&);
     void markAsPrevalentIfHasRedirectedToPrevalent(ResourceLoadStatistics&);
     bool isPrevalentDueToDebugMode(ResourceLoadStatistics&);
     Vector<RegistrableDomain> ensurePrevalentResourcesForDebugMode() override;
@@ -147,9 +135,9 @@ private:
     ResourceLoadStatistics& ensureResourceStatisticsForRegistrableDomain(const RegistrableDomain&);
     RegistrableDomainsToDeleteOrRestrictWebsiteDataFor registrableDomainsToDeleteOrRestrictWebsiteDataFor() override;
     bool isMemoryStore() const final { return true; }
-    Optional<WallTime> mostRecentUserInteractionTime(const ResourceLoadStatistics&);
+    std::optional<WallTime> mostRecentUserInteractionTime(const ResourceLoadStatistics&);
 
-    HashMap<RegistrableDomain, ResourceLoadStatistics> m_resourceStatisticsMap;
+    HashMap<RegistrableDomain, UniqueRef<ResourceLoadStatistics>> m_resourceStatisticsMap;
     Vector<OperatingDate> m_operatingDates;
 };
 

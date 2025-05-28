@@ -28,17 +28,17 @@
 
 namespace WebKit {
 
-_WKMediaCaptureState toWKMediaCaptureState(WebCore::MediaProducer::MediaStateFlags state)
+_WKMediaCaptureStateDeprecated toWKMediaCaptureStateDeprecated(WebCore::MediaProducer::MediaStateFlags state)
 {
-    _WKMediaCaptureState mediaCaptureState = _WKMediaCaptureStateNone;
-    if (state & WebCore::MediaProducer::HasActiveAudioCaptureDevice)
-        mediaCaptureState |= _WKMediaCaptureStateActiveMicrophone;
-    if (state & WebCore::MediaProducer::HasActiveVideoCaptureDevice)
-        mediaCaptureState |= _WKMediaCaptureStateActiveCamera;
-    if (state & WebCore::MediaProducer::HasMutedAudioCaptureDevice)
-        mediaCaptureState |= _WKMediaCaptureStateMutedMicrophone;
-    if (state & WebCore::MediaProducer::HasMutedVideoCaptureDevice)
-        mediaCaptureState |= _WKMediaCaptureStateMutedCamera;
+    _WKMediaCaptureStateDeprecated mediaCaptureState = _WKMediaCaptureStateDeprecatedNone;
+    if (state & WebCore::MediaProducer::MediaState::HasActiveAudioCaptureDevice)
+        mediaCaptureState |= _WKMediaCaptureStateDeprecatedActiveMicrophone;
+    if (state & WebCore::MediaProducer::MediaState::HasActiveVideoCaptureDevice)
+        mediaCaptureState |= _WKMediaCaptureStateDeprecatedActiveCamera;
+    if (state & WebCore::MediaProducer::MediaState::HasMutedAudioCaptureDevice)
+        mediaCaptureState |= _WKMediaCaptureStateDeprecatedMutedMicrophone;
+    if (state & WebCore::MediaProducer::MediaState::HasMutedVideoCaptureDevice)
+        mediaCaptureState |= _WKMediaCaptureStateDeprecatedMutedCamera;
 
     return mediaCaptureState;
 }
@@ -46,13 +46,11 @@ _WKMediaCaptureState toWKMediaCaptureState(WebCore::MediaProducer::MediaStateFla
 _WKMediaMutedState toWKMediaMutedState(WebCore::MediaProducer::MutedStateFlags state)
 {
     _WKMediaMutedState mediaMutedState = _WKMediaNoneMuted;
-    if (state & WebCore::MediaProducer::NoneMuted)
-        mediaMutedState |= _WKMediaNoneMuted;
-    if (state & WebCore::MediaProducer::AudioIsMuted)
+    if (state & WebCore::MediaProducer::MutedState::AudioIsMuted)
         mediaMutedState |= _WKMediaAudioMuted;
     if (state & WebCore::MediaProducer::AudioAndVideoCaptureIsMuted)
         mediaMutedState |= _WKMediaCaptureDevicesMuted;
-    if (state & WebCore::MediaProducer::ScreenCaptureIsMuted)
+    if (state & WebCore::MediaProducer::MutedState::ScreenCaptureIsMuted)
         mediaMutedState |= _WKMediaScreenCaptureMuted;
     return mediaMutedState;
 }

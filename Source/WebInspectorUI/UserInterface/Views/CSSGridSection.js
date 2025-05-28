@@ -35,6 +35,8 @@ WI.CSSGridSection = class CSSGridSection extends WI.View
 
         this._gridNodeSet = new Set;
         this._checkboxElementByNodeMap = new WeakMap;
+        this._toggleAllCheckboxElement = null;
+        this._suppressUpdateToggleAllCheckbox = false;
     }
 
     // Public
@@ -67,21 +69,41 @@ WI.CSSGridSection = class CSSGridSection extends WI.View
     {
         super.initialLayout();
 
+        let settingsGroup = new WI.SettingsGroup(WI.UIString("Page Overlay Options", "Page Overlay Options @ Layout Panel Section Header", "Heading for list of grid overlay options"));
+        this.element.append(settingsGroup.element);
+
+        settingsGroup.addSetting(WI.settings.gridOverlayShowTrackSizes, WI.UIString("Track Sizes", "Track sizes @ Layout Panel Overlay Options", "Label for option to toggle the track sizes setting for CSS grid overlays"));
+        settingsGroup.addSetting(WI.settings.gridOverlayShowLineNumbers, WI.UIString("Line Numbers", "Line numbers @ Layout Panel Overlay Options", "Label for option to toggle the line numbers setting for CSS grid overlays"));
+        settingsGroup.addSetting(WI.settings.gridOverlayShowLineNames, WI.UIString("Line Names", "Line names @ Layout Panel Overlay Options", "Label for option to toggle the line names setting for CSS grid overlays"));
+        settingsGroup.addSetting(WI.settings.gridOverlayShowAreaNames, WI.UIString("Area Names", "Area names @ Layout Panel Overlay Options", "Label for option to toggle the area names setting for CSS grid overlays"));
+        settingsGroup.addSetting(WI.settings.gridOverlayShowExtendedGridLines, WI.UIString("Extended Grid Lines", "Show extended lines @ Layout Panel Overlay Options", "Label for option to toggle the extended lines setting for CSS grid overlays"));
+
         let listHeading = this.element.appendChild(document.createElement("h2"));
         listHeading.classList.add("heading");
-        listHeading.textContent = WI.UIString("Grid Overlays", "Page Overlays @ Layout Sidebar Section Header", "Heading for list of grid nodes");
+
+        let label = listHeading.createChild("label");
+        this._toggleAllCheckboxElement = label.createChild("input");
+        this._toggleAllCheckboxElement.type = "checkbox";
+        this._toggleAllCheckboxElement.addEventListener("change", this._handleToggleAllCheckboxChanged.bind(this));
+
+        let labelInner = label.createChild("span", "toggle-all");
+        labelInner.textContent = WI.UIString("Grid Overlays", "Page Overlays @ Layout Sidebar Section Header", "Heading for list of grid nodes");
 
         this._listElement = this.element.appendChild(document.createElement("ul"));
         this._listElement.classList.add("node-overlay-list");
+    }
 
-        let settingsGroup = new WI.SettingsGroup(WI.UIString("Grid Overlay Settings", "Page Overlay Settings @ Layout Panel Section Header", "Heading for list of grid overlay settings"));
-        this.element.append(settingsGroup.element);
-
-        settingsGroup.addSetting(WI.settings.gridOverlayShowLineNumbers, WI.UIString("Show line numbers", "Show line numbers @ Layers Panel Grid Overlay Setting", "Label for option to toggle the line numbers setting for CSS grid overlays"));
-        settingsGroup.addSetting(WI.settings.gridOverlayShowLineNames, WI.UIString("Show line names", "Show line names @ Layers Panel Grid Overlay Setting", "Label for option to toggle the line names setting for CSS grid overlays"));
-        settingsGroup.addSetting(WI.settings.gridOverlayShowExtendedGridLines, WI.UIString("Show extended lines", "Show extended lines @ Layers Panel Grid Overlay Setting", "Label for option to toggle the extended lines setting for CSS grid overlays"));
-        settingsGroup.addSetting(WI.settings.gridOverlayShowAreaNames, WI.UIString("Show area names", "Show area names @ Layers Panel Grid Overlay Setting", "Label for option to toggle the area names setting for CSS grid overlays"));
-        settingsGroup.addSetting(WI.settings.gridOverlayShowTrackSizes, WI.UIString("Show track sizes", "Show track sizes @ Layers Panel Grid Overlay Setting", "Label for option to toggle the track sizes setting for CSS grid overlays"));
+    _handleToggleAllCheckboxChanged(event)
+    {
+        let isChecked = event.target.checked;
+        this._suppressUpdateToggleAllCheckbox = true;
+        for (let domNode of this._gridNodeSet) {
+            if (isChecked)
+                WI.overlayManager.showGridOverlay(domNode, {initiator: WI.GridOverlayDiagnosticEventRecorder.Initiator.Panel});
+            else
+                WI.overlayManager.hideGridOverlay(domNode);
+        }
+        this._suppressUpdateToggleAllCheckbox = false;
     }
 
     layout()
@@ -89,8 +111,6 @@ WI.CSSGridSection = class CSSGridSection extends WI.View
         super.layout();
 
         this._listElement.removeChildren();
-
-        let nodesWithGridOverlay = WI.overlayManager.nodesWithGridOverlay;
 
         for (let domNode of this._gridNodeSet) {
             let itemElement = this._listElement.appendChild(document.createElement("li"));
@@ -100,27 +120,47 @@ WI.CSSGridSection = class CSSGridSection extends WI.View
             let labelElement = itemContainerElement.appendChild(document.createElement("label"));
             let checkboxElement = labelElement.appendChild(document.createElement("input"));
             checkboxElement.type = "checkbox";
-            checkboxElement.checked = nodesWithGridOverlay.includes(domNode);
-            labelElement.appendChild(WI.linkifyNodeReference(domNode));
+            checkboxElement.checked = WI.overlayManager.isGridOverlayVisible(domNode);
+
+            const nodeDisplayName = labelElement.appendChild(document.createElement("span"));
+            nodeDisplayName.classList.add("node-display-name");
+            nodeDisplayName.textContent = domNode.displayName;
 
             this._checkboxElementByNodeMap.set(domNode, checkboxElement);
 
             checkboxElement.addEventListener("change", (event) => {
                 if (checkboxElement.checked)
-                    WI.overlayManager.showGridOverlay(domNode, {color: swatch.value});
+                    WI.overlayManager.showGridOverlay(domNode, {color: swatch.value, initiator: WI.GridOverlayDiagnosticEventRecorder.Initiator.Panel});
                 else
                     WI.overlayManager.hideGridOverlay(domNode);
             });
 
-            let gridColor = WI.overlayManager.colorForNode(domNode);
+            let gridColor = WI.overlayManager.getGridColorForNode(domNode);
             let swatch = new WI.InlineSwatch(WI.InlineSwatch.Type.Color, gridColor);
+            swatch.shiftClickColorEnabled = false;
             itemContainerElement.append(swatch.element);
 
             swatch.addEventListener(WI.InlineSwatch.Event.ValueChanged, (event) => {
                 if (checkboxElement.checked)
+                    // While changing the overlay color, WI.OverlayManager.Event.GridOverlayShown is dispatched with high frequency.
+                    // An initiator is not provided so as not to skew usage count of overlay options when logging diagnostics in WI.GridOverlayDiagnosticEventRecorder.
                     WI.overlayManager.showGridOverlay(domNode, {color: event.data.value});
             }, swatch);
+
+            swatch.addEventListener(WI.InlineSwatch.Event.Deactivated, (event) => {
+                if (event.target.value === gridColor)
+                    return;
+
+                gridColor = event.target.value;
+                WI.overlayManager.setGridColorForNode(domNode, gridColor);
+            }, swatch);
+
+            let buttonElement = itemContainerElement.appendChild(WI.createGoToArrowButton());
+            buttonElement.title = WI.repeatedUIString.revealInDOMTree();
+            WI.bindInteractionsForNodeToElement(domNode, buttonElement);
         }
+
+        this._updateToggleAllCheckbox();
     }
 
     // Private
@@ -132,5 +172,33 @@ WI.CSSGridSection = class CSSGridSection extends WI.View
             return;
 
         checkboxElement.checked = event.type === WI.OverlayManager.Event.GridOverlayShown;
+        this._updateToggleAllCheckbox();
+    }
+
+    _updateToggleAllCheckbox()
+    {
+        if (this._suppressUpdateToggleAllCheckbox)
+            return;
+
+        let hasVisible = false;
+        let hasHidden = false;
+        for (let domNode of this._gridNodeSet) {
+            let isVisible = WI.overlayManager.isGridOverlayVisible(domNode);
+            if (isVisible)
+                hasVisible = true;
+            else
+                hasHidden = true;
+
+            // Exit early as soon as the partial state is determined.
+            if (hasVisible && hasHidden)
+                break;
+        }
+
+        if (hasVisible && hasHidden)
+            this._toggleAllCheckboxElement.indeterminate = true;
+        else {
+            this._toggleAllCheckboxElement.indeterminate = false;
+            this._toggleAllCheckboxElement.checked = hasVisible;
+        }
     }
 };

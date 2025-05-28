@@ -26,7 +26,6 @@
 #include "config.h"
 #include "FindController.h"
 
-#include "CallbackID.h"
 #include "DrawingArea.h"
 #include "PluginView.h"
 #include "ShareableBitmap.h"
@@ -374,13 +373,17 @@ void FindController::hideFindUI()
 
 bool FindController::updateFindIndicator(Frame& selectedFrame, bool isShowingOverlay, bool shouldAnimate)
 {
-    auto indicator = TextIndicator::createWithSelectionInFrame(selectedFrame, { TextIndicatorOption::IncludeMarginIfRangeMatchesSelection }, shouldAnimate ? TextIndicatorPresentationTransition::Bounce : TextIndicatorPresentationTransition::None);
+    OptionSet<TextIndicatorOption> textIndicatorOptions { TextIndicatorOption::IncludeMarginIfRangeMatchesSelection };
+    if (auto selectedRange = selectedFrame.selection().selection().range(); selectedRange && HTMLElement::isInsideImageOverlay(*selectedRange))
+        textIndicatorOptions.add({ TextIndicatorOption::PaintAllContent, TextIndicatorOption::PaintBackgrounds });
+
+    auto indicator = TextIndicator::createWithSelectionInFrame(selectedFrame, textIndicatorOptions, shouldAnimate ? TextIndicatorPresentationTransition::Bounce : TextIndicatorPresentationTransition::None);
     if (!indicator)
         return false;
 
     m_findIndicatorRect = enclosingIntRect(indicator->selectionRectInRootViewCoordinates());
 #if PLATFORM(COCOA)
-    m_webPage->send(Messages::WebPageProxy::SetTextIndicator(indicator->data(), static_cast<uint64_t>(isShowingOverlay ? TextIndicatorWindowLifetime::Permanent : TextIndicatorWindowLifetime::Temporary)));
+    m_webPage->send(Messages::WebPageProxy::SetTextIndicator(indicator->data(), static_cast<uint64_t>(isShowingOverlay ? WebCore::TextIndicatorLifetime::Permanent : WebCore::TextIndicatorLifetime::Temporary)));
 #endif
     m_isShowingFindIndicator = true;
 
@@ -542,7 +545,7 @@ void FindController::drawRect(PageOverlay&, GraphicsContext& graphicsContext, co
 
         if (findIndicatorRect != m_findIndicatorRect) {
             // We are underneath painting, so it's not safe to mutate the layer tree synchronously.
-            callOnMainThread([weakWebPage = makeWeakPtr(m_webPage)] {
+            callOnMainRunLoop([weakWebPage = makeWeakPtr(m_webPage)] {
                 if (!weakWebPage)
                     return;
                 weakWebPage->findController().didScrollAffectingFindIndicatorPosition();

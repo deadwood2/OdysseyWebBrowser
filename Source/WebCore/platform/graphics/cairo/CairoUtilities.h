@@ -71,6 +71,7 @@ private:
 
 #if USE(CAIRO)
 const cairo_font_options_t* getDefaultCairoFontOptions();
+void setDefaultCairoFontAntialias(cairo_antialias_t aa);
 #endif
 
 void copyContextProperties(cairo_t* srcCr, cairo_t* dstCr);

@@ -38,6 +38,10 @@
 #include <wtf/Vector.h>
 #include <wtf/text/StringCommon.h>
 
+#if PLATFORM(COCOA)
+#include <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#endif
+
 extern "C" void configureJSCForTesting();
 extern "C" int testCAPIViaCpp(const char* filter);
 extern "C" void JSSynchronousGarbageCollectForDebugging(JSContextRef);
@@ -147,10 +151,12 @@ public:
     void promiseUnhandledRejection();
     void promiseUnhandledRejectionFromUnhandledRejectionCallback();
     void promiseEarlyHandledRejections();
+    void promiseDrainDoesNotEatExceptions();
     void topCallFrameAccess();
     void markedJSValueArrayAndGC();
     void classDefinitionWithJSSubclass();
     void proxyReturnedWithJSSubclassing();
+    void testJSObjectSetOnGlobalObjectSubclassDefinition();
 
     int failed() const { return m_failed; }
 
@@ -608,6 +614,28 @@ void TestAPI::promiseEarlyHandledRejections()
     check(!callbackCalled, "unhandled rejection callback should not be called for asynchronous early-handled rejection");
 }
 
+void TestAPI::promiseDrainDoesNotEatExceptions()
+{
+#if PLATFORM(COCOA)
+    bool useLegacyDrain = false;
+#if PLATFORM(MAC)
+    useLegacyDrain = applicationSDKVersion() < DYLD_MACOSX_VERSION_12_00;
+#elif PLATFORM(WATCH)
+        // Don't check, JSC isn't API on watch anyway.
+#elif PLATFORM(IOS_FAMILY)
+    useLegacyDrain = applicationSDKVersion() < DYLD_IOS_VERSION_15_0;
+#else
+#error "Unsupported Cocoa Platform"
+#endif
+    if (useLegacyDrain)
+        return;
+#endif
+
+    ScriptResult result = callFunction("(function() { Promise.resolve().then(() => { throw 2; }); throw 1; })");
+    check(!result, "function should throw an error");
+    check(JSValueIsNumber(context, result.error()) && JSValueToNumber(context, result.error(), nullptr) == 1, "exception payload should have been 1");
+}
+
 void TestAPI::topCallFrameAccess()
 {
     {
@@ -705,6 +733,22 @@ void TestAPI::proxyReturnedWithJSSubclassing()
     check(functionReturnsTrue("(function (subclass, Superclass) { return subclass.__proto__ == Superclass.prototype; })", subclass, Superclass), "proxy's prototype should match Superclass.prototype");
 }
 
+void TestAPI::testJSObjectSetOnGlobalObjectSubclassDefinition()
+{
+    JSClassDefinition globalClassDef = kJSClassDefinitionEmpty;
+    globalClassDef.className = "CustomGlobalClass";
+    JSClassRef globalClassRef = JSClassCreate(&globalClassDef);
+
+    JSContextRef context = JSGlobalContextCreate(globalClassRef);
+    JSObjectRef newObject = JSObjectMake(context, nullptr, nullptr);
+
+    JSObjectRef globalObject = JSContextGetGlobalObject(context);
+    APIString propertyName("myObject");
+    JSObjectSetProperty(context, globalObject, propertyName, newObject, 0, nullptr);
+
+    check(JSEvaluateScript(context, propertyName, globalObject, nullptr, 1, nullptr) == newObject, "Setting a property on a custom global object should set the property");
+}
+
 void configureJSCForTesting()
 {
     JSC::Config::configureForTesting();
@@ -743,15 +787,15 @@ int testCAPIViaCpp(const char* filter)
     RUN(promiseRejectTrue());
     RUN(promiseUnhandledRejection());
     RUN(promiseUnhandledRejectionFromUnhandledRejectionCallback());
+    RUN(promiseDrainDoesNotEatExceptions());
     RUN(promiseEarlyHandledRejections());
     RUN(markedJSValueArrayAndGC());
     RUN(classDefinitionWithJSSubclass());
     RUN(proxyReturnedWithJSSubclassing());
+    RUN(testJSObjectSetOnGlobalObjectSubclassDefinition());
 
-    if (tasks.isEmpty()) {
-        dataLogLn("Filtered all tests: ERROR");
-        return 1;
-    }
+    if (tasks.isEmpty())
+        return 0;
 
     Lock lock;
 
@@ -765,7 +809,7 @@ int testCAPIViaCpp(const char* filter)
                 for (;;) {
                     RefPtr<SharedTask<void(TestAPI&)>> task;
                     {
-                        LockHolder locker(lock);
+                        Locker locker { lock };
                         if (tasks.isEmpty())
                             break;
                         task = tasks.takeFirst();

@@ -22,6 +22,7 @@
 #include "FontCustomPlatformData.h"
 
 #include "FontDescription.h"
+#include "FontMemoryResource.h"
 #include "FontPlatformData.h"
 #include "OpenTypeUtilities.h"
 #include "SharedBuffer.h"
@@ -32,11 +33,13 @@
 
 namespace WebCore {
 
-FontCustomPlatformData::~FontCustomPlatformData()
+FontCustomPlatformData::FontCustomPlatformData(const String& name, FontPlatformData::CreationData&& creationData)
+    : name(name)
+    , creationData(WTFMove(creationData))
 {
-    if (fontReference)
-        RemoveFontMemResourceEx(fontReference);
 }
+
+FontCustomPlatformData::~FontCustomPlatformData() = default;
 
 FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities)
 {
@@ -66,7 +69,7 @@ FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription&
 
     cairo_font_face_t* fontFace = cairo_win32_font_face_create_for_hfont(hfont.get());
 
-    FontPlatformData fontPlatformData(WTFMove(hfont), fontFace, size, bold, italic);
+    FontPlatformData fontPlatformData(WTFMove(hfont), fontFace, size, bold, italic, &creationData);
 
     cairo_font_face_destroy(fontFace);
 
@@ -78,20 +81,21 @@ static String createUniqueFontName()
     GUID fontUuid;
     CoCreateGuid(&fontUuid);
 
-    String fontName = base64Encode(reinterpret_cast<char*>(&fontUuid), sizeof(fontUuid));
+    auto fontName = base64EncodeToString(reinterpret_cast<char*>(&fontUuid), sizeof(fontUuid));
     ASSERT(fontName.length() < LF_FACESIZE);
     return fontName;
 }
 
-std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String&)
+std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String& itemInCollection)
 {
     String fontName = createUniqueFontName();
-    HANDLE fontReference = renameAndActivateFont(buffer, fontName);
+    auto fontResource = renameAndActivateFont(buffer, fontName);
 
-    if (!fontReference)
+    if (!fontResource)
         return nullptr;
 
-    return makeUnique<FontCustomPlatformData>(fontReference, fontName);
+    FontPlatformData::CreationData creationData = { buffer, itemInCollection, fontResource.releaseNonNull() };
+    return makeUnique<FontCustomPlatformData>(fontName, WTFMove(creationData));
 }
 
 bool FontCustomPlatformData::supportsFormat(const String& format)

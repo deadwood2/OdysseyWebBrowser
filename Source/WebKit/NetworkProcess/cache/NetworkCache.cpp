@@ -66,12 +66,11 @@ static size_t computeCapacity(CacheModel cacheModel, const String& cachePath)
 {
     unsigned urlCacheMemoryCapacity = 0;
     uint64_t urlCacheDiskCapacity = 0;
-    uint64_t diskFreeSize = 0;
-    if (FileSystem::getVolumeFreeSpace(cachePath, diskFreeSize)) {
+    if (auto diskFreeSize = FileSystem::volumeFreeSpace(cachePath)) {
         // As a fudge factor, use 1000 instead of 1024, in case the reported byte
         // count doesn't align exactly to a megabyte boundary.
-        diskFreeSize /= KB * 1000;
-        calculateURLCacheSizes(cacheModel, diskFreeSize, urlCacheMemoryCapacity, urlCacheDiskCapacity);
+        *diskFreeSize /= KB * 1000;
+        calculateURLCacheSizes(cacheModel, *diskFreeSize, urlCacheMemoryCapacity, urlCacheDiskCapacity);
     }
     return urlCacheDiskCapacity;
 }
@@ -179,7 +178,7 @@ static bool cachePolicyAllowsExpired(WebCore::ResourceRequestCachePolicy policy)
     return false;
 }
 
-static UseDecision responseNeedsRevalidation(NetworkSession& networkSession, const WebCore::ResourceResponse& response, WallTime timestamp, Optional<Seconds> maxStale)
+static UseDecision responseNeedsRevalidation(NetworkSession& networkSession, const WebCore::ResourceResponse& response, WallTime timestamp, std::optional<Seconds> maxStale)
 {
     if (response.cacheControlContainsNoCache())
         return UseDecision::Validate;
@@ -221,7 +220,7 @@ static UseDecision responseNeedsRevalidation(NetworkSession& networkSession, con
     return responseNeedsRevalidation(networkSession, response, timestamp, requestDirectives.maxStale);
 }
 
-static UseDecision makeUseDecision(NetworkProcess& networkProcess, const PAL::SessionID& sessionID, const Entry& entry, const WebCore::ResourceRequest& request)
+static UseDecision makeUseDecision(NetworkProcess& networkProcess, PAL::SessionID sessionID, const Entry& entry, const WebCore::ResourceRequest& request)
 {
     // The request is conditional so we force revalidation from the network. We merely check the disk cache
     // so we can update the cache entry.
@@ -340,7 +339,7 @@ static bool inline canRequestUseSpeculativeRevalidation(const WebCore::ResourceR
 #endif
 
 #if ENABLE(NETWORK_CACHE_STALE_WHILE_REVALIDATE)
-void Cache::startAsyncRevalidationIfNeeded(const WebCore::ResourceRequest& request, const NetworkCache::Key& key, std::unique_ptr<Entry>&& entry, const GlobalFrameID& frameID, Optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain)
+void Cache::startAsyncRevalidationIfNeeded(const WebCore::ResourceRequest& request, const NetworkCache::Key& key, std::unique_ptr<Entry>&& entry, const GlobalFrameID& frameID, std::optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain)
 {
     m_pendingAsyncRevalidations.ensure(key, [&] {
         auto addResult = m_pendingAsyncRevalidationByPage.ensure(frameID, [] {
@@ -366,7 +365,7 @@ void Cache::browsingContextRemoved(WebPageProxyIdentifier webPageProxyID, WebCor
 #endif
 }
 
-void Cache::retrieve(const WebCore::ResourceRequest& request, const GlobalFrameID& frameID, Optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain, RetrieveCompletionHandler&& completionHandler)
+void Cache::retrieve(const WebCore::ResourceRequest& request, const GlobalFrameID& frameID, std::optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain, RetrieveCompletionHandler&& completionHandler)
 {
     ASSERT(request.url().protocolIsInHTTPFamily());
 
@@ -509,7 +508,7 @@ std::unique_ptr<Entry> Cache::store(const WebCore::ResourceRequest& request, con
     return cacheEntry;
 }
 
-std::unique_ptr<Entry> Cache::storeRedirect(const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& redirectRequest, Optional<Seconds> maxAgeCap)
+std::unique_ptr<Entry> Cache::storeRedirect(const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& response, const WebCore::ResourceRequest& redirectRequest, std::optional<Seconds> maxAgeCap)
 {
     LOG(NetworkCache, "(NetworkProcess) storing redirect %s -> %s", request.url().string().latin1().data(), redirectRequest.url().string().latin1().data());
 
@@ -644,7 +643,7 @@ void Cache::dumpContentsToFile()
 
         StringBuilder json;
         entry->asJSON(json, info);
-        json.appendLiteral(",\n");
+        json.append(",\n");
         auto writeData = json.toString().utf8();
         writeToFile(fd, writeData.data(), writeData.length());
     });

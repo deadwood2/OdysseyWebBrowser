@@ -26,8 +26,11 @@ set(WTF_PUBLIC_HEADERS
     CagedPtr.h
     CagedUniquePtr.h
     CallbackAggregator.h
+    CancellableTask.h
     CheckedArithmetic.h
     CheckedBoolean.h
+    CheckedPtr.h
+    CheckedRef.h
     ClockType.h
     CommaPrinter.h
     CompactPointerTuple.h
@@ -66,9 +69,9 @@ set(WTF_PUBLIC_HEADERS
     FastBitVector.h
     FastMalloc.h
     FastTLS.h
-    FileMetadata.h
     FilePrintStream.h
     FileSystem.h
+    FixedVector.h
     FlipBytes.h
     ForbidHeapAllocation.h
     Forward.h
@@ -100,6 +103,7 @@ set(WTF_PUBLIC_HEADERS
     InlineASM.h
     Insertion.h
     InstanceCounted.h
+    InterferenceGraph.h
     IsoMalloc.h
     IsoMallocInlines.h
     IteratorAdaptors.h
@@ -109,6 +113,7 @@ set(WTF_PUBLIC_HEADERS
     KeyValuePair.h
     LEBDecoder.h
     Language.h
+    LikelyDenseUnsignedIntegerSet.h
     ListDump.h
     ListHashSet.h
     Liveness.h
@@ -118,8 +123,11 @@ set(WTF_PUBLIC_HEADERS
     LockedPrintStream.h
     Locker.h
     LocklessBag.h
+    LogChannels.h
+    LogInitialization.h
     Logger.h
     LoggerHelper.h
+    Logging.h
     LoggingAccumulator.h
     LoggingHashID.h
     LoggingHashMap.h
@@ -158,7 +166,6 @@ set(WTF_PUBLIC_HEADERS
     Observer.h
     OptionSet.h
     OptionSetHash.h
-    Optional.h
     OrderMaker.h
     Packed.h
     PackedRef.h
@@ -214,6 +221,9 @@ set(WTF_PUBLIC_HEADERS
     RefPtr.h
     ResourceUsage.h
     RetainPtr.h
+    RobinHoodHashMap.h
+    RobinHoodHashSet.h
+    RobinHoodHashTable.h
     RunLoop.h
     SHA1.h
     SaturatedArithmetic.h
@@ -230,8 +240,10 @@ set(WTF_PUBLIC_HEADERS
     SinglyLinkedList.h
     SinglyLinkedListWithTail.h
     SixCharacterHash.h
-    SmallPtrSet.h
+    SmallSet.h
     SoftLinking.h
+    SortedArrayMap.h
+    Span.h
     SpanningTree.h
     Spectrum.h
     StackBounds.h
@@ -254,12 +266,16 @@ set(WTF_PUBLIC_HEADERS
     StringExtras.h
     StringHashDumpContext.h
     StringPrintStream.h
+    SuspendableWorkQueue.h
     SynchronizedFixedQueue.h
     SystemFree.h
+    SystemMalloc.h
     SystemTracing.h
     TaggedArrayStoragePtr.h
+    ThreadAssertions.h
     ThreadGroup.h
     ThreadMessage.h
+    ThreadSafetyAnalysis.h
     ThreadSafeRefCounted.h
     ThreadSanitizerSupport.h
     ThreadSpecific.h
@@ -293,6 +309,7 @@ set(WTF_PUBLIC_HEADERS
     WTFConfig.h
     WTFSemaphore.h
     WallTime.h
+    WeakHashMap.h
     WeakHashSet.h
     WeakPtr.h
     WeakRandom.h
@@ -337,6 +354,7 @@ set(WTF_PUBLIC_HEADERS
     text/OrdinalNumber.h
     text/StringBuffer.h
     text/StringBuilder.h
+    text/StringBuilderInternals.h
     text/StringCommon.h
     text/StringConcatenate.h
     text/StringConcatenateNumbers.h
@@ -405,9 +423,13 @@ set(WTF_SOURCES
     JSONValues.cpp
     JSValueMalloc.cpp
     Language.cpp
+    LikelyDenseUnsignedIntegerSet.cpp
     Lock.cpp
     LockedPrintStream.cpp
+    LogChannels.cpp
+    LogInitialization.cpp
     Logger.cpp
+    Logging.cpp
     MainThread.cpp
     MediaTime.cpp
     MemoryPressureHandler.cpp
@@ -435,12 +457,13 @@ set(WTF_SOURCES
     Seconds.cpp
     SegmentedVector.cpp
     SixCharacterHash.cpp
-    SmallPtrSet.cpp
+    SmallSet.cpp
     StackBounds.cpp
     StackPointer.cpp
     StackStats.cpp
     StackTrace.cpp
     StringPrintStream.cpp
+    SuspendableWorkQueue.cpp
     ThreadGroup.cpp
     ThreadMessage.cpp
     Threading.cpp
@@ -520,24 +543,41 @@ set(WTF_PRIVATE_INCLUDE_DIRECTORIES
     "${WTF_DIR}/wtf/unicode"
 )
 
-set(WTF_LIBRARIES
-    ${CMAKE_DL_LIBS}
-    ICU::data
-    ICU::i18n
-    ICU::uc
-)
+if (NOT "${PORT}" STREQUAL "MorphOS")
+    set(WTF_LIBRARIES
+         ${CMAKE_DL_LIBS}
+    )
+endif ()
+
+list(APPEND WTF_LIBRARIES
+      ICU::i18n
+      ICU::uc
+     ICU::data
+ )
 
 if (NOT USE_SYSTEM_MALLOC)
     set(WTF_FRAMEWORKS bmalloc)
 endif ()
 
+if (NOT "${PORT}" STREQUAL "MorphOS")
 if (ATOMICS_REQUIRE_LIBATOMIC)
     list(APPEND WTF_LIBRARIES atomic)
+endif ()
+endif ()
+
+if (COMPILER_IS_GCC_OR_CLANG)
+    if (HAVE_STD_EXPERIMENTAL_FILESYSTEM)
+        list(APPEND WTF_LIBRARIES stdc++fs)
+    endif ()
 endif ()
 
 set(WTF_INTERFACE_LIBRARIES WTF)
 set(WTF_INTERFACE_INCLUDE_DIRECTORIES ${WTF_FRAMEWORK_HEADERS_DIR})
 set(WTF_INTERFACE_DEPENDENCIES WTF_CopyHeaders)
+
+if (CMAKE_CXX_COMPILER MATCHES ".*ppc-morphos.*")
+  list(APPEND WTF_LIBRARIES "-lsyscall -laboxstubs")
+endif ()
 
 WEBKIT_FRAMEWORK_DECLARE(WTF)
 WEBKIT_INCLUDE_CONFIG_FILES_IF_EXISTS()
@@ -569,13 +609,13 @@ if (USE_VERSION_STAMPER)
         VERBATIM)
 endif ()
 
-set(WTF_UNIFIED_SOURCES_SCRIPTS
-    ../Scripts/generate-unified-source-bundles.rb
-)
+file(MAKE_DIRECTORY ${WTF_SCRIPTS_DIR})
+
+message(STATUS "Copying generate-unified-source-bundles.rb to: ${WTF_SCRIPTS_DIR}")
 
 file(COPY
-     ${WTF_UNIFIED_SOURCES_SCRIPTS}
-     DESTINATION ${WTF_SCRIPTS_DIR}
+    ../Scripts/generate-unified-source-bundles.rb
+    DESTINATION ${WTF_SCRIPTS_DIR}
 )
 
 set(WTF_PREFERENCES

@@ -9,6 +9,7 @@
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
+#include <map>
 
 #include "compiler/translator/TranslatorMetalDirect/AstHelpers.h"
 #include "compiler/translator/TranslatorMetalDirect/Debug.h"
@@ -36,6 +37,7 @@ class Rewriter : public TIntermRebuild
     Remapping<TInterfaceBlock> mInterfaceBlocks;
     Remapping<TStructure> mStructures;
     Remapping<TVariable> mVariables;
+    std::map<ImmutableString, std::string> mPredefinedNames;
     std::string mNewNameBuffer;
 
   private:
@@ -44,6 +46,11 @@ class Rewriter : public TIntermRebuild
     {
         if (needsRenaming(object, false))
         {
+            auto it = mPredefinedNames.find(Name(object).rawName());
+            if (it != mPredefinedNames.end())
+            {
+                return ImmutableString(it->second);
+            }
             return mIdGen.createNewName(Name(object)).rawName();
         }
         return Name(object).rawName();
@@ -53,7 +60,7 @@ class Rewriter : public TIntermRebuild
     {
         auto *renamed =
             new TField(const_cast<TType *>(&getRenamedOrOriginal(*field.type())),
-                       maybeCreateNewName(field), field.line(), SymbolType::AngleInternal);
+                       maybeCreateNewName(field), field.line(), field.symbolType());
 
         return renamed;
     }
@@ -71,7 +78,7 @@ class Rewriter : public TIntermRebuild
     const TFunction *createRenamed(const TFunction &function)
     {
         auto *renamed =
-            new TFunction(&mSymbolTable, maybeCreateNewName(function), SymbolType::AngleInternal,
+            new TFunction(&mSymbolTable, maybeCreateNewName(function), function.symbolType(),
                           &getRenamedOrOriginal(function.getReturnType()),
                           function.isKnownToNotHaveSideEffects());
 
@@ -104,7 +111,7 @@ class Rewriter : public TIntermRebuild
         auto *renamed =
             new TInterfaceBlock(&mSymbolTable, maybeCreateNewName(interfaceBlock),
                                 &getRenamedOrOriginal(interfaceBlock.fields()), layoutQualifier,
-                                SymbolType::AngleInternal, interfaceBlock.extension());
+                                interfaceBlock.symbolType(), interfaceBlock.extension());
 
         return renamed;
     }
@@ -113,7 +120,7 @@ class Rewriter : public TIntermRebuild
     {
         auto *renamed =
             new TStructure(&mSymbolTable, maybeCreateNewName(structure),
-                           &getRenamedOrOriginal(structure.fields()), SymbolType::AngleInternal);
+                           &getRenamedOrOriginal(structure.fields()), structure.symbolType());
 
         renamed->setAtGlobalScope(structure.atGlobalScope());
 
@@ -127,6 +134,7 @@ class Rewriter : public TIntermRebuild
         if (const TStructure *structure = type.getStruct())
         {
             renamed = new TType(&getRenamedOrOriginal(*structure), type.isStructSpecifier());
+            renamed->setQualifier(type.getQualifier());
         }
         else if (const TInterfaceBlock *interfaceBlock = type.getInterfaceBlock())
         {
@@ -155,7 +163,7 @@ class Rewriter : public TIntermRebuild
     {
         auto *renamed = new TVariable(&mSymbolTable, maybeCreateNewName(variable),
                                       &getRenamedOrOriginal(variable.getType()),
-                                      SymbolType::AngleInternal, variable.extension());
+                                      variable.symbolType(), variable.extension());
 
         return renamed;
     }
@@ -344,7 +352,7 @@ class Rewriter : public TIntermRebuild
         : TIntermRebuild(compiler, false, true), mKeywords(keywords), mIdGen(idGen)
     {}
 
-    PostResult visitSymbol(TIntermSymbol &symbolNode)
+    PostResult visitSymbolPost(TIntermSymbol &symbolNode)
     {
         const TVariable &var = symbolNode.variable();
         if (needsRenaming(var, true))
@@ -364,6 +372,18 @@ class Rewriter : public TIntermRebuild
             return *new TIntermFunctionPrototype(&rFunc);
         }
         return funcProtoNode;
+    }
+
+    PostResult visitDeclarationPost(TIntermDeclaration &declNode) override
+    {
+        Declaration decl     = ViewDeclaration(declNode);
+        const TVariable &var = decl.symbol.variable();
+        if (needsRenaming(var, true))
+        {
+            const TVariable &rVar = getRenamedOrOriginal(var);
+            return *new TIntermDeclaration(&rVar, decl.initExpr);
+        }
+        return declNode;
     }
 
     PostResult visitFunctionDefinitionPost(TIntermFunctionDefinition &funcDefNode) override
@@ -414,6 +434,11 @@ class Rewriter : public TIntermRebuild
         }
         return aggregateNode;
     }
+
+    const void predefineName(const ImmutableString name, std::string prePopulatedName)
+    {
+        mPredefinedNames[name] = prePopulatedName;
+    }
 };
 
 }  // anonymous namespace
@@ -426,6 +451,11 @@ bool sh::RewriteKeywords(TCompiler &compiler,
                          const std::set<ImmutableString> &keywords)
 {
     Rewriter rewriter(compiler, idGen, keywords);
+    const auto &inputAttrs     = compiler.getAttributes();
+    for(const auto & var : inputAttrs)
+    {
+        rewriter.predefineName(ImmutableString(var.name), var.mappedName);
+    }
     if (!rewriter.rebuildRoot(root))
     {
         return false;

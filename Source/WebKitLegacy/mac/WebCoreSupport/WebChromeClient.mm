@@ -606,7 +606,7 @@ void WebChromeClient::contentsSizeChanged(Frame&, const IntSize&) const
 {
 }
 
-void WebChromeClient::scrollRectIntoView(const IntRect& r) const
+void WebChromeClient::scrollContainingScrollViewsToRevealRect(const IntRect& r) const
 {
     // FIXME: This scrolling behavior should be under the control of the embedding client,
     // perhaps in a delegate method, rather than something WebKit does unconditionally.
@@ -715,10 +715,14 @@ std::unique_ptr<DateTimeChooser> WebChromeClient::createDateTimeChooser(DateTime
 #endif
 
 #if ENABLE(APP_HIGHLIGHTS)
-void WebChromeClient::storeAppHighlight(const WebCore::AppHighlight&) const
+void WebChromeClient::storeAppHighlight(WebCore::AppHighlight&&) const
 {
 }
 #endif
+
+void WebChromeClient::setTextIndicator(const WebCore::TextIndicatorData& indicatorData) const
+{
+}
 
 #if ENABLE(POINTER_LOCK)
 bool WebChromeClient::requestPointerLock()
@@ -946,11 +950,11 @@ void WebChromeClient::triggerRenderingUpdate()
 
 bool WebChromeClient::supportsVideoFullscreen(HTMLMediaElementEnums::VideoFullscreenMode)
 {
-#if PLATFORM(IOS_FAMILY)
-    if (!DeprecatedGlobalSettings::avKitEnabled())
-        return false;
-#endif
+#if !PLATFORM(IOS_FAMILY) || HAVE(AVKIT)
     return true;
+#else
+    return false;
+#endif
 }
 
 #if ENABLE(VIDEO_PRESENTATION_MODE)
@@ -1062,28 +1066,34 @@ void WebChromeClient::exitFullScreenForElement(Element* element)
 
 bool WebChromeClient::wrapCryptoKey(const Vector<uint8_t>& key, Vector<uint8_t>& wrappedKey) const
 {
-    Vector<uint8_t> masterKey;
     SEL selector = @selector(webCryptoMasterKeyForWebView:);
     if ([[m_webView UIDelegate] respondsToSelector:selector]) {
         NSData *keyData = CallUIDelegate(m_webView, selector);
+        Vector<uint8_t> masterKey;
         masterKey.append(static_cast<uint8_t*>(const_cast<void*>([keyData bytes])), [keyData length]);
-    } else if (!getDefaultWebCryptoMasterKey(masterKey))
+        return wrapSerializedCryptoKey(masterKey, key, wrappedKey);
+    }
+    
+    auto masterKey = defaultWebCryptoMasterKey();
+    if (!masterKey)
         return false;
-
-    return wrapSerializedCryptoKey(masterKey, key, wrappedKey);
+    return wrapSerializedCryptoKey(WTFMove(*masterKey), key, wrappedKey);
 }
 
 bool WebChromeClient::unwrapCryptoKey(const Vector<uint8_t>& wrappedKey, Vector<uint8_t>& key) const
 {
-    Vector<uint8_t> masterKey;
     SEL selector = @selector(webCryptoMasterKeyForWebView:);
     if ([[m_webView UIDelegate] respondsToSelector:selector]) {
+        Vector<uint8_t> masterKey;
         NSData *keyData = CallUIDelegate(m_webView, selector);
         masterKey.append(static_cast<uint8_t*>(const_cast<void*>([keyData bytes])), [keyData length]);
-    } else if (!getDefaultWebCryptoMasterKey(masterKey))
-        return false;
+        return unwrapSerializedCryptoKey(masterKey, wrappedKey, key);
+    }
 
-    return unwrapSerializedCryptoKey(masterKey, wrappedKey, key);
+    auto masterKey = defaultWebCryptoMasterKey();
+    if (!masterKey)
+        return false;
+    return unwrapSerializedCryptoKey(WTFMove(*masterKey), wrappedKey, key);
 }
 
 #endif
@@ -1129,7 +1139,7 @@ void WebChromeClient::setMockMediaPlaybackTargetPickerEnabled(bool enabled)
     [m_webView _setMockMediaPlaybackTargetPickerEnabled:enabled];
 }
 
-void WebChromeClient::setMockMediaPlaybackTargetPickerState(const String& name, MediaPlaybackTargetContext::State state)
+void WebChromeClient::setMockMediaPlaybackTargetPickerState(const String& name, MediaPlaybackTargetContext::MockState state)
 {
     [m_webView _setMockMediaPlaybackTargetPickerName:name state:state];
 }

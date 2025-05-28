@@ -26,67 +26,231 @@
 #import "config.h"
 #import "WKDateTimeInputControl.h"
 
-#if PLATFORM(IOS_FAMILY)
+#if PLATFORM(IOS_FAMILY) && !PLATFORM(WATCHOS)
 
+#import "UIKitSPI.h"
 #import "UserInterfaceIdiom.h"
 #import "WKContentView.h"
 #import "WKContentViewInteraction.h"
 #import "WKWebViewPrivateForTesting.h"
 #import "WebPageProxy.h"
-#import <UIKit/UIBarButtonItem.h>
 #import <UIKit/UIDatePicker.h>
 #import <WebCore/LocalizedStrings.h>
 #import <algorithm>
 #import <wtf/RetainPtr.h>
+#import <wtf/SetForScope.h>
 
-@interface WKDateTimeContextMenuViewController : UIViewController
+@class WKDateTimePickerViewController;
+
+@protocol WKDateTimePickerViewControllerDelegate <NSObject>
+- (void)dateTimePickerViewControllerDidPressResetButton:(WKDateTimePickerViewController *)dateTimePickerViewController;
+- (void)dateTimePickerViewControllerDidPressDoneButton:(WKDateTimePickerViewController *)dateTimePickerViewController;
+@end
+
+@interface WKDateTimePickerViewController : UIViewController
+- (instancetype)initWithDatePicker:(UIDatePicker *)datePicker;
+- (void)setDelegate:(id <WKDateTimePickerViewControllerDelegate>)delegate;
+@end
+
+@implementation WKDateTimePickerViewController {
+    CGSize _contentSize;
+
+    RetainPtr<UIDatePicker> _datePicker;
+    WeakObjCPtr<id <WKDateTimePickerViewControllerDelegate>> _delegate;
+}
+
+static const CGFloat kDateTimePickerButtonFontSize = 17;
+static const CGFloat kDateTimePickerToolbarHeight = 44;
+static const CGFloat kDateTimePickerSeparatorHeight = 1;
+static const CGFloat kDateTimePickerViewMargin = 16;
+
+static const CGFloat kDateTimePickerDefaultWidth = 320;
+static const CGFloat kDateTimePickerTimeControlWidth = 218;
+static const CGFloat kDateTimePickerTimeControlHeight = 172;
+
+- (instancetype)initWithDatePicker:(UIDatePicker *)datePicker
+{
+    if (!(self = [super init]))
+        return nil;
+
+    _datePicker = datePicker;
+    [_datePicker setTranslatesAutoresizingMaskIntoConstraints:NO];
+
+    return self;
+}
+
+- (void)setDelegate:(id <WKDateTimePickerViewControllerDelegate>)delegate
+{
+    _delegate = delegate;
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+
+    CGSize contentSize = self.preferredContentSize;
+    CGRect contentFrame = CGRectMake(0, 0, contentSize.width, contentSize.height);
+
+    UIView *contentView = nil;
+#if HAVE(UIBLUREFFECT_STYLE_SYSTEM_MATERIAL)
+    auto backgroundView = adoptNS([[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial]]);
+    [backgroundView setFrame:contentFrame];
+    [self.view addSubview:backgroundView.get()];
+    contentView = [backgroundView contentView];
+#else
+    auto backgroundView = adoptNS([[UIView alloc] initWithFrame:contentFrame]);
+    [backgroundView setBackgroundColor:UIColor.systemBackgroundColor];
+    [self.view addSubview:backgroundView.get()];
+    contentView = backgroundView.get();
+#endif
+
+    [contentView addSubview:_datePicker.get()];
+
+    CGSize datePickerSize = self.preferredDatePickerSize;
+    UIEdgeInsets datePickerInsets = [self datePickerInsets];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [[_datePicker topAnchor] constraintEqualToAnchor:contentView.topAnchor constant:datePickerInsets.top],
+        [[_datePicker leadingAnchor] constraintEqualToAnchor:contentView.leadingAnchor constant:datePickerInsets.left],
+        [[_datePicker widthAnchor] constraintEqualToConstant:datePickerSize.width],
+        [[_datePicker heightAnchor] constraintEqualToConstant:datePickerSize.height],
+    ]];
+
+    auto toolbarView = adoptNS([[UIView alloc] init]);
+    [toolbarView setTranslatesAutoresizingMaskIntoConstraints:NO];
+    [contentView addSubview:toolbarView.get()];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [[toolbarView bottomAnchor] constraintEqualToAnchor:contentView.bottomAnchor],
+        [[toolbarView leadingAnchor] constraintEqualToAnchor:contentView.leadingAnchor],
+        [[toolbarView heightAnchor] constraintEqualToConstant:kDateTimePickerToolbarHeight],
+        [[toolbarView widthAnchor] constraintEqualToAnchor:contentView.widthAnchor],
+    ]];
+
+    auto separatorView = adoptNS([[UIView alloc] init]);
+    [separatorView setBackgroundColor:UIColor.separatorColor];
+
+    NSString *resetString = WEB_UI_STRING_KEY("Reset", "Reset Button Date/Time Context Menu", "Reset button in date input context menu");
+    UIButton *resetButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    resetButton.titleLabel.font = [UIFont systemFontOfSize:kDateTimePickerButtonFontSize];
+    [resetButton setTitle:resetString forState:UIControlStateNormal];
+    [resetButton addTarget:self action:@selector(resetButtonPressed:) forControlEvents:UIControlEventTouchUpInside];
+
+    NSString *doneString = WebCore::formControlDoneButtonTitle();
+    UIButton *doneButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    doneButton.titleLabel.font = [UIFont boldSystemFontOfSize:kDateTimePickerButtonFontSize];
+    [doneButton setTitle:doneString forState:UIControlStateNormal];
+    [doneButton addTarget:self action:@selector(doneButtonPressed:) forControlEvents:UIControlEventTouchUpInside];
+
+    for (UIView *subview in @[separatorView.get(), resetButton, doneButton]) {
+        subview.translatesAutoresizingMaskIntoConstraints = NO;
+        [toolbarView addSubview:subview];
+    }
+
+    [NSLayoutConstraint activateConstraints:@[
+        [[separatorView topAnchor] constraintEqualToAnchor:[toolbarView topAnchor]],
+        [[separatorView leadingAnchor] constraintEqualToAnchor:[toolbarView leadingAnchor]],
+        [[separatorView heightAnchor] constraintEqualToConstant:kDateTimePickerSeparatorHeight],
+        [[separatorView widthAnchor] constraintEqualToAnchor:[toolbarView widthAnchor]],
+    ]];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [resetButton.leadingAnchor constraintEqualToAnchor:[toolbarView leadingAnchor] constant:kDateTimePickerViewMargin],
+        [resetButton.topAnchor constraintEqualToAnchor:[toolbarView topAnchor]],
+        [resetButton.bottomAnchor constraintEqualToAnchor:[toolbarView bottomAnchor]],
+    ]];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [doneButton.trailingAnchor constraintEqualToAnchor:[toolbarView trailingAnchor] constant:-kDateTimePickerViewMargin],
+        [doneButton.topAnchor constraintEqualToAnchor:[toolbarView topAnchor]],
+        [doneButton.bottomAnchor constraintEqualToAnchor:[toolbarView bottomAnchor]],
+    ]];
+}
+
+- (void)resetButtonPressed:(id)sender
+{
+    [_delegate dateTimePickerViewControllerDidPressResetButton:self];
+}
+
+- (void)doneButtonPressed:(id)sender
+{
+    [_delegate dateTimePickerViewControllerDidPressDoneButton:self];
+}
+
+- (UIEdgeInsets)datePickerInsets
+{
+#if HAVE(UIDATEPICKER_INSETS)
+    UIEdgeInsets expectedInsets = UIEdgeInsetsMake(kDateTimePickerViewMargin, kDateTimePickerViewMargin, kDateTimePickerViewMargin, kDateTimePickerViewMargin);
+    UIEdgeInsets appliedInsets = [_datePicker _appliedInsetsToEdgeOfContent];
+    return UIEdgeInsetsSubtract(expectedInsets, appliedInsets, UIRectEdgeAll);
+#else
+    return UIEdgeInsetsZero;
+#endif
+}
+
+- (CGSize)preferredDatePickerSize
+{
+    CGSize fittingSize = UILayoutFittingCompressedSize;
+    UILayoutPriority horizontalPriority = UILayoutPriorityFittingSizeLevel;
+    UILayoutPriority verticalPriority = UILayoutPriorityFittingSizeLevel;
+    if ([_datePicker datePickerMode] != UIDatePickerModeTime)
+        fittingSize.width = kDateTimePickerDefaultWidth;
+    else {
+        fittingSize.width = kDateTimePickerTimeControlWidth;
+        fittingSize.height = kDateTimePickerTimeControlHeight;
+        horizontalPriority = UILayoutPriorityRequired;
+        verticalPriority = UILayoutPriorityRequired;
+    }
+
+    CGSize layoutSize = [_datePicker systemLayoutSizeFittingSize:fittingSize withHorizontalFittingPriority:horizontalPriority verticalFittingPriority:verticalPriority];
+    return layoutSize;
+}
+
+- (CGSize)preferredContentSize
+{
+    // Cache the content size to workaround rdar://74749942.
+    if (CGSizeEqualToSize(_contentSize, CGSizeZero)) {
+        CGSize datePickerSize = [self preferredDatePickerSize];
+        UIEdgeInsets datePickerInsets = [self datePickerInsets];
+
+        _contentSize = CGSizeMake(datePickerSize.width + datePickerInsets.left + datePickerInsets.right, datePickerSize.height + kDateTimePickerToolbarHeight + datePickerInsets.top + datePickerInsets.bottom);
+    }
+
+    return _contentSize;
+}
+
 @end
 
 @interface WKDateTimePicker : NSObject<WKFormControl
-#if USE(UICONTEXTMENU)
+#if !HAVE(UIDATEPICKER_OVERLAY_PRESENTATION) && USE(UICONTEXTMENU)
 , UIContextMenuInteractionDelegate
+, WKDateTimePickerViewControllerDelegate
 #endif
 > {
-    RetainPtr<UIDatePicker> _datePicker;
     NSString *_formatString;
     RetainPtr<NSString> _initialValue;
     NSTimeInterval _initialValueAsNumber;
     BOOL _shouldRemoveTimeZoneInformation;
-    BOOL _isTimeInput;
     WKContentView *_view;
     CGPoint _interactionPoint;
-    RetainPtr<WKDateTimeContextMenuViewController> _viewController;
-#if USE(UICONTEXTMENU)
+    RetainPtr<UIDatePicker> _datePicker;
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+    BOOL _isDismissingDatePicker;
+
+    RetainPtr<_UIDatePickerOverlayPresentation> _datePickerPresentation;
+    RetainPtr<UIToolbar> _accessoryView;
+#elif USE(UICONTEXTMENU)
     RetainPtr<UIContextMenuInteraction> _dateTimeContextMenuInteraction;
+    RetainPtr<WKDateTimePickerViewController> _dateTimePickerViewController;
 #endif
-    BOOL _presenting;
-    BOOL _preservingFocus;
 }
+
 - (instancetype)initWithView:(WKContentView *)view datePickerMode:(UIDatePickerMode)mode;
-- (WKDateTimeContextMenuViewController *)viewController;
+
 @property (nonatomic, readonly) NSString *calendarType;
 @property (nonatomic, readonly) double hour;
 @property (nonatomic, readonly) double minute;
 - (void)setHour:(NSInteger)hour minute:(NSInteger)minute;
-@end
-
-@implementation WKDateTimeContextMenuViewController
-
-- (CGSize)preferredContentSize
-{
-    // FIXME: Workaround, should be able to be readdressed after <rdar://problem/64143534>
-    UIView *view = self.view.subviews[0];
-    if (UIEdgeInsetsEqualToEdgeInsets(view.layoutMargins, UIEdgeInsetsZero)) {
-        view.translatesAutoresizingMaskIntoConstraints = NO;
-        [view layoutIfNeeded];
-        view.translatesAutoresizingMaskIntoConstraints = YES;
-        view.layoutMargins = UIEdgeInsetsMake(16, 16, 16, 16);
-    }
-    auto size = [view systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
-    
-    size.width = std::max<CGFloat>(size.width, 250.0);
-    return size;
-}
 
 @end
 
@@ -97,23 +261,17 @@ static NSString * const kMonthFormatString = @"yyyy-MM"; // "2011-01".
 static NSString * const kTimeFormatString = @"HH:mm"; // "13:45".
 static const NSTimeInterval kMillisecondsPerSecond = 1000;
 
-#if HAVE(UIDATEPICKER_STYLE)
-- (UIDatePickerStyle)datePickerStyle
-{
-    if ([_view focusedElementInformation].elementType == WebKit::InputType::Month)
-        return UIDatePickerStyleWheels;
-    return UIDatePickerStyleInline;
-}
-#endif
+static const CGFloat kDateTimePickerControlMargin = 6;
 
 - (id)initWithView:(WKContentView *)view datePickerMode:(UIDatePickerMode)mode
 {
     if (!(self = [super init]))
         return nil;
+
     _view = view;
     _interactionPoint = [_view lastInteractionLocation];
     _shouldRemoveTimeZoneInformation = NO;
-    _isTimeInput = NO;
+
     switch (view.focusedElementInformation.elementType) {
     case WebKit::InputType::Date:
         _formatString = kDateFormatString;
@@ -123,7 +281,6 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
         break;
     case WebKit::InputType::Time:
         _formatString = kTimeFormatString;
-        _isTimeInput = YES;
         break;
     case WebKit::InputType::DateTimeLocal:
         _shouldRemoveTimeZoneInformation = YES;
@@ -131,86 +288,159 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
     default:
         break;
     }
-    
+
     _datePicker = adoptNS([[UIDatePicker alloc] init]);
+    [_datePicker addTarget:self action:@selector(datePickerChanged:) forControlEvents:UIControlEventValueChanged];
+
+    if ([self shouldForceGregorianCalendar])
+        [_datePicker setCalendar:[NSCalendar calendarWithIdentifier:NSCalendarIdentifierGregorian]];
 
     [_datePicker setDatePickerMode:mode];
-    [_datePicker setHidden:NO];
-    
+
 #if HAVE(UIDATEPICKER_STYLE)
-    [_datePicker setPreferredDatePickerStyle:[self datePickerStyle]];
+    if (mode == UIDatePickerModeTime || mode == (UIDatePickerMode)UIDatePickerModeYearAndMonth)
+        [_datePicker setPreferredDatePickerStyle:UIDatePickerStyleWheels];
+    else
+        [_datePicker setPreferredDatePickerStyle:UIDatePickerStyleInline];
 #endif
-    if ([self shouldPresentGregorianCalendar:view.focusedElementInformation])
-        _datePicker.get().calendar = [NSCalendar calendarWithIdentifier:NSCalendarIdentifierGregorian];
-    
-    [_datePicker addTarget:self action:@selector(_dateChangeHandler:) forControlEvents:UIControlEventValueChanged];
-    
+
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+    _isDismissingDatePicker = NO;
+
+    _accessoryView = adoptNS([[UIToolbar alloc] init]);
+    [[_accessoryView heightAnchor] constraintEqualToConstant:kDateTimePickerToolbarHeight].active = YES;
+
+#if HAVE(UITOOLBAR_STANDARD_APPEARANCE)
+    auto toolbarAppearance = adoptNS([[UIToolbarAppearance alloc] init]);
+    [toolbarAppearance setBackgroundEffect:nil];
+    [_accessoryView setStandardAppearance:toolbarAppearance.get()];
+#endif
+
+    auto resetButton = adoptNS([[UIBarButtonItem alloc] initWithTitle:WEB_UI_STRING_KEY("Reset", "Reset Button Date/Time Context Menu", "Reset button in date input context menu") style:UIBarButtonItemStylePlain target:self action:@selector(reset:)]);
+    auto doneButton = adoptNS([[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(done:)]);
+
+    [_accessoryView setItems:@[ resetButton.get(), UIBarButtonItem.flexibleSpaceItem, doneButton.get() ]];
+#elif USE(UICONTEXTMENU)
+    _dateTimePickerViewController = adoptNS([[WKDateTimePickerViewController alloc] initWithDatePicker:_datePicker.get()]);
+    [_dateTimePickerViewController setDelegate:self];
+#endif
+
     return self;
 }
 
-#if USE(UICONTEXTMENU)
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+
+- (void)handleDatePickerPresentationDismissal
+{
+    if (_isDismissingDatePicker)
+        return;
+
+    SetForScope<BOOL> isDismissingDatePicker { _isDismissingDatePicker, YES };
+    [_view accessoryDone];
+}
+
+- (void)removeDatePickerPresentation
+{
+    if (_datePickerPresentation) {
+        if (!_isDismissingDatePicker) {
+            SetForScope<BOOL> isDismissingDatePicker { _isDismissingDatePicker, YES };
+            [_datePickerPresentation dismissPresentationAnimated:NO];
+        }
+
+        _datePickerPresentation = nil;
+        [_view.webView _didDismissContextMenu];
+    }
+}
+
+#elif USE(UICONTEXTMENU)
+
+- (UIEdgeInsets)_preferredEdgeInsetsForDateTimePicker
+{
+    CGSize pickerSize = [_dateTimePickerViewController preferredContentSize];
+    CGRect windowBounds = _view.textEffectsWindow.bounds;
+    CGRect elementFrameInWindowCoordinates = [_view convertRect:_view.focusedElementInformation.interactionRect toView:nil];
+
+    // Attempt to present the date picker in a way that does not obscure the element.
+
+    CGFloat topInsetForBottomAlignment = CGRectGetMaxY(elementFrameInWindowCoordinates) + kDateTimePickerControlMargin;
+    CGFloat rightInsetForRightAlignment = CGRectGetWidth(windowBounds) - CGRectGetMaxX(elementFrameInWindowCoordinates);
+
+    BOOL canPresentBelowElement = (topInsetForBottomAlignment + pickerSize.height) < CGRectGetHeight(windowBounds);
+    BOOL canAlignToElementRight = (rightInsetForRightAlignment + pickerSize.width) < CGRectGetWidth(windowBounds);
+
+    // Try to present the picker from the bottom right of the element.
+    if (canPresentBelowElement && canAlignToElementRight)
+        return UIEdgeInsetsMake(topInsetForBottomAlignment, 0, 0, rightInsetForRightAlignment);
+
+    CGFloat leftInsetForLeftAlignment = CGRectGetMinX(elementFrameInWindowCoordinates);
+
+    BOOL canAlignToElementLeft = (leftInsetForLeftAlignment + pickerSize.width) <= CGRectGetWidth(windowBounds);
+
+    // Try to present the picker from the bottom left of the element.
+    if (canPresentBelowElement && canAlignToElementLeft)
+        return UIEdgeInsetsMake(topInsetForBottomAlignment, leftInsetForLeftAlignment, 0, 0);
+
+    // Try to present the picker underneath the element.
+    if (canPresentBelowElement)
+        return UIEdgeInsetsMake(topInsetForBottomAlignment, 0, 0, 0);
+
+    CGFloat bottomInsetForTopAlignment = CGRectGetHeight(windowBounds) - CGRectGetMinY(elementFrameInWindowCoordinates) + kDateTimePickerControlMargin;
+
+    BOOL canPresentAboveElement = (bottomInsetForTopAlignment + pickerSize.height) < CGRectGetHeight(windowBounds);
+
+    // Try to present the picker from the top right of the element.
+    if (canPresentAboveElement && canAlignToElementRight)
+        return UIEdgeInsetsMake(0, 0, bottomInsetForTopAlignment, rightInsetForRightAlignment);
+
+    // Try to present the picker from the top left of the element.
+    if (canPresentAboveElement && canAlignToElementLeft)
+        return UIEdgeInsetsMake(0, leftInsetForLeftAlignment, bottomInsetForTopAlignment, 0);
+
+    // Try to present the picker above the element.
+    if (canPresentAboveElement)
+        return UIEdgeInsetsMake(0, 0, bottomInsetForTopAlignment, 0);
+
+    CGFloat rightInsetForPresentingBesideElementLeft = CGRectGetWidth(windowBounds) - CGRectGetMinX(elementFrameInWindowCoordinates) + kDateTimePickerControlMargin;
+    BOOL canPresentBesideElementLeft = (rightInsetForPresentingBesideElementLeft + pickerSize.width) < CGRectGetWidth(windowBounds);
+
+    // Try to present the picker to the left of the element.
+    if (canPresentBesideElementLeft)
+        return UIEdgeInsetsMake(0, 0, 0, rightInsetForPresentingBesideElementLeft);
+
+    CGFloat leftInsetForPresentingBesideElementRight = CGRectGetMaxX(elementFrameInWindowCoordinates) + kDateTimePickerControlMargin;
+    BOOL canPresentBesideElementRight = (leftInsetForPresentingBesideElementRight + pickerSize.width) < CGRectGetWidth(windowBounds);
+
+    // Try to present the picker to the right of the element.
+    if (canPresentBesideElementRight)
+        return UIEdgeInsetsMake(0, leftInsetForPresentingBesideElementRight, 0, 0);
+
+    // Present the picker from the center of the element.
+    return UIEdgeInsetsZero;
+}
 
 - (UITargetedPreview *)contextMenuInteraction:(UIContextMenuInteraction *)interaction previewForHighlightingMenuWithConfiguration:(UIContextMenuConfiguration *)configuration
 {
-    return [_view _createTargetedContextMenuHintPreviewIfPossible];
+    return [_view _createTargetedContextMenuHintPreviewForFocusedElement];
 }
 
 - (_UIContextMenuStyle *)_contextMenuInteraction:(UIContextMenuInteraction *)interaction styleForMenuWithConfiguration:(UIContextMenuConfiguration *)configuration
 {
     _UIContextMenuStyle *style = [_UIContextMenuStyle defaultStyle];
     style.hasInteractivePreview = YES;
-    style.preferredLayout = _UIContextMenuLayoutAutomatic;
+    style.preferredBackgroundEffects = @[ [UIVisualEffect emptyEffect] ];
+    style.preferredLayout = _UIContextMenuLayoutPreviewOnly;
+#if HAVE(UICONTEXTMENU_STYLE_CUSTOM_PRESENTATION)
+    style.prefersCenteredPreviewWhenActionsAreAbsent = NO;
+    style.ignoresDefaultSizingRules = YES;
+    style.preferredEdgeInsets = [self _preferredEdgeInsetsForDateTimePicker];
+#endif
     return style;
 }
 
 - (UIContextMenuConfiguration *)contextMenuInteraction:(UIContextMenuInteraction *)interaction configurationForMenuAtLocation:(CGPoint)location
 {
     return [UIContextMenuConfiguration configurationWithIdentifier:@"_UIDatePickerCompactEditor" previewProvider:^{
-        [_viewController setView:nil];
-        _viewController = adoptNS([[WKDateTimeContextMenuViewController alloc] init]);
-        RetainPtr<UINavigationController> navigationController = adoptNS([[UINavigationController alloc] initWithRootViewController:_viewController.get()]);
-        
-        NSString *resetString = WEB_UI_STRING_KEY("Reset", "Reset Button Date/Time Context Menu", "Reset button in date input context menu");
-        NSString *okString = WEB_UI_STRING_KEY("OK", "OK (OK button title in date/time picker)", "Title of the OK button in date/time form controls.");
-
-        RetainPtr<UIBarButtonItem> okBarButton = adoptNS([[UIBarButtonItem alloc] initWithTitle:okString style:UIBarButtonItemStyleDone target:self action:@selector(ok:)]);
-        RetainPtr<UIBarButtonItem> blankBarButton = adoptNS([[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil]);
-        RetainPtr<UIBarButtonItem> resetBarButton = adoptNS([[UIBarButtonItem alloc] initWithTitle:resetString style:UIBarButtonItemStylePlain target:self action:@selector(reset:)]);
-        
-        [_viewController setToolbarItems:@[resetBarButton.get(), blankBarButton.get(), okBarButton.get()]];
-        [navigationController setToolbarHidden:NO];
-        
-        auto centeringView = adoptNS([[UIView alloc] init]);
-        
-        [centeringView addSubview:_datePicker.get()];
-        
-        _datePicker.get().translatesAutoresizingMaskIntoConstraints = NO;
-        auto widthConstraint = [[centeringView widthAnchor] constraintGreaterThanOrEqualToAnchor:[_datePicker widthAnchor]];
-        auto heightConstraint = [[centeringView heightAnchor] constraintEqualToAnchor:[_datePicker heightAnchor]];
-        auto horizontalConstraint = [[centeringView centerXAnchor] constraintEqualToAnchor:[_datePicker centerXAnchor]];
-        auto verticalConstraint = [[centeringView centerYAnchor] constraintEqualToAnchor:[_datePicker centerYAnchor]];
-
-        [NSLayoutConstraint activateConstraints:@[verticalConstraint, horizontalConstraint, widthConstraint, heightConstraint]];
-
-        [_viewController setView:centeringView.get()];
-
-        NSString *titleText = _view.inputLabelText;
-        if (![titleText isEqual:@""]) {
-            RetainPtr<UILabel> title = adoptNS([[UILabel alloc] init]);
-            [title setFont:[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote]];
-            [title setText:titleText];
-            [title setTextColor:[UIColor secondaryLabelColor]];
-            [title setTextAlignment:NSTextAlignmentNatural];
-            RetainPtr<UIBarButtonItem> titleButton = adoptNS([[UIBarButtonItem alloc] initWithCustomView:title.get()]);
-            [_viewController navigationItem].leftBarButtonItem = titleButton.get();
-        } else
-            [navigationController setNavigationBarHidden:YES animated:NO];
-        
-        [navigationController navigationBar].translucent = NO;
-        [navigationController navigationBar].barTintColor = [UIColor systemBackgroundColor];
-        [navigationController toolbar].translucent = NO;
-        [navigationController toolbar].barTintColor = [UIColor systemBackgroundColor];
-        return navigationController.get();
+        return _dateTimePickerViewController.get();
     } actionProvider:nil];
 }
 
@@ -239,7 +469,7 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
     if (_dateTimeContextMenuInteraction) {
         [_view removeInteraction:_dateTimeContextMenuInteraction.get()];
         _dateTimeContextMenuInteraction = nil;
-        [_view _removeContextMenuViewIfPossible];
+        [_view _removeContextMenuHintContainerIfPossible];
         [_view.webView _didDismissContextMenu];
     }
 }
@@ -252,69 +482,75 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
     }
 }
 
-- (void)showDateTimePicker
+- (void)dateTimePickerViewControllerDidPressResetButton:(WKDateTimePickerViewController *)dateTimePickerViewController
 {
-#if HAVE(UICONTEXTMENU_LOCATION)
-    [self ensureContextMenuInteraction];
-    [_dateTimeContextMenuInteraction _presentMenuAtLocation:_interactionPoint];
-#endif
+    [self reset:nil];
+}
+
+- (void)dateTimePickerViewControllerDidPressDoneButton:(WKDateTimePickerViewController *)dateTimePickerViewController
+{
+    [self done:nil];
 }
 
 #endif
+
+- (void)showDateTimePicker
+{
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+    _datePickerPresentation = adoptNS([[_UIDatePickerOverlayPresentation alloc] initWithSourceView:_view]);
+    [_datePickerPresentation setSourceRect:_view.focusedElementInformation.interactionRect];
+    [_datePickerPresentation setAccessoryView:_accessoryView.get()];
+    [_datePickerPresentation setAccessoryViewIgnoresDefaultInsets:YES];
+    [_datePickerPresentation setOverlayAnchor:_UIDatePickerOverlayAnchorSourceRect];
+
+    [_datePickerPresentation presentDatePicker:_datePicker.get() onDismiss:[weakSelf = WeakObjCPtr<WKDateTimePicker>(self)](BOOL) {
+        if (auto strongSelf = weakSelf.get())
+            [strongSelf handleDatePickerPresentationDismissal];
+    }];
+
+    [_view.webView _didShowContextMenu];
+#elif USE(UICONTEXTMENU) && HAVE(UICONTEXTMENU_LOCATION)
+    [self ensureContextMenuInteraction];
+    [_view presentContextMenu:_dateTimeContextMenuInteraction.get() atLocation:_interactionPoint];
+#endif
+}
+
+- (void)datePickerChanged:(id)sender
+{
+    [self _dateChanged];
+}
 
 - (void)reset:(id)sender
 {
     [self setDateTimePickerToInitialValue];
-    [_view page]->setFocusedElementValue(String());
+    [_view page]->setFocusedElementValue([_view focusedElementInformation].elementContext, String());
 }
 
-- (void)ok:(id)sender
+- (void)done:(id)sender
 {
-#if USE(UICONTEXTMENU)
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+    [_datePickerPresentation dismissPresentationAnimated:YES];
+#elif USE(UICONTEXTMENU)
     [_dateTimeContextMenuInteraction dismissMenu];
 #endif
 }
 
-- (NSString *)calendarType
+- (BOOL)shouldForceGregorianCalendar
 {
-    return [_datePicker calendar].calendarIdentifier;
-}
-
-- (double)hour
-{
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    NSDateComponents *components = [calendar components:NSCalendarUnitHour fromDate:[_datePicker date]];
-
-    return [components hour];
-}
-
-- (double)minute
-{
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    NSDateComponents *components = [calendar components:NSCalendarUnitMinute fromDate:[_datePicker date]];
-
-    return [components minute];
+    auto autofillFieldName = _view.focusedElementInformation.autofillFieldName;
+    return autofillFieldName == WebCore::AutofillFieldName::CcExpMonth
+        || autofillFieldName == WebCore::AutofillFieldName::CcExp
+        || autofillFieldName == WebCore::AutofillFieldName::CcExpYear;
 }
 
 - (void)dealloc
 {
-    [_datePicker removeTarget:self action:NULL forControlEvents:UIControlEventValueChanged];
-#if USE(UICONTEXTMENU)
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+    [self removeDatePickerPresentation];
+#elif USE(UICONTEXTMENU)
     [self removeContextMenuInteraction];
 #endif
     [super dealloc];
-}
-
-- (BOOL)shouldPresentGregorianCalendar:(const WebKit::FocusedElementInformation&)nodeInfo
-{
-    return nodeInfo.autofillFieldName == WebCore::AutofillFieldName::CcExpMonth
-        || nodeInfo.autofillFieldName == WebCore::AutofillFieldName::CcExp
-        || nodeInfo.autofillFieldName == WebCore::AutofillFieldName::CcExpYear;
-}
-
-- (UIView *)controlView
-{
-    return _datePicker.get();
 }
 
 - (NSInteger)_timeZoneOffsetFromGMT:(NSDate *)date
@@ -322,33 +558,33 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
     if (!_shouldRemoveTimeZoneInformation)
         return 0;
 
-    return [_datePicker.get().timeZone secondsFromGMTForDate:date];
+    return [[_datePicker timeZone] secondsFromGMTForDate:date];
 }
 
 - (NSString *)_sanitizeInputValueForFormatter:(NSString *)value
 {
     // The "time" input type may have seconds and milliseconds information which we
     // just ignore. For example: "01:56:20.391" is shortened to just "01:56".
-    if (_isTimeInput)
+    if (_view.focusedElementInformation.elementType == WebKit::InputType::Time)
         return [value substringToIndex:[kTimeFormatString length]];
 
     return value;
-}
-
-- (void)_dateChangedSetAsNumber
-{
-    NSDate *date = [_datePicker date];
-    [_view updateFocusedElementValueAsNumber:([date timeIntervalSince1970] + [self _timeZoneOffsetFromGMT:date]) * kMillisecondsPerSecond];
 }
 
 - (RetainPtr<NSDateFormatter>)dateFormatterForPicker
 {
     RetainPtr<NSLocale> englishLocale = adoptNS([[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]);
     RetainPtr<NSDateFormatter> dateFormatter = adoptNS([[NSDateFormatter alloc] init]);
-    [dateFormatter setTimeZone:_datePicker.get().timeZone];
+    [dateFormatter setTimeZone:[_datePicker timeZone]];
     [dateFormatter setDateFormat:_formatString];
     [dateFormatter setLocale:englishLocale.get()];
     return dateFormatter;
+}
+
+- (void)_dateChangedSetAsNumber
+{
+    NSDate *date = [_datePicker date];
+    [_view updateFocusedElementValueAsNumber:(date.timeIntervalSince1970 + [self _timeZoneOffsetFromGMT:date]) * kMillisecondsPerSecond];
 }
 
 - (void)_dateChangedSetAsString
@@ -370,11 +606,6 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
         [self _dateChangedSetAsNumber];
 }
 
-- (void)_dateChangeHandler:(id)sender
-{
-    [self _dateChanged];
-}
-
 - (void)setDateTimePickerToInitialValue
 {
     if ([_initialValue isEqual: @""]) {
@@ -394,33 +625,59 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
     }
 }
 
+- (UIView *)controlView
+{
+    return nil;
+}
+
 - (void)controlBeginEditing
 {
-    if (_presenting)
-        return;
-
-    _presenting = YES;
-
     auto elementType = _view.focusedElementInformation.elementType;
     if (elementType == WebKit::InputType::Time || elementType == WebKit::InputType::DateTimeLocal)
         [_view startRelinquishingFirstResponderToFocusedElement];
 
     // Set the time zone in case it changed.
-    _datePicker.get().timeZone = [NSTimeZone localTimeZone];
+    [_datePicker setTimeZone:NSTimeZone.localTimeZone];
 
     // Currently no value for the <input>. Start the picker with the current time.
     // Also, update the actual <input> value.
     _initialValue = _view.focusedElementInformation.value;
     _initialValueAsNumber = _view.focusedElementInformation.valueAsNumber;
     [self setDateTimePickerToInitialValue];
-    
-#if USE(UICONTEXTMENU)
-    WebKit::InteractionInformationRequest positionInformationRequest { WebCore::IntPoint(_view.focusedElementInformation.lastInteractionLocation) };
-    [_view doAfterPositionInformationUpdate:^(WebKit::InteractionInformationAtPosition interactionInformation) {
-        [self showDateTimePicker];
-    } forRequest:positionInformationRequest];
-#endif
 
+    [self showDateTimePicker];
+}
+
+- (void)controlEndEditing
+{
+    [_view stopRelinquishingFirstResponderToFocusedElement];
+
+#if HAVE(UIDATEPICKER_OVERLAY_PRESENTATION)
+    [self removeDatePickerPresentation];
+#elif USE(UICONTEXTMENU)
+    [self removeContextMenuInteraction];
+#endif
+}
+
+- (NSString *)calendarType
+{
+    return [_datePicker calendar].calendarIdentifier;
+}
+
+- (double)hour
+{
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [calendar components:NSCalendarUnitHour fromDate:[_datePicker date]];
+
+    return components.hour;
+}
+
+- (double)minute
+{
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [calendar components:NSCalendarUnitMinute fromDate:[_datePicker date]];
+
+    return components.minute;
 }
 
 - (void)setHour:(NSInteger)hour minute:(NSInteger)minute
@@ -430,21 +687,6 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
     [self _dateChanged];
 }
 
-- (WKDateTimeContextMenuViewController *)viewController
-{
-    return _viewController.get();
-}
-
-- (void)controlEndEditing
-{
-    _presenting = NO;
-
-    [_view stopRelinquishingFirstResponderToFocusedElement];
-
-#if USE(UICONTEXTMENU)
-    [self removeContextMenuInteraction];
-#endif
-}
 @end
 
 @implementation WKDateTimeInputControl
@@ -507,4 +749,4 @@ static const NSTimeInterval kMillisecondsPerSecond = 1000;
 
 @end
 
-#endif // PLATFORM(IOS_FAMILY)
+#endif // PLATFORM(IOS_FAMILY) && !PLATFORM(WATCHOS)

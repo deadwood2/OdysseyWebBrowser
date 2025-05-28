@@ -59,7 +59,7 @@ private:
 
     // CachedRawResourceClient
     void responseReceived(CachedResource&, const ResourceResponse&, CompletionHandler<void()>&&) final;
-    void dataReceived(CachedResource&, const char*, int) final;
+    void dataReceived(CachedResource&, const uint8_t*, int) final;
     void notifyFinished(CachedResource&, const NetworkLoadMetrics&) final;
 
     void fulfillRequestWithResource(CachedResource&);
@@ -128,7 +128,7 @@ void CachedResourceMediaLoader::notifyFinished(CachedResource& resource, const N
     m_parent.loadFinished();
 }
 
-void CachedResourceMediaLoader::dataReceived(CachedResource& resource, const char*, int)
+void CachedResourceMediaLoader::dataReceived(CachedResource& resource, const uint8_t*, int)
 {
     ASSERT(&resource == m_resource);
     if (auto* data = resource.resourceBuffer())
@@ -154,7 +154,7 @@ private:
     void redirectReceived(PlatformMediaResource&, ResourceRequest&& request, const ResourceResponse&, CompletionHandler<void(ResourceRequest&&)>&& completionHandler) final { completionHandler(WTFMove(request)); }
     bool shouldCacheResponse(PlatformMediaResource&, const ResourceResponse&) final { return false; }
     void dataSent(PlatformMediaResource&, unsigned long long, unsigned long long) final { }
-    void dataReceived(PlatformMediaResource&, const char*, int) final;
+    void dataReceived(PlatformMediaResource&, const uint8_t*, int) final;
     void accessControlCheckFailed(PlatformMediaResource&, const ResourceError& error) final { loadFailed(error); }
     void loadFailed(PlatformMediaResource&, const ResourceError& error) final { loadFailed(error); }
     void loadFinished(PlatformMediaResource&, const NetworkLoadMetrics&) final { loadFinished(); }
@@ -209,13 +209,57 @@ void PlatformResourceMediaLoader::loadFinished()
     m_parent.loadFinished();
 }
 
-void PlatformResourceMediaLoader::dataReceived(PlatformMediaResource&, const char* data, int size)
+void PlatformResourceMediaLoader::dataReceived(PlatformMediaResource&, const uint8_t* data, int size)
 {
     if (!m_buffer)
         m_buffer = SharedBuffer::create(data, size);
     else
         m_buffer->append(data, size);
     m_parent.newDataStoredInSharedBuffer(*m_buffer);
+}
+
+class DataURLResourceMediaLoader : public CanMakeWeakPtr<DataURLResourceMediaLoader> {
+    WTF_MAKE_FAST_ALLOCATED;
+public:
+    DataURLResourceMediaLoader(WebCoreAVFResourceLoader&, ResourceRequest&&);
+
+private:
+    WebCoreAVFResourceLoader& m_parent;
+    std::unique_ptr<ResourceResponse> m_response;
+    RefPtr<SharedBuffer> m_buffer;
+};
+
+DataURLResourceMediaLoader::DataURLResourceMediaLoader(WebCoreAVFResourceLoader& parent, ResourceRequest&& request)
+    : m_parent(parent)
+{
+    ASSERT(request.url().protocolIsData());
+
+    if (request.url().protocolIsData()) {
+        auto mimeType = mimeTypeFromDataURL(request.url().string());
+        auto nsData = adoptNS([[NSData alloc] initWithContentsOfURL:request.url()]);
+        ASSERT(nsData);
+        m_buffer = SharedBuffer::create(nsData.get());
+        m_response = WTF::makeUnique<ResourceResponse>(request.url(), mimeType, m_buffer->size(), emptyString());
+    }
+
+    callOnMainThread([this, weakThis = makeWeakPtr(*this)] {
+        if (!weakThis)
+            return;
+
+        if (!m_buffer || !m_response) {
+            m_parent.loadFailed(ResourceError(ResourceError::Type::General));
+            return;
+        }
+        m_parent.responseReceived(*m_response);
+        if (!weakThis)
+            return;
+
+        m_parent.newDataStoredInSharedBuffer(*m_buffer);
+        if (!weakThis)
+            return;
+
+        m_parent.loadFinished();
+    });
 }
 
 Ref<WebCoreAVFResourceLoader> WebCoreAVFResourceLoader::create(MediaPlayerPrivateAVFoundationObjC* parent, AVAssetResourceLoadingRequest *avRequest)
@@ -238,13 +282,25 @@ WebCoreAVFResourceLoader::~WebCoreAVFResourceLoader()
 
 void WebCoreAVFResourceLoader::startLoading()
 {
-    if (m_resourceMediaLoader || m_platformMediaLoader || !m_parent)
+    if (m_dataURLMediaLoader || m_resourceMediaLoader || m_platformMediaLoader || !m_parent)
         return;
 
     NSURLRequest *nsRequest = [m_avRequest.get() request];
 
     ResourceRequest request(nsRequest);
     request.setPriority(ResourceLoadPriority::Low);
+
+    if (AVAssetResourceLoadingDataRequest *dataRequest = [m_avRequest dataRequest]; dataRequest.requestedLength
+        && !request.hasHTTPHeaderField(HTTPHeaderName::Range)
+        && !request.url().protocolIsBlob()) {
+        String rangeEnd = dataRequest.requestsAllDataToEndOfResource ? "*"_s : makeString(dataRequest.requestedOffset + dataRequest.requestedLength - 1);
+        request.addHTTPHeaderField(HTTPHeaderName::Range, makeString("bytes=", dataRequest.requestedOffset, '-', rangeEnd));
+    }
+
+    if (request.url().protocolIsData()) {
+        m_dataURLMediaLoader = WTF::makeUnique<DataURLResourceMediaLoader>(*this, WTFMove(request));
+        return;
+    }
 
     if (auto* loader = m_parent->player()->cachedResourceLoader()) {
         m_resourceMediaLoader = CachedResourceMediaLoader::create(*this, *loader, ResourceRequest(request));
@@ -264,6 +320,7 @@ void WebCoreAVFResourceLoader::startLoading()
 
 void WebCoreAVFResourceLoader::stopLoading()
 {
+    m_dataURLMediaLoader = nullptr;
     m_resourceMediaLoader = nullptr;
 
     if (m_platformMediaLoader) {

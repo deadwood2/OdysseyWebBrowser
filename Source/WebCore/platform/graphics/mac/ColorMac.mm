@@ -28,8 +28,10 @@
 
 #if USE(APPKIT)
 
+#import "GraphicsContextCG.h"
 #import "LocalCurrentGraphicsContext.h"
 #import <wtf/BlockObjCExceptions.h>
+#import <wtf/Lock.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/TinyLRUCache.h>
@@ -62,12 +64,12 @@ bool usesTestModeFocusRingColor()
     return useOldAquaFocusRingColor;
 }
 
-static Optional<SRGBA<uint8_t>> makeSimpleColorFromNSColor(NSColor *color)
+static std::optional<SRGBA<uint8_t>> makeSimpleColorFromNSColor(NSColor *color)
 {
     // FIXME: ExtendedColor - needs to handle color spaces.
 
     if (!color)
-        return WTF::nullopt;
+        return std::nullopt;
 
     CGFloat redComponent;
     CGFloat greenComponent;
@@ -84,7 +86,7 @@ static Optional<SRGBA<uint8_t>> makeSimpleColorFromNSColor(NSColor *color)
         RetainPtr<NSBitmapImageRep> offscreenRep = adoptNS([[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nil pixelsWide:1 pixelsHigh:1
             bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:4 bitsPerPixel:32]);
 
-        GraphicsContext bitmapContext([NSGraphicsContext graphicsContextWithBitmapImageRep:offscreenRep.get()].CGContext);
+        GraphicsContextCG bitmapContext([NSGraphicsContext graphicsContextWithBitmapImageRep:offscreenRep.get()].CGContext);
         LocalCurrentGraphicsContext localContext(bitmapContext);
 
         [color drawSwatchInRect:NSMakeRect(0, 0, 1, 1)];
@@ -113,22 +115,37 @@ Color semanticColorFromNSColor(NSColor *color)
 
 NSColor *nsColor(const Color& color)
 {
-    if (color.isInline()) {
-        switch (PackedColor::RGBA { color.asInline() }.value) {
+    if (auto srgb = color.tryGetAsSRGBABytes()) {
+        switch (PackedColor::RGBA { *srgb }.value) {
         case PackedColor::RGBA { Color::transparentBlack }.value: {
-            static NSColor *clearColor = [[NSColor colorWithSRGBRed:0 green:0 blue:0 alpha:0] retain];
-            return clearColor;
+            static LazyNeverDestroyed<RetainPtr<NSColor>> clearColor;
+            static std::once_flag onceFlag;
+            std::call_once(onceFlag, [] {
+                clearColor.construct([NSColor colorWithSRGBRed:0 green:0 blue:0 alpha:0]);
+            });
+            return clearColor.get().get();
         }
         case PackedColor::RGBA { Color::black }.value: {
-            static NSColor *blackColor = [[NSColor colorWithSRGBRed:0 green:0 blue:0 alpha:1] retain];
-            return blackColor;
+            static LazyNeverDestroyed<RetainPtr<NSColor>> blackColor;
+            static std::once_flag onceFlag;
+            std::call_once(onceFlag, [] {
+                blackColor.construct([NSColor colorWithSRGBRed:0 green:0 blue:0 alpha:1]);
+            });
+            return blackColor.get().get();
         }
         case PackedColor::RGBA { Color::white }.value: {
-            static NSColor *whiteColor = [[NSColor colorWithSRGBRed:1 green:1 blue:1 alpha:1] retain];
-            return whiteColor;
+            static LazyNeverDestroyed<RetainPtr<NSColor>> whiteColor;
+            static std::once_flag onceFlag;
+            std::call_once(onceFlag, [] {
+                whiteColor.construct([NSColor colorWithSRGBRed:1 green:1 blue:1 alpha:1]);
+            });
+            return whiteColor.get().get();
         }
         }
     }
+
+    static Lock cachedColorLock;
+    Locker locker { cachedColorLock };
 
     static NeverDestroyed<TinyLRUCache<Color, RetainPtr<NSColor>, 32>> cache;
     return cache.get().get(color).get();

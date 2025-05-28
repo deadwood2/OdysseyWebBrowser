@@ -30,17 +30,17 @@
 
 #include "APIDebuggableInfo.h"
 #include "APIInspectorConfiguration.h"
-#include "RemoteWebInspectorProxy.h"
+#include "RemoteWebInspectorUIProxy.h"
 #include <wtf/MainThread.h>
 #include <wtf/text/Base64.h>
 
 namespace WebKit {
 
-class RemoteInspectorProxy final : public RemoteWebInspectorProxyClient {
+class RemoteInspectorProxy final : public RemoteWebInspectorUIProxyClient {
     WTF_MAKE_FAST_ALLOCATED();
 public:
     RemoteInspectorProxy(RemoteInspectorClient& inspectorClient, ConnectionID connectionID, TargetID targetID, Inspector::DebuggableType debuggableType)
-        : m_proxy(RemoteWebInspectorProxy::create())
+        : m_proxy(RemoteWebInspectorUIProxy::create())
         , m_inspectorClient(inspectorClient)
         , m_connectionID(connectionID)
         , m_targetID(targetID)
@@ -68,7 +68,7 @@ public:
         m_proxy->show();
     }
 
-    // MARK: RemoteWebInspectorProxyClient methods
+    // MARK: RemoteWebInspectorUIProxyClient methods
 
     void sendMessageToFrontend(const String& message)
     {
@@ -85,13 +85,13 @@ public:
         m_inspectorClient.closeFromFrontend(m_connectionID, m_targetID);
     }
 
-    Ref<API::InspectorConfiguration> configurationForRemoteInspector(RemoteWebInspectorProxy&)
+    Ref<API::InspectorConfiguration> configurationForRemoteInspector(RemoteWebInspectorUIProxy&)
     {
         return API::InspectorConfiguration::create();
     }
 
 private:
-    Ref<RemoteWebInspectorProxy> m_proxy;
+    Ref<RemoteWebInspectorUIProxy> m_proxy;
     RemoteInspectorClient& m_inspectorClient;
     ConnectionID m_connectionID;
     TargetID m_targetID;
@@ -121,10 +121,10 @@ RemoteInspectorClient::~RemoteInspectorClient()
 
 void RemoteInspectorClient::sendWebInspectorEvent(const String& event)
 {
-    ASSERT(isMainThread());
-    ASSERT(m_connectionID.hasValue());
+    ASSERT(isMainRunLoop());
+    ASSERT(m_connectionID);
     auto message = event.utf8();
-    send(m_connectionID.value(), reinterpret_cast<const uint8_t*>(message.data()), message.length());
+    send(m_connectionID.value(), message.dataAsUInt8Ptr(), message.length());
 }
 
 HashMap<String, Inspector::RemoteInspectorConnectionClient::CallHandler>& RemoteInspectorClient::dispatchMap()
@@ -155,7 +155,7 @@ void RemoteInspectorClient::connectionClosed()
 
 void RemoteInspectorClient::didClose(Inspector::RemoteInspectorSocketEndpoint&, ConnectionID)
 {
-    callOnMainThread([this] {
+    callOnMainRunLoop([this] {
         connectionClosed();
     });
 }
@@ -206,7 +206,7 @@ void RemoteInspectorClient::setBackendCommands(const Event& event)
     if (!event.message || event.message->isEmpty())
         return;
 
-    m_backendCommandsURL = makeString("data:text/javascript;base64,", base64Encode(event.message->utf8()));
+    m_backendCommandsURL = makeString("data:text/javascript;base64,", base64Encoded(event.message->utf8()));
 }
 
 void RemoteInspectorClient::setTargetList(const Event& event)

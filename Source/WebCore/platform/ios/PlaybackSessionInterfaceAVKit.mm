@@ -47,7 +47,6 @@ SOFTLINK_AVKIT_FRAMEWORK()
 SOFT_LINK_CLASS_OPTIONAL(AVKit, AVValueTiming)
 
 namespace WebCore {
-using namespace PAL;
 
 PlaybackSessionInterfaceAVKit::PlaybackSessionInterfaceAVKit(PlaybackSessionModel& model)
     : m_playerController(adoptNS([[WebAVPlayerController alloc] init]))
@@ -61,7 +60,12 @@ PlaybackSessionInterfaceAVKit::PlaybackSessionInterfaceAVKit(PlaybackSessionMode
     durationChanged(model.duration());
     currentTimeChanged(model.currentTime(), [[NSProcessInfo processInfo] systemUptime]);
     bufferedTimeChanged(model.bufferedTime());
-    rateChanged(model.isPlaying(), model.playbackRate());
+    OptionSet<PlaybackSessionModel::PlaybackState> playbackState;
+    if (model.isPlaying())
+        playbackState.add(PlaybackSessionModel::PlaybackState::Playing);
+    if (model.isStalled())
+        playbackState.add(PlaybackSessionModel::PlaybackState::Stalled);
+    rateChanged(playbackState, model.playbackRate(), model.defaultPlaybackRate());
     seekableRangesChanged(model.seekableRanges(), model.seekableTimeRangesLastModifiedTime(), model.liveUpdateInterval());
     canPlayFastReverseChanged(model.canPlayFastReverse());
     audioMediaSelectionOptionsChanged(model.audioMediaSelectionOptions(), model.audioMediaSelectedIndex());
@@ -124,9 +128,11 @@ void PlaybackSessionInterfaceAVKit::bufferedTimeChanged(double bufferedTime)
     playerController.loadedTimeRanges = @[@0, @(normalizedBufferedTime)];
 }
 
-void PlaybackSessionInterfaceAVKit::rateChanged(bool isPlaying, float playbackRate)
+void PlaybackSessionInterfaceAVKit::rateChanged(OptionSet<PlaybackSessionModel::PlaybackState> playbackState, double playbackRate, double defaultPlaybackRate)
 {
-    [m_playerController setRate:isPlaying ? playbackRate : 0.];
+    [m_playerController setDefaultPlaybackRate:defaultPlaybackRate fromJavaScript:YES];
+    if (!playbackState.contains(PlaybackSessionModel::PlaybackState::Stalled))
+        [m_playerController setRate:playbackState.contains(PlaybackSessionModel::PlaybackState::Playing) ? playbackRate : 0. fromJavaScript:YES];
 }
 
 void PlaybackSessionInterfaceAVKit::seekableRangesChanged(const TimeRanges& timeRanges, double lastModifiedTime, double liveUpdateInterval)
@@ -138,7 +144,7 @@ void PlaybackSessionInterfaceAVKit::seekableRangesChanged(const TimeRanges& time
         double start = timeRanges.start(i).releaseReturnValue();
         double end = timeRanges.end(i).releaseReturnValue();
 
-        CMTimeRange range = CMTimeRangeMake(CMTimeMakeWithSeconds(start, 1000), CMTimeMakeWithSeconds(end-start, 1000));
+        CMTimeRange range = PAL::CMTimeRangeMake(PAL::CMTimeMakeWithSeconds(start, 1000), PAL::CMTimeMakeWithSeconds(end-start, 1000));
         [seekableRanges addObject:[NSValue valueWithCMTimeRange:range]];
     }
 #else

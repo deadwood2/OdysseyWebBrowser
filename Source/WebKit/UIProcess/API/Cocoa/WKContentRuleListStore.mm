@@ -30,6 +30,8 @@
 #import "APIContentRuleListStore.h"
 #import "NetworkCacheFileSystem.h"
 #import "WKErrorInternal.h"
+#import "_WKUserContentFilterPrivate.h"
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/CompletionHandler.h>
 #import <wtf/cocoa/VectorCocoa.h>
@@ -55,6 +57,9 @@ static WKErrorCode toWKErrorCode(const std::error_code& error)
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKContentRuleListStore.class, self))
+        return;
+
     _contentRuleListStore->~ContentRuleListStore();
 
     [super dealloc];
@@ -62,14 +67,12 @@ static WKErrorCode toWKErrorCode(const std::error_code& error)
 
 + (instancetype)defaultStore
 {
-    const bool legacyFilename = false;
-    return wrapper(API::ContentRuleListStore::defaultStore(legacyFilename));
+    return wrapper(API::ContentRuleListStore::defaultStore());
 }
 
 + (instancetype)storeWithURL:(NSURL *)url
 {
-    const bool legacyFilename = false;
-    return wrapper(API::ContentRuleListStore::storeWithPath(url.absoluteURL.fileSystemRepresentation, legacyFilename));
+    return wrapper(API::ContentRuleListStore::storeWithPath(url.absoluteURL.fileSystemRepresentation));
 }
 
 - (void)compileContentRuleListForIdentifier:(NSString *)identifier encodedContentRuleList:(NSString *)encodedContentRuleList completionHandler:(void (^)(WKContentRuleList *, NSError *))completionHandler
@@ -162,14 +165,31 @@ static WKErrorCode toWKErrorCode(const std::error_code& error)
 
 + (instancetype)defaultStoreWithLegacyFilename
 {
-    const bool legacyFilename = true;
-    return wrapper(API::ContentRuleListStore::defaultStore(legacyFilename));
+    return wrapper(API::ContentRuleListStore::defaultStore());
 }
 
 + (instancetype)storeWithURLAndLegacyFilename:(NSURL *)url
 {
-    const bool legacyFilename = true;
-    return wrapper(API::ContentRuleListStore::storeWithPath(url.absoluteURL.fileSystemRepresentation, legacyFilename));
+    return wrapper(API::ContentRuleListStore::storeWithPath(url.absoluteURL.fileSystemRepresentation));
+}
+
+- (void)compileContentExtensionForIdentifier:(NSString *)identifier encodedContentExtension:(NSString *)encodedContentExtension completionHandler:(void (^)(_WKUserContentFilter *, NSError *))completionHandler
+{
+    [self compileContentRuleListForIdentifier:identifier encodedContentRuleList:encodedContentExtension completionHandler:[completionHandler = makeBlockPtr(completionHandler)] (WKContentRuleList *contentRuleList, NSError *error) {
+        completionHandler(contentRuleList ? adoptNS([[_WKUserContentFilter alloc] _initWithWKContentRuleList:contentRuleList]).get() : nil, error);
+    }];
+}
+
+- (void)lookupContentExtensionForIdentifier:(NSString *)identifier completionHandler:(void (^)(_WKUserContentFilter *, NSError *))completionHandler
+{
+    [self lookUpContentRuleListForIdentifier:identifier completionHandler:[completionHandler = makeBlockPtr(completionHandler)] (WKContentRuleList *contentRuleList, NSError *error) {
+        completionHandler(contentRuleList ? adoptNS([[_WKUserContentFilter alloc] _initWithWKContentRuleList:contentRuleList]).get() : nil, error);
+    }];
+}
+
+- (void)removeContentExtensionForIdentifier:(NSString *)identifier completionHandler:(void (^)(NSError *))completionHandler
+{
+    [self removeContentRuleListForIdentifier:identifier completionHandler:completionHandler];
 }
 
 @end

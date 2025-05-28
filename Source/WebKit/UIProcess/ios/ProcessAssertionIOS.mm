@@ -36,8 +36,16 @@
 #import <wtf/RunLoop.h>
 #import <wtf/Vector.h>
 #import <wtf/WeakHashSet.h>
+#import <wtf/WeakObjCPtr.h>
+#import <wtf/WorkQueue.h>
 
 using WebKit::ProcessAndUIAssertion;
+
+static WorkQueue& assertionsWorkQueue()
+{
+    static NeverDestroyed<Ref<WorkQueue>> workQueue(WorkQueue::create("ProcessAssertion Queue"));
+    return workQueue.get();
+}
 
 // This gives some time to our child processes to process the ProcessWillSuspendImminently IPC but makes sure we release
 // the background task before the UIKit timeout (We get killed if we do not release the background task within 5 seconds
@@ -62,6 +70,7 @@ static bool processHasActiveRunTimeLimitation()
 @implementation WKProcessAssertionBackgroundTaskManager
 {
     RetainPtr<RBSAssertion> _backgroundTask;
+    std::atomic<bool> _backgroundTaskWasInvalidated;
     WeakHashSet<ProcessAndUIAssertion> _assertionsNeedingBackgroundTask;
     dispatch_block_t _pendingTaskReleaseTask;
 }
@@ -135,15 +144,10 @@ static bool processHasActiveRunTimeLimitation()
         return;
 
     RELEASE_LOG(ProcessSuspension, "%p - WKProcessAssertionBackgroundTaskManager: _scheduleReleaseTask because the expiration handler has been called", self);
-    _pendingTaskReleaseTask = dispatch_block_create((dispatch_block_flags_t)0, ^{
+    WorkQueue::main().dispatchAfter(releaseBackgroundTaskAfterExpirationDelay, [self, retainedSelf = retainPtr(self)] {
         _pendingTaskReleaseTask = nil;
         [self _releaseBackgroundTask];
     });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, releaseBackgroundTaskAfterExpirationDelay.value() * NSEC_PER_SEC), dispatch_get_main_queue(), _pendingTaskReleaseTask);
-#if !__has_feature(objc_arc)
-    // dispatch_async() does a Block_copy() / Block_release() on behalf of the caller.
-    Block_release(_pendingTaskReleaseTask);
-#endif
 }
 
 - (void)_cancelPendingReleaseTask
@@ -163,7 +167,7 @@ static bool processHasActiveRunTimeLimitation()
 
 - (void)_updateBackgroundTask
 {
-    if (!_assertionsNeedingBackgroundTask.computesEmpty() && ![self _hasBackgroundTask]) {
+    if (!_assertionsNeedingBackgroundTask.computesEmpty() && (![self _hasBackgroundTask] || _backgroundTaskWasInvalidated)) {
         if (processHasActiveRunTimeLimitation()) {
             RELEASE_LOG(ProcessSuspension, "%p - WKProcessAssertionBackgroundTaskManager: Ignored request to start a new background task because RunningBoard has already started the expiration timer", self);
             return;
@@ -174,11 +178,9 @@ static bool processHasActiveRunTimeLimitation()
         _backgroundTask = adoptNS([[RBSAssertion alloc] initWithExplanation:@"WebKit UIProcess background task" target:target attributes:@[domainAttribute]]);
         [_backgroundTask addObserver:self];
 
-        NSError *acquisitionError = nil;
-        if (![_backgroundTask acquireWithError:&acquisitionError])
-            RELEASE_LOG_ERROR(ProcessSuspension, "WKProcessAssertionBackgroundTaskManager: Failed to acquire FinishTaskInterruptable assertion for own process, error: %{public}@", acquisitionError);
-        else
-            RELEASE_LOG(ProcessSuspension, "WKProcessAssertionBackgroundTaskManager: Successfully took a FinishTaskInterruptable assertion for own process");
+        _backgroundTaskWasInvalidated = false;
+        [_backgroundTask acquireWithInvalidationHandler:nil];
+        RELEASE_LOG(ProcessSuspension, "WKProcessAssertionBackgroundTaskManager: Took a FinishTaskInterruptable assertion for own process");
     } else if (_assertionsNeedingBackgroundTask.computesEmpty()) {
         // Release the background task asynchronously because releasing the background task may destroy the ProcessThrottler and we don't
         // want it to get destroyed while in the middle of updating its assertion.
@@ -199,6 +201,7 @@ static bool processHasActiveRunTimeLimitation()
 {
     ASSERT(assertion == _backgroundTask.get());
     RELEASE_LOG_ERROR(ProcessSuspension, "WKProcessAssertionBackgroundTaskManager: FinishTaskInterruptable assertion was invalidated, error: %{public}@", error);
+    _backgroundTaskWasInvalidated = true;
 }
 
 - (void)_handleBackgroundTaskExpiration
@@ -252,12 +255,14 @@ static bool processHasActiveRunTimeLimitation()
 typedef void(^RBSAssertionInvalidationCallbackType)();
 
 @interface WKRBSAssertionDelegate : NSObject<RBSAssertionObserving>
+@property (copy) RBSAssertionInvalidationCallbackType prepareForInvalidationCallback;
 @property (copy) RBSAssertionInvalidationCallbackType invalidationCallback;
 @end
 
 @implementation WKRBSAssertionDelegate
 - (void)dealloc
 {
+    [_prepareForInvalidationCallback release];
     [_invalidationCallback release];
     [super dealloc];
 }
@@ -265,6 +270,12 @@ typedef void(^RBSAssertionInvalidationCallbackType)();
 - (void)assertionWillInvalidate:(RBSAssertion *)assertion
 {
     RELEASE_LOG(ProcessSuspension, "%p - WKRBSAssertionDelegate: assertionWillInvalidate", self);
+
+    RunLoop::main().dispatch([weakSelf = WeakObjCPtr<WKRBSAssertionDelegate>(self)] {
+        auto strongSelf = weakSelf.get();
+        if (strongSelf && strongSelf.get().prepareForInvalidationCallback)
+            strongSelf.get().prepareForInvalidationCallback();
+    });
 }
 
 - (void)assertion:(RBSAssertion *)assertion didInvalidateWithError:(NSError *)error
@@ -294,52 +305,99 @@ static NSString *runningBoardNameForAssertionType(ProcessAssertionType assertion
         return @"Foreground";
     case ProcessAssertionType::MediaPlayback:
         return @"MediaPlayback";
+    case ProcessAssertionType::FinishTaskInterruptable:
+        return @"FinishTaskInterruptable";
+    }
+}
+
+static NSString *runningBoardDomainForAssertionType(ProcessAssertionType assertionType)
+{
+    switch (assertionType) {
+    case ProcessAssertionType::Suspended:
+    case ProcessAssertionType::Background:
+    case ProcessAssertionType::UnboundedNetworking:
+    case ProcessAssertionType::Foreground:
+    case ProcessAssertionType::MediaPlayback:
+        return @"com.apple.webkit";
+    case ProcessAssertionType::FinishTaskInterruptable:
+        return @"com.apple.common";
     }
 }
 
 ProcessAssertion::ProcessAssertion(pid_t pid, const String& reason, ProcessAssertionType assertionType)
     : m_assertionType(assertionType)
     , m_pid(pid)
+    , m_reason(reason)
 {
     NSString *runningBoardAssertionName = runningBoardNameForAssertionType(assertionType);
     ASSERT(runningBoardAssertionName);
-    if (!pid) {
-        RELEASE_LOG_ERROR(ProcessSuspension, "%p - ProcessAssertion: Failed to acquire RBS %{public}@ assertion '%{public}s' for process because PID is invalid", this, runningBoardAssertionName, reason.utf8().data());
+    if (pid <= 0) {
+        RELEASE_LOG_ERROR(ProcessSuspension, "%p - ProcessAssertion: Failed to acquire RBS %{public}@ assertion '%{public}s' for process because PID %d is invalid", this, runningBoardAssertionName, reason.utf8().data(), pid);
+        m_wasInvalidated = true;
         return;
     }
 
     RBSTarget *target = [RBSTarget targetWithPid:pid];
-    RBSDomainAttribute *domainAttribute = [RBSDomainAttribute attributeWithDomain:@"com.apple.webkit" name:runningBoardAssertionName];
+    RBSDomainAttribute *domainAttribute = [RBSDomainAttribute attributeWithDomain:runningBoardDomainForAssertionType(assertionType) name:runningBoardAssertionName];
     m_rbsAssertion = adoptNS([[RBSAssertion alloc] initWithExplanation:reason target:target attributes:@[domainAttribute]]);
 
     m_delegate = adoptNS([[WKRBSAssertionDelegate alloc] init]);
     [m_rbsAssertion addObserver:m_delegate.get()];
     m_delegate.get().invalidationCallback = ^{
-        RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion() RBS %{public}@ assertion for process with PID=%d was invalidated", this, runningBoardAssertionName, pid);
+        RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion: RBS %{public}@ assertion for process with PID=%d was invalidated", this, runningBoardAssertionName, pid);
         processAssertionWasInvalidated();
     };
+    m_delegate.get().prepareForInvalidationCallback = ^{
+        RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion() RBS %{public}@ assertion for process with PID=%d will be invalidated", this, runningBoardAssertionName, pid);
+        processAssertionWillBeInvalidated();
+    };
+}
 
+void ProcessAssertion::acquireAsync(CompletionHandler<void()>&& completionHandler)
+{
+    ASSERT(isMainRunLoop());
+    assertionsWorkQueue().dispatch([protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)]() mutable {
+        protectedThis->acquireSync();
+        RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler)]() mutable {
+            if (completionHandler)
+                completionHandler();
+        });
+    });
+}
+
+void ProcessAssertion::acquireSync()
+{
     NSError *acquisitionError = nil;
     if (![m_rbsAssertion acquireWithError:&acquisitionError]) {
-        RELEASE_LOG_ERROR(ProcessSuspension, "%p - ProcessAssertion: Failed to acquire RBS %{public}@ assertion '%{public}s' for process with PID=%d, error: %{public}@", this, runningBoardAssertionName, reason.utf8().data(), pid, acquisitionError);
+        RELEASE_LOG_ERROR(ProcessSuspension, "%p - ProcessAssertion: Failed to acquire RBS assertion '%{public}s' for process with PID=%d, error: %{public}@", this, m_reason.utf8().data(), m_pid, acquisitionError);
         RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)] {
             if (weakThis)
                 weakThis->processAssertionWasInvalidated();
         });
     } else
-        RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion: Successfully took RBS %{public}@ assertion '%{public}s' for process with PID=%d", this, runningBoardAssertionName, reason.utf8().data(), pid);
+        RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion: Successfully took RBS assertion '%{public}s' for process with PID=%d", this, m_reason.utf8().data(), m_pid);
 }
 
 ProcessAssertion::~ProcessAssertion()
 {
-    RELEASE_LOG(ProcessSuspension, "%p - ~ProcessAssertion() Releasing process assertion for process with PID=%d", this, m_pid);
+    RELEASE_LOG(ProcessSuspension, "%p - ~ProcessAssertion: Releasing process assertion '%{public}s' for process with PID=%d", this, m_reason.utf8().data(), m_pid);
 
     if (m_rbsAssertion) {
         m_delegate.get().invalidationCallback = nil;
+        m_delegate.get().prepareForInvalidationCallback = nil;
         [m_rbsAssertion removeObserver:m_delegate.get()];
         m_delegate = nil;
         [m_rbsAssertion invalidate];
     }
+}
+
+void ProcessAssertion::processAssertionWillBeInvalidated()
+{
+    ASSERT(RunLoop::isMain());
+    RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion::processAssertionWillBeInvalidated() PID=%d", this, m_pid);
+
+    if (m_prepareForInvalidationHandler)
+        m_prepareForInvalidationHandler();
 }
 
 void ProcessAssertion::processAssertionWasInvalidated()
@@ -347,13 +405,14 @@ void ProcessAssertion::processAssertionWasInvalidated()
     ASSERT(RunLoop::isMain());
     RELEASE_LOG(ProcessSuspension, "%p - ProcessAssertion::processAssertionWasInvalidated() PID=%d", this, m_pid);
 
+    m_wasInvalidated = true;
     if (m_invalidationHandler)
         m_invalidationHandler();
 }
 
 bool ProcessAssertion::isValid() const
 {
-    return m_rbsAssertion && m_rbsAssertion.get().valid;
+    return !m_wasInvalidated;
 }
 
 void ProcessAndUIAssertion::updateRunInBackgroundCount()

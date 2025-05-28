@@ -46,7 +46,7 @@ NS_ASSUME_NONNULL_BEGIN
 typedef NS_ENUM(NSInteger, WKNavigationActionPolicy) {
     WKNavigationActionPolicyCancel,
     WKNavigationActionPolicyAllow,
-    WKNavigationActionPolicyDownload WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA)),
+    WKNavigationActionPolicyDownload WK_API_AVAILABLE(macos(11.3), ios(14.5)),
 } WK_API_AVAILABLE(macos(10.10), ios(8.0));
 
 /*! @enum WKNavigationResponsePolicy
@@ -58,7 +58,7 @@ typedef NS_ENUM(NSInteger, WKNavigationActionPolicy) {
 typedef NS_ENUM(NSInteger, WKNavigationResponsePolicy) {
     WKNavigationResponsePolicyCancel,
     WKNavigationResponsePolicyAllow,
-    WKNavigationResponsePolicyDownload WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA)),
+    WKNavigationResponsePolicyDownload WK_API_AVAILABLE(macos(11.3), ios(14.5)),
 } WK_API_AVAILABLE(macos(10.10), ios(8.0));
 
 /*! A class conforming to the WKNavigationDelegate protocol can provide
@@ -77,7 +77,7 @@ typedef NS_ENUM(NSInteger, WKNavigationResponsePolicy) {
  navigation. The argument is one of the constants of the enumerated type WKNavigationActionPolicy.
  @discussion If you do not implement this method, the web view will load the request or, if appropriate, forward it to another application.
  */
-- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler;
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler WK_SWIFT_ASYNC(3);
 
 /*! @abstract Decides whether to allow or cancel a navigation.
  @param webView The web view invoking the delegate method.
@@ -91,7 +91,7 @@ typedef NS_ENUM(NSInteger, WKNavigationResponsePolicy) {
  @discussion If you implement this method,
  -webView:decidePolicyForNavigationAction:decisionHandler: will not be called.
  */
-- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences *))decisionHandler WK_API_AVAILABLE(macos(10.15), ios(13.0));
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences *))decisionHandler WK_SWIFT_ASYNC(4) WK_API_AVAILABLE(macos(10.15), ios(13.0));
 
 /*! @abstract Decides whether to allow or cancel a navigation after its
  response is known.
@@ -102,7 +102,7 @@ typedef NS_ENUM(NSInteger, WKNavigationResponsePolicy) {
  navigation. The argument is one of the constants of the enumerated type WKNavigationResponsePolicy.
  @discussion If you do not implement this method, the web view will allow the response, if the web view can show it.
  */
-- (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler;
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler WK_SWIFT_ASYNC(3);
 
 /*! @abstract Invoked when a main frame navigation starts.
  @param webView The web view invoking the delegate method.
@@ -155,7 +155,7 @@ typedef NS_ENUM(NSInteger, WKNavigationResponsePolicy) {
  credential.
  @discussion If you do not implement this method, the web view will respond to the authentication challenge with the NSURLSessionAuthChallengeRejectProtectionSpace disposition.
  */
-- (void)webView:(WKWebView *)webView didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential * _Nullable credential))completionHandler;
+- (void)webView:(WKWebView *)webView didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential * _Nullable credential))completionHandler WK_SWIFT_ASYNC_NAME(webView(_:respondTo:));
 
 /*! @abstract Invoked when the web view's web content process is terminated.
  @param webView The web view whose underlying web content process was terminated.
@@ -167,7 +167,7 @@ typedef NS_ENUM(NSInteger, WKNavigationResponsePolicy) {
  @param challenge The authentication challenge.
  @param decisionHandler The decision handler you must invoke to respond to indicate whether or not to continue with the connection establishment.
  */
-- (void)webView:(WKWebView *)webView authenticationChallenge:(NSURLAuthenticationChallenge *)challenge shouldAllowDeprecatedTLS:(void (^)(BOOL))decisionHandler WK_API_AVAILABLE(macos(11.0), ios(14.0));
+- (void)webView:(WKWebView *)webView authenticationChallenge:(NSURLAuthenticationChallenge *)challenge shouldAllowDeprecatedTLS:(void (^)(BOOL))decisionHandler WK_SWIFT_ASYNC_NAME(webView(_:shouldAllowDeprecatedTLSFor:)) WK_SWIFT_ASYNC(3) WK_API_AVAILABLE(macos(11.0), ios(14.0));
 
 /*
  @abstract Called after using WKNavigationActionPolicyDownload.
@@ -176,7 +176,7 @@ typedef NS_ENUM(NSInteger, WKNavigationResponsePolicy) {
  @param download The download.
  @discussion The download needs its delegate to be set to receive updates about its progress.
 */
-- (void)webView:(WKWebView *)webView navigationAction:(WKNavigationAction *)navigationAction didBecomeDownload:(WKDownload *)download WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)webView:(WKWebView *)webView navigationAction:(WKNavigationAction *)navigationAction didBecomeDownload:(WKDownload *)download WK_API_AVAILABLE(macos(11.3), ios(14.5));
 
 /*
  @abstract Called after using WKNavigationResponsePolicyDownload.
@@ -185,7 +185,7 @@ typedef NS_ENUM(NSInteger, WKNavigationResponsePolicy) {
  @param download The download.
  @discussion The download needs its delegate to be set to receive updates about its progress.
 */
-- (void)webView:(WKWebView *)webView navigationResponse:(WKNavigationResponse *)navigationResponse didBecomeDownload:(WKDownload *)download WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA));
+- (void)webView:(WKWebView *)webView navigationResponse:(WKNavigationResponse *)navigationResponse didBecomeDownload:(WKDownload *)download WK_API_AVAILABLE(macos(11.3), ios(14.5));
 
 @end
 

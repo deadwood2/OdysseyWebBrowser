@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -58,7 +58,6 @@
 #import <pal/cocoa/AVFoundationSoftLink.h>
 
 namespace WebCore {
-using namespace PAL;
 
 #if PLATFORM(IOS_FAMILY)
 static JSValue *jsValueWithValueInContext(id, JSContext *);
@@ -67,7 +66,7 @@ static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItem *, JSContext *
 
 static String quickTimePluginReplacementScript()
 {
-    static NeverDestroyed<String> script(QuickTimePluginReplacementJavaScript, sizeof(QuickTimePluginReplacementJavaScript));
+    static NeverDestroyed<String> script(StringImpl::createWithoutCopying(QuickTimePluginReplacementJavaScript, sizeof(QuickTimePluginReplacementJavaScript)));
     return script;
 }
 
@@ -109,19 +108,13 @@ bool QuickTimePluginReplacement::isEnabledBySettings(const Settings& settings)
 }
 
 QuickTimePluginReplacement::QuickTimePluginReplacement(HTMLPlugInElement& plugin, const Vector<String>& paramNames, const Vector<String>& paramValues)
-    : m_parentElement(&plugin)
+    : m_parentElement(makeWeakPtr(plugin))
     , m_names(paramNames)
     , m_values(paramValues)
 {
 }
 
-QuickTimePluginReplacement::~QuickTimePluginReplacement()
-{
-    // FIXME: Why is it useful to null out pointers in an object that is being destroyed?
-    m_parentElement = nullptr;
-    m_scriptObject = nullptr;
-    m_mediaElement = nullptr;
-}
+QuickTimePluginReplacement::~QuickTimePluginReplacement() = default;
 
 RenderPtr<RenderElement> QuickTimePluginReplacement::createElementRenderer(HTMLPlugInElement& plugin, RenderStyle&& style, const RenderTreePosition& insertionPosition)
 {
@@ -166,13 +159,13 @@ bool QuickTimePluginReplacement::ensureReplacementScriptInjected()
     return true;
 }
 
-bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
+auto QuickTimePluginReplacement::installReplacement(ShadowRoot& root) -> InstallResult
 {
     if (!ensureReplacementScriptInjected())
-        return false;
+        return { false };
 
     if (!m_parentElement->document().frame())
-        return false;
+        return { false };
 
     DOMWrapperWorld& world = isolatedWorld();
     ScriptController& scriptController = m_parentElement->document().frame()->script();
@@ -182,28 +175,31 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     auto scope = DECLARE_CATCH_SCOPE(vm);
     JSC::JSGlobalObject* lexicalGlobalObject = globalObject;
 
+    auto clearExceptionAndReturnFalse = [&] () -> InstallResult {
+        scope.clearException();
+        return { false };
+    };
+
     // Lookup the "createPluginReplacement" function.
     JSC::JSValue replacementFunction = globalObject->get(lexicalGlobalObject, JSC::Identifier::fromString(vm, "createPluginReplacement"));
     if (replacementFunction.isUndefinedOrNull())
-        return false;
+        return { false };
     JSC::JSObject* replacementObject = replacementFunction.toObject(lexicalGlobalObject);
-    scope.assertNoException();
+    RETURN_IF_EXCEPTION(scope, clearExceptionAndReturnFalse());
+
     auto callData = getCallData(vm, replacementObject);
     if (callData.type == JSC::CallData::Type::None)
-        return false;
+        return { false };
 
     JSC::MarkedArgumentBuffer argList;
     argList.append(toJS(lexicalGlobalObject, globalObject, &root));
-    argList.append(toJS(lexicalGlobalObject, globalObject, m_parentElement));
+    argList.append(toJS(lexicalGlobalObject, globalObject, m_parentElement.get()));
     argList.append(toJS(lexicalGlobalObject, globalObject, this));
     argList.append(toJS<IDLSequence<IDLNullable<IDLDOMString>>>(*lexicalGlobalObject, *globalObject, m_names));
     argList.append(toJS<IDLSequence<IDLNullable<IDLDOMString>>>(*lexicalGlobalObject, *globalObject, m_values));
     ASSERT(!argList.hasOverflowed());
     JSC::JSValue replacement = call(lexicalGlobalObject, replacementObject, callData, globalObject, argList);
-    if (UNLIKELY(scope.exception())) {
-        scope.clearException();
-        return false;
-    }
+    RETURN_IF_EXCEPTION(scope, clearExceptionAndReturnFalse());
 
     // Get the <video> created to replace the plug-in.
     JSC::JSValue value = replacement.get(lexicalGlobalObject, JSC::Identifier::fromString(vm, "video"));
@@ -213,23 +209,18 @@ bool QuickTimePluginReplacement::installReplacement(ShadowRoot& root)
     if (!m_mediaElement) {
         LOG(Plugins, "%p - Failed to find <video> element created by QuickTime plugin replacement script.", this);
         scope.clearException();
-        return false;
+        return { false };
     }
 
     // Get the scripting interface.
     value = replacement.get(lexicalGlobalObject, JSC::Identifier::fromString(vm, "scriptObject"));
-    if (!scope.exception() && !value.isUndefinedOrNull()) {
-        m_scriptObject = value.toObject(lexicalGlobalObject);
-        scope.assertNoException();
-    }
-
-    if (!m_scriptObject) {
+    if (!value.isObject()) {
         LOG(Plugins, "%p - Failed to find script object created by QuickTime plugin replacement.", this);
         scope.clearException();
-        return false;
+        return { false };
     }
 
-    return true;
+    return { true, value };
 }
 
 unsigned long long QuickTimePluginReplacement::movieSize() const
@@ -251,14 +242,12 @@ void QuickTimePluginReplacement::postEvent(const String& eventName)
 
 static JSValue *jsValueWithDataInContext(NSData *data, const String& mimeType, JSContext *context)
 {
-    Vector<char> base64Data;
-    base64Encode([data bytes], [data length], base64Data);
-
+    // FIXME: Add makeCFString/makeNSString to avoid unnecessary String allocation.
     String data64;
     if (!mimeType.isEmpty())
-        data64 = "data:" + mimeType + ";base64," + base64Data;
+        data64 = makeString("data:", mimeType, ";base64,", base64Encoded([data bytes], [data length]));
     else
-        data64 = "data:text/plain;base64," + base64Data;
+        data64 = makeString("data:text/plain;base64,", base64Encoded([data bytes], [data length]));
 
     return [JSValue valueWithObject:(id)data64.createCFString().get() inContext:context];
 }
@@ -350,9 +339,7 @@ static JSValue *jsValueWithAVMetadataItemInContext(AVMetadataItem *item, JSConte
         id value = item.value;
         NSString *mimeType = [[item extraAttributes] objectForKey:@"MIMEtype"];
         if ([value isKindOfClass:[NSData class]] && mimeType) {
-            Vector<char> base64Data;
-            base64Encode([value bytes], [value length], base64Data);
-            String data64 = "data:" + String(mimeType) + ";base64," + base64Data;
+            auto data64 = makeString("data:", String(mimeType), ";base64,", base64Encoded([value bytes], [value length]));
             [dictionary setObject:(__bridge NSString *)data64.createCFString().get() forKey:@"value"];
         } else
             [dictionary setObject:value forKey:@"value"];

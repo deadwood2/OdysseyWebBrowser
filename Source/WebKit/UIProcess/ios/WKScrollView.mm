@@ -131,11 +131,14 @@ static BOOL shouldForwardScrollViewDelegateMethodToExternalDelegate(SEL selector
 #if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
     BOOL _contentInsetAdjustmentBehaviorWasExternallyOverridden;
 #endif
+    BOOL _contentInsetWasExternallyOverridden;
     CGFloat _keyboardBottomInsetAdjustment;
     BOOL _scrollEnabledByClient;
     BOOL _scrollEnabledInternal;
     BOOL _zoomEnabledByClient;
     BOOL _zoomEnabledInternal;
+    std::optional<UIEdgeInsets> _contentScrollInsetFromClient;
+    std::optional<UIEdgeInsets> _contentScrollInsetInternal;
 }
 
 - (id)initWithFrame:(CGRect)frame
@@ -269,6 +272,14 @@ static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
 {
     [super setContentInset:contentInset];
 
+    _contentInsetWasExternallyOverridden = YES;
+#if PLATFORM(WATCHOS)
+    if (_contentScrollInsetInternal) {
+        _contentScrollInsetInternal = std::nullopt;
+        [self _updateContentScrollInset];
+    }
+#endif // PLATFORM(WATCHOS)
+
     [_internalDelegate _scheduleVisibleContentRectUpdate];
 }
 
@@ -336,7 +347,7 @@ static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
 {
     CGSize currentContentSize = [self contentSize];
 
-    BOOL mightBeRubberbanding = self.isDragging || self.isVerticalBouncing || self.isHorizontalBouncing;
+    BOOL mightBeRubberbanding = self.isDragging || self.isVerticalBouncing || self.isHorizontalBouncing || self.refreshControl;
     if (!mightBeRubberbanding || CGSizeEqualToSize(currentContentSize, CGSizeZero) || CGSizeEqualToSize(currentContentSize, contentSize) || self.zoomScale < self.minimumZoomScale) {
         // FIXME: rdar://problem/65277759 Find out why iOS Mail needs this call even when the contentSize has not changed.
         [self setContentSize:contentSize];
@@ -422,6 +433,44 @@ static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
 }
 
 #endif // PLATFORM(WATCHOS)
+
+- (void)_setContentScrollInset:(UIEdgeInsets)insets
+{
+    _contentScrollInsetFromClient = insets;
+    [self _updateContentScrollInset];
+}
+
+- (BOOL)_setContentScrollInsetInternal:(UIEdgeInsets)insets
+{
+#if PLATFORM(WATCHOS)
+    if (_contentInsetWasExternallyOverridden)
+        return NO;
+#endif // PLATFORM(WATCHOS)
+
+    if (_contentScrollInsetFromClient)
+        return NO;
+
+    if (_contentScrollInsetInternal && UIEdgeInsetsEqualToEdgeInsets(*_contentScrollInsetInternal, insets))
+        return NO;
+
+    _contentScrollInsetInternal = insets;
+    [self _updateContentScrollInset];
+    return YES;
+}
+
+- (void)_updateContentScrollInset
+{
+    if (auto insets = _contentScrollInsetFromClient)
+        super.contentScrollInset = *insets;
+    else if (auto insets = _contentScrollInsetInternal)
+        super.contentScrollInset = *insets;
+#if PLATFORM(WATCHOS)
+    else if (_contentInsetWasExternallyOverridden)
+        super.contentScrollInset = UIEdgeInsetsZero;
+#endif // PLATFORM(WATCHOS)
+    else
+        ASSERT_NOT_REACHED();
+}
 
 #if HAVE(PEPPER_UI_CORE)
 

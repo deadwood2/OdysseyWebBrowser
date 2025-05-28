@@ -37,6 +37,7 @@ SOFT_LINK_FRAMEWORK_FOR_HEADER(PAL, AVFoundation)
 // because they make it difficult to use the class name in source code.
 
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAssetCache)
+SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAssetCollection)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAssetImageGenerator)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAssetReader)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAssetReaderSampleReferenceOutput)
@@ -46,6 +47,7 @@ SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAssetWriterInput)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVContentKeyReportGroup)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVContentKeyResponse)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVContentKeySession)
+SOFT_LINK_CLASS_FOR_HEADER(PAL, AVDelegatingPlaybackCoordinator)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVMediaSelectionGroup)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVMediaSelectionOption)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, AVMetadataItem)
@@ -145,6 +147,11 @@ SOFT_LINK_CONSTANT_FOR_HEADER(PAL, AVFoundation, AVSampleBufferDisplayLayerFaile
 #define AVSampleBufferDisplayLayerFailedToDecodeNotification PAL::get_AVFoundation_AVSampleBufferDisplayLayerFailedToDecodeNotification()
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, AVFoundation, AVSampleBufferDisplayLayerFailedToDecodeNotificationErrorKey, NSString*)
 #define AVSampleBufferDisplayLayerFailedToDecodeNotificationErrorKey PAL::get_AVFoundation_AVSampleBufferDisplayLayerFailedToDecodeNotificationErrorKey()
+
+SOFT_LINK_CONSTANT_FOR_HEADER(PAL, AVFoundation, AVSampleBufferAudioRendererWasFlushedAutomaticallyNotification, NSString*)
+#define AVSampleBufferAudioRendererWasFlushedAutomaticallyNotification PAL::get_AVFoundation_AVSampleBufferAudioRendererWasFlushedAutomaticallyNotification()
+SOFT_LINK_CONSTANT_FOR_HEADER(PAL, AVFoundation, AVSampleBufferAudioRendererFlushTimeKey, NSString*)
+#define AVSampleBufferAudioRendererFlushTimeKey PAL::get_AVFoundation_AVSampleBufferAudioRendererFlushTimeKey()
 
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, AVFoundation, AVMediaCharacteristicContainsOnlyForcedSubtitles, NSString *)
 #define AVMediaCharacteristicContainsOnlyForcedSubtitles PAL::get_AVFoundation_AVMediaCharacteristicContainsOnlyForcedSubtitles()
@@ -316,5 +323,12 @@ SOFT_LINK_CONSTANT_FOR_HEADER(PAL, AVFoundation, AVRouteDetectorMultipleRoutesDe
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, AVFoundation, AVOutputContextOutputDevicesDidChangeNotification, NSString *)
 #define AVOutputContextOutputDevicesDidChangeNotification PAL::get_AVFoundation_AVOutputContextOutputDevicesDidChangeNotification()
 #endif // HAVE(AVROUTEPICKERVIEW)
+
+#if PLATFORM(COCOA)
+SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAudioConverter)
+SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAudioFormat)
+SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAudioCompressedBuffer)
+SOFT_LINK_CLASS_FOR_HEADER(PAL, AVAudioPCMBuffer)
+#endif // PLATFORM(COCOA)
 
 #endif // USE(AVFOUNDATION)

@@ -121,7 +121,7 @@ static NSString *preferredBundleLocalizationName()
     if (!success)
         return @"en_US";
 
-    return CFBridgingRelease(CFLocaleCreateCanonicalLocaleIdentifierFromScriptManagerCodes(0, languageCode, regionCode));
+    return adoptCF(CFLocaleCreateCanonicalLocaleIdentifierFromScriptManagerCodes(0, languageCode, regionCode)).bridgingAutorelease();
 }
 
 bool NetscapePluginHostManager::spawnPluginHost(const String& pluginPath, cpu_type_t pluginArchitecture, mach_port_t clientPort, mach_port_t& pluginHostPort, ProcessSerialNumber& pluginHostPSN)
@@ -135,7 +135,7 @@ bool NetscapePluginHostManager::spawnPluginHost(const String& pluginPath, cpu_ty
         return MACH_PORT_NULL;
 
     mach_port_t renderServerPort = CARenderServerGetPort();
-    if (renderServerPort == MACH_PORT_NULL)
+    if (!MACH_PORT_VALID(renderServerPort))
         return false;
 
     NSString *pluginHostAppPath = [[NSBundle bundleForClass:[WebNetscapePluginPackage class]] pathForAuxiliaryExecutable:pluginHostAppName];

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,9 @@
 #if ENABLE(IPC_TESTING_API)
 
 #include "ArgumentCoders.h"
+#if USE(AVFOUNDATION)
+#include "ArgumentCodersCF.h"
+#endif
 #include "Connection.h"
 #if ENABLE(DEPRECATED_FEATURE) || ENABLE(EXPERIMENTAL_FEATURE)
 #include "DummyType.h"
@@ -46,6 +49,7 @@
 #if ENABLE(TEST_FEATURE)
 #include "TestTwoStateEnum.h"
 #endif
+#include "TestWithCVPixelBufferMessages.h"
 #include "TestWithIfMessageMessages.h"
 #include "TestWithImageDataMessages.h"
 #include "TestWithLegacyReceiverMessages.h"
@@ -65,19 +69,25 @@
 #include <WebCore/KeyboardEvent.h>
 #endif
 #include <WebCore/PluginData.h>
+#include <optional>
 #include <utility>
 #include <wtf/HashMap.h>
+#if PLATFORM(COCOA)
+#include <wtf/MachSendRight.h>
+#endif
 #if PLATFORM(MAC)
 #include <wtf/OptionSet.h>
 #endif
-#include <wtf/Optional.h>
 #include <wtf/RefCounted.h>
+#if USE(AVFOUNDATION)
+#include <wtf/RetainPtr.h>
+#endif
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
 namespace IPC {
 
-Optional<JSC::JSValue> jsValueForArguments(JSC::JSGlobalObject* globalObject, MessageName name, Decoder& decoder)
+std::optional<JSC::JSValue> jsValueForArguments(JSC::JSGlobalObject* globalObject, MessageName name, Decoder& decoder)
 {
     switch (name) {
     case MessageName::TestWithSuperclass_LoadURL:
@@ -236,15 +246,29 @@ Optional<JSC::JSValue> jsValueForArguments(JSC::JSGlobalObject* globalObject, Me
         return jsValueForDecodedArguments<Messages::TestWithStream::SendString::Arguments>(globalObject, decoder);
     case MessageName::TestWithStream_SendStringSynchronized:
         return jsValueForDecodedArguments<Messages::TestWithStream::SendStringSynchronized::Arguments>(globalObject, decoder);
+#if PLATFORM(COCOA)
+    case MessageName::TestWithStream_SendMachSendRight:
+        return jsValueForDecodedArguments<Messages::TestWithStream::SendMachSendRight::Arguments>(globalObject, decoder);
+    case MessageName::TestWithStream_ReceiveMachSendRight:
+        return jsValueForDecodedArguments<Messages::TestWithStream::ReceiveMachSendRight::Arguments>(globalObject, decoder);
+    case MessageName::TestWithStream_SendAndReceiveMachSendRight:
+        return jsValueForDecodedArguments<Messages::TestWithStream::SendAndReceiveMachSendRight::Arguments>(globalObject, decoder);
+#endif
     case MessageName::TestWithStreamBuffer_SendStreamBuffer:
         return jsValueForDecodedArguments<Messages::TestWithStreamBuffer::SendStreamBuffer::Arguments>(globalObject, decoder);
+#if USE(AVFOUNDATION)
+    case MessageName::TestWithCVPixelBuffer_SendCVPixelBuffer:
+        return jsValueForDecodedArguments<Messages::TestWithCVPixelBuffer::SendCVPixelBuffer::Arguments>(globalObject, decoder);
+    case MessageName::TestWithCVPixelBuffer_ReceiveCVPixelBuffer:
+        return jsValueForDecodedArguments<Messages::TestWithCVPixelBuffer::ReceiveCVPixelBuffer::Arguments>(globalObject, decoder);
+#endif
     default:
         break;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-Optional<JSC::JSValue> jsValueForReplyArguments(JSC::JSGlobalObject* globalObject, MessageName name, Decoder& decoder)
+std::optional<JSC::JSValue> jsValueForReplyArguments(JSC::JSGlobalObject* globalObject, MessageName name, Decoder& decoder)
 {
     switch (name) {
 #if ENABLE(TEST_FEATURE)
@@ -276,10 +300,10 @@ Optional<JSC::JSValue> jsValueForReplyArguments(JSC::JSGlobalObject* globalObjec
     default:
         break;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-Optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageName name)
+std::optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageName name)
 {
     switch (name) {
     case MessageName::TestWithSuperclass_LoadURL:
@@ -559,17 +583,37 @@ Optional<Vector<ArgumentDescription>> messageArgumentDescriptions(MessageName na
         return Vector<ArgumentDescription> {
             {"url", "String", nullptr, false},
         };
+#if PLATFORM(COCOA)
+    case MessageName::TestWithStream_SendMachSendRight:
+        return Vector<ArgumentDescription> {
+            {"a1", "MachSendRight", nullptr, false},
+        };
+    case MessageName::TestWithStream_ReceiveMachSendRight:
+        return Vector<ArgumentDescription> { };
+    case MessageName::TestWithStream_SendAndReceiveMachSendRight:
+        return Vector<ArgumentDescription> {
+            {"a1", "MachSendRight", nullptr, false},
+        };
+#endif
     case MessageName::TestWithStreamBuffer_SendStreamBuffer:
         return Vector<ArgumentDescription> {
             {"stream", "IPC::StreamConnectionBuffer", nullptr, false},
         };
+#if USE(AVFOUNDATION)
+    case MessageName::TestWithCVPixelBuffer_SendCVPixelBuffer:
+        return Vector<ArgumentDescription> {
+            {"s0", "RetainPtr<CVPixelBufferRef>", nullptr, false},
+        };
+    case MessageName::TestWithCVPixelBuffer_ReceiveCVPixelBuffer:
+        return Vector<ArgumentDescription> { };
+#endif
     default:
         break;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-Optional<Vector<ArgumentDescription>> messageReplyArgumentDescriptions(MessageName name)
+std::optional<Vector<ArgumentDescription>> messageReplyArgumentDescriptions(MessageName name)
 {
     switch (name) {
 #if ENABLE(TEST_FEATURE)
@@ -616,7 +660,7 @@ Optional<Vector<ArgumentDescription>> messageReplyArgumentDescriptions(MessageNa
     default:
         break;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 } // namespace WebKit

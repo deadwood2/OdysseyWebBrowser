@@ -25,11 +25,13 @@
 
 #pragma once
 
+#include "AccessibilityPreferences.h"
 #include "CacheModel.h"
 #include "SandboxExtension.h"
 #include "TextCheckerState.h"
 #include "UserData.h"
 #include "WebProcessDataStoreParameters.h"
+#include <WebCore/CrossOriginMode.h>
 #include <wtf/HashMap.h>
 #include <wtf/ProcessID.h>
 #include <wtf/RetainPtr.h>
@@ -49,6 +51,10 @@
 
 #if ENABLE(NETSCAPE_PLUGIN_API)
 #include <WebCore/PluginData.h>
+#endif
+
+#if PLATFORM(GTK) || PLATFORM(WPE)
+#include <wtf/MemoryPressureHandler.h>
 #endif
 
 namespace API {
@@ -73,7 +79,7 @@ struct WebProcessCreationParameters {
 
     String injectedBundlePath;
     SandboxExtension::Handle injectedBundlePathExtensionHandle;
-    SandboxExtension::HandleArray additionalSandboxExtensionHandles;
+    Vector<SandboxExtension::Handle> additionalSandboxExtensionHandles;
 
     UserData initializationUserData;
 
@@ -89,6 +95,7 @@ struct WebProcessCreationParameters {
     SandboxExtension::Handle audioCaptureExtensionHandle;
 #endif
 
+    String wtfLoggingChannels;
     String webCoreLoggingChannels;
     String webKitLoggingChannels;
 
@@ -120,13 +127,16 @@ struct WebProcessCreationParameters {
     bool shouldSuppressMemoryPressureHandler { false };
     bool shouldUseFontSmoothing { true };
     bool fullKeyboardAccessEnabled { false };
-#if HAVE(UIKIT_WITH_MOUSE_SUPPORT) && PLATFORM(IOS)
+#if HAVE(MOUSE_DEVICE_OBSERVATION)
     bool hasMouseDevice { false };
 #endif
+#if HAVE(STYLUS_DEVICE_OBSERVATION)
     bool hasStylusDevice { false };
+#endif
     bool memoryCacheDisabled { false };
     bool attrStyleEnabled { false };
-    bool useGPUProcessForMediaEnabled { false };
+    bool shouldThrowExceptionForGlobalConstantRedeclaration { true };
+    WebCore::CrossOriginMode crossOriginMode { WebCore::CrossOriginMode::Shared }; // Cross-origin isolation via COOP+COEP headers.
 
 #if ENABLE(SERVICE_CONTROLS)
     bool hasImageServices { false };
@@ -140,7 +150,8 @@ struct WebProcessCreationParameters {
 
 #if PLATFORM(COCOA)
     String uiProcessBundleIdentifier;
-    uint32_t uiProcessSDKVersion { 0 };
+    int latencyQOS { 0 };
+    int throughputQOS { 0 };
 #endif
 
     ProcessID presentingApplicationPID { 0 };
@@ -193,20 +204,23 @@ struct WebProcessCreationParameters {
     CString implementationLibraryName;
 #endif
 
-    Optional<WebProcessDataStoreParameters> websiteDataStoreParameters;
+    std::optional<WebProcessDataStoreParameters> websiteDataStoreParameters;
     
 #if PLATFORM(IOS)
-    SandboxExtension::HandleArray compilerServiceExtensionHandles;
+    Vector<SandboxExtension::Handle> compilerServiceExtensionHandles;
 #endif
 
-    Optional<SandboxExtension::Handle> containerManagerExtensionHandle;
-    Optional<SandboxExtension::Handle> mobileGestaltExtensionHandle;
-    Optional<SandboxExtension::Handle> launchServicesExtensionHandle;
+    std::optional<SandboxExtension::Handle> containerManagerExtensionHandle;
+    std::optional<SandboxExtension::Handle> mobileGestaltExtensionHandle;
+    std::optional<SandboxExtension::Handle> launchServicesExtensionHandle;
+#if HAVE(VIDEO_RESTRICTED_DECODING)
+    Vector<SandboxExtension::Handle> videoDecoderExtensionHandles;
+#endif
 
-    SandboxExtension::HandleArray diagnosticsExtensionHandles;
+    Vector<SandboxExtension::Handle> diagnosticsExtensionHandles;
 #if PLATFORM(IOS_FAMILY)
-    SandboxExtension::HandleArray dynamicMachExtensionHandles;
-    SandboxExtension::HandleArray dynamicIOKitExtensionHandles;
+    Vector<SandboxExtension::Handle> dynamicMachExtensionHandles;
+    Vector<SandboxExtension::Handle> dynamicIOKitExtensionHandles;
 #endif
 
 #if PLATFORM(COCOA)
@@ -215,16 +229,17 @@ struct WebProcessCreationParameters {
 #endif
 
 #if PLATFORM(IOS_FAMILY)
-    bool currentUserInterfaceIdiomIsPad { false };
+    bool currentUserInterfaceIdiomIsPhoneOrWatch { false };
     bool supportsPictureInPicture { false };
     WebCore::RenderThemeIOS::CSSValueToSystemColorMap cssValueToSystemColorMap;
     WebCore::Color focusRingColor;
     String localizedDeviceModel;
+    String contentSizeCategory;
 #endif
 
 #if PLATFORM(COCOA)
 #if ENABLE(CFPREFS_DIRECT_MODE)
-    Optional<SandboxExtension::HandleArray> preferencesExtensionHandles;
+    std::optional<Vector<SandboxExtension::Handle>> preferencesExtensionHandles;
 #endif
 #endif
 
@@ -238,6 +253,17 @@ struct WebProcessCreationParameters {
 
 #if HAVE(IOSURFACE)
     WebCore::IntSize maximumIOSurfaceSize;
+#endif
+    
+    AccessibilityPreferences accessibilityPreferences;
+
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    std::optional<MemoryPressureHandler::Configuration> memoryPressureHandlerConfiguration;
+#endif
+
+#if USE(GLIB)
+    String applicationID;
+    String applicationName;
 #endif
 };
 

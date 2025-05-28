@@ -35,6 +35,11 @@
 #include <wtf/unicode/CharacterNames.h>
 #include <wtf/unicode/UTF8Conversion.h>
 
+#if OS(MORPHOS)
+#include <proto/charsets.h>
+#include <libraries/charsets.h>
+#endif
+
 namespace WTF {
 
 using namespace Unicode;
@@ -405,21 +410,6 @@ String String::foldCase() const
     return m_impl ? m_impl->foldCase() : String { };
 }
 
-bool String::percentage(int& result) const
-{
-    if (!m_impl || !m_impl->length())
-        return false;
-
-    if ((*m_impl)[m_impl->length() - 1] != '%')
-       return false;
-
-    if (m_impl->is8Bit())
-        result = charactersToIntStrict(m_impl->characters8(), m_impl->length() - 1);
-    else
-        result = charactersToIntStrict(m_impl->characters16(), m_impl->length() - 1);
-    return true;
-}
-
 Vector<UChar> String::charactersWithoutNullTermination() const
 {
     Vector<UChar> result;
@@ -505,106 +495,6 @@ String String::numberToStringFixedWidth(double number, unsigned decimalPlaces)
 {
     NumberToStringBuffer buffer;
     return numberToFixedWidthString(number, decimalPlaces, buffer);
-}
-
-int String::toIntStrict(bool* ok, int base) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toIntStrict(ok, base);
-}
-
-unsigned String::toUIntStrict(bool* ok, int base) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toUIntStrict(ok, base);
-}
-
-int64_t String::toInt64Strict(bool* ok, int base) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toInt64Strict(ok, base);
-}
-
-uint64_t String::toUInt64Strict(bool* ok, int base) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toUInt64Strict(ok, base);
-}
-
-intptr_t String::toIntPtrStrict(bool* ok, int base) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toIntPtrStrict(ok, base);
-}
-
-int String::toInt(bool* ok) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toInt(ok);
-}
-
-unsigned String::toUInt(bool* ok) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toUInt(ok);
-}
-
-int64_t String::toInt64(bool* ok) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toInt64(ok);
-}
-
-uint64_t String::toUInt64(bool* ok) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toUInt64(ok);
-}
-
-intptr_t String::toIntPtr(bool* ok) const
-{
-    if (!m_impl) {
-        if (ok)
-            *ok = false;
-        return 0;
-    }
-    return m_impl->toIntPtr(ok);
 }
 
 double String::toDouble(bool* ok) const
@@ -775,7 +665,7 @@ CString String::latin1() const
         return CString("", 0);
 
     if (is8Bit())
-        return CString(reinterpret_cast<const char*>(this->characters8()), length);
+        return CString(this->characters8(), length);
 
     const UChar* characters = this->characters16();
 
@@ -789,6 +679,54 @@ CString String::latin1() const
 
     return result;
 }
+
+#if OS(MORPHOS)
+String::String(const char * characters, unsigned inlength, unsigned mib)
+{
+	if (characters)
+	{
+		auto length = GetLength(reinterpret_cast<APTR>(const_cast<char *>(characters)), inlength, mib);
+		UChar *outBytes = nullptr;
+		m_impl = StringImpl::createUninitialized(length, outBytes);
+		if (m_impl)
+		{
+			struct TagItem tags[] = { { CST_DoNotTerminate, TRUE }, { TAG_DONE, 0 } };
+			ConvertTagList(reinterpret_cast<APTR>(const_cast<char *>(characters)), inlength, reinterpret_cast<APTR>(outBytes),
+				length * sizeof(UChar), mib, MIBENUM_UTF_16, tags);
+		}
+	}
+}
+
+CString String::native() const
+{
+	// string > MorphOS' default codepage string - required for FS access, etc
+    unsigned length = this->length();
+
+    if (!length)
+        return CString("", 0);
+
+	struct TagItem tags[] = { { CST_DoNotTerminate, TRUE }, { TAG_DONE, 0 } };
+
+    if (is8Bit())
+    {
+    	char* characterBuffer;
+		CString result = CString::newUninitialized(length, characterBuffer);
+		ConvertTagList(reinterpret_cast<APTR>(const_cast<unsigned char *>(this->characters8())), length, reinterpret_cast<APTR>(characterBuffer),
+			length, MIBENUM_ISO_8859_1, MIBENUM_SYSTEM, tags);
+		return result;
+	}
+
+    const UChar* characters = this->characters16();
+
+    char* characterBuffer;
+    CString result = CString::newUninitialized(length, characterBuffer);
+
+	ConvertTagList(reinterpret_cast<APTR>(const_cast<UChar *>(characters)), length * sizeof(UChar), reinterpret_cast<APTR>(characterBuffer),
+		length, MIBENUM_UTF_16, MIBENUM_SYSTEM, tags);
+
+    return result;
+}
+#endif
 
 Expected<CString, UTF8ConversionError> String::tryGetUtf8(ConversionMode mode) const
 {
@@ -907,131 +845,6 @@ String String::fromCodePoint(UChar32 codePoint)
 }
 
 // String Operations
-template<typename CharacterType>
-static unsigned lengthOfCharactersAsInteger(const CharacterType* data, size_t length)
-{
-    size_t i = 0;
-
-    // Allow leading spaces.
-    for (; i != length; ++i) {
-        if (!isSpaceOrNewline(data[i]))
-            break;
-    }
-    
-    // Allow sign.
-    if (i != length && (data[i] == '+' || data[i] == '-'))
-        ++i;
-    
-    // Allow digits.
-    for (; i != length; ++i) {
-        if (!isASCIIDigit(data[i]))
-            break;
-    }
-
-    return i;
-}
-
-int charactersToIntStrict(const LChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<int>(data, length, ok, base);
-}
-
-int charactersToIntStrict(const UChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<int>(data, length, ok, base);
-}
-
-unsigned charactersToUIntStrict(const LChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<unsigned>(data, length, ok, base);
-}
-
-unsigned charactersToUIntStrict(const UChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<unsigned>(data, length, ok, base);
-}
-
-int64_t charactersToInt64Strict(const LChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<int64_t>(data, length, ok, base);
-}
-
-int64_t charactersToInt64Strict(const UChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<int64_t>(data, length, ok, base);
-}
-
-uint64_t charactersToUInt64Strict(const LChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<uint64_t>(data, length, ok, base);
-}
-
-uint64_t charactersToUInt64Strict(const UChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<uint64_t>(data, length, ok, base);
-}
-
-intptr_t charactersToIntPtrStrict(const LChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<intptr_t>(data, length, ok, base);
-}
-
-intptr_t charactersToIntPtrStrict(const UChar* data, size_t length, bool* ok, int base)
-{
-    return toIntegralType<intptr_t>(data, length, ok, base);
-}
-
-int charactersToInt(const LChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<int>(data, lengthOfCharactersAsInteger<LChar>(data, length), ok, 10);
-}
-
-int charactersToInt(const UChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<int>(data, lengthOfCharactersAsInteger(data, length), ok, 10);
-}
-
-unsigned charactersToUInt(const LChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<unsigned>(data, lengthOfCharactersAsInteger<LChar>(data, length), ok, 10);
-}
-
-unsigned charactersToUInt(const UChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<unsigned>(data, lengthOfCharactersAsInteger<UChar>(data, length), ok, 10);
-}
-
-int64_t charactersToInt64(const LChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<int64_t>(data, lengthOfCharactersAsInteger<LChar>(data, length), ok, 10);
-}
-
-int64_t charactersToInt64(const UChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<int64_t>(data, lengthOfCharactersAsInteger<UChar>(data, length), ok, 10);
-}
-
-uint64_t charactersToUInt64(const LChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<uint64_t>(data, lengthOfCharactersAsInteger<LChar>(data, length), ok, 10);
-}
-
-uint64_t charactersToUInt64(const UChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<uint64_t>(data, lengthOfCharactersAsInteger<UChar>(data, length), ok, 10);
-}
-
-intptr_t charactersToIntPtr(const LChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<intptr_t>(data, lengthOfCharactersAsInteger<LChar>(data, length), ok, 10);
-}
-
-intptr_t charactersToIntPtr(const UChar* data, size_t length, bool* ok)
-{
-    return toIntegralType<intptr_t>(data, lengthOfCharactersAsInteger<UChar>(data, length), ok, 10);
-}
-
-enum TrailingJunkPolicy { DisallowTrailingJunk, AllowTrailingJunk };
 
 template<typename CharacterType, TrailingJunkPolicy policy>
 static inline double toDoubleType(const CharacterType* data, size_t length, bool* ok, size_t& parsedLength)
@@ -1049,46 +862,46 @@ static inline double toDoubleType(const CharacterType* data, size_t length, bool
 
     parsedLength += leadingSpacesLength;
     if (ok)
-        *ok = policy == AllowTrailingJunk || parsedLength == length;
+        *ok = policy == TrailingJunkPolicy::Allow || parsedLength == length;
     return number;
 }
 
 double charactersToDouble(const LChar* data, size_t length, bool* ok)
 {
     size_t parsedLength;
-    return toDoubleType<LChar, DisallowTrailingJunk>(data, length, ok, parsedLength);
+    return toDoubleType<LChar, TrailingJunkPolicy::Disallow>(data, length, ok, parsedLength);
 }
 
 double charactersToDouble(const UChar* data, size_t length, bool* ok)
 {
     size_t parsedLength;
-    return toDoubleType<UChar, DisallowTrailingJunk>(data, length, ok, parsedLength);
+    return toDoubleType<UChar, TrailingJunkPolicy::Disallow>(data, length, ok, parsedLength);
 }
 
 float charactersToFloat(const LChar* data, size_t length, bool* ok)
 {
     // FIXME: This will return ok even when the string fits into a double but not a float.
     size_t parsedLength;
-    return static_cast<float>(toDoubleType<LChar, DisallowTrailingJunk>(data, length, ok, parsedLength));
+    return static_cast<float>(toDoubleType<LChar, TrailingJunkPolicy::Disallow>(data, length, ok, parsedLength));
 }
 
 float charactersToFloat(const UChar* data, size_t length, bool* ok)
 {
     // FIXME: This will return ok even when the string fits into a double but not a float.
     size_t parsedLength;
-    return static_cast<float>(toDoubleType<UChar, DisallowTrailingJunk>(data, length, ok, parsedLength));
+    return static_cast<float>(toDoubleType<UChar, TrailingJunkPolicy::Disallow>(data, length, ok, parsedLength));
 }
 
 float charactersToFloat(const LChar* data, size_t length, size_t& parsedLength)
 {
     // FIXME: This will return ok even when the string fits into a double but not a float.
-    return static_cast<float>(toDoubleType<LChar, AllowTrailingJunk>(data, length, nullptr, parsedLength));
+    return static_cast<float>(toDoubleType<LChar, TrailingJunkPolicy::Allow>(data, length, nullptr, parsedLength));
 }
 
 float charactersToFloat(const UChar* data, size_t length, size_t& parsedLength)
 {
     // FIXME: This will return ok even when the string fits into a double but not a float.
-    return static_cast<float>(toDoubleType<UChar, AllowTrailingJunk>(data, length, nullptr, parsedLength));
+    return static_cast<float>(toDoubleType<UChar, TrailingJunkPolicy::Allow>(data, length, nullptr, parsedLength));
 }
 
 const String& emptyString()
@@ -1101,6 +914,26 @@ const String& nullString()
 {
     static NeverDestroyed<String> nullString;
     return nullString;
+}
+
+String replaceUnpairedSurrogatesWithReplacementCharacter(String&& string)
+{
+    // Fast path for the case where there are no unpaired surrogates.
+    if (!hasUnpairedSurrogate(string))
+        return WTFMove(string);
+
+    // Slow path: https://infra.spec.whatwg.org/#javascript-string-convert
+    // Replaces unpaired surrogates with the replacement character.
+    StringBuilder result;
+    result.reserveCapacity(string.length());
+    StringView view { string };
+    for (auto codePoint : view.codePoints()) {
+        if (U_IS_SURROGATE(codePoint))
+            result.append(replacementCharacter);
+        else
+            result.appendCharacter(codePoint);
+    }
+    return result.toString();
 }
 
 } // namespace WTF
@@ -1142,9 +975,7 @@ Vector<char> asciiDebug(StringImpl* impl)
         }
     }
     CString narrowString = buffer.toString().ascii();
-    Vector<char> result;
-    result.append(reinterpret_cast<const char*>(narrowString.data()), narrowString.length() + 1);
-    return result;
+    return { reinterpret_cast<const char*>(narrowString.data()), narrowString.length() + 1 };
 }
 
 Vector<char> asciiDebug(String& string)

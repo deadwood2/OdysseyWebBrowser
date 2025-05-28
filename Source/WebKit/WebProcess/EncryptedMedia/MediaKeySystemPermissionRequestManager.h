@@ -28,6 +28,7 @@
 #if ENABLE(ENCRYPTED_MEDIA)
 
 #include "SandboxExtension.h"
+#include <WebCore/MediaCanStartListener.h>
 #include <WebCore/MediaKeySystemClient.h>
 #include <WebCore/MediaKeySystemRequest.h>
 #include <wtf/HashMap.h>
@@ -38,7 +39,7 @@ namespace WebKit {
 
 class WebPage;
 
-class MediaKeySystemPermissionRequestManager {
+class MediaKeySystemPermissionRequestManager : private WebCore::MediaCanStartListener {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit MediaKeySystemPermissionRequestManager(WebPage&);
@@ -46,11 +47,14 @@ public:
 
     void startMediaKeySystemRequest(WebCore::MediaKeySystemRequest&);
     void cancelMediaKeySystemRequest(WebCore::MediaKeySystemRequest&);
-    void mediaKeySystemWasGranted(uint64_t, CompletionHandler<void()>&&);
-    void mediaKeySystemWasDenied(uint64_t, String&&);
+    void mediaKeySystemWasGranted(WebCore::MediaKeySystemRequestIdentifier, CompletionHandler<void()>&&);
+    void mediaKeySystemWasDenied(WebCore::MediaKeySystemRequestIdentifier, String&&);
 
 private:
     void sendMediaKeySystemRequest(WebCore::MediaKeySystemRequest&);
+
+    // WebCore::MediaCanStartListener
+    void mediaCanStart(WebCore::Document&) final;
 
     WebPage& m_page;
 

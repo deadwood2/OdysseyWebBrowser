@@ -94,19 +94,25 @@ enum class ViewStabilityFlag : uint8_t;
 - (void)_webViewDestroyed;
 
 - (WKWebView *)webView;
+- (UIView *)rootContentView;
 
 - (std::unique_ptr<WebKit::DrawingAreaProxy>)_createDrawingAreaProxy:(WebKit::WebProcessProxy&)process;
 - (void)_processDidExit;
 #if ENABLE(GPU_PROCESS)
-- (void)_gpuProcessCrashed;
+- (void)_gpuProcessDidExit;
 #endif
 - (void)_processWillSwap;
 - (void)_didRelaunchProcess;
+
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
-- (void)_processDidCreateContextForVisibilityPropagation;
+- (void)_webProcessDidCreateContextForVisibilityPropagation;
+#if ENABLE(GPU_PROCESS)
 - (void)_gpuProcessDidCreateContextForVisibilityPropagation;
-#endif
+#endif // ENABLE(GPU_PROCESS)
+#endif // HAVE(VISIBILITY_PROPAGATION_VIEW)
+
 - (void)_setAcceleratedCompositingRootView:(UIView *)rootView;
+- (void)_removeTemporaryDirectoriesWhenDeallocated:(Vector<RetainPtr<NSURL>>&&)urls;
 
 - (void)_showInspectorHighlight:(const WebCore::InspectorOverlay::Highlight&)highlight;
 - (void)_hideInspectorHighlight;

@@ -163,6 +163,7 @@ WI.loaded = function()
     WI.printStylesEnabled = false;
     WI.setZoomFactor(WI.settings.zoomFactor.value);
     InspectorFrontendHost.setForcedAppearance(WI.settings.frontendAppearance.value);
+    InspectorFrontendHost.setAllowsInspectingInspector(WI.settings.experimentalAllowInspectingInspector.value);
     WI.mouseCoords = {x: 0, y: 0};
     WI.modifierKeys = {altKey: false, metaKey: false, shiftKey: false};
     WI.visible = false;
@@ -234,6 +235,7 @@ WI.contentLoaded = function()
     WI.settings.showJavaScriptTypeInformation.addEventListener(WI.Setting.Event.Changed, WI._showJavaScriptTypeInformationSettingChanged, WI);
     WI.settings.enableControlFlowProfiler.addEventListener(WI.Setting.Event.Changed, WI._enableControlFlowProfilerSettingChanged, WI);
     WI.settings.resourceCachingDisabled.addEventListener(WI.Setting.Event.Changed, WI._resourceCachingDisabledSettingChanged, WI);
+    WI.settings.experimentalAllowInspectingInspector.addEventListener(WI.Setting.Event.Changed, WI._allowInspectingInspectorSettingChanged, WI);
 
     function setTabSize() {
         document.body.style.tabSize = WI.settings.tabSize.value;
@@ -587,6 +589,11 @@ WI.contentLoaded = function()
         WI.diagnosticController.addRecorder(new WI.InspectedTargetTypesDiagnosticEventRecorder(WI.diagnosticController));
         WI.diagnosticController.addRecorder(new WI.TabActivityDiagnosticEventRecorder(WI.diagnosticController));
         WI.diagnosticController.addRecorder(new WI.TabNavigationDiagnosticEventRecorder(WI.diagnosticController));
+
+        if (InspectorBackend.hasCommand("DOM.showGridOverlay")) {
+            WI.diagnosticController.addRecorder(new WI.GridOverlayDiagnosticEventRecorder(WI.diagnosticController));
+            WI.diagnosticController.addRecorder(new WI.GridOverlayConfigurationDiagnosticEventRecorder(WI.diagnosticController));
+        }
     }
 };
 
@@ -2902,13 +2909,14 @@ WI.undockedTitleAreaHeight = function()
 
     if (WI.Platform.name === "mac") {
         switch (WI.Platform.version.name) {
+        case "monterey":
         case "big-sur":
-            /* keep in sync with `body.mac-platform.big-sur:not(.docked)` */
+            /* Keep in sync with `--undocked-title-area-height` CSS variable. */
             return 27 / WI.getZoomFactor();
 
         case "catalina":
         case "mojave":
-            /* keep in sync with `body.mac-platform:not(.big-sur):not(.docked)` */
+            /* Keep in sync with `--undocked-title-area-height` CSS variable. */
             return 22 / WI.getZoomFactor();
         }
     }
@@ -2952,6 +2960,11 @@ WI._resourceCachingDisabledSettingChanged = function(event)
     for (let target of WI.targets)
         target.NetworkAgent.setResourceCachingDisabled(WI.settings.resourceCachingDisabled.value);
 };
+
+WI._allowInspectingInspectorSettingChanged = function(event)
+{
+    InspectorFrontendHost.setAllowsInspectingInspector(WI.settings.experimentalAllowInspectingInspector.value);
+}
 
 WI.measureElement = function(element)
 {

@@ -64,6 +64,7 @@ public:
     bool isSyncMessage() const { return messageIsSync(messageName()); }
     ShouldDispatchWhenWaitingForSyncReply shouldDispatchMessageWhenWaitingForSyncReply() const;
     bool shouldUseFullySynchronousModeForTesting() const;
+    bool shouldMaintainOrderingWithAsyncMessages() const;
 
 #if PLATFORM(MAC)
     void setImportanceAssertion(std::unique_ptr<ImportanceAssertion>);
@@ -88,28 +89,37 @@ public:
     WARN_UNUSED_RETURN bool decode(T& t)
     {
         using Impl = ArgumentCoder<std::remove_const_t<std::remove_reference_t<T>>, void>;
-        if constexpr(HasLegacyDecoder<T, Impl>::value)
-            return Impl::decode(*this, t);
-        else {
-            Optional<T> optional;
-            *this >> optional;
-            if (!optional)
+        if constexpr(HasLegacyDecoder<T, Impl>::value) {
+            if (UNLIKELY(!Impl::decode(*this, t))) {
+                markInvalid();
                 return false;
+            }
+        } else {
+            std::optional<T> optional;
+            *this >> optional;
+            if (UNLIKELY(!optional)) {
+                markInvalid();
+                return false;
+            }
             t = WTFMove(*optional);
-            return true;
         }
+        return true;
     }
 
     template<typename T>
-    Decoder& operator>>(Optional<T>& t)
+    Decoder& operator>>(std::optional<T>& t)
     {
         using Impl = ArgumentCoder<std::remove_const_t<std::remove_reference_t<T>>, void>;
-        if constexpr(HasModernDecoder<T, Impl>::value)
+        if constexpr(HasModernDecoder<T, Impl>::value) {
             t = Impl::decode(*this);
-        else {
+            if (UNLIKELY(!t))
+                markInvalid();
+        } else {
             T v;
-            if (Impl::decode(*this, v))
+            if (LIKELY(Impl::decode(*this, v)))
                 t = WTFMove(v);
+            else
+                markInvalid();
         }
         return *this;
     }
@@ -130,12 +140,12 @@ public:
     static const bool isIPCDecoder = true;
 
     template <typename T>
-    static Optional<T> decodeSingleObject(const uint8_t* source, size_t numberOfBytes)
+    static std::optional<T> decodeSingleObject(const uint8_t* source, size_t numberOfBytes)
     {
-        Optional<T> result;
+        std::optional<T> result;
         Decoder decoder(source, numberOfBytes, ConstructWithoutHeader);
         if (!decoder.isValid())
-            return WTF::nullopt;
+            return std::nullopt;
 
         decoder >> result;
         return result;

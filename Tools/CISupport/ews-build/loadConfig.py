@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -27,12 +27,14 @@ import re
 
 from buildbot.scheduler import AnyBranchScheduler, Periodic, Dependent, Triggerable, Nightly
 from buildbot.schedulers.trysched import Try_Userpass
+from buildbot.schedulers.forcesched import ForceScheduler, StringParameter, FixedParameter, CodebaseParameter
 from buildbot.worker import Worker
 from buildbot.util import identifiers as buildbot_identifiers
 
 from factories import (APITestsFactory, BindingsFactory, BuildFactory, CommitQueueFactory, Factory, GTKBuildFactory,
-                       GTKTestsFactory, JSCBuildFactory, JSCBuildAndTestsFactory, JSCTestsFactory, StyleFactory, TestFactory, tvOSBuildFactory,
-                       WPEFactory, WebKitPerlFactory, WebKitPyFactory, WinCairoFactory, WindowsFactory, iOSBuildFactory, iOSEmbeddedBuildFactory, iOSTestsFactory,
+                       GTKTestsFactory, JSCBuildFactory, JSCBuildAndTestsFactory, JSCTestsFactory, StressTestFactory,
+                       StyleFactory, TestFactory, tvOSBuildFactory, WPEFactory, WebKitPerlFactory, WebKitPyFactory,
+                       WinCairoFactory, WindowsFactory, iOSBuildFactory, iOSEmbeddedBuildFactory, iOSTestsFactory,
                        macOSBuildFactory, macOSBuildOnlyFactory, macOSWK1Factory, macOSWK2Factory, ServicesFactory, WatchListFactory, watchOSBuildFactory)
 
 BUILDER_NAME_LENGTH_LIMIT = 70
@@ -40,8 +42,8 @@ STEP_NAME_LENGTH_LIMIT = 50
 
 
 def loadBuilderConfig(c, is_test_mode_enabled=False, master_prefix_path='./'):
-    config = json.load(open(os.path.join(master_prefix_path, 'config.json')))
-    use_localhost_worker = is_test_mode_enabled
+    with open(os.path.join(master_prefix_path, 'config.json')) as config_json:
+        config = json.load(config_json)
     if is_test_mode_enabled:
         passwords = {}
     else:
@@ -51,7 +53,7 @@ def loadBuilderConfig(c, is_test_mode_enabled=False, master_prefix_path='./'):
     checkValidSchedulers(config, config['schedulers'])
 
     c['workers'] = [Worker(worker['name'], passwords.get(worker['name'], 'password'), max_builds=worker.get('max_builds', 1)) for worker in config['workers']]
-    if use_localhost_worker:
+    if is_test_mode_enabled:
         c['workers'].append(Worker('local-worker', 'password', max_builds=1))
 
     c['builders'] = []
@@ -69,7 +71,7 @@ def loadBuilderConfig(c, is_test_mode_enabled=False, master_prefix_path='./'):
 
         builder['factory'] = factory(**factorykwargs)
 
-        if use_localhost_worker:
+        if is_test_mode_enabled:
             builder['workernames'].append('local-worker')
 
         c['builders'].append(builder)
@@ -83,6 +85,23 @@ def loadBuilderConfig(c, is_test_mode_enabled=False, master_prefix_path='./'):
             # FIXME: Read the credentials from local file on disk.
             scheduler['userpass'] = [(os.getenv('BUILDBOT_TRY_USERNAME', 'sampleuser'), os.getenv('BUILDBOT_TRY_PASSWORD', 'samplepass'))]
         c['schedulers'].append(schedulerClass(**scheduler))
+
+    if is_test_mode_enabled:
+        forceScheduler = ForceScheduler(
+            name="force_build",
+            buttonName="Force Build",
+            builderNames=[str(builder['name']) for builder in config['builders']],
+            # Disable default enabled input fields: branch, repository, project, additional properties
+            codebases=[CodebaseParameter("",
+                       revision=FixedParameter(name="revision", default=""),
+                       repository=FixedParameter(name="repository", default=""),
+                       project=FixedParameter(name="project", default=""),
+                       branch=FixedParameter(name="branch", default=""))],
+            # Add custom properties needed
+            properties=[StringParameter(name="patch_id", label="Patch attachment id number (not bug number)", required=True, maxsize=7),
+                        StringParameter(name="ews_revision", label="WebKit git sha1 hash to checkout before trying patch (optional)", required=False, maxsize=40)],
+        )
+        c['schedulers'].append(forceScheduler)
 
 
 def prioritizeBuilders(buildmaster, builders):
@@ -175,7 +194,7 @@ def checkWorkersAndBuildersForConsistency(config, workers, builders):
                 raise Exception('Builder {} has worker {}, which is not defined in workers list!'.format(builder['name'], worker_name))
 
             if worker['platform'] != builder['platform'] and worker['platform'] != '*' and builder['platform'] != '*':
-                raise Exception('Builder {0} is for platform {1}, but has worker {2} for platform {3}!'.format(
+                raise Exception('Builder "{0}" is for platform "{1}", but has worker "{2}" for platform "{3}"!'.format(
                     builder['name'], builder['platform'], worker['name'], worker['platform']))
 
 
@@ -195,5 +214,5 @@ def getValidTags(tags):
 
 
 def getTagsForBuilder(builder):
-    keywords = re.split('[, \-_:()]+', str(builder['name']))
+    keywords = re.split(r'[, \-_:()]+', str(builder['name']))
     return getValidTags(keywords)

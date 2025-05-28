@@ -193,6 +193,7 @@ typedef enum {
  * WebKitWebProcessTerminationReason:
  * @WEBKIT_WEB_PROCESS_CRASHED: the web process crashed.
  * @WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT: the web process exceeded the memory limit.
+ * @WEBKIT_WEB_PROCESS_TERMINATED_BY_API: the web process termination was requested by an API call. Since: 2.34
  *
  * Enum values used to specify the reason why the web process terminated abnormally.
  *
@@ -200,8 +201,25 @@ typedef enum {
  */
 typedef enum {
     WEBKIT_WEB_PROCESS_CRASHED,
-    WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT
+    WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT,
+    WEBKIT_WEB_PROCESS_TERMINATED_BY_API
 } WebKitWebProcessTerminationReason;
+
+/**
+ * WebKitMediaCaptureState:
+ * @WEBKIT_MEDIA_CAPTURE_STATE_NONE: Media capture is disabled.
+ * @WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE: Media capture is active.
+ * @WEBKIT_MEDIA_CAPTURE_STATE_MUTED: Media capture is muted.
+ *
+ * Enum values used to specify the capture state of a media device.
+ *
+ * Since: 2.34
+ */
+typedef enum {
+    WEBKIT_MEDIA_CAPTURE_STATE_NONE,
+    WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE,
+    WEBKIT_MEDIA_CAPTURE_STATE_MUTED,
+} WebKitMediaCaptureState;
 
 struct _WebKitWebView {
     WebKitWebViewBase parent;
@@ -585,10 +603,39 @@ webkit_web_view_set_input_method_context             (WebKitWebView             
 WEBKIT_API WebKitInputMethodContext *
 webkit_web_view_get_input_method_context             (WebKitWebView             *web_view);
 
+WEBKIT_API void
+webkit_web_view_set_cors_allowlist                   (WebKitWebView             *web_view,
+                                                      const gchar * const       *allowlist);
 
 WEBKIT_API WebKitWebsitePolicies *
 webkit_web_view_get_website_policies                 (WebKitWebView             *web_view);
 
+WEBKIT_API gboolean
+webkit_web_view_get_is_web_process_responsive        (WebKitWebView             *web_view);
+
+WEBKIT_API void
+webkit_web_view_terminate_web_process                (WebKitWebView             *web_view);
+
+WEBKIT_API WebKitMediaCaptureState
+webkit_web_view_get_camera_capture_state             (WebKitWebView             *web_view);
+
+WEBKIT_API void
+webkit_web_view_set_camera_capture_state             (WebKitWebView             *web_view,
+                                                      WebKitMediaCaptureState    state);
+
+WEBKIT_API WebKitMediaCaptureState
+webkit_web_view_get_microphone_capture_state         (WebKitWebView             *web_view);
+
+WEBKIT_API void
+webkit_web_view_set_microphone_capture_state         (WebKitWebView             *web_view,
+                                                      WebKitMediaCaptureState    state);
+
+WEBKIT_API WebKitMediaCaptureState
+webkit_web_view_get_display_capture_state            (WebKitWebView             *web_view);
+
+WEBKIT_API void
+webkit_web_view_set_display_capture_state            (WebKitWebView             *web_view,
+                                                      WebKitMediaCaptureState    state);
 
 G_END_DECLS
 

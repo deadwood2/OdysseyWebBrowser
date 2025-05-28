@@ -29,6 +29,7 @@
 #include "StorageAreaIdentifier.h"
 #include "StorageAreaImplIdentifier.h"
 #include <WebCore/SecurityOriginData.h>
+#include <WebCore/StorageMap.h>
 #include <wtf/Forward.h>
 #include <wtf/WeakPtr.h>
 
@@ -47,7 +48,7 @@ class StorageArea : public CanMakeWeakPtr<StorageArea> {
 public:
     using Identifier = StorageAreaIdentifier;
     
-    StorageArea(LocalStorageNamespace*, const WebCore::SecurityOriginData&, unsigned quotaInBytes, Ref<WorkQueue>&&);
+    StorageArea(LocalStorageNamespace*, const WebCore::SecurityOriginData&, unsigned quotaInBytes, Ref<SuspendableWorkQueue>&&);
     ~StorageArea();
 
     const WebCore::SecurityOriginData& securityOrigin() const { return m_securityOrigin; }
@@ -63,32 +64,33 @@ public:
     void removeItem(IPC::Connection::UniqueID sourceConnection, StorageAreaImplIdentifier, const String& key, const String& urlString);
     void clear(IPC::Connection::UniqueID sourceConnection, StorageAreaImplIdentifier, const String& urlString);
 
-    const HashMap<String, String>& items() const;
+    HashMap<String, String> items() const;
     void clear();
 
     bool isEphemeral() const { return !m_localStorageNamespace; }
 
-    void openDatabaseAndImportItemsIfNeeded() const;
+    void close();
 
     void syncToDatabase();
-    void close();
+    void handleLowMemoryWarning();
 
 private:
     void dispatchEvents(IPC::Connection::UniqueID sourceConnection, StorageAreaImplIdentifier, const String& key, const String& oldValue, const String& newValue, const String& urlString) const;
 
+    LocalStorageDatabase& ensureDatabase() const;
+
     // Will be null if the storage area belongs to a session storage namespace or the storage area is in an ephemeral session.
     WeakPtr<LocalStorageNamespace> m_localStorageNamespace;
     mutable RefPtr<LocalStorageDatabase> m_localStorageDatabase;
-    mutable bool m_didImportItemsFromDatabase { false };
 
     WebCore::SecurityOriginData m_securityOrigin;
     unsigned m_quotaInBytes { 0 };
 
-    RefPtr<WebCore::StorageMap> m_storageMap;
+    mutable std::unique_ptr<WebCore::StorageMap> m_sessionStorageMap;
     HashSet<IPC::Connection::UniqueID> m_eventListeners;
 
     Identifier m_identifier;
-    Ref<WorkQueue> m_queue;
+    Ref<SuspendableWorkQueue> m_queue;
 };
 
 } // namespace WebKit

@@ -28,12 +28,12 @@
 
 #import "APIPageConfiguration.h"
 #import "UserInterfaceIdiom.h"
-#import "WKPreferences.h"
-#import "WKProcessPool.h"
-#import "WKRetainPtr.h"
-#import "WKUserContentController.h"
+#import <WebKit/WKPreferences.h>
+#import <WebKit/WKProcessPool.h>
+#import <WebKit/WKRetainPtr.h>
+#import <WebKit/WKUserContentController.h>
 #import "WKWebpagePreferencesInternal.h"
-#import "WKWebView.h"
+#import <WebKit/WKWebView.h>
 #import "WKWebViewContentProviderRegistry.h"
 #import "WebKit2Initialize.h"
 #import "WebPreferencesDefaultValues.h"
@@ -126,7 +126,7 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     WeakObjCPtr<WKWebView> _relatedWebView;
     WeakObjCPtr<WKWebView> _alternateWebViewForNavigationGestures;
     RetainPtr<NSString> _groupIdentifier;
-    Optional<RetainPtr<NSString>> _applicationNameForUserAgent;
+    std::optional<RetainPtr<NSString>> _applicationNameForUserAgent;
     NSTimeInterval _incrementalRenderingSuppressionTimeout;
     BOOL _respectsImageOrientation;
     BOOL _printsBackgrounds;
@@ -174,6 +174,11 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     BOOL _shouldDeferAsynchronousScriptsUntilAfterDocumentLoad;
     BOOL _drawsBackground;
     BOOL _undoManagerAPIEnabled;
+#if ENABLE(APP_HIGHLIGHTS)
+    BOOL _appHighlightsEnabled;
+#endif
+    double _sampledPageTopColorMaxDifference;
+    double _sampledPageTopColorMinHeight;
 
     RetainPtr<NSString> _mediaContentTypesRequiringHardwareSupport;
     RetainPtr<NSArray<NSString *>> _additionalSupportedImageTypes;
@@ -193,11 +198,10 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     _allowsPictureInPictureMediaPlayback = YES;
 #endif
 
-    _allowsInlineMediaPlayback = WebKit::currentUserInterfaceIdiomIsPadOrMac();
+    _allowsInlineMediaPlayback = !WebKit::currentUserInterfaceIdiomIsPhoneOrWatch();
     _inlineMediaPlaybackRequiresPlaysInlineAttribute = !_allowsInlineMediaPlayback;
     _allowsInlineMediaPlaybackAfterFullscreen = !_allowsInlineMediaPlayback;
-
-    _mediaDataLoadsAutomatically = NO;
+    _mediaDataLoadsAutomatically = _allowsInlineMediaPlayback;
 #if !PLATFORM(WATCHOS)
     if (WebCore::linkedOnOrAfter(WebCore::SDKVersion::FirstWithMediaTypesRequiringUserActionForPlayback))
         _mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAudio;
@@ -269,6 +273,13 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     _applePayEnabled = DEFAULT_VALUE_FOR_ApplePayEnabled;
 #endif
 
+#if ENABLE(APP_HIGHLIGHTS)
+    _appHighlightsEnabled = DEFAULT_VALUE_FOR_AppHighlightsEnabled;
+#endif
+
+    _sampledPageTopColorMaxDifference = DEFAULT_VALUE_FOR_SampledPageTopColorMaxDifference;
+    _sampledPageTopColorMinHeight = DEFAULT_VALUE_FOR_SampledPageTopColorMinHeight;
+
     return self;
 }
 
@@ -291,7 +302,7 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
 
     [coder encodeBool:self.suppressesIncrementalRendering forKey:@"suppressesIncrementalRendering"];
 
-    if (_applicationNameForUserAgent.hasValue())
+    if (_applicationNameForUserAgent)
         [coder encodeObject:self.applicationNameForUserAgent forKey:@"applicationNameForUserAgent"];
 
     [coder encodeBool:self.allowsAirPlayForMediaPlayback forKey:@"allowsAirPlayForMediaPlayback"];
@@ -443,6 +454,12 @@ static bool defaultShouldDecidePolicyBeforeLoadingQuickLookPreview()
     configuration->_drawsBackground = self->_drawsBackground;
 
     configuration->_undoManagerAPIEnabled = self->_undoManagerAPIEnabled;
+#if ENABLE(APP_HIGHLIGHTS)
+    configuration->_appHighlightsEnabled = self->_appHighlightsEnabled;
+#endif
+
+    configuration->_sampledPageTopColorMaxDifference = self->_sampledPageTopColorMaxDifference;
+    configuration->_sampledPageTopColorMinHeight = self->_sampledPageTopColorMinHeight;
 
     return configuration;
 }
@@ -520,12 +537,12 @@ static NSString *defaultApplicationNameForUserAgent()
 
 - (NSString *)_applicationNameForDesktopUserAgent
 {
-    return _applicationNameForUserAgent.valueOr(nil).get();
+    return _applicationNameForUserAgent.value_or(nil).get();
 }
 
 - (NSString *)applicationNameForUserAgent
 {
-    return _applicationNameForUserAgent.valueOr(defaultApplicationNameForUserAgent()).get();
+    return _applicationNameForUserAgent.value_or(defaultApplicationNameForUserAgent()).get();
 }
 
 - (void)setApplicationNameForUserAgent:(NSString *)applicationNameForUserAgent
@@ -548,7 +565,7 @@ static NSString *defaultApplicationNameForUserAgent()
     if ([WKWebView handlesURLScheme:urlScheme])
         [NSException raise:NSInvalidArgumentException format:@"'%@' is a URL scheme that WKWebView handles natively", urlScheme];
 
-    auto canonicalScheme = WTF::URLParser::maybeCanonicalizeScheme(urlScheme);
+    auto canonicalScheme = WTF::URLParser::maybeCanonicalizeScheme(String(urlScheme));
     if (!canonicalScheme)
         [NSException raise:NSInvalidArgumentException format:@"'%@' is not a valid URL scheme", urlScheme];
 
@@ -560,7 +577,7 @@ static NSString *defaultApplicationNameForUserAgent()
 
 - (id <WKURLSchemeHandler>)urlSchemeHandlerForURLScheme:(NSString *)urlScheme
 {
-    auto canonicalScheme = WTF::URLParser::maybeCanonicalizeScheme(urlScheme);
+    auto canonicalScheme = WTF::URLParser::maybeCanonicalizeScheme(String(urlScheme));
     if (!canonicalScheme)
         return nil;
 
@@ -827,6 +844,35 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 {
     _pageConfiguration->setLimitsNavigationsToAppBoundDomains(limitsToAppBoundDomains);
 }
+
+static _WKAttributionOverrideTesting toWKAttributionOverrideTesting(WebKit::AttributionOverrideTesting value)
+{
+    if (value == WebKit::AttributionOverrideTesting::AppInitiated)
+        return _WKAttributionOverrideTestingAppInitiated;
+    if (value == WebKit::AttributionOverrideTesting::UserInitiated)
+        return _WKAttributionOverrideTestingUserInitiated;
+    return _WKAttributionOverrideTestingNoOverride;
+}
+
+static WebKit::AttributionOverrideTesting toAttributionOverrideTesting(_WKAttributionOverrideTesting value)
+{
+    if (value == _WKAttributionOverrideTestingAppInitiated)
+        return WebKit::AttributionOverrideTesting::AppInitiated;
+    if (value == _WKAttributionOverrideTestingUserInitiated)
+        return WebKit::AttributionOverrideTesting::UserInitiated;
+    return WebKit::AttributionOverrideTesting::NoOverride;
+}
+
+- (void)_setAppInitiatedOverrideValueForTesting:(_WKAttributionOverrideTesting)value
+{
+    _pageConfiguration->setAppInitiatedOverrideValueForTesting(toAttributionOverrideTesting(value));
+}
+
+- (_WKAttributionOverrideTesting)_appInitiatedOverrideValueForTesting
+{
+    return toWKAttributionOverrideTesting(_pageConfiguration->appInitiatedOverrideValueForTesting());
+}
+
 #endif // PLATFORM(IOS_FAMILY)
 
 - (BOOL)_ignoresAppBoundDomains
@@ -935,12 +981,33 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (void)_setLoadsFromNetwork:(BOOL)loads
 {
-    _pageConfiguration->setLoadsFromNetwork(loads);
+    _pageConfiguration->setAllowedNetworkHosts(loads ? std::nullopt : std::optional<HashSet<String>> { HashSet<String> { } });
 }
 
 - (BOOL)_loadsFromNetwork
 {
-    return _pageConfiguration->loadsFromNetwork();
+    return _pageConfiguration->allowedNetworkHosts() == std::nullopt;
+}
+
+- (void)_setAllowedNetworkHosts:(NSSet<NSString *> *)hosts
+{
+    if (!hosts)
+        return _pageConfiguration->setAllowedNetworkHosts(std::nullopt);
+    HashSet<String> set;
+    for (NSString *host in hosts)
+        set.add(host);
+    _pageConfiguration->setAllowedNetworkHosts(WTFMove(set));
+}
+
+- (NSSet<NSString *> *)_allowedNetworkHosts
+{
+    const auto& hosts = _pageConfiguration->allowedNetworkHosts();
+    if (!hosts)
+        return nil;
+    NSMutableSet<NSString *> *set = [NSMutableSet setWithCapacity:hosts->size()];
+    for (const auto& host : *hosts)
+        [set addObject:host];
+    return set;
 }
 
 - (void)_setLoadsSubresources:(BOOL)loads
@@ -1118,7 +1185,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (double)_cpuLimit
 {
-    return _pageConfiguration->cpuLimit().valueOr(0);
+    return _pageConfiguration->cpuLimit().value_or(0);
 }
 
 #endif // PLATFORM(MAC)
@@ -1219,6 +1286,22 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     return _undoManagerAPIEnabled;
 }
 
+- (void)_setAppHighlightsEnabled:(BOOL)enabled
+{
+#if ENABLE(APP_HIGHLIGHTS)
+    _appHighlightsEnabled = enabled;
+#endif
+}
+
+- (BOOL)_appHighlightsEnabled
+{
+#if ENABLE(APP_HIGHLIGHTS)
+    return _appHighlightsEnabled;
+#else
+    return NO;
+#endif
+}
+
 - (BOOL)_shouldRelaxThirdPartyCookieBlocking
 {
     return _pageConfiguration->shouldRelaxThirdPartyCookieBlocking() == WebCore::ShouldRelaxThirdPartyCookieBlocking::Yes;
@@ -1246,6 +1329,39 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 - (void)_setProcessDisplayName:(NSString *)lsDisplayName
 {
     _pageConfiguration->setProcessDisplayName(lsDisplayName);
+}
+
+- (void)_setSampledPageTopColorMaxDifference:(double)value
+{
+    _sampledPageTopColorMaxDifference = value;
+}
+
+- (double)_sampledPageTopColorMaxDifference
+{
+    return _sampledPageTopColorMaxDifference;
+}
+
+- (void)_setSampledPageTopColorMinHeight:(double)value
+{
+    _sampledPageTopColorMinHeight = value;
+}
+
+- (double)_sampledPageTopColorMinHeight
+{
+    return _sampledPageTopColorMinHeight;
+}
+
+- (void)_setAttributedBundleIdentifier:(NSString *)identifier
+{
+    _pageConfiguration->setAttributedBundleIdentifier(identifier);
+}
+
+- (NSString *)_attributedBundleIdentifier
+{
+    auto& identifier = _pageConfiguration->attributedBundleIdentifier();
+    if (!identifier)
+        return nil;
+    return identifier;
 }
 
 @end

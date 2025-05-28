@@ -26,6 +26,7 @@
 #include "JSDOMBinding.h"
 #include "JSDOMConstructorNotConstructable.h"
 #include "JSDOMExceptionHandling.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMWrapperCache.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreJSClientData.h"
@@ -81,6 +82,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestReportExtraMemoryCostPrototype, JSTest
 
 using JSTestReportExtraMemoryCostDOMConstructor = JSDOMConstructorNotConstructable<JSTestReportExtraMemoryCost>;
 
+template<> const ClassInfo JSTestReportExtraMemoryCostDOMConstructor::s_info = { "TestReportExtraMemoryCost", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestReportExtraMemoryCostDOMConstructor) };
+
 template<> JSValue JSTestReportExtraMemoryCostDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -93,8 +96,6 @@ template<> void JSTestReportExtraMemoryCostDOMConstructor::initializeProperties(
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestReportExtraMemoryCost"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestReportExtraMemoryCostDOMConstructor::s_info = { "TestReportExtraMemoryCost", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestReportExtraMemoryCostDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -141,7 +142,7 @@ JSObject* JSTestReportExtraMemoryCost::prototype(VM& vm, JSDOMGlobalObject& glob
 
 JSValue JSTestReportExtraMemoryCost::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestReportExtraMemoryCostDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestReportExtraMemoryCostDOMConstructor, DOMConstructorID::TestReportExtraMemoryCost>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 void JSTestReportExtraMemoryCost::destroy(JSC::JSCell* cell)

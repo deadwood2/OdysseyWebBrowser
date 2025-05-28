@@ -40,8 +40,6 @@ struct WebProcessDataStoreParameters {
     String applicationCacheDirectory;
     SandboxExtension::Handle applicationCacheDirectoryExtensionHandle;
     String applicationCacheFlatFileSubdirectoryName;
-    String webSQLDatabaseDirectory;
-    SandboxExtension::Handle webSQLDatabaseDirectoryExtensionHandle;
     String mediaCacheDirectory;
     SandboxExtension::Handle mediaCacheDirectoryExtensionHandle;
     String mediaKeyStorageDirectory;
@@ -52,12 +50,15 @@ struct WebProcessDataStoreParameters {
     WebCore::ThirdPartyCookieBlockingMode thirdPartyCookieBlockingMode { WebCore::ThirdPartyCookieBlockingMode::All };
     HashSet<WebCore::RegistrableDomain> domainsWithUserInteraction;
     HashMap<TopFrameDomain, SubResourceDomain> domainsWithStorageAccessQuirk;
-
+#endif
+#if HAVE(ARKIT_INLINE_PREVIEW)
+    String modelElementCacheDirectory;
+    SandboxExtension::Handle modelElementCacheDirectoryExtensionHandle;
 #endif
     bool resourceLoadStatisticsEnabled { false };
 
     template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static Optional<WebProcessDataStoreParameters> decode(Decoder&);
+    template<class Decoder> static std::optional<WebProcessDataStoreParameters> decode(Decoder&);
 };
 
 template<class Encoder>
@@ -67,8 +68,6 @@ void WebProcessDataStoreParameters::encode(Encoder& encoder) const
     encoder << applicationCacheDirectory;
     encoder << applicationCacheDirectoryExtensionHandle;
     encoder << applicationCacheFlatFileSubdirectoryName;
-    encoder << webSQLDatabaseDirectory;
-    encoder << webSQLDatabaseDirectoryExtensionHandle;
     encoder << mediaCacheDirectory;
     encoder << mediaCacheDirectoryExtensionHandle;
     encoder << mediaKeyStorageDirectory;
@@ -80,94 +79,97 @@ void WebProcessDataStoreParameters::encode(Encoder& encoder) const
     encoder << domainsWithUserInteraction;
     encoder << domainsWithStorageAccessQuirk;
 #endif
+#if HAVE(ARKIT_INLINE_PREVIEW)
+    encoder << modelElementCacheDirectory;
+    encoder << modelElementCacheDirectoryExtensionHandle;
+#endif
     encoder << resourceLoadStatisticsEnabled;
 }
 
 template<class Decoder>
-Optional<WebProcessDataStoreParameters> WebProcessDataStoreParameters::decode(Decoder& decoder)
+std::optional<WebProcessDataStoreParameters> WebProcessDataStoreParameters::decode(Decoder& decoder)
 {
-    Optional<PAL::SessionID> sessionID;
+    std::optional<PAL::SessionID> sessionID;
     decoder >> sessionID;
     if (!sessionID)
-        return WTF::nullopt;
+        return std::nullopt;
 
     String applicationCacheDirectory;
     if (!decoder.decode(applicationCacheDirectory))
-        return WTF::nullopt;
+        return std::nullopt;
 
-    Optional<SandboxExtension::Handle> applicationCacheDirectoryExtensionHandle;
+    std::optional<SandboxExtension::Handle> applicationCacheDirectoryExtensionHandle;
     decoder >> applicationCacheDirectoryExtensionHandle;
     if (!applicationCacheDirectoryExtensionHandle)
-        return WTF::nullopt;
+        return std::nullopt;
 
     String applicationCacheFlatFileSubdirectoryName;
     if (!decoder.decode(applicationCacheFlatFileSubdirectoryName))
-        return WTF::nullopt;
-
-    String webSQLDatabaseDirectory;
-    if (!decoder.decode(webSQLDatabaseDirectory))
-        return WTF::nullopt;
-
-    Optional<SandboxExtension::Handle> webSQLDatabaseDirectoryExtensionHandle;
-    decoder >> webSQLDatabaseDirectoryExtensionHandle;
-    if (!webSQLDatabaseDirectoryExtensionHandle)
-        return WTF::nullopt;
+        return std::nullopt;
 
     String mediaCacheDirectory;
     if (!decoder.decode(mediaCacheDirectory))
-        return WTF::nullopt;
+        return std::nullopt;
 
-    Optional<SandboxExtension::Handle> mediaCacheDirectoryExtensionHandle;
+    std::optional<SandboxExtension::Handle> mediaCacheDirectoryExtensionHandle;
     decoder >> mediaCacheDirectoryExtensionHandle;
     if (!mediaCacheDirectoryExtensionHandle)
-        return WTF::nullopt;
+        return std::nullopt;
 
     String mediaKeyStorageDirectory;
     if (!decoder.decode(mediaKeyStorageDirectory))
-        return WTF::nullopt;
+        return std::nullopt;
 
-    Optional<SandboxExtension::Handle> mediaKeyStorageDirectoryExtensionHandle;
+    std::optional<SandboxExtension::Handle> mediaKeyStorageDirectoryExtensionHandle;
     decoder >> mediaKeyStorageDirectoryExtensionHandle;
     if (!mediaKeyStorageDirectoryExtensionHandle)
-        return WTF::nullopt;
+        return std::nullopt;
 
     String javaScriptConfigurationDirectory;
     if (!decoder.decode(javaScriptConfigurationDirectory))
-        return WTF::nullopt;
+        return std::nullopt;
 
-    Optional<SandboxExtension::Handle> javaScriptConfigurationDirectoryExtensionHandle;
+    std::optional<SandboxExtension::Handle> javaScriptConfigurationDirectoryExtensionHandle;
     decoder >> javaScriptConfigurationDirectoryExtensionHandle;
     if (!javaScriptConfigurationDirectoryExtensionHandle)
-        return WTF::nullopt;
+        return std::nullopt;
         
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-    Optional<WebCore::ThirdPartyCookieBlockingMode> thirdPartyCookieBlockingMode;
+    std::optional<WebCore::ThirdPartyCookieBlockingMode> thirdPartyCookieBlockingMode;
     decoder >> thirdPartyCookieBlockingMode;
     if (!thirdPartyCookieBlockingMode)
-        return WTF::nullopt;
+        return std::nullopt;
 
-    Optional<HashSet<WebCore::RegistrableDomain>> domainsWithUserInteraction;
+    std::optional<HashSet<WebCore::RegistrableDomain>> domainsWithUserInteraction;
     decoder >> domainsWithUserInteraction;
     if (!domainsWithUserInteraction)
-        return WTF::nullopt;
+        return std::nullopt;
     
-    Optional<HashMap<TopFrameDomain, SubResourceDomain>> domainsWithStorageAccessQuirk;
+    std::optional<HashMap<TopFrameDomain, SubResourceDomain>> domainsWithStorageAccessQuirk;
     decoder >> domainsWithStorageAccessQuirk;
     if (!domainsWithStorageAccessQuirk)
-        return WTF::nullopt;
+        return std::nullopt;
+#endif
+#if HAVE(ARKIT_INLINE_PREVIEW)
+        String modelElementCacheDirectory;
+        if (!decoder.decode(modelElementCacheDirectory))
+            return std::nullopt;
+
+        std::optional<SandboxExtension::Handle> modelElementCacheDirectoryExtensionHandle;
+        decoder >> modelElementCacheDirectoryExtensionHandle;
+        if (!modelElementCacheDirectoryExtensionHandle)
+            return std::nullopt;
 #endif
 
     bool resourceLoadStatisticsEnabled = false;
     if (!decoder.decode(resourceLoadStatisticsEnabled))
-        return WTF::nullopt;
+        return std::nullopt;
 
     return WebProcessDataStoreParameters {
         WTFMove(*sessionID),
         WTFMove(applicationCacheDirectory),
         WTFMove(*applicationCacheDirectoryExtensionHandle),
         WTFMove(applicationCacheFlatFileSubdirectoryName),
-        WTFMove(webSQLDatabaseDirectory),
-        WTFMove(*webSQLDatabaseDirectoryExtensionHandle),
         WTFMove(mediaCacheDirectory),
         WTFMove(*mediaCacheDirectoryExtensionHandle),
         WTFMove(mediaKeyStorageDirectory),
@@ -178,6 +180,10 @@ Optional<WebProcessDataStoreParameters> WebProcessDataStoreParameters::decode(De
         *thirdPartyCookieBlockingMode,
         WTFMove(*domainsWithUserInteraction),
         WTFMove(*domainsWithStorageAccessQuirk),
+#endif
+#if HAVE(ARKIT_INLINE_PREVIEW)
+        WTFMove(modelElementCacheDirectory),
+        WTFMove(*modelElementCacheDirectoryExtensionHandle),
 #endif
         resourceLoadStatisticsEnabled
     };

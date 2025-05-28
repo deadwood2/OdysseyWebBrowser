@@ -33,7 +33,9 @@
 #import <CoreText/CoreText.h>
 #import <wtf/WeakObjCPtr.h>
 
+#if PLATFORM(IOS_FAMILY)
 #import <pal/ios/UIKitSoftLink.h>
+#endif
 
 static void *boundsObservationContext = &boundsObservationContext;
 
@@ -51,7 +53,7 @@ const void* const webViewVisualIdentificationOverlayKey = &webViewVisualIdentifi
 
 + (BOOL)shouldIdentifyWebViews
 {
-    static Optional<BOOL> shouldIdentifyWebViews;
+    static std::optional<BOOL> shouldIdentifyWebViews;
     if (!shouldIdentifyWebViews)
         shouldIdentifyWebViews = [[NSUserDefaults standardUserDefaults] boolForKey:@"WebKitDebugIdentifyWebViews"];
     return *shouldIdentifyWebViews;
@@ -121,10 +123,10 @@ const void* const webViewVisualIdentificationOverlayKey = &webViewVisualIdentifi
     }
 }
 
-static CTFontRef identificationFont()
+static RetainPtr<CTFontRef> createIdentificationFont()
 {
     auto matrix = CGAffineTransformIdentity;
-    return (CTFontRef)CFAutorelease(CTFontCreateWithName(CFSTR("Helvetica"), 20, &matrix));
+    return adoptCF(CTFontCreateWithName(CFSTR("Helvetica"), 20, &matrix));
 }
 
 constexpr CGFloat horizontalMargin = 15;
@@ -135,7 +137,7 @@ static void drawPattern(void *overlayPtr, CGContextRef ctx)
     WebViewVisualIdentificationOverlay *overlay = (WebViewVisualIdentificationOverlay *)overlayPtr;
 
     auto attributes = @{
-        (id)kCTFontAttributeName : (id)identificationFont(),
+        (id)kCTFontAttributeName : (id)createIdentificationFont().get(),
         (id)kCTForegroundColorFromContextAttributeName : @YES
     };
     auto attributedString = adoptCF(CFAttributedStringCreate(kCFAllocatorDefault, (__bridge CFStringRef)overlay->_kind.get(), (__bridge CFDictionaryRef)attributes));
@@ -165,7 +167,7 @@ static void drawPattern(void *overlayPtr, CGContextRef ctx)
     auto patternSpace = adoptCF(CGColorSpaceCreatePattern(nullptr));
     CGContextSetFillColorSpace(ctx, patternSpace.get());
 
-    CGSize textSize = [_kind sizeWithAttributes:@{ (id)kCTFontAttributeName : (id)identificationFont() }];
+    CGSize textSize = [_kind sizeWithAttributes:@{ (id)kCTFontAttributeName : (id)createIdentificationFont().get() }];
     CGSize patternSize = CGSizeMake(textSize.width + horizontalMargin, (textSize.height + verticalMargin) * 2);
     auto pattern = adoptCF(CGPatternCreate(self, layer.bounds, CGAffineTransformMakeRotation(M_PI_4), patternSize.width, patternSize.height, kCGPatternTilingNoDistortion, true, &callbacks));
     CGFloat alpha = 0.5;

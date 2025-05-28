@@ -76,10 +76,10 @@ void PlaybackSessionInterfaceContext::bufferedTimeChanged(double bufferedTime)
         m_manager->bufferedTimeChanged(m_contextId, bufferedTime);
 }
 
-void PlaybackSessionInterfaceContext::rateChanged(bool isPlaying, float playbackRate)
+void PlaybackSessionInterfaceContext::rateChanged(OptionSet<PlaybackSessionModel::PlaybackState> playbackState, double playbackRate, double defaultPlaybackRate)
 {
     if (m_manager)
-        m_manager->rateChanged(m_contextId, isPlaying, playbackRate);
+        m_manager->rateChanged(m_contextId, playbackState, playbackRate, defaultPlaybackRate);
 }
 
 void PlaybackSessionInterfaceContext::playbackStartedTimeChanged(double playbackStartedTime)
@@ -341,9 +341,9 @@ void PlaybackSessionManager::playbackStartedTimeChanged(PlaybackSessionContextId
     m_page->send(Messages::PlaybackSessionManagerProxy::PlaybackStartedTimeChanged(contextId, playbackStartedTime));
 }
 
-void PlaybackSessionManager::rateChanged(PlaybackSessionContextIdentifier contextId, bool isPlaying, float playbackRate)
+void PlaybackSessionManager::rateChanged(PlaybackSessionContextIdentifier contextId, OptionSet<PlaybackSessionModel::PlaybackState> playbackState, double playbackRate, double defaultPlaybackRate)
 {
-    m_page->send(Messages::PlaybackSessionManagerProxy::RateChanged(contextId, isPlaying, playbackRate));
+    m_page->send(Messages::PlaybackSessionManagerProxy::RateChanged(contextId, playbackState, playbackRate, defaultPlaybackRate));
 }
 
 void PlaybackSessionManager::seekableRangesChanged(PlaybackSessionContextIdentifier contextId, const WebCore::TimeRanges& timeRanges, double lastModifiedTime, double liveUpdateInterval)
@@ -467,6 +467,18 @@ void PlaybackSessionManager::endScanning(PlaybackSessionContextIdentifier contex
 {
     UserGestureIndicator indicator(ProcessingUserGesture);
     ensureModel(contextId).endScanning();
+}
+
+void PlaybackSessionManager::setDefaultPlaybackRate(PlaybackSessionContextIdentifier contextId, float defaultPlaybackRate)
+{
+    UserGestureIndicator indicator(ProcessingUserGesture);
+    ensureModel(contextId).setDefaultPlaybackRate(defaultPlaybackRate);
+}
+
+void PlaybackSessionManager::setPlaybackRate(PlaybackSessionContextIdentifier contextId, float playbackRate)
+{
+    UserGestureIndicator indicator(ProcessingUserGesture);
+    ensureModel(contextId).setPlaybackRate(playbackRate);
 }
 
 void PlaybackSessionManager::selectAudioMediaOption(PlaybackSessionContextIdentifier contextId, uint64_t index)

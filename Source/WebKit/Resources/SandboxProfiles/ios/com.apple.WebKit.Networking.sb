@@ -1,4 +1,4 @@
-; Copyright (C) 2014-2020 Apple Inc. All rights reserved.
+; Copyright (C) 2014-2021 Apple Inc. All rights reserved.
 ;
 ; Redistribution and use in source and binary forms, with or without
 ; modification, are permitted provided that the following conditions
@@ -23,6 +23,7 @@
 
 (version 1)
 (deny default (with partial-symbolication))
+(deny nvram*)
 (allow system-audit file-read-metadata)
 
 ;;;
@@ -125,7 +126,10 @@
     (with-filter (entitlement-is-present "com.apple.private.networkextension.configuration")
            (allow file-read* (literal "/private/var/preferences/com.apple.networkextension.plist")))
 
-    (allow file-read* (literal "/private/var/preferences/com.apple.networkextension.uuidcache.plist"))
+    (allow file-read*
+        (literal "/private/var/preferences/com.apple.networkextension.uuidcache.plist")
+        (prefix "/private/var/db/com.apple.networkextension.")
+    )
 
     (allow mach-lookup
            (global-name "com.apple.AppSSO.service-xpc"))
@@ -256,10 +260,11 @@
         (with-filter (system-attribute apple-internal)
             ;; <rdar://problem/8565035>
             ;; <rdar://problem/23857452>
+            ;; <rdar://problem/72317112>
             (allow file-read* file-map-executable
                    (subpath "/AppleInternal")
                    (subpath "/usr/local/lib")
-                   (subpath "/usr/appleinternal/lib/sanitizers")))
+                   (subpath "/usr/appleinternal/lib")))
             (with-elevated-precedence
                 (allow file-read* file-map-executable file-issue-extension
                    (front-user-home-subpath "/XcodeBuiltProducts")))
@@ -278,22 +283,6 @@
         ;; <rdar://problem/9090627>
         (allow mach-lookup
              (global-name "com.apple.osanalytics.osanalyticshelper")))
-
-(define-once (logd-diagnostic-paths)
-    (require-any
-        (subpath "/private/var/db/diagnostics")
-        (subpath "/private/var/db/timesync")
-        (subpath "/private/var/db/uuidtext")
-        (subpath "/private/var/userdata/diagnostics")))
-(define-once (logd-diagnostic-client)
-    (with-filter
-        (require-all
-            (require-any
-                (require-entitlement "com.apple.private.logging.diagnostic")
-                (require-entitlement "com.apple.diagnosticd.diagnostic"))
-            (extension "com.apple.logd.read-only"))
-        (allow file-read*
-               (logd-diagnostic-paths))))
 
 (define required-etc-files
   (literal "/private/etc/fstab"
@@ -443,6 +432,7 @@
     (sysctl-name "hw.cpufrequency_compat")
     (sysctl-name "hw.cpufrequency_max")
     (sysctl-name "hw.cpusubtype")
+    (sysctl-name "hw.cputhreadtype")
     (sysctl-name "hw.cputype")
     (sysctl-name "hw.l1dcachesize")
     (sysctl-name "hw.l1dcachesize_compat")
@@ -492,8 +482,15 @@
        (global-name "com.apple.system.logger"))
 
 ;; Needed by WebKit LOG macros and ASL logging.
-(allow file-read-metadata network-outbound
+(allow file-read-metadata
        (literal "/private/var/run/syslog"))
+
+;; ObjC map_images needs to send logging data to syslog. <rdar://problem/39778918>
+(with-filter (system-attribute apple-internal)
+    (allow network-outbound
+       (literal "/private/var/run/syslog")
+    )
+)
 
 (allow mach-lookup
     (global-name "com.apple.system.notification_center"))
@@ -508,8 +505,6 @@
     (global-name "com.apple.diagnosticd")
     (global-name "com.apple.aggregated")
 )
-
-(logd-diagnostic-client)
 
 (managed-configuration-read-public)
 
@@ -545,14 +540,32 @@
     (sysctl-name
         "hw.activecpu" ;; Needed by JSC engine.
         "hw.availcpu"
+        "hw.cacheconfig" ;; <rdar://problem/78213563>
+        "hw.cachelinesize" ;; <rdar://problem/15721872>
+        "hw.cachesize" ;; <rdar://problem/78213563>
         "hw.cpu64bit_capable"
+        "hw.cpufamily" ;; <rdar://problem/15721872>
+        "hw.cpusubfamily"
+        "hw.l1dcachesize" ;; <rdar://problem/15721872>
+        "hw.l1icachesize" ;; <rdar://problem/15721872>
+        "hw.l2cachesize" ;; <rdar://problem/15721872>
+        "hw.l3cachesize" ;; <rdar://problem/15721872>
+        "hw.logicalcpu" ;; <rdar://problem/15721872>
+        "hw.logicalcpu_max" ;; <rdar://problem/15721872>
         "hw.ncpu"
         "hw.machine" ;; Needed by CFNetwork (CFURLProtocols)
         "hw.memsize"
         "hw.model" ;; Needed for bundle loading
+        "hw.ncpu" ;; <rdar://problem/76782530>
+        "hw.nperflevels" ;; <rdar://problem/76782530>
+        "hw.pagesize" ;; <rdar://problem/76782530>
         "hw.pagesize_compat" ;; Needed by bmalloc
+        "hw.physicalcpu" ;; <rdar://problem/76782530>
+        "hw.physicalcpu_max" ;; <rdar://problem/76782530>
+        "hw.physmem" ;; <rdar://problem/76782530>
         "kern.bootargs"  ;; Needed for bundle loading
         "kern.hostname"
+        "kern.hv_vmm_present"
         "kern.maxfilesperproc"
         "kern.memorystatus_level"
         "kern.osproductversion" ;; Needed by CFNetwork (HSTS store and others)
@@ -566,6 +579,8 @@
         "sysctl.name2oid"
         "vm.footprint_suspend")
     (sysctl-name-prefix "kern.proc.pid.")
+    (sysctl-name-prefix "hw.optional.") ;; <rdar://problem/70973527>
+    (sysctl-name-prefix "hw.perflevel") ;; <rdar://problem/76782530>
 )
 
 ;; Access to client's cache folder & re-vending to CFNetwork.
@@ -658,6 +673,10 @@
     (literal "/dev/aes_0")
     (literal "/dev/random")
     (literal "/dev/urandom"))
+
+(allow file-read* file-write-data
+    (literal "/dev/null")
+    (literal "/dev/zero"))
 
 (if (system-attribute apple-internal)
     (allow file-read* file-write-data file-ioctl

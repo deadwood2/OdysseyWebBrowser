@@ -28,7 +28,6 @@
 #include "SharedDisplayListHandle.h"
 #include <wtf/Expected.h>
 #include <wtf/FastMalloc.h>
-#include <wtf/Optional.h>
 
 namespace WebKit {
 
@@ -42,7 +41,7 @@ public:
         return adoptRef(new DisplayListReaderHandle(identifier, WTFMove(sharedMemory)));
     }
 
-    Optional<size_t> advance(size_t amount);
+    std::optional<size_t> advance(size_t amount);
     std::unique_ptr<WebCore::DisplayList::DisplayList> displayListForReading(size_t offset, size_t capacity, WebCore::DisplayList::ItemBufferReadingClient&) const;
 
     void startWaiting()
@@ -51,7 +50,7 @@ public:
     }
 
     enum class StopWaitingFailureReason : uint8_t { InvalidWaitingStatus };
-    Expected<Optional<SharedDisplayListHandle::ResumeReadingInformation>, StopWaitingFailureReason> stopWaiting()
+    Expected<std::optional<SharedDisplayListHandle::ResumeReadingInformation>, StopWaitingFailureReason> stopWaiting()
     {
         auto& header = this->header();
         auto previousStatus = header.waitingStatus.exchange(static_cast<SharedDisplayListHandle::WaitingStatusStorageType>(SharedDisplayListHandle::WaitingStatus::NotWaiting));
@@ -61,7 +60,7 @@ public:
         if (static_cast<SharedDisplayListHandle::WaitingStatus>(previousStatus) == SharedDisplayListHandle::WaitingStatus::Resuming)
             return { header.resumeReadingInfo };
 
-        return { WTF::nullopt };
+        return { std::nullopt };
     }
 
 private:

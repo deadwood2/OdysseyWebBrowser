@@ -29,6 +29,7 @@
 #if ENABLE(WEB_AUTHN)
 
 #import <WebCore/LocalizedStrings.h>
+#import <WebCore/UserVerificationRequirement.h>
 #import <WebCore/WebAuthenticationConstants.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RunLoop.h>
@@ -60,7 +61,7 @@ LocalConnection::~LocalConnection()
     [m_context invalidate];
 }
 
-void LocalConnection::verifyUser(const String& rpId, ClientDataType type, SecAccessControlRef accessControl, UserVerificationCallback&& completionHandler)
+void LocalConnection::verifyUser(const String& rpId, ClientDataType type, SecAccessControlRef accessControl, UserVerificationRequirement uv, UserVerificationCallback&& completionHandler)
 {
     String title = genericTouchIDPromptTitle();
 #if PLATFORM(MAC)
@@ -84,7 +85,7 @@ void LocalConnection::verifyUser(const String& rpId, ClientDataType type, SecAcc
         [options setObject:@NO forKey:@(LAOptionFallbackVisible)];
     }
 
-    auto reply = makeBlockPtr([context = m_context, completionHandler = WTFMove(completionHandler)] (NSDictionary *, NSError *error) mutable {
+    auto reply = makeBlockPtr([context = m_context, completionHandler = WTFMove(completionHandler)] (NSDictionary *information, NSError *error) mutable {
         UserVerification verification = UserVerification::Yes;
         if (error) {
             LOG_ERROR("Couldn't authenticate with biometrics: %@", error);
@@ -92,12 +93,33 @@ void LocalConnection::verifyUser(const String& rpId, ClientDataType type, SecAcc
             if (error.code == LAErrorUserCancel)
                 verification = UserVerification::Cancel;
         }
+        if (information[@"UserPresence"])
+            verification = UserVerification::Presence;
 
         // This block can be executed in another thread.
         RunLoop::main().dispatch([completionHandler = WTFMove(completionHandler), verification, context = WTFMove(context)] () mutable {
             completionHandler(verification, context.get());
         });
     });
+
+#if USE(APPLE_INTERNAL_SDK)
+    // Depending on certain internal requirements, accessControl might not require user verifications.
+    // Hence, here introduces a quirk to force the compatible mode to require user verifications if necessary.
+    if (shouldUseAlternateAttributes()) {
+        NSError *error = nil;
+        auto canEvaluatePolicy = [m_context canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics error:&error];
+        if (error.code == LAErrorBiometryLockout)
+            canEvaluatePolicy = true;
+
+        if (uv == UserVerificationRequirement::Required || canEvaluatePolicy) {
+            [m_context evaluatePolicy:LAPolicyDeviceOwnerAuthentication options:options.get() reply:reply.get()];
+            return;
+        }
+
+        reply(@{ @"UserPresence": @YES }, nullptr);
+        return;
+    }
+#endif
 
     [m_context evaluateAccessControl:accessControl operation:LAAccessControlOperationUseKeySign options:options.get() reply:reply.get()];
 }
@@ -107,7 +129,7 @@ void LocalConnection::verifyUser(SecAccessControlRef accessControl, LAContext *c
     auto options = adoptNS([[NSMutableDictionary alloc] init]);
     [options setObject:@YES forKey:@(LAOptionNotInteractive)];
 
-    auto reply = makeBlockPtr([completionHandler = WTFMove(completionHandler)] (NSDictionary *, NSError *error) mutable {
+    auto reply = makeBlockPtr([completionHandler = WTFMove(completionHandler)] (NSDictionary *information, NSError *error) mutable {
         UserVerification verification = UserVerification::Yes;
         if (error) {
             LOG_ERROR("Couldn't authenticate with biometrics: %@", error);
@@ -115,6 +137,8 @@ void LocalConnection::verifyUser(SecAccessControlRef accessControl, LAContext *c
             if (error.code == LAErrorUserCancel)
                 verification = UserVerification::Cancel;
         }
+        if (information[@"UserPresence"])
+            verification = UserVerification::Presence;
 
         // This block can be executed in another thread.
         RunLoop::main().dispatch([completionHandler = WTFMove(completionHandler), verification] () mutable {
@@ -122,23 +146,47 @@ void LocalConnection::verifyUser(SecAccessControlRef accessControl, LAContext *c
         });
     });
 
+#if USE(APPLE_INTERNAL_SDK)
+    // Depending on certain internal requirements, context might be nil. In that case, just check user presence.
+    if (shouldUseAlternateAttributes() && !context) {
+        reply(@{ @"UserPresence": @YES }, nullptr);
+        return;
+    }
+
+#if PLATFORM(IOS_FAMILY_SIMULATOR)
+    // Simulator doesn't support LAAccessControlOperationUseKeySign, but does support alternate attributes.
+    if (shouldUseAlternateAttributes()) {
+        reply(@{ }, nullptr);
+        return;
+    }
+#endif
+#endif // USE(APPLE_INTERNAL_SDK)
+
     [context evaluateAccessControl:accessControl operation:LAAccessControlOperationUseKeySign options:options.get() reply:reply.get()];
 }
 
 RetainPtr<SecKeyRef> LocalConnection::createCredentialPrivateKey(LAContext *context, SecAccessControlRef accessControlRef, const String& secAttrLabel, NSData *secAttrApplicationTag) const
 {
+    NSDictionary *privateKeyAttributes = @{
+        (id)kSecAttrAccessControl: (id)accessControlRef,
+        (id)kSecAttrIsPermanent: @YES,
+        (id)kSecAttrAccessGroup: (id)String(LocalAuthenticatiorAccessGroup),
+        (id)kSecAttrLabel: secAttrLabel,
+        (id)kSecAttrApplicationTag: secAttrApplicationTag,
+    };
+
+    if (context) {
+        privateKeyAttributes = [privateKeyAttributes mutableCopy];
+        ((NSMutableDictionary *)privateKeyAttributes)[(id)kSecUseAuthenticationContext] = context;
+    }
+
     NSDictionary *attributes = @{
         (id)kSecAttrTokenID: (id)kSecAttrTokenIDSecureEnclave,
         (id)kSecAttrKeyType: (id)kSecAttrKeyTypeECSECPrimeRandom,
         (id)kSecAttrKeySizeInBits: @256,
-        (id)kSecPrivateKeyAttrs: @{
-            (id)kSecUseAuthenticationContext: context,
-            (id)kSecAttrAccessControl: (id)accessControlRef,
-            (id)kSecAttrIsPermanent: @YES,
-            (id)kSecAttrAccessGroup: (id)String(LocalAuthenticatiorAccessGroup),
-            (id)kSecAttrLabel: secAttrLabel,
-            (id)kSecAttrApplicationTag: secAttrApplicationTag,
-        }};
+        (id)kSecPrivateKeyAttrs: privateKeyAttributes,
+    };
+
     LOCAL_CONNECTION_ADDITIONS
     CFErrorRef errorRef = nullptr;
     auto credentialPrivateKey = adoptCF(SecKeyCreateRandomKey((__bridge CFDictionaryRef)attributes, &errorRef));

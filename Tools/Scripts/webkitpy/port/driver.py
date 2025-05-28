@@ -63,7 +63,7 @@ class DriverOutput(object):
     and post-processing of data."""
 
     metrics_patterns = []
-    metrics_patterns.append((re.compile('at \(-?[0-9]+,-?[0-9]+\) *'), ''))
+    metrics_patterns.append((re.compile(r'at \(-?[0-9]+,-?[0-9]+\) *'), ''))
     metrics_patterns.append((re.compile('size -?[0-9]+x-?[0-9]+ *'), ''))
     metrics_patterns.append((re.compile('text run width -?[0-9]+: '), ''))
     metrics_patterns.append((re.compile('text run width -?[0-9]+ [a-zA-Z ]+: '), ''))
@@ -71,12 +71,12 @@ class DriverOutput(object):
     metrics_patterns.append((re.compile('RenderImage {INPUT} .*'), 'RenderImage {INPUT}'))
     metrics_patterns.append((re.compile('RenderBlock {INPUT} .*'), 'RenderBlock {INPUT}'))
     metrics_patterns.append((re.compile('RenderTextControl {INPUT} .*'), 'RenderTextControl {INPUT}'))
-    metrics_patterns.append((re.compile('\([0-9]+px'), 'px'))
+    metrics_patterns.append((re.compile(r'\([0-9]+px'), 'px'))
     metrics_patterns.append((re.compile(' *" *\n +" *'), ' '))
     metrics_patterns.append((re.compile('" +$'), '"'))
     metrics_patterns.append((re.compile('- '), '-'))
-    metrics_patterns.append((re.compile('\n( *)"\s+'), '\n\g<1>"'))
-    metrics_patterns.append((re.compile('\s+"\n'), '"\n'))
+    metrics_patterns.append((re.compile('\n( *)"\\s+'), '\n\\g<1>"'))
+    metrics_patterns.append((re.compile('\\s+"\n'), '"\n'))
     metrics_patterns.append((re.compile('scrollWidth [0-9]+'), 'scrollWidth'))
     metrics_patterns.append((re.compile('scrollHeight [0-9]+'), 'scrollHeight'))
     metrics_patterns.append((re.compile('scrollX [0-9]+'), 'scrollX'))
@@ -113,6 +113,20 @@ class DriverOutput(object):
             return
         for pattern in patterns:
             self.text = re.sub(pattern[0], pattern[1], self.text)
+
+    def strip_text_start_if_needed(self, detectors):
+        if not self.text or not len(detectors):
+            return
+
+        result = self.text.split('Content-Type: text/plain\n')
+        if len(result) != 2:
+            return
+
+        for detector in detectors:
+            if detector in result[0]:
+                self.text = result[1]
+                self.error += '\nRemoved logging from stdout:\n' + result[0]
+                return
 
     def strip_stderror_patterns(self, patterns):
         if not self.error:
@@ -523,6 +537,8 @@ class Driver(object):
             cmd.append('--no-timeout')
         if self._port.get_option('show_touches'):
             cmd.append('--show-touches')
+        if self._port.get_option('show_window'):
+            cmd.append('--show-window')
         if self._port.get_option('accessibility_isolated_tree'):
             cmd.append('--accessibility-isolated-tree')
 
@@ -533,6 +549,9 @@ class Driver(object):
         for feature in self._port.internal_feature():
             cmd.append('--internal-feature')
             cmd.append(feature)
+
+        if not self._port.get_option('enable_all_experimental_features'):
+            cmd.append('--no-enable-all-experimental-features')
 
         for feature in self._port.experimental_feature():
             cmd.append('--experimental-feature')
@@ -548,16 +567,16 @@ class Driver(object):
 
     def _check_for_driver_timeout(self, out_line):
         if out_line.startswith(b"#PID UNRESPONSIVE - "):
-            match = re.match(b'#PID UNRESPONSIVE - (\S+)', out_line)
+            match = re.match(br'#PID UNRESPONSIVE - (\S+)', out_line)
             child_process_name = string_utils.decode(match.group(1), target_type=str) if match else 'WebProcess'
-            match = re.search(b'pid (\d+)', out_line)
+            match = re.search(br'pid (\d+)', out_line)
             child_process_pid = int(match.group(1)) if match else None
             err_line = 'Wait on notifyDone timed out, process ' + child_process_name + ' pid = ' + str(child_process_pid)
             self.error_from_test += err_line
             _log.debug(err_line)
             if self._port.get_option("sample_on_timeout"):
                 self._port.sample_process(child_process_name, child_process_pid, self._target_host)
-        if out_line == "FAIL: Timed out waiting for notifyDone to be called\n":
+        if out_line == b"FAIL: Timed out waiting for notifyDone to be called\n":
             self._driver_timed_out = True
 
     def _check_for_address_sanitizer_violation(self, error_line):
@@ -571,16 +590,16 @@ class Driver(object):
             self._crashed_pid = self._server_process.system_pid()
             return True
         elif error_line.startswith(b"#CRASHED - "):
-            match = re.match(b'#CRASHED - (\S+)', error_line)
+            match = re.match(br'#CRASHED - (\S+)', error_line)
             self._crashed_process_name = string_utils.decode(match.group(1), target_type=str) if match else 'WebProcess'
-            match = re.search(b'pid (\d+)', error_line)
+            match = re.search(br'pid (\d+)', error_line)
             self._crashed_pid = int(match.group(1)) if match else None
             _log.debug('%s crash, pid = %s' % (self._crashed_process_name, str(self._crashed_pid)))
             return True
         elif error_line.startswith(b"#PROCESS UNRESPONSIVE - "):
-            match = re.match(b'#PROCESS UNRESPONSIVE - (\S+)', error_line)
+            match = re.match(br'#PROCESS UNRESPONSIVE - (\S+)', error_line)
             child_process_name = string_utils.decode(match.group(1), target_type=str) if match else 'WebProcess'
-            match = re.search(b'pid (\d+)', error_line)
+            match = re.search(br'pid (\d+)', error_line)
             child_process_pid = int(match.group(1)) if match else None
             _log.debug('%s is unresponsive, pid = %s' % (child_process_name, str(child_process_pid)))
             self._driver_timed_out = True

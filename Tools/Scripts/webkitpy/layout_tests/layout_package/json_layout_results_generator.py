@@ -26,11 +26,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import logging
-
 from webkitpy.layout_tests.layout_package import json_results_generator
 from webkitpy.layout_tests.models import test_expectations
-from webkitpy.layout_tests.models import test_failures
 from webkitpy.common.iteration_compatibility import itervalues
 
 
@@ -53,10 +50,10 @@ class JSONLayoutResultsGenerator(json_results_generator.JSONResultsGenerator):
                        test_expectations.LEAK: "L",
                        test_expectations.IMAGE_PLUS_TEXT: "Z"}
 
-    def __init__(self, port, builder_name, build_name, build_number,
+    def __init__(self, port,
         results_file_base_path,
         expectations_by_type, run_results,
-        test_results_servers=[], test_type="", master_name=""):
+        test_type=""):
         """Modifies the results.json file. Grabs it off the archive directory
         if it is not found locally.
 
@@ -64,9 +61,9 @@ class JSONLayoutResultsGenerator(json_results_generator.JSONResultsGenerator):
           run_results: TestRunResults object storing the details of the test run.
         """
         super(JSONLayoutResultsGenerator, self).__init__(
-            port, builder_name, build_name, build_number, results_file_base_path,
+            port, results_file_base_path,
             {}, port.repository_paths(),
-            test_results_servers, test_type, master_name)
+            test_type)
 
         self._expectations = expectations_by_type
 

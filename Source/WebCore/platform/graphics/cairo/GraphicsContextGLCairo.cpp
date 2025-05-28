@@ -26,16 +26,16 @@
  */
 
 #include "config.h"
-#include "GraphicsContextGLOpenGL.h"
 
 #if ENABLE(WEBGL) && USE(CAIRO)
 
+#include "GraphicsContextGLOpenGL.h"
 #include "CairoUtilities.h"
+#include "GraphicsContext.h"
 #include "GraphicsContextGLImageExtractor.h"
 #include "Image.h"
-#include "ImageData.h"
 #include "ImageSource.h"
-#include "PlatformContextCairo.h"
+#include "PixelBuffer.h"
 #include "RefPtrCairo.h"
 #include <cairo.h>
 
@@ -106,19 +106,15 @@ bool GraphicsContextGLImageExtractor::extractImage(bool premultiplyAlpha, bool i
     return true;
 }
 
-void GraphicsContextGLOpenGL::paintToCanvas(const GraphicsContextGLAttributes& sourceContextAttributes, Ref<ImageData>&& imageData, const IntSize& canvasSize, GraphicsContext& context)
+void GraphicsContextGLOpenGL::paintToCanvas(const GraphicsContextGLAttributes& sourceContextAttributes, PixelBuffer&& pixelBuffer, const IntSize& canvasSize, GraphicsContext& context)
 {
-    ASSERT(!imageData->size().isEmpty());
+    ASSERT(!pixelBuffer.size().isEmpty());
     if (canvasSize.isEmpty())
         return;
 
-    PlatformContextCairo* platformContext = context.platformContext();
-    if (!platformContext)
-        return;
-
     // Convert RGBA to BGRA. BGRA is CAIRO_FORMAT_ARGB32 on little-endian architectures.
-    size_t totalBytes = imageData->data()->byteLength();
-    uint8_t* pixels = imageData->data()->data();
+    size_t totalBytes = pixelBuffer.data().byteLength();
+    uint8_t* pixels = pixelBuffer.data().data();
     for (size_t i = 0; i < totalBytes; i += 4)
         std::swap(pixels[i], pixels[i + 2]);
 
@@ -130,26 +126,18 @@ void GraphicsContextGLOpenGL::paintToCanvas(const GraphicsContextGLAttributes& s
         }
     }
 
-    cairo_t* cr = platformContext->cr();
-    platformContext->save();
-
-    cairo_rectangle(cr, 0, 0, canvasSize.width(), canvasSize.height());
-    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-    cairo_paint(cr);
+    auto imageSize = pixelBuffer.size();
 
     RefPtr<cairo_surface_t> imageSurface = adoptRef(cairo_image_surface_create_for_data(
-        imageData->data()->data(), CAIRO_FORMAT_ARGB32, imageData->width(), imageData->height(), imageData->width() * 4));
+        pixelBuffer.data().data(), CAIRO_FORMAT_ARGB32, imageSize.width(), imageSize.height(), imageSize.width() * 4));
 
-    // OpenGL keeps the pixels stored bottom up, so we need to flip the image here.
-    cairo_translate(cr, 0, imageData->height());
-    cairo_scale(cr, 1, -1);
+    auto image = NativeImage::create(WTFMove(imageSurface));
 
-    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-    cairo_set_source_surface(cr, imageSurface.get(), 0, 0);
-    cairo_rectangle(cr, 0, 0, canvasSize.width(), -canvasSize.height());
-
-    cairo_fill(cr);
-    platformContext->restore();
+    GraphicsContextStateSaver stateSaver(context);
+    context.scale(FloatSize(1, -1));
+    context.translate(0, -imageSize.height());
+    context.setImageInterpolationQuality(InterpolationQuality::DoNotInterpolate);
+    context.drawNativeImage(*image, imageSize, FloatRect({ }, canvasSize), FloatRect({ }, imageSize), { CompositeOperator::Copy });
 }
 
 } // namespace WebCore

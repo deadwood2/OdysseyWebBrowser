@@ -73,7 +73,8 @@ public:
     bool canIgnoreAnyHTTPSCertificatesForHost(const String&) const;
 
     WEBCORE_EXPORT void setClientCertificateInfo(const String&, const String&, const String&);
-    Optional<ClientCertificate> getSSLClientCertificate(const String&) const;
+    WEBCORE_EXPORT void clearClientCertificateInfo(const String&);
+    std::optional<ClientCertificate> getSSLClientCertificate(const String&) const;
 
 private:
 #if NEED_OPENSSL_THREAD_SUPPORT

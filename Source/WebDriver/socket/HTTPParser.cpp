@@ -26,6 +26,8 @@
 #include "config.h"
 #include "HTTPParser.h"
 
+#include <wtf/text/StringToIntegerConversion.h>
+
 namespace WebDriver {
 
 HTTPParser::Phase HTTPParser::parse(Vector<uint8_t>&& data)
@@ -128,7 +130,7 @@ bool HTTPParser::readLine(String& line)
     if (position == notFound || position + 1 == length || m_buffer[position + 1] != 0x0a)
         return false;
 
-    line = String::fromUTF8(reinterpret_cast<char*>(m_buffer.data()), position);
+    line = String::fromUTF8(m_buffer.data(), position);
     if (line.isNull())
         LOG_ERROR("Client error: invalid encoding in HTTP header.");
 
@@ -145,10 +147,8 @@ size_t HTTPParser::expectedBodyLength() const
     const size_t nameLength = std::strlen(name);
 
     for (const auto& header : m_message.requestHeaders) {
-        if (header.startsWithIgnoringASCIICase(name)) {
-            auto value = header.substringSharingImpl(nameLength).stripWhiteSpace();
-            return value.toInt();
-        }
+        if (header.startsWithIgnoringASCIICase(name))
+            return parseIntegerAllowingTrailingJunk<size_t>(StringView { header }.substring(nameLength)).value_or(0);
     }
 
     return 0;

@@ -30,6 +30,7 @@
 #include "WebPageProxyIdentifier.h"
 #include <WebCore/Color.h>
 #include <WebCore/FloatRect.h>
+#include <WebCore/FloatSize.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/RunLoop.h>
@@ -40,9 +41,14 @@
 #endif
 
 #if PLATFORM(GTK)
-#include <WebCore/CairoUtilities.h>
 #include <gtk/gtk.h>
 #include <wtf/glib/GRefPtr.h>
+
+#if USE(GTK4)
+#include <WebCore/GRefPtrGtk.h>
+#else
+#include <WebCore/CairoUtilities.h>
+#endif
 #endif
 
 #if PLATFORM(COCOA)
@@ -74,8 +80,13 @@ class Navigation;
 #if PLATFORM(MAC)
 typedef NSEvent* PlatformScrollEvent;
 #elif PLATFORM(GTK)
-typedef struct _GdkEventScroll GdkEventScroll;
-typedef GdkEventScroll* PlatformScrollEvent;
+typedef struct {
+    WebCore::FloatSize delta;
+    int32_t eventTime;
+    GdkInputSource source;
+    bool isEnd;
+} PlatformGtkScrollData;
+typedef PlatformGtkScrollData* PlatformScrollEvent;
 #endif
 
 namespace WebKit {
@@ -98,8 +109,10 @@ public:
 
     enum class ViewGestureType {
         None,
-#if PLATFORM(MAC)
+#if !PLATFORM(IOS_FAMILY)
         Magnification,
+#endif
+#if PLATFORM(MAC)
         SmartMagnification,
 #endif
         Swipe
@@ -120,15 +133,17 @@ public:
     void setShouldIgnorePinnedState(bool ignore) { m_pendingSwipeTracker.setShouldIgnorePinnedState(ignore); }
 
     bool isPhysicallySwipingLeft(SwipeDirection) const;
+
+    double magnification() const;
+
+    void prepareMagnificationGesture(WebCore::FloatPoint);
+    void applyMagnification();
+
+    bool hasActiveMagnificationGesture() const { return m_activeGestureType == ViewGestureType::Magnification; }
 #endif
 
 #if PLATFORM(MAC)
-    double magnification() const;
-
     void handleMagnificationGestureEvent(PlatformScrollEvent, WebCore::FloatPoint origin);
-
-    bool hasActiveMagnificationGesture() const { return m_activeGestureType == ViewGestureType::Magnification; }
-
     void handleSmartMagnificationGesture(WebCore::FloatPoint origin);
 
     void gestureEventWasNotHandledByWebCore(PlatformScrollEvent, WebCore::FloatPoint origin);
@@ -145,6 +160,9 @@ public:
     void endSwipeGesture(WebBackForwardListItem* targetItem, _UIViewControllerTransitionContext *, bool cancelled);
     void willCommitPostSwipeTransitionLayerTree(bool);
     void setRenderTreeSize(uint64_t);
+#elif PLATFORM(GTK)
+    void setMagnification(double, WebCore::FloatPoint);
+    void endMagnification();
 #endif
 
     void setAlternateBackForwardListSourcePage(WebPageProxy*);
@@ -173,7 +191,11 @@ public:
 
 #if PLATFORM(GTK)
     void cancelSwipe();
+#if USE(GTK4)
+    void snapshot(GtkSnapshot*, GskRenderNode*);
+#else
     void draw(cairo_t*, cairo_pattern_t*);
+#endif
 #endif
 
     // Testing
@@ -249,15 +271,16 @@ private:
 
 #if PLATFORM(MAC)
     // Message handlers.
-    void didCollectGeometryForMagnificationGesture(WebCore::FloatRect visibleContentBounds, bool frameHandlesMagnificationGesture);
     void didCollectGeometryForSmartMagnificationGesture(WebCore::FloatPoint origin, WebCore::FloatRect renderRect, WebCore::FloatRect visibleContentBounds, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale);
+#endif
+
+#if !PLATFORM(IOS_FAMILY)
+    void didCollectGeometryForMagnificationGesture(WebCore::FloatRect visibleContentBounds, bool frameHandlesMagnificationGesture);
 
     void endMagnificationGesture();
 
     WebCore::FloatPoint scaledMagnificationOrigin(WebCore::FloatPoint origin, double scale);
-#endif
 
-#if !PLATFORM(IOS_FAMILY)
     void startSwipeGesture(PlatformScrollEvent, SwipeDirection);
     void trackSwipeGesture(PlatformScrollEvent, SwipeDirection, RefPtr<WebBackForwardListItem>);
 
@@ -269,6 +292,8 @@ private:
     bool shouldUseSnapshotForSize(ViewSnapshot&, WebCore::FloatSize swipeLayerSize, float topContentInset);
 
 #if PLATFORM(MAC)
+    static double resistanceForDelta(double deltaScale, double currentScale);
+
     CALayer* determineSnapshotLayerParent() const;
     CALayer* determineLayerAdjacentToSnapshotForParent(SwipeDirection, CALayer* snapshotLayerParent) const;
     void applyDebuggingPropertiesToSwipeViews();
@@ -341,20 +366,27 @@ private:
     PendingSwipeTracker m_pendingSwipeTracker;
 
     bool m_hasOutstandingRepaintRequest { false };
-#endif
 
-#if PLATFORM(MAC)
     double m_magnification;
     WebCore::FloatPoint m_magnificationOrigin;
 
+    double m_initialMagnification;
+    WebCore::FloatPoint m_initialMagnificationOrigin;
+#endif
+
+#if PLATFORM(MAC)
     WebCore::FloatRect m_lastSmartMagnificationUnscaledTargetRect;
     bool m_lastMagnificationGestureWasSmartMagnification { false };
     WebCore::FloatPoint m_lastSmartMagnificationOrigin;
+#endif
 
+#if !PLATFORM(IOS_FAMILY)
     WebCore::FloatRect m_visibleContentRect;
     bool m_visibleContentRectIsValid { false };
     bool m_frameHandlesMagnificationGesture { false };
+#endif
 
+#if PLATFORM(MAC)
     RetainPtr<WKSwipeCancellationTracker> m_swipeCancellationTracker;
     RetainPtr<CALayer> m_swipeLayer;
     RetainPtr<CALayer> m_swipeSnapshotLayer;
@@ -427,18 +459,21 @@ private:
 
     SwipeProgressTracker m_swipeProgressTracker;
 
+#if USE(GTK4)
+    GRefPtr<GskRenderNode> m_currentSwipeSnapshotPattern;
+#else
     RefPtr<cairo_pattern_t> m_currentSwipeSnapshotPattern;
     RefPtr<cairo_pattern_t> m_swipeDimmingPattern;
     RefPtr<cairo_pattern_t> m_swipeShadowPattern;
     RefPtr<cairo_pattern_t> m_swipeBorderPattern;
     RefPtr<cairo_pattern_t> m_swipeOutlinePattern;
+
     int m_swipeShadowSize;
     int m_swipeBorderSize;
     int m_swipeOutlineSize;
     GRefPtr<GtkCssProvider> m_cssProvider;
-
-    bool m_isSimulatedSwipe { false };
 #endif
+#endif // PLATFORM(GTK)
 
     bool m_isConnectedToProcess { false };
     bool m_didStartProvisionalLoad { false };
@@ -448,6 +483,11 @@ private:
 
     SnapshotRemovalTracker m_snapshotRemovalTracker;
     WTF::Function<void()> m_loadCallback;
+
+#if !PLATFORM(IOS_FAMILY)
+    static constexpr double minMagnification { 1 };
+    static constexpr double maxMagnification { 3 };
+#endif
 };
 
 } // namespace WebKit

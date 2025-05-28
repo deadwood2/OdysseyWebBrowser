@@ -35,21 +35,14 @@ from webkitpy.common.system.executive_mock import MockExecutive
 from webkitpy.common.system.filesystem_mock import MockFileSystem
 from webkitpy.port.config import clear_cached_configuration
 from webkitpy.port.wpe import WPEPort
-from webkitpy.port.pulseaudio_sanitizer_mock import PulseAudioSanitizerMock
 from webkitpy.port import port_testcase
-from webkitpy.thirdparty.mock import Mock
+from webkitpy.thirdparty.mock import Mock, patch
 from webkitpy.tool.mocktool import MockOptions
 
 
 class WPEPortTest(port_testcase.PortTestCase):
     port_name = 'wpe'
     port_maker = WPEPort
-
-    # Additionally mocks out the PulseAudioSanitizer methods.
-    def make_port(self, host=None, port_name=None, options=None, os_name=None, os_version=None, **kwargs):
-        port = super(WPEPortTest, self).make_port(host, port_name, options, os_name, os_version, **kwargs)
-        port._pulseaudio_sanitizer = PulseAudioSanitizerMock()
-        return port
 
     def test_default_baseline_search_path(self):
         port = self.make_port()
@@ -84,3 +77,33 @@ class WPEPortTest(port_testcase.PortTestCase):
         self.assertEqual(configuration['is_simulator'], False)
         self.assertEqual(configuration['platform'], 'WPE')
         self.assertEqual(configuration['style'], 'release')
+
+    def test_browser_name_default(self):
+        port = self.make_port()
+        self.assertEqual(port.browser_name(), "minibrowser")
+
+    def test_browser_name_with_cog_built(self):
+        with patch('os.environ', {'WPE_BROWSER': ''}):
+            port = self.make_port()
+            port._filesystem = MockFileSystem({
+                "/mock-build/Tools/cog-prefix/src/cog-build/cog": "",
+            })
+            self.assertEqual(port.browser_name(), "cog")
+
+    def test_browser_name_override_minibrowser_with_cog_built(self):
+        with patch('os.environ', {'WPE_BROWSER': 'MiniBrowser'}):
+            port = self.make_port()
+            port._filesystem = MockFileSystem({
+                "/mock-build/Tools/cog-prefix/src/cog-build/cog": "",
+            })
+            self.assertEqual(port.browser_name(), "minibrowser")
+
+    def test_browser_name_override_cog_without_cog_built(self):
+        with patch('os.environ', {'WPE_BROWSER': 'Cog'}):
+            port = self.make_port()
+            self.assertEqual(port.browser_name(), "cog")
+
+    def test_browser_name_override_unknown(self):
+        with patch('os.environ', {'WPE_BROWSER': 'Mosaic'}):
+            port = self.make_port()
+            self.assertEqual(port.browser_name(), "minibrowser")

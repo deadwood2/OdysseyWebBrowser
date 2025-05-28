@@ -31,9 +31,22 @@
 #include "FontTaggedSettings.h"
 #include "HbUniquePtr.h"
 #include "SurrogatePairAwareTextIterator.h"
+
+#if OS(MORPHOS)
+#define _NO_PPCINLINE
+#include <proto/harfbuzz.h>
+#include <libraries/harfbuzz.h>
+#include <unicode/uchar.h>
+#include <unicode/unorm2.h>
+#include <unicode/ustring.h>
+#include <unicode/utf16.h>
+#include <unicode/uversion.h>
+#undef _NO_PPCINLINE
+#else
 #include <hb-ft.h>
 #include <hb-icu.h>
 #include <hb-ot.h>
+#endif
 
 #if ENABLE(VARIATION_FONTS)
 #include FT_MULTIPLE_MASTERS_H
@@ -401,12 +414,12 @@ static Vector<hb_feature_t, 4> fontFeatures(const FontCascade& font, const FontP
     return features;
 }
 
-static Optional<UScriptCode> characterScript(UChar32 character)
+static std::optional<UScriptCode> characterScript(UChar32 character)
 {
     UErrorCode errorCode = U_ZERO_ERROR;
     UScriptCode script = uscript_getScript(character, &errorCode);
     if (U_FAILURE(errorCode))
-        return WTF::nullopt;
+        return std::nullopt;
     return script;
 }
 
@@ -416,17 +429,17 @@ struct HBRun {
     UScriptCode script;
 };
 
-static Optional<HBRun> findNextRun(const UChar* characters, unsigned length, unsigned offset)
+static std::optional<HBRun> findNextRun(const UChar* characters, unsigned length, unsigned offset)
 {
     SurrogatePairAwareTextIterator textIterator(characters + offset, offset, length, length);
     UChar32 character;
     unsigned clusterLength = 0;
     if (!textIterator.consume(character, clusterLength))
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto currentScript = characterScript(character);
     if (!currentScript)
-        return WTF::nullopt;
+        return std::nullopt;
 
     unsigned startIndex = offset;
     for (textIterator.advance(clusterLength); textIterator.consume(character, clusterLength); textIterator.advance(clusterLength)) {
@@ -435,7 +448,7 @@ static Optional<HBRun> findNextRun(const UChar* characters, unsigned length, uns
 
         auto nextScript = characterScript(character);
         if (!nextScript)
-            return WTF::nullopt;
+            return std::nullopt;
 
         // §5.1 Handling Characters with the Common Script Property.
         // Programs must resolve any of the special Script property values, such as Common,
@@ -456,10 +469,10 @@ static Optional<HBRun> findNextRun(const UChar* characters, unsigned length, uns
         }
 
         if (currentScript != nextScript && !uscript_hasScript(character, currentScript.value()))
-            return Optional<HBRun>({ startIndex, textIterator.currentIndex(), currentScript.value() });
+            return std::optional<HBRun>({ startIndex, textIterator.currentIndex(), currentScript.value() });
     }
 
-    return Optional<HBRun>({ startIndex, textIterator.currentIndex(), currentScript.value() });
+    return std::optional<HBRun>({ startIndex, textIterator.currentIndex(), currentScript.value() });
 }
 
 static hb_script_t findScriptForVerticalGlyphSubstitution(hb_face_t* face)
@@ -482,6 +495,180 @@ static hb_script_t findScriptForVerticalGlyphSubstitution(hb_face_t* face)
     }
     return HB_SCRIPT_INVALID;
 }
+
+#if OS(MORPHOS)
+
+#define HB_UNUSED  __attribute__((unused))
+#define ARRAY_LENGTH(array) (sizeof((array))/sizeof((array)[0]))
+
+hb_script_t hb_icu_script_to_script (UScriptCode script)
+{
+    if (UNLIKELY (script == USCRIPT_INVALID_CODE))
+        return HB_SCRIPT_INVALID;
+
+    return hb_script_from_string (uscript_getShortName (script), -1);
+}
+
+static hb_unicode_combining_class_t
+hb_icu_unicode_combining_class (hb_unicode_funcs_t *ufuncs HB_UNUSED,
+				hb_codepoint_t      unicode,
+				void               *user_data HB_UNUSED)
+
+{
+  return (hb_unicode_combining_class_t) u_getCombiningClass (unicode);
+}
+
+static hb_unicode_general_category_t
+hb_icu_unicode_general_category (hb_unicode_funcs_t *ufuncs HB_UNUSED,
+				 hb_codepoint_t      unicode,
+				 void               *user_data HB_UNUSED)
+{
+  switch (u_getIntPropertyValue(unicode, UCHAR_GENERAL_CATEGORY))
+  {
+  case U_UNASSIGNED:			return HB_UNICODE_GENERAL_CATEGORY_UNASSIGNED;
+
+  case U_UPPERCASE_LETTER:		return HB_UNICODE_GENERAL_CATEGORY_UPPERCASE_LETTER;
+  case U_LOWERCASE_LETTER:		return HB_UNICODE_GENERAL_CATEGORY_LOWERCASE_LETTER;
+  case U_TITLECASE_LETTER:		return HB_UNICODE_GENERAL_CATEGORY_TITLECASE_LETTER;
+  case U_MODIFIER_LETTER:		return HB_UNICODE_GENERAL_CATEGORY_MODIFIER_LETTER;
+  case U_OTHER_LETTER:			return HB_UNICODE_GENERAL_CATEGORY_OTHER_LETTER;
+
+  case U_NON_SPACING_MARK:		return HB_UNICODE_GENERAL_CATEGORY_NON_SPACING_MARK;
+  case U_ENCLOSING_MARK:		return HB_UNICODE_GENERAL_CATEGORY_ENCLOSING_MARK;
+  case U_COMBINING_SPACING_MARK:	return HB_UNICODE_GENERAL_CATEGORY_SPACING_MARK;
+
+  case U_DECIMAL_DIGIT_NUMBER:		return HB_UNICODE_GENERAL_CATEGORY_DECIMAL_NUMBER;
+  case U_LETTER_NUMBER:			return HB_UNICODE_GENERAL_CATEGORY_LETTER_NUMBER;
+  case U_OTHER_NUMBER:			return HB_UNICODE_GENERAL_CATEGORY_OTHER_NUMBER;
+
+  case U_SPACE_SEPARATOR:		return HB_UNICODE_GENERAL_CATEGORY_SPACE_SEPARATOR;
+  case U_LINE_SEPARATOR:		return HB_UNICODE_GENERAL_CATEGORY_LINE_SEPARATOR;
+  case U_PARAGRAPH_SEPARATOR:		return HB_UNICODE_GENERAL_CATEGORY_PARAGRAPH_SEPARATOR;
+
+  case U_CONTROL_CHAR:			return HB_UNICODE_GENERAL_CATEGORY_CONTROL;
+  case U_FORMAT_CHAR:			return HB_UNICODE_GENERAL_CATEGORY_FORMAT;
+  case U_PRIVATE_USE_CHAR:		return HB_UNICODE_GENERAL_CATEGORY_PRIVATE_USE;
+  case U_SURROGATE:			return HB_UNICODE_GENERAL_CATEGORY_SURROGATE;
+
+
+  case U_DASH_PUNCTUATION:		return HB_UNICODE_GENERAL_CATEGORY_DASH_PUNCTUATION;
+  case U_START_PUNCTUATION:		return HB_UNICODE_GENERAL_CATEGORY_OPEN_PUNCTUATION;
+  case U_END_PUNCTUATION:		return HB_UNICODE_GENERAL_CATEGORY_CLOSE_PUNCTUATION;
+  case U_CONNECTOR_PUNCTUATION:		return HB_UNICODE_GENERAL_CATEGORY_CONNECT_PUNCTUATION;
+  case U_OTHER_PUNCTUATION:		return HB_UNICODE_GENERAL_CATEGORY_OTHER_PUNCTUATION;
+
+  case U_MATH_SYMBOL:			return HB_UNICODE_GENERAL_CATEGORY_MATH_SYMBOL;
+  case U_CURRENCY_SYMBOL:		return HB_UNICODE_GENERAL_CATEGORY_CURRENCY_SYMBOL;
+  case U_MODIFIER_SYMBOL:		return HB_UNICODE_GENERAL_CATEGORY_MODIFIER_SYMBOL;
+  case U_OTHER_SYMBOL:			return HB_UNICODE_GENERAL_CATEGORY_OTHER_SYMBOL;
+
+  case U_INITIAL_PUNCTUATION:		return HB_UNICODE_GENERAL_CATEGORY_INITIAL_PUNCTUATION;
+  case U_FINAL_PUNCTUATION:		return HB_UNICODE_GENERAL_CATEGORY_FINAL_PUNCTUATION;
+  }
+
+  return HB_UNICODE_GENERAL_CATEGORY_UNASSIGNED;
+}
+
+static hb_codepoint_t
+hb_icu_unicode_mirroring (hb_unicode_funcs_t *ufuncs HB_UNUSED,
+			  hb_codepoint_t      unicode,
+			  void               *user_data HB_UNUSED)
+{
+  return u_charMirror(unicode);
+}
+
+static hb_script_t
+hb_icu_unicode_script (hb_unicode_funcs_t *ufuncs HB_UNUSED,
+		       hb_codepoint_t      unicode,
+		       void               *user_data HB_UNUSED)
+{
+  UErrorCode status = U_ZERO_ERROR;
+  UScriptCode scriptCode = uscript_getScript(unicode, &status);
+
+  if (UNLIKELY (U_FAILURE (status)))
+    return HB_SCRIPT_UNKNOWN;
+
+  return hb_icu_script_to_script (scriptCode);
+}
+
+static hb_bool_t
+hb_icu_unicode_compose (hb_unicode_funcs_t *ufuncs HB_UNUSED,
+			hb_codepoint_t      a,
+			hb_codepoint_t      b,
+			hb_codepoint_t     *ab,
+			void               *user_data)
+{
+  const UNormalizer2 *normalizer = (const UNormalizer2 *) user_data;
+  UChar32 ret = unorm2_composePair (normalizer, a, b);
+  if (ret < 0) return false;
+  *ab = ret;
+  return true;
+}
+
+static hb_bool_t
+hb_icu_unicode_decompose (hb_unicode_funcs_t *ufuncs HB_UNUSED,
+			  hb_codepoint_t      ab,
+			  hb_codepoint_t     *a,
+			  hb_codepoint_t     *b,
+			  void               *user_data)
+{
+  const UNormalizer2 *normalizer = (const UNormalizer2 *) user_data;
+  UChar decomposed[4];
+  int len;
+  UErrorCode icu_err = U_ZERO_ERROR;
+  len = unorm2_getRawDecomposition (normalizer, ab, decomposed,
+				    ARRAY_LENGTH (decomposed), &icu_err);
+  if (U_FAILURE (icu_err) || len < 0) return false;
+
+  len = u_countChar32 (decomposed, len);
+  if (len == 1)
+  {
+    U16_GET_UNSAFE (decomposed, 0, *a);
+    *b = 0;
+    return *a != ab;
+  }
+  else if (len == 2)
+  {
+    len = 0;
+    U16_NEXT_UNSAFE (decomposed, len, *a);
+    U16_NEXT_UNSAFE (decomposed, len, *b);
+  }
+  return true;
+}
+
+class morphosHBICUBinding {
+public:
+    static void bind(HbUniquePtr<hb_buffer_t>& buffer) {
+        hb_buffer_set_unicode_funcs(buffer.get(), _instance._funcs);
+    }
+
+protected:
+    morphosHBICUBinding() {
+        _funcs = hb_unicode_funcs_create(hb_unicode_funcs_get_default());
+        if (nullptr != _funcs) {
+            UErrorCode icu_err = U_ZERO_ERROR;
+            void *user_data = (void *)unorm2_getNFCInstance (&icu_err);
+            hb_unicode_funcs_set_compose_func(_funcs, hb_icu_unicode_compose, user_data, nullptr);
+            hb_unicode_funcs_set_decompose_func(_funcs, hb_icu_unicode_decompose, user_data, nullptr);
+            hb_unicode_funcs_set_script_func(_funcs, hb_icu_unicode_script, nullptr, nullptr);
+            hb_unicode_funcs_set_mirroring_func(_funcs, hb_icu_unicode_mirroring, nullptr, nullptr);
+            hb_unicode_funcs_set_general_category_func(_funcs, hb_icu_unicode_general_category, nullptr, nullptr);
+            hb_unicode_funcs_set_combining_class_func(_funcs, hb_icu_unicode_combining_class, nullptr, nullptr);
+        }
+    }
+    
+    ~morphosHBICUBinding() {
+        if (nullptr != _funcs)
+            hb_unicode_funcs_destroy(_funcs);
+    }
+
+    static morphosHBICUBinding _instance;
+    hb_unicode_funcs_t *_funcs;
+};
+
+morphosHBICUBinding morphosHBICUBinding::_instance;
+
+#endif
 
 void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* characters, unsigned length, unsigned stringLocation, const Font* font)
 {
@@ -542,6 +729,7 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cha
 
     auto features = fontFeatures(m_font, fontPlatformData);
     HbUniquePtr<hb_buffer_t> buffer(hb_buffer_create());
+
     if (fontPlatformData.orientation() == FontOrientation::Vertical)
         hb_buffer_set_script(buffer.get(), findScriptForVerticalGlyphSubstitution(face.get()));
 
@@ -556,6 +744,11 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cha
             // Leaving direction to HarfBuzz to guess is *really* bad, but will do for now.
             hb_buffer_guess_segment_properties(buffer.get());
         }
+        
+        #if OS(MORPHOS)
+        // NOTE: re-bind ICU functions, must be done after each hb_buffer_reset
+        morphosHBICUBinding::bind(buffer);
+        #endif
         hb_buffer_add_utf16(buffer.get(), reinterpret_cast<const uint16_t*>(characters), length, run.startIndex, run.endIndex - run.startIndex);
 
         hb_shape(harfBuzzFont.get(), buffer.get(), features.isEmpty() ? nullptr : features.data(), features.size());

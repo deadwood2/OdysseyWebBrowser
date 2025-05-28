@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,7 +49,7 @@ WebAuthnProcess::~WebAuthnProcess()
 {
 }
 
-void WebAuthnProcess::createWebAuthnConnectionToWebProcess(ProcessIdentifier identifier, CompletionHandler<void(Optional<IPC::Attachment>&&)>&& completionHandler)
+void WebAuthnProcess::createWebAuthnConnectionToWebProcess(ProcessIdentifier identifier, CompletionHandler<void(std::optional<IPC::Attachment>&&)>&& completionHandler)
 {
     auto ipcConnection = createIPCConnectionPair();
     if (!ipcConnection) {
@@ -113,14 +113,6 @@ void WebAuthnProcess::resume()
 {
 }
 
-void WebAuthnProcess::processDidTransitionToForeground()
-{
-}
-
-void WebAuthnProcess::processDidTransitionToBackground()
-{
-}
-
 WebAuthnConnectionToWebProcess* WebAuthnProcess::webProcessConnection(ProcessIdentifier identifier) const
 {
     return m_webProcessConnections.get(identifier);
@@ -135,6 +127,12 @@ void WebAuthnProcess::setMockWebAuthenticationConfiguration(WebCore::MockWebAuth
     }
     static_cast<MockAuthenticatorManager*>(&m_authenticatorManager)->setTestConfiguration(WTFMove(configuration));
 }
+
+#if !PLATFORM(COCOA)
+void WebAuthnProcess::platformInitializeWebAuthnProcess(const WebAuthnProcessCreationParameters&)
+{
+}
+#endif
 
 } // namespace WebKit
 

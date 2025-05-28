@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,16 +28,24 @@
 #if ENABLE(GPU_PROCESS)
 
 #include "AuxiliaryProcess.h"
+#include "SandboxExtension.h"
 #include "WebPageProxyIdentifier.h"
 #include <WebCore/LibWebRTCEnumTraits.h>
+#include <WebCore/Timer.h>
 #include <pal/SessionID.h>
 #include <wtf/Function.h>
 #include <wtf/MemoryPressureHandler.h>
+#include <wtf/MonotonicTime.h>
 #include <wtf/WeakPtr.h>
+
+#if PLATFORM(MAC)
+#include <CoreGraphics/CGDisplayConfiguration.h>
+#endif
 
 namespace WebCore {
 class NowPlayingManager;
 struct MockMediaDevice;
+struct SecurityOriginData;
 }
 
 namespace WebKit {
@@ -46,7 +54,6 @@ class GPUConnectionToWebProcess;
 struct GPUProcessConnectionParameters;
 struct GPUProcessCreationParameters;
 struct GPUProcessSessionParameters;
-class LayerHostingContext;
 class RemoteAudioSessionProxyManager;
 
 class GPUProcess : public AuxiliaryProcess, public ThreadSafeRefCounted<GPUProcess> {
@@ -78,7 +85,6 @@ public:
     WebCore::NowPlayingManager& nowPlayingManager();
 
 #if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
-    WorkQueue& audioMediaStreamTrackRendererQueue();
     WorkQueue& videoMediaStreamTrackRendererQueue();
 #endif
 #if USE(LIBWEBRTC) && PLATFORM(COCOA)
@@ -89,6 +95,8 @@ public:
     void enableVP9Decoders(bool shouldEnableVP8Decoder, bool shouldEnableVP9Decoder, bool shouldEnableVP9SWDecoder);
 #endif
 
+    void tryExitIfUnusedAndUnderMemoryPressure();
+
 private:
     void lowMemoryHandler(Critical, Synchronous);
 
@@ -98,29 +106,58 @@ private:
     void initializeSandbox(const AuxiliaryProcessInitializationParameters&, SandboxInitializationParameters&) override;
     bool shouldTerminate() override;
 
+    void tryExitIfUnused();
+    bool canExitUnderMemoryPressure() const;
+
     // IPC::Connection::Client
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
+    void didReceiveGPUProcessMessage(IPC::Connection&, IPC::Decoder&);
 
     // Message Handlers
     void initializeGPUProcess(GPUProcessCreationParameters&&);
-    void createGPUConnectionToWebProcess(WebCore::ProcessIdentifier, PAL::SessionID, GPUProcessConnectionParameters&&, CompletionHandler<void(Optional<IPC::Attachment>&&)>&&);
+    void createGPUConnectionToWebProcess(WebCore::ProcessIdentifier, PAL::SessionID, GPUProcessConnectionParameters&&, CompletionHandler<void(std::optional<IPC::Attachment>&&)>&&);
     void addSession(PAL::SessionID, GPUProcessSessionParameters&&);
     void removeSession(PAL::SessionID);
 
-    void processDidTransitionToForeground();
-    void processDidTransitionToBackground();
 #if ENABLE(MEDIA_STREAM)
     void setMockCaptureDevicesEnabled(bool);
     void setOrientationForMediaCapture(uint64_t orientation);
     void updateCaptureAccess(bool allowAudioCapture, bool allowVideoCapture, bool allowDisplayCapture, WebCore::ProcessIdentifier, CompletionHandler<void()>&&);
+    void updateCaptureOrigin(const WebCore::SecurityOriginData&, WebCore::ProcessIdentifier);
+    void updateSandboxAccess(const Vector<SandboxExtension::Handle>&);
     void addMockMediaDevice(const WebCore::MockMediaDevice&);
     void clearMockMediaDevices();
     void removeMockMediaDevice(const String& persistentId);
     void resetMockMediaDevices();
+    bool setCaptureAttributionString(const String&);
+#endif
+#if PLATFORM(MAC)
+    void displayConfigurationChanged(CGDirectDisplayID, CGDisplayChangeSummaryFlags);
+#endif
+
+#if USE(OS_STATE)
+    RetainPtr<NSDictionary> additionalStateForDiagnosticReport() const final;
+#endif
+
+#if ENABLE(MEDIA_SOURCE)
+    void setWebMParserEnabled(bool);
+#endif
+
+#if ENABLE(WEBM_FORMAT_READER)
+    void setWebMFormatReaderEnabled(bool);
+#endif
+
+#if ENABLE(OPUS)
+    void setOpusDecoderEnabled(bool);
+#endif
+
+#if ENABLE(VORBIS)
+    void setVorbisDecoderEnabled(bool);
 #endif
 
     // Connections to WebProcesses.
     HashMap<WebCore::ProcessIdentifier, Ref<GPUConnectionToWebProcess>> m_webProcessConnections;
+    MonotonicTime m_creationTime { MonotonicTime::now() };
 
 #if ENABLE(MEDIA_STREAM)
     struct MediaCaptureAccess {
@@ -130,9 +167,9 @@ private:
     };
     HashMap<WebCore::ProcessIdentifier, MediaCaptureAccess> m_mediaCaptureAccessMap;
 #if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
-    RefPtr<WorkQueue> m_audioMediaStreamTrackRendererQueue;
     RefPtr<WorkQueue> m_videoMediaStreamTrackRendererQueue;
 #endif
+    uint64_t m_orientation { 0 };
 #endif
 #if USE(LIBWEBRTC) && PLATFORM(COCOA)
     RefPtr<WorkQueue> m_libWebRTCCodecsQueue;
@@ -145,10 +182,7 @@ private:
 #endif
     };
     HashMap<PAL::SessionID, GPUSession> m_sessions;
-#if HAVE(VISIBILITY_PROPAGATION_VIEW)
-    std::unique_ptr<LayerHostingContext> m_contextForVisibilityPropagation;
-    bool m_canShowWhileLocked { false };
-#endif
+    WebCore::Timer m_idleExitTimer;
     std::unique_ptr<WebCore::NowPlayingManager> m_nowPlayingManager;
 #if ENABLE(GPU_PROCESS) && USE(AUDIO_SESSION)
     mutable std::unique_ptr<RemoteAudioSessionProxyManager> m_audioSessionManager;
@@ -157,6 +191,18 @@ private:
     bool m_enableVP8Decoder { false };
     bool m_enableVP9Decoder { false };
     bool m_enableVP9SWDecoder { false };
+#endif
+#if ENABLE(MEDIA_SOURCE)
+    bool m_webMParserEnabled { false };
+#endif
+#if ENABLE(WEBM_FORMAT_READER)
+    bool m_webMFormatReaderEnabled { false };
+#endif
+#if ENABLE(OPUS)
+    bool m_opusEnabled { false };
+#endif
+#if ENABLE(VORBIS)
+    bool m_vorbisEnabled { false };
 #endif
 };
 

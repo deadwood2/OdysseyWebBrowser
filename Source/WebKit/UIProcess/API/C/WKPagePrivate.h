@@ -163,6 +163,7 @@ WK_EXPORT void WKPageRestoreFromSessionStateWithoutNavigation(WKPageRef page, WK
 WK_EXPORT void WKPageSetIgnoresViewportScaleLimits(WKPageRef page, bool ignoresViewportScaleLimits);
 
 WK_EXPORT WKProcessID WKPageGetProcessIdentifier(WKPageRef page);
+WK_EXPORT WKProcessID WKPageGetGPUProcessIdentifier(WKPageRef page);
 
 #ifdef __BLOCKS__
 typedef void (^WKPageGetApplicationManifestBlock)(void);
@@ -177,18 +178,20 @@ typedef void (*WKPageSetPrivateClickMeasurementOverrideTimerForTestingFunction)(
 WK_EXPORT void WKPageSetPrivateClickMeasurementOverrideTimerForTesting(WKPageRef page, bool value, WKPageSetPrivateClickMeasurementOverrideTimerForTestingFunction callback, void* callbackContext);
 typedef void (*WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTestingFunction)(void* functionContext);
 WK_EXPORT void WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTesting(WKPageRef page, WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageSetPrivateClickMeasurementEphemeralMeasurementForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPrivateClickMeasurementEphemeralMeasurementForTesting(WKPageRef page, bool value, WKPageSetPrivateClickMeasurementEphemeralMeasurementForTestingFunction callback, void* callbackContext);
 typedef void (*WKPageSimulateResourceLoadStatisticsSessionRestartFunction)(void* functionContext);
 WK_EXPORT void WKPageSimulateResourceLoadStatisticsSessionRestart(WKPageRef page, WKPageSimulateResourceLoadStatisticsSessionRestartFunction callback, void* callbackContext);
 typedef void (*WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTestingFunction)(void* functionContext);
 WK_EXPORT void WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTesting(WKPageRef page, WKURLRef urlString, WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTestingFunction callback, void* callbackContext);
 typedef void (*WKPageSetPrivateClickMeasurementTokenSignatureURLForTestingFunction)(void* functionContext);
 WK_EXPORT void WKPageSetPrivateClickMeasurementTokenSignatureURLForTesting(WKPageRef page, WKURLRef urlString, WKPageSetPrivateClickMeasurementTokenSignatureURLForTestingFunction callback, void* callbackContext);
-typedef void (*WKPageSetPrivateClickMeasurementAttributionReportURLForTestingFunction)(void* functionContext);
-WK_EXPORT void WKPageSetPrivateClickMeasurementAttributionReportURLForTesting(WKPageRef page, WKURLRef urlString, WKPageSetPrivateClickMeasurementAttributionReportURLForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageSetPrivateClickMeasurementAttributionReportURLsForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPrivateClickMeasurementAttributionReportURLsForTesting(WKPageRef page, WKURLRef sourceURL, WKURLRef destinationURL, WKPageSetPrivateClickMeasurementAttributionReportURLsForTestingFunction callback, void* callbackContext);
 typedef void (*WKPageMarkPrivateClickMeasurementsAsExpiredForTestingFunction)(void* functionContext);
 WK_EXPORT void WKPageMarkPrivateClickMeasurementsAsExpiredForTesting(WKPageRef page, WKPageMarkPrivateClickMeasurementsAsExpiredForTestingFunction callback, void* callbackContext);
-typedef void (*WKPageSetFraudPreventionValuesForTestingFunction)(void* functionContext);
-WK_EXPORT void WKPageSetFraudPreventionValuesForTesting(WKPageRef page, WKStringRef secretToken, WKStringRef unlinkableToken, WKStringRef signature, WKStringRef keyID, WKPageSetFraudPreventionValuesForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageSetPCMFraudPreventionValuesForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPCMFraudPreventionValuesForTesting(WKPageRef page, WKStringRef secretToken, WKStringRef unlinkableToken, WKStringRef signature, WKStringRef keyID, WKPageSetPCMFraudPreventionValuesForTestingFunction callback, void* callbackContext);
 
 WK_EXPORT void WKPageSetMockCameraOrientation(WKPageRef page, uint64_t orientation);
 WK_EXPORT bool WKPageIsMockRealtimeMediaSourceCenterEnabled(WKPageRef page);

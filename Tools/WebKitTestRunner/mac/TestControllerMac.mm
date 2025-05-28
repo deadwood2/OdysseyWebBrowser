@@ -155,10 +155,6 @@ void TestController::initializeTestPluginDirectory()
     m_testPluginDirectory.adopt(WKStringCreateWithCFString((__bridge CFStringRef)[[NSBundle mainBundle] bundlePath]));
 }
 
-void TestController::platformResetPreferencesToConsistentValues()
-{
-}
-
 bool TestController::platformResetStateToConsistentValues(const TestOptions& options)
 {
     [LayoutTestSpellChecker uninstallAndReset];
@@ -227,7 +223,7 @@ void TestController::platformConfigureViewForTest(const TestInvocation& test)
 
 static NSSet *allowedFontFamilySet()
 {
-    static NSSet *fontFamilySet = [[NSSet setWithObjects:
+    static NeverDestroyed<RetainPtr<NSSet>> fontFamilySet = [NSSet setWithObjects:
         @"Ahem",
         @"Al Bayan",
         @"American Typewriter",
@@ -355,18 +351,18 @@ static NSSet *allowedFontFamilySet()
         @"Wingdings",
         @"Zapf Dingbats",
         @"Zapfino",
-        nil] retain];
+        nil];
 
-    return fontFamilySet;
+    return fontFamilySet.get().get();
 }
 
 static NSSet *systemHiddenFontFamilySet()
 {
-    static NSSet *fontFamilySet = [[NSSet setWithObjects:
+    static NeverDestroyed<RetainPtr<NSSet>> fontFamilySet = [NSSet setWithObjects:
         @".LucidaGrandeUI",
-        nil] retain];
+        nil];
 
-    return fontFamilySet;
+    return fontFamilySet.get().get();
 }
 
 static WKRetainPtr<WKArrayRef> generateFontAllowList()
@@ -430,12 +426,12 @@ void TestController::abortModal()
 
 const char* TestController::platformLibraryPathForTesting()
 {
-    static NSString *platformLibraryPath = nil;
+    static NeverDestroyed<RetainPtr<NSString>> platformLibraryPath;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        platformLibraryPath = [[@"~/Library/Application Support/DumpRenderTree" stringByExpandingTildeInPath] retain];
+        platformLibraryPath.get() = [@"~/Library/Application Support/DumpRenderTree" stringByExpandingTildeInPath];
     });
-    return platformLibraryPath.UTF8String;
+    return [platformLibraryPath.get() UTF8String];
 }
 
 } // namespace WTR

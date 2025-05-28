@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,6 +38,10 @@ class ImageBufferShareableIOSurfaceBackend final : public WebCore::ImageBufferBa
     WTF_MAKE_ISO_ALLOCATED(ImageBufferShareableIOSurfaceBackend);
     WTF_MAKE_NONCOPYABLE(ImageBufferShareableIOSurfaceBackend);
 public:
+    static WebCore::IntSize calculateSafeBackendSize(const Parameters&);
+    static size_t calculateMemoryCost(const Parameters&);
+    static size_t calculateExternalMemoryCost(const Parameters&);
+
     static std::unique_ptr<ImageBufferShareableIOSurfaceBackend> create(const Parameters&, ImageBufferBackendHandle);
 
     ImageBufferShareableIOSurfaceBackend(const Parameters& parameters, ImageBufferBackendHandle&& handle)
@@ -53,17 +57,18 @@ public:
     RefPtr<WebCore::Image> copyImage(WebCore::BackingStoreCopy, WebCore::PreserveResolution) const override;
     void draw(WebCore::GraphicsContext&, const WebCore::FloatRect& destRect, const WebCore::FloatRect& srcRect, const WebCore::ImagePaintingOptions&) override;
     void drawPattern(WebCore::GraphicsContext&, const WebCore::FloatRect& destRect, const WebCore::FloatRect& srcRect, const WebCore::AffineTransform& patternTransform, const WebCore::FloatPoint& phase, const WebCore::FloatSize& spacing, const WebCore::ImagePaintingOptions&) override;
-    String toDataURL(const String& mimeType, Optional<double> quality, WebCore::PreserveResolution) const override;
-    Vector<uint8_t> toData(const String& mimeType, Optional<double> quality) const override;
-    Vector<uint8_t> toBGRAData() const override;
-    RefPtr<WebCore::ImageData> getImageData(WebCore::AlphaPremultiplication outputFormat, const WebCore::IntRect&) const override;
-    void putImageData(WebCore::AlphaPremultiplication inputFormat, const WebCore::ImageData&, const WebCore::IntRect& srcRect, const WebCore::IntPoint& destPoint, WebCore::AlphaPremultiplication destFormat) override;
+    String toDataURL(const String& mimeType, std::optional<double> quality, WebCore::PreserveResolution) const override;
+    Vector<uint8_t> toData(const String& mimeType, std::optional<double> quality) const override;
+    std::optional<WebCore::PixelBuffer> getPixelBuffer(const WebCore::PixelBufferFormat& outputFormat, const WebCore::IntRect&) const override;
+    void putPixelBuffer(const WebCore::PixelBuffer&, const WebCore::IntRect& srcRect, const WebCore::IntPoint& destPoint, WebCore::AlphaPremultiplication destFormat) override;
 
-    static constexpr bool isOriginAtUpperLeftCorner = true;
+    static constexpr bool isOriginAtBottomLeftCorner = true;
     static constexpr bool canMapBackingStore = false;
     static constexpr WebCore::RenderingMode renderingMode = WebCore::RenderingMode::Accelerated;
 
 private:
+    unsigned bytesPerRow() const override;
+
     ImageBufferBackendHandle m_handle;
 };
 

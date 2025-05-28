@@ -30,6 +30,7 @@
 #include "JSDOMConvertNumbers.h"
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMGlobalObject.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMOperation.h"
 #include "JSDOMWrapperCache.h"
 #include "JSNode.h"
@@ -91,6 +92,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestEventTargetPrototype, JSTestEventTarge
 
 using JSTestEventTargetDOMConstructor = JSDOMConstructorNotConstructable<JSTestEventTarget>;
 
+template<> const ClassInfo JSTestEventTargetDOMConstructor::s_info = { "TestEventTarget", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestEventTargetDOMConstructor) };
+
 template<> JSValue JSTestEventTargetDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     return JSEventTarget::getConstructor(vm, &globalObject);
@@ -102,8 +105,6 @@ template<> void JSTestEventTargetDOMConstructor::initializeProperties(VM& vm, JS
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestEventTarget"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestEventTargetDOMConstructor::s_info = { "TestEventTarget", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestEventTargetDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -150,30 +151,30 @@ JSObject* JSTestEventTarget::prototype(VM& vm, JSDOMGlobalObject& globalObject)
 
 JSValue JSTestEventTarget::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestEventTargetDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestEventTargetDOMConstructor, DOMConstructorID::TestEventTarget>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 bool JSTestEventTarget::getOwnPropertySlot(JSObject* object, JSGlobalObject* lexicalGlobalObject, PropertyName propertyName, PropertySlot& slot)
 {
+    auto throwScope = DECLARE_THROW_SCOPE(JSC::getVM(lexicalGlobalObject));
     auto* thisObject = jsCast<JSTestEventTarget*>(object);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     if (auto index = parseIndex(propertyName)) {
         if (index.value() < thisObject->wrapped().length()) {
-            auto value = toJS<IDLInterface<Node>>(*lexicalGlobalObject, *thisObject->globalObject(), thisObject->wrapped().item(index.value()));
+            auto value = toJS<IDLInterface<Node>>(*lexicalGlobalObject, *thisObject->globalObject(), throwScope, thisObject->wrapped().item(index.value()));
+            RETURN_IF_EXCEPTION(throwScope, false);
             slot.setValue(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly), value);
             return true;
         }
         return JSObject::getOwnPropertySlot(object, lexicalGlobalObject, propertyName, slot);
     }
     using GetterIDLType = IDLInterface<Node>;
-    auto getterFunctor = [] (auto& thisObject, auto propertyName) -> Optional<typename GetterIDLType::ImplementationType> {
-        auto result = thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
-        if (!GetterIDLType::isNullValue(result))
-            return typename GetterIDLType::ImplementationType { GetterIDLType::extractValueFromNullable(result) };
-        return WTF::nullopt;
-    };
+    auto getterFunctor = visibleNamedPropertyItemAccessorFunctor<GetterIDLType, JSTestEventTarget>([] (JSTestEventTarget& thisObject, PropertyName propertyName) -> decltype(auto) {
+        return thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
+    });
     if (auto namedProperty = accessVisibleNamedProperty<LegacyOverrideBuiltIns::No>(*lexicalGlobalObject, *thisObject, propertyName, getterFunctor)) {
-        auto value = toJS<IDLInterface<Node>>(*lexicalGlobalObject, *thisObject->globalObject(), WTFMove(namedProperty.value()));
+        auto value = toJS<IDLInterface<Node>>(*lexicalGlobalObject, *thisObject->globalObject(), throwScope, WTFMove(namedProperty.value()));
+        RETURN_IF_EXCEPTION(throwScope, false);
         slot.setValue(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly), value);
         return true;
     }
@@ -183,11 +184,13 @@ bool JSTestEventTarget::getOwnPropertySlot(JSObject* object, JSGlobalObject* lex
 bool JSTestEventTarget::getOwnPropertySlotByIndex(JSObject* object, JSGlobalObject* lexicalGlobalObject, unsigned index, PropertySlot& slot)
 {
     VM& vm = JSC::getVM(lexicalGlobalObject);
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     auto* thisObject = jsCast<JSTestEventTarget*>(object);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     if (LIKELY(index <= MAX_ARRAY_INDEX)) {
         if (index < thisObject->wrapped().length()) {
-            auto value = toJS<IDLInterface<Node>>(*lexicalGlobalObject, *thisObject->globalObject(), thisObject->wrapped().item(index));
+            auto value = toJS<IDLInterface<Node>>(*lexicalGlobalObject, *thisObject->globalObject(), throwScope, thisObject->wrapped().item(index));
+            RETURN_IF_EXCEPTION(throwScope, false);
             slot.setValue(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly), value);
             return true;
         }
@@ -195,14 +198,12 @@ bool JSTestEventTarget::getOwnPropertySlotByIndex(JSObject* object, JSGlobalObje
     }
     auto propertyName = Identifier::from(vm, index);
     using GetterIDLType = IDLInterface<Node>;
-    auto getterFunctor = [] (auto& thisObject, auto propertyName) -> Optional<typename GetterIDLType::ImplementationType> {
-        auto result = thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
-        if (!GetterIDLType::isNullValue(result))
-            return typename GetterIDLType::ImplementationType { GetterIDLType::extractValueFromNullable(result) };
-        return WTF::nullopt;
-    };
+    auto getterFunctor = visibleNamedPropertyItemAccessorFunctor<GetterIDLType, JSTestEventTarget>([] (JSTestEventTarget& thisObject, PropertyName propertyName) -> decltype(auto) {
+        return thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
+    });
     if (auto namedProperty = accessVisibleNamedProperty<LegacyOverrideBuiltIns::No>(*lexicalGlobalObject, *thisObject, propertyName, getterFunctor)) {
-        auto value = toJS<IDLInterface<Node>>(*lexicalGlobalObject, *thisObject->globalObject(), WTFMove(namedProperty.value()));
+        auto value = toJS<IDLInterface<Node>>(*lexicalGlobalObject, *thisObject->globalObject(), throwScope, WTFMove(namedProperty.value()));
+        RETURN_IF_EXCEPTION(throwScope, false);
         slot.setValue(thisObject, static_cast<unsigned>(JSC::PropertyAttribute::ReadOnly), value);
         return true;
     }
@@ -219,11 +220,6 @@ void JSTestEventTarget::getOwnPropertyNames(JSObject* object, JSGlobalObject* le
     for (auto& propertyName : thisObject->wrapped().supportedPropertyNames())
         propertyNames.add(Identifier::fromString(vm, propertyName));
     JSObject::getOwnPropertyNames(object, lexicalGlobalObject, propertyNames, mode);
-}
-
-template<> inline JSTestEventTarget* IDLOperation<JSTestEventTarget>::cast(JSGlobalObject& lexicalGlobalObject, CallFrame& callFrame)
-{
-    return jsDynamicCast<JSTestEventTarget*>(JSC::getVM(&lexicalGlobalObject), callFrame.thisValue());
 }
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestEventTargetConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
@@ -248,7 +244,7 @@ static inline JSC::EncodedJSValue jsTestEventTargetPrototypeFunction_itemBody(JS
     EnsureStillAliveScope argument0 = callFrame->uncheckedArgument(0);
     auto index = convert<IDLUnsignedLong>(*lexicalGlobalObject, argument0.value());
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLInterface<Node>>(*lexicalGlobalObject, *castedThis->globalObject(), impl.item(WTFMove(index)))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLInterface<Node>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.item(WTFMove(index)))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestEventTargetPrototypeFunction_item, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))

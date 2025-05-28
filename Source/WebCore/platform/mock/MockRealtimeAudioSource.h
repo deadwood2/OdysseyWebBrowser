@@ -50,7 +50,7 @@ public:
 protected:
     MockRealtimeAudioSource(String&& deviceID, String&& name, String&& hashSalt);
 
-    virtual void render(Seconds) = 0;
+    virtual void render(Seconds) { };
     void settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag>) override;
 
     static Seconds renderInterval() { return 60_ms; }
@@ -75,8 +75,8 @@ protected:
     unsigned m_channelCount { 2 };
 
 private:
-    Optional<RealtimeMediaSourceCapabilities> m_capabilities;
-    Optional<RealtimeMediaSourceSettings> m_currentSettings;
+    std::optional<RealtimeMediaSourceCapabilities> m_capabilities;
+    std::optional<RealtimeMediaSourceSettings> m_currentSettings;
     RealtimeMediaSourceSupportedConstraints m_supportedConstraints;
 
     RunLoop::Timer<MockRealtimeAudioSource> m_timer;

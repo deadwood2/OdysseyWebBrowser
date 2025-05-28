@@ -41,7 +41,6 @@
 #include <WebCore/WebAudioBufferList.h>
 
 namespace WebKit {
-using namespace PAL;
 using namespace WebCore;
 
 Ref<RealtimeMediaSource> RemoteRealtimeAudioSource::create(const CaptureDevice& device, const MediaConstraints* constraints, String&& name, String&& hashSalt, UserMediaCaptureManager& manager, bool shouldCaptureInGPUProcess)
@@ -84,8 +83,10 @@ void RemoteRealtimeAudioSource::createRemoteMediaSource()
 
 RemoteRealtimeAudioSource::~RemoteRealtimeAudioSource()
 {
-    if (m_proxy.shouldCaptureInGPUProcess())
-        WebProcess::singleton().ensureGPUProcessConnection().removeClient(*this);
+    if (m_proxy.shouldCaptureInGPUProcess()) {
+        if (auto* connection = WebProcess::singleton().existingGPUProcessConnection())
+            connection->removeClient(*this);
+    }
 
 #if PLATFORM(IOS_FAMILY)
     RealtimeMediaSourceCenter::singleton().audioCaptureFactory().unsetActiveSource(*this);
@@ -112,7 +113,7 @@ void RemoteRealtimeAudioSource::applyConstraintsSucceeded(WebCore::RealtimeMedia
 
 void RemoteRealtimeAudioSource::remoteAudioSamplesAvailable(const MediaTime& time, const PlatformAudioData& data, const AudioStreamDescription& description, size_t size)
 {
-    ASSERT(!isMainThread());
+    ASSERT(!isMainRunLoop());
     audioSamplesAvailable(time, data, description, size);
 }
 
@@ -135,6 +136,12 @@ void RemoteRealtimeAudioSource::captureFailed()
     hasEnded();
 }
 
+void RemoteRealtimeAudioSource::applyConstraints(const MediaConstraints& constraints, ApplyConstraintsHandler&& callback)
+{
+    m_constraints = constraints;
+    m_proxy.applyConstraints(constraints, WTFMove(callback));
+}
+
 #if ENABLE(GPU_PROCESS)
 void RemoteRealtimeAudioSource::gpuProcessConnectionDidClose(GPUProcessConnection&)
 {
@@ -153,11 +160,14 @@ void RemoteRealtimeAudioSource::gpuProcessConnectionDidClose(GPUProcessConnectio
     m_manager.remoteCaptureSampleManager().didUpdateSourceConnection(connection());
     m_proxy.resetReady();
     createRemoteMediaSource();
-    // FIXME: We should update the track according current settings.
+
+    m_proxy.failApplyConstraintCallbacks("GPU Process terminated"_s);
+    if (m_constraints)
+        m_proxy.applyConstraints(*m_constraints, [](auto) { });
+
     if (isProducingData())
         startProducingData();
 
-    m_proxy.failApplyConstraintCallbacks("GPU Process terminated"_s);
 }
 #endif
 

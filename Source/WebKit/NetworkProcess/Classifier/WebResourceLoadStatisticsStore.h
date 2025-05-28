@@ -30,6 +30,7 @@
 #include "ArgumentCoders.h"
 #include "Decoder.h"
 #include "Encoder.h"
+#include "PrivateClickMeasurementStore.h"
 #include "StorageAccessStatus.h"
 #include "WebPageProxyIdentifier.h"
 #include "WebsiteDataType.h"
@@ -41,16 +42,15 @@
 #include <WebCore/RegistrableDomain.h>
 #include <WebCore/ResourceLoadObserver.h>
 #include <wtf/CompletionHandler.h>
+#include <wtf/Condition.h>
+#include <wtf/Forward.h>
+#include <wtf/Lock.h>
 #include <wtf/RunLoop.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/Vector.h>
 #include <wtf/WallTime.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
-
-namespace WTF {
-class WorkQueue;
-}
 
 namespace WebCore {
 class ResourceRequest;
@@ -109,107 +109,40 @@ public:
     using StorageAccessScope = WebCore::StorageAccessScope;
     using RequestStorageAccessResult = WebCore::RequestStorageAccessResult;
 
-    static Ref<WebResourceLoadStatisticsStore> create(NetworkSession& networkSession, const String& resourceLoadStatisticsDirectory, ShouldIncludeLocalhost shouldIncludeLocalhost, WebCore::ResourceLoadStatistics::IsEphemeral isEphemeral)
-    {
-        return adoptRef(*new WebResourceLoadStatisticsStore(networkSession, resourceLoadStatisticsDirectory, shouldIncludeLocalhost, isEphemeral));
-    }
+    static Ref<WebResourceLoadStatisticsStore> create(NetworkSession&, const String& resourceLoadStatisticsDirectory, const String& privateClickMeasurementStorageDirectory, ShouldIncludeLocalhost, ResourceLoadStatistics::IsEphemeral);
 
     ~WebResourceLoadStatisticsStore();
 
-struct ThirdPartyDataForSpecificFirstParty {
-    WebCore::RegistrableDomain firstPartyDomain;
-    bool storageAccessGranted;
-    Seconds timeLastUpdated;
+    struct ThirdPartyDataForSpecificFirstParty {
+        WebCore::RegistrableDomain firstPartyDomain;
+        bool storageAccessGranted;
+        Seconds timeLastUpdated;
 
-    String toString() const
-    {
-        return makeString("Has been granted storage access under ", firstPartyDomain.string(), ": ", storageAccessGranted ? '1' : '0', "; Has been seen under ", firstPartyDomain.string(), " in the last 24 hours: ", WallTime::now().secondsSinceEpoch() - timeLastUpdated < 24_h ? '1' : '0');
-    }
+        String toString() const;
+        void encode(IPC::Encoder&) const;
+        static std::optional<ThirdPartyDataForSpecificFirstParty> decode(IPC::Decoder&);
 
-    void encode(IPC::Encoder& encoder) const
-    {
-        encoder << firstPartyDomain;
-        encoder << storageAccessGranted;
-        encoder << timeLastUpdated;
-    }
+        // FIXME: Since this ignores differences in decodedTimeLastUpdated it probably should be a named function, not operator==.
+        bool operator==(const ThirdPartyDataForSpecificFirstParty&) const;
+    };
 
-    static Optional<ThirdPartyDataForSpecificFirstParty> decode(IPC::Decoder& decoder)
-    {
-        Optional<WebCore::RegistrableDomain> decodedDomain;
-        decoder >> decodedDomain;
-        if (!decodedDomain)
-            return WTF::nullopt;
+    struct ThirdPartyData {
+        WebCore::RegistrableDomain thirdPartyDomain;
+        Vector<ThirdPartyDataForSpecificFirstParty> underFirstParties;
 
-        Optional<bool> decodedStorageAccess;
-        decoder >> decodedStorageAccess;
-        if (!decodedStorageAccess)
-            return WTF::nullopt;
-        
-        Optional<Seconds> decodedTimeLastUpdated;
-        decoder >> decodedTimeLastUpdated;
-        if (!decodedTimeLastUpdated)
-            return WTF::nullopt;
-        
-        return {{ WTFMove(*decodedDomain), WTFMove(*decodedStorageAccess), WTFMove(*decodedTimeLastUpdated) }};
-    }
+        String toString() const;
+        void encode(IPC::Encoder&) const;
+        static std::optional<ThirdPartyData> decode(IPC::Decoder&);
 
-    bool operator==(ThirdPartyDataForSpecificFirstParty const other) const
-    {
-        return firstPartyDomain == other.firstPartyDomain && storageAccessGranted == other.storageAccessGranted;
-    }
-};
-
-struct ThirdPartyData {
-    WebCore::RegistrableDomain thirdPartyDomain;
-    Vector<ThirdPartyDataForSpecificFirstParty> underFirstParties;
-
-    String toString() const
-    {
-        StringBuilder stringBuilder;
-        stringBuilder.append("Third Party Registrable Domain: ", thirdPartyDomain.string(), "\n");
-        stringBuilder.appendLiteral("    {");
-
-        for (auto firstParty : underFirstParties) {
-            stringBuilder.appendLiteral("{ ");
-            stringBuilder.append(firstParty.toString());
-            stringBuilder.appendLiteral(" },");
-        }
-        stringBuilder.appendLiteral("}");
-        return stringBuilder.toString();
-    }
-
-    void encode(IPC::Encoder& encoder) const
-    {
-        encoder << thirdPartyDomain;
-        encoder << underFirstParties;
-    }
-
-    static Optional<ThirdPartyData> decode(IPC::Decoder& decoder)
-    {
-        Optional<WebCore::RegistrableDomain> decodedDomain;
-        decoder >> decodedDomain;
-        if (!decodedDomain)
-            return WTF::nullopt;
-
-        Optional<Vector<ThirdPartyDataForSpecificFirstParty>> decodedFirstParties;
-        decoder >> decodedFirstParties;
-        if (!decodedFirstParties)
-            return WTF::nullopt;
-
-        return {{ WTFMove(*decodedDomain), WTFMove(*decodedFirstParties) }};
-    }
-
-    bool operator<(const ThirdPartyData &other) const
-    {
-        return underFirstParties.size() < other.underFirstParties.size();
-    }
-};
+        // FIXME: This sorts by number of underFirstParties, so it probably should be a named function, not operator<.
+        bool operator<(const ThirdPartyData&) const;
+    };
 
     void didDestroyNetworkSession(CompletionHandler<void()>&&);
 
     static const OptionSet<WebsiteDataType>& monitoredDataTypes();
 
-    WTF::WorkQueue& statisticsQueue() { return m_statisticsQueue.get(); }
+    SuspendableWorkQueue& statisticsQueue() { return m_statisticsQueue.get(); }
 
     void populateMemoryStoreFromDisk(CompletionHandler<void()>&&);
     void setNotifyPagesWhenDataRecordsWereScanned(bool);
@@ -225,9 +158,9 @@ struct ThirdPartyData {
     void deleteAndRestrictWebsiteDataForRegistrableDomains(OptionSet<WebsiteDataType>, RegistrableDomainsToDeleteOrRestrictWebsiteDataFor&&, bool shouldNotifyPage, CompletionHandler<void(const HashSet<RegistrableDomain>&)>&&);
     void registrableDomains(CompletionHandler<void(Vector<RegistrableDomain>&&)>&&);
     void registrableDomainsWithWebsiteData(OptionSet<WebsiteDataType>, bool shouldNotifyPage, CompletionHandler<void(HashSet<RegistrableDomain>&&)>&&);
-    StorageAccessWasGranted grantStorageAccessInStorageSession(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, StorageAccessScope);
+    StorageAccessWasGranted grantStorageAccessInStorageSession(const SubFrameDomain&, const TopFrameDomain&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, StorageAccessScope);
     void hasHadUserInteraction(const RegistrableDomain&, CompletionHandler<void(bool)>&&);
-    void hasStorageAccess(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&);
+    void hasStorageAccess(const SubFrameDomain&, const TopFrameDomain&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&);
     bool hasStorageAccessForFrame(const SubFrameDomain&, const TopFrameDomain&, WebCore::FrameIdentifier, WebCore::PageIdentifier);
     void requestStorageAccess(const SubFrameDomain&, const TopFrameDomain&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebPageProxyIdentifier, StorageAccessScope,  CompletionHandler<void(RequestStorageAccessResult)>&&);
     void setLastSeen(const RegistrableDomain&, Seconds, CompletionHandler<void()>&&);
@@ -256,6 +189,7 @@ struct ThirdPartyData {
     void scheduleCookieBlockingUpdateForDomains(const Vector<RegistrableDomain>&, CompletionHandler<void()>&&);
     void scheduleStatisticsAndDataRecordsProcessing(CompletionHandler<void()>&&);
     void statisticsDatabaseHasAllTables(CompletionHandler<void(bool)>&&);
+    void statisticsDatabaseColumnsForTable(const String&, CompletionHandler<void(Vector<String>&&)>&&);
     void scheduleClearInMemoryAndPersistent(ShouldGrandfatherStatistics, CompletionHandler<void()>&&);
     void scheduleClearInMemoryAndPersistent(WallTime modifiedSince, ShouldGrandfatherStatistics, CompletionHandler<void()>&&);
     void clearInMemoryEphemeral(CompletionHandler<void()>&&);
@@ -274,7 +208,7 @@ struct ThirdPartyData {
     void setPrevalentResourceForDebugMode(const RegistrableDomain&, CompletionHandler<void()>&&);
 
     void logTestingEvent(const String&);
-    void callGrantStorageAccessHandler(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, StorageAccessScope, CompletionHandler<void(StorageAccessWasGranted)>&&);
+    void callGrantStorageAccessHandler(const SubFrameDomain&, const TopFrameDomain&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, StorageAccessScope, CompletionHandler<void(StorageAccessWasGranted)>&&);
     void removeAllStorageAccess(CompletionHandler<void()>&&);
     bool needsUserInteractionQuirk(const RegistrableDomain&) const;
     void callUpdatePrevalentDomainsToBlockCookiesForHandler(const RegistrableDomainsToBlockCookiesFor&, CompletionHandler<void()>&&);
@@ -304,29 +238,18 @@ struct ThirdPartyData {
     static void resume();
     
     bool isEphemeral() const { return m_isEphemeral == WebCore::ResourceLoadStatistics::IsEphemeral::Yes; };
-    void insertExpiredStatisticForTesting(const RegistrableDomain&, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, CompletionHandler<void()>&&);
+    void insertExpiredStatisticForTesting(const RegistrableDomain&, unsigned numberOfOperatingDaysPassed, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, CompletionHandler<void()>&&);
 
-    // Private Click Measurement.
-    void insertPrivateClickMeasurement(WebCore::PrivateClickMeasurement&&, PrivateClickMeasurementAttributionType);
-    void markAllUnattributedPrivateClickMeasurementAsExpiredForTesting();
-    void attributePrivateClickMeasurement(const WebCore::PrivateClickMeasurement::SourceSite&, const WebCore::PrivateClickMeasurement::AttributeOnSite&, WebCore::PrivateClickMeasurement::AttributionTriggerData&&, CompletionHandler<void(Optional<Seconds>)>&&);
-    void allAttributedPrivateClickMeasurement(CompletionHandler<void(Vector<WebCore::PrivateClickMeasurement>&&)>&&);
-    void clearPrivateClickMeasurement();
-    void clearPrivateClickMeasurementForRegistrableDomain(const WebCore::RegistrableDomain&);
-    void clearExpiredPrivateClickMeasurement();
-    void privateClickMeasurementToString(CompletionHandler<void(String)>&&);
-    void clearSentAttribution(WebCore::PrivateClickMeasurement&&);
-    void markAttributedPrivateClickMeasurementsAsExpiredForTesting(CompletionHandler<void()>&&);
-
+    PCM::Store& privateClickMeasurementStore() { return m_pcmStore.get(); }
 private:
-    explicit WebResourceLoadStatisticsStore(NetworkSession&, const String&, ShouldIncludeLocalhost, WebCore::ResourceLoadStatistics::IsEphemeral);
+    explicit WebResourceLoadStatisticsStore(NetworkSession&, const String&, const String&, ShouldIncludeLocalhost, WebCore::ResourceLoadStatistics::IsEphemeral);
 
     void postTask(WTF::Function<void()>&&);
     static void postTaskReply(WTF::Function<void()>&&);
 
     void performDailyTasks();
 
-    void hasStorageAccessEphemeral(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&);
+    void hasStorageAccessEphemeral(const SubFrameDomain&, const TopFrameDomain&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&);
     void requestStorageAccessEphemeral(const SubFrameDomain&, const TopFrameDomain&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebPageProxyIdentifier, StorageAccessScope, CompletionHandler<void(RequestStorageAccessResult)>&&);
     void requestStorageAccessUnderOpenerEphemeral(DomainInNeedOfStorageAccess&&, WebCore::PageIdentifier openerID, OpenerDomain&&);
     void grantStorageAccessEphemeral(const SubFrameDomain&, const TopFrameDomain&, WebCore::FrameIdentifier, WebCore::PageIdentifier, StorageAccessPromptWasShown, StorageAccessScope, CompletionHandler<void(RequestStorageAccessResult)>&&);
@@ -340,7 +263,7 @@ private:
     void destroyResourceLoadStatisticsStore(CompletionHandler<void()>&&);
 
     WeakPtr<NetworkSession> m_networkSession;
-    Ref<WTF::WorkQueue> m_statisticsQueue;
+    Ref<SuspendableWorkQueue> m_statisticsQueue;
     std::unique_ptr<ResourceLoadStatisticsStore> m_statisticsStore;
 
     RunLoop::Timer<WebResourceLoadStatisticsStore> m_dailyTasksTimer;
@@ -355,14 +278,7 @@ private:
 
     bool m_firstNetworkProcessCreated { false };
     
-    enum class State {
-        Running,
-        WillSuspend,
-        Suspended
-    };
-    static State suspendedState;
-    static Lock suspendedStateLock;
-    static Condition suspendedStateChangeCondition;
+    Ref<PCM::Store> m_pcmStore;
 };
 
 } // namespace WebKit

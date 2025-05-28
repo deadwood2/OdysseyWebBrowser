@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,7 +52,7 @@ enum class AllowsCellularAccess : bool { No, Yes };
 
 struct NetworkSessionCreationParameters {
     void encode(IPC::Encoder&) const;
-    static Optional<NetworkSessionCreationParameters> decode(IPC::Decoder&);
+    static std::optional<NetworkSessionCreationParameters> decode(IPC::Decoder&);
     
     PAL::SessionID sessionID { PAL::SessionID::defaultSessionID() };
     String boundInterfaceIdentifier;
@@ -101,6 +101,7 @@ struct NetworkSessionCreationParameters {
     bool preventsSystemHTTPProxyAuthentication { false };
     bool appHasRequestedCrossWebsiteTrackingPermission { false };
     bool useNetworkLoader { false };
+    bool allowsHSTSWithUntrustedRootCertificate { false };
 
     ResourceLoadStatisticsParameters resourceLoadStatisticsParameters;
 };

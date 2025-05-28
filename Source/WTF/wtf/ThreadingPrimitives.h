@@ -48,6 +48,10 @@
 #endif
 #endif
 
+#if OS(MORPHOS)
+#undef IMPORT
+#endif
+
 namespace WTF {
 
 using ThreadFunction = void (*)(void* argument);
@@ -75,6 +79,9 @@ class Mutex final {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     constexpr Mutex() = default;
+#if OS(MORPHOS)
+    WTF_EXPORT_PRIVATE Mutex(int type);
+#endif
     WTF_EXPORT_PRIVATE ~Mutex();
 
     WTF_EXPORT_PRIVATE void lock();

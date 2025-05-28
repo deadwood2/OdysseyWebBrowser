@@ -41,6 +41,10 @@ OBJC_CLASS NSEvent;
 OBJC_CLASS WebEvent;
 #endif
 
+#if OS(MORPHOS)
+struct IntuiMessage;
+#endif
+
 namespace WebCore {
 
     class PlatformKeyboardEvent : public PlatformEvent {
@@ -90,13 +94,13 @@ namespace WebCore {
         int windowsVirtualKeyCode() const { return m_windowsVirtualKeyCode; }
         void setWindowsVirtualKeyCode(int code) { m_windowsVirtualKeyCode = code; }
 
-#if USE(APPKIT) || USE(UIKIT_KEYBOARD_ADDITIONS) || PLATFORM(GTK) || USE(LIBWPE)
+#if USE(APPKIT) || PLATFORM(IOS_FAMILY) || PLATFORM(GTK) || USE(LIBWPE)
         bool handledByInputMethod() const { return m_handledByInputMethod; }
 #endif
 #if PLATFORM(GTK) || USE(LIBWPE)
-        const Optional<Vector<WebCore::CompositionUnderline>>& preeditUnderlines() const { return m_preeditUnderlines; }
-        const Optional<uint64_t>& preeditSelectionRangeStart() const { return m_preeditSelectionRangeStart; }
-        const Optional<uint64_t>& preeditSelectionRangeLength() const { return m_preeditSelectionRangeLength; }
+        const std::optional<Vector<WebCore::CompositionUnderline>>& preeditUnderlines() const { return m_preeditUnderlines; }
+        const std::optional<uint64_t>& preeditSelectionRangeStart() const { return m_preeditSelectionRangeStart; }
+        const std::optional<uint64_t>& preeditSelectionRangeLength() const { return m_preeditSelectionRangeLength; }
 #endif
 #if USE(APPKIT)
         const Vector<KeypressCommand>& commands() const { return m_commands; }
@@ -126,6 +130,10 @@ namespace WebCore {
 
 #if PLATFORM(WIN)
         PlatformKeyboardEvent(HWND, WPARAM, LPARAM, Type, bool);
+#endif
+
+#if OS(MORPHOS)
+		PlatformKeyboardEvent(struct IntuiMessage *imsg);
 #endif
 
 #if PLATFORM(GTK)
@@ -159,18 +167,22 @@ namespace WebCore {
         int m_windowsVirtualKeyCode { 0 };
 
         bool m_isSyntheticEvent { false };
-#if USE(APPKIT) || USE(UIKIT_KEYBOARD_ADDITIONS) || PLATFORM(GTK) || USE(LIBWPE)
+#if USE(APPKIT) || PLATFORM(IOS_FAMILY) || PLATFORM(GTK) || USE(LIBWPE)
         bool m_handledByInputMethod { false };
 #endif
 #if PLATFORM(GTK) || USE(LIBWPE)
-        Optional<Vector<WebCore::CompositionUnderline>> m_preeditUnderlines;
-        Optional<uint64_t> m_preeditSelectionRangeStart;
-        Optional<uint64_t> m_preeditSelectionRangeLength;
+        std::optional<Vector<WebCore::CompositionUnderline>> m_preeditUnderlines;
+        std::optional<uint64_t> m_preeditSelectionRangeStart;
+        std::optional<uint64_t> m_preeditSelectionRangeLength;
 #endif
 #if USE(APPKIT)
         Vector<KeypressCommand> m_commands;
 #elif PLATFORM(GTK)
         Vector<String> m_commands;
+#endif
+
+#if OS(MORPHOS)
+	struct IntuiMessage *m_intuiMessage;
 #endif
 
 #if PLATFORM(COCOA)
@@ -181,7 +193,7 @@ namespace WebCore {
 #endif
 #endif
         // The modifier state is optional, since it is not needed in the UI process or in legacy WebKit.
-        static Optional<OptionSet<Modifier>> s_currentModifiers;
+        static std::optional<OptionSet<Modifier>> s_currentModifiers;
     };
     
 } // namespace WebCore

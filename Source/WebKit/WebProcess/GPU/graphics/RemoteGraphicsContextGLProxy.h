@@ -64,16 +64,14 @@ public:
     using WebCore::RemoteGraphicsContextGLProxyBase::isEnabled;
     void ensureExtensionEnabled(const String& extension) final;
     void notifyMarkContextChanged() final;
-    void simulateContextChanged() final;
     void paintRenderingResultsToCanvas(WebCore::ImageBuffer&) final;
     void paintCompositedResultsToCanvas(WebCore::ImageBuffer&) final;
     void synthesizeGLError(GCGLenum error) final;
     GCGLenum getError() final;
-
     bool copyTextureFromMedia(WebCore::MediaPlayer&, PlatformGLObject texture, GCGLenum target, GCGLint level, GCGLenum internalFormat, GCGLenum format, GCGLenum type, bool premultiplyAlpha, bool flipY) final;
+    void simulateEventForTesting(SimulatedEventForTesting) final;
 
     // Functions with a generated implementation. This list is used by generate-gpup-webgl script.
-    void setFailNextGPUStatusCheck() final;
     bool moveErrorsToSyntheticErrorList() final;
     void activeTexture(GCGLenum texture) final;
     void attachShader(PlatformGLObject program, PlatformGLObject shader) final;
@@ -310,21 +308,14 @@ public:
     void uniformBlockBinding(PlatformGLObject program, GCGLuint uniformBlockIndex, GCGLuint uniformBlockBinding) final;
     void getActiveUniformBlockiv(GCGLuint program, GCGLuint uniformBlockIndex, GCGLenum pname, GCGLSpan<GCGLint> params) final;
     GCGLint getGraphicsResetStatusARB() final;
-    PlatformGLObject createVertexArrayOES() final;
-    void deleteVertexArrayOES(PlatformGLObject arg0) final;
-    GCGLboolean isVertexArrayOES(PlatformGLObject arg0) final;
-    void bindVertexArrayOES(PlatformGLObject arg0) final;
     String getTranslatedShaderSourceANGLE(PlatformGLObject arg0) final;
     void drawBuffersEXT(GCGLSpan<const GCGLenum> bufs) final;
-    void drawArraysInstancedANGLE(GCGLenum mode, GCGLint first, GCGLsizei count, GCGLsizei primcount) final;
-    void drawElementsInstancedANGLE(GCGLenum mode, GCGLsizei count, GCGLenum type, GCGLvoidptr offset, GCGLsizei primcount) final;
-    void vertexAttribDivisorANGLE(GCGLuint index, GCGLuint divisor) final;
     void getInternalformativ(GCGLenum target, GCGLenum internalformat, GCGLenum pname, GCGLSpan<GCGLint> params) final;
     void multiDrawArraysANGLE(GCGLenum mode, GCGLSpan<const GCGLint> firsts, GCGLSpan<const GCGLsizei> counts, GCGLsizei drawcount) final;
     void multiDrawArraysInstancedANGLE(GCGLenum mode, GCGLSpan<const GCGLint> firsts, GCGLSpan<const GCGLsizei> counts, GCGLSpan<const GCGLsizei> instanceCounts, GCGLsizei drawcount) final;
     void multiDrawElementsANGLE(GCGLenum mode, GCGLSpan<const GCGLsizei> counts, GCGLenum type, GCGLSpan<const GCGLint> offsets, GCGLsizei drawcount) final;
     void multiDrawElementsInstancedANGLE(GCGLenum mode, GCGLSpan<const GCGLsizei> counts, GCGLenum type, GCGLSpan<const GCGLint> offsets, GCGLSpan<const GCGLsizei> instanceCounts, GCGLsizei drawcount) final;
-    RefPtr<WebCore::ImageData> paintRenderingResultsToImageData() final;
+    std::optional<WebCore::PixelBuffer> paintRenderingResultsToPixelBuffer() final;
     // End of list used by generate-gpup-webgl script.
 
 protected:

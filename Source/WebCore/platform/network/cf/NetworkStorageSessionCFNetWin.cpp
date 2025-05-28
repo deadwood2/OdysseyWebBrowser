@@ -79,21 +79,19 @@ static CFHTTPCookieStorageAcceptPolicy toCFHTTPCookieStorageAcceptPolicy(HTTPCoo
     return CFHTTPCookieStorageAcceptPolicyAlways;
 }
 
-CFURLStorageSessionRef createPrivateStorageSession(CFStringRef identifier, Optional<HTTPCookieAcceptPolicy> cookieAcceptPolicy)
+RetainPtr<CFURLStorageSessionRef> createPrivateStorageSession(CFStringRef identifier, std::optional<HTTPCookieAcceptPolicy> cookieAcceptPolicy)
 {
     const void* sessionPropertyKeys[] = { _kCFURLStorageSessionIsPrivate };
     const void* sessionPropertyValues[] = { kCFBooleanTrue };
-    CFDictionaryRef sessionProperties = CFDictionaryCreate(kCFAllocatorDefault, sessionPropertyKeys, sessionPropertyValues, sizeof(sessionPropertyKeys) / sizeof(*sessionPropertyKeys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    CFURLStorageSessionRef storageSession = _CFURLStorageSessionCreate(kCFAllocatorDefault, identifier, sessionProperties);
+    auto sessionProperties = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, sessionPropertyKeys, sessionPropertyValues, sizeof(sessionPropertyKeys) / sizeof(*sessionPropertyKeys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    auto storageSession = adoptCF(_CFURLStorageSessionCreate(kCFAllocatorDefault, identifier, sessionProperties.get()));
     
     // The private storage session should have the same properties as the default storage session,
     // with the exception that it should be in-memory only storage.
-    CFURLCacheRef cache = _CFURLStorageSessionCopyCache(kCFAllocatorDefault, storageSession);
-    CFURLCacheSetDiskCapacity(cache, 0);
-    CFURLCacheRef defaultCache = CFURLCacheCopySharedURLCache();
-    CFURLCacheSetMemoryCapacity(cache, CFURLCacheMemoryCapacity(defaultCache));
-    CFRelease(defaultCache);
-    CFRelease(cache);
+    auto cache = adoptCF(_CFURLStorageSessionCopyCache(kCFAllocatorDefault, storageSession.get()));
+    CFURLCacheSetDiskCapacity(cache.get(), 0);
+    auto defaultCache = adoptCF(CFURLCacheCopySharedURLCache());
+    CFURLCacheSetMemoryCapacity(cache.get(), CFURLCacheMemoryCapacity(defaultCache.get()));
     
     CFHTTPCookieStorageAcceptPolicy cfCookieAcceptPolicy;
     if (cookieAcceptPolicy)
@@ -103,9 +101,8 @@ CFURLStorageSessionRef createPrivateStorageSession(CFStringRef identifier, Optio
         cfCookieAcceptPolicy = CFHTTPCookieStorageGetCookieAcceptPolicy(defaultCookieStorage);
     }
 
-    CFHTTPCookieStorageRef cookieStorage = _CFURLStorageSessionCopyCookieStorage(kCFAllocatorDefault, storageSession);
-    CFHTTPCookieStorageSetCookieAcceptPolicy(cookieStorage, cfCookieAcceptPolicy);
-    CFRelease(cookieStorage);
+    auto cookieStorage = adoptCF(_CFURLStorageSessionCopyCookieStorage(kCFAllocatorDefault, storageSession.get()));
+    CFHTTPCookieStorageSetCookieAcceptPolicy(cookieStorage.get(), cfCookieAcceptPolicy);
     
     return storageSession;
 }
@@ -247,7 +244,7 @@ static RetainPtr<CFHTTPCookieRef> parseDOMCookie(String cookieString, CFURLRef u
     return cookie;
 }
 
-void NetworkStorageSession::setCookiesFromDOM(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<FrameIdentifier>, Optional<PageIdentifier>, ShouldAskITP, const String& cookieString, ShouldRelaxThirdPartyCookieBlocking) const
+void NetworkStorageSession::setCookiesFromDOM(const URL& firstParty, const SameSiteInfo&, const URL& url, std::optional<FrameIdentifier>, std::optional<PageIdentifier>, ShouldAskITP, const String& cookieString, ShouldRelaxThirdPartyCookieBlocking) const
 {
     auto urlCF = url.createCFURL();
     auto cookie = parseDOMCookie(cookieString, urlCF.get());
@@ -272,7 +269,7 @@ static bool containsSecureCookies(CFArrayRef cookies)
     return false;
 }
 
-std::pair<String, bool> NetworkStorageSession::cookiesForDOM(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies, ShouldAskITP, ShouldRelaxThirdPartyCookieBlocking) const
+std::pair<String, bool> NetworkStorageSession::cookiesForDOM(const URL& firstParty, const SameSiteInfo&, const URL& url, std::optional<FrameIdentifier> frameID, std::optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies, ShouldAskITP, ShouldRelaxThirdPartyCookieBlocking) const
 {
     UNUSED_PARAM(frameID);
     UNUSED_PARAM(pageID);
@@ -287,7 +284,7 @@ std::pair<String, bool> NetworkStorageSession::cookiesForDOM(const URL& firstPar
     return { cookieString, didAccessSecureCookies };
 }
 
-std::pair<String, bool> NetworkStorageSession::cookieRequestHeaderFieldValue(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies, ShouldAskITP, ShouldRelaxThirdPartyCookieBlocking) const
+std::pair<String, bool> NetworkStorageSession::cookieRequestHeaderFieldValue(const URL& firstParty, const SameSiteInfo&, const URL& url, std::optional<FrameIdentifier> frameID, std::optional<PageIdentifier> pageID, IncludeSecureCookies includeSecureCookies, ShouldAskITP, ShouldRelaxThirdPartyCookieBlocking) const
 {
     UNUSED_PARAM(frameID);
     UNUSED_PARAM(pageID);
@@ -319,7 +316,7 @@ HTTPCookieAcceptPolicy NetworkStorageSession::cookieAcceptPolicy() const
     }
 }
 
-bool NetworkStorageSession::getRawCookies(const URL& firstParty, const SameSiteInfo&, const URL& url, Optional<FrameIdentifier> frameID, Optional<PageIdentifier> pageID, ShouldAskITP, ShouldRelaxThirdPartyCookieBlocking, Vector<Cookie>& rawCookies) const
+bool NetworkStorageSession::getRawCookies(const URL& firstParty, const SameSiteInfo&, const URL& url, std::optional<FrameIdentifier> frameID, std::optional<PageIdentifier> pageID, ShouldAskITP, ShouldRelaxThirdPartyCookieBlocking, Vector<Cookie>& rawCookies) const
 {
     UNUSED_PARAM(frameID);
     UNUSED_PARAM(pageID);

@@ -20,21 +20,24 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from buildbot.plugins import steps, util
 from buildbot.process import buildstep, factory, logobserver, properties
-from buildbot.process.results import Results
+from buildbot.process.results import Results, SUCCESS, FAILURE, WARNINGS, SKIPPED, EXCEPTION, RETRY
 from buildbot.steps import master, shell, transfer, trigger
 from buildbot.steps.source.svn import SVN
-from buildbot.status.builder import SUCCESS, FAILURE, WARNINGS, SKIPPED, EXCEPTION
-
 from twisted.internet import defer
 
+import json
 import os
 import re
 import socket
-import json
+import sys
 import urllib
 
-APPLE_WEBKIT_AWS_PROXY = "http://proxy01.webkit.org:3128"
+if sys.version_info < (3, 5):
+    print('ERROR: Please use Python 3. This code is not compatible with Python 2.')
+    sys.exit(1)
+
 BUILD_WEBKIT_HOSTNAME = 'build.webkit.org'
 COMMITS_INFO_URL = 'https://commits.webkit.org/'
 CURRENT_HOSTNAME = socket.gethostname().strip()
@@ -121,18 +124,41 @@ class ConfigureBuild(buildstep.BuildStep):
         self.setProperty("buildOnly", self.buildOnly)
         self.setProperty("additionalArguments", self.additionalArguments)
         self.setProperty("device_model", self.device_model)
-        worker_name = self.getProperty("slavename")
-        if worker_name:
-            self.setProperty("workername", worker_name)  # Temporary workaround for supporting both older and newer buildbot versions.
         self.finished(SUCCESS)
         return defer.succeed(None)
 
 
 class CheckOutSource(SVN, object):
+    name = 'clean-and-update-working-directory'
+    haltOnFailure = False
+
     def __init__(self, **kwargs):
         kwargs['repourl'] = 'https://svn.webkit.org/repository/webkit/trunk'
         kwargs['mode'] = 'incremental'
+        kwargs['logEnviron'] = False
         super(CheckOutSource, self).__init__(**kwargs)
+
+    def getResultSummary(self):
+        if self.results == FAILURE:
+            self.build.addStepsAfterCurrentStep([SVNCleanup()])
+
+        if self.results != SUCCESS:
+            return {'step': 'Failed to updated working directory'}
+        else:
+            return {'step': 'Cleaned and updated working directory'}
+
+
+class SVNCleanup(shell.ShellCommand):
+    name = 'svn-cleanup'
+    command = ['svn', 'cleanup']
+    descriptionDone = ['Run svn cleanup']
+
+    def __init__(self, **kwargs):
+        super(SVNCleanup, self).__init__(timeout=10 * 60, logEnviron=False, **kwargs)
+
+    def evaluateCommand(self, cmd):
+        self.build.buildFinished(['svn issue, retrying build'], RETRY)
+        return super(SVNCleanup, self).evaluateCommand(cmd)
 
 
 class InstallWin32Dependencies(shell.Compile):
@@ -145,28 +171,28 @@ class KillOldProcesses(shell.Compile):
     name = "kill-old-processes"
     description = ["killing old processes"]
     descriptionDone = ["killed old processes"]
-    command = ["python", "./Tools/CISupport/kill-old-processes", "buildbot"]
+    command = ["python3", "./Tools/CISupport/kill-old-processes", "buildbot"]
 
 
 class TriggerCrashLogSubmission(shell.Compile):
     name = "trigger-crash-log-submission"
     description = ["triggering crash log submission"]
     descriptionDone = ["triggered crash log submission"]
-    command = ["python", "./Tools/CISupport/trigger-crash-log-submission"]
+    command = ["python3", "Tools/CISupport/trigger-crash-log-submission"]
 
 
 class WaitForCrashCollection(shell.Compile):
     name = "wait-for-crash-collection"
     description = ["waiting for crash collection to quiesce"]
     descriptionDone = ["crash collection has quiesced"]
-    command = ["python", "./Tools/CISupport/wait-for-crash-collection", "--timeout", str(5 * 60)]
+    command = ["python3", "Tools/CISupport/wait-for-crash-collection", "--timeout", str(5 * 60)]
 
 
 class CleanBuildIfScheduled(shell.Compile):
     name = "delete-WebKitBuild-directory"
     description = ["deleting WebKitBuild directory"]
     descriptionDone = ["deleted WebKitBuild directory"]
-    command = ["python", "./Tools/CISupport/clean-build", WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s")]
+    command = ["python3", "Tools/CISupport/clean-build", WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s")]
 
     def start(self):
         if not self.getProperty('is_clean'):
@@ -179,7 +205,7 @@ class DeleteStaleBuildFiles(shell.Compile):
     name = "delete-stale-build-files"
     description = ["deleting stale build files"]
     descriptionDone = ["deleted stale build files"]
-    command = ["python", "./Tools/CISupport/delete-stale-build-files", WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s")]
+    command = ["python3", "Tools/CISupport/delete-stale-build-files", WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s")]
 
     def start(self):
         if self.getProperty('is_clean'):  # Nothing to be done if WebKitBuild had been removed.
@@ -255,14 +281,16 @@ class CompileWebKit(shell.Compile):
             self.setCommand(self.command + additionalArguments)
         if platform in ('mac', 'ios', 'tvos', 'watchos') and architecture:
             self.setCommand(self.command + ['ARCHS=' + architecture])
-            if platform in ['ios', 'tvos', 'watchos']:
-                self.setCommand(self.command + ['ONLY_ACTIVE_ARCH=NO'])
+            self.setCommand(self.command + ['ONLY_ACTIVE_ARCH=NO'])
         if platform in ('mac', 'ios', 'tvos', 'watchos') and buildOnly:
             # For build-only bots, the expectation is that tests will be run on separate machines,
             # so we need to package debug info as dSYMs. Only generating line tables makes
             # this much faster than full debug info, and crash logs still have line numbers.
             self.setCommand(self.command + ['DEBUG_INFORMATION_FORMAT=dwarf-with-dsym'])
             self.setCommand(self.command + ['CLANG_DEBUG_INFORMATION_LEVEL=line-tables-only'])
+        if platform == 'gtk':
+            prefix = os.path.join("/app", "webkit", "WebKitBuild", self.getProperty("configuration").title(), "install")
+            self.setCommand(self.command + [f'--prefix={prefix}'])
 
         appendCustomBuildFlags(self, platform, self.getProperty('fullPlatform'))
 
@@ -295,8 +323,16 @@ class CompileJSCOnly(CompileWebKit):
     command = ["perl", "./Tools/Scripts/build-jsc", WithProperties("--%(configuration)s")]
 
 
+class InstallBuiltProduct(shell.ShellCommand):
+    name = 'install-built-product'
+    description = ['Installing Built Product']
+    descriptionDone = ['Installed Built Product']
+    command = ["python3", "Tools/Scripts/install-built-product",
+               WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s")]
+
+
 class ArchiveBuiltProduct(shell.ShellCommand):
-    command = ["python", "./Tools/CISupport/built-product-archive",
+    command = ["python3", "Tools/CISupport/built-product-archive",
                WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"), "archive"]
     name = "archive-built-product"
     description = ["archiving built product"]
@@ -305,7 +341,7 @@ class ArchiveBuiltProduct(shell.ShellCommand):
 
 
 class ArchiveMinifiedBuiltProduct(ArchiveBuiltProduct):
-    command = ["python", "./Tools/CISupport/built-product-archive",
+    command = ["python3", "Tools/CISupport/built-product-archive",
                WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"), "archive", "--minify"]
 
 
@@ -332,7 +368,7 @@ class GenerateMiniBrowserBundle(shell.ShellCommand):
 
 
 class ExtractBuiltProduct(shell.ShellCommand):
-    command = ["python", "./Tools/CISupport/built-product-archive",
+    command = ["python3", "Tools/CISupport/built-product-archive",
                WithProperties("--platform=%(fullPlatform)s"), WithProperties("--%(configuration)s"), "extract"]
     name = "extract-built-product"
     description = ["extracting built product"]
@@ -369,8 +405,6 @@ class DownloadBuiltProduct(shell.ShellCommand):
     flunkOnFailure = False
 
     def start(self):
-        if 'apple' in self.getProperty('buildername').lower():
-            self.workerEnvironment['HTTPS_PROXY'] = APPLE_WEBKIT_AWS_PROXY  # curl env var to use a proxy
         return shell.ShellCommand.start(self)
 
     def evaluateCommand(self, cmd):
@@ -429,6 +463,10 @@ class RunJavaScriptCoreTests(TestWithFailureCount):
 
     def start(self):
         self.workerEnvironment[RESULTS_SERVER_API_KEY] = os.getenv(RESULTS_SERVER_API_KEY)
+        self.log_observer = logobserver.BufferLogObserver()
+        self.addLogObserver('stdio', self.log_observer)
+        self.failedTestCount = 0
+
         platform = self.getProperty('platform')
         architecture = self.getProperty("architecture")
         # Currently run-javascriptcore-test doesn't support run javascript core test binaries list below remotely
@@ -446,7 +484,7 @@ class RunJavaScriptCoreTests(TestWithFailureCount):
         return shell.Test.start(self)
 
     def countFailures(self, cmd):
-        logText = cmd.logs['stdio'].getText()
+        logText = self.log_observer.getStdout()
         count = 0
 
         match = re.search(r'^Results for JSC stress tests:\r?\n\s+(\d+) failure', logText, re.MULTILINE)
@@ -493,7 +531,7 @@ class RunWebKitTests(shell.Test):
     description = ["layout-tests running"]
     descriptionDone = ["layout-tests"]
     resultDirectory = "layout-test-results"
-    command = ["python", "./Tools/Scripts/run-webkit-tests",
+    command = ["python3", "./Tools/Scripts/run-webkit-tests",
                "--no-build",
                "--no-show-results",
                "--no-new-test-results",
@@ -614,7 +652,7 @@ class RunAPITests(TestWithFailureCount):
     jsonFileName = "api_test_results.json"
     logfiles = {"json": jsonFileName}
     command = [
-        "python",
+        "python3",
         "./Tools/Scripts/run-api-tests",
         "--no-build",
         "--json-output={0}".format(jsonFileName),
@@ -707,7 +745,7 @@ class RunLLDBWebKitTests(RunPythonTests):
     description = ["lldb-webkit-tests running"]
     descriptionDone = ["lldb-webkit-tests"]
     command = [
-        "python",
+        "python3",
         "./Tools/Scripts/test-lldb-webkit",
         "--verbose",
         "--no-build",
@@ -858,22 +896,22 @@ class RunGLibAPITests(shell.Test):
         messages = []
         self.statusLine = []
 
-        foundItems = re.findall("Unexpected failures \((\d+)\)", logText)
+        foundItems = re.findall(r"Unexpected failures \((\d+)\)", logText)
         if foundItems:
             failedTests = int(foundItems[0])
             messages.append("%d failures" % failedTests)
 
-        foundItems = re.findall("Unexpected crashes \((\d+)\)", logText)
+        foundItems = re.findall(r"Unexpected crashes \((\d+)\)", logText)
         if foundItems:
             crashedTests = int(foundItems[0])
             messages.append("%d crashes" % crashedTests)
 
-        foundItems = re.findall("Unexpected timeouts \((\d+)\)", logText)
+        foundItems = re.findall(r"Unexpected timeouts \((\d+)\)", logText)
         if foundItems:
             timedOutTests = int(foundItems[0])
             messages.append("%d timeouts" % timedOutTests)
 
-        foundItems = re.findall("Unexpected passes \((\d+)\)", logText)
+        foundItems = re.findall(r"Unexpected passes \((\d+)\)", logText)
         if foundItems:
             newPassTests = int(foundItems[0])
             messages.append("%d new passes" % newPassTests)
@@ -931,10 +969,10 @@ class RunWebDriverTests(shell.Test):
 
         self.failuresCount = 0
         self.newPassesCount = 0
-        foundItems = re.findall("^Unexpected .+ \((\d+)\)", logText, re.MULTILINE)
+        foundItems = re.findall(r"^Unexpected .+ \((\d+)\)", logText, re.MULTILINE)
         if foundItems:
             self.failuresCount = int(foundItems[0])
-        foundItems = re.findall("^Expected to .+, but passed \((\d+)\)", logText, re.MULTILINE)
+        foundItems = re.findall(r"^Expected to .+, but passed \((\d+)\)", logText, re.MULTILINE)
         if foundItems:
             self.newPassesCount = int(foundItems[0])
 
@@ -1113,6 +1151,7 @@ class ExtractTestResults(master.MasterShellCommand):
         master.MasterShellCommand.__init__(self, **kwargs)
 
     def resultDirectoryURL(self):
+        self.setProperty('result_directory', self.resultDirectory)
         return self.resultDirectory.replace('public_html/', '/') + '/'
 
     def addCustomURLs(self):
@@ -1122,6 +1161,94 @@ class ExtractTestResults(master.MasterShellCommand):
     def finished(self, result):
         self.addCustomURLs()
         return master.MasterShellCommand.finished(self, result)
+
+
+class PrintConfiguration(steps.ShellSequence):
+    name = 'configuration'
+    description = ['configuration']
+    haltOnFailure = False
+    flunkOnFailure = False
+    warnOnFailure = False
+    logEnviron = False
+    command_list_generic = [['hostname']]
+    command_list_apple = [['df', '-hl'], ['date'], ['sw_vers'], ['xcodebuild', '-sdk', '-version'], ['uptime']]
+    command_list_linux = [['df', '-hl'], ['date'], ['uname', '-a'], ['uptime']]
+    command_list_win = [['df', '-hl']]
+
+    def __init__(self, **kwargs):
+        super(PrintConfiguration, self).__init__(timeout=60, **kwargs)
+        self.commands = []
+        self.log_observer = logobserver.BufferLogObserver(wantStderr=True)
+        self.addLogObserver('stdio', self.log_observer)
+
+    def run(self):
+        command_list = list(self.command_list_generic)
+        platform = self.getProperty('platform', '*')
+        if platform != 'jsc-only':
+            platform = platform.split('-')[0]
+        if platform in ('mac', 'ios', 'tvos', 'watchos', '*'):
+            command_list.extend(self.command_list_apple)
+        elif platform in ('gtk', 'wpe', 'jsc-only'):
+            command_list.extend(self.command_list_linux)
+        elif platform in ('win'):
+            command_list.extend(self.command_list_win)
+
+        for command in command_list:
+            self.commands.append(util.ShellArg(command=command, logname='stdio'))
+        return super(PrintConfiguration, self).run()
+
+    def convert_build_to_os_name(self, build):
+        if not build:
+            return 'Unknown'
+
+        build_to_name_mapping = {
+            '11': 'Big Sur',
+            '10.15': 'Catalina',
+            '10.14': 'Mojave',
+            '10.13': 'High Sierra',
+            '10.12': 'Sierra',
+            '10.11': 'El Capitan',
+            '10.10': 'Yosemite',
+            '10.9': 'Maverick',
+            '10.8': 'Mountain Lion',
+            '10.7': 'Lion',
+            '10.6': 'Snow Leopard',
+            '10.5': 'Leopard',
+        }
+
+        for key, value in build_to_name_mapping.items():
+            if build.startswith(key):
+                return value
+        return 'Unknown'
+
+    def getResultSummary(self):
+        if self.results != SUCCESS:
+            return {'step': 'Failed to print configuration'}
+        logText = self.log_observer.getStdout() + self.log_observer.getStderr()
+        configuration = 'Printed configuration'
+        match = re.search('ProductVersion:[ \t]*(.+?)\n', logText)
+        if match:
+            os_version = match.group(1).strip()
+            os_name = self.convert_build_to_os_name(os_version)
+            configuration = 'OS: {} ({})'.format(os_name, os_version)
+
+        xcode_re = sdk_re = 'Xcode[ \t]+?([0-9.]+?)\n'
+        match = re.search(xcode_re, logText)
+        if match:
+            xcode_version = match.group(1).strip()
+            configuration += ', Xcode: {}'.format(xcode_version)
+        return {'step': configuration}
+
+
+
+class SetPermissions(master.MasterShellCommand):
+    name = 'set-permissions'
+
+    def __init__(self, **kwargs):
+        resultDirectory = Interpolate('%(prop:result_directory)s')
+        kwargs['command'] = ['chmod', 'a+rx', resultDirectory]
+        kwargs['logEnviron'] = False
+        master.MasterShellCommand.__init__(self, **kwargs)
 
 
 class ShowIdentifier(shell.ShellCommand):
@@ -1137,7 +1264,7 @@ class ShowIdentifier(shell.ShellCommand):
         self.log_observer = logobserver.BufferLogObserver()
         self.addLogObserver('stdio', self.log_observer)
         revision = self.getProperty('got_revision')
-        self.setCommand(['python', 'Tools/Scripts/git-webkit', 'find', 'r{}'.format(revision)])
+        self.setCommand(['python3', 'Tools/Scripts/git-webkit', 'find', 'r{}'.format(revision)])
         return shell.ShellCommand.start(self)
 
     def evaluateCommand(self, cmd):

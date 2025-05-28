@@ -34,6 +34,7 @@
 #include <limits>
 #include <string>
 #include <wtf/RefPtr.h>
+#include <wtf/RetainPtr.h>
 
 // Define strings from the HLSL effect that are referenced later
 #define HLSL_TECHNIQUE "InvertColor"
@@ -117,7 +118,7 @@ CAD3DRenderer::CAD3DRenderer()
 
 CComPtr<IDirect3DSwapChain9> CAD3DRenderer::swapChain(CWindow window, const CGSize& size)
 {
-    auto locker = holdLock(m_lock);
+    Locker locker { m_lock };
 
     bool useDefaultSwapChain = false;
 
@@ -370,14 +371,12 @@ static bool prepareDevice(IDirect3DDevice9* device, const CGRect& bounds, IDirec
 
 static CGRect updateBounds(CARenderUpdate* update)
 {
-    CGSRegionObj rgn = CARenderUpdateCopyRegion(update);
+    auto rgn = adoptCF(CARenderUpdateCopyRegion(update));
     if (!rgn)
         return CGRectZero;
 
     CGRect result;
-    CGError error = CGSGetRegionBounds(rgn, &result);
-    CGSReleaseRegion(rgn);
-
+    CGError error = CGSGetRegionBounds(rgn.get(), &result);
     return error == kCGErrorSuccess ? result : CGRectZero;
 }
 
@@ -386,7 +385,7 @@ CAD3DRenderer::RenderResult CAD3DRenderer::renderAndPresent(const CGRect& bounds
     ASSERT_ARG(swapChain, swapChain);
     ASSERT_ARG(context, context);
 
-    auto locker = holdLock(m_lock);
+    Locker locker { m_lock };
 
     CGRect unusedDirtyRect;
     RenderResult result = renderInternal(bounds, swapChain, postProcessingContext, context, unusedDirtyRect, nextRenderTime);
@@ -426,7 +425,7 @@ CAD3DRenderer::RenderResult CAD3DRenderer::renderToImage(const CGRect& bounds, I
     ASSERT_ARG(swapChain, swapChain);
     ASSERT_ARG(context, context);
 
-    auto locker = holdLock(m_lock);
+    Locker locker { m_lock };
 
     CGRect dirtyRect;
     RenderResult result = renderInternal(bounds, swapChain, postProcessingContext, context, dirtyRect, nextRenderTime);

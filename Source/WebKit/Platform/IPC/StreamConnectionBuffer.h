@@ -29,40 +29,43 @@
 #include "IPCSemaphore.h"
 #include "SharedMemory.h"
 #include <wtf/Atomics.h>
-#include <wtf/Optional.h>
 
 namespace IPC {
 
-// StreamConnectionBuffer is a shared "bi-partite" circular buffer supporting
-// variable length messages, specific data alignment with mandated minimum size.
-// StreamClientConnection and StreamServerConnection use StreamConnectionBuffer to communicate.
+// StreamConnectionBuffer is a shared "bi-partite" circular buffer supporting variable length messages, specific data
+// alignment with mandated minimum size. StreamClientConnection and StreamServerConnection use StreamConnectionBuffer to
+// communicate.
 //
-// The "bi-partite" is here to mean that writes and reads to the buffer must be
-// continuous.
+// The "bi-partite" is here to mean that writes and reads to the buffer must be continuous.
 //
-// The client (sender or receiver) "acquires" some amount of buffer data. The data pointer
-// location depends on the amount of data being acquired. The buffer returns all the available
-// capacity -- this may be less than acquired.
+// The caller (client or server) "acquires" some amount of buffer data. The data pointer location depends on the amount
+// of data being acquired. The buffer returns all the available capacity -- this may be less than acquired.
 //
-// The client "releases" the some amount of data, at least the amount acquired but potentially
-// more.
+// The caller "releases" the some amount of data, at least the amount acquired but potentially more.
 //
-// Both sender and receiver must release the same amount of data at the same step of the acquire/release sequence.
-// Suppose sender releases first 8 and then 166 bytes. Upon the first acquire, receiver
-// must also release 8 bytes and then upon the second acquire 166 bytes.
-// Due to how alignment and minimum length affect the position at which the memory can
-// be referred to, the receiver cannot "read two times simultaneously" and release 174 bytes.
+// Both the client and the server must release the same amount of data at the same step of the acquire/release sequence.
+// Suppose the client releases first 8 and then 166 bytes. Upon the first acquire, the server must also release 8 bytes
+// and then upon the second acquire 166 bytes. Due to how alignment and minimum length affect the position at which the
+// memory can be referred to, the server cannot "read two times simultaneously" and release 174 bytes.
+//
+// The buffer also supports synchronous replies via "releaseAll/acquireAll" call pattern. The communication protocol can
+// establish cases where the client transfers ownership of the data to the server. In these cases the server will
+// acknowledge the read with "releaseAll" operation. The client will then read the reply via "acquireAll" operation. The
+// reply will be written to the beginning of the buffer. This mandates that in-place data references in the buffer
+// cannot be used simultaneously for message data and the reply data. In current IPC implementation, the message
+// processing uses the in-place data references, while the reply data is first constructed to allocated memory and then
+// copied to the message buffer.
 //
 // The circular buffer has following implementation:
-// * Sender owns the data between [senderOffset, receiverOffset[. When senderOffset ==
-// receiverOffset, sender owns all the data.
-// * Receiver owns the data between [receiverOffset, senderOffset[.
-// * The buffer can hold maximum of size - 1 values. The last value is reserved for
-// indicating that the buffer is full. FIXME: Maybe would be simpler implementation if
-// it would use the "wrap" flag instead of the hole as the indicator. This would move
-// the alignedSpan implementation to the StreamConnectionBuffer.
-// * All atomic variable loads are untrusted, so they're clamped. Violations are not reported,
-// though.
+// * The client owns the data between [clientOffset, serverOffset[. When clientOffset == serverOffset, the client owns
+//   all the data.
+// * The server owns the data between [serverOffset, clientOffset[.
+// * The exception to the above is when communication protocol can contain messages that denote that the server will own
+//   all the data.
+// * The buffer can hold maximum of size - 1 values. The last value is reserved for indicating that the buffer is full.
+//   FIXME: Maybe would be simpler implementation if it would use the "wrap" flag instead of the hole as the indicator.
+//   This would move the alignedSpan implementation to the StreamConnectionBuffer.
+// * All atomic variable loads are untrusted, so they're clamped. Violations are not reported, though.
 // See SharedDisplayListHandle.
 class StreamConnectionBuffer {
 public:
@@ -88,37 +91,45 @@ public:
         return offset;
     }
 
-    Atomic<size_t>& senderOffset() { return header().senderOffset; }
-    Atomic<size_t>& receiverOffset() { return header().receiverOffset; }
+    // Value denoting the client index to the buffer, with special tag values.
+    // The client trusts this. The server converts the value to trusted size_t offset with a special function.
+    enum ClientOffset : size_t {
+        // Tag value stored in when the server is sleeping, e.g. not running.
+        serverIsSleepingTag = 1u << 31
+    };
+
+    // Value denoting the server index to the buffer, with special tag values.
+    // The client trusts this. The server converts the value to trusted size_t offset with a special function.
+    enum ServerOffset : size_t {
+        // Tag value stored when the client is waiting, e.g. waiting on a semaphore.
+        clientIsWaitingTag = 1u << 31
+    };
+
+    Atomic<ClientOffset>& clientOffset() { return header().clientOffset; }
+    Atomic<ServerOffset>& serverOffset() { return header().serverOffset; }
     uint8_t* data() const { return static_cast<uint8_t*>(m_sharedMemory->data()) + headerSize(); }
     size_t dataSize() const { return m_dataSize; }
-    Semaphore& senderWaitSemaphore() { return m_senderWaitSemaphore; }
+    Semaphore& clientWaitSemaphore() { return m_clientWaitSemaphore; }
 
-    // Tag value stored in Header::senderOffset when receiver is sleeping, e.g. not running.
-    static constexpr size_t senderOffsetReceiverIsSleepingTag = 1 << 31;
-    // Tag value stored in Header::receiverOffset when sender is waiting, e.g. waiting on
-    // a semaphore.
-    static constexpr size_t receiverOffsetSenderIsWaitingTag = 1 << 31;
-
-    static constexpr size_t maximumSize() { return std::min(senderOffsetReceiverIsSleepingTag, senderOffsetReceiverIsSleepingTag) - 1; }
+    static constexpr size_t maximumSize() { return std::min(static_cast<size_t>(ClientOffset::serverIsSleepingTag), static_cast<size_t>(ClientOffset::serverIsSleepingTag)) - 1; }
     void encode(Encoder&) const;
-    static Optional<StreamConnectionBuffer> decode(Decoder&);
+    static std::optional<StreamConnectionBuffer> decode(Decoder&);
 
 private:
-    StreamConnectionBuffer(Ref<WebKit::SharedMemory>&&, size_t memorySize, Semaphore&& senderWaitSemaphore);
+    StreamConnectionBuffer(Ref<WebKit::SharedMemory>&&, size_t memorySize, Semaphore&& clientWaitSemaphore);
 
     struct Header {
-        Atomic<size_t> receiverOffset;
+        Atomic<ServerOffset> serverOffset;
         // Padding so that the variables mostly accessed by different processes do not share a cache line.
         // This is an attempt to avoid cache-line induced reduction of parallel access.
-        alignas(sizeof(uint64_t[2])) Atomic<size_t> senderOffset;
+        alignas(sizeof(uint64_t[2])) Atomic<ClientOffset> clientOffset;
     };
     Header& header() const { return *reinterpret_cast<Header*>(m_sharedMemory->data()); }
     static constexpr size_t headerSize() { return roundUpToMultipleOf<alignof(std::max_align_t)>(sizeof(Header)); }
 
     size_t m_dataSize { 0 };
     Ref<WebKit::SharedMemory> m_sharedMemory;
-    Semaphore m_senderWaitSemaphore;
+    Semaphore m_clientWaitSemaphore;
 };
 
 }

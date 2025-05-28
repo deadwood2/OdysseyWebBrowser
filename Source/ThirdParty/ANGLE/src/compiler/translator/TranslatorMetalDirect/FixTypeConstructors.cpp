@@ -35,11 +35,11 @@ public:
             }
             else if (retType.isVector())
             {
-                size_t primarySize = retType.getNominalSize();
+                size_t primarySize = retType.getNominalSize() * retType.getArraySizeProduct();
                 TIntermSequence *args = aggregateNode->getSequence();
                 size_t argsSize = 0;
                 size_t beforeSize = 0;
-                TIntermNode *lastArg;
+                TIntermNode* lastArg = nullptr;
                 for (TIntermNode *&arg : *args)
                 {
                     TIntermTyped *targ = arg->getAsTyped();

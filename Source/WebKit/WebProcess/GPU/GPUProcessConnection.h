@@ -27,23 +27,32 @@
 
 #if ENABLE(GPU_PROCESS)
 
+#include "AudioMediaStreamTrackRendererInternalUnitIdentifier.h"
 #include "Connection.h"
 #include "MediaOverridesForTesting.h"
 #include "MessageReceiverMap.h"
-#include "SampleBufferDisplayLayerManager.h"
+#include "SharedMemory.h"
+#include <WebCore/AudioSession.h>
 #include <WebCore/PlatformMediaSession.h>
 #include <wtf/RefCounted.h>
 #include <wtf/WeakHashSet.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
+namespace WebCore {
+class CAAudioStreamDescription;
+}
+
+namespace IPC {
+class Semaphore;
+}
+
 namespace WebKit {
 
 class RemoteAudioSourceProviderManager;
-class RemoteCDMFactory;
-class RemoteMediaEngineConfigurationFactory;
 class RemoteMediaPlayerManager;
-class RemoteLegacyCDMFactory;
+class SampleBufferDisplayLayerManager;
+class WebPage;
 struct OverrideScreenDataForTesting;
 struct WebPageCreationParameters;
 
@@ -59,8 +68,8 @@ public:
     IPC::MessageReceiverMap& messageReceiverMap() { return m_messageReceiverMap; }
 
 #if HAVE(AUDIT_TOKEN)
-    void setAuditToken(Optional<audit_token_t> auditToken) { m_auditToken = auditToken; }
-    Optional<audit_token_t> auditToken() const { return m_auditToken; }
+    void setAuditToken(std::optional<audit_token_t> auditToken) { m_auditToken = auditToken; }
+    std::optional<audit_token_t> auditToken() const { return m_auditToken; }
 #endif
 #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
     SampleBufferDisplayLayerManager& sampleBufferDisplayLayerManager();
@@ -72,24 +81,22 @@ public:
     RemoteAudioSourceProviderManager& audioSourceProviderManager();
 #endif
 
-#if ENABLE(ENCRYPTED_MEDIA)
-    RemoteCDMFactory& cdmFactory();
-#endif
-
-#if ENABLE(LEGACY_ENCRYPTED_MEDIA)
-    RemoteLegacyCDMFactory& legacyCDMFactory();
-#endif
-
-    RemoteMediaEngineConfigurationFactory& mediaEngineConfigurationFactory();
-
-    void updateParameters(const WebPageCreationParameters&);
     void updateMediaConfiguration();
 
 #if ENABLE(VP9)
+    void enableVP9Decoders(bool enableVP8Decoder, bool enableVP9Decoder, bool enableVP9SWDecoder);
+
     bool isVP8DecoderEnabled() const { return m_enableVP8Decoder; }
     bool isVP9DecoderEnabled() const { return m_enableVP9Decoder; }
     bool isVPSWDecoderEnabled() const { return m_enableVP9SWDecoder; }
 #endif
+
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+    void createVisibilityPropagationContextForPage(WebPage&);
+    void destroyVisibilityPropagationContextForPage(WebPage&);
+#endif
+
+    void configureLoggingChannel(const String&, WTFLogChannelState, WTFLogLevel);
 
     class Client : public CanMakeWeakPtr<Client> {
     public:
@@ -106,20 +113,25 @@ private:
     // IPC::Connection::Client
     void didClose(IPC::Connection&) override;
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) final;
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
     void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName) override;
 
     bool dispatchMessage(IPC::Connection&, IPC::Decoder&);
-    bool dispatchSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
+    bool dispatchSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&);
 
     void didReceiveRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType, const WebCore::PlatformMediaSession::RemoteCommandArgument&);
+
+#if ENABLE(ROUTING_ARBITRATION)
+    void beginRoutingArbitrationWithCategory(WebCore::AudioSession::CategoryType, WebCore::AudioSessionRoutingArbitrationClient::ArbitrationCallback&&);
+    void endRoutingArbitration();
+#endif
 
     // The connection from the web process to the GPU process.
     Ref<IPC::Connection> m_connection;
     IPC::MessageReceiverMap m_messageReceiverMap;
 
 #if HAVE(AUDIT_TOKEN)
-    Optional<audit_token_t> m_auditToken;
+    std::optional<audit_token_t> m_auditToken;
 #endif
 #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
     std::unique_ptr<SampleBufferDisplayLayerManager> m_sampleBufferDisplayLayerManager;

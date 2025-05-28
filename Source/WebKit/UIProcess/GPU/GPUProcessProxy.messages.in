@@ -22,12 +22,13 @@
 
 #if ENABLE(GPU_PROCESS)
 
-messages -> GPUProcessProxy NotRefCounted {
+messages -> GPUProcessProxy {
 
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
-    DidCreateContextForVisibilityPropagation(WebKit::LayerHostingContextID contextID)
+    DidCreateContextForVisibilityPropagation(WebKit::WebPageProxyIdentifier pageProxyID, WebCore::PageIdentifier pageID, WebKit::LayerHostingContextID contextID)
 #endif
 
+    ProcessIsReadyToExit()
     TerminateWebProcess(WebCore::ProcessIdentifier webProcessIdentifier)
 }
 

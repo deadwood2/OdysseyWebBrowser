@@ -377,6 +377,14 @@ void EventSendingController::mouseScrollByWithWheelAndMomentumPhases(int x, int 
     postPageMessage("EventSender", body);
 }
 
+void EventSendingController::setWheelHasPreciseDeltas(bool hasPreciseDeltas)
+{
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "SetWheelHasPreciseDeltas");
+    setValue(body, "HasPreciseDeltas", hasPreciseDeltas);
+    postPageMessage("EventSender", body);
+}
+
 void EventSendingController::continuousMouseScrollBy(int x, int y, bool paged)
 {
     auto body = adoptWK(WKMutableDictionaryCreate());
@@ -617,6 +625,34 @@ void EventSendingController::cancelTouchPoint(int index)
 }
 
 #endif
+
+#if ENABLE(MAC_GESTURE_EVENTS)
+
+void EventSendingController::scaleGestureStart(double scale)
+{
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "ScaleGestureStart");
+    setValue(body, "Scale", scale);
+    postSynchronousPageMessage("EventSender", body);
+}
+
+void EventSendingController::scaleGestureChange(double scale)
+{
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "ScaleGestureChange");
+    setValue(body, "Scale", scale);
+    postSynchronousPageMessage("EventSender", body);
+}
+
+void EventSendingController::scaleGestureEnd(double scale)
+{
+    auto body = adoptWK(WKMutableDictionaryCreate());
+    setValue(body, "SubMessage", "ScaleGestureEnd");
+    setValue(body, "Scale", scale);
+    postSynchronousPageMessage("EventSender", body);
+}
+
+#endif // ENABLE(MAC_GESTURE_EVENTS)
 
 // Object Creation
 

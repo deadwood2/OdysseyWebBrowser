@@ -26,6 +26,7 @@
 #include "JSDOMBinding.h"
 #include "JSDOMBuiltinConstructor.h"
 #include "JSDOMExceptionHandling.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMWrapperCache.h"
 #include "ScriptExecutionContext.h"
 #include "TestClassWithJSBuiltinConstructorBuiltins.h"
@@ -82,6 +83,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestClassWithJSBuiltinConstructorPrototype
 
 using JSTestClassWithJSBuiltinConstructorDOMConstructor = JSDOMBuiltinConstructor<JSTestClassWithJSBuiltinConstructor>;
 
+template<> const ClassInfo JSTestClassWithJSBuiltinConstructorDOMConstructor::s_info = { "TestClassWithJSBuiltinConstructor", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestClassWithJSBuiltinConstructorDOMConstructor) };
+
 template<> JSValue JSTestClassWithJSBuiltinConstructorDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -99,8 +102,6 @@ template<> FunctionExecutable* JSTestClassWithJSBuiltinConstructorDOMConstructor
 {
     return testClassWithJSBuiltinConstructorInitializeTestClassWithJSBuiltinConstructorCodeGenerator(vm);
 }
-
-template<> const ClassInfo JSTestClassWithJSBuiltinConstructorDOMConstructor::s_info = { "TestClassWithJSBuiltinConstructor", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestClassWithJSBuiltinConstructorDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -146,7 +147,7 @@ JSObject* JSTestClassWithJSBuiltinConstructor::prototype(VM& vm, JSDOMGlobalObje
 
 JSValue JSTestClassWithJSBuiltinConstructor::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestClassWithJSBuiltinConstructorDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestClassWithJSBuiltinConstructorDOMConstructor, DOMConstructorID::TestClassWithJSBuiltinConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 void JSTestClassWithJSBuiltinConstructor::destroy(JSC::JSCell* cell)

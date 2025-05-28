@@ -69,7 +69,6 @@
 #import "WebResourcePrivate.h"
 #import "WebSharingServicePickerController.h"
 #import "WebTextCompletionController.h"
-#import "WebTypesInternal.h"
 #import "WebUIDelegatePrivate.h"
 #import "WebViewInternal.h"
 #import <JavaScriptCore/InitializeThreading.h>
@@ -140,6 +139,7 @@
 #import <pal/spi/cf/CFUtilitiesSPI.h>
 #import <pal/spi/cocoa/NSAttributedStringSPI.h>
 #import <pal/spi/cocoa/NSURLFileTypeMappingsSPI.h>
+#import <pal/spi/mac/NSMenuSPI.h>
 #import <pal/spi/mac/NSScrollerImpSPI.h>
 #import <pal/spi/mac/NSSpellCheckerSPI.h>
 #import <pal/spi/mac/NSViewSPI.h>
@@ -251,7 +251,7 @@ const auto WebEventMouseDown = NSEventTypeLeftMouseDown;
 - (void)forwardContextMenuAction:(id)sender;
 @end
 
-static Optional<WebCore::ContextMenuAction> toAction(NSInteger tag)
+static std::optional<WebCore::ContextMenuAction> toAction(NSInteger tag)
 {
     using namespace WebCore;
     if (tag >= ContextMenuItemBaseCustomTag && tag <= ContextMenuItemLastCustomTag) {
@@ -426,16 +426,18 @@ static Optional<WebCore::ContextMenuAction> toAction(NSInteger tag)
         return ContextMenuItemTagMediaMute;
     case WebMenuItemTagDictationAlternative:
         return ContextMenuItemTagDictationAlternative;
+    case WebMenuItemTagTranslate:
+        return ContextMenuItemTagTranslate;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-static Optional<NSInteger> toTag(WebCore::ContextMenuAction action)
+static std::optional<NSInteger> toTag(WebCore::ContextMenuAction action)
 {
     using namespace WebCore;
     switch (action) {
     case ContextMenuItemTagNoAction:
-        return WTF::nullopt;
+        return std::nullopt;
 
     case ContextMenuItemTagOpenLinkInNewWindow:
         return WebMenuItemTagOpenLinkInNewWindow;
@@ -605,17 +607,17 @@ static Optional<NSInteger> toTag(WebCore::ContextMenuAction action)
         return WebMenuItemTagDictationAlternative;
     case ContextMenuItemTagToggleVideoFullscreen:
         return WebMenuItemTagToggleVideoFullscreen;
-#if ENABLE(APP_HIGHLIGHTS)
-    case ContextMenuItemTagAddHighlightToCurrentGroup:
-    case ContextMenuItemTagAddHighlightToNewGroup:
-        return WTF::nullopt;
-#endif
+    case ContextMenuItemTagAddHighlightToCurrentQuickNote:
+    case ContextMenuItemTagAddHighlightToNewQuickNote:
+        return std::nullopt;
     case ContextMenuItemTagShareMenu:
         return WebMenuItemTagShareMenu;
     case ContextMenuItemTagToggleVideoEnhancedFullscreen:
         return WebMenuItemTagToggleVideoEnhancedFullscreen;
-    case ContextMenuItemTagRevealImage:
-        return WTF::nullopt;
+    case ContextMenuItemTagTranslate:
+        return WebMenuItemTagTranslate;
+    case ContextMenuItemTagQuickLookImage:
+        return std::nullopt;
 
     case ContextMenuItemBaseCustomTag ... ContextMenuItemLastCustomTag:
         // We just pass these through.
@@ -625,7 +627,7 @@ static Optional<NSInteger> toTag(WebCore::ContextMenuAction action)
         ASSERT_NOT_REACHED();
     }
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 @implementation WebMenuTarget
@@ -3631,6 +3633,11 @@ static RetainPtr<NSMutableArray> createMenuItems(const WebCore::HitTestResult& h
 
 static RetainPtr<NSMenuItem> createMenuItem(const WebCore::HitTestResult& hitTestResult, const WebCore::ContextMenuItem& item)
 {
+#if HAVE(TRANSLATION_UI_SERVICES)
+    if (item.action() == WebCore::ContextMenuItemTagTranslate && !WebView._canHandleContextMenuTranslation)
+        return nil;
+#endif
+
     if (item.action() == WebCore::ContextMenuItemTagShareMenu)
         return createShareMenuItem(hitTestResult);
 
@@ -5740,8 +5747,8 @@ static BOOL writingDirectionKeyBindingsEnabled()
     NSFont *font = nil;
     RetainPtr<NSDictionary> attributes;
     if (auto* coreFrame = core([self _frame])) {
-        if (const WebCore::Font* fd = coreFrame->editor().fontForSelection(multipleFonts))
-            font = (NSFont *)fd->platformData().registeredFont();
+        if (auto coreFont = coreFrame->editor().fontForSelection(multipleFonts))
+            font = (NSFont *)coreFont->platformData().registeredFont();
         attributes = coreFrame->editor().fontAttributesAtSelectionStart().createDictionary();
     }
 
@@ -5946,7 +5953,7 @@ static BOOL writingDirectionKeyBindingsEnabled()
 
 - (void)quickLookWithEvent:(NSEvent *)event
 {
-    [[self _webView] _clearTextIndicatorWithAnimation:WebCore::TextIndicatorWindowDismissalAnimation::FadeOut];
+    [[self _webView] _clearTextIndicatorWithAnimation:WebCore::TextIndicatorDismissalAnimation::FadeOut];
     [super quickLookWithEvent:event];
 }
 
@@ -6692,7 +6699,28 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
     // then we also execute it immediately, as there will be no other chance.
     bool shouldSaveCommand = parameters && parameters->shouldSaveCommands;
     if (event && shouldSaveCommand && !isFromInputMethod) {
-        event->keypressCommands().append(WebCore::KeypressCommand("insertText:", text));
+        auto isFunctionKeyCommandWithMatchingMenuItem = ([&] {
+#if PLATFORM(MAC)
+            auto menu = NSApp.mainMenu;
+            auto* platformKeyEvent = event->underlyingPlatformEvent();
+            if (!platformKeyEvent)
+                return NO;
+
+            NSEvent *nsEvent = platformKeyEvent->macEvent();
+            if (!(nsEvent.modifierFlags & NSEventModifierFlagFunction))
+                return NO;
+
+            if (![menu respondsToSelector:@selector(_containsItemMatchingEvent:includingDisabledItems:)])
+                return NO;
+
+            return [menu _containsItemMatchingEvent:nsEvent includingDisabledItems:YES];
+#else
+            return NO;
+#endif
+        })();
+
+        if (!isFunctionKeyCommandWithMatchingMenuItem)
+            event->keypressCommands().append(WebCore::KeypressCommand("insertText:", text));
         return;
     }
 
@@ -7062,9 +7090,9 @@ static CGImageRef selectionImage(WebCore::Frame* frame, bool forceBlackText)
     auto* coreFrame = core([self _frame]);
     if (!coreFrame)
         return nil;
-    OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::AllowChildFrameContent };
+    OptionSet<HitTestRequest::Type> hitType { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::Active, HitTestRequest::Type::AllowChildFrameContent };
     if (!allowShadowContent)
-        hitType.add(HitTestRequest::DisallowUserAgentShadowContent);
+        hitType.add(HitTestRequest::Type::DisallowUserAgentShadowContent);
     return adoptNS([[WebElementDictionary alloc] initWithHitTestResult:coreFrame->eventHandler().hitTestResultAtPoint(IntPoint { point }, hitType)]).autorelease();
 }
 

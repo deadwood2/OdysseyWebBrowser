@@ -39,6 +39,7 @@
 #include <WebCore/SerializedScriptValue.h>
 #include <wtf/URL.h>
 #include <wtf/text/StringBuilder.h>
+#include <wtf/text/StringToIntegerConversion.h>
 
 namespace WebKit {
 
@@ -59,7 +60,7 @@ public:
             return;
 
         URL requestURL { { }, page.pageLoadState().url() };
-        m_inspectorProtocolHandler.inspect(requestURL.hostAndPort(), tokens[0].toUIntStrict(), tokens[1].toUIntStrict(), tokens[2]);
+        m_inspectorProtocolHandler.inspect(requestURL.hostAndPort(), parseInteger<int>(tokens[0]).value_or(0), parseInteger<int>(tokens[1]).value_or(0), tokens[2]);
     }
     
     bool supportsAsyncReply() override
@@ -90,7 +91,7 @@ private:
     Function<void()> m_loadedCallback;
 };
 
-static Optional<Inspector::DebuggableType> parseDebuggableTypeFromString(const String& debuggableTypeString)
+static std::optional<Inspector::DebuggableType> parseDebuggableTypeFromString(const String& debuggableTypeString)
 {
     if (debuggableTypeString == "itml"_s)
         return Inspector::DebuggableType::ITML;
@@ -103,7 +104,7 @@ static Optional<Inspector::DebuggableType> parseDebuggableTypeFromString(const S
     if (debuggableTypeString == "web-page"_s)
         return Inspector::DebuggableType::WebPage;
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 void RemoteInspectorProtocolHandler::inspect(const String& hostAndPort, ConnectionID connectionID, TargetID targetID, const String& type)
@@ -120,7 +121,7 @@ void RemoteInspectorProtocolHandler::inspect(const String& hostAndPort, Connecti
 
 void RemoteInspectorProtocolHandler::runScript(const String& script)
 {
-    m_page.runJavaScriptInMainFrame({ script, URL { }, false, WTF::nullopt, false }, 
+    m_page.runJavaScriptInMainFrame({ script, URL { }, false, std::nullopt, false }, 
         [] (auto&& result) {
         if (!result.has_value())
             LOG_ERROR("Exception running script \"%s\"", result.error().message.utf8().data());

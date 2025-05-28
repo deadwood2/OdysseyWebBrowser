@@ -37,6 +37,7 @@
 #include "WebPage.h"
 #include "WebProcess.h"
 #include <JavaScriptCore/ConsoleTypes.h>
+#include <WebCore/AuthenticatorAttachment.h>
 #include <WebCore/AuthenticatorResponseData.h>
 #include <WebCore/Frame.h>
 #include <WebCore/PublicKeyCredentialCreationOptions.h>
@@ -50,11 +51,9 @@ namespace WebKit {
 using namespace WebCore;
 
 namespace {
-static bool isWebBrowser()
+inline bool isWebBrowser()
 {
-    if (auto* connection = WebProcess::singleton().parentProcessConnection())
-        return isParentProcessAFullWebBrowser(connection->getAuditToken());
-    return false;
+    return isParentProcessAFullWebBrowser(WebProcess::singleton());
 }
 }
 

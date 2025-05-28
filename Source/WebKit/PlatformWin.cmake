@@ -9,6 +9,8 @@ include(Headers.cmake)
 add_definitions(-DBUILDING_WEBKIT)
 
 list(APPEND WebKit_SOURCES
+    GPUProcess/graphics/RemoteGraphicsContextGLWin.cpp
+
     GPUProcess/media/win/RemoteMediaPlayerProxyWin.cpp
 
     GPUProcess/win/GPUProcessMainWin.cpp
@@ -22,6 +24,7 @@ list(APPEND WebKit_SOURCES
 
     Platform/IPC/win/AttachmentWin.cpp
     Platform/IPC/win/ConnectionWin.cpp
+    Platform/IPC/win/IPCSemaphoreWin.cpp
 
     Platform/classifier/ResourceLoadStatisticsClassifier.cpp
 
@@ -57,7 +60,8 @@ list(APPEND WebKit_SOURCES
 
     UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp
 
-    UIProcess/Inspector/win/WebInspectorProxyWin.cpp
+    UIProcess/Inspector/win/InspectorResourceURLSchemeHandler.cpp
+    UIProcess/Inspector/win/WebInspectorUIProxyWin.cpp
 
     UIProcess/Launcher/win/ProcessLauncherWin.cpp
 
@@ -185,7 +189,7 @@ if (ENABLE_REMOTE_INSPECTOR)
         UIProcess/Inspector/socket/RemoteInspectorClient.cpp
         UIProcess/Inspector/socket/RemoteInspectorProtocolHandler.cpp
 
-        UIProcess/Inspector/win/RemoteWebInspectorProxyWin.cpp
+        UIProcess/Inspector/win/RemoteWebInspectorUIProxyWin.cpp
     )
 
     list(APPEND WebKit_INCLUDE_DIRECTORIES

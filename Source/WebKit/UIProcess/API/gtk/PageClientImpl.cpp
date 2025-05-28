@@ -39,6 +39,7 @@
 #include "WebEventFactory.h"
 #include "WebKitColorChooser.h"
 #include "WebKitPopupMenu.h"
+#include "WebKitWebViewBaseInternal.h"
 #include "WebKitWebViewBasePrivate.h"
 #include "WebKitWebViewPrivate.h"
 #include "WebPageProxy.h"
@@ -53,6 +54,10 @@
 #include <wtf/Compiler.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
+
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+#include "WebDateTimePickerGtk.h"
+#endif
 
 namespace WebKit {
 using namespace WebCore;
@@ -88,6 +93,11 @@ void PageClientImpl::setViewNeedsDisplay(const WebCore::Region& region)
 }
 
 void PageClientImpl::requestScroll(const WebCore::FloatPoint&, const WebCore::IntPoint&)
+{
+    notImplemented();
+}
+
+void PageClientImpl::requestScrollToRect(const WebCore::FloatRect&, const WebCore::FloatPoint&)
 {
     notImplemented();
 }
@@ -269,6 +279,13 @@ RefPtr<WebColorPicker> PageClientImpl::createColorPicker(WebPageProxy* page, con
     return WebColorPickerGtk::create(*page, color, rect);
 }
 
+#if ENABLE(DATE_AND_TIME_INPUT_TYPES)
+RefPtr<WebDateTimePicker> PageClientImpl::createDateTimePicker(WebPageProxy& page)
+{
+    return WebDateTimePickerGtk::create(page);
+}
+#endif
+
 #if ENABLE(DATALIST_ELEMENT)
 RefPtr<WebDataListSuggestionsDropdown> PageClientImpl::createDataListSuggestionsDropdown(WebPageProxy& page)
 {
@@ -308,7 +325,7 @@ void PageClientImpl::selectionDidChange()
         webkitWebViewSelectionDidChange(WEBKIT_WEB_VIEW(m_viewWidget));
 }
 
-RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot(Optional<WebCore::IntRect>&& clipRect)
+RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot(std::optional<WebCore::IntRect>&& clipRect)
 {
     return webkitWebViewBaseTakeViewSnapshot(WEBKIT_WEB_VIEW_BASE(m_viewWidget), WTFMove(clipRect));
 }
@@ -400,65 +417,8 @@ void PageClientImpl::beganExitFullScreen(const IntRect& /* initialFrame */, cons
 #if ENABLE(TOUCH_EVENTS)
 void PageClientImpl::doneWithTouchEvent(const NativeWebTouchEvent& event, bool wasEventHandled)
 {
-#if !USE(GTK4)
-    const GdkEvent* touchEvent = event.nativeEvent();
-    if (!touchEvent)
-        return;
-
-    GestureController& gestureController = webkitWebViewBaseGestureController(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
-    if (wasEventHandled) {
-        gestureController.reset();
-        return;
-    }
-    wasEventHandled = gestureController.handleEvent(const_cast<GdkEvent*>(event.nativeEvent()));
-
     if (wasEventHandled)
-        return;
-
-    // Emulate pointer events if unhandled.
-    if (!touchEvent->touch.emulating_pointer)
-        return;
-
-    GUniquePtr<GdkEvent> pointerEvent;
-
-    if (touchEvent->type == GDK_TOUCH_UPDATE) {
-        pointerEvent.reset(gdk_event_new(GDK_MOTION_NOTIFY));
-        pointerEvent->motion.time = touchEvent->touch.time;
-        pointerEvent->motion.x = touchEvent->touch.x;
-        pointerEvent->motion.y = touchEvent->touch.y;
-        pointerEvent->motion.x_root = touchEvent->touch.x_root;
-        pointerEvent->motion.y_root = touchEvent->touch.y_root;
-        pointerEvent->motion.state = touchEvent->touch.state | GDK_BUTTON1_MASK;
-    } else {
-        switch (touchEvent->type) {
-        case GDK_TOUCH_CANCEL:
-            FALLTHROUGH;
-        case GDK_TOUCH_END:
-            pointerEvent.reset(gdk_event_new(GDK_BUTTON_RELEASE));
-            pointerEvent->button.state = touchEvent->touch.state | GDK_BUTTON1_MASK;
-            break;
-        case GDK_TOUCH_BEGIN:
-            pointerEvent.reset(gdk_event_new(GDK_BUTTON_PRESS));
-            break;
-        default:
-            ASSERT_NOT_REACHED();
-        }
-
-        pointerEvent->button.button = 1;
-        pointerEvent->button.time = touchEvent->touch.time;
-        pointerEvent->button.x = touchEvent->touch.x;
-        pointerEvent->button.y = touchEvent->touch.y;
-        pointerEvent->button.x_root = touchEvent->touch.x_root;
-        pointerEvent->button.y_root = touchEvent->touch.y_root;
-    }
-
-    gdk_event_set_device(pointerEvent.get(), gdk_event_get_device(touchEvent));
-    gdk_event_set_source_device(pointerEvent.get(), gdk_event_get_source_device(touchEvent));
-    pointerEvent->any.window = GDK_WINDOW(g_object_ref(touchEvent->any.window));
-    pointerEvent->any.send_event = TRUE;
-
-    gtk_widget_event(m_viewWidget, pointerEvent.get());
-#endif
+        webkitWebViewBasePageGrabbedTouch(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
 }
 #endif // ENABLE(TOUCH_EVENTS)
 
@@ -467,14 +427,35 @@ void PageClientImpl::wheelEventWasNotHandledByWebCore(const NativeWebWheelEvent&
     if (!event.nativeEvent())
         return;
 
-#if !USE(GTK4)
     ViewGestureController* controller = webkitWebViewBaseViewGestureController(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
     if (controller && controller->isSwipeGestureEnabled()) {
-        controller->wheelEventWasNotHandledByWebCore(&event.nativeEvent()->scroll);
+        FloatSize delta(-event.wheelTicks());
+
+        int32_t eventTime = static_cast<int32_t>(gdk_event_get_time(event.nativeEvent()));
+
+        GdkDevice* device = gdk_event_get_source_device(event.nativeEvent());
+        GdkInputSource source = gdk_device_get_source(device);
+
+        bool isEnd = event.phase() == WebWheelEvent::Phase::PhaseEnded;
+
+        PlatformGtkScrollData scrollData = { .delta = delta, .eventTime = eventTime, .source = source, .isEnd = isEnd };
+        controller->wheelEventWasNotHandledByWebCore(&scrollData);
         return;
     }
 
+    // Wheel events can have either scroll events or touch events attached to them.
+    // We only want to propagate scroll events; touch events are controlled via their
+    // event sequences and if we're scrolling with touch events, that sequence is
+    // already claimed and there's no point in propagating it.
+
+    if (gdk_event_get_event_type(event.nativeEvent()) != GDK_SCROLL)
+        return;
+
     webkitWebViewBaseForwardNextWheelEvent(WEBKIT_WEB_VIEW_BASE(m_viewWidget));
+
+#if USE(GTK4)
+    gdk_display_put_event(gtk_widget_get_display(m_viewWidget), event.nativeEvent());
+#else
     gtk_main_do_event(event.nativeEvent());
 #endif
 }
@@ -485,6 +466,7 @@ void PageClientImpl::didFinishLoadingDataForCustomContentProvider(const String&,
 
 void PageClientImpl::navigationGestureDidBegin()
 {
+    webkitWebViewBaseSynthesizeWheelEvent(WEBKIT_WEB_VIEW_BASE(m_viewWidget), 0, 0, 0, 0, WheelEventPhase::Began, WheelEventPhase::NoPhase, true);
 }
 
 void PageClientImpl::navigationGestureWillEnd(bool, WebBackForwardListItem&)
@@ -612,21 +594,9 @@ void PageClientImpl::didChangeWebPageID() const
         webkitWebViewDidChangePageID(WEBKIT_WEB_VIEW(m_viewWidget));
 }
 
-String PageClientImpl::themeName() const
+void PageClientImpl::makeViewBlank(bool makeBlank)
 {
-    if (auto* themeNameEnv = g_getenv("GTK_THEME")) {
-        String name = String::fromUTF8(themeNameEnv);
-        if (name.endsWith("-dark") || name.endsWith("-Dark") || name.endsWith(":dark"))
-            return name.substring(0, name.length() - 5);
-        return name;
-    }
-
-    GUniqueOutPtr<char> themeNameSetting;
-    g_object_get(gtk_widget_get_settings(m_viewWidget), "gtk-theme-name", &themeNameSetting.outPtr(), nullptr);
-    String name = String::fromUTF8(themeNameSetting.get());
-    if (name.endsWith("-dark") || name.endsWith("-Dark"))
-        return name.substring(0, name.length() - 5);
-    return name;
+    webkitWebViewBaseMakeBlank(WEBKIT_WEB_VIEW_BASE(m_viewWidget), makeBlank);
 }
 
 } // namespace WebKit

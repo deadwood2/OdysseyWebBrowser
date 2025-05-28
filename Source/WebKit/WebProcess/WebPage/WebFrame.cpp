@@ -74,7 +74,9 @@
 #include <WebCore/JSRange.h>
 #include <WebCore/Page.h>
 #include <WebCore/PluginDocument.h>
+#include <WebCore/RenderLayerCompositor.h>
 #include <WebCore/RenderTreeAsText.h>
+#include <WebCore/RenderView.h>
 #include <WebCore/ScriptController.h>
 #include <WebCore/SecurityOrigin.h>
 #include <WebCore/SubresourceLoader.h>
@@ -148,7 +150,7 @@ WebFrame::~WebFrame()
 {
     ASSERT(!m_coreFrame);
 
-    auto willSubmitFormCompletionHandlers = WTFMove(m_willSubmitFormCompletionHandlers);
+    auto willSubmitFormCompletionHandlers = std::exchange(m_willSubmitFormCompletionHandlers, { });
     for (auto& completionHandler : willSubmitFormCompletionHandlers.values())
         completionHandler();
 
@@ -192,7 +194,7 @@ FrameInfoData WebFrame::info() const
         ResourceRequest(url()),
         SecurityOriginData::fromFrame(m_coreFrame.get()),
         m_frameID,
-        parent ? Optional<WebCore::FrameIdentifier> { parent->frameID() } : WTF::nullopt,
+        parent ? std::optional<WebCore::FrameIdentifier> { parent->frameID() } : std::nullopt,
     };
 
     return info;
@@ -206,45 +208,39 @@ void WebFrame::invalidate()
 
 uint64_t WebFrame::setUpPolicyListener(WebCore::PolicyCheckIdentifier identifier, WebCore::FramePolicyFunction&& policyFunction, ForNavigationAction forNavigationAction)
 {
-    // FIXME: <rdar://5634381> We need to support multiple active policy listeners.
+    auto policyListenerID = generateListenerID();
+    m_pendingPolicyChecks.add(policyListenerID, PolicyCheck {
+        identifier,
+        forNavigationAction,
+        WTFMove(policyFunction)
+    });
 
-    invalidatePolicyListener();
-
-    m_policyIdentifier = identifier;
-    m_policyListenerID = generateListenerID();
-    m_policyFunction = WTFMove(policyFunction);
-    m_policyFunctionForNavigationAction = forNavigationAction;
-    return m_policyListenerID;
+    return policyListenerID;
 }
 
-uint64_t WebFrame::setUpWillSubmitFormListener(CompletionHandler<void()>&& completionHandler)
+FormSubmitListenerIdentifier WebFrame::setUpWillSubmitFormListener(CompletionHandler<void()>&& completionHandler)
 {
-    uint64_t identifier = generateListenerID();
-    invalidatePolicyListener();
+    auto identifier = FormSubmitListenerIdentifier::generate();
     m_willSubmitFormCompletionHandlers.set(identifier, WTFMove(completionHandler));
     return identifier;
 }
 
-void WebFrame::continueWillSubmitForm(uint64_t listenerID)
+void WebFrame::continueWillSubmitForm(FormSubmitListenerIdentifier listenerID)
 {
     Ref<WebFrame> protectedThis(*this);
     if (auto completionHandler = m_willSubmitFormCompletionHandlers.take(listenerID))
         completionHandler();
-    invalidatePolicyListener();
 }
 
-void WebFrame::invalidatePolicyListener()
+void WebFrame::invalidatePolicyListeners()
 {
-    if (!m_policyListenerID)
-        return;
+    Ref protectedThis { *this };
 
     m_policyDownloadID = { };
-    m_policyListenerID = 0;
-    auto identifier = m_policyIdentifier;
-    m_policyIdentifier = WTF::nullopt;
-    if (auto function = std::exchange(m_policyFunction, nullptr))
-        function(PolicyAction::Ignore, *identifier);
-    m_policyFunctionForNavigationAction = ForNavigationAction::No;
+
+    auto pendingPolicyChecks = std::exchange(m_pendingPolicyChecks, { });
+    for (auto& policyCheck : pendingPolicyChecks.values())
+        policyCheck.policyFunction(PolicyAction::Ignore, policyCheck.corePolicyIdentifier);
 
     auto willSubmitFormCompletionHandlers = WTFMove(m_willSubmitFormCompletionHandlers);
     for (auto& completionHandler : willSubmitFormCompletionHandlers.values())
@@ -253,16 +249,17 @@ void WebFrame::invalidatePolicyListener()
 
 void WebFrame::didReceivePolicyDecision(uint64_t listenerID, PolicyDecision&& policyDecision)
 {
-    if (!m_coreFrame || !m_policyListenerID || listenerID != m_policyListenerID || !m_policyFunction)
+    if (!m_coreFrame)
         return;
 
-    ASSERT(policyDecision.identifier == m_policyIdentifier);
-    m_policyIdentifier = WTF::nullopt;
+    auto policyCheck = m_pendingPolicyChecks.take(listenerID);
+    if (!policyCheck.policyFunction)
+        return;
 
-    FramePolicyFunction function = WTFMove(m_policyFunction);
-    bool forNavigationAction = m_policyFunctionForNavigationAction == ForNavigationAction::Yes;
+    ASSERT(policyDecision.identifier == policyCheck.corePolicyIdentifier);
 
-    invalidatePolicyListener();
+    FramePolicyFunction function = WTFMove(policyCheck.policyFunction);
+    bool forNavigationAction = policyCheck.forNavigationAction == ForNavigationAction::Yes;
 
     if (forNavigationAction && frameLoaderClient() && policyDecision.websitePoliciesData) {
         ASSERT(page());
@@ -291,9 +288,9 @@ void WebFrame::startDownload(const WebCore::ResourceRequest& request, const Stri
         ASSERT_NOT_REACHED();
         return;
     }
-    auto policyDownloadID = *std::exchange(m_policyDownloadID, WTF::nullopt);
+    auto policyDownloadID = *std::exchange(m_policyDownloadID, std::nullopt);
 
-    Optional<NavigatingToAppBoundDomain> isAppBound = NavigatingToAppBoundDomain::No;
+    std::optional<NavigatingToAppBoundDomain> isAppBound = NavigatingToAppBoundDomain::No;
     isAppBound = m_isNavigatingToAppBoundDomain;
     WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::StartDownload(policyDownloadID, request,  isAppBound, suggestedName), 0);
 }
@@ -304,7 +301,7 @@ void WebFrame::convertMainResourceLoadToDownload(DocumentLoader* documentLoader,
         ASSERT_NOT_REACHED();
         return;
     }
-    auto policyDownloadID = *std::exchange(m_policyDownloadID, WTF::nullopt);
+    auto policyDownloadID = *std::exchange(m_policyDownloadID, std::nullopt);
 
     SubresourceLoader* mainResourceLoader = documentLoader->mainResourceLoader();
 
@@ -318,7 +315,7 @@ void WebFrame::convertMainResourceLoadToDownload(DocumentLoader* documentLoader,
     else
         mainResourceLoadIdentifier = 0;
 
-    Optional<NavigatingToAppBoundDomain> isAppBound = NavigatingToAppBoundDomain::No;
+    std::optional<NavigatingToAppBoundDomain> isAppBound = NavigatingToAppBoundDomain::No;
     isAppBound = m_isNavigatingToAppBoundDomain;
     webProcess.ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::ConvertMainResourceLoadToDownload(mainResourceLoadIdentifier, policyDownloadID, request, response, isAppBound), 0);
 }
@@ -501,7 +498,7 @@ String WebFrame::layerTreeAsText() const
     if (!m_coreFrame)
         return "";
 
-    return m_coreFrame->layerTreeAsText(0);
+    return m_coreFrame->contentRenderer()->compositor().layerTreeAsText();
 }
 
 unsigned WebFrame::pendingUnloadCount() const
@@ -641,13 +638,12 @@ bool WebFrame::hasVerticalScrollbar() const
     return view->verticalScrollbar();
 }
 
-RefPtr<InjectedBundleHitTestResult> WebFrame::hitTest(const IntPoint point) const
+RefPtr<InjectedBundleHitTestResult> WebFrame::hitTest(const IntPoint point, OptionSet<HitTestRequest::Type> types) const
 {
     if (!m_coreFrame)
         return nullptr;
 
-    constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::IgnoreClipping,  HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
-    return InjectedBundleHitTestResult::create(m_coreFrame->eventHandler().hitTestResultAtPoint(point, hitType));
+    return InjectedBundleHitTestResult::create(m_coreFrame->eventHandler().hitTestResultAtPoint(point, types));
 }
 
 bool WebFrame::getDocumentBackgroundColor(double* red, double* green, double* blue, double* alpha)
@@ -841,7 +837,7 @@ RetainPtr<CFDataRef> WebFrame::webArchiveData(FrameFilterFunction callback, void
 
 RefPtr<ShareableBitmap> WebFrame::createSelectionSnapshot() const
 {
-    auto snapshot = snapshotSelection(*coreFrame(), WebCore::SnapshotOptionsForceBlackText);
+    auto snapshot = snapshotSelection(*coreFrame(), { { WebCore::SnapshotFlags::ForceBlackText }, PixelFormat::BGRA8, DestinationColorSpace::SRGB() });
     if (!snapshot)
         return nullptr;
 
@@ -880,7 +876,7 @@ bool WebFrame::shouldEnableInAppBrowserPrivacyProtections()
     return treeHasNonAppBoundFrame;
 }
 
-Optional<NavigatingToAppBoundDomain> WebFrame::isTopFrameNavigatingToAppBoundDomain() const
+std::optional<NavigatingToAppBoundDomain> WebFrame::isTopFrameNavigatingToAppBoundDomain() const
 {
     return fromCoreFrame(m_coreFrame->mainFrame())->isNavigatingToAppBoundDomain();
 }

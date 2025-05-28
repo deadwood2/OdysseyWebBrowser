@@ -60,7 +60,6 @@ def send_email(to_emails, subject, text, reference=''):
         print('Error: skipping email since no subject or text is specified')
         return
 
-    text = text.encode('utf-8')
     text = text.replace('\n', '<br>')
 
     msg = MIMEText(text, 'html')
@@ -87,8 +86,13 @@ def send_email_to_patch_author(author_email, subject, text, reference=''):
 
 
 def send_email_to_bot_watchers(subject, text, builder_name, reference=''):
-    send_email(get_email_ids('APPLE_BOT_WATCHERS_EMAILS'), subject, text, reference)
     if any(pattern in builder_name.lower() for pattern in IGALIA_JSC_QUEUES_PATTERNS):
         send_email(get_email_ids('IGALIA_JSC_TEAM_EMAILS'), subject, text, reference)
-    if any(pattern in builder_name.lower() for pattern in IGALIA_GTK_WPE_QUEUES_PATTERNS):
+    elif any(pattern in builder_name.lower() for pattern in IGALIA_GTK_WPE_QUEUES_PATTERNS):
         send_email(get_email_ids('IGALIA_GTK_WPE_EMAILS'), subject, text, reference)
+    else:
+        send_email(get_email_ids('APPLE_BOT_WATCHERS_EMAILS'), subject, text, reference)
+
+
+def send_email_to_github_admin(subject, text, reference=''):
+    send_email(get_email_ids('GITHUB_ADMIN_EMAILS'), subject, text, reference)

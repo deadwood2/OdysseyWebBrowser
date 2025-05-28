@@ -80,7 +80,7 @@ static inline int clickCount(WebEvent::Type type, WebMouseEvent::Button button, 
 
     bool cancelPreviousClick = (std::abs(lastClickPosition.x - position.x) > (::GetSystemMetrics(SM_CXDOUBLECLK) / 2))
         || (std::abs(lastClickPosition.y - position.y) > (::GetSystemMetrics(SM_CYDOUBLECLK) / 2))
-        || ((timeStampSeconds - gLastClickTime) * 1000.0 > ::GetDoubleClickTime());
+        || ((timeStampSeconds - gLastClickTime) * 1000.0 > getDoubleClickTime());
 
     if (type == WebEvent::MouseDown) {
         if (!cancelPreviousClick && (button == lastClickButton))
@@ -458,7 +458,7 @@ WebKeyboardEvent WebEventFactory::createWebKeyboardEvent(HWND hwnd, UINT message
     WebEvent::Type type = keyboardEventTypeForEvent(message);
     String text = textFromEvent(wparam, type);
     String unmodifiedText = unmodifiedTextFromEvent(wparam, type);
-    String key = message == WM_CHAR ? windowsKeyNames().domKeyFromChar(wparam) : windowsKeyNames().domKeyFromLParam(lparam);
+    String key = message == WM_CHAR ? windowsKeyNames().domKeyFromChar(wparam) : windowsKeyNames().domKeyFromParams(wparam, lparam);
     String code = windowsKeyNames().domCodeFromLParam(lparam);
     String keyIdentifier = keyIdentifierFromEvent(wparam, type);
     int windowsVirtualKeyCode = static_cast<int>(wparam);

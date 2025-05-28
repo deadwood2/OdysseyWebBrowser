@@ -47,13 +47,6 @@
 
 namespace WebCore {
 
-// This is the rate which we report to our clients, namely AVKit, when playback has stalled.
-// The value must be non-zero, so as to differentiate "playing-but-stalled" from "paused". But
-// the value also must be very small, so there is no visible movement in the system provided
-// timeline slider when stalled. The value below will cause the slider to move 1 second every
-// 3 years, so meets both goals.
-static const float StalledPlaybackRate = 0.00000001f;
-
 PlaybackSessionModelMediaElement::PlaybackSessionModelMediaElement()
     : EventListener(EventListener::CPPEventListenerType)
 {
@@ -162,10 +155,16 @@ void PlaybackSessionModelMediaElement::updateForEventName(const WTF::AtomString&
         || eventName == eventNames().ratechangeEvent
         || eventName == eventNames().waitingEvent
         || eventName == eventNames().canplayEvent) {
-        bool isPlaying = this->isPlaying();
-        float playbackRate = isStalled() ? StalledPlaybackRate : this->playbackRate();
+        OptionSet<PlaybackSessionModel::PlaybackState> playbackState;
+        if (isPlaying())
+            playbackState.add(PlaybackSessionModel::PlaybackState::Playing);
+        if (isStalled())
+            playbackState.add(PlaybackSessionModel::PlaybackState::Stalled);
+
+        double playbackRate =  this->playbackRate();
+        double defaultPlaybackRate = this->defaultPlaybackRate();
         for (auto client : m_clients)
-            client->rateChanged(isPlaying, playbackRate);
+            client->rateChanged(playbackState, playbackRate, defaultPlaybackRate);
     }
 
     if (all
@@ -301,6 +300,18 @@ void PlaybackSessionModelMediaElement::endScanning()
         m_mediaElement->endScanning();
 }
 
+void PlaybackSessionModelMediaElement::setDefaultPlaybackRate(double defaultPlaybackRate)
+{
+    if (m_mediaElement)
+        m_mediaElement->setDefaultPlaybackRate(defaultPlaybackRate);
+}
+
+void PlaybackSessionModelMediaElement::setPlaybackRate(double playbackRate)
+{
+    if (m_mediaElement)
+        m_mediaElement->setPlaybackRate(playbackRate);
+}
+
 void PlaybackSessionModelMediaElement::selectAudioMediaOption(uint64_t selectedAudioIndex)
 {
     if (!m_mediaElement)
@@ -376,7 +387,7 @@ void PlaybackSessionModelMediaElement::updateMediaSelectionOptions()
     if (!m_mediaElement->document().page())
         return;
 
-    auto& captionPreferences = m_mediaElement->document().page()->group().captionPreferences();
+    auto& captionPreferences = m_mediaElement->document().page()->group().ensureCaptionPreferences();
     auto* textTracks = m_mediaElement->textTracks();
     if (textTracks && textTracks->length())
         m_legibleTracksForMenu = captionPreferences.sortedTrackListForMenu(textTracks, { TextTrack::Kind::Subtitles, TextTrack::Kind::Captions, TextTrack::Kind::Descriptions });
@@ -468,7 +479,12 @@ bool PlaybackSessionModelMediaElement::isStalled() const
     return m_mediaElement && m_mediaElement->readyState() <= HTMLMediaElement::HAVE_CURRENT_DATA;
 }
 
-float PlaybackSessionModelMediaElement::playbackRate() const
+double PlaybackSessionModelMediaElement::defaultPlaybackRate() const
+{
+    return m_mediaElement ? m_mediaElement->defaultPlaybackRate() : 0;
+}
+
+double PlaybackSessionModelMediaElement::playbackRate() const
 {
     return m_mediaElement ? m_mediaElement->playbackRate() : 0;
 }
@@ -500,7 +516,7 @@ Vector<MediaSelectionOption> PlaybackSessionModelMediaElement::audioMediaSelecti
     if (!m_mediaElement || !m_mediaElement->document().page())
         return audioOptions;
 
-    auto& captionPreferences = m_mediaElement->document().page()->group().captionPreferences();
+    auto& captionPreferences = m_mediaElement->document().page()->group().ensureCaptionPreferences();
 
     audioOptions.reserveInitialCapacity(m_audioTracksForMenu.size());
     for (auto& audioTrack : m_audioTracksForMenu)
@@ -525,7 +541,7 @@ Vector<MediaSelectionOption> PlaybackSessionModelMediaElement::legibleMediaSelec
     if (!m_mediaElement || !m_mediaElement->document().page())
         return legibleOptions;
 
-    auto& captionPreferences = m_mediaElement->document().page()->group().captionPreferences();
+    auto& captionPreferences = m_mediaElement->document().page()->group().ensureCaptionPreferences();
 
     for (auto& track : m_legibleTracksForMenu)
         legibleOptions.append(captionPreferences.mediaSelectionOptionForTrack(track.get()));
@@ -543,8 +559,8 @@ uint64_t PlaybackSessionModelMediaElement::legibleMediaSelectedIndex() const
     TextTrack& offItem = TextTrack::captionMenuOffItem();
     TextTrack& automaticItem = TextTrack::captionMenuAutomaticItem();
 
-    Optional<uint64_t> selectedIndex;
-    Optional<uint64_t> offIndex;
+    std::optional<uint64_t> selectedIndex;
+    std::optional<uint64_t> offIndex;
 
     for (size_t index = 0; index < m_legibleTracksForMenu.size(); index++) {
         auto& track = m_legibleTracksForMenu[index];
@@ -564,7 +580,7 @@ uint64_t PlaybackSessionModelMediaElement::legibleMediaSelectedIndex() const
     if (!selectedIndex && displayMode == MediaControlsHost::forcedOnlyKeyword())
         selectedIndex = offIndex;
 
-    return selectedIndex.valueOr(std::numeric_limits<uint64_t>::max());
+    return selectedIndex.value_or(std::numeric_limits<uint64_t>::max());
 }
 
 bool PlaybackSessionModelMediaElement::externalPlaybackEnabled() const

@@ -30,6 +30,8 @@
 
 #include "DataReference.h"
 #include "Decoder.h"
+#include "GPUConnectionToWebProcess.h"
+#include "GPUProcess.h"
 #include "RemoteMediaRecorder.h"
 #include <WebCore/ExceptionData.h>
 
@@ -51,7 +53,7 @@ void RemoteMediaRecorderManager::didReceiveRemoteMediaRecorderMessage(IPC::Conne
         recorder->didReceiveMessage(connection, decoder);
 }
 
-void RemoteMediaRecorderManager::createRecorder(MediaRecorderIdentifier identifier, bool recordAudio, bool recordVideo, const MediaRecorderPrivateOptions& options, CompletionHandler<void(Optional<ExceptionData>&&, String&&, unsigned, unsigned)>&& completionHandler)
+void RemoteMediaRecorderManager::createRecorder(MediaRecorderIdentifier identifier, bool recordAudio, bool recordVideo, const MediaRecorderPrivateOptions& options, CompletionHandler<void(std::optional<ExceptionData>&&, String&&, unsigned, unsigned)>&& completionHandler)
 {
     ASSERT(!m_recorders.contains(identifier));
     auto recorder = RemoteMediaRecorder::create(m_gpuConnectionToWebProcess, identifier, recordAudio, recordVideo, options);
@@ -65,6 +67,13 @@ void RemoteMediaRecorderManager::createRecorder(MediaRecorderIdentifier identifi
 void RemoteMediaRecorderManager::releaseRecorder(MediaRecorderIdentifier identifier)
 {
     m_recorders.remove(identifier);
+    if (allowsExitUnderMemoryPressure())
+        m_gpuConnectionToWebProcess.gpuProcess().tryExitIfUnusedAndUnderMemoryPressure();
+}
+
+bool RemoteMediaRecorderManager::allowsExitUnderMemoryPressure() const
+{
+    return m_recorders.isEmpty();
 }
 
 }

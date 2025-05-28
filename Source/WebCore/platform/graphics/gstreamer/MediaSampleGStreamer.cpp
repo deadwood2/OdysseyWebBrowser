@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2016 Metrological Group B.V.
  * Copyright (C) 2016, 2017, 2018 Igalia S.L
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,7 +23,7 @@
 #include "MediaSampleGStreamer.h"
 
 #include "GStreamerCommon.h"
-
+#include "PixelBuffer.h"
 #include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/TypedArrayInlines.h>
 #include <algorithm>
@@ -97,15 +98,23 @@ Ref<MediaSampleGStreamer> MediaSampleGStreamer::createFakeSample(GstCaps*, Media
     return adoptRef(*gstreamerMediaSample);
 }
 
-Ref<MediaSampleGStreamer> MediaSampleGStreamer::createImageSample(Vector<uint8_t>&& bgraData, unsigned width, unsigned height, double frameRate)
+Ref<MediaSampleGStreamer> MediaSampleGStreamer::createImageSample(PixelBuffer&& pixelBuffer, const IntSize& destinationSize, double frameRate)
 {
     ensureGStreamerInitialized();
+    
+    auto size = pixelBuffer.size();
 
-    size_t size = bgraData.sizeInBytes();
-    auto* data = bgraData.releaseBuffer().leakPtr();
-    auto buffer = adoptGRef(gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY, data, size, 0, size, data, [](gpointer data) {
-        WTF::VectorMalloc::free(data);
+    auto data = pixelBuffer.takeData();
+    auto sizeInBytes = data->byteLength();
+    auto dataBaseAddress = data->data();
+    auto leakedData = &data.leakRef();
+
+    auto buffer = adoptGRef(gst_buffer_new_wrapped_full(GST_MEMORY_FLAG_READONLY, dataBaseAddress, sizeInBytes, 0, sizeInBytes, leakedData, [](gpointer userData) {
+        static_cast<JSC::Uint8ClampedArray*>(userData)->deref();
     }));
+
+    auto width = size.width();
+    auto height = size.height();
     gst_buffer_add_video_meta(buffer.get(), GST_VIDEO_FRAME_FLAG_NONE, GST_VIDEO_FORMAT_BGRA, width, height);
 
     int frameRateNumerator, frameRateDenominator;
@@ -114,6 +123,29 @@ Ref<MediaSampleGStreamer> MediaSampleGStreamer::createImageSample(Vector<uint8_t
     auto caps = adoptGRef(gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGRA", "width", G_TYPE_INT, width,
         "height", G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION, frameRateNumerator, frameRateDenominator, nullptr));
     auto sample = adoptGRef(gst_sample_new(buffer.get(), caps.get(), nullptr, nullptr));
+
+    // Optionally resize the video frame to fit destinationSize. This code path is used mostly by
+    // the mock realtime video source when the gUM constraints specifically required exact width
+    // and/or height values.
+    if (!destinationSize.isZero()) {
+        GstVideoInfo inputInfo;
+        gst_video_info_from_caps(&inputInfo, caps.get());
+
+        width = destinationSize.width();
+        height = destinationSize.height();
+        auto outputCaps = adoptGRef(gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGRA", "width", G_TYPE_INT, width,
+            "height", G_TYPE_INT, height, "framerate", GST_TYPE_FRACTION, frameRateNumerator, frameRateDenominator, nullptr));
+        GstVideoInfo outputInfo;
+        gst_video_info_from_caps(&outputInfo, outputCaps.get());
+
+        auto outputBuffer = adoptGRef(gst_buffer_new_allocate(nullptr, GST_VIDEO_INFO_SIZE(&outputInfo), nullptr));
+        gst_buffer_add_video_meta(outputBuffer.get(), GST_VIDEO_FRAME_FLAG_NONE, GST_VIDEO_FORMAT_BGRA, width, height);
+        GUniquePtr<GstVideoConverter> converter(gst_video_converter_new(&inputInfo, &outputInfo, nullptr));
+        GstMappedFrame inputFrame(gst_sample_get_buffer(sample.get()), inputInfo, GST_MAP_READ);
+        GstMappedFrame outputFrame(outputBuffer.get(), outputInfo, GST_MAP_WRITE);
+        gst_video_converter_frame(converter.get(), inputFrame.get(), outputFrame.get());
+        sample = adoptGRef(gst_sample_new(outputBuffer.get(), outputCaps.get(), nullptr, nullptr));
+    }
     return create(WTFMove(sample), FloatSize(width, height), { });
 }
 
@@ -158,6 +190,16 @@ void MediaSampleGStreamer::extendToTheBeginning()
     ASSERT(m_dts == MediaTime::zeroTime());
     m_duration += m_pts;
     m_pts = MediaTime::zeroTime();
+}
+
+void MediaSampleGStreamer::setTimestamps(const MediaTime& presentationTime, const MediaTime& decodeTime)
+{
+    m_pts = presentationTime;
+    m_dts = decodeTime;
+    if (auto* buffer = gst_sample_get_buffer(m_sample.get())) {
+        GST_BUFFER_PTS(buffer) = toGstClockTime(m_pts);
+        GST_BUFFER_DTS(buffer) = toGstClockTime(m_dts);
+    }
 }
 
 void MediaSampleGStreamer::offsetTimestampsBy(const MediaTime& timestampOffset)

@@ -30,7 +30,7 @@
 #if USE(CG)
 
 #include "AffineTransform.h"
-#include "GraphicsContext.h"
+#include "GraphicsContextCG.h"
 #include <CoreGraphics/CoreGraphics.h>
 #include <pal/spi/cg/CoreGraphicsSPI.h>
 #include <wtf/MainThread.h>
@@ -43,19 +43,17 @@ static void patternCallback(void* info, CGContextRef context)
     if (!platformImage)
         return;
 
-    CGRect rect = GraphicsContext(context).roundToDevicePixels(
+    CGRect rect = GraphicsContextCG(context).roundToDevicePixels(
         FloatRect(0, 0, CGImageGetWidth(platformImage), CGImageGetHeight(platformImage)));
     CGContextDrawImage(context, rect, platformImage);
 }
 
 static void patternReleaseCallback(void* info)
 {
-    callOnMainThread([image = static_cast<CGImageRef>(info)] {
-        CGImageRelease(image);
-    });
+    callOnMainThread([image = adoptCF(static_cast<CGImageRef>(info))] { });
 }
 
-CGPatternRef Pattern::createPlatformPattern(const AffineTransform& userSpaceTransform) const
+RetainPtr<CGPatternRef> Pattern::createPlatformPattern(const AffineTransform& userSpaceTransform) const
 {
     FloatRect tileRect = { { }, tileImage().size() };
 
@@ -70,7 +68,7 @@ CGPatternRef Pattern::createPlatformPattern(const AffineTransform& userSpaceTran
     // If we're repeating in both directions, we can use image-backed patterns
     // instead of custom patterns, and avoid tiling-edge pixel cracks.
     if (repeatX() && repeatY())
-        return CGPatternCreateWithImage2(platformImage.get(), patternTransform, kCGPatternTilingConstantSpacing);
+        return adoptCF(CGPatternCreateWithImage2(platformImage.get(), patternTransform, kCGPatternTilingConstantSpacing));
 
     // If FLT_MAX should also be used for xStep or yStep, nothing is rendered. Using fractions of FLT_MAX also
     // result in nothing being rendered.
@@ -84,7 +82,7 @@ CGPatternRef Pattern::createPlatformPattern(const AffineTransform& userSpaceTran
     CGImageRef image = platformImage.leakRef();
 
     const CGPatternCallbacks patternCallbacks = { 0, patternCallback, patternReleaseCallback };
-    return CGPatternCreate(image, tileRect, patternTransform, xStep, yStep, kCGPatternTilingConstantSpacing, TRUE, &patternCallbacks);
+    return adoptCF(CGPatternCreate(image, tileRect, patternTransform, xStep, yStep, kCGPatternTilingConstantSpacing, TRUE, &patternCallbacks));
 }
 
 }

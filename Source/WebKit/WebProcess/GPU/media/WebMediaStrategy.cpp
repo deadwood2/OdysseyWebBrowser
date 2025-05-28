@@ -30,11 +30,12 @@
 #include "GPUProcessConnection.h"
 #include "RemoteAudioDestinationProxy.h"
 #include "RemoteCDMFactory.h"
+#include "WebCoreArgumentCoders.h"
 #include "WebProcess.h"
 #include <WebCore/AudioDestination.h>
 #include <WebCore/AudioIOCallback.h>
 #include <WebCore/CDMFactory.h>
-#include <WebCore/NowPlayingInfo.h>
+#include <WebCore/NowPlayingManager.h>
 
 #if PLATFORM(COCOA)
 #include <WebCore/MediaSessionManagerCocoa.h>
@@ -56,30 +57,27 @@ Ref<WebCore::AudioDestination> WebMediaStrategy::createAudioDestination(WebCore:
 }
 #endif
 
-#if PLATFORM(COCOA)
-void WebMediaStrategy::clearNowPlayingInfo()
+std::unique_ptr<WebCore::NowPlayingManager> WebMediaStrategy::createNowPlayingManager() const
 {
 #if ENABLE(GPU_PROCESS)
     if (m_useGPUProcess) {
-        auto& connection = WebProcess::singleton().ensureGPUProcessConnection().connection();
-        connection.send(Messages::GPUConnectionToWebProcess::ClearNowPlayingInfo { }, 0);
-        return;
-    }
-#endif
-    WebCore::MediaSessionManagerCocoa::clearNowPlayingInfo();
-}
+        class NowPlayingInfoForGPUManager : public WebCore::NowPlayingManager {
+            void clearNowPlayingInfoPrivate() final
+            {
+                if (auto* connection = WebProcess::singleton().existingGPUProcessConnection())
+                    connection->connection().send(Messages::GPUConnectionToWebProcess::ClearNowPlayingInfo { }, 0);
+            }
 
-void WebMediaStrategy::setNowPlayingInfo(bool setAsNowPlayingApplication, const WebCore::NowPlayingInfo& nowPlayingInfo)
-{
-#if ENABLE(GPU_PROCESS)
-    if (m_useGPUProcess) {
-        auto& connection = WebProcess::singleton().ensureGPUProcessConnection().connection();
-        connection.send(Messages::GPUConnectionToWebProcess::SetNowPlayingInfo { setAsNowPlayingApplication, nowPlayingInfo }, 0);
-        return;
+            void setNowPlayingInfoPrivate(const WebCore::NowPlayingInfo& nowPlayingInfo) final
+            {
+                auto& connection = WebProcess::singleton().ensureGPUProcessConnection().connection();
+                connection.send(Messages::GPUConnectionToWebProcess::SetNowPlayingInfo { nowPlayingInfo }, 0);
+            }
+        };
+        return makeUnique<NowPlayingInfoForGPUManager>();
     }
 #endif
-    WebCore::MediaSessionManagerCocoa::setNowPlayingInfo(setAsNowPlayingApplication, nowPlayingInfo);
+    return WebCore::MediaStrategy::createNowPlayingManager();
 }
-#endif
 
 } // namespace WebKit

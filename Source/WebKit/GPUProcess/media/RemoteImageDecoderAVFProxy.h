@@ -47,16 +47,19 @@ public:
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) final;
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
+
+    bool allowsExitUnderMemoryPressure() const;
 
 private:
-    void createDecoder(const IPC::DataReference&, const String& mimeType, CompletionHandler<void(Optional<WebCore::ImageDecoderIdentifier>&&)>&&);
-    void deleteDecoder(const WebCore::ImageDecoderIdentifier&);
-    void setExpectedContentSize(const WebCore::ImageDecoderIdentifier&, long long expectedContentSize);
-    void setData(const WebCore::ImageDecoderIdentifier&, const IPC::DataReference&, bool allDataReceived, CompletionHandler<void(size_t frameCount, const WebCore::IntSize& size, bool hasTrack, Optional<Vector<WebCore::ImageDecoder::FrameInfo>>&&)>&&);
-    void createFrameImageAtIndex(const WebCore::ImageDecoderIdentifier&, size_t index, CompletionHandler<void(Optional<WTF::MachSendRight>&&)>&&);
+    void createDecoder(const IPC::DataReference&, const String& mimeType, CompletionHandler<void(std::optional<WebCore::ImageDecoderIdentifier>&&)>&&);
+    void deleteDecoder(WebCore::ImageDecoderIdentifier);
+    void setExpectedContentSize(WebCore::ImageDecoderIdentifier, long long expectedContentSize);
+    void setData(WebCore::ImageDecoderIdentifier, const IPC::DataReference&, bool allDataReceived, CompletionHandler<void(size_t frameCount, const WebCore::IntSize& size, bool hasTrack, std::optional<Vector<WebCore::ImageDecoder::FrameInfo>>&&)>&&);
+    void createFrameImageAtIndex(WebCore::ImageDecoderIdentifier, size_t index, CompletionHandler<void(std::optional<WTF::MachSendRight>&&, std::optional<WebCore::DestinationColorSpace>&&)>&&);
+    void clearFrameBufferCache(WebCore::ImageDecoderIdentifier, size_t index);
 
-    void encodedDataStatusChanged(const WebCore::ImageDecoderIdentifier&);
+    void encodedDataStatusChanged(WebCore::ImageDecoderIdentifier);
 
     WeakPtr<GPUConnectionToWebProcess> m_connectionToWebProcess;
     HashMap<WebCore::ImageDecoderIdentifier, RefPtr<WebCore::ImageDecoderAVFObjC>> m_imageDecoders;

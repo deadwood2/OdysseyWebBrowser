@@ -49,6 +49,10 @@
 #include <wtf/Threading.h>
 #include <wtf/text/StringCommon.h>
 
+#if OS(MORPHOS)
+unsigned long __stack = 2 * 1024 * 1024;
+#endif
+
 // We don't have a NO_RETURN_DUE_TO_EXIT, nor should we. That's ridiculous.
 static bool hiddenTruthBecauseNoReturnIsStupid() { return true; }
 
@@ -129,7 +133,7 @@ void loadConstantImpl(BasicBlock* block, T value, B3::Air::Opcode move, Tmp tmp,
     static Lock lock;
     static StdMap<T, T*>* map; // I'm not messing with HashMap's problems with integers.
 
-    LockHolder locker(lock);
+    Locker locker { lock };
     if (!map)
         map = new StdMap<T, T*>();
 
@@ -2145,7 +2149,7 @@ void testElideHandlesEarlyClobber()
     patch->clobber(RegisterSet(lastCalleeSave));
 
     patch->setGenerator([=] (CCallHelpers& jit, const JSC::B3::StackmapGenerationParams&) {
-        jit.probe([=] (Probe::Context& context) {
+        jit.probeDebug([=] (Probe::Context& context) {
             for (Reg reg : registers)
                 context.gpr(reg.gpr()) = 0;
         });
@@ -2469,7 +2473,7 @@ void run(const char* filter)
                     for (;;) {
                         RefPtr<SharedTask<void()>> task;
                         {
-                            LockHolder locker(lock);
+                            Locker locker { lock };
                             if (tasks.isEmpty())
                                 return;
                             task = tasks.takeFirst();

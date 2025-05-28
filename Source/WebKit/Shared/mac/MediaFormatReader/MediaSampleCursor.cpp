@@ -28,8 +28,8 @@
 
 #if ENABLE(WEBM_FORMAT_READER)
 
+#include "Logging.h"
 #include "MediaTrackReader.h"
-#include <WebCore/Logging.h>
 #include <WebCore/MediaSample.h>
 #include <WebCore/SampleMap.h>
 #include <pal/avfoundation/MediaTimeAVFoundation.h>
@@ -44,7 +44,6 @@ WTF_DECLARE_CF_TYPE_TRAIT(MTPluginSampleCursor);
 
 namespace WebKit {
 
-using namespace PAL;
 using namespace WebCore;
 
 static MediaTime assumedDecodeTime(const MediaTime& presentationTime, DecodeOrderSampleMap& map)
@@ -116,7 +115,7 @@ RefPtr<MediaSampleCursor> MediaSampleCursor::createAtPresentationTime(Allocator&
 
 RefPtr<MediaSampleCursor> MediaSampleCursor::copy(Allocator&& allocator, const MediaSampleCursor& cursor)
 {
-    auto locker = holdLock(cursor.m_locatorLock);
+    Locker locker { cursor.m_locatorLock };
     return adoptRef(new (allocator) MediaSampleCursor(WTFMove(allocator), cursor));
 }
 
@@ -139,22 +138,24 @@ MediaSampleCursor::MediaSampleCursor(Allocator&& allocator, const MediaSampleCur
 }
 
 template<typename OrderedMap>
-Optional<typename OrderedMap::iterator> MediaSampleCursor::locateIterator(OrderedMap& samples, bool hasAllSamples) const
+std::optional<typename OrderedMap::iterator> MediaSampleCursor::locateIterator(OrderedMap& samples, bool hasAllSamples) const
 {
     ASSERT(m_locatorLock.isLocked());
     using Iterator = typename OrderedMap::iterator;
     return WTF::switchOn(m_locator,
-        [&](const MediaTime& presentationTime) -> Optional<Iterator> {
+        [&](const MediaTime& presentationTime) -> std::optional<Iterator> {
+            assertIsHeld(m_locatorLock);
             auto iterator = upperBound(samples, presentationTime);
             if (iterator == samples.begin())
                 m_locator = WTFMove(iterator);
             else if (hasAllSamples || iterator != samples.end())
                 m_locator = std::prev(iterator);
             else
-                return WTF::nullopt;
+                return std::nullopt;
             return locateIterator(samples, hasAllSamples);
         },
         [&](const auto& otherIterator) {
+            assertIsHeld(m_locatorLock);
             m_locator = otherIterator->second->presentationTime();
             return locateIterator(samples, hasAllSamples);
         },
@@ -169,6 +170,7 @@ MediaSample* MediaSampleCursor::locateMediaSample(SampleMap& samples, bool hasAl
     ASSERT(m_locatorLock.isLocked());
     return WTF::switchOn(m_locator,
         [&](const MediaTime&) -> MediaSample* {
+            assertIsHeld(m_locatorLock);
             auto iterator = locateIterator(samples.presentationOrder(), hasAllSamples);
             if (!iterator)
                 return nullptr;
@@ -185,6 +187,7 @@ MediaSampleCursor::Timing MediaSampleCursor::locateTiming(SampleMap& samples, bo
     ASSERT(m_locatorLock.isLocked());
     return WTF::switchOn(m_locator,
         [&](const MediaTime& presentationTime) {
+            assertIsHeld(m_locatorLock);
             if (locateMediaSample(samples, hasAllSamples))
                 return locateTiming(samples, hasAllSamples);
             auto& clampedPresentationTime = std::min(presentationTime, m_trackReader->duration());
@@ -208,6 +211,7 @@ template<typename OrderedMap>
 OSStatus MediaSampleCursor::stepInOrderedMap(int64_t stepsToTake, int64_t& stepsTaken)
 {
     return getSampleMap([&](SampleMap& samples, bool hasAllSamples) -> OSStatus {
+        assertIsHeld(m_locatorLock);
         auto& orderedMap = orderedSamples<OrderedMap>(samples);
         if (auto iterator = locateIterator(orderedMap, hasAllSamples)) {
             auto stepsRemaining = stepIterator(stepsToTake, *iterator, orderedMap);
@@ -222,6 +226,7 @@ OSStatus MediaSampleCursor::stepInOrderedMap(int64_t stepsToTake, int64_t& steps
 OSStatus MediaSampleCursor::stepInPresentationTime(const MediaTime& delta, Boolean& wasPinned)
 {
     return getSampleMap([&](SampleMap& samples, bool hasAllSamples) -> OSStatus {
+        assertIsHeld(m_locatorLock);
         auto timing = locateTiming(samples, hasAllSamples);
         wasPinned = stepTime(delta, timing.presentationTime, samples.presentationOrder(), hasAllSamples, m_trackReader->duration());
         m_locator = timing.presentationTime;
@@ -233,7 +238,7 @@ template<typename Function>
 OSStatus MediaSampleCursor::getSampleMap(Function&& function) const
 {
     OSStatus status = noErr;
-    auto locker = holdLock(m_locatorLock);
+    Locker locker { m_locatorLock };
     m_trackReader->waitForSample([&](SampleMap& samples, bool hasAllSamples) {
         if (!samples.size())
             ERROR_LOG(LOGIDENTIFIER, "track ", m_trackReader->trackID(), " finished parsing with no samples.");
@@ -247,6 +252,7 @@ template<typename Function>
 OSStatus MediaSampleCursor::getMediaSample(Function&& function) const
 {
     return getSampleMap([&](SampleMap& samples, bool hasAllSamples) -> OSStatus {
+        assertIsHeld(m_locatorLock);
         auto sample = locateMediaSample(samples, hasAllSamples);
         if (!sample)
             return kMTPluginSampleCursorError_LocationNotAvailable;
@@ -260,6 +266,7 @@ template<typename Function>
 OSStatus MediaSampleCursor::getTiming(Function&& function) const
 {
     return getSampleMap([&](SampleMap& samples, bool hasAllSamples) {
+        assertIsHeld(m_locatorLock);
         auto timing = locateTiming(samples, hasAllSamples);
         DEBUG_LOG(LOGIDENTIFIER, "decodeTime: ", timing.decodeTime, ", presentationTime: ", timing.presentationTime, ", duration: ", timing.duration);
         function(timing);
@@ -372,8 +379,8 @@ OSStatus MediaSampleCursor::copySampleLocation(MTPluginSampleCursorStorageRange*
         RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(sample.platformSample().type == PlatformSample::ByteRangeSampleType);
         auto byteRange = *sample.byteRange();
         *storageRange = {
-            .offset = CheckedInt64(byteRange.byteOffset).unsafeGet(),
-            .length = CheckedInt64(byteRange.byteLength).unsafeGet(),
+            .offset = CheckedInt64(byteRange.byteOffset),
+            .length = CheckedInt64(byteRange.byteLength),
         };
         *byteSource = retainPtr(sample.platformSample().sample.byteRangeSample.first).leakRef();
     });
@@ -382,6 +389,7 @@ OSStatus MediaSampleCursor::copySampleLocation(MTPluginSampleCursorStorageRange*
 OSStatus MediaSampleCursor::getPlayableHorizon(CMTime* playableHorizon) const
 {
     return getSampleMap([&](SampleMap& samples, bool hasAllSamples) {
+        assertIsHeld(m_locatorLock);
         MediaSample& lastSample = *samples.decodeOrder().rbegin()->second;
         auto timing = locateTiming(samples, hasAllSamples);
         *playableHorizon = PAL::toCMTime(lastSample.presentationTime() + lastSample.duration() - timing.presentationTime);
@@ -391,7 +399,7 @@ OSStatus MediaSampleCursor::getPlayableHorizon(CMTime* playableHorizon) const
 
 WTFLogChannel& MediaSampleCursor::logChannel() const
 {
-    return LogMedia;
+    return JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, Media);
 }
 
 } // namespace WebKit

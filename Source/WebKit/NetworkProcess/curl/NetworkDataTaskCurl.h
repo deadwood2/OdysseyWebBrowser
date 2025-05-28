@@ -91,13 +91,14 @@ private:
     void blockCookies();
     void unblockCookies();
 
+    String suggestedFilename() const override;
+
     State m_state { State::Suspended };
 
     RefPtr<WebCore::CurlRequest> m_curlRequest;
     WebCore::ResourceResponse m_response;
     unsigned m_redirectCount { 0 };
     unsigned m_authFailureCount { 0 };
-    MonotonicTime m_startTime;
 
     WebCore::FrameIdentifier m_frameID;
     WebCore::PageIdentifier m_pageID;

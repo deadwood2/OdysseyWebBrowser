@@ -56,6 +56,7 @@
 #include "WebPage.h"
 #include "WebPageGroupProxy.h"
 #include "WebPageOverlay.h"
+#include "WebProcess.h"
 #include <WebCore/AXObjectCache.h>
 #include <WebCore/AccessibilityObjectInterface.h>
 #include <WebCore/ApplicationCacheStorage.h>
@@ -163,11 +164,6 @@ void WKBundlePageDidExitFullScreen(WKBundlePageRef pageRef)
 #endif
 }
 
-WKBundlePageGroupRef WKBundlePageGetPageGroup(WKBundlePageRef pageRef)
-{
-    return toAPI(WebKit::toImpl(pageRef)->pageGroup());
-}
-
 WKBundleFrameRef WKBundlePageGetMainFrame(WKBundlePageRef pageRef)
 {
     return toAPI(&WebKit::toImpl(pageRef)->mainWebFrame());
@@ -233,6 +229,16 @@ WKArrayRef WKBundlePageCopyContextMenuAtPointInWindow(WKBundlePageRef pageRef, W
 void WKBundlePageInsertNewlineInQuotedContent(WKBundlePageRef pageRef)
 {
     WebKit::toImpl(pageRef)->insertNewlineInQuotedContent();
+}
+
+void WKAccessibilityTestingInjectPreference(WKBundlePageRef pageRef, WKStringRef domain, WKStringRef key, WKStringRef encodedValue)
+{
+    if (!pageRef)
+        return;
+    
+#if ENABLE(CFPREFS_DIRECT_MODE)
+    WebKit::WebProcess::singleton().notifyPreferencesChanged(WebKit::toWTFString(domain), WebKit::toWTFString(key), WebKit::toWTFString(encodedValue));
+#endif
 }
 
 void* WKAccessibilityRootObject(WKBundlePageRef pageRef)
@@ -819,7 +825,7 @@ void WKBundlePageClearApplicationCache(WKBundlePageRef page)
 
 void WKBundlePageClearApplicationCacheForOrigin(WKBundlePageRef page, WKStringRef origin)
 {
-    WebKit::toImpl(page)->corePage()->applicationCacheStorage().deleteCacheForOrigin(WebCore::SecurityOrigin::createFromString(WebKit::toImpl(origin)->string()));
+    WebKit::toImpl(page)->corePage()->applicationCacheStorage().deleteCacheForOrigin(WebCore::SecurityOriginData::fromURL(URL(URL(), WebKit::toImpl(origin)->string())));
 }
 
 void WKBundlePageSetAppCacheMaximumSize(WKBundlePageRef page, uint64_t size)
@@ -829,7 +835,7 @@ void WKBundlePageSetAppCacheMaximumSize(WKBundlePageRef page, uint64_t size)
 
 uint64_t WKBundlePageGetAppCacheUsageForOrigin(WKBundlePageRef page, WKStringRef origin)
 {
-    return WebKit::toImpl(page)->corePage()->applicationCacheStorage().diskUsageForOrigin(WebCore::SecurityOrigin::createFromString(WebKit::toImpl(origin)->string()));
+    return WebKit::toImpl(page)->corePage()->applicationCacheStorage().diskUsageForOrigin(WebCore::SecurityOriginData::fromURL(URL(URL(), WebKit::toImpl(origin)->string())));
 }
 
 void WKBundlePageSetApplicationCacheOriginQuota(WKBundlePageRef page, WKStringRef origin, uint64_t bytes)
@@ -850,14 +856,14 @@ WKArrayRef WKBundlePageCopyOriginsWithApplicationCache(WKBundlePageRef page)
     originIdentifiers.reserveInitialCapacity(origins.size());
 
     for (const auto& origin : origins)
-        originIdentifiers.uncheckedAppend(API::String::create(origin->data().databaseIdentifier()));
+        originIdentifiers.uncheckedAppend(API::String::create(origin.databaseIdentifier()));
 
     return WebKit::toAPI(&API::Array::create(WTFMove(originIdentifiers)).leakRef());
 }
 
 void WKBundlePageSetEventThrottlingBehaviorOverride(WKBundlePageRef page, WKEventThrottlingBehavior* behavior)
 {
-    Optional<WebCore::EventThrottlingBehavior> behaviorValue;
+    std::optional<WebCore::EventThrottlingBehavior> behaviorValue;
     if (behavior) {
         switch (*behavior) {
         case kWKEventThrottlingBehaviorResponsive:

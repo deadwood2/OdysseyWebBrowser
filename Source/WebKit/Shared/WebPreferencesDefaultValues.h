@@ -35,9 +35,7 @@
 
 namespace WebKit {
 
-#if HAVE(SYSTEM_FEATURE_FLAGS)
-bool isFeatureFlagEnabled(const String&);
-#endif
+bool isFeatureFlagEnabled(const char*, bool defaultValue = false);
 
 #if PLATFORM(IOS_FAMILY)
 bool defaultPassiveTouchListenersAsDefaultOnDocument();
@@ -66,10 +64,7 @@ bool allowsDeprecatedSynchronousXMLHttpRequestDuringUnload();
 
 bool defaultAsyncFrameScrollingEnabled();
 bool defaultAsyncOverflowScrollingEnabled();
-
-#if ENABLE(APP_HIGHLIGHTS)
-bool defaultAppHighlightsEnabled();
-#endif
+bool defaultOfflineWebApplicationCacheEnabled();
 
 #if ENABLE(GPU_PROCESS)
 bool defaultUseGPUProcessForCanvasRenderingEnabled();
@@ -88,12 +83,6 @@ bool defaultCaptureVideoInGPUProcessEnabled();
 bool defaultWebRTCCodecsInGPUProcess();
 #endif
 
-#if ENABLE(WEBGPU)
-bool defaultWebGPUEnabled();
-#endif
-
-bool defaultInAppBrowserPrivacy();
-
 #if HAVE(INCREMENTAL_PDF_APIS)
 bool defaultIncrementalPDFEnabled();
 #endif
@@ -110,9 +99,15 @@ bool defaultWebMFormatReaderEnabled();
 bool defaultVP8DecoderEnabled();
 bool defaultVP9DecoderEnabled();
 bool defaultVP9SWDecoderEnabledOnBattery();
+#endif
+
 #if ENABLE(MEDIA_SOURCE)
 bool defaultWebMParserEnabled();
+bool defaultWebMWebAudioEnabled();
 #endif
+
+#if ENABLE(MEDIA_SESSION_COORDINATOR)
+bool defaultMediaSessionCoordinatorEnabled();
 #endif
 
 } // namespace WebKit

@@ -60,7 +60,7 @@ public:
 
     bool supportsInitData(const AtomString&, const WebCore::SharedBuffer&);
     RefPtr<WebCore::SharedBuffer> sanitizeResponse(const WebCore::SharedBuffer& response);
-    Optional<String> sanitizeSessionId(const String& sessionId);
+    std::optional<String> sanitizeSessionId(const String& sessionId);
 
 private:
     friend class RemoteCDMFactoryProxy;
@@ -68,7 +68,7 @@ private:
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) final;
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
 
     // Messages
     void getSupportedConfiguration(WebCore::CDMKeySystemConfiguration&&, WebCore::CDMPrivate::LocalStorageAccess, WebCore::CDMPrivate::SupportedConfigurationCallback&&);

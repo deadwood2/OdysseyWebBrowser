@@ -33,7 +33,6 @@
 #include <WebCore/MediaSourcePrivate.h>
 #include <WebCore/MediaSourcePrivateClient.h>
 #include <wtf/MediaTime.h>
-#include <wtf/Optional.h>
 #include <wtf/WeakPtr.h>
 
 namespace IPC {
@@ -78,11 +77,12 @@ public:
 private:
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) final;
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
 
-    using AddSourceBufferCallback = CompletionHandler<void(WebCore::MediaSourcePrivate::AddStatus, Optional<RemoteSourceBufferIdentifier>)>;
+    using AddSourceBufferCallback = CompletionHandler<void(WebCore::MediaSourcePrivate::AddStatus, std::optional<RemoteSourceBufferIdentifier>)>;
     void addSourceBuffer(const WebCore::ContentType&, AddSourceBufferCallback&&);
     void durationChanged(const MediaTime&);
+    void bufferedChanged(const WebCore::PlatformTimeRanges&);
     void setReadyState(WebCore::MediaPlayerEnums::ReadyState);
     void setIsSeeking(bool);
     void waitForSeekCompleted();
@@ -96,6 +96,7 @@ private:
     WeakPtr<RemoteMediaPlayerProxy> m_remoteMediaPlayerProxy;
 
     MediaTime m_duration;
+    WebCore::PlatformTimeRanges m_buffered;
 
     Vector<RefPtr<RemoteSourceBufferProxy>> m_sourceBuffers;
 };

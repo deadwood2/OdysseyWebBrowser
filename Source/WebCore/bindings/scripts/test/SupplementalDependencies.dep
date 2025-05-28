@@ -73,12 +73,18 @@ WebDOMTestDefaultToJSONInherit.h:
 JSTestDefaultToJSONInheritFinal.h: 
 DOMTestDefaultToJSONInheritFinal.h: 
 WebDOMTestDefaultToJSONInheritFinal.h: 
+JSTestDelegateToSharedSyntheticAttribute.h: 
+DOMTestDelegateToSharedSyntheticAttribute.h: 
+WebDOMTestDelegateToSharedSyntheticAttribute.h: 
 JSTestDerivedDictionary.h: 
 DOMTestDerivedDictionary.h: 
 WebDOMTestDerivedDictionary.h: 
 JSTestDerivedDictionary2.h: 
 DOMTestDerivedDictionary2.h: 
 WebDOMTestDerivedDictionary2.h: 
+JSTestDictionary.h: 
+DOMTestDictionary.h: 
+WebDOMTestDictionary.h: 
 JSTestDictionaryWithOnlyConditionalMembers.h: 
 DOMTestDictionaryWithOnlyConditionalMembers.h: 
 WebDOMTestDictionaryWithOnlyConditionalMembers.h: 
@@ -104,6 +110,9 @@ WebDOMTestEventTarget.h:
 JSTestException.h: 
 DOMTestException.h: 
 WebDOMTestException.h: 
+JSTestGenerateAddOpaqueRoot.h: 
+DOMTestGenerateAddOpaqueRoot.h: 
+WebDOMTestGenerateAddOpaqueRoot.h: 
 JSTestGenerateIsReachable.h: 
 DOMTestGenerateIsReachable.h: 
 WebDOMTestGenerateIsReachable.h: 
@@ -214,6 +223,10 @@ WebDOMTestNamedSetterWithLegacyUnforgeableProperties.h:
 JSTestNamedSetterWithLegacyUnforgeablePropertiesAndLegacyOverrideBuiltIns.h: 
 DOMTestNamedSetterWithLegacyUnforgeablePropertiesAndLegacyOverrideBuiltIns.h: 
 WebDOMTestNamedSetterWithLegacyUnforgeablePropertiesAndLegacyOverrideBuiltIns.h: 
+JSTestNamespaceObject.h: TestPartialNamespaceObject.idl
+DOMTestNamespaceObject.h: TestPartialNamespaceObject.idl
+WebDOMTestNamespaceObject.h: TestPartialNamespaceObject.idl
+TestPartialNamespaceObject.idl:
 JSTestNode.h: 
 DOMTestNode.h: 
 WebDOMTestNode.h: 

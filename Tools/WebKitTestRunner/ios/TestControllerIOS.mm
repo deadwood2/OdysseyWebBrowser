@@ -32,6 +32,7 @@
 #import "PlatformWebView.h"
 #import "TestInvocation.h"
 #import "TestRunnerWKWebView.h"
+#import "TextInputSPI.h"
 #import "UIKitSPI.h"
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -47,6 +48,11 @@
 #import <pal/spi/ios/GraphicsServicesSPI.h>
 #import <wtf/MainThread.h>
 
+static void overrideSyncInputManagerToAcceptedAutocorrection(id, SEL, TIKeyboardCandidate *candidate, TIKeyboardInput *input)
+{
+    // Intentionally unimplemented. See usage below for more information.
+}
+
 static BOOL overrideIsInHardwareKeyboardMode()
 {
     return NO;
@@ -55,15 +61,6 @@ static BOOL overrideIsInHardwareKeyboardMode()
 static void overridePresentMenuOrPopoverOrViewController()
 {
 }
-
-#if !HAVE(NONDESTRUCTIVE_IMAGE_PASTE_SUPPORT_QUERY)
-
-static BOOL overrideKeyboardDelegateSupportsImagePaste(id, SEL)
-{
-    return NO;
-}
-
-#endif
 
 namespace WTR {
 
@@ -110,10 +107,6 @@ void TestController::platformInitialize()
     CFNotificationCenterAddObserver(center, this, handleKeyboardDidHideNotification, (CFStringRef)UIKeyboardDidHideNotification, nullptr, CFNotificationSuspensionBehaviorDeliverImmediately);
     CFNotificationCenterAddObserver(center, this, handleMenuWillHideNotification, (CFStringRef)UIMenuControllerWillHideMenuNotification, nullptr, CFNotificationSuspensionBehaviorDeliverImmediately);
     CFNotificationCenterAddObserver(center, this, handleMenuDidHideNotification, (CFStringRef)UIMenuControllerDidHideMenuNotification, nullptr, CFNotificationSuspensionBehaviorDeliverImmediately);
-
-    // Override the implementation of +[UIKeyboard isInHardwareKeyboardMode] to ensure that test runs are deterministic
-    // regardless of whether a hardware keyboard is attached. We intentionally never restore the original implementation.
-    method_setImplementation(class_getClassMethod([UIKeyboard class], @selector(isInHardwareKeyboardMode)), reinterpret_cast<IMP>(overrideIsInHardwareKeyboardMode));
 }
 
 void TestController::platformDestroy()
@@ -142,15 +135,14 @@ void TestController::configureContentExtensionForTest(const TestInvocation&)
 {
 }
 
-void TestController::platformResetPreferencesToConsistentValues()
+static _WKDragInteractionPolicy dragInteractionPolicy(const TestOptions& options)
 {
-    WKPreferencesRef preferences = platformPreferences();
-    WKPreferencesSetTextAutosizingEnabled(preferences, false);
-    WKPreferencesSetTextAutosizingUsesIdempotentMode(preferences, false);
-    WKPreferencesSetContentChangeObserverEnabled(preferences, false);
-#if PLATFORM(IOS_FAMILY_SIMULATOR)
-    WKPreferencesSetVP9DecoderEnabled(preferences, false);
-#endif
+    auto policy = options.dragInteractionPolicy();
+    if (policy == "always-enable")
+        return _WKDragInteractionPolicyAlwaysEnable;
+    if (policy == "always-disable")
+        return _WKDragInteractionPolicyAlwaysDisable;
+    return _WKDragInteractionPolicyDefault;
 }
 
 bool TestController::platformResetStateToConsistentValues(const TestOptions& options)
@@ -169,6 +161,17 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
         CFPreferencesSetAppValue((__bridge CFStringRef)automaticMinimizationEnabledPreferenceKey, kCFBooleanTrue, globalPreferencesDomainName);
     }
 
+    // Ensures that changing selection does not cause the software keyboard to appear,
+    // even when the hardware keyboard is attached.
+    auto hardwareKeyboardLastSeenPreferenceKey = @"HardwareKeyboardLastSeen";
+    auto preferencesActions = keyboardPreferences.preferencesActions;
+    if (![preferencesActions oneTimeActionCompleted:hardwareKeyboardLastSeenPreferenceKey])
+        [preferencesActions didTriggerOneTimeAction:hardwareKeyboardLastSeenPreferenceKey];
+
+    auto didShowContinuousPathIntroductionKey = @"DidShowContinuousPathIntroduction";
+    if (![preferencesActions oneTimeActionCompleted:didShowContinuousPathIntroductionKey])
+        [preferencesActions didTriggerOneTimeAction:didShowContinuousPathIntroductionKey];
+
     // Disables the dictation keyboard shortcut for testing.
     auto dictationKeyboardShortcutPreferenceKey = @"HWKeyboardDictationShortcut";
     auto dictationKeyboardShortcutValueForTesting = @(-1);
@@ -179,11 +182,15 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
 
     GSEventSetHardwareKeyboardAttached(true, 0);
 
-#if !HAVE(NONDESTRUCTIVE_IMAGE_PASTE_SUPPORT_QUERY)
-    // FIXME: Remove this workaround once -[UIKeyboardImpl delegateSupportsImagePaste] no longer increments the general pasteboard's changeCount.
-    if (!m_keyboardDelegateSupportsImagePasteSwizzler)
-        m_keyboardDelegateSupportsImagePasteSwizzler = makeUnique<InstanceMethodSwizzler>(UIKeyboardImpl.class, @selector(delegateSupportsImagePaste), reinterpret_cast<IMP>(overrideKeyboardDelegateSupportsImagePaste));
-#endif
+    // Ignore calls to inform the keyboard daemon that we accepted autocorrection candidates.
+    // This prevents the device from learning misspelled words in between layout tests.
+    method_setImplementation(class_getInstanceMethod(UIKeyboardImpl.class, @selector(syncInputManagerToAcceptedAutocorrection:forInput:)), reinterpret_cast<IMP>(overrideSyncInputManagerToAcceptedAutocorrection));
+
+    // Override the implementation of +[UIKeyboard isInHardwareKeyboardMode] to ensure that test runs are deterministic
+    // regardless of whether a hardware keyboard is attached. We intentionally never restore the original implementation.
+    //
+    // FIXME: Investigate whether this can be removed. The swizzled return value is inconsistent with GSEventSetHardwareKeyboardAttached.
+    method_setImplementation(class_getClassMethod([UIKeyboard class], @selector(isInHardwareKeyboardMode)), reinterpret_cast<IMP>(overrideIsInHardwareKeyboardMode));
 
     if (m_overriddenKeyboardInputMode) {
         m_overriddenKeyboardInputMode = nil;
@@ -203,6 +210,7 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
     BOOL shouldRestoreFirstResponder = NO;
     if (PlatformWebView* platformWebView = mainWebView()) {
         TestRunnerWKWebView *webView = platformWebView->platformView();
+        webView._suppressSoftwareKeyboard = NO;
         webView._stableStateOverride = nil;
         webView._scrollingUpdatesDisabledForTesting = NO;
         webView.usesSafariLikeRotation = NO;
@@ -211,14 +219,19 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
         [webView _clearInterfaceOrientationOverride];
         [webView resetCustomMenuAction];
         [webView setAllowedMenuActions:nil];
+        webView._dragInteractionPolicy = dragInteractionPolicy(options);
 
         UIScrollView *scrollView = webView.scrollView;
         [scrollView _removeAllAnimations:YES];
         [scrollView setZoomScale:1 animated:NO];
-        
+
+        auto currentContentInset = scrollView.contentInset;
         auto contentInsetTop = options.contentInsetTop();
-        scrollView.contentInset = UIEdgeInsetsMake(contentInsetTop, 0, 0, 0);
-        scrollView.contentOffset = CGPointMake(0, -contentInsetTop);
+        if (currentContentInset.top != contentInsetTop) {
+            currentContentInset.top = contentInsetTop;
+            scrollView.contentInset = currentContentInset;
+            scrollView.contentOffset = CGPointMake(-currentContentInset.left, -currentContentInset.top);
+        }
 
         if (webView.interactingWithFormControl)
             shouldRestoreFirstResponder = [webView resignFirstResponder];
@@ -254,7 +267,7 @@ bool TestController::platformResetStateToConsistentValues(const TestOptions& opt
         }
         
         if (hasPresentedViewController) {
-            TestInvocation::dumpWebProcessUnresponsiveness("TestController::platformResetPreferencesToConsistentValues - Failed to remove presented view controller\n");
+            TestInvocation::dumpWebProcessUnresponsiveness("TestController::platformResetStateToConsistentValues - Failed to remove presented view controller\n");
             return false;
         }
     }
@@ -274,9 +287,20 @@ void TestController::platformConfigureViewForTest(const TestInvocation& test)
     if (!test.options().useFlexibleViewport())
         return;
 
-    CGRect screenBounds = [UIScreen mainScreen].bounds;
+    UIWindowScene *scene = webView.window.windowScene;
+    CGRect sceneBounds = [UIScreen mainScreen].bounds;
+    if (scene.sizeRestrictions) {
+        // For platforms that support resizeable scenes, resize to match iPad 5th Generation,
+        // the default iPad device used for layout testing.
+        // We add the status bar in here because it is subtracted back out in viewRectForWindowRect.
+        static constexpr CGSize defaultTestingiPadViewSize = { 768, 1004 };
+        sceneBounds = CGRectMake(0, 0, defaultTestingiPadViewSize.width, defaultTestingiPadViewSize.height + CGRectGetHeight(UIApplication.sharedApplication.statusBarFrame));
+        scene.sizeRestrictions.minimumSize = sceneBounds.size;
+        scene.sizeRestrictions.maximumSize = sceneBounds.size;
+    }
+
     CGSize oldSize = webView.bounds.size;
-    mainWebView()->resizeTo(screenBounds.size.width, screenBounds.size.height, PlatformWebView::WebViewSizingMode::HeightRespectsStatusBar);
+    mainWebView()->resizeTo(sceneBounds.size.width, sceneBounds.size.height, PlatformWebView::WebViewSizingMode::HeightRespectsStatusBar);
     CGSize newSize = webView.bounds.size;
     
     if (!CGSizeEqualToSize(oldSize, newSize)) {
@@ -316,12 +340,12 @@ void TestController::abortModal()
 
 const char* TestController::platformLibraryPathForTesting()
 {
-    static NSString *platformLibraryPath = nil;
+    static NeverDestroyed<RetainPtr<NSString>> platformLibraryPath;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        platformLibraryPath = [[@"~/Library/Application Support/WebKitTestRunner" stringByExpandingTildeInPath] retain];
+        platformLibraryPath.get() = [@"~/Library/Application Support/WebKitTestRunner" stringByExpandingTildeInPath];
     });
-    return platformLibraryPath.UTF8String;
+    return [platformLibraryPath.get() UTF8String];
 }
 
 void TestController::setHidden(bool)

@@ -30,6 +30,7 @@
 #import "WKRetainPtr.h"
 #import "WKSharedAPICast.h"
 #import "WKStringCF.h"
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/WeakObjCPtr.h>
 #import <wtf/text/WTFString.h>
@@ -42,6 +43,9 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKConnection.class, self))
+        return;
+
     self._connection.~WebConnection();
 
     [super dealloc];
@@ -72,7 +76,9 @@ static void didClose(WKConnectionRef, const void* clientInfo)
         [delegate connectionDidClose:connection];
 }
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 static void setUpClient(WKConnection *wrapper, WebKit::WebConnection& connection)
+ALLOW_DEPRECATED_DECLARATIONS_END
 {
     WKConnectionClientV0 client;
     memset(&client, 0, sizeof(client));

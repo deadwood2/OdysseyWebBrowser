@@ -29,6 +29,7 @@
 #if ENABLE(GPU_PROCESS) && ENABLE(WEB_AUDIO) && PLATFORM(COCOA)
 
 #include "GPUProcessConnection.h"
+#include "Logging.h"
 #include "RemoteAudioSourceProviderManager.h"
 #include "RemoteMediaPlayerProxyMessages.h"
 
@@ -56,7 +57,7 @@ RemoteAudioSourceProvider::RemoteAudioSourceProvider(MediaPlayerIdentifier ident
     , m_logIdentifier(helper.logIdentifier())
 #endif
 {
-    ASSERT(isMainThread());
+    ASSERT(isMainRunLoop());
     UNUSED_PARAM(helper);
 
 #if ENABLE(WEB_AUDIO)
@@ -70,7 +71,7 @@ RemoteAudioSourceProvider::~RemoteAudioSourceProvider()
 
 void RemoteAudioSourceProvider::close()
 {
-    ASSERT(isMainThread());
+    ASSERT(isMainRunLoop());
     if (m_gpuProcessConnection)
         m_gpuProcessConnection->audioSourceProviderManager().removeProvider(m_identifier);
 }
@@ -89,7 +90,7 @@ void RemoteAudioSourceProvider::audioSamplesAvailable(const PlatformAudioData& d
 #if !RELEASE_LOG_DISABLED
 WTFLogChannel& RemoteAudioSourceProvider::logChannel() const
 {
-    return LogMedia;
+    return JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, Media);
 }
 #endif
 

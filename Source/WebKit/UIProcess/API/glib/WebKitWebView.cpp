@@ -28,6 +28,7 @@
 #include "APISerializedScriptValue.h"
 #include "DataReference.h"
 #include "ImageOptions.h"
+#include "ProvisionalPageProxy.h"
 #include "WebCertificateInfo.h"
 #include "WebContextMenuItem.h"
 #include "WebContextMenuItemData.h"
@@ -72,8 +73,7 @@
 #include <jsc/JSCContextPrivate.h>
 #include <WebCore/CertificateInfo.h>
 #include <WebCore/JSDOMExceptionHandling.h>
-#include <WebCore/PlatformScreen.h>
-#include <WebCore/RefPtrCairo.h>
+#include <WebCore/URLSoup.h>
 #include <glib/gi18n-lib.h>
 #include <libsoup/soup.h>
 #include <wtf/SetForScope.h>
@@ -90,6 +90,7 @@
 #include "WebKitWebInspectorPrivate.h"
 #include "WebKitWebViewBasePrivate.h"
 #include <WebCore/GUniquePtrGtk.h>
+#include <WebCore/RefPtrCairo.h>
 #endif
 
 #if PLATFORM(WPE)
@@ -203,8 +204,17 @@ enum {
     PROP_EDITABLE,
     PROP_PAGE_ID,
     PROP_IS_MUTED,
-    PROP_WEBSITE_POLICIES
+    PROP_WEBSITE_POLICIES,
+    PROP_IS_WEB_PROCESS_RESPONSIVE,
+
+    PROP_CAMERA_CAPTURE_STATE,
+    PROP_MICROPHONE_CAPTURE_STATE,
+    PROP_DISPLAY_CAPTURE_STATE,
+
+    N_PROPERTIES,
 };
+
+static GParamSpec* sObjProperties[N_PROPERTIES] = { nullptr, };
 
 typedef HashMap<uint64_t, GRefPtr<WebKitWebResource> > LoadingResourcesMap;
 typedef HashMap<uint64_t, GRefPtr<GTask> > SnapshotResultsMap;
@@ -308,6 +318,8 @@ struct _WebKitWebViewPrivate {
     GRefPtr<WebKitWebsitePolicies> websitePolicies;
 
     double textScaleFactor;
+
+    bool isWebProcessResponsive;
 };
 
 static guint signals[LAST_SIGNAL] = { 0, };
@@ -336,12 +348,28 @@ static void webkitWebViewSetIsLoading(WebKitWebView* webView, bool isLoading)
         return;
 
     webView->priv->isLoading = isLoading;
-    g_object_notify(G_OBJECT(webView), "is-loading");
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_IS_LOADING]);
 }
 
 void webkitWebViewIsPlayingAudioChanged(WebKitWebView* webView)
 {
-    g_object_notify(G_OBJECT(webView), "is-playing-audio");
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_IS_PLAYING_AUDIO]);
+}
+
+void webkitWebViewMediaCaptureStateDidChange(WebKitWebView* webView, WebCore::MediaProducer::MediaStateFlags mediaStateFlags)
+{
+    if (mediaStateFlags.isEmpty()) {
+        g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_CAMERA_CAPTURE_STATE]);
+        g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_DISPLAY_CAPTURE_STATE]);
+        g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_MICROPHONE_CAPTURE_STATE]);
+        return;
+    }
+    if (mediaStateFlags.containsAny(WebCore::MediaProducer::AudioCaptureMask))
+        g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_MICROPHONE_CAPTURE_STATE]);
+    if (mediaStateFlags.containsAny(WebCore::MediaProducer::VideoCaptureMask))
+        g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_CAMERA_CAPTURE_STATE]);
+    if (mediaStateFlags.containsAny(WebCore::MediaProducer::DisplayCaptureMask))
+        g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_DISPLAY_CAPTURE_STATE]);
 }
 
 class PageLoadStateObserver final : public PageLoadState::Observer {
@@ -370,7 +398,7 @@ private:
     void didChangeTitle() override
     {
         m_webView->priv->title = getPage(m_webView).pageLoadState().title().utf8();
-        g_object_notify(G_OBJECT(m_webView), "title");
+        g_object_notify_by_pspec(G_OBJECT(m_webView), sObjProperties[PROP_TITLE]);
         g_object_thaw_notify(G_OBJECT(m_webView));
     }
 
@@ -385,7 +413,7 @@ private:
         if (m_webView->priv->isActiveURIChangeBlocked)
             return;
         m_webView->priv->activeURI = getPage(m_webView).pageLoadState().activeURL().utf8();
-        g_object_notify(G_OBJECT(m_webView), "uri");
+        g_object_notify_by_pspec(G_OBJECT(m_webView), sObjProperties[PROP_URI]);
         g_object_thaw_notify(G_OBJECT(m_webView));
     }
 
@@ -398,7 +426,7 @@ private:
     }
     void didChangeEstimatedProgress() override
     {
-        g_object_notify(G_OBJECT(m_webView), "estimated-load-progress");
+        g_object_notify_by_pspec(G_OBJECT(m_webView), sObjProperties[PROP_ESTIMATED_LOAD_PROGRESS]);
         g_object_thaw_notify(G_OBJECT(m_webView));
     }
 
@@ -562,7 +590,7 @@ static void webkitWebViewUpdateFavicon(WebKitWebView* webView, cairo_surface_t* 
         return;
 
     priv->favicon = favicon;
-    g_object_notify(G_OBJECT(webView), "favicon");
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_FAVICON]);
 }
 
 static void webkitWebViewCancelFaviconRequest(WebKitWebView* webView)
@@ -807,6 +835,8 @@ static void webkitWebViewConstructed(GObject* object)
         webView->priv->textScaleFactor = WebCore::screenDPI() / 96.;
         page.setTextZoomFactor(zoomFactor * webView->priv->textScaleFactor);
     }, webView);
+
+    priv->isWebProcessResponsive = true;
 }
 
 static void webkitWebViewSetProperty(GObject* object, guint propId, const GValue* value, GParamSpec* paramSpec)
@@ -861,6 +891,15 @@ static void webkitWebViewSetProperty(GObject* object, guint propId, const GValue
         break;
     case PROP_WEBSITE_POLICIES:
         webView->priv->websitePolicies = static_cast<WebKitWebsitePolicies*>(g_value_get_object(value));
+        break;
+    case PROP_CAMERA_CAPTURE_STATE:
+        webkit_web_view_set_camera_capture_state(webView, static_cast<WebKitMediaCaptureState>(g_value_get_enum(value)));
+        break;
+    case PROP_MICROPHONE_CAPTURE_STATE:
+        webkit_web_view_set_microphone_capture_state(webView, static_cast<WebKitMediaCaptureState>(g_value_get_enum(value)));
+        break;
+    case PROP_DISPLAY_CAPTURE_STATE:
+        webkit_web_view_set_display_capture_state(webView, static_cast<WebKitMediaCaptureState>(g_value_get_enum(value)));
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propId, paramSpec);
@@ -929,6 +968,18 @@ static void webkitWebViewGetProperty(GObject* object, guint propId, GValue* valu
         break;
     case PROP_WEBSITE_POLICIES:
         g_value_set_object(value, webkit_web_view_get_website_policies(webView));
+        break;
+    case PROP_IS_WEB_PROCESS_RESPONSIVE:
+        g_value_set_boolean(value, webkit_web_view_get_is_web_process_responsive(webView));
+        break;
+    case PROP_CAMERA_CAPTURE_STATE:
+        g_value_set_enum(value, webkit_web_view_get_camera_capture_state(webView));
+        break;
+    case PROP_MICROPHONE_CAPTURE_STATE:
+        g_value_set_enum(value, webkit_web_view_get_microphone_capture_state(webView));
+        break;
+    case PROP_DISPLAY_CAPTURE_STATE:
+        g_value_set_enum(value, webkit_web_view_get_display_capture_state(webView));
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propId, paramSpec);
@@ -1005,15 +1056,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * since: 2.20
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_BACKEND,
+    sObjProperties[PROP_BACKEND] =
         g_param_spec_boxed(
             "backend",
             _("Backend"),
             _("The backend for the web view"),
             WEBKIT_TYPE_WEB_VIEW_BACKEND,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 #endif
 
     /**
@@ -1021,13 +1070,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * The #WebKitWebContext of the view.
      */
-    g_object_class_install_property(gObjectClass,
-                                    PROP_WEB_CONTEXT,
-                                    g_param_spec_object("web-context",
-                                                        _("Web Context"),
-                                                        _("The web context for the view"),
-                                                        WEBKIT_TYPE_WEB_CONTEXT,
-                                                        static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+    sObjProperties[PROP_WEB_CONTEXT] =
+        g_param_spec_object(
+            "web-context",
+            _("Web Context"),
+            _("The web context for the view"),
+            WEBKIT_TYPE_WEB_CONTEXT,
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
     /**
      * WebKitWebView:related-view:
      *
@@ -1037,15 +1086,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.4
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_RELATED_VIEW,
+    sObjProperties[PROP_RELATED_VIEW] =
         g_param_spec_object(
             "related-view",
             _("Related WebView"),
             _("The related WebKitWebView used when creating the view to share the same web process"),
             WEBKIT_TYPE_WEB_VIEW,
-            static_cast<GParamFlags>(WEBKIT_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY));
 
     /**
      * WebKitWebView:settings:
@@ -1054,15 +1101,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.6
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_SETTINGS,
+    sObjProperties[PROP_SETTINGS] =
         g_param_spec_object(
             "settings",
             _("WebView settings"),
             _("The WebKitSettings of the view"),
             WEBKIT_TYPE_SETTINGS,
-            static_cast<GParamFlags>(WEBKIT_PARAM_WRITABLE | G_PARAM_CONSTRUCT)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_WRITABLE | G_PARAM_CONSTRUCT));
 
     /**
      * WebKitWebView:user-content-manager:
@@ -1071,15 +1116,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.6
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_USER_CONTENT_MANAGER,
+    sObjProperties[PROP_USER_CONTENT_MANAGER] =
         g_param_spec_object(
             "user-content-manager",
             _("WebView user content manager"),
             _("The WebKitUserContentManager of the view"),
             WEBKIT_TYPE_USER_CONTENT_MANAGER,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 
     /**
      * WebKitWebView:title:
@@ -1087,13 +1130,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * The main frame document title of this #WebKitWebView. If
      * the title has not been received yet, it will be %NULL.
      */
-    g_object_class_install_property(gObjectClass,
-                                    PROP_TITLE,
-                                    g_param_spec_string("title",
-                                                        _("Title"),
-                                                        _("Main frame document title"),
-                                                        0,
-                                                        WEBKIT_PARAM_READABLE));
+    sObjProperties[PROP_TITLE] =
+        g_param_spec_string(
+            "title",
+            _("Title"),
+            _("Main frame document title"),
+            nullptr,
+            WEBKIT_PARAM_READABLE);
 
     /**
      * WebKitWebView:estimated-load-progress:
@@ -1106,13 +1149,14 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * to be received for a document, including all its possible subresources
      * and child documents.
      */
-    g_object_class_install_property(gObjectClass,
-                                    PROP_ESTIMATED_LOAD_PROGRESS,
-                                    g_param_spec_double("estimated-load-progress",
-                                                        _("Estimated Load Progress"),
-                                                        _("An estimate of the percent completion for a document load"),
-                                                        0.0, 1.0, 0.0,
-                                                        WEBKIT_PARAM_READABLE));
+    sObjProperties[PROP_ESTIMATED_LOAD_PROGRESS] =
+        g_param_spec_double(
+            "estimated-load-progress",
+            _("Estimated Load Progress"),
+            _("An estimate of the percent completion for a document load"),
+            0.0, 1.0, 0.0,
+            WEBKIT_PARAM_READABLE);
+
 #if PLATFORM(GTK)
     /**
      * WebKitWebView:favicon:
@@ -1120,12 +1164,12 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * The favicon currently associated to the #WebKitWebView.
      * See webkit_web_view_get_favicon() for more details.
      */
-    g_object_class_install_property(gObjectClass,
-                                    PROP_FAVICON,
-                                    g_param_spec_pointer("favicon",
-                                                         _("Favicon"),
-                                                         _("The favicon associated to the view, if any"),
-                                                         WEBKIT_PARAM_READABLE));
+    sObjProperties[PROP_FAVICON] =
+        g_param_spec_pointer(
+            "favicon",
+            _("Favicon"),
+            _("The favicon associated to the view, if any"),
+            WEBKIT_PARAM_READABLE);
 #endif
 
     /**
@@ -1134,13 +1178,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * The current active URI of the #WebKitWebView.
      * See webkit_web_view_get_uri() for more details.
      */
-    g_object_class_install_property(gObjectClass,
-                                    PROP_URI,
-                                    g_param_spec_string("uri",
-                                                        _("URI"),
-                                                        _("The current active URI of the view"),
-                                                        0,
-                                                        WEBKIT_PARAM_READABLE));
+    sObjProperties[PROP_URI] =
+        g_param_spec_string(
+            "uri",
+            _("URI"),
+            _("The current active URI of the view"),
+            nullptr,
+            WEBKIT_PARAM_READABLE);
 
     /**
      * WebKitWebView:zoom-level:
@@ -1148,15 +1192,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * The zoom level of the #WebKitWebView content.
      * See webkit_web_view_set_zoom_level() for more details.
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_ZOOM_LEVEL,
+    sObjProperties[PROP_ZOOM_LEVEL] =
         g_param_spec_double(
             "zoom-level",
             _("Zoom level"),
             _("The zoom level of the view content"),
             0, G_MAXDOUBLE, 1,
-            WEBKIT_PARAM_READWRITE));
+            WEBKIT_PARAM_READWRITE);
 
     /**
      * WebKitWebView:is-loading:
@@ -1168,15 +1210,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      * When the load operation finishes the property is set to %FALSE before
      * #WebKitWebView::load-changed is emitted with %WEBKIT_LOAD_FINISHED.
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_IS_LOADING,
+    sObjProperties[PROP_IS_LOADING] =
         g_param_spec_boolean(
             "is-loading",
             _("Is Loading"),
             _("Whether the view is loading a page"),
             FALSE,
-            WEBKIT_PARAM_READABLE));
+            WEBKIT_PARAM_READABLE);
 
     /**
      * WebKitWebView:is-playing-audio:
@@ -1188,15 +1228,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.8
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_IS_PLAYING_AUDIO,
+    sObjProperties[PROP_IS_PLAYING_AUDIO] =
         g_param_spec_boolean(
             "is-playing-audio",
             "Is Playing Audio",
             _("Whether the view is playing audio"),
             FALSE,
-            WEBKIT_PARAM_READABLE));
+            WEBKIT_PARAM_READABLE);
 
     /**
      * WebKitWebView:is-ephemeral:
@@ -1216,15 +1254,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.16
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_IS_EPHEMERAL,
+    sObjProperties[PROP_IS_EPHEMERAL] =
         g_param_spec_boolean(
             "is-ephemeral",
             "Is Ephemeral",
             _("Whether the web view is ephemeral"),
             FALSE,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 
     /**
      * WebKitWebView:is-controlled-by-automation:
@@ -1235,15 +1271,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.18
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_IS_CONTROLLED_BY_AUTOMATION,
+    sObjProperties[PROP_IS_CONTROLLED_BY_AUTOMATION] =
         g_param_spec_boolean(
             "is-controlled-by-automation",
             "Is Controlled By Automation",
             _("Whether the web view is controlled by automation"),
             FALSE,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 
     /**
      * WebKitWebView:automation-presentation-type:
@@ -1255,16 +1289,14 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.28
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_AUTOMATION_PRESENTATION_TYPE,
+    sObjProperties[PROP_AUTOMATION_PRESENTATION_TYPE] =
         g_param_spec_enum(
             "automation-presentation-type",
             "Automation Presentation Type",
             _("The browsing context presentation type for automation"),
             WEBKIT_TYPE_AUTOMATION_BROWSING_CONTEXT_PRESENTATION,
             WEBKIT_AUTOMATION_BROWSING_CONTEXT_PRESENTATION_WINDOW,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 
     /**
      * WebKitWebView:editable:
@@ -1274,15 +1306,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.8
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_EDITABLE,
+    sObjProperties[PROP_EDITABLE] =
         g_param_spec_boolean(
             "editable",
             _("Editable"),
             _("Whether the content can be modified by the user."),
             FALSE,
-            WEBKIT_PARAM_READWRITE));
+            WEBKIT_PARAM_READWRITE);
 
     /**
      * WebKitWebView:page-id:
@@ -1291,15 +1321,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.28
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_PAGE_ID,
+    sObjProperties[PROP_PAGE_ID] =
         g_param_spec_uint64(
             "page-id",
             _("Page Identifier"),
             _("The page identifier."),
             0, G_MAXUINT64, 0,
-            WEBKIT_PARAM_READABLE));
+            WEBKIT_PARAM_READABLE);
 
     /**
      * WebKitWebView:is-muted:
@@ -1309,15 +1337,13 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.30
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_IS_MUTED,
+    sObjProperties[PROP_IS_MUTED] =
         g_param_spec_boolean(
             "is-muted",
             "Is Muted",
             _("Whether the view audio is muted"),
             FALSE,
-            WEBKIT_PARAM_READWRITE));
+            WEBKIT_PARAM_READWRITE);
 
     /**
      * WebKitWebView:website-policies:
@@ -1326,15 +1352,105 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
      *
      * Since: 2.30
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_WEBSITE_POLICIES,
+    sObjProperties[PROP_WEBSITE_POLICIES] =
         g_param_spec_object(
             "website-policies",
             _("Default Website Policies"),
             _("The default policy object for sites loaded in this view"),
             WEBKIT_TYPE_WEBSITE_POLICIES,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
+
+    /**
+     * WebKitWebView:is-web-process-responsive:
+     *
+     * Whether the web process currently associated to the #WebKitWebView is responsive.
+     *
+     * Since: 2.34
+     */
+    sObjProperties[PROP_IS_WEB_PROCESS_RESPONSIVE] =
+        g_param_spec_boolean(
+            "is-web-process-responsive",
+            "Is Web Process Responsive",
+            _("Whether the web process currently associated to the web view is responsive"),
+            TRUE,
+            WEBKIT_PARAM_READABLE);
+
+    /**
+     * WebKitWebView:camera-capture-state:
+     *
+     * Capture state of the camera device. Whenever the user grants a media-request sent by the web
+     * page, requesting video capture capabilities (`navigator.mediaDevices.getUserMedia({video:
+     * true})`) this property will be set to %WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE.
+     *
+     * The application can monitor this property and provide a visual indicator allowing to optionally
+     * deactivate or mute the capture device by setting this property respectively to
+     * %WEBKIT_MEDIA_CAPTURE_STATE_NONE or %WEBKIT_MEDIA_CAPTURE_STATE_MUTED.
+     *
+     * If the capture state of the device is set to %WEBKIT_MEDIA_CAPTURE_STATE_NONE the web-page
+     * can still re-request the permission to the user. Permission desision caching is left to the
+     * application.
+     *
+     * Since: 2.34
+     */
+    sObjProperties[PROP_CAMERA_CAPTURE_STATE] = g_param_spec_enum(
+        "camera-capture-state",
+        "Camera Capture State",
+        _("The capture state of the camera device"),
+        WEBKIT_TYPE_MEDIA_CAPTURE_STATE,
+        WEBKIT_MEDIA_CAPTURE_STATE_NONE,
+        WEBKIT_PARAM_READWRITE);
+
+    /**
+     * WebKitWebView:microphone-capture-state:
+     *
+     * Capture state of the microphone device. Whenever the user grants a media-request sent by the web
+     * page, requesting audio capture capabilities (`navigator.mediaDevices.getUserMedia({audio:
+     * true})`) this property will be set to %WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE.
+     *
+     * The application can monitor this property and provide a visual indicator allowing to
+     * optionally deactivate or mute the capture device by setting this property respectively to
+     * %WEBKIT_MEDIA_CAPTURE_STATE_NONE or %WEBKIT_MEDIA_CAPTURE_STATE_MUTED.
+     *
+     * If the capture state of the device is set to %WEBKIT_MEDIA_CAPTURE_STATE_NONE the web-page
+     * can still re-request the permission to the user. Permission desision caching is left to the
+     * application.
+     *
+     * Since: 2.34
+     */
+    sObjProperties[PROP_MICROPHONE_CAPTURE_STATE] = g_param_spec_enum(
+        "microphone-capture-state",
+        "Microphone Capture State",
+        _("The capture state of the microphone device"),
+        WEBKIT_TYPE_MEDIA_CAPTURE_STATE,
+        WEBKIT_MEDIA_CAPTURE_STATE_NONE,
+        WEBKIT_PARAM_READWRITE);
+
+    /**
+     * WebKitWebView:display-capture-state:
+     *
+     * Capture state of the display device. Whenever the user grants a media-request sent by the web
+     * page, requesting screencasting capabilities (`navigator.mediaDevices.getDisplayMedia() this
+     * property will be set to %WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE.
+     *
+     * The application can monitor this property and provide a visual indicator allowing to
+     * optionally deactivate or mute the capture device by setting this property respectively to
+     * %WEBKIT_MEDIA_CAPTURE_STATE_NONE or %WEBKIT_MEDIA_CAPTURE_STATE_MUTED.
+     *
+     * If the capture state of the device is set to %WEBKIT_MEDIA_CAPTURE_STATE_NONE the web-page
+     * can still re-request the permission to the user. Permission desision caching is left to the
+     * application.
+     *
+     * Since: 2.34
+     */
+    sObjProperties[PROP_DISPLAY_CAPTURE_STATE] = g_param_spec_enum(
+        "display-capture-state",
+        "Display Capture State",
+        _("The capture state of the display device"),
+        WEBKIT_TYPE_MEDIA_CAPTURE_STATE,
+        WEBKIT_MEDIA_CAPTURE_STATE_NONE,
+        WEBKIT_PARAM_READWRITE);
+
+    g_object_class_install_properties(gObjectClass, N_PROPERTIES, sObjProperties);
 
     /**
      * WebKitWebView::load-changed:
@@ -2167,72 +2283,11 @@ static void webkit_web_view_class_init(WebKitWebViewClass* webViewClass)
         g_cclosure_marshal_generic,
         G_TYPE_BOOLEAN, 1,
         WEBKIT_TYPE_COLOR_CHOOSER_REQUEST);
-
-    /**
-     * WebKitWebView::show-option-menu:
-     * @web_view: the #WebKitWebView on which the signal is emitted
-     * @menu: the #WebKitOptionMenu
-     * @event: the #GdkEvent that triggered the menu, or %NULL
-     * @rectangle: the option element area
-     *
-     * This signal is emitted when a select element in @web_view needs to display a
-     * dropdown menu. This signal can be used to show a custom menu, using @menu to get
-     * the details of all items that should be displayed. The area of the element in the
-     * #WebKitWebView is given as @rectangle parameter, it can be used to position the
-     * menu. If this was triggered by a user interaction, like a mouse click,
-     * @event parameter provides the #GdkEvent.
-     * To handle this signal asynchronously you should keep a ref of the @menu.
-     *
-     * The default signal handler will pop up a #GtkMenu.
-     *
-     * Returns: %TRUE to stop other handlers from being invoked for the event.
-     *   %FALSE to propagate the event further.
-     *
-     * Since: 2.18
-     */
-    signals[SHOW_OPTION_MENU] = g_signal_new(
-        "show-option-menu",
-        G_TYPE_FROM_CLASS(webViewClass),
-        G_SIGNAL_RUN_LAST,
-        G_STRUCT_OFFSET(WebKitWebViewClass, show_option_menu),
-        g_signal_accumulator_true_handled, nullptr,
-        g_cclosure_marshal_generic,
-        G_TYPE_BOOLEAN, 3,
-        WEBKIT_TYPE_OPTION_MENU,
-        GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE,
-        GDK_TYPE_RECTANGLE | G_SIGNAL_TYPE_STATIC_SCOPE);
 #endif // PLATFORM(GTK)
 
-#if PLATFORM(WPE)
-    /**
-     * WebKitWebView::show-option-menu:
-     * @web_view: the #WebKitWebView on which the signal is emitted
-     * @menu: the #WebKitOptionMenu
-     * @rectangle: the option element area
-     *
-     * This signal is emitted when a select element in @web_view needs to display a
-     * dropdown menu. This signal can be used to show a custom menu, using @menu to get
-     * the details of all items that should be displayed. The area of the element in the
-     * #WebKitWebView is given as @rectangle parameter, it can be used to position the
-     * menu.
-     * To handle this signal asynchronously you should keep a ref of the @menu.
-     *
-     * Returns: %TRUE to stop other handlers from being invoked for the event.
-     *   %FALSE to propagate the event further.
-     *
-     * Since: 2.28
-     */
-    signals[SHOW_OPTION_MENU] = g_signal_new(
-        "show-option-menu",
-        G_TYPE_FROM_CLASS(webViewClass),
-        G_SIGNAL_RUN_LAST,
-        G_STRUCT_OFFSET(WebKitWebViewClass, show_option_menu),
-        g_signal_accumulator_true_handled, nullptr,
-        g_cclosure_marshal_generic,
-        G_TYPE_BOOLEAN, 2,
-        WEBKIT_TYPE_OPTION_MENU,
-        WEBKIT_TYPE_RECTANGLE | G_SIGNAL_TYPE_STATIC_SCOPE);
-#endif
+    // This signal is different for WPE and GTK, so it's declared in
+    // WebKitWebView[Gtk,WPE].cpp to ensure we don't break the introspection.
+    signals[SHOW_OPTION_MENU] = createShowOptionMenuSignal(webViewClass);
 
     /**
      * WebKitWebView::user-message-received:
@@ -2341,7 +2396,7 @@ void webkitWebViewLoadChanged(WebKitWebView* webView, WebKitLoadEvent loadEvent)
         // again with the page load state.
         if (activeURL != priv->activeURI) {
             priv->activeURI = activeURL;
-            g_object_notify(G_OBJECT(webView), "uri");
+            g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_URI]);
         }
 #if PLATFORM(GTK)
         WebKitFaviconDatabase* database = webkit_web_context_get_favicon_database(priv->context.get());
@@ -2558,10 +2613,10 @@ void webkitWebViewDismissCurrentScriptDialog(WebKitWebView* webView)
         webkitScriptDialogDismiss(webView->priv->currentScriptDialog);
 }
 
-Optional<WebKitScriptDialogType> webkitWebViewGetCurrentScriptDialogType(WebKitWebView* webView)
+std::optional<WebKitScriptDialogType> webkitWebViewGetCurrentScriptDialogType(WebKitWebView* webView)
 {
     if (!webView->priv->currentScriptDialog)
-        return WTF::nullopt;
+        return std::nullopt;
 
     return static_cast<WebKitScriptDialogType>(webView->priv->currentScriptDialog->type);
 }
@@ -2785,7 +2840,7 @@ bool webkitWebViewShowOptionMenu(WebKitWebView* webView, const IntRect& rect, We
 
 void webkitWebViewDidChangePageID(WebKitWebView* webView)
 {
-    g_object_notify(G_OBJECT(webView), "page-id");
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_PAGE_ID]);
 }
 
 void webkitWebViewDidReceiveUserMessage(WebKitWebView* webView, UserMessage&& message, CompletionHandler<void(UserMessage&&)>&& completionHandler)
@@ -2817,7 +2872,7 @@ void webkitWebViewDidLosePointerLock(WebKitWebView* webView)
 }
 #endif
 
-static void webkitWebViewSynthesizeCompositionKeyPress(WebKitWebView* webView, const String& text, Optional<Vector<CompositionUnderline>>&& underlines, Optional<EditingRange>&& selectionRange)
+static void webkitWebViewSynthesizeCompositionKeyPress(WebKitWebView* webView, const String& text, std::optional<Vector<CompositionUnderline>>&& underlines, std::optional<EditingRange>&& selectionRange)
 {
 #if PLATFORM(GTK)
     webkitWebViewBaseSynthesizeCompositionKeyPress(WEBKIT_WEB_VIEW_BASE(webView), text, WTFMove(underlines), WTFMove(selectionRange));
@@ -2833,7 +2888,7 @@ void webkitWebViewSetComposition(WebKitWebView* webView, const String& text, con
 
 void webkitWebViewConfirmComposition(WebKitWebView* webView, const String& text)
 {
-    webkitWebViewSynthesizeCompositionKeyPress(webView, text, WTF::nullopt, WTF::nullopt);
+    webkitWebViewSynthesizeCompositionKeyPress(webView, text, std::nullopt, std::nullopt);
 }
 
 void webkitWebViewCancelComposition(WebKitWebView* webView, const String& text)
@@ -3268,8 +3323,11 @@ void webkit_web_view_set_is_muted(WebKitWebView* webView, gboolean muted)
     if (webkit_web_view_get_is_muted (webView) == muted)
         return;
 
-    getPage(webView).setMuted(muted ? WebCore::MediaProducer::AudioIsMuted : WebCore::MediaProducer::NoneMuted);
-    g_object_notify(G_OBJECT(webView), "is-muted");
+    WebCore::MediaProducer::MutedStateFlags audioMutedFlag;
+    if (muted)
+        audioMutedFlag.add(WebCore::MediaProducer::MutedState::AudioIsMuted);
+    getPage(webView).setMuted(audioMutedFlag);
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_IS_MUTED]);
 }
 
 /**
@@ -3553,7 +3611,7 @@ void webkit_web_view_set_settings(WebKitWebView* webView, WebKitSettings* settin
 
     webView->priv->settings = settings;
     webkitWebViewUpdateSettings(webView);
-    g_object_notify(G_OBJECT(webView), "settings");
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_SETTINGS]);
 }
 
 /**
@@ -3618,7 +3676,7 @@ void webkit_web_view_set_zoom_level(WebKitWebView* webView, gdouble zoomLevel)
         page.setTextZoomFactor(zoomLevel * webView->priv->textScaleFactor);
     else
         page.setPageZoomFactor(zoomLevel);
-    g_object_notify(G_OBJECT(webView), "zoom-level");
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_ZOOM_LEVEL]);
 }
 
 /**
@@ -3773,15 +3831,11 @@ static void webkitWebViewRunJavaScriptCallback(API::SerializedScriptValue* wkSer
         StringBuilder builder;
         if (!exceptionDetails.sourceURL.isEmpty()) {
             builder.append(exceptionDetails.sourceURL);
-            if (exceptionDetails.lineNumber > 0) {
-                builder.append(':');
-                builder.appendNumber(exceptionDetails.lineNumber);
-            }
-            if (exceptionDetails.columnNumber > 0) {
-                builder.append(':');
-                builder.appendNumber(exceptionDetails.columnNumber);
-            }
-            builder.appendLiteral(": ");
+            if (exceptionDetails.lineNumber > 0)
+                builder.append(':', exceptionDetails.lineNumber);
+            if (exceptionDetails.columnNumber > 0)
+                builder.append(':', exceptionDetails.columnNumber);
+            builder.append(": ");
         }
         builder.append(exceptionDetails.message);
         g_task_return_new_error(task, WEBKIT_JAVASCRIPT_ERROR, WEBKIT_JAVASCRIPT_ERROR_SCRIPT_FAILED,
@@ -3813,7 +3867,7 @@ void webkitWebViewRunJavascriptWithoutForcedUserGestures(WebKitWebView* webView,
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(script);
 
-    RunJavaScriptParameters params = { String::fromUTF8(script), URL { }, false, WTF::nullopt, false };
+    RunJavaScriptParameters params = { String::fromUTF8(script), URL { }, false, std::nullopt, false };
     webkitWebViewRunJavaScriptWithParams(webView, script, WTFMove(params), cancellable, callback, userData);
 }
 
@@ -3836,7 +3890,7 @@ void webkit_web_view_run_javascript(WebKitWebView* webView, const gchar* script,
     g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
     g_return_if_fail(script);
 
-    RunJavaScriptParameters params = { String::fromUTF8(script), URL { }, false, WTF::nullopt, true };
+    RunJavaScriptParameters params = { String::fromUTF8(script), URL { }, false, std::nullopt, true };
     webkitWebViewRunJavaScriptWithParams(webView, script, WTFMove(params), cancellable, callback, userData);
 }
 
@@ -3934,7 +3988,7 @@ void webkit_web_view_run_javascript_in_world(WebKitWebView* webView, const gchar
 
     GRefPtr<GTask> task = adoptGRef(g_task_new(webView, cancellable, callback, userData));
     auto world = API::ContentWorld::sharedWorldWithName(String::fromUTF8(worldName));
-    getPage(webView).runJavaScriptInFrameInScriptWorld({ String::fromUTF8(script), URL { }, false, WTF::nullopt, true }, WTF::nullopt, world.get(), [task = WTFMove(task)] (auto&& result) {
+    getPage(webView).runJavaScriptInFrameInScriptWorld({ String::fromUTF8(script), URL { }, false, std::nullopt, true }, std::nullopt, world.get(), [task = WTFMove(task)] (auto&& result) {
         RefPtr<API::SerializedScriptValue> serializedScriptValue;
         ExceptionDetails exceptionDetails;
         if (result.has_value())
@@ -3979,7 +4033,7 @@ static void resourcesStreamReadCallback(GObject* object, GAsyncResult* result, g
 
     WebKitWebView* webView = WEBKIT_WEB_VIEW(g_task_get_source_object(task.get()));
     gpointer outputStreamData = g_memory_output_stream_get_data(G_MEMORY_OUTPUT_STREAM(object));
-    getPage(webView).runJavaScriptInMainFrame({ String::fromUTF8(reinterpret_cast<const gchar*>(outputStreamData)), URL { }, false, WTF::nullopt, true },
+    getPage(webView).runJavaScriptInMainFrame({ String::fromUTF8(reinterpret_cast<const gchar*>(outputStreamData)), URL { }, false, std::nullopt, true },
         [task] (auto&& result) {
             RefPtr<API::SerializedScriptValue> serializedScriptValue;
             ExceptionDetails exceptionDetails;
@@ -4289,10 +4343,10 @@ WebKitDownload* webkit_web_view_download_uri(WebKitWebView* webView, const char*
  * when it's emitted with %WEBKIT_LOAD_COMMITTED event.
  *
  * Note that this function provides no information about the security of the web
- * page if the current #WebKitTLSErrorsPolicy is @WEBKIT_TLS_ERRORS_POLICY_IGNORE,
+ * page if the current #WebKitTLSErrorsPolicy is %WEBKIT_TLS_ERRORS_POLICY_IGNORE,
  * as subresources of the page may be controlled by an attacker. This function
  * may safely be used to determine the security status of the current page only
- * if the current #WebKitTLSErrorsPolicy is @WEBKIT_TLS_ERRORS_POLICY_FAIL, in
+ * if the current #WebKitTLSErrorsPolicy is %WEBKIT_TLS_ERRORS_POLICY_FAIL, in
  * which case subresources that fail certificate verification will be blocked.
  *
  * Returns: %TRUE if the @web_view connection uses HTTPS and a response has been received
@@ -4422,6 +4476,9 @@ void webkitWebViewWebProcessTerminated(WebKitWebView* webView, WebKitWebProcessT
     }
 #endif
     g_signal_emit(webView, signals[WEB_PROCESS_TERMINATED], 0, reason);
+
+    // Reset the state of the responsiveness property.
+    webkitWebViewSetIsWebProcessResponsive(webView, true);
 }
 
 /*
@@ -4471,7 +4528,7 @@ void webkit_web_view_set_editable(WebKitWebView* webView, gboolean editable)
 
     getPage(webView).setEditable(editable);
 
-    g_object_notify(G_OBJECT(webView), "editable");
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_EDITABLE]);
 }
 
 /**
@@ -4723,4 +4780,274 @@ WebKitWebsitePolicies* webkit_web_view_get_website_policies(WebKitWebView* webVi
     g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), nullptr);
 
     return webView->priv->websitePolicies.get();
+}
+
+void webkitWebViewSetIsWebProcessResponsive(WebKitWebView* webView, bool isResponsive)
+{
+    if (webView->priv->isWebProcessResponsive == isResponsive)
+        return;
+
+    webView->priv->isWebProcessResponsive = isResponsive;
+    g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_IS_WEB_PROCESS_RESPONSIVE]);
+}
+
+/**
+ * webkit_web_view_is_web_process_responsive:
+ * @web_view: a #WebKitWebView
+ *
+ * Get whether the current web process of a #WebKitWebView is responsive.
+ *
+ * Returns: %TRUE if the web process attached to @web_view is responsive, or %FALSE otherwise.
+ *
+ * Since: 2.34
+ */
+gboolean webkit_web_view_get_is_web_process_responsive(WebKitWebView* webView)
+{
+    g_return_val_if_fail(WEBKIT_IS_WEB_VIEW(webView), FALSE);
+
+    return webView->priv->isWebProcessResponsive;
+}
+
+/**
+ * webkit_web_view_terminate_web_process:
+ * @web_view: a #WebKitWebView
+ *
+ * Terminates the web process associated to @web_view. When the web process gets terminated
+ * using this method, the #WebKitWebView::web-process-terminated signal is emitted with
+ * %WEBKIT_WEB_PROCESS_TERMINATED_BY_API as the reason for termination.
+ *
+ * Since: 2.34
+ */
+void webkit_web_view_terminate_web_process(WebKitWebView* webView)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
+
+    auto& page = getPage(webView);
+
+    Ref<WebKit::WebProcessProxy> protectedProcessProxy(page.process());
+    protectedProcessProxy->requestTermination(WebKit::ProcessTerminationReason::RequestedByClient);
+
+    if (auto* provisionalPageProxy = page.provisionalPageProxy()) {
+        Ref<WebKit::WebProcessProxy> protectedProcessProxy(provisionalPageProxy->process());
+        protectedProcessProxy->requestTermination(WebKit::ProcessTerminationReason::RequestedByClient);
+    }
+}
+
+/**
+ * webkit_web_view_set_cors_allowlist:
+ * @web_view: a #WebKitWebView
+ * @allowlist: (array zero-terminated=1) (element-type utf8) (transfer none) (nullable): an allowlist of URI patterns, or %NULL
+ *
+ * Sets the @allowlist for which
+ * [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)
+ * checks are disabled in @web_view. URI patterns must be of the form
+ * `[protocol]://[host]/[path]`, each component may contain the wildcard
+ * character (`*`) to represent zero or more other characters. All three
+ * components are required and must not be omitted from the URI
+ * patterns.
+ *
+ * Disabling CORS checks permits resources from other origins to load
+ * allowlisted resources. It does not permit the allowlisted resources
+ * to load resources from other origins.
+ *
+ * If this function is called multiple times, only the allowlist set by
+ * the most recent call will be effective.
+ *
+ * Since: 2.34
+ */
+void webkit_web_view_set_cors_allowlist(WebKitWebView* webView, const gchar* const* allowList)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
+
+    Vector<String> allowListVector;
+    if (allowList) {
+        for (auto str = allowList; *str; ++str)
+            allowListVector.append(String::fromUTF8(*str));
+    }
+
+    getPage(webView).setCORSDisablingPatterns(WTFMove(allowListVector));
+}
+
+static void webkitWebViewConfigureMediaCapture(WebKitWebView* webView, WebCore::MediaProducer::MediaCaptureKind captureKind, WebKitMediaCaptureState captureState, bool isFromDisplayCapture = false)
+{
+    auto& page = getPage(webView);
+    auto mutedState = page.mutedStateFlags();
+
+    switch (captureState) {
+    case WEBKIT_MEDIA_CAPTURE_STATE_NONE:
+        page.stopMediaCapture(captureKind, [webView, captureKind] {
+            switch (captureKind) {
+            case WebCore::MediaProducer::MediaCaptureKind::Audio:
+                g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_MICROPHONE_CAPTURE_STATE]);
+                break;
+            case WebCore::MediaProducer::MediaCaptureKind::Video:
+                g_object_notify_by_pspec(G_OBJECT(webView), sObjProperties[PROP_CAMERA_CAPTURE_STATE]);
+                break;
+            case WebCore::MediaProducer::MediaCaptureKind::AudioVideo:
+                ASSERT_NOT_REACHED();
+                return;
+            }
+        });
+        break;
+    case WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE:
+        switch (captureKind) {
+        case WebCore::MediaProducer::MediaCaptureKind::Audio:
+            mutedState.remove(WebCore::MediaProducer::MutedState::AudioCaptureIsMuted);
+            break;
+        case WebCore::MediaProducer::MediaCaptureKind::Video:
+            if (isFromDisplayCapture)
+                mutedState.remove(WebCore::MediaProducer::MutedState::ScreenCaptureIsMuted);
+            else
+                mutedState.remove(WebCore::MediaProducer::MutedState::VideoCaptureIsMuted);
+            break;
+        case WebCore::MediaProducer::MediaCaptureKind::AudioVideo:
+            ASSERT_NOT_REACHED();
+            return;
+        }
+        page.setMuted(mutedState);
+        break;
+    case WEBKIT_MEDIA_CAPTURE_STATE_MUTED:
+        switch (captureKind) {
+        case WebCore::MediaProducer::MediaCaptureKind::Audio:
+            mutedState.add(WebCore::MediaProducer::MutedState::AudioCaptureIsMuted);
+            break;
+        case WebCore::MediaProducer::MediaCaptureKind::Video:
+            if (isFromDisplayCapture)
+                mutedState.add(WebCore::MediaProducer::MutedState::ScreenCaptureIsMuted);
+            else
+                mutedState.add(WebCore::MediaProducer::MutedState::VideoCaptureIsMuted);
+            break;
+        case WebCore::MediaProducer::MediaCaptureKind::AudioVideo:
+            ASSERT_NOT_REACHED();
+            return;
+        }
+        page.setMuted(mutedState);
+        break;
+    }
+}
+
+/**
+ * webkit_web_view_get_camera_capture_state:
+ * @web_view: a #WebKitWebView
+ *
+ * Get the camera capture state of a #WebKitWebView.
+ *
+ * Returns: The #WebKitMediaCaptureState of the camera device. If #WebKitSettings:enable-mediastream
+ * is %FALSE, this method will return %WEBKIT_MEDIA_CAPTURE_STATE_NONE.
+ *
+ * Since: 2.34
+ */
+WebKitMediaCaptureState webkit_web_view_get_camera_capture_state(WebKitWebView* webView)
+{
+    auto state = getPage(webView).reportedMediaState();
+    if (state & WebCore::MediaProducer::MediaState::HasActiveVideoCaptureDevice)
+        return WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE;
+    if (state & WebCore::MediaProducer::MediaState::HasMutedVideoCaptureDevice)
+        return WEBKIT_MEDIA_CAPTURE_STATE_MUTED;
+    return WEBKIT_MEDIA_CAPTURE_STATE_NONE;
+}
+
+/**
+ * webkit_web_view_set_camera_capture_state:
+ * @web_view: a #WebKitWebView
+ * @state: a #WebKitMediaCaptureState
+ *
+ * Set the camera capture state of a #WebKitWebView.
+ *
+ * If #WebKitSettings:enable-mediastream is %FALSE, this method will have no visible effect. Once the
+ * state of the device has been set to %WEBKIT_MEDIA_CAPTURE_STATE_NONE it cannot be changed
+ * anymore. The page can however request capture again using the mediaDevices API.
+ *
+ * Since: 2.34
+ */
+void webkit_web_view_set_camera_capture_state(WebKitWebView* webView, WebKitMediaCaptureState state)
+{
+    if (webkit_web_view_get_camera_capture_state(webView) == WEBKIT_MEDIA_CAPTURE_STATE_NONE)
+        return;
+
+    webkitWebViewConfigureMediaCapture(webView, WebCore::MediaProducer::MediaCaptureKind::Video, state);
+}
+
+/**
+ * webkit_web_view_get_microphone_capture_state:
+ * @web_view: a #WebKitWebView
+ *
+ * Get the microphone capture state of a #WebKitWebView.
+ *
+ * Returns: The #WebKitMediaCaptureState of the microphone device. If #WebKitSettings:enable-mediastream
+ * is %FALSE, this method will return %WEBKIT_MEDIA_CAPTURE_STATE_NONE.
+ *
+ * Since: 2.34
+ */
+WebKitMediaCaptureState webkit_web_view_get_microphone_capture_state(WebKitWebView* webView)
+{
+    auto state = getPage(webView).reportedMediaState();
+    if (state & WebCore::MediaProducer::MediaState::HasActiveAudioCaptureDevice)
+        return WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE;
+    if (state & WebCore::MediaProducer::MediaState::HasMutedAudioCaptureDevice)
+        return WEBKIT_MEDIA_CAPTURE_STATE_MUTED;
+    return WEBKIT_MEDIA_CAPTURE_STATE_NONE;
+}
+
+/**
+ * webkit_web_view_set_microphone_capture_state:
+ * @web_view: a #WebKitWebView
+ * @state: a #WebKitMediaCaptureState
+ *
+ * Set the microphone capture state of a #WebKitWebView.
+ *
+ * If #WebKitSettings:enable-mediastream is %FALSE, this method will have no visible effect. Once the
+ * state of the device has been set to %WEBKIT_MEDIA_CAPTURE_STATE_NONE it cannot be changed
+ * anymore. The page can however request capture again using the mediaDevices API.
+ *
+ * Since: 2.34
+ */
+void webkit_web_view_set_microphone_capture_state(WebKitWebView* webView, WebKitMediaCaptureState state)
+{
+    if (webkit_web_view_get_microphone_capture_state(webView) == WEBKIT_MEDIA_CAPTURE_STATE_NONE)
+        return;
+
+    webkitWebViewConfigureMediaCapture(webView, WebCore::MediaProducer::MediaCaptureKind::Audio, state);
+}
+
+/**
+ * webkit_web_view_get_display_capture_state:
+ * @web_view: a #WebKitWebView
+ *
+ * Get the display capture state of a #WebKitWebView.
+ *
+ * Returns: The #WebKitMediaCaptureState of the display device. If #WebKitSettings:enable-mediastream
+ * is %FALSE, this method will return %WEBKIT_MEDIA_CAPTURE_STATE_NONE.
+ *
+ * Since: 2.34
+ */
+WebKitMediaCaptureState webkit_web_view_get_display_capture_state(WebKitWebView* webView)
+{
+    auto state = getPage(webView).reportedMediaState();
+    if (state & WebCore::MediaProducer::MediaState::HasActiveDisplayCaptureDevice)
+        return WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE;
+    if (state & WebCore::MediaProducer::MediaState::HasMutedDisplayCaptureDevice)
+        return WEBKIT_MEDIA_CAPTURE_STATE_MUTED;
+    return WEBKIT_MEDIA_CAPTURE_STATE_NONE;
+}
+
+/**
+ * webkit_web_view_set_display_capture_state:
+ * @web_view: a #WebKitWebView
+ * @state: a #WebKitMediaCaptureState
+ *
+ * Set the display capture state of a #WebKitWebView.
+ *
+ * If #WebKitSettings:enable-mediastream is %FALSE, this method will have no visible effect. Once the
+ * state of the device has been set to %WEBKIT_MEDIA_CAPTURE_STATE_NONE it cannot be changed
+ * anymore. The page can however request capture again using the mediaDevices API.
+ *
+ * Since: 2.34
+ */
+void webkit_web_view_set_display_capture_state(WebKitWebView* webView, WebKitMediaCaptureState state)
+{
+    if (webkit_web_view_get_display_capture_state(webView) == WEBKIT_MEDIA_CAPTURE_STATE_NONE)
+        return;
+
+    webkitWebViewConfigureMediaCapture(webView, WebCore::MediaProducer::MediaCaptureKind::Video, state, true);
 }

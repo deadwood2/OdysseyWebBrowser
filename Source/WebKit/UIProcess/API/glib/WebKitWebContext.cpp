@@ -39,6 +39,8 @@
 #include "WebKitGeolocationManagerPrivate.h"
 #include "WebKitInitialize.h"
 #include "WebKitInjectedBundleClient.h"
+#include "WebKitMemoryPressureSettings.h"
+#include "WebKitMemoryPressureSettingsPrivate.h"
 #include "WebKitNotificationProvider.h"
 #include "WebKitPrivate.h"
 #include "WebKitProtocolHandler.h"
@@ -114,7 +116,6 @@ using namespace WebKit;
 
 enum {
     PROP_0,
-
 #if PLATFORM(GTK)
     PROP_LOCAL_STORAGE_DIRECTORY,
 #endif
@@ -122,10 +123,14 @@ enum {
 #if PLATFORM(GTK)
     PROP_PSON_ENABLED,
 #if !USE(GTK4)
-    PROP_USE_SYSYEM_APPEARANCE_FOR_SCROLLBARS
+    PROP_USE_SYSTEM_APPEARANCE_FOR_SCROLLBARS,
 #endif
 #endif
+    PROP_MEMORY_PRESSURE_SETTINGS,
+    N_PROPERTIES,
 };
+
+static GParamSpec* sObjProperties[N_PROPERTIES] = { nullptr, };
 
 enum {
     DOWNLOAD_STARTED,
@@ -239,6 +244,8 @@ struct _WebKitWebContextPrivate {
 
     HashSet<String> dnsPrefetchedHosts;
     PAL::HysteresisActivity dnsPrefetchHystereris;
+
+    WebKitMemoryPressureSettings* memoryPressureSettings;
 };
 
 static guint signals[LAST_SIGNAL] = { 0, };
@@ -339,7 +346,7 @@ static void webkitWebContextGetProperty(GObject* object, guint propID, GValue* v
         g_value_set_boolean(value, context->priv->psonEnabled);
         break;
 #if !USE(GTK4)
-    case PROP_USE_SYSYEM_APPEARANCE_FOR_SCROLLBARS:
+    case PROP_USE_SYSTEM_APPEARANCE_FOR_SCROLLBARS:
         g_value_set_boolean(value, webkit_web_context_get_use_system_appearance_for_scrollbars(context));
         break;
 #endif
@@ -369,11 +376,16 @@ static void webkitWebContextSetProperty(GObject* object, guint propID, const GVa
         context->priv->psonEnabled = g_value_get_boolean(value);
         break;
 #if !USE(GTK4)
-    case PROP_USE_SYSYEM_APPEARANCE_FOR_SCROLLBARS:
+    case PROP_USE_SYSTEM_APPEARANCE_FOR_SCROLLBARS:
         webkit_web_context_set_use_system_appearance_for_scrollbars(context, g_value_get_boolean(value));
         break;
 #endif
 #endif
+    case PROP_MEMORY_PRESSURE_SETTINGS: {
+        gpointer settings = g_value_get_boxed(value);
+        context->priv->memoryPressureSettings = settings ? webkit_memory_pressure_settings_copy(static_cast<WebKitMemoryPressureSettings*>(settings)) : nullptr;
+        break;
+    }
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propID, paramSpec);
     }
@@ -397,6 +409,11 @@ static void webkitWebContextConstructed(GObject* object)
     configuration.setUseSystemAppearanceForScrollbars(priv->useSystemAppearanceForScrollbars);
 #endif
 #endif
+    if (priv->memoryPressureSettings) {
+        configuration.setMemoryPressureHandlerConfiguration(webkitMemoryPressureSettingsGetMemoryPressureHandlerConfiguration(priv->memoryPressureSettings));
+        // Once the settings have been passed to the ProcessPoolConfiguration, we don't need them anymore so we can free them.
+        g_clear_pointer(&priv->memoryPressureSettings, webkit_memory_pressure_settings_free);
+    }
 
     if (!priv->websiteDataManager)
         priv->websiteDataManager = adoptGRef(webkit_website_data_manager_new("local-storage-directory", priv->localStorageDirectory.data(), nullptr));
@@ -473,15 +490,13 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
      *
      * Deprecated: 2.10. Use #WebKitWebsiteDataManager:local-storage-directory instead.
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_LOCAL_STORAGE_DIRECTORY,
+    sObjProperties[PROP_LOCAL_STORAGE_DIRECTORY] =
         g_param_spec_string(
             "local-storage-directory",
             _("Local Storage Directory"),
             _("The directory where local storage data will be saved"),
             nullptr,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 #endif
 
     /**
@@ -491,15 +506,13 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
      *
      * Since: 2.10
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_WEBSITE_DATA_MANAGER,
+    sObjProperties[PROP_WEBSITE_DATA_MANAGER] =
         g_param_spec_object(
             "website-data-manager",
             _("Website Data Manager"),
             _("The WebKitWebsiteDataManager associated with this context"),
             WEBKIT_TYPE_WEBSITE_DATA_MANAGER,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 
 #if PLATFORM(GTK)
     /**
@@ -515,15 +528,13 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
      *
      * Since: 2.28
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_PSON_ENABLED,
+    sObjProperties[PROP_PSON_ENABLED] =
         g_param_spec_boolean(
             "process-swap-on-cross-site-navigation-enabled",
             _("Swap Processes on Cross-Site Navigation"),
             _("Whether swap Web processes on cross-site navigations is enabled"),
             FALSE,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY));
 
 #if !USE(GTK4)
     /**
@@ -537,17 +548,32 @@ static void webkit_web_context_class_init(WebKitWebContextClass* webContextClass
      *
      * Since: 2.30
      */
-    g_object_class_install_property(
-        gObjectClass,
-        PROP_USE_SYSYEM_APPEARANCE_FOR_SCROLLBARS,
+    sObjProperties[PROP_USE_SYSTEM_APPEARANCE_FOR_SCROLLBARS] =
         g_param_spec_boolean(
             "use-system-appearance-for-scrollbars",
             _("Use system appearance for scrollbars"),
             _("Whether to use system appearance for rendering scrollbars"),
             TRUE,
-            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT)));
+            static_cast<GParamFlags>(WEBKIT_PARAM_READWRITE | G_PARAM_CONSTRUCT));
 #endif
 #endif
+
+    /**
+     * WebKitWebContext:memory-pressure-settings:
+     *
+     * The #WebKitMemoryPressureSettings applied to the web processes created by this context.
+     *
+     * Since: 2.34
+     */
+    sObjProperties[PROP_MEMORY_PRESSURE_SETTINGS] =
+        g_param_spec_boxed(
+            "memory-pressure-settings",
+            _("Memory Pressure Settings"),
+            _("The WebKitMemoryPressureSettings applied to the web processes created by this context"),
+            WEBKIT_TYPE_MEMORY_PRESSURE_SETTINGS,
+            static_cast<GParamFlags>(WEBKIT_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY));
+
+    g_object_class_install_properties(gObjectClass, N_PROPERTIES, sObjProperties);
 
     /**
      * WebKitWebContext::download-started:
@@ -1784,7 +1810,7 @@ void webkit_web_context_set_use_system_appearance_for_scrollbars(WebKitWebContex
         return;
 
     context->priv->useSystemAppearanceForScrollbars = enabled;
-    g_object_notify(G_OBJECT(context), "use-system-appearance-for-scrollbars");
+    g_object_notify_by_pspec(G_OBJECT(context), sObjProperties[PROP_USE_SYSTEM_APPEARANCE_FOR_SCROLLBARS]);
 
     if (!context->priv->processPool)
         return;

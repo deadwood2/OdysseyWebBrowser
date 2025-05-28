@@ -17,12 +17,6 @@ list(APPEND WebKitTestRunner_LIBRARIES
 list(APPEND WebKitTestRunner_INCLUDE_DIRECTORIES
     ${CMAKE_BINARY_DIR}
     ${CMAKE_SOURCE_DIR}/WebKitLibraries
-    ${DERIVED_SOURCES_DIR}
-    ${DERIVED_SOURCES_DIR}/WebCore
-    ${FORWARDING_HEADERS_DIR}
-    ${FORWARDING_HEADERS_DIR}/JavaScriptCore
-    ${FORWARDING_HEADERS_DIR}/WebCore
-    ${FORWARDING_HEADERS_DIR}/WebKit
     ${ICU_INCLUDE_DIRS}
     ${WEBCORE_DIR}/testing/cocoa
     ${WEBKITLEGACY_DIR}
@@ -71,7 +65,6 @@ list(APPEND WebKitTestRunner_SOURCES
 
     ${WebKitTestRunner_DIR}/mac/EventSenderProxy.mm
     ${WebKitTestRunner_DIR}/mac/PlatformWebViewMac.mm
-    ${WebKitTestRunner_DIR}/mac/PoseAsClass.mm
     ${WebKitTestRunner_DIR}/mac/TestControllerMac.mm
     ${WebKitTestRunner_DIR}/mac/UIScriptControllerMac.mm
     ${WebKitTestRunner_DIR}/mac/WebKitTestRunnerDraggingInfo.mm
@@ -79,9 +72,10 @@ list(APPEND WebKitTestRunner_SOURCES
     ${WebKitTestRunner_DIR}/mac/WebKitTestRunnerPasteboard.mm
     ${WebKitTestRunner_DIR}/mac/WebKitTestRunnerWindow.mm
     ${WebKitTestRunner_DIR}/mac/main.mm
-    
+
     ${WebKitTestRunner_SHARED_DIR}/cocoa/ClassMethodSwizzler.mm
     ${WebKitTestRunner_SHARED_DIR}/cocoa/PlatformViewHelpers.mm
+    ${WebKitTestRunner_SHARED_DIR}/cocoa/PoseAsClass.mm
 
     ${WebKitTestRunner_SHARED_DIR}/EventSerialization/mac/EventSerializerMac.mm
     ${WebKitTestRunner_SHARED_DIR}/EventSerialization/mac/SharedEventStreamsMac.mm

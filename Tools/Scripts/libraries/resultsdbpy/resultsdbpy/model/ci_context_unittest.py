@@ -1,4 +1,4 @@
-# Copyright (C) 2019 Apple Inc. All rights reserved.
+# Copyright (C) 2019-2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -21,32 +21,21 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import contextlib
-import json
-import mock
 import time
-import unittest
 
 from fakeredis import FakeStrictRedis
 from redis import StrictRedis
 from resultsdbpy.model.cassandra_context import CassandraContext
-from resultsdbpy.model.ci_context import BuildbotURLFactory, CIContext, BuildbotEightURLFactory
+from resultsdbpy.model.ci_context import BuildbotURLFactory
 from resultsdbpy.controller.configuration import Configuration
 from resultsdbpy.model.mock_cassandra_context import MockCassandraContext
 from resultsdbpy.model.mock_model_factory import MockModelFactory
-from resultsdbpy.model.mock_repository import MockSVNRepository
 from resultsdbpy.model.wait_for_docker_test_case import WaitForDockerTestCase
+
+from webkitcorepy import mocks
 
 
 class URLFactoryTest(WaitForDockerTestCase):
-
-    class MockRequest(object):
-
-        def __init__(self, text='', status_code=200):
-            self.text = text
-            self.status_code = status_code
-
-        def json(self):
-            return json.loads(self.text)
 
     BUILD_MASTER = 'build.webkit.org'
 
@@ -214,17 +203,14 @@ class URLFactoryTest(WaitForDockerTestCase):
     )
 
     @classmethod
-    def get(cls, url, *args, **kwargs):
-        if url == f'https://{cls.BUILD_MASTER}/api/v2/builders':
-            return cls.MockRequest(text=json.dumps(cls.BUILDERS))
-        if url == f'https://{cls.BUILD_MASTER}/api/v2/workers':
-            return cls.MockRequest(text=json.dumps(cls.WORKERS))
-        return cls.MockRequest(status_code=500)
-
-    @classmethod
     @contextlib.contextmanager
     def mock(cls):
-        with mock.patch('requests.get', new=cls.get):
+        with mocks.Requests(
+            cls.BUILD_MASTER, **{
+                'api/v2/builders': mocks.Response.fromJson(cls.BUILDERS),
+                'api/v2/workers': mocks.Response.fromJson(cls.WORKERS),
+            },
+        ):
             yield
 
     @WaitForDockerTestCase.mock_if_no_docker(mock_redis=FakeStrictRedis)
@@ -256,25 +242,12 @@ class URLFactoryTest(WaitForDockerTestCase):
             self.assertEqual('https://build.webkit.org/#/builders/1/builds/1', factory.url(builder_name='Mojave-Release-Builder', build_number=1, worker_name='builder1', should_fetch=True))
             self.assertEqual('https://build.webkit.org/#/workers/1', factory.url(build_number=1, worker_name='builder1', should_fetch=True))
 
-    def test_old_builder_url(self):
-        factory = BuildbotEightURLFactory(master='build.webkit.org')
-        self.assertIsNone(factory.url())
-        self.assertEqual('https://build.webkit.org/builders/Apple%20Mojave%20Release%20WK2%20%28Tests%29', factory.url(builder_name='Apple Mojave Release WK2 (Tests)'))
-        self.assertEqual('https://build.webkit.org/builders/Apple%20Mojave%20Release%20%28Build%29', factory.url(builder_name='Apple Mojave Release (Build)'))
-        self.assertEqual('https://build.webkit.org/builders/Apple%20Mojave%20Release%20%28Build%29/builds/7170', factory.url(builder_name='Apple Mojave Release (Build)', build_number=7170))
-
-    def test_old_worker_url(self):
-        factory = BuildbotEightURLFactory(master='build.webkit.org')
-        self.assertEqual('https://build.webkit.org/buildslaves/bot610', factory.url(worker_name='bot610'))
-        self.assertEqual('https://build.webkit.org/buildslaves/bot611', factory.url(worker_name='bot611'))
-        self.assertEqual('https://build.webkit.org/builders/Apple%20Mojave%20Release%20WK2%20%28Tests%29', factory.url(builder_name='Apple Mojave Release WK2 (Tests)', worker_name='bot610'))
-
 
 class CIContextTest(WaitForDockerTestCase):
     KEYSPACE = 'suite_context_test_keyspace'
 
     def init_database(self, redis=StrictRedis, cassandra=CassandraContext):
-        with URLFactoryTest.mock():
+        with MockModelFactory.webkit(), MockModelFactory.safari(), URLFactoryTest.mock():
             cassandra.drop_keyspace(keyspace=self.KEYSPACE)
             self.model = MockModelFactory.create(redis=redis(), cassandra=cassandra(keyspace=self.KEYSPACE, create_keyspace=True))
             self.model.ci_context.add_url_factory(BuildbotURLFactory(master='build.webkit.org', redis=self.model.redis))
@@ -324,12 +297,12 @@ class CIContextTest(WaitForDockerTestCase):
         urls = self.model.ci_context.find_urls_by_commit(
             configurations=[Configuration(version_name='Mojave', flavor='wk2')],
             suite='layout-tests',
-            begin=MockSVNRepository.webkit().commit_for_id(236542),
-            end=MockSVNRepository.webkit().commit_for_id(236542),
+            begin=1601660000,
+            end=1601660000,
         )
 
         self.assertEqual(next(iter(urls.values()))[0]['queue'], 'https://build.webkit.org/#/builders/2')
-        self.assertEqual(next(iter(urls.values()))[0]['build'], 'https://build.webkit.org/#/builders/2/builds/3')
+        self.assertEqual(next(iter(urls.values()))[0]['build'], 'https://build.webkit.org/#/builders/2/builds/1')
         self.assertEqual(next(iter(urls.values()))[0]['worker'], 'https://build.webkit.org/#/workers/3')
 
     @WaitForDockerTestCase.mock_if_no_docker(mock_redis=FakeStrictRedis, mock_cassandra=MockCassandraContext)

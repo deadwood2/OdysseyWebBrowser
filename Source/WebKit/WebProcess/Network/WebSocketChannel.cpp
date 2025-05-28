@@ -42,12 +42,12 @@
 namespace WebKit {
 using namespace WebCore;
 
-Ref<WebSocketChannel> WebSocketChannel::create(Document& document, WebSocketChannelClient& client)
+Ref<WebSocketChannel> WebSocketChannel::create(WebPageProxyIdentifier webPageProxyID, Document& document, WebSocketChannelClient& client)
 {
-    return adoptRef(*new WebSocketChannel(document, client));
+    return adoptRef(*new WebSocketChannel(webPageProxyID, document, client));
 }
 
-void WebSocketChannel::notifySendFrame(WebSocketFrame::OpCode opCode, const char* data, size_t length)
+void WebSocketChannel::notifySendFrame(WebSocketFrame::OpCode opCode, const uint8_t* data, size_t length)
 {
     WebSocketFrame frame(opCode, true, false, true, data, length);
     m_inspector.didSendWebSocketFrame(m_document.get(), frame);
@@ -56,11 +56,11 @@ void WebSocketChannel::notifySendFrame(WebSocketFrame::OpCode opCode, const char
 NetworkSendQueue WebSocketChannel::createMessageQueue(Document& document, WebSocketChannel& channel)
 {
     return { document, [&channel](auto& utf8String) {
-        channel.notifySendFrame(WebSocketFrame::OpCode::OpCodeText, utf8String.data(), utf8String.length());
-        channel.sendMessage(Messages::NetworkSocketChannel::SendString { IPC::DataReference { reinterpret_cast<const uint8_t*>(utf8String.data()), utf8String.length() } }, utf8String.length());
-    }, [&channel](const char* data, size_t byteLength) {
-        channel.notifySendFrame(WebSocketFrame::OpCode::OpCodeBinary, data, byteLength);
-        channel.sendMessage(Messages::NetworkSocketChannel::SendData { IPC::DataReference { reinterpret_cast<const uint8_t*>(data), byteLength } }, byteLength);
+        channel.notifySendFrame(WebSocketFrame::OpCode::OpCodeText, utf8String.dataAsUInt8Ptr(), utf8String.length());
+        channel.sendMessage(Messages::NetworkSocketChannel::SendString { IPC::DataReference { utf8String.dataAsUInt8Ptr(), utf8String.length() } }, utf8String.length());
+    }, [&channel](auto& span) {
+        channel.notifySendFrame(WebSocketFrame::OpCode::OpCodeBinary, span.data(), span.size());
+        channel.sendMessage(Messages::NetworkSocketChannel::SendData { IPC::DataReference { span.data(), span.size() } }, span.size());
     }, [&channel](ExceptionCode exceptionCode) {
         auto code = static_cast<int>(exceptionCode);
         channel.fail(makeString("Failed to load Blob: exception code = ", code));
@@ -68,11 +68,12 @@ NetworkSendQueue WebSocketChannel::createMessageQueue(Document& document, WebSoc
     } };
 }
 
-WebSocketChannel::WebSocketChannel(Document& document, WebSocketChannelClient& client)
+WebSocketChannel::WebSocketChannel(WebPageProxyIdentifier webPageProxyID, Document& document, WebSocketChannelClient& client)
     : m_document(makeWeakPtr(document))
     , m_client(makeWeakPtr(client))
     , m_messageQueue(createMessageQueue(document, *this))
     , m_inspector(document)
+    , m_webPageProxyID(webPageProxyID)
 {
     WebProcess::singleton().webSocketChannelManager().addChannel(*this);
 }
@@ -116,7 +117,7 @@ WebSocketChannel::ConnectStatus WebSocketChannel::connect(const URL& url, const 
 
     m_inspector.didCreateWebSocket(m_document.get(), url);
     m_url = request->url();
-    MessageSender::send(Messages::NetworkConnectionToWebProcess::CreateSocketChannel { *request, protocol, m_identifier });
+    MessageSender::send(Messages::NetworkConnectionToWebProcess::CreateSocketChannel { *request, protocol, m_identifier, m_webPageProxyID });
     return ConnectStatus::OK;
 }
 
@@ -132,7 +133,7 @@ bool WebSocketChannel::increaseBufferedAmount(size_t byteLength)
         return false;
     }
 
-    m_bufferedAmount = checkedNewBufferedAmount.unsafeGet();
+    m_bufferedAmount = checkedNewBufferedAmount;
     if (m_client)
         m_client->didUpdateBufferedAmount(m_bufferedAmount);
     return true;
@@ -223,7 +224,7 @@ void WebSocketChannel::fail(const String& reason)
     if (m_isClosing)
         return;
 
-    MessageSender::send(Messages::NetworkSocketChannel::Close { 0, reason });
+    MessageSender::send(Messages::NetworkSocketChannel::Close { WebCore::WebSocketChannel::CloseEventCodeGoingAway, reason });
     didClose(WebCore::WebSocketChannel::CloseEventCodeAbnormalClosure, { });
 }
 
@@ -234,10 +235,9 @@ void WebSocketChannel::disconnect()
     m_pendingTasks.clear();
     m_messageQueue.clear();
 
-
     m_inspector.didCloseWebSocket(m_document.get());
 
-    MessageSender::send(Messages::NetworkSocketChannel::Close { 0, { } });
+    MessageSender::send(Messages::NetworkSocketChannel::Close { WebCore::WebSocketChannel::CloseEventCodeGoingAway, { } });
 }
 
 void WebSocketChannel::didConnect(String&& subprotocol, String&& extensions)
@@ -260,7 +260,7 @@ void WebSocketChannel::didConnect(String&& subprotocol, String&& extensions)
     m_client->didConnect();
 }
 
-static inline WebSocketFrame createWebSocketFrameForWebInspector(const char* data, size_t length, WebSocketFrame::OpCode opCode)
+static inline WebSocketFrame createWebSocketFrameForWebInspector(const uint8_t* data, size_t length, WebSocketFrame::OpCode opCode)
 {
     // This is an approximation since frames can be merged on a single message.
     WebSocketFrame frame;
@@ -293,7 +293,8 @@ void WebSocketChannel::didReceiveText(String&& message)
         return;
     }
 
-    m_inspector.didReceiveWebSocketFrame(m_document.get(), createWebSocketFrameForWebInspector(message.utf8().data(), message.utf8().length(), WebSocketFrame::OpCode::OpCodeText));
+    auto utf8Message = message.utf8();
+    m_inspector.didReceiveWebSocketFrame(m_document.get(), createWebSocketFrameForWebInspector(utf8Message.dataAsUInt8Ptr(), utf8Message.length(), WebSocketFrame::OpCode::OpCodeText));
 
     m_client->didReceiveMessage(message);
 }
@@ -314,7 +315,7 @@ void WebSocketChannel::didReceiveBinaryData(IPC::DataReference&& data)
         return;
     }
 
-    m_inspector.didReceiveWebSocketFrame(m_document.get(), createWebSocketFrameForWebInspector(reinterpret_cast<const char*>(data.data()), data.size(), WebSocketFrame::OpCode::OpCodeBinary));
+    m_inspector.didReceiveWebSocketFrame(m_document.get(), createWebSocketFrameForWebInspector(data.data(), data.size(), WebSocketFrame::OpCode::OpCodeBinary));
 
     m_client->didReceiveBinaryData(data.vector());
 }

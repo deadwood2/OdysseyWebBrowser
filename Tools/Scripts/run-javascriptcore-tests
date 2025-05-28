@@ -111,6 +111,7 @@ my $artifact_exec_wrapper = undef;
 my $version;
 my $versionName;
 my $sdk;
+my $deviceOS;
 my $failFast = 1;
 my $coverage = 0;
 my $coverageDir;
@@ -266,6 +267,7 @@ Usage: $programName [options] [options to pass to build system]
   --version                     Specify the version number of the device running tests.
   --version-name                Specify the version name of the hardware running tests.
   --sdk                         Specific SDK or OS version of the form ##*###
+  --device-os                   Speicifc OS version for the remote device
   --extra-tests=                Path to a file containing extra tests
   --child-processes=            Specify the number of child processes.
   --shell-runner                Uses the shell-based test runner instead of the default make-based runner.
@@ -340,6 +342,7 @@ GetOptions(
     'version=s' => \$version,
     'version-name=s' => \$versionName,
     'sdk=s' => \$sdk,
+    'device-os=s' => \$deviceOS,
     'remote-config-file=s' => \$remoteConfigFile,
     'child-processes=s' => \$childProcesses,
     'shell-runner' => \$shellRunner,
@@ -473,6 +476,9 @@ sub configurationForUpload()
     if ($sdk) {
         $result->{sdk} = $sdk;
     }
+    if ($deviceOS) {
+        $result->{sdk} = $deviceOS;
+    }
     return $result;
 }
 
@@ -484,8 +490,22 @@ $runTestAPI = enableTestOrNot($runTestAPI);
 $runJSCStress = enableTestOrNot($runJSCStress);
 $runMozillaTests = enableTestOrNot($runMozillaTests);
 
-# Assume any arguments left over from GetOptions are assumed to be build arguments
-my @buildArgs = @ARGV;
+my @buildArgs;
+
+if ($buildJSC) {
+    # Assume any arguments left over from GetOptions are to be passed as build arguments.
+    @buildArgs = @ARGV;
+} elsif (scalar(@ARGV) > 0) {
+    foreach (@ARGV) {
+        my $arg = $_;
+        if ($arg =~ /^-.*/) {
+            print STDERR "Unrecognized option `$arg'\n";
+        } else {
+            print STDERR "Stray anonymous argument `$arg'\n";
+        }
+    }
+    exit 2;
+}
 
 if ($showHelp) {
    print STDERR $usage;
@@ -495,37 +515,35 @@ if ($showHelp) {
 setConfigurationProductDir(Cwd::abs_path($root)) if (defined($root));
 my $archsInBuild = architecturesForProducts();
 
-my $nativeTarget = "";
-my $nativePort = 0;
-$nativeTarget = $remoteHost if ($remoteHost);
+my $remotes = [];
 if (defined $remoteConfigFile) {
     open my $handle, '<', $remoteConfigFile or die "Failed to open $remoteConfigFile: $!";
     my $configJson = do { local $/; <$handle> };
     my $remoteConfig = decode_json($configJson);
     if (defined $remoteConfig->{"remotes"}) {
-        my $remotes = $remoteConfig->{"remotes"};
-        my @split = split(':', @$remotes[0]->{"address"});
-        $nativeTarget = $split[0];
-        $nativePort = $split[1] if scalar(@split) > 1;
+        $remotes = $remoteConfig->{"remotes"};
     } elsif (defined $remoteConfig->{"remote"}) {
         my @split = split(':', $remoteConfig->{"remote"});
-        $nativeTarget = $split[0];
-        $nativePort = $split[1] if scalar(@split) > 1;
+        $remotes = [
+            {
+                "name" => "synthesized",
+                "address" => $remoteConfig->{"remote"}
+            }
+         ];
     }
 }
-$nativePort = 22 if $nativeTarget && !$nativePort;
 
 if (defined $archs) {
     die "$archs not supported by the provided binary, which supports '$archsInBuild'" if index($archsInBuild, $archs) == -1;
 } else {
     # Fallback is x86_64, which we replace with the native architecture if the native architecture is in the provided build
     $archs = "x86_64";
-    $archs = nativeArchitecture($nativeTarget, $nativePort) if (!isAppleMacWebKit() || index($archsInBuild, nativeArchitecture($nativeTarget, $nativePort)) != -1);
+    $archs = nativeArchitecture($remotes) if (!isAppleMacWebKit() || index($archsInBuild, nativeArchitecture($remotes)) != -1);
 }
 
 # For running tests, arm64e should map to arm64
 $archs = "arm64" if $archs eq "arm64e";
-if ($archs ne nativeArchitecture($nativeTarget, $nativePort) && (nativeArchitecture($nativeTarget, $nativePort) ne "arm64" || !isAppleMacWebKit())) {
+if ($archs ne nativeArchitecture($remotes) && (nativeArchitecture($remotes) ne "arm64" || !isAppleMacWebKit())) {
     die "Cannot run tests with $archs on this machine";
 }
 
@@ -603,7 +621,7 @@ sub runTest {
         unshift @command, $artifact_exec_wrapper;
     }
     unshift @command, ("xcrun", "-sdk", xcodeSDK(), "sim") if willUseIOSSimulatorSDK();
-    unshift @command, ("/usr/bin/arch", "-$archs") if $archs ne nativeArchitecture($nativeTarget, $nativePort);
+    unshift @command, ("/usr/bin/arch", "-$archs") if $archs ne nativeArchitecture($remotes);
     unshift @command, wrapperPrefixIfNeeded() if isGtk() or isWPE();
 
     if ($envVars ne "") {
@@ -618,13 +636,16 @@ sub runTest {
     my $lastOptimizeLevel;
 
     open(TEST, "-|", "@command 2>&1") or die "Failed to run @command";
+    my $testOutput = "";
     while ( my $line = <TEST> ) {
-        print $line if ($verbose);
+        $testOutput .= $line;
     }
     $testResult = close(TEST) ? 0 : $?;
     $reportData{$testName} = $testResult ? {actual => "FAIL"} : {actual => "PASS"};
 
     my $exitStatus = exitStatus($testResult);
+
+    print "$testOutput" if ($verbose or $testResult);
     print "$testName completed with rc=$testResult ($exitStatus)\n\n";
 
     if ($testResult) {
@@ -767,7 +788,7 @@ sub runJSCStressTests
         "/usr/bin/env", "ruby", "Tools/Scripts/run-jsc-stress-tests",
         "-j", jscPath($productDir), "-o", $jscStressResultsDir, "--arch", $archs);
 
-    if (nativeArchitecture($nativeTarget, $nativePort) ne $archs) {
+    if (nativeArchitecture($remotes) ne $archs) {
         push(@jscStressDriverCmd, "--force-architecture");
         push(@jscStressDriverCmd, $archs);
     }
@@ -918,9 +939,20 @@ sub runJSCStressTests
     }
     print "\n";
 
+    my @jscStressNoResultList = readAllLines($jscStressResultsDir . "/noresult");
+    my $numJSCStressNoResultTests = @jscStressNoResultList;
+
+    if ($numJSCStressNoResultTests) {
+        $isTestFailed = 1;
+    }
+    foreach my $testNoResult (@jscStressNoResultList) {
+            $reportData{$testNoResult} = {actual => "ERROR"};
+    }
+
     print "Results for JSC stress tests:\n";
     printThingsFound($numJSCStressFailures, "failure", "failures", "found");
-    print "    OK.\n" if $numJSCStressFailures == 0;
+    printThingsFound($numJSCStressNoResultTests, "test", "tests", "failed to complete");
+    print "    OK.\n" if $numJSCStressFailures == 0 and $numJSCStressNoResultTests == 0;
 
     print "\n";
 

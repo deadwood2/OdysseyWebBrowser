@@ -123,9 +123,10 @@ enum {
     kWKContextMenuItemTagToggleVideoFullscreen,
     kWKContextMenuItemTagShareMenu,
     kWKContextMenuItemTagToggleVideoEnhancedFullscreen,
-    kWKContextMenuItemTagAddHighlightToCurrentGroup,
-    kWKContextMenuItemTagAddHighlightToNewGroup,
+    kWKContextMenuItemTagAddHighlightToCurrentQuickNote,
+    kWKContextMenuItemTagAddHighlightToNewQuickNote,
     kWKContextMenuItemTagRevealImage,
+    kWKContextMenuItemTagTranslate,
     kWKContextMenuItemBaseApplicationTag = 10000
 };
 typedef uint32_t WKContextMenuItemTag;

@@ -34,6 +34,7 @@
 
 #if USE(SOUP)
 #include <WebCore/HTTPCookieAcceptPolicy.h>
+#include <wtf/MemoryPressureHandler.h>
 #endif
 
 namespace IPC {
@@ -43,8 +44,13 @@ class Encoder;
 
 namespace WebKit {
 
+struct WebsiteDataStoreParameters;
+
 struct NetworkProcessCreationParameters {
     NetworkProcessCreationParameters();
+    NetworkProcessCreationParameters(NetworkProcessCreationParameters&&);
+    ~NetworkProcessCreationParameters();
+    NetworkProcessCreationParameters& operator=(NetworkProcessCreationParameters&&);
 
     void encode(IPC::Encoder&) const;
     static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, NetworkProcessCreationParameters&);
@@ -66,13 +72,13 @@ struct NetworkProcessCreationParameters {
 
 #if PLATFORM(COCOA)
     String uiProcessBundleIdentifier;
-    uint32_t uiProcessSDKVersion { 0 };
     RetainPtr<CFDataRef> networkATSContext;
 #endif
 
 #if USE(SOUP)
     WebCore::HTTPCookieAcceptPolicy cookieAcceptPolicy { WebCore::HTTPCookieAcceptPolicy::AlwaysAccept };
     Vector<String> languages;
+    std::optional<MemoryPressureHandler::Configuration> memoryPressureHandlerConfiguration;
 #endif
 
     Vector<String> urlSchemesRegisteredAsSecure;
@@ -82,6 +88,8 @@ struct NetworkProcessCreationParameters {
 
     bool enablePrivateClickMeasurement { true };
     bool enablePrivateClickMeasurementDebugMode { false };
+
+    Vector<WebsiteDataStoreParameters> websiteDataStoreParameters;
 };
 
 } // namespace WebKit

@@ -247,6 +247,8 @@ static bool shouldSuppressThreadSafetyCheck()
     return WebThreadIsEnabled() || applicationSDKVersion() < DYLD_IOS_VERSION_12_0;
 #elif PLATFORM(MAC)
     return !isInWebProcess() && applicationSDKVersion() < DYLD_MACOSX_VERSION_10_14;
+#elif OS(MORPHOS)
+	return true; // wut?
 #else
     return false;
 #endif
@@ -435,7 +437,7 @@ void TimerBase::updateHeapIfNeeded(MonotonicTime oldTime)
         return;
 
 #if ASSERT_ENABLED
-    Optional<unsigned> oldHeapIndex;
+    std::optional<unsigned> oldHeapIndex;
     if (m_heapItem->isInHeap())
         oldHeapIndex = m_heapItem->heapIndex();
 #endif
@@ -450,7 +452,7 @@ void TimerBase::updateHeapIfNeeded(MonotonicTime oldTime)
         heapIncreaseKey();
 
 #if ASSERT_ENABLED
-    Optional<unsigned> newHeapIndex;
+    std::optional<unsigned> newHeapIndex;
     if (m_heapItem->isInHeap())
         newHeapIndex = m_heapItem->heapIndex();
     ASSERT(newHeapIndex != oldHeapIndex);
@@ -467,7 +469,7 @@ void TimerBase::setNextFireTime(MonotonicTime newTime)
     RELEASE_ASSERT_WITH_SECURITY_IMPLICATION(!timerHasBeenDeleted);
 
     if (m_unalignedNextFireTime != newTime) {
-        RELEASE_ASSERT(!std::isnan(newTime));
+        // RELEASE_ASSERT(!std::isnan(newTime));
         m_unalignedNextFireTime = newTime;
     }
 

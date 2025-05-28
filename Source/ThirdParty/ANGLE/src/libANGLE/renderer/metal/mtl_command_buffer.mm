@@ -571,7 +571,7 @@ CommandBuffer::CommandBuffer(CommandQueue *cmdQueue) : mCmdQueue(*cmdQueue) {}
 
 CommandBuffer::~CommandBuffer()
 {
-    finish();
+    commit(WaitUntilFinished);
     cleanup();
 }
 
@@ -582,17 +582,21 @@ bool CommandBuffer::valid() const
     return validImpl();
 }
 
-void CommandBuffer::commit()
+void CommandBuffer::commit(CommandBufferFinishOperation operation)
 {
     std::lock_guard<std::mutex> lg(mLock);
     commitImpl();
+    if(operation == WaitUntilScheduled)
+    {
+        [get() waitUntilScheduled];
+    }
+    else if(operation == WaitUntilFinished)
+    {
+        [get() waitUntilCompleted];
+    }
 }
 
-void CommandBuffer::finish()
-{
-    commit();
-    [get() waitUntilCompleted];
-}
+
 
 void CommandBuffer::present(id<CAMetalDrawable> presentationDrawable)
 {
@@ -776,7 +780,6 @@ void CommandBuffer::commitImpl()
 
     // Do the actual commit
     [get() commit];
-
     mCommitted = true;
 }
 
@@ -791,11 +794,13 @@ void CommandBuffer::forceEndingCurrentEncoder()
 
 void CommandBuffer::setPendingEvents()
 {
+#if ANGLE_MTL_EVENT_AVAILABLE
     for (const std::pair<mtl::SharedEventRef, uint64_t> &eventEntry : mPendingSignalEvents)
     {
         setEventImpl(eventEntry.first, eventEntry.second);
     }
     mPendingSignalEvents.clear();
+#endif
 }
 
 void CommandBuffer::setEventImpl(const mtl::SharedEventRef &event, uint64_t value)
@@ -1029,6 +1034,7 @@ void RenderCommandEncoder::reset()
 {
     CommandEncoder::reset();
     mRecording = false;
+    mPipelineStateSet = false;
     mCommands.clear();
 }
 
@@ -1124,6 +1130,24 @@ void RenderCommandEncoder::endEncodingImpl(bool considerDiscardSimulation)
     // reset state
     mRenderPassDesc = RenderPassDesc();
     mStateCache.reset();
+}
+
+
+inline void RenderCommandEncoder::initAttachmentWriteDependencyAndScissorRect(
+    const RenderPassAttachmentDesc &attachment)
+{
+    TextureRef texture = attachment.texture();
+    if (texture)
+    {
+        cmdBuffer().setWriteDependency(texture);
+
+        const MipmapNativeLevel &mipLevel = attachment.level();
+
+        mRenderPassMaxScissorRect.width =
+            std::min<NSUInteger>(mRenderPassMaxScissorRect.width, texture->width(mipLevel));
+        mRenderPassMaxScissorRect.height =
+            std::min<NSUInteger>(mRenderPassMaxScissorRect.height, texture->height(mipLevel));
+    }
 }
 
 inline void RenderCommandEncoder::initWriteDependency(const TextureRef &texture)
@@ -1246,16 +1270,19 @@ RenderCommandEncoder &RenderCommandEncoder::restart(const RenderPassDesc &desc)
     mRenderPassDesc = desc;
     mRecording      = true;
     mHasDrawCalls   = false;
-
+    mRenderPassMaxScissorRect = {.x      = 0,
+                                 .y      = 0,
+                                 .width  = std::numeric_limits<NSUInteger>::max(),
+                                 .height = std::numeric_limits<NSUInteger>::max()};
     // mask writing dependency & set appropriate store options
     for (uint32_t i = 0; i < mRenderPassDesc.numColorAttachments; ++i)
     {
-        initWriteDependency(mRenderPassDesc.colorAttachments[i].texture());
+        initAttachmentWriteDependencyAndScissorRect(mRenderPassDesc.colorAttachments[i]);
     }
 
-    initWriteDependency(mRenderPassDesc.depthAttachment.texture());
+    initAttachmentWriteDependencyAndScissorRect(mRenderPassDesc.depthAttachment);
 
-    initWriteDependency(mRenderPassDesc.stencilAttachment.texture());
+    initAttachmentWriteDependencyAndScissorRect(mRenderPassDesc.stencilAttachment);
 
     // Convert to Objective-C descriptor
     mRenderPassDesc.convertToMetalDesc(mCachedRenderPassDescObjC);
@@ -1272,6 +1299,7 @@ RenderCommandEncoder &RenderCommandEncoder::restart(const RenderPassDesc &desc)
 
 RenderCommandEncoder &RenderCommandEncoder::setRenderPipelineState(id<MTLRenderPipelineState> state)
 {
+    mPipelineStateSet = true;
     if (mStateCache.renderPipeline == state)
     {
         return *this;
@@ -1386,13 +1414,25 @@ RenderCommandEncoder &RenderCommandEncoder::setViewport(const MTLViewport &viewp
 
 RenderCommandEncoder &RenderCommandEncoder::setScissorRect(const MTLScissorRect &rect)
 {
-    if (mStateCache.scissorRect.valid() && mStateCache.scissorRect.value() == rect)
+    NSUInteger clampedWidth =  rect.x > mRenderPassMaxScissorRect.width ? 0 : mRenderPassMaxScissorRect.width - rect.x;
+    NSUInteger clampedHeight = rect.y > mRenderPassMaxScissorRect.height ? 0 : mRenderPassMaxScissorRect.height - rect.y;
+
+    MTLScissorRect clampedRect = {
+        rect.x, rect.y, std::min(rect.width, clampedWidth), std::min(rect.height, clampedHeight) };
+
+    if (mStateCache.scissorRect.valid() && mStateCache.scissorRect.value() == clampedRect)
     {
         return *this;
     }
-    mStateCache.scissorRect = rect;
+    
+    if (ANGLE_UNLIKELY(clampedRect.width == 0 || clampedRect.height == 0))
+    {
+        //An empty rectangle isn't a valid scissor.
+        return *this;
+    }
+    mStateCache.scissorRect = clampedRect;
 
-    mCommands.push(CmdType::SetScissorRect).push(rect);
+    mCommands.push(CmdType::SetScissorRect).push(clampedRect);
 
     return *this;
 }
@@ -1568,6 +1608,7 @@ RenderCommandEncoder &RenderCommandEncoder::draw(MTLPrimitiveType primitiveType,
                                                  uint32_t vertexStart,
                                                  uint32_t vertexCount)
 {
+    ASSERT(mPipelineStateSet && "Render Pipeline State was never set and we've issued a draw command.");
     mHasDrawCalls = true;
     mCommands.push(CmdType::Draw).push(primitiveType).push(vertexStart).push(vertexCount);
 
@@ -1579,6 +1620,7 @@ RenderCommandEncoder &RenderCommandEncoder::drawInstanced(MTLPrimitiveType primi
                                                           uint32_t vertexCount,
                                                           uint32_t instances)
 {
+    ASSERT(mPipelineStateSet && "Render Pipeline State was never set and we've issued a draw command.");
     mHasDrawCalls = true;
     mCommands.push(CmdType::DrawInstanced)
         .push(primitiveType)
@@ -1595,6 +1637,7 @@ RenderCommandEncoder &RenderCommandEncoder::drawIndexed(MTLPrimitiveType primiti
                                                         const BufferRef &indexBuffer,
                                                         size_t bufferOffset)
 {
+    ASSERT(mPipelineStateSet && "Render Pipeline State was never set and we've issued a draw command.");
     if (!indexBuffer)
     {
         return *this;
@@ -1620,6 +1663,7 @@ RenderCommandEncoder &RenderCommandEncoder::drawIndexedInstanced(MTLPrimitiveTyp
                                                                  size_t bufferOffset,
                                                                  uint32_t instances)
 {
+    ASSERT(mPipelineStateSet && "Render Pipeline State was never set and we've issued a draw command.");
     if (!indexBuffer)
     {
         return *this;
@@ -1648,6 +1692,7 @@ RenderCommandEncoder &RenderCommandEncoder::drawIndexedInstancedBaseVertex(
     uint32_t instances,
     uint32_t baseVertex)
 {
+    ASSERT(mPipelineStateSet && "Render Pipeline State was never set and we've issued a draw command.");
     if (!indexBuffer)
     {
         return *this;

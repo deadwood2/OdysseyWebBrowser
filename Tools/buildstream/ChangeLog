@@ -1,3 +1,176 @@
+2021-08-05  Adrian Perez de Castro  <aperez@igalia.com>
+
+        [Flatpak SDK] Update libwpe to 1.11.1
+        https://bugs.webkit.org/show_bug.cgi?id=228793
+
+        Reviewed by Alejandro G. Castro.
+
+        * elements/sdk/libwpe.bst: Bump to version 1.11.1, which includes the
+        new fullscreen API support.
+
+2021-07-28  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Dependencies update - July 2021 round
+        https://bugs.webkit.org/show_bug.cgi?id=228275
+
+        Reviewed by Adrian Perez de Castro.
+
+        * elements/freedesktop-sdk.bst: Update to latest 20.08 junction version.
+        * elements/qt5/qtbase.bst: Switch to KDE 5.15 branch.
+        * elements/qt5/qtdeclarative.bst: Ditto.
+        * elements/qt5/qtquickcontrols.bst: Ditto.
+        * elements/qt5/qtquickcontrols2.bst: Ditto.
+        * elements/qt5/qtwayland.bst: Ditto.
+        * elements/qt5/qtx11extras.bst: Ditto.
+        * elements/sdk-build-depends/rapidjson.bst: Update to latest git snapshot.
+        * elements/sdk-platform.bst: Add virtualenv, needed for WPT tests.
+        * elements/sdk/ccls.bst: Update to latest release.
+        * elements/sdk/clangd.bst: Bump to version 12.
+        * elements/sdk/ffmpeg.bst: Bump to version 4.4.
+        * elements/sdk/openjpeg.bst: Bump to version 2.4.
+        * elements/sdk/rr.bst: Update to latest git snapshot.
+        * elements/sdk/x264.bst: Ditto. Snapshot tarballs were discontinued years ago.
+        * patches/qtbase-make-sure-to-correctly-construct-base-platform-theme.patch: Removed.
+        * patches/qtbase-revert-correct-handling-for-xdg-runtime-dir.patch: Removed.
+        * patches/qtbase-revert-qstandardpaths-dont-change-permissions-on-xdg-runtime-dir.patch: Added.
+        * patches/qtdeclarative-use-python3.patch: Removed.
+        * project.conf:
+
+2021-07-09  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [Flatpak SDK] Update to libsoup3 2.99.9
+        https://bugs.webkit.org/show_bug.cgi?id=227833
+
+        Reviewed by Michael Catanzaro.
+
+        It requires new glib and glib-networking too.
+
+        * elements/sdk/glib-networking.bst:
+        * elements/sdk/glib.bst:
+        * elements/sdk/libsoup3.bst:
+
+2021-06-21  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update to FDO 20.08.13 release
+        https://bugs.webkit.org/show_bug.cgi?id=227176
+
+        Reviewed by Žan Doberšek.
+
+        This release contains libvpx 1.10.0 which we need since the libwebrtc bump to M92. The
+        current version we have has ABI incompatible with what libwebrtc expects and this issue was
+        hidden by r277036 which pulls in the bundled libvpx headers...
+
+        * elements/freedesktop-sdk.bst:
+        * patches/fdo-0001-meson-Bump-to-0.56.1.patch: Removed.
+
+2021-06-07  Philippe Normand  <pnormand@igalia.com>
+
+        Unreviewed, fix libsoup3 build in Flatpak SDK
+
+        * elements/sdk/libsoup3.bst:
+
+2021-06-07  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [Flatpak SDK] Update to libsoup3 2.99.8
+        https://bugs.webkit.org/show_bug.cgi?id=226712
+
+        Reviewed by Philippe Normand.
+
+        * elements/sdk/libsoup3.bst:
+
+2021-06-03  Miguel Gomez  <magomez@igalia.com>
+
+        REGRESSION(r275755): [GStreamer] Crashes on surfaceless i965 platforms
+        https://bugs.webkit.org/show_bug.cgi?id=226581
+
+        Reviewed by Philippe Normand.
+
+        Vendor potential fix for https://gitlab.freedesktop.org/mesa/mesa/-/issues/778.
+
+        * elements/sdk/mesa.bst:
+        * patches/mesa/0002-i965-Prevent-invalid-framebuffer-usage.patch: Added.
+
+2021-05-31  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [Flatpak SDK] Update to libsoup3 2.99.7
+        https://bugs.webkit.org/show_bug.cgi?id=226457
+
+        Reviewed by Philippe Normand.
+
+        * elements/sdk/libsoup3.bst:
+
+2021-05-24  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [Flatpak SDK] Update to libsoup3 2.99.6
+        https://bugs.webkit.org/show_bug.cgi?id=226166
+
+        Reviewed by Philippe Normand.
+
+        * elements/sdk/libsoup3.bst:
+
+2021-05-20  Adrian Perez de Castro  <aperez@igalia.com>
+
+        [Flatpak SDK] Remove PHP packages
+        https://bugs.webkit.org/show_bug.cgi?id=226037
+
+        Reviewed by Philippe Normand.
+
+        Remove the PHP package from the SDK now that the layout tests do not use PHP.
+
+        * elements/test-infra.bst: Remove php.bst from the element list.
+        * elements/test-infra/php.bst: Removed.
+
+2021-05-13  Lauro Moura  <lmoura@igalia.com>
+
+        [Flatpak SDK] Update WPEBackend-fdo to 1.8.4
+        https://bugs.webkit.org/show_bug.cgi?id=225735
+
+        Reviewed by Adrian Perez de Castro.
+
+        * elements/sdk/wpebackend-fdo.bst:
+
+2021-05-07  Carlos Garcia Campos  <cgarcia@igalia.com>
+
+        [Flatpak SDK] Update to libsoup3 2.99.5
+        https://bugs.webkit.org/show_bug.cgi?id=225504
+
+        Reviewed by Philippe Normand.
+
+        * elements/sdk/libsoup3.bst:
+
+2021-05-07  Philippe Normand  <pnormand@igalia.com>
+
+        [WPE] TestWebExtensions web-process-crashed is flaky failing after latest WPE libs update
+        https://bugs.webkit.org/show_bug.cgi?id=225503
+
+        Reviewed by Carlos Garcia Campos.
+
+        The update to 1.9.91 triggers critical warnings in tests. Might be fixed by
+        https://github.com/Igalia/WPEBackend-fdo/pull/158 which is not merged yet.
+
+        * elements/sdk/wpebackend-fdo.bst: Downgrade to latest stable release until the bug is fixed.
+
+2021-05-05  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update libwpe and wpebackend-fdo
+        https://bugs.webkit.org/show_bug.cgi?id=225358
+
+        Reviewed by Adrian Perez de Castro.
+
+        * elements/sdk/libwpe.bst: Update to version 1.10.
+        * elements/sdk/wpebackend-fdo.bst: Update to 1.9.91, soon to be 1.10.
+
+2021-04-27  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Direct AVIF loading does not work.
+        https://bugs.webkit.org/show_bug.cgi?id=222867
+
+        Reviewed by Michael Catanzaro.
+
+        * elements/sdk-platform.bst:
+        * elements/sdk/intltool.bst: Removed.
+        * elements/sdk/shared-mime-info.bst: Bump to version 2.1 which has support for detecting AVIF bitstreams.
+
 2021-04-22  Carlos Garcia Campos  <cgarcia@igalia.com>
 
         [GTK][WPE] Bump libsoup3 version to 2.99.4
@@ -6,6 +179,117 @@
         Reviewed by Philippe Normand.
 
         * elements/sdk/libsoup3.bst:
+
+2021-04-17  Philippe Normand  <pnormand@igalia.com>
+
+        REGRESSION(r275755): [GStreamer] Crashes on surfaceless i915 platforms
+        https://bugs.webkit.org/show_bug.cgi?id=224416
+
+        Reviewed by Adrian Perez de Castro.
+
+        Vendor potential fix for https://gitlab.freedesktop.org/mesa/mesa/-/issues/778.
+
+        * elements/sdk/mesa.bst:
+        * patches/mesa/0001-i915-Prevent-invalid-framebuffer-usage.patch: Added.
+
+2021-04-12  Philippe Normand  <pnormand@igalia.com>
+
+        Unreviewed, update libsoup 2.99.3 ref
+
+        * elements/sdk/libsoup3.bst: Previous ref had 2.99.2 version set in meson.build.
+
+2021-04-09  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update to libsoup 2.99.3
+        https://bugs.webkit.org/show_bug.cgi?id=224361
+
+        Reviewed by Carlos Garcia Campos.
+
+        * elements/sdk/libsoup3.bst:
+
+2021-04-07  Lauro Moura  <lmoura@igalia.com>
+
+        [Flatpak SDK] Bump GTK4 to 4.2
+        https://bugs.webkit.org/show_bug.cgi?id=224263
+
+        Reviewed by Carlos Garcia Campos.
+
+        * elements/sdk/gtk.bst: Bump and remove merged patch.
+        * patches/gtk-clipboard-Fix-a-crash-when-GdkContentProviderUnion-d.patch: Removed.
+
+2021-04-06  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Enable high bit depth in libvpx
+        https://bugs.webkit.org/show_bug.cgi?id=224049
+
+        Reviewed by Adrian Perez de Castro.
+
+        10 and 12-bit formats are needed for profile 2 and 3 VP9 decoding.
+
+        * elements/freedesktop-sdk.bst:
+        * patches/fdo-0001-libvpx-Enable-high-bit-depth-support.patch: Added.
+
+2021-04-05  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update dav1d and libavif
+        https://bugs.webkit.org/show_bug.cgi?id=224177
+
+        Reviewed by Adrian Perez de Castro.
+
+        * elements/freedesktop-sdk.bst: Update dav1d to version 0.8.2.
+        * elements/sdk/libavif.bst: Update to version 0.9.0.
+        * patches/fdo-0001-dav1d-Bump-to-version-0.8.2.patch: Added.
+
+2021-04-05  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Backport GStreamer fakeaudiosink
+        https://bugs.webkit.org/show_bug.cgi?id=224053
+
+        Reviewed by Adrian Perez de Castro.
+
+        This audio sink will be used for the media layout and API tests.
+        
+        * elements/sdk/gst-plugins-bad.bst:
+        * patches/gst-plugins-bad-0001-debugutils-Add-fakeaudiosink-element.patch: Added.
+
+2021-03-27  Lauro Moura  <lmoura@igalia.com>
+
+        [Flatpak SDK] Backport GTK4 Clipboard fix for GdkContentProviderUnion
+        https://bugs.webkit.org/show_bug.cgi?id=223813
+
+        Reviewed by Philippe Normand.
+
+        From https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/3346
+
+        Will fix some clipbaoard crashes.
+
+        * elements/sdk/gtk.bst:
+        * patches/gtk-clipboard-Fix-a-crash-when-GdkContentProviderUnion-d.patch: Added.
+
+2021-03-25  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Update to GStreamer 1.18.4
+        https://bugs.webkit.org/show_bug.cgi?id=223644
+
+        Reviewed by Adrian Perez de Castro.
+
+        * elements/sdk/gst-libav.bst:
+        * elements/sdk/gst-plugins-bad.bst:
+        * elements/sdk/gst-plugins-base.bst:
+        * elements/sdk/gst-plugins-good.bst:
+        * elements/sdk/gst-plugins-ugly.bst:
+        * elements/sdk/gstreamer.bst:
+        * patches/gst-plugins-base-0001-videodecoder-Fix-racy-critical-when-pool-negotiation.patch: Removed.
+
+2021-03-24  Philippe Normand  <pnormand@igalia.com>
+
+        [Flatpak SDK] Add nghttp2 client library
+        https://bugs.webkit.org/show_bug.cgi?id=223585
+
+        Reviewed by Carlos Garcia Campos.
+
+        * elements/sdk-platform.bst:
+        * elements/sdk/nghttp2.bst: Added.
 
 2021-03-11  Philippe Normand  <pnormand@igalia.com>
 

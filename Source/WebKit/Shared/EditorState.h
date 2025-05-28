@@ -26,6 +26,7 @@
 #pragma once
 
 #include "ArgumentCoders.h"
+#include "IdentifierTypes.h"
 #include <WebCore/Color.h>
 #include <WebCore/FontAttributes.h>
 #include <WebCore/IntRect.h>
@@ -33,7 +34,7 @@
 #include <wtf/text/WTFString.h>
 
 #if PLATFORM(IOS_FAMILY)
-#include <WebCore/SelectionRect.h>
+#include <WebCore/SelectionGeometry.h>
 #endif
 
 #if USE(DICTATION_ALTERNATIVES)
@@ -69,15 +70,18 @@ enum ListType {
 };
 
 struct EditorState {
+    EditorStateIdentifier identifier;
     String originIdentifierForPasteboard;
     bool shouldIgnoreSelectionChanges { false };
     bool selectionIsNone { true }; // This will be false when there is a caret selection.
     bool selectionIsRange { false };
+    bool selectionIsRangeInsideImageOverlay { false };
     bool isContentEditable { false };
     bool isContentRichlyEditable { false };
     bool isInPasswordField { false };
     bool isInPlugin { false };
     bool hasComposition { false };
+    bool triggeredByAccessibilitySelectionChange { false };
     bool isMissingPostLayoutData { true };
 
     struct PostLayoutData {
@@ -95,8 +99,8 @@ struct EditorState {
 #if PLATFORM(IOS_FAMILY)
         WebCore::IntRect selectionClipRect;
         WebCore::IntRect caretRectAtEnd;
-        Vector<WebCore::SelectionRect> selectionRects;
-        Vector<WebCore::SelectionRect> markedTextRects;
+        Vector<WebCore::SelectionGeometry> selectionGeometries;
+        Vector<WebCore::SelectionGeometry> markedTextRects;
         String markedText;
         WebCore::IntRect markedTextCaretRectAtStart;
         WebCore::IntRect markedTextCaretRectAtEnd;
@@ -131,7 +135,7 @@ struct EditorState {
         uint64_t surroundingContextSelectionPosition { 0 };
 #endif
 
-        Optional<WebCore::FontAttributes> fontAttributes;
+        std::optional<WebCore::FontAttributes> fontAttributes;
 
         bool canCut { false };
         bool canCopy { false };

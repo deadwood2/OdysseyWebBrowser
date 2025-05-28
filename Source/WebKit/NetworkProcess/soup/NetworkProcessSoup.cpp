@@ -29,6 +29,7 @@
 
 #include "NetworkCache.h"
 #include "NetworkProcessCreationParameters.h"
+#include "NetworkProcessProxyMessages.h"
 #include "NetworkSessionSoup.h"
 #include "WebCookieManager.h"
 #include "WebKitCachedResolver.h"
@@ -78,16 +79,15 @@ static CString buildAcceptLanguages(const Vector<String>& languages)
             continue;
 
         if (i)
-            builder.appendLiteral(",");
+            builder.append(",");
 
         builder.append(languages[i]);
 
         int quality = 100 - i * delta;
         if (quality > 0 && quality < 100) {
-            builder.appendLiteral(";q=");
             char buffer[8];
             g_ascii_formatd(buffer, 8, "%.2f", quality / 100.0);
-            builder.append(buffer);
+            builder.append(";q=", buffer);
         }
     }
 
@@ -133,6 +133,20 @@ void NetworkProcess::platformInitializeNetworkProcess(const NetworkProcessCreati
 
     if (!parameters.languages.isEmpty())
         userPreferredLanguagesChanged(parameters.languages);
+
+#if ENABLE(PERIODIC_MEMORY_MONITOR)
+    // The periodic memory monitor is disabled by default in the network process. Enable
+    // it only if MemoryPressureHandler is not suppressed and there is a custom configuration
+    // for it.
+    if (!parameters.shouldSuppressMemoryPressureHandler && parameters.memoryPressureHandlerConfiguration) {
+        auto& memoryPressureHandler = MemoryPressureHandler::singleton();
+        memoryPressureHandler.setConfiguration(*parameters.memoryPressureHandlerConfiguration);
+        memoryPressureHandler.setShouldUsePeriodicMemoryMonitor(true);
+        memoryPressureHandler.setMemoryKillCallback([this] () {
+            parentProcessConnection()->send(Messages::NetworkProcessProxy::DidExceedMemoryLimit(), 0);
+        });
+    }
+#endif
 }
 
 void NetworkProcess::setIgnoreTLSErrors(PAL::SessionID sessionID, bool ignoreTLSErrors)
@@ -170,16 +184,6 @@ void NetworkProcess::setPersistentCredentialStorageEnabled(PAL::SessionID sessio
 {
     if (auto* session = networkSession(sessionID))
         static_cast<NetworkSessionSoup&>(*session).setPersistentCredentialStorageEnabled(enabled);
-}
-
-void NetworkProcess::platformProcessDidTransitionToForeground()
-{
-    notImplemented();
-}
-
-void NetworkProcess::platformProcessDidTransitionToBackground()
-{
-    notImplemented();
 }
 
 } // namespace WebKit

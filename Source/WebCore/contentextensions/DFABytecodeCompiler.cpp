@@ -40,7 +40,7 @@ template <typename IntType>
 inline void append(Vector<DFABytecode>& bytecode, IntType value)
 {
     bytecode.grow(bytecode.size() + sizeof(IntType));
-    *reinterpret_cast<IntType*>(&bytecode[bytecode.size() - sizeof(IntType)]) = value;
+    memcpy(&bytecode[bytecode.size() - sizeof(IntType)], &value, sizeof(IntType));
 }
 
 inline void appendZeroes(Vector<DFABytecode>& bytecode, DFABytecodeJumpSize jumpSize)
@@ -79,7 +79,7 @@ static unsigned appendActionBytecodeSize(uint64_t action)
     
 void DFABytecodeCompiler::emitAppendAction(uint64_t action)
 {
-    // High bits are used to store flags. See compileRuleList.
+    // High bits are used to store flags. See
     if (action & ActionFlagMask) {
         if (action & IfConditionFlag)
             append<DFABytecodeInstruction>(m_bytecode, DFABytecodeInstruction::TestFlagsAndAppendActionWithIfCondition);

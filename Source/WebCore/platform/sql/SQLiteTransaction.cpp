@@ -62,9 +62,9 @@ void SQLiteTransaction::begin()
         SQLiteDatabaseTracker::incrementTransactionInProgressCount();
 #endif
         if (m_readOnly)
-            m_inProgress = m_db.executeCommand("BEGIN");
+            m_inProgress = m_db.executeCommand("BEGIN"_s);
         else
-            m_inProgress = m_db.executeCommand("BEGIN IMMEDIATE");
+            m_inProgress = m_db.executeCommand("BEGIN IMMEDIATE"_s);
         m_db.m_transactionInProgress = m_inProgress;
 #if PLATFORM(IOS_FAMILY)
         if (!m_inProgress)
@@ -77,7 +77,7 @@ void SQLiteTransaction::commit()
 {
     if (m_inProgress) {
         ASSERT(m_db.m_transactionInProgress);
-        m_inProgress = !m_db.executeCommand("COMMIT");
+        m_inProgress = !m_db.executeCommand("COMMIT"_s);
         m_db.m_transactionInProgress = m_inProgress;
 #if PLATFORM(IOS_FAMILY)
         if (!m_inProgress)
@@ -88,19 +88,21 @@ void SQLiteTransaction::commit()
 
 void SQLiteTransaction::rollback()
 {
+#if !OS(MORPHOS)
     // We do not use the 'm_inProgress = m_db.executeCommand("ROLLBACK")' construct here,
     // because m_inProgress should always be set to false after a ROLLBACK, and
     // m_db.executeCommand("ROLLBACK") can sometimes harmlessly fail, thus returning
     // a non-zero/true result (http://www.sqlite.org/lang_transaction.html).
     if (m_inProgress) {
         ASSERT(m_db.m_transactionInProgress);
-        m_db.executeCommand("ROLLBACK");
+        m_db.executeCommand("ROLLBACK"_s);
         m_inProgress = false;
         m_db.m_transactionInProgress = false;
 #if PLATFORM(IOS_FAMILY)
         SQLiteDatabaseTracker::decrementTransactionInProgressCount();
 #endif
     }
+#endif
 }
 
 void SQLiteTransaction::stop()

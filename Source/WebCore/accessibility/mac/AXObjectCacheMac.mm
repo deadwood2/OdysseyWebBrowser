@@ -319,6 +319,9 @@ void AXObjectCache::postPlatformNotification(AXCoreObject* obj, AXNotification n
     case AXFocusedUIElementChanged:
         macNotification = NSAccessibilityFocusedUIElementChangedNotification;
         break;
+    case AXImageOverlayChanged:
+        macNotification = @"AXImageOverlayChanged";
+        break;
     case AXLayoutComplete:
         macNotification = @"AXLayoutComplete";
         break;
@@ -339,6 +342,9 @@ void AXObjectCache::postPlatformNotification(AXCoreObject* obj, AXNotification n
             macNotification = NSAccessibilitySelectedRowsChangedNotification;
         else
             macNotification = NSAccessibilitySelectedChildrenChangedNotification;
+        break;
+    case AXSelectedStateChanged:
+        macNotification = NSAccessibilitySelectedCellsChangedNotification;
         break;
     case AXSelectedTextChanged:
         macNotification = NSAccessibilitySelectedTextChangedNotification;
@@ -478,8 +484,8 @@ static void addTextMarkerFor(NSMutableDictionary* change, AXCoreObject& object, 
 
 static void addTextMarkerFor(NSMutableDictionary* change, AXCoreObject& object, HTMLTextFormControlElement& textControl)
 {
-    if (id textMarker = [object.wrapper() textMarkerForFirstPositionInTextControl:textControl])
-        [change setObject:textMarker forKey:NSAccessibilityTextChangeValueStartMarker];
+    if (auto textMarker = [object.wrapper() textMarkerForFirstPositionInTextControl:textControl])
+        [change setObject:textMarker.bridgingAutorelease() forKey:NSAccessibilityTextChangeValueStartMarker];
 }
 
 template <typename TextMarkerTargetType>
@@ -597,16 +603,16 @@ void AXObjectCache::platformPerformDeferredCacheUpdate()
 // TextMarker and TextMarkerRange funcstions.
 // FIXME: TextMarker and TextMarkerRange should become classes wrapping the system objects.
 
-static AXTextMarkerRangeRef AXTextMarkerRange(AXTextMarkerRef startMarker, AXTextMarkerRef endMarker)
+static RetainPtr<AXTextMarkerRangeRef> AXTextMarkerRange(AXTextMarkerRef startMarker, AXTextMarkerRef endMarker)
 {
     ASSERT(startMarker);
     ASSERT(endMarker);
     ASSERT(CFGetTypeID((__bridge CFTypeRef)startMarker) == AXTextMarkerGetTypeID());
     ASSERT(CFGetTypeID((__bridge CFTypeRef)endMarker) == AXTextMarkerGetTypeID());
-    return (AXTextMarkerRangeRef)CFBridgingRelease(AXTextMarkerRangeCreate(kCFAllocatorDefault, startMarker, endMarker));
+    return adoptCF(AXTextMarkerRangeCreate(kCFAllocatorDefault, startMarker, endMarker));
 }
 
-static AXTextMarkerRangeRef textMarkerRangeFromMarkers(AXTextMarkerRef textMarker1, AXTextMarkerRef textMarker2)
+static RetainPtr<AXTextMarkerRangeRef> textMarkerRangeFromMarkers(AXTextMarkerRef textMarker1, AXTextMarkerRef textMarker2)
 {
     if (!textMarker1 || !textMarker2)
         return nil;
@@ -614,18 +620,18 @@ static AXTextMarkerRangeRef textMarkerRangeFromMarkers(AXTextMarkerRef textMarke
     return AXTextMarkerRange(textMarker1, textMarker2);
 }
 
-static AXTextMarkerRef AXTextMarkerRangeStart(AXTextMarkerRangeRef textMarkerRange)
+static RetainPtr<AXTextMarkerRef> AXTextMarkerRangeStart(AXTextMarkerRangeRef textMarkerRange)
 {
     ASSERT(textMarkerRange);
     ASSERT(CFGetTypeID((__bridge CFTypeRef)textMarkerRange) == AXTextMarkerRangeGetTypeID());
-    return (AXTextMarkerRef)CFBridgingRelease(AXTextMarkerRangeCopyStartMarker(textMarkerRange));
+    return adoptCF(AXTextMarkerRangeCopyStartMarker(textMarkerRange));
 }
 
-static AXTextMarkerRef AXTextMarkerRangeEnd(AXTextMarkerRangeRef textMarkerRange)
+static RetainPtr<AXTextMarkerRef> AXTextMarkerRangeEnd(AXTextMarkerRangeRef textMarkerRange)
 {
     ASSERT(textMarkerRange);
     ASSERT(CFGetTypeID((__bridge CFTypeRef)textMarkerRange) == AXTextMarkerRangeGetTypeID());
-    return (AXTextMarkerRef)CFBridgingRelease(AXTextMarkerRangeCopyEndMarker(textMarkerRange));
+    return adoptCF(AXTextMarkerRangeCopyEndMarker(textMarkerRange));
 }
 
 static TextMarkerData getBytesFromAXTextMarker(AXTextMarkerRef textMarker)
@@ -671,7 +677,7 @@ AXTextMarkerRef textMarkerForVisiblePosition(AXObjectCache* cache, const Visible
     if (!textMarkerData)
         return nil;
 
-    return (AXTextMarkerRef)CFBridgingRelease(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData.value(), sizeof(textMarkerData.value())));
+    return adoptCF(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData.value(), sizeof(textMarkerData.value()))).autorelease();
 }
 
 VisiblePosition visiblePositionForTextMarker(AXObjectCache* cache, AXTextMarkerRef textMarker)
@@ -694,7 +700,7 @@ AXTextMarkerRangeRef textMarkerRangeFromVisiblePositions(AXObjectCache* cache, c
 
     auto startTextMarker = textMarkerForVisiblePosition(cache, startPosition);
     auto endTextMarker = textMarkerForVisiblePosition(cache, endPosition);
-    return textMarkerRangeFromMarkers(startTextMarker, endTextMarker);
+    return textMarkerRangeFromMarkers(startTextMarker, endTextMarker).autorelease();
 }
 
 VisiblePositionRange visiblePositionRangeForTextMarkerRange(AXObjectCache* cache, AXTextMarkerRangeRef textMarkerRange)
@@ -702,8 +708,8 @@ VisiblePositionRange visiblePositionRangeForTextMarkerRange(AXObjectCache* cache
     ASSERT(isMainThread());
 
     return {
-        visiblePositionForTextMarker(cache, AXTextMarkerRangeStart(textMarkerRange)),
-        visiblePositionForTextMarker(cache, AXTextMarkerRangeEnd(textMarkerRange))
+        visiblePositionForTextMarker(cache, AXTextMarkerRangeStart(textMarkerRange).get()),
+        visiblePositionForTextMarker(cache, AXTextMarkerRangeEnd(textMarkerRange).get())
     };
 }
 
@@ -721,7 +727,7 @@ AXTextMarkerRef textMarkerForCharacterOffset(AXObjectCache* cache, const Charact
     if (!textMarkerData.axID || textMarkerData.ignored)
         return nil;
 
-    return (AXTextMarkerRef)CFBridgingRelease(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData, sizeof(textMarkerData)));
+    return adoptCF(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData, sizeof(textMarkerData))).autorelease();
 }
 
 CharacterOffset characterOffsetForTextMarker(AXObjectCache* cache, AXTextMarkerRef textMarker)
@@ -736,7 +742,7 @@ CharacterOffset characterOffsetForTextMarker(AXObjectCache* cache, AXTextMarkerR
 
 // TextMarkerRange <-> SimpleRange conversion.
 
-AXTextMarkerRef startOrEndTextMarkerForRange(AXObjectCache* cache, const Optional<SimpleRange>& range, bool isStart)
+AXTextMarkerRef startOrEndTextMarkerForRange(AXObjectCache* cache, const std::optional<SimpleRange>& range, bool isStart)
 {
     ASSERT(isMainThread());
     if (!cache || !range)
@@ -747,10 +753,10 @@ AXTextMarkerRef startOrEndTextMarkerForRange(AXObjectCache* cache, const Optiona
     if (!textMarkerData.axID)
         return nil;
 
-    return (AXTextMarkerRef)CFBridgingRelease(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData, sizeof(textMarkerData)));
+    return adoptCF(AXTextMarkerCreate(kCFAllocatorDefault, (const UInt8*)&textMarkerData, sizeof(textMarkerData))).autorelease();
 }
 
-AXTextMarkerRangeRef textMarkerRangeFromRange(AXObjectCache* cache, const Optional<SimpleRange>& range)
+AXTextMarkerRangeRef textMarkerRangeFromRange(AXObjectCache* cache, const std::optional<SimpleRange>& range)
 {
     ASSERT(isMainThread());
     if (!cache)
@@ -758,22 +764,22 @@ AXTextMarkerRangeRef textMarkerRangeFromRange(AXObjectCache* cache, const Option
 
     auto startTextMarker = startOrEndTextMarkerForRange(cache, range, true);
     auto endTextMarker = startOrEndTextMarkerForRange(cache, range, false);
-    return textMarkerRangeFromMarkers(startTextMarker, endTextMarker);
+    return textMarkerRangeFromMarkers(startTextMarker, endTextMarker).autorelease();
 }
 
-Optional<SimpleRange> rangeForTextMarkerRange(AXObjectCache* cache, AXTextMarkerRangeRef textMarkerRange)
+std::optional<SimpleRange> rangeForTextMarkerRange(AXObjectCache* cache, AXTextMarkerRangeRef textMarkerRange)
 {
     ASSERT(isMainThread());
     if (!cache || !textMarkerRange)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto startTextMarker = AXTextMarkerRangeStart(textMarkerRange);
     auto endTextMarker = AXTextMarkerRangeEnd(textMarkerRange);
     if (!startTextMarker || !endTextMarker)
-        return WTF::nullopt;
+        return std::nullopt;
 
-    CharacterOffset startCharacterOffset = characterOffsetForTextMarker(cache, startTextMarker);
-    CharacterOffset endCharacterOffset = characterOffsetForTextMarker(cache, endTextMarker);
+    CharacterOffset startCharacterOffset = characterOffsetForTextMarker(cache, startTextMarker.get());
+    CharacterOffset endCharacterOffset = characterOffsetForTextMarker(cache, endTextMarker.get());
     return cache->rangeForUnorderedCharacterOffsets(startCharacterOffset, endCharacterOffset);
 }
 

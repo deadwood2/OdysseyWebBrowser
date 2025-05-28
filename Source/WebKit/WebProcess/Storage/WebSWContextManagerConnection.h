@@ -28,7 +28,10 @@
 #if ENABLE(SERVICE_WORKER)
 
 #include "Connection.h"
+#include "IdentifierTypes.h"
 #include "MessageReceiver.h"
+#include "NavigatingToAppBoundDomain.h"
+#include "ShareableResource.h"
 #include "UserContentControllerIdentifier.h"
 #include "WebPageProxyIdentifier.h"
 #include "WebSWContextManagerConnectionMessagesReplies.h"
@@ -36,6 +39,7 @@
 #include <WebCore/SWContextManager.h>
 #include <WebCore/ServiceWorkerClientData.h>
 #include <WebCore/ServiceWorkerTypes.h>
+#include <wtf/URLHash.h>
 
 namespace IPC {
 class FormDataReference;
@@ -56,7 +60,7 @@ class WebUserContentController;
 
 class WebSWContextManagerConnection final : public WebCore::SWContextManager::Connection, public IPC::MessageReceiver {
 public:
-    WebSWContextManagerConnection(Ref<IPC::Connection>&&, WebCore::RegistrableDomain&&, uint64_t pageGroupID, WebPageProxyIdentifier, WebCore::PageIdentifier, const WebPreferencesStore&, ServiceWorkerInitializationData&&);
+    WebSWContextManagerConnection(Ref<IPC::Connection>&&, WebCore::RegistrableDomain&&, PageGroupIdentifier, WebPageProxyIdentifier, WebCore::PageIdentifier, const WebPreferencesStore&, ServiceWorkerInitializationData&&);
     ~WebSWContextManagerConnection();
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
@@ -67,7 +71,7 @@ private:
     // WebCore::SWContextManager::Connection.
     void establishConnection(CompletionHandler<void()>&&) final;
     void postMessageToServiceWorkerClient(const WebCore::ServiceWorkerClientIdentifier& destinationIdentifier, const WebCore::MessageWithMessagePorts&, WebCore::ServiceWorkerIdentifier sourceIdentifier, const String& sourceOrigin) final;
-    void didFinishInstall(Optional<WebCore::ServiceWorkerJobDataIdentifier>, WebCore::ServiceWorkerIdentifier, bool wasSuccessful) final;
+    void didFinishInstall(std::optional<WebCore::ServiceWorkerJobDataIdentifier>, WebCore::ServiceWorkerIdentifier, bool wasSuccessful) final;
     void didFinishActivation(WebCore::ServiceWorkerIdentifier) final;
     void setServiceWorkerHasPendingEvents(WebCore::ServiceWorkerIdentifier, bool) final;
     void workerTerminated(WebCore::ServiceWorkerIdentifier) final;
@@ -80,9 +84,10 @@ private:
     void didFailHeartBeatCheck(WebCore::ServiceWorkerIdentifier) final;
 
     // IPC messages.
-    void serviceWorkerStarted(Optional<WebCore::ServiceWorkerJobDataIdentifier>, WebCore::ServiceWorkerIdentifier, bool doesHandleFetch) final;
-    void serviceWorkerFailedToStart(Optional<WebCore::ServiceWorkerJobDataIdentifier>, WebCore::ServiceWorkerIdentifier, const String& exceptionMessage) final;
-    void installServiceWorker(const WebCore::ServiceWorkerContextData&, String&& userAgent);
+    void serviceWorkerStarted(std::optional<WebCore::ServiceWorkerJobDataIdentifier>, WebCore::ServiceWorkerIdentifier, bool doesHandleFetch) final;
+    void serviceWorkerFailedToStart(std::optional<WebCore::ServiceWorkerJobDataIdentifier>, WebCore::ServiceWorkerIdentifier, const String& exceptionMessage) final;
+    void installServiceWorker(WebCore::ServiceWorkerContextData&&, String&& userAgent);
+    void updateAppInitiatedValue(WebCore::ServiceWorkerIdentifier, WebCore::LastNavigationWasAppInitiated);
     void startFetch(WebCore::SWServerConnectionIdentifier, WebCore::ServiceWorkerIdentifier, WebCore::FetchIdentifier, WebCore::ResourceRequest&&, WebCore::FetchOptions&&, IPC::FormDataReference&&, String&& referrer);
     void cancelFetch(WebCore::SWServerConnectionIdentifier, WebCore::ServiceWorkerIdentifier, WebCore::FetchIdentifier);
     void continueDidReceiveFetchResponse(WebCore::SWServerConnectionIdentifier, WebCore::ServiceWorkerIdentifier, WebCore::FetchIdentifier);
@@ -90,7 +95,10 @@ private:
     void fireInstallEvent(WebCore::ServiceWorkerIdentifier);
     void fireActivateEvent(WebCore::ServiceWorkerIdentifier);
     void terminateWorker(WebCore::ServiceWorkerIdentifier);
-    void findClientByIdentifierCompleted(uint64_t requestIdentifier, Optional<WebCore::ServiceWorkerClientData>&&, bool hasSecurityError);
+#if ENABLE(SHAREABLE_RESOURCE) && PLATFORM(COCOA)
+    void didSaveScriptsToDisk(WebCore::ServiceWorkerIdentifier, WebCore::ScriptBuffer&&, HashMap<URL, WebCore::ScriptBuffer>&& importedScripts);
+#endif
+    void findClientByIdentifierCompleted(uint64_t requestIdentifier, std::optional<WebCore::ServiceWorkerClientData>&&, bool hasSecurityError);
     void matchAllCompleted(uint64_t matchAllRequestIdentifier, Vector<WebCore::ServiceWorkerClientData>&&);
     void setUserAgent(String&& userAgent);
     void close();
@@ -98,7 +106,7 @@ private:
 
     Ref<IPC::Connection> m_connectionToNetworkProcess;
     WebCore::RegistrableDomain m_registrableDomain;
-    uint64_t m_pageGroupID;
+    PageGroupIdentifier m_pageGroupID;
     WebPageProxyIdentifier m_webPageProxyID;
     WebCore::PageIdentifier m_pageID;
 
@@ -124,8 +132,8 @@ public:
 private:
     Ref<WebCore::DocumentLoader> createDocumentLoader(const WebCore::ResourceRequest&, const WebCore::SubstituteData&) final;
 
-    Optional<WebCore::PageIdentifier> pageID() const final { return m_pageID; }
-    Optional<WebCore::FrameIdentifier> frameID() const final { return m_frameID; }
+    std::optional<WebCore::PageIdentifier> pageID() const final { return m_pageID; }
+    std::optional<WebCore::FrameIdentifier> frameID() const final { return m_frameID; }
 
     bool shouldUseCredentialStorage(WebCore::DocumentLoader*, unsigned long) final { return true; }
     bool isServiceWorkerFrameLoaderClient() const final { return true; }

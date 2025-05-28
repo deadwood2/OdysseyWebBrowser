@@ -76,7 +76,9 @@ void GainNode::process(size_t framesToProcess)
     else {
         AudioBus* inputBus = input(0)->bus();
 
-        if (gain().hasSampleAccurateValues() && gain().automationRate() == AutomationRate::ARate) {
+		bool hasSampleAccurateValues = gain().hasSampleAccurateValues();
+
+        if (hasSampleAccurateValues && gain().automationRate() == AutomationRate::ARate) {
             // Apply sample-accurate gain scaling for precise envelopes, grain windows, etc.
             ASSERT(framesToProcess <= m_sampleAccurateGainValues.size());
             if (framesToProcess <= m_sampleAccurateGainValues.size()) {
@@ -86,7 +88,7 @@ void GainNode::process(size_t framesToProcess)
             }
         } else {
             // Apply the gain with de-zippering into the output bus.
-            float gain = this->gain().hasSampleAccurateValues() ? this->gain().finalValue() : this->gain().value();
+            float gain = hasSampleAccurateValues ? this->gain().finalValue() : this->gain().value();
             if (!gain) {
                 // If the gain is 0 just zero the bus.
                 outputBus->zero();

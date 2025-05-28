@@ -48,6 +48,11 @@
 #include <CommonCrypto/CommonRandom.h>
 #endif
 
+#if BOS(MORPHOS)
+#include <proto/exec.h>
+#include <proto/random.h>
+#endif
+
 namespace bmalloc {
 
 class ARC4Stream {
@@ -111,6 +116,12 @@ void ARC4RandomNumberGenerator::stir()
 
 #if BOS(DARWIN)
     RELEASE_BASSERT(!CCRandomGenerateBytes(randomness, length));
+#elif BOS(MORPHOS)
+    RandomBase = OpenLibrary("random.library", 2);
+    RELEASE_BASSERT(RandomBase != NULL);
+    RandomBytes(randomness, length);
+    addRandomData(randomness, length);
+    CloseLibrary(RandomBase);
 #else
     static std::once_flag onceFlag;
     static int fd;

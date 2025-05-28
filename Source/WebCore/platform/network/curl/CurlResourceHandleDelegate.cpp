@@ -36,6 +36,7 @@
 #include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceHandleInternal.h"
+#include "SecurityOrigin.h"
 
 #include <wtf/CompletionHandler.h>
 
@@ -134,9 +135,12 @@ void CurlResourceHandleDelegate::curlDidReceiveResponse(CurlRequest& request, Cu
         }
     }
 
-    CurlCacheManager::singleton().didReceiveResponse(m_handle, m_response);
-
     m_handle.didReceiveResponse(ResourceResponse(m_response), [this, protectedHandle = makeRef(m_handle)] {
+        // moved to avoid reverting the events order (must be header, then data)
+        if (!cancelledOrClientless())
+        {
+            CurlCacheManager::singleton().didReceiveResponse(m_handle, m_response);
+        }
         m_handle.continueAfterDidReceiveResponse();
     });
 }
@@ -152,7 +156,7 @@ void CurlResourceHandleDelegate::curlDidReceiveBuffer(CurlRequest&, Ref<SharedBu
     client()->didReceiveBuffer(&m_handle, WTFMove(buffer), buffer->size());
 }
 
-void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&&)
+void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetrics&& metrics)
 {
     ASSERT(isMainThread());
 
@@ -160,7 +164,7 @@ void CurlResourceHandleDelegate::curlDidComplete(CurlRequest&, NetworkLoadMetric
         return;
 
     CurlCacheManager::singleton().didFinishLoading(m_handle);
-    client()->didFinishLoading(&m_handle);
+    client()->didFinishLoading(&m_handle, WTFMove(metrics));
 }
 
 void CurlResourceHandleDelegate::curlDidFailWithError(CurlRequest&, ResourceError&& resourceError, CertificateInfo&&)

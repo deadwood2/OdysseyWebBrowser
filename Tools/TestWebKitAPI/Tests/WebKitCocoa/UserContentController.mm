@@ -44,6 +44,7 @@
 #import <WebKit/_WKUserStyleSheet.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
+#import <wtf/WeakObjCPtr.h>
 
 static bool isDoneWithNavigation;
 
@@ -132,7 +133,7 @@ TEST(WKUserContentController, ScriptMessageHandlerBasicPostIsolatedWorld)
         TestWebKitAPI::Util::run(&isDoneWithNavigation);
 
     __block bool isDoneEvaluatingScript = false;
-    __block NSString *resultValue = @"";
+    __block RetainPtr<NSString> resultValue = @"";
     [webView evaluateJavaScript:
         @"var result;"
          "if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.testHandler) {"
@@ -142,13 +143,13 @@ TEST(WKUserContentController, ScriptMessageHandlerBasicPostIsolatedWorld)
          "} " 
          "result;"
          completionHandler:^(id value, NSError *error) {
-            resultValue = [((NSDictionary *)value)[@"result"] copy];
+            resultValue = ((NSDictionary *)value)[@"result"];
             isDoneEvaluatingScript = true;
         }];
 
     TestWebKitAPI::Util::run(&isDoneEvaluatingScript);
 
-    EXPECT_WK_STREQ(@"PASS", resultValue);
+    EXPECT_WK_STREQ(@"PASS", resultValue.get());
 }
 
 TEST(WKUserContentController, ScriptMessageHandlerBasicRemove)
@@ -979,6 +980,13 @@ TEST(WKUserContentController, UserScriptNotification)
         }
         if ([message.body isEqualToString:@"Undefined"]) {
             replyHandler(nil, nil);
+            bool caught = false;
+            @try {
+                replyHandler(nil, nil);
+            } @catch (NSException *exception) {
+                caught = true;
+            }
+            EXPECT_TRUE(caught);
             return;
         }
         if ([message.body isEqualToString:@"Do nothing"]) {
@@ -1228,4 +1236,17 @@ TEST(WKUserContentController, WorldLifetime)
     }];
     TestWebKitAPI::Util::run(&done);
     done = false;
+}
+
+TEST(WKUserContentController, RemoveAllScriptMessageHandlers)
+{
+    WeakObjCPtr<ScriptMessageHandler> weakHandler;
+    auto handler = adoptNS([ScriptMessageHandler new]);
+    weakHandler = handler.get();
+    auto controller = adoptNS([WKUserContentController new]);
+    [controller addScriptMessageHandler:handler.get() name:@"testname"];
+    handler = nullptr;
+    EXPECT_NOT_NULL(weakHandler.get());
+    [controller removeAllScriptMessageHandlers];
+    EXPECT_NULL(weakHandler.get());
 }

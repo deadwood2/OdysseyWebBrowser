@@ -37,6 +37,8 @@ import re
 from datetime import datetime
 from optparse import make_option
 
+from webkitcorepy.string_utils import pluralize
+
 from webkitpy.tool import steps
 
 import webkitpy.common.config.urls as config_urls
@@ -52,13 +54,11 @@ from webkitpy.layout_tests.models.test_expectations import TestExpectations
 from webkitpy.port import platform_options, configuration_options
 from webkitpy.tool.commands.abstractsequencedcommand import AbstractSequencedCommand
 from webkitpy.tool.commands.deprecatedcommand import DeprecatedCommand
-from webkitpy.tool.grammar import pluralize
 from webkitpy.tool.multicommandtool import Command
 
 _log = logging.getLogger(__name__)
 
 
-@DeprecatedCommand
 class SuggestReviewers(AbstractSequencedCommand):
     name = "suggest-reviewers"
     help_text = "Suggest reviewers for a patch based on recent changes to the modified files."
@@ -504,10 +504,11 @@ class PrintExpectations(Command):
             return
 
         finder = LayoutTestFinder(default_port, None)
-        tests = set(finder.find_tests_by_path(args))
+        tests = finder.find_tests_by_path(args)
+        test_files = {test.test_path for test in tests}
         for port_name in port_names:
-            model = self._model(options, port_name, tests)
-            tests_to_print = self._filter_tests(options, model, tests)
+            model = self._model(options, port_name, test_files)
+            tests_to_print = self._filter_tests(options, model, test_files)
             lines = [model.get_expectation_line(test) for test in sorted(tests_to_print)]
             if port_name != port_names[0]:
                 print()
@@ -553,7 +554,7 @@ class PrintBaselines(Command):
                         help='display the baselines for *all* tests'),
         ] + platform_options(use_globs=True)
         Command.__init__(self, options=options)
-        self._platform_regexp = re.compile('platform/([^\/]+)/(.+)')
+        self._platform_regexp = re.compile(r'platform/([^\/]+)/(.+)')
 
     def execute(self, options, args, tool):
         if not args and not options.all:
@@ -608,7 +609,7 @@ class FindResolvedBugs(Command):
         ids = set()
         inputfile = tool.filesystem.open_text_file_for_reading(filename)
         for line in inputfile:
-            result = re.search("(https://bugs\.webkit\.org/show_bug\.cgi\?id=|webkit\.org/b/)([0-9]+)", line)
+            result = re.search(r"(https://bugs\.webkit\.org/show_bug\.cgi\?id=|webkit\.org/b/)([0-9]+)", line)
             if result:
                 ids.add(result.group(2))
         inputfile.close()

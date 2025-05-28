@@ -30,15 +30,6 @@
 
 namespace WebKit {
 
-void RemoteGraphicsContextGLProxy::setFailNextGPUStatusCheck()
-{
-    if (!isContextLost()) {
-        auto sendResult = send(Messages::RemoteGraphicsContextGL::SetFailNextGPUStatusCheck());
-        if (!sendResult)
-            markContextLost();
-    }
-}
-
 bool RemoteGraphicsContextGLProxy::moveErrorsToSyntheticErrorList()
 {
     bool returnValue = { };
@@ -2307,46 +2298,6 @@ GCGLint RemoteGraphicsContextGLProxy::getGraphicsResetStatusARB()
     return returnValue;
 }
 
-PlatformGLObject RemoteGraphicsContextGLProxy::createVertexArrayOES()
-{
-    uint32_t returnValue = { };
-    if (!isContextLost()) {
-        auto sendResult = sendSync(Messages::RemoteGraphicsContextGL::CreateVertexArrayOES(), Messages::RemoteGraphicsContextGL::CreateVertexArrayOES::Reply(returnValue));
-        if (!sendResult)
-            markContextLost();
-    }
-    return returnValue;
-}
-
-void RemoteGraphicsContextGLProxy::deleteVertexArrayOES(PlatformGLObject arg0)
-{
-    if (!isContextLost()) {
-        auto sendResult = send(Messages::RemoteGraphicsContextGL::DeleteVertexArrayOES(arg0));
-        if (!sendResult)
-            markContextLost();
-    }
-}
-
-GCGLboolean RemoteGraphicsContextGLProxy::isVertexArrayOES(PlatformGLObject arg0)
-{
-    bool returnValue = { };
-    if (!isContextLost()) {
-        auto sendResult = sendSync(Messages::RemoteGraphicsContextGL::IsVertexArrayOES(arg0), Messages::RemoteGraphicsContextGL::IsVertexArrayOES::Reply(returnValue));
-        if (!sendResult)
-            markContextLost();
-    }
-    return static_cast<GCGLboolean>(returnValue);
-}
-
-void RemoteGraphicsContextGLProxy::bindVertexArrayOES(PlatformGLObject arg0)
-{
-    if (!isContextLost()) {
-        auto sendResult = send(Messages::RemoteGraphicsContextGL::BindVertexArrayOES(arg0));
-        if (!sendResult)
-            markContextLost();
-    }
-}
-
 String RemoteGraphicsContextGLProxy::getTranslatedShaderSourceANGLE(PlatformGLObject arg0)
 {
     String returnValue = { };
@@ -2362,33 +2313,6 @@ void RemoteGraphicsContextGLProxy::drawBuffersEXT(GCGLSpan<const GCGLenum> bufs)
 {
     if (!isContextLost()) {
         auto sendResult = send(Messages::RemoteGraphicsContextGL::DrawBuffersEXT(IPC::ArrayReference<uint32_t>(reinterpret_cast<const uint32_t*>(bufs.data), bufs.bufSize)));
-        if (!sendResult)
-            markContextLost();
-    }
-}
-
-void RemoteGraphicsContextGLProxy::drawArraysInstancedANGLE(GCGLenum mode, GCGLint first, GCGLsizei count, GCGLsizei primcount)
-{
-    if (!isContextLost()) {
-        auto sendResult = send(Messages::RemoteGraphicsContextGL::DrawArraysInstancedANGLE(mode, first, count, primcount));
-        if (!sendResult)
-            markContextLost();
-    }
-}
-
-void RemoteGraphicsContextGLProxy::drawElementsInstancedANGLE(GCGLenum mode, GCGLsizei count, GCGLenum type, GCGLvoidptr offset, GCGLsizei primcount)
-{
-    if (!isContextLost()) {
-        auto sendResult = send(Messages::RemoteGraphicsContextGL::DrawElementsInstancedANGLE(mode, count, type, static_cast<uint64_t>(offset), primcount));
-        if (!sendResult)
-            markContextLost();
-    }
-}
-
-void RemoteGraphicsContextGLProxy::vertexAttribDivisorANGLE(GCGLuint index, GCGLuint divisor)
-{
-    if (!isContextLost()) {
-        auto sendResult = send(Messages::RemoteGraphicsContextGL::VertexAttribDivisorANGLE(index, divisor));
         if (!sendResult)
             markContextLost();
     }
@@ -2442,11 +2366,11 @@ void RemoteGraphicsContextGLProxy::multiDrawElementsInstancedANGLE(GCGLenum mode
     }
 }
 
-RefPtr<WebCore::ImageData> RemoteGraphicsContextGLProxy::paintRenderingResultsToImageData()
+std::optional<WebCore::PixelBuffer> RemoteGraphicsContextGLProxy::paintRenderingResultsToPixelBuffer()
 {
-    RefPtr<WebCore::ImageData> returnValue = { };
+    std::optional<WebCore::PixelBuffer> returnValue = { };
     if (!isContextLost()) {
-        auto sendResult = sendSync(Messages::RemoteGraphicsContextGL::PaintRenderingResultsToImageData(), Messages::RemoteGraphicsContextGL::PaintRenderingResultsToImageData::Reply(returnValue));
+        auto sendResult = sendSync(Messages::RemoteGraphicsContextGL::PaintRenderingResultsToPixelBuffer(), Messages::RemoteGraphicsContextGL::PaintRenderingResultsToPixelBuffer::Reply(returnValue));
         if (!sendResult)
             markContextLost();
     }

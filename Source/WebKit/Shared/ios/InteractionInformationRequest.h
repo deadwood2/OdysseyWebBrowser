@@ -30,7 +30,7 @@
 #include "ArgumentCoders.h"
 #include "ShareableBitmap.h"
 #include <WebCore/IntPoint.h>
-#include <WebCore/SelectionRect.h>
+#include <WebCore/SelectionGeometry.h>
 #include <WebCore/TextIndicator.h>
 #include <wtf/text/WTFString.h>
 
@@ -46,6 +46,7 @@ struct InteractionInformationRequest {
     bool includeImageData { false };
 
     bool linkIndicatorShouldHaveLegacyMargins { false };
+    bool disallowUserAgentShadowContent { false };
 
     InteractionInformationRequest() { }
     explicit InteractionInformationRequest(WebCore::IntPoint point)

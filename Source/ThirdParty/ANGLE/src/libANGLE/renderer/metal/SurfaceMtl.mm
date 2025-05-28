@@ -177,26 +177,26 @@ void StartFrameCapture(id<MTLDevice> metalDevice, id<MTLCommandQueue> metalCmdQu
 #    ifdef __MAC_10_15
     if (ANGLE_APPLE_AVAILABLE_XCI(10.15, 13.0, 13))
     {
-        MTLCaptureDescriptor *captureDescriptor = [[MTLCaptureDescriptor alloc] init];
-        captureDescriptor.captureObject         = metalDevice;
-        const std::string filePath              = GetMetalCaptureFile();
+        auto captureDescriptor                = mtl::adoptObjCObj([[MTLCaptureDescriptor alloc] init]);
+        captureDescriptor.get().captureObject = metalDevice;
+        const std::string filePath            = GetMetalCaptureFile();
         if (filePath != "")
         {
             const std::string numberedPath =
                 filePath + std::to_string(gFrameCaptured - 1) + ".gputrace";
-            captureDescriptor.destination = MTLCaptureDestinationGPUTraceDocument;
-            captureDescriptor.outputURL =
+            captureDescriptor.get().destination = MTLCaptureDestinationGPUTraceDocument;
+            captureDescriptor.get().outputURL =
                 [NSURL fileURLWithPath:[NSString stringWithUTF8String:numberedPath.c_str()]
                            isDirectory:false];
         }
         else
         {
             // This will pause execution only if application is being debugged inside Xcode
-            captureDescriptor.destination = MTLCaptureDestinationDeveloperTools;
+            captureDescriptor.get().destination = MTLCaptureDestinationDeveloperTools;
         }
 
         NSError *error;
-        if (![captureManager startCaptureWithDescriptor:captureDescriptor error:&error])
+        if (![captureManager startCaptureWithDescriptor:captureDescriptor.get() error:&error])
         {
             NSLog(@"Failed to start capture, error %@", error);
         }
@@ -205,11 +205,11 @@ void StartFrameCapture(id<MTLDevice> metalDevice, id<MTLCommandQueue> metalCmdQu
 #    endif  // __MAC_10_15
         if (ANGLE_APPLE_AVAILABLE_XCI(10.15, 13.0, 13))
     {
-        MTLCaptureDescriptor *captureDescriptor = [[MTLCaptureDescriptor alloc] init];
-        captureDescriptor.captureObject         = metalDevice;
+        auto captureDescriptor                = mtl::adoptObjCObj([[MTLCaptureDescriptor alloc] init]);
+        captureDescriptor.get().captureObject = metalDevice;
 
         NSError *error;
-        if (![captureManager startCaptureWithDescriptor:captureDescriptor error:&error])
+        if (![captureManager startCaptureWithDescriptor:captureDescriptor.get() error:&error])
         {
             NSLog(@"Failed to start capture, error %@", error);
         }
@@ -322,7 +322,7 @@ egl::Error SurfaceMtl::makeCurrent(const gl::Context *context)
 egl::Error SurfaceMtl::unMakeCurrent(const gl::Context *context)
 {
     ContextMtl *contextMtl = mtl::GetImpl(context);
-    contextMtl->flushCommandBufer();
+    contextMtl->flushCommandBuffer(mtl::WaitUntilScheduled);
 
     StopFrameCapture();
     return egl::NoError();
@@ -607,15 +607,15 @@ egl::Error WindowSurfaceMtl::initialize(const egl::Display *display)
         mMetalLayer.get().autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
 #endif
 
-        // ensure drawableSize is set to correct value:
-        mMetalLayer.get().drawableSize = mCurrentKnownDrawableSize = calcExpectedDrawableSize();
-
         if (mMetalLayer.get() != mLayer)
         {
             mMetalLayer.get().contentsScale = mLayer.contentsScale;
 
             [mLayer addSublayer:mMetalLayer.get()];
         }
+
+        // ensure drawableSize is set to correct value:
+        mMetalLayer.get().drawableSize = mCurrentKnownDrawableSize = calcExpectedDrawableSize();
     }
 
     return egl::NoError();
@@ -874,7 +874,7 @@ egl::Error OffscreenSurfaceMtl::bindTexImage(const gl::Context *context,
                                              EGLint buffer)
 {
     ContextMtl *contextMtl = mtl::GetImpl(context);
-    contextMtl->flushCommandBufer();
+    contextMtl->flushCommandBuffer(mtl::WaitUntilScheduled);
 
     // Initialize offscreen textures if needed:
     ANGLE_TO_EGL_TRY(ensureTexturesSizeCorrect(context));
@@ -892,7 +892,7 @@ egl::Error OffscreenSurfaceMtl::releaseTexImage(const gl::Context *context, EGLi
     }
 
     // NOTE(hqle): Should we finishCommandBuffer or flush is enough?
-    contextMtl->flushCommandBufer();
+    contextMtl->flushCommandBuffer(mtl::WaitUntilScheduled);
     return egl::NoError();
 }
 

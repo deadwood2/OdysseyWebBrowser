@@ -28,6 +28,7 @@
 #include "JSDOMConstructorNotConstructable.h"
 #include "JSDOMConvertStrings.h"
 #include "JSDOMExceptionHandling.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMWrapperCache.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreJSClientData.h"
@@ -83,6 +84,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestNamedSetterThrowingExceptionPrototype,
 
 using JSTestNamedSetterThrowingExceptionDOMConstructor = JSDOMConstructorNotConstructable<JSTestNamedSetterThrowingException>;
 
+template<> const ClassInfo JSTestNamedSetterThrowingExceptionDOMConstructor::s_info = { "TestNamedSetterThrowingException", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestNamedSetterThrowingExceptionDOMConstructor) };
+
 template<> JSValue JSTestNamedSetterThrowingExceptionDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -95,8 +98,6 @@ template<> void JSTestNamedSetterThrowingExceptionDOMConstructor::initializeProp
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestNamedSetterThrowingException"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestNamedSetterThrowingExceptionDOMConstructor::s_info = { "TestNamedSetterThrowingException", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestNamedSetterThrowingExceptionDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -142,7 +143,7 @@ JSObject* JSTestNamedSetterThrowingException::prototype(VM& vm, JSDOMGlobalObjec
 
 JSValue JSTestNamedSetterThrowingException::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestNamedSetterThrowingExceptionDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestNamedSetterThrowingExceptionDOMConstructor, DOMConstructorID::TestNamedSetterThrowingException>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 void JSTestNamedSetterThrowingException::destroy(JSC::JSCell* cell)
@@ -153,17 +154,16 @@ void JSTestNamedSetterThrowingException::destroy(JSC::JSCell* cell)
 
 bool JSTestNamedSetterThrowingException::getOwnPropertySlot(JSObject* object, JSGlobalObject* lexicalGlobalObject, PropertyName propertyName, PropertySlot& slot)
 {
+    auto throwScope = DECLARE_THROW_SCOPE(JSC::getVM(lexicalGlobalObject));
     auto* thisObject = jsCast<JSTestNamedSetterThrowingException*>(object);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     using GetterIDLType = IDLDOMString;
-    auto getterFunctor = [] (auto& thisObject, auto propertyName) -> Optional<typename GetterIDLType::ImplementationType> {
-        auto result = thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
-        if (!GetterIDLType::isNullValue(result))
-            return typename GetterIDLType::ImplementationType { GetterIDLType::extractValueFromNullable(result) };
-        return WTF::nullopt;
-    };
+    auto getterFunctor = visibleNamedPropertyItemAccessorFunctor<GetterIDLType, JSTestNamedSetterThrowingException>([] (JSTestNamedSetterThrowingException& thisObject, PropertyName propertyName) -> decltype(auto) {
+        return thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
+    });
     if (auto namedProperty = accessVisibleNamedProperty<LegacyOverrideBuiltIns::No>(*lexicalGlobalObject, *thisObject, propertyName, getterFunctor)) {
-        auto value = toJS<IDLDOMString>(*lexicalGlobalObject, WTFMove(namedProperty.value()));
+        auto value = toJS<IDLDOMString>(*lexicalGlobalObject, throwScope, WTFMove(namedProperty.value()));
+        RETURN_IF_EXCEPTION(throwScope, false);
         slot.setValue(thisObject, static_cast<unsigned>(0), value);
         return true;
     }
@@ -173,18 +173,17 @@ bool JSTestNamedSetterThrowingException::getOwnPropertySlot(JSObject* object, JS
 bool JSTestNamedSetterThrowingException::getOwnPropertySlotByIndex(JSObject* object, JSGlobalObject* lexicalGlobalObject, unsigned index, PropertySlot& slot)
 {
     VM& vm = JSC::getVM(lexicalGlobalObject);
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
     auto* thisObject = jsCast<JSTestNamedSetterThrowingException*>(object);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     auto propertyName = Identifier::from(vm, index);
     using GetterIDLType = IDLDOMString;
-    auto getterFunctor = [] (auto& thisObject, auto propertyName) -> Optional<typename GetterIDLType::ImplementationType> {
-        auto result = thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
-        if (!GetterIDLType::isNullValue(result))
-            return typename GetterIDLType::ImplementationType { GetterIDLType::extractValueFromNullable(result) };
-        return WTF::nullopt;
-    };
+    auto getterFunctor = visibleNamedPropertyItemAccessorFunctor<GetterIDLType, JSTestNamedSetterThrowingException>([] (JSTestNamedSetterThrowingException& thisObject, PropertyName propertyName) -> decltype(auto) {
+        return thisObject.wrapped().namedItem(propertyNameToAtomString(propertyName));
+    });
     if (auto namedProperty = accessVisibleNamedProperty<LegacyOverrideBuiltIns::No>(*lexicalGlobalObject, *thisObject, propertyName, getterFunctor)) {
-        auto value = toJS<IDLDOMString>(*lexicalGlobalObject, WTFMove(namedProperty.value()));
+        auto value = toJS<IDLDOMString>(*lexicalGlobalObject, throwScope, WTFMove(namedProperty.value()));
+        RETURN_IF_EXCEPTION(throwScope, false);
         slot.setValue(thisObject, static_cast<unsigned>(0), value);
         return true;
     }
@@ -206,6 +205,8 @@ bool JSTestNamedSetterThrowingException::put(JSCell* cell, JSGlobalObject* lexic
     auto* thisObject = jsCast<JSTestNamedSetterThrowingException*>(cell);
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
 
+    if (UNLIKELY(thisObject != putPropertySlot.thisValue()))
+        return JSObject::put(thisObject, lexicalGlobalObject, propertyName, value, putPropertySlot);
     auto throwScope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
 
     if (!propertyName.isSymbol()) {
@@ -213,7 +214,7 @@ bool JSTestNamedSetterThrowingException::put(JSCell* cell, JSGlobalObject* lexic
         JSValue prototype = thisObject->getPrototypeDirect(JSC::getVM(lexicalGlobalObject));
         bool found = prototype.isObject() && asObject(prototype)->getPropertySlot(lexicalGlobalObject, propertyName, slot);
         slot.disallowVMEntry.reset();
-        throwScope.assertNoException();
+        RETURN_IF_EXCEPTION(throwScope, false);
         if (!found) {
             auto nativeValue = convert<IDLDOMString>(*lexicalGlobalObject, value);
             RETURN_IF_EXCEPTION(throwScope, true);
@@ -239,7 +240,7 @@ bool JSTestNamedSetterThrowingException::putByIndex(JSCell* cell, JSGlobalObject
     JSValue prototype = thisObject->getPrototypeDirect(vm);
     bool found = prototype.isObject() && asObject(prototype)->getPropertySlot(lexicalGlobalObject, propertyName, slot);
     slot.disallowVMEntry.reset();
-    throwScope.assertNoException();
+    RETURN_IF_EXCEPTION(throwScope, false);
     if (!found) {
         auto nativeValue = convert<IDLDOMString>(*lexicalGlobalObject, value);
         RETURN_IF_EXCEPTION(throwScope, true);
@@ -262,7 +263,7 @@ bool JSTestNamedSetterThrowingException::defineOwnProperty(JSObject* object, JSG
         PropertySlot slot { thisObject, PropertySlot::InternalMethodType::VMInquiry, &lexicalGlobalObject->vm() };
         bool found = JSObject::getOwnPropertySlot(thisObject, lexicalGlobalObject, propertyName, slot);
         slot.disallowVMEntry.reset();
-        throwScope.assertNoException();
+        RETURN_IF_EXCEPTION(throwScope, false);
         if (!found) {
             if (!propertyDescriptor.isDataDescriptor())
                 return false;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,11 +41,11 @@ WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferShareableMappedIOSurfaceBackend);
 
 std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> ImageBufferShareableMappedIOSurfaceBackend::create(const Parameters& parameters, const HostWindow*)
 {
-    IntSize backendSize = calculateBackendSize(parameters.logicalSize, parameters.resolutionScale);
+    IntSize backendSize = calculateSafeBackendSize(parameters);
     if (backendSize.isEmpty())
         return nullptr;
 
-    auto surface = IOSurface::create(backendSize, backendSize, cachedCGColorSpace(parameters.colorSpace), IOSurface::formatForPixelFormat(parameters.pixelFormat));
+    auto surface = IOSurface::create(backendSize, backendSize, parameters.colorSpace, IOSurface::formatForPixelFormat(parameters.pixelFormat));
     if (!surface)
         return nullptr;
 
@@ -65,12 +65,9 @@ std::unique_ptr<ImageBufferShareableMappedIOSurfaceBackend> ImageBufferShareable
         return nullptr;
     }
 
-    auto surface = IOSurface::createFromSendRight(WTFMove(WTF::get<MachSendRight>(handle)), cachedCGColorSpace(parameters.colorSpace));
+    auto surface = IOSurface::createFromSendRight(WTFMove(WTF::get<MachSendRight>(handle)), parameters.colorSpace);
     if (!surface)
         return nullptr;
-
-    // Claim in the WebProcess ownership of the IOSurface constructed by the GPUProcess so that Jetsam knows which processes to kill.
-    surface->setOwnership(mach_task_self());
 
     return makeUnique<ImageBufferShareableMappedIOSurfaceBackend>(parameters, WTFMove(surface));
 }
@@ -79,6 +76,14 @@ ImageBufferBackendHandle ImageBufferShareableMappedIOSurfaceBackend::createImage
 {
     return ImageBufferBackendHandle(m_surface->createSendRight());
 }
+
+#if HAVE(IOSURFACE_SET_OWNERSHIP_IDENTITY)
+void ImageBufferShareableMappedIOSurfaceBackend::setProcessOwnership(task_id_token_t processIdentityToken)
+{
+    ASSERT(surface());
+    surface()->setOwnershipIdentity(processIdentityToken);
+}
+#endif
 
 } // namespace WebKit
 

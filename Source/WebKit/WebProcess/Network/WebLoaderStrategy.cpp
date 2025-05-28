@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012, 2015, 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -77,21 +77,18 @@
 #include <WebCore/QuickLook.h>
 #endif
 
-
-#define RELEASE_LOG_IS_ALLOWED (WebProcess::singleton().sessionID().isAlwaysOnLoggingAllowed())
-
-#define RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(RELEASE_LOG_IS_ALLOWED, Network, "%p - WebLoaderStrategy::" fmt, this, ##__VA_ARGS__)
-#define RELEASE_LOG_ERROR_IF_ALLOWED(fmt, ...) RELEASE_LOG_ERROR_IF(RELEASE_LOG_IS_ALLOWED, Network, "%p - WebLoaderStrategy::" fmt, this, ##__VA_ARGS__)
+#define WEBLOADERSTRATEGY_RELEASE_LOG_BASIC(fmt, ...) RELEASE_LOG(Network, "%p - WebLoaderStrategy::" fmt, this, ##__VA_ARGS__)
+#define WEBLOADERSTRATEGY_RELEASE_LOG_ERROR_BASIC(fmt, ...) RELEASE_LOG_ERROR(Network, "%p - WebLoaderStrategy::" fmt, this, ##__VA_ARGS__)
 
 #define WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE "%p - [resourceLoader=%p, frameLoader=%p, frame=%p, webPageID=%" PRIu64 ", frameID=%" PRIu64 ", resourceID=%" PRIu64 "] WebLoaderStrategy::"
 #define WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_PARAMETERS this, &resourceLoader, resourceLoader.frameLoader(), resourceLoader.frame(), trackingParameters.pageID.toUInt64(), trackingParameters.frameID.toUInt64(), trackingParameters.resourceID
 #define WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_STANDARD_PARAMETERS this, nullptr, &frameLoader, &frameLoader.frame(), trackingParameters.pageID.toUInt64(), trackingParameters.frameID.toUInt64(), trackingParameters.resourceID
 
-#define WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(RELEASE_LOG_IS_ALLOWED, Network, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
-#define WEBLOADERSTRATEGY_RELEASE_LOG_ERROR_IF_ALLOWED(fmt, ...) RELEASE_LOG_ERROR_IF(RELEASE_LOG_IS_ALLOWED, Network, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
+#define WEBLOADERSTRATEGY_RELEASE_LOG(fmt, ...) RELEASE_LOG(Network, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
+#define WEBLOADERSTRATEGY_RELEASE_LOG_ERROR(fmt, ...) RELEASE_LOG_ERROR(Network, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
 
-#define WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_IF_ALLOWED(fmt, ...) RELEASE_LOG_IF(RELEASE_LOG_IS_ALLOWED, Network, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
-#define WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR_IF_ALLOWED(fmt, ...) RELEASE_LOG_ERROR_IF(RELEASE_LOG_IS_ALLOWED, Network, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
+#define WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG(fmt, ...) RELEASE_LOG(Network, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
+#define WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR(fmt, ...) RELEASE_LOG_ERROR(Network, WEBLOADERSTRATEGY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
 
 namespace WebKit {
 using namespace WebCore;
@@ -110,7 +107,7 @@ void WebLoaderStrategy::loadResource(Frame& frame, CachedResource& resource, Res
     if (resource.type() != CachedResource::Type::MainResource || !frame.isMainFrame()) {
         if (auto* document = frame.mainFrame().document()) {
             if (document && document->loader())
-                request.setIsAppBound(document->loader()->lastNavigationWasAppBound());
+                request.setIsAppInitiated(document->loader()->lastNavigationWasAppInitiated());
         }
     }
 
@@ -118,7 +115,7 @@ void WebLoaderStrategy::loadResource(Frame& frame, CachedResource& resource, Res
         if (loader)
             scheduleLoad(*loader, resource.get(), referrerPolicy == ReferrerPolicy::NoReferrerWhenDowngrade);
         else
-            RELEASE_LOG_IF(RELEASE_LOG_IS_ALLOWED, Network, "%p - [webPageID=%" PRIu64 ", frameID=%" PRIu64 "] WebLoaderStrategy::loadResource: Unable to create SubresourceLoader", this, frame->pageID().valueOr(PageIdentifier()).toUInt64(), frame->frameID().valueOr(FrameIdentifier()).toUInt64());
+            RELEASE_LOG(Network, "%p - [webPageID=%" PRIu64 ", frameID=%" PRIu64 "] WebLoaderStrategy::loadResource: Unable to create SubresourceLoader", this, frame->pageID().value_or(PageIdentifier()).toUInt64(), frame->frameID().value_or(FrameIdentifier()).toUInt64());
         completionHandler(WTFMove(loader));
     });
 }
@@ -180,13 +177,13 @@ void WebLoaderStrategy::scheduleLoad(ResourceLoader& resourceLoader, CachedResou
 
     WebResourceLoader::TrackingParameters trackingParameters;
     if (auto* webFrameLoaderClient = toWebFrameLoaderClient(frameLoaderClient))
-        trackingParameters.webPageProxyID = webFrameLoaderClient->webPageProxyID().valueOr(WebPageProxyIdentifier { });
+        trackingParameters.webPageProxyID = webFrameLoaderClient->webPageProxyID().value_or(WebPageProxyIdentifier { });
 #if ENABLE(SERVICE_WORKER)
     else if (is<ServiceWorkerFrameLoaderClient>(frameLoaderClient))
         trackingParameters.webPageProxyID = downcast<ServiceWorkerFrameLoaderClient>(frameLoaderClient).webPageProxyID();
 #endif
-    trackingParameters.pageID = frameLoaderClient.pageID().valueOr(PageIdentifier { });
-    trackingParameters.frameID = frameLoaderClient.frameID().valueOr(FrameIdentifier { });
+    trackingParameters.pageID = frameLoaderClient.pageID().value_or(PageIdentifier { });
+    trackingParameters.frameID = frameLoaderClient.frameID().value_or(FrameIdentifier { });
     trackingParameters.resourceID = identifier;
 
 #if ENABLE(WEB_ARCHIVE) || ENABLE(MHTML)
@@ -194,7 +191,7 @@ void WebLoaderStrategy::scheduleLoad(ResourceLoader& resourceLoader, CachedResou
     // then we should remember the ResourceLoader in our records but not schedule it in the NetworkProcess.
     if (resourceLoader.documentLoader()->scheduleArchiveLoad(resourceLoader, resourceLoader.request())) {
         LOG(NetworkScheduling, "(WebProcess) WebLoaderStrategy::scheduleLoad, url '%s' will be handled as an archive resource.", resourceLoader.url().string().utf8().data());
-        WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("scheduleLoad: URL will be handled as an archive resource");
+        WEBLOADERSTRATEGY_RELEASE_LOG("scheduleLoad: URL will be handled as an archive resource");
         m_webResourceLoaders.set(identifier, WebResourceLoader::create(resourceLoader, trackingParameters));
         return;
     }
@@ -202,14 +199,14 @@ void WebLoaderStrategy::scheduleLoad(ResourceLoader& resourceLoader, CachedResou
 
     if (resourceLoader.documentLoader()->applicationCacheHost().maybeLoadResource(resourceLoader, resourceLoader.request(), resourceLoader.request().url())) {
         LOG(NetworkScheduling, "(WebProcess) WebLoaderStrategy::scheduleLoad, url '%s' will be loaded from application cache.", resourceLoader.url().string().utf8().data());
-        WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("scheduleLoad: URL will be loaded from application cache");
+        WEBLOADERSTRATEGY_RELEASE_LOG("scheduleLoad: URL will be loaded from application cache");
         m_webResourceLoaders.set(identifier, WebResourceLoader::create(resourceLoader, trackingParameters));
         return;
     }
 
     if (resourceLoader.request().url().protocolIsData()) {
         LOG(NetworkScheduling, "(WebProcess) WebLoaderStrategy::scheduleLoad, url '%s' will be loaded as data.", resourceLoader.url().string().utf8().data());
-        WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("scheduleLoad: URL will be loaded as data");
+        WEBLOADERSTRATEGY_RELEASE_LOG("scheduleLoad: URL will be loaded as data");
         startLocalLoad(resourceLoader);
         return;
     }
@@ -217,7 +214,7 @@ void WebLoaderStrategy::scheduleLoad(ResourceLoader& resourceLoader, CachedResou
 #if USE(QUICK_LOOK)
     if (isQuickLookPreviewURL(resourceLoader.request().url())) {
         LOG(NetworkScheduling, "(WebProcess) WebLoaderStrategy::scheduleLoad, url '%s' will be handled as a QuickLook resource.", resourceLoader.url().string().utf8().data());
-        WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("scheduleLoad: URL will be handled as a QuickLook resource");
+        WEBLOADERSTRATEGY_RELEASE_LOG("scheduleLoad: URL will be handled as a QuickLook resource");
         startLocalLoad(resourceLoader);
         return;
     }
@@ -228,14 +225,14 @@ void WebLoaderStrategy::scheduleLoad(ResourceLoader& resourceLoader, CachedResou
     // https://blogs.gnome.org/alexl/2012/01/26/resources-in-glib/
     if (resourceLoader.request().url().protocolIs("resource")) {
         LOG(NetworkScheduling, "(WebProcess) WebLoaderStrategy::scheduleLoad, url '%s' will be handled as a GResource.", resourceLoader.url().string().utf8().data());
-        WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("scheduleLoad: URL will be handled as a GResource");
+        WEBLOADERSTRATEGY_RELEASE_LOG("scheduleLoad: URL will be handled as a GResource");
         startLocalLoad(resourceLoader);
         return;
     }
 #endif
 
     if (!tryLoadingUsingURLSchemeHandler(resourceLoader, trackingParameters)) {
-        WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("scheduleLoad: URL will be scheduled with the NetworkProcess");
+        WEBLOADERSTRATEGY_RELEASE_LOG("scheduleLoad: URL will be scheduled with the NetworkProcess");
 
 #if ENABLE(SERVICE_WORKER)
         if (!resourceLoader.options().serviceWorkerRegistrationIdentifier && InspectorInstrumentationWebKit::shouldInterceptRequest(resourceLoader.frame(), resourceLoader.request())) {
@@ -248,8 +245,6 @@ void WebLoaderStrategy::scheduleLoad(ResourceLoader& resourceLoader, CachedResou
         scheduleLoadFromNetworkProcess(resourceLoader, resourceLoader.request(), trackingParameters, shouldClearReferrerOnHTTPSToHTTPRedirect, maximumBufferingTime(resource));
         return;
     }
-
-    WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("scheduleLoad: URL not handled by any handlers");
 }
 
 bool WebLoaderStrategy::tryLoadingUsingURLSchemeHandler(ResourceLoader& resourceLoader, const WebResourceLoader::TrackingParameters& trackingParameters)
@@ -268,7 +263,7 @@ bool WebLoaderStrategy::tryLoadingUsingURLSchemeHandler(ResourceLoader& resource
         return false;
 
     LOG(NetworkScheduling, "(WebProcess) WebLoaderStrategy::scheduleLoad, URL '%s' will be handled by a UIProcess URL scheme handler.", resourceLoader.url().string().utf8().data());
-    WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("tryLoadingUsingURLSchemeHandler: URL will be handled by a UIProcess URL scheme handler");
+    WEBLOADERSTRATEGY_RELEASE_LOG("tryLoadingUsingURLSchemeHandler: URL will be handled by a UIProcess URL scheme handler");
 
     handler->startNewTask(resourceLoader, webFrame);
     return true;
@@ -281,16 +276,20 @@ static void addParametersShared(const Frame* frame, NetworkResourceLoadParameter
     if (!frame)
         return;
 
-    parameters.isHTTPSUpgradeEnabled = frame->settings().HTTPSUpgradeEnabled();
+    if (auto* document = frame->document())
+        parameters.crossOriginEmbedderPolicy = document->crossOriginEmbedderPolicy();
 
     if (auto* page = frame->page()) {
         parameters.pageHasResourceLoadClient = page->hasResourceLoadClient();
         parameters.shouldRelaxThirdPartyCookieBlocking = page->shouldRelaxThirdPartyCookieBlocking();
+        page->logMediaDiagnosticMessage(parameters.request.httpBody());
     }
 
     if (auto* ownerElement = frame->ownerElement()) {
-        if (auto* parentFrame = ownerElement->document().frame())
+        if (auto* parentFrame = ownerElement->document().frame()) {
             parameters.parentFrameID = parentFrame->loader().frameID();
+            parameters.parentCrossOriginEmbedderPolicy = ownerElement->document().crossOriginEmbedderPolicy();
+        }
     }
 }
 
@@ -342,10 +341,14 @@ void WebLoaderStrategy::scheduleLoadFromNetworkProcess(ResourceLoader& resourceL
         if (auto* contentSecurityPolicy = document->contentSecurityPolicy())
             loadParameters.cspResponseHeaders = contentSecurityPolicy->responseHeaders();
     }
+
+    if (resourceLoader.options().crossOriginEmbedderPolicy)
+        loadParameters.crossOriginEmbedderPolicy = *resourceLoader.options().crossOriginEmbedderPolicy;
     
+#if ENABLE(APP_BOUND_DOMAINS) || ENABLE(CONTENT_EXTENSIONS)
     auto* webFrameLoaderClient = frame ? toWebFrameLoaderClient(frame->loader().client()) : nullptr;
     auto* webFrame = webFrameLoaderClient ? &webFrameLoaderClient->webFrame() : nullptr;
-    auto* webPage = webFrame ? webFrame->page() : nullptr;
+#endif
 
 #if ENABLE(APP_BOUND_DOMAINS)
     if (webFrame)
@@ -356,7 +359,7 @@ void WebLoaderStrategy::scheduleLoadFromNetworkProcess(ResourceLoader& resourceL
     if (document) {
         loadParameters.mainDocumentURL = document->topDocument().url();
         // FIXME: Instead of passing userContentControllerIdentifier, the NetworkProcess should be able to get it using webPageId.
-        if (webPage)
+        if (auto* webPage = webFrame ? webFrame->page() : nullptr)
             loadParameters.userContentControllerIdentifier = webPage->userContentControllerIdentifier();
     }
 #endif
@@ -386,7 +389,7 @@ void WebLoaderStrategy::scheduleLoadFromNetworkProcess(ResourceLoader& resourceL
     if (loadParameters.options.mode != FetchOptions::Mode::Navigate) {
         ASSERT(loadParameters.sourceOrigin);
         if (!loadParameters.sourceOrigin) {
-            WEBLOADERSTRATEGY_RELEASE_LOG_ERROR_IF_ALLOWED("scheduleLoad: no sourceOrigin (priority=%d)", static_cast<int>(resourceLoader.request().priority()));
+            WEBLOADERSTRATEGY_RELEASE_LOG_ERROR("scheduleLoad: no sourceOrigin (priority=%d)", static_cast<int>(resourceLoader.request().priority()));
             scheduleInternallyFailedLoad(resourceLoader);
             return;
         }
@@ -409,9 +412,12 @@ void WebLoaderStrategy::scheduleLoadFromNetworkProcess(ResourceLoader& resourceL
 
     ASSERT((loadParameters.webPageID && loadParameters.webFrameID) || loadParameters.clientCredentialPolicy == ClientCredentialPolicy::CannotAskClientForCredentials);
 
-    WEBLOADERSTRATEGY_RELEASE_LOG_IF_ALLOWED("scheduleLoad: Resource is being scheduled with the NetworkProcess (priority=%d)", static_cast<int>(resourceLoader.request().priority()));
-    if (!WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::ScheduleResourceLoad(loadParameters), 0)) {
-        WEBLOADERSTRATEGY_RELEASE_LOG_ERROR_IF_ALLOWED("scheduleLoad: Unable to schedule resource with the NetworkProcess (priority=%d)", static_cast<int>(resourceLoader.request().priority()));
+    std::optional<NetworkResourceLoadIdentifier> existingNetworkResourceLoadIdentifierToResume;
+    if (loadParameters.isMainFrameNavigation)
+        existingNetworkResourceLoadIdentifierToResume = std::exchange(m_existingNetworkResourceLoadIdentifierToResume, std::nullopt);
+    WEBLOADERSTRATEGY_RELEASE_LOG("scheduleLoad: Resource is being scheduled with the NetworkProcess (priority=%d, existingNetworkResourceLoadIdentifierToResume=%" PRIu64 ")", static_cast<int>(resourceLoader.request().priority()), existingNetworkResourceLoadIdentifierToResume.value_or(NetworkResourceLoadIdentifier { }).toUInt64());
+    if (!WebProcess::singleton().ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::ScheduleResourceLoad(loadParameters, existingNetworkResourceLoadIdentifierToResume), 0)) {
+        WEBLOADERSTRATEGY_RELEASE_LOG_ERROR("scheduleLoad: Unable to schedule resource with the NetworkProcess (priority=%d)", static_cast<int>(resourceLoader.request().priority()));
         // We probably failed to schedule this load with the NetworkProcess because it had crashed.
         // This load will never succeed so we will schedule it to fail asynchronously.
         scheduleInternallyFailedLoad(resourceLoader);
@@ -513,7 +519,7 @@ void WebLoaderStrategy::resumePendingRequests()
 
 void WebLoaderStrategy::networkProcessCrashed()
 {
-    RELEASE_LOG_ERROR_IF_ALLOWED("networkProcessCrashed: failing all pending resource loaders");
+    WEBLOADERSTRATEGY_RELEASE_LOG_ERROR_BASIC("networkProcessCrashed: failing all pending resource loaders");
 
     for (auto& loader : m_webResourceLoaders.values()) {
         scheduleInternallyFailedLoad(*loader->resourceLoader());
@@ -549,7 +555,7 @@ WebLoaderStrategy::SyncLoadResult WebLoaderStrategy::loadDataURLSynchronously(co
     SyncLoadResult result;
     auto decodeResult = DataURLDecoder::decode(request.url(), mode);
     if (!decodeResult) {
-        RELEASE_LOG_IF_ALLOWED("loadDataURLSynchronously: decoding of data failed");
+        WEBLOADERSTRATEGY_RELEASE_LOG_BASIC("loadDataURLSynchronously: decoding of data failed");
         result.error = internalError(request.url());
         return result;
     }
@@ -560,17 +566,17 @@ WebLoaderStrategy::SyncLoadResult WebLoaderStrategy::loadDataURLSynchronously(co
     return result;
 }
 
-Optional<WebLoaderStrategy::SyncLoadResult> WebLoaderStrategy::tryLoadingSynchronouslyUsingURLSchemeHandler(FrameLoader& frameLoader, ResourceLoadIdentifier identifier, const ResourceRequest& request)
+std::optional<WebLoaderStrategy::SyncLoadResult> WebLoaderStrategy::tryLoadingSynchronouslyUsingURLSchemeHandler(FrameLoader& frameLoader, ResourceLoadIdentifier identifier, const ResourceRequest& request)
 {
     auto* webFrameLoaderClient = toWebFrameLoaderClient(frameLoader.client());
     auto* webFrame = webFrameLoaderClient ? &webFrameLoaderClient->webFrame() : nullptr;
     auto* webPage = webFrame ? webFrame->page() : nullptr;
     if (!webPage)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto* handler = webPage->urlSchemeHandlerForScheme(request.url().protocol().toStringWithoutCopying());
     if (!handler)
-        return WTF::nullopt;
+        return std::nullopt;
 
     LOG(NetworkScheduling, "(WebProcess) WebLoaderStrategy::scheduleLoad, sync load to URL '%s' will be handled by a UIProcess URL scheme handler.", request.url().string().utf8().data());
 
@@ -580,7 +586,7 @@ Optional<WebLoaderStrategy::SyncLoadResult> WebLoaderStrategy::tryLoadingSynchro
     return result;
 }
 
-void WebLoaderStrategy::loadResourceSynchronously(FrameLoader& frameLoader, unsigned long resourceLoadIdentifier, const ResourceRequest& request, ClientCredentialPolicy clientCredentialPolicy,  const FetchOptions& options, const HTTPHeaderMap& originalRequestHeaders, ResourceError& error, ResourceResponse& response, Vector<char>& data)
+void WebLoaderStrategy::loadResourceSynchronously(FrameLoader& frameLoader, unsigned long resourceLoadIdentifier, const ResourceRequest& request, ClientCredentialPolicy clientCredentialPolicy,  const FetchOptions& options, const HTTPHeaderMap& originalRequestHeaders, ResourceError& error, ResourceResponse& response, Vector<uint8_t>& data)
 {
     auto* webFrameLoaderClient = toWebFrameLoaderClient(frameLoader.client());
     auto* webFrame = webFrameLoaderClient ? &webFrameLoaderClient->webFrame() : nullptr;
@@ -598,13 +604,13 @@ void WebLoaderStrategy::loadResourceSynchronously(FrameLoader& frameLoader, unsi
 
     auto* document = frameLoader.frame().document();
     if (!document) {
-        WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR_IF_ALLOWED("loadResourceSynchronously: no document");
+        WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR("loadResourceSynchronously: no document");
         error = internalError(request.url());
         return;
     }
 
     if (request.url().protocolIsData()) {
-        WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR_IF_ALLOWED("loadResourceSynchronously: URL will be loaded as data");
+        WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR("loadResourceSynchronously: URL will be loaded as data");
         auto syncLoadResult = loadDataURLSynchronously(request);
         error = WTFMove(syncLoadResult.error);
         response = WTFMove(syncLoadResult.response);
@@ -613,7 +619,7 @@ void WebLoaderStrategy::loadResourceSynchronously(FrameLoader& frameLoader, unsi
     }
 
     if (auto syncLoadResult = tryLoadingSynchronouslyUsingURLSchemeHandler(frameLoader, resourceLoadIdentifier, request)) {
-        WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR_IF_ALLOWED("loadResourceSynchronously: failed calling tryLoadingSynchronouslyUsingURLSchemeHandler (error=%d)", syncLoadResult->error.errorCode());
+        WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR("loadResourceSynchronously: failed calling tryLoadingSynchronouslyUsingURLSchemeHandler (error=%d)", syncLoadResult->error.errorCode());
         error = WTFMove(syncLoadResult->error);
         response = WTFMove(syncLoadResult->response);
         data = WTFMove(syncLoadResult->data);
@@ -657,7 +663,7 @@ void WebLoaderStrategy::loadResourceSynchronously(FrameLoader& frameLoader, unsi
     IPC::UnboundedSynchronousIPCScope unboundedSynchronousIPCScope;
 
     if (!WebProcess::singleton().ensureNetworkProcessConnection().connection().sendSync(Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad(loadParameters), Messages::NetworkConnectionToWebProcess::PerformSynchronousLoad::Reply(error, response, data), 0)) {
-        WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR_IF_ALLOWED("loadResourceSynchronously: failed sending synchronous network process message");
+        WEBLOADERSTRATEGY_WITH_FRAMELOADER_RELEASE_LOG_ERROR("loadResourceSynchronously: failed sending synchronous network process message");
         if (page)
             page->diagnosticLoggingClient().logDiagnosticMessage(WebCore::DiagnosticLoggingKeys::internalErrorKey(), WebCore::DiagnosticLoggingKeys::synchronousMessageFailedKey(), WebCore::ShouldSample::No);
         response = ResourceResponse();
@@ -769,12 +775,19 @@ void WebLoaderStrategy::preconnectTo(FrameLoader& frameLoader, const URL& url, S
 
 void WebLoaderStrategy::preconnectTo(WebCore::ResourceRequest&& request, WebPage& webPage, WebFrame& webFrame, WebCore::StoredCredentialsPolicy storedCredentialsPolicy, PreconnectCompletionHandler&& completionHandler)
 {
-    if (auto* document = webPage.mainFrame()->document()) {
-        if (document && document->loader())
-            request.setIsAppBound(document->loader()->lastNavigationWasAppBound());
+    if (webPage.corePage() && !webPage.corePage()->allowsLoadFromURL(request.url(), MainFrameMainResource::No)) {
+        if (completionHandler)
+            completionHandler({ });
+        return;
     }
 
-    Optional<uint64_t> preconnectionIdentifier;
+    if (auto* document = webPage.mainFrame()->document()) {
+        request.setFirstPartyForCookies(document->firstPartyForCookies());
+        if (auto* loader = document->loader())
+            request.setIsAppInitiated(loader->lastNavigationWasAppInitiated());
+    }
+
+    std::optional<uint64_t> preconnectionIdentifier;
     if (completionHandler) {
         preconnectionIdentifier = WebLoaderStrategy::generateLoadIdentifier();
         auto addResult = m_preconnectCompletionHandlers.add(*preconnectionIdentifier, WTFMove(completionHandler));
@@ -916,5 +929,5 @@ void WebLoaderStrategy::prioritizeResourceLoads(const Vector<WebCore::Subresourc
 
 } // namespace WebKit
 
-#undef RELEASE_LOG_IF_ALLOWED
-#undef RELEASE_LOG_ERROR_IF_ALLOWED
+#undef WEBLOADERSTRATEGY_RELEASE_LOG_BASIC
+#undef WEBLOADERSTRATEGY_RELEASE_LOG_ERROR_BASIC

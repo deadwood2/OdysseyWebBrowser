@@ -38,15 +38,15 @@ namespace WebKit {
 
 bool defaultTextAutosizingUsesIdempotentMode()
 {
-    return currentUserInterfaceIdiomIsPadOrMac();
+    return !currentUserInterfaceIdiomIsPhoneOrWatch();
 }
 
 #endif
 
 #if !PLATFORM(MACCATALYST) && !PLATFORM(WATCHOS)
-static Optional<bool>& cachedAllowsRequest()
+static std::optional<bool>& cachedAllowsRequest()
 {
-    static NeverDestroyed<Optional<bool>> allowsRequest;
+    static NeverDestroyed<std::optional<bool>> allowsRequest;
     return allowsRequest;
 }
 

@@ -70,7 +70,6 @@
 #import "_WKFrameHandleInternal.h"
 #import "_WKRenderingProgressEventsInternal.h"
 #import "_WKSameDocumentNavigationTypeInternal.h"
-#import "_WKWebsitePoliciesInternal.h"
 #import <WebCore/AuthenticationMac.h>
 #import <WebCore/ContentRuleListResults.h>
 #import <WebCore/Credential.h>
@@ -152,8 +151,6 @@ void NavigationState::setNavigationDelegate(id <WKNavigationDelegate> delegate)
 
     m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionDecisionHandler = [delegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:decisionHandler:)];
     m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesDecisionHandler = [delegate respondsToSelector:@selector(webView:decidePolicyForNavigationAction:preferences:decisionHandler:)];
-    m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionDecisionHandlerWebsitePolicies = [delegate respondsToSelector:@selector(_webView:decidePolicyForNavigationAction:decisionHandler:)];
-    m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionUserInfoDecisionHandlerWebsitePolicies = [delegate respondsToSelector:@selector(_webView:decidePolicyForNavigationAction:userInfo:decisionHandler:)];
     m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesUserInfoDecisionHandler = [delegate respondsToSelector:@selector(_webView:decidePolicyForNavigationAction:preferences:userInfo:decisionHandler:)];
     m_navigationDelegateMethods.webViewDecidePolicyForNavigationResponseDecisionHandler = [delegate respondsToSelector:@selector(webView:decidePolicyForNavigationResponse:decisionHandler:)];
 
@@ -181,7 +178,7 @@ void NavigationState::setNavigationDelegate(id <WKNavigationDelegate> delegate)
     m_navigationDelegateMethods.webViewDidReceiveAuthenticationChallengeCompletionHandler = [delegate respondsToSelector:@selector(webView:didReceiveAuthenticationChallenge:completionHandler:)];
     m_navigationDelegateMethods.webViewAuthenticationChallengeShouldAllowLegacyTLS = [delegate respondsToSelector:@selector(_webView:authenticationChallenge:shouldAllowLegacyTLS:)];
     m_navigationDelegateMethods.webViewAuthenticationChallengeShouldAllowDeprecatedTLS = [delegate respondsToSelector:@selector(webView:authenticationChallenge:shouldAllowDeprecatedTLS:)];
-    m_navigationDelegateMethods.webViewDidNegotiateModernTLS = [delegate respondsToSelector:@selector(_webView:didNegotiateModernTLS:)];
+    m_navigationDelegateMethods.webViewDidNegotiateModernTLS = [delegate respondsToSelector:@selector(_webView:didNegotiateModernTLSForURL:)];
     m_navigationDelegateMethods.webViewWebContentProcessDidTerminate = [delegate respondsToSelector:@selector(webViewWebContentProcessDidTerminate:)];
     m_navigationDelegateMethods.webViewWebContentProcessDidTerminateWithReason = [delegate respondsToSelector:@selector(_webView:webContentProcessDidTerminateWithReason:)];
     m_navigationDelegateMethods.webViewWebProcessDidCrash = [delegate respondsToSelector:@selector(_webViewWebProcessDidCrash:)];
@@ -473,9 +470,7 @@ void NavigationState::NavigationClient::decidePolicyForNavigationAction(WebPageP
 
     if (!m_navigationState || (!m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionDecisionHandler
         && !m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesUserInfoDecisionHandler
-        && !m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesDecisionHandler
-        && !m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionDecisionHandlerWebsitePolicies
-        && !m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionUserInfoDecisionHandlerWebsitePolicies)) {
+        && !m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesDecisionHandler)) {
         auto completionHandler = [webPage = makeRef(webPageProxy), listener = WTFMove(listener), navigationAction, defaultWebsitePolicies] (bool interceptedNavigation) {
             if (interceptedNavigation) {
                 listener->ignore();
@@ -516,33 +511,20 @@ void NavigationState::NavigationClient::decidePolicyForNavigationAction(WebPageP
 
     bool delegateHasWebpagePreferences = m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesDecisionHandler
         || m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesUserInfoDecisionHandler;
-    bool delegateHasWebsitePolicies = m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionDecisionHandlerWebsitePolicies || m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionUserInfoDecisionHandlerWebsitePolicies;
 
     auto selectorForCompletionHandlerChecker = ([&] () -> SEL {
         if (delegateHasWebpagePreferences)
             return m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesDecisionHandler ? @selector(webView:decidePolicyForNavigationAction:preferences:decisionHandler:) : @selector(_webView:decidePolicyForNavigationAction:preferences:userInfo:decisionHandler:);
-        if (delegateHasWebsitePolicies)
-            return @selector(_webView:decidePolicyForNavigationAction:decisionHandler:);
         return @selector(webView:decidePolicyForNavigationAction:decisionHandler:);
     })();
 
     auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), selectorForCompletionHandlerChecker);
-    auto decisionHandlerWithPreferencesOrPolicies = [localListener = WTFMove(listener), navigationAction, checker = WTFMove(checker), webPageProxy = makeRef(webPageProxy), subframeNavigation, defaultWebsitePolicies] (WKNavigationActionPolicy actionPolicy, id policiesOrPreferences) mutable {
+    auto decisionHandlerWithPreferencesOrPolicies = [localListener = WTFMove(listener), navigationAction, checker = WTFMove(checker), webPageProxy = makeRef(webPageProxy), subframeNavigation, defaultWebsitePolicies] (WKNavigationActionPolicy actionPolicy, WKWebpagePreferences *preferences) mutable {
         if (checker->completionHandlerHasBeenCalled())
             return;
         checker->didCallCompletionHandler();
 
-        RefPtr<API::WebsitePolicies> apiWebsitePolicies;
-        if ([policiesOrPreferences isKindOfClass:WKWebpagePreferences.class])
-            apiWebsitePolicies = ((WKWebpagePreferences *)policiesOrPreferences)->_websitePolicies.get();
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        else if ([policiesOrPreferences isKindOfClass:_WKWebsitePolicies.class])
-            apiWebsitePolicies = [policiesOrPreferences webpagePreferences]->_websitePolicies.get();
-        else if (policiesOrPreferences)
-            [NSException raise:NSInvalidArgumentException format:@"Expected policies of class %@, but got %@", NSStringFromClass(_WKWebsitePolicies.class), [policiesOrPreferences class]];
-ALLOW_DEPRECATED_DECLARATIONS_END
-        else
-            apiWebsitePolicies = defaultWebsitePolicies;
+        RefPtr<API::WebsitePolicies> apiWebsitePolicies = preferences ?  preferences->_websitePolicies.get() : defaultWebsitePolicies;
 
         if (apiWebsitePolicies) {
             if (apiWebsitePolicies->websiteDataStore() && subframeNavigation)
@@ -597,17 +579,6 @@ ALLOW_DEPRECATED_DECLARATIONS_END
             [navigationDelegate webView:m_navigationState->m_webView decidePolicyForNavigationAction:wrapper(navigationAction) preferences:wrapper(defaultWebsitePolicies) decisionHandler:makeBlockPtr(WTFMove(decisionHandlerWithPreferencesOrPolicies)).get()];
         else
             [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView decidePolicyForNavigationAction:wrapper(navigationAction) preferences:wrapper(defaultWebsitePolicies) userInfo:userInfo ? static_cast<id<NSSecureCoding>>(userInfo->wrapper()) : nil decisionHandler:makeBlockPtr(WTFMove(decisionHandlerWithPreferencesOrPolicies)).get()];
-    } else if (delegateHasWebsitePolicies) {
-        auto decisionHandler = makeBlockPtr(WTFMove(decisionHandlerWithPreferencesOrPolicies));
-        if (m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionUserInfoDecisionHandlerWebsitePolicies) {
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView decidePolicyForNavigationAction:wrapper(navigationAction) userInfo:userInfo ? static_cast<id <NSSecureCoding>>(userInfo->wrapper()) : nil decisionHandler:decisionHandler.get()];
-            ALLOW_DEPRECATED_DECLARATIONS_END
-        } else {
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView decidePolicyForNavigationAction:wrapper(navigationAction) decisionHandler:decisionHandler.get()];
-            ALLOW_DEPRECATED_DECLARATIONS_END
-        }
     } else {
         auto decisionHandler = [decisionHandlerWithPreferencesOrPolicies = WTFMove(decisionHandlerWithPreferencesOrPolicies)] (WKNavigationActionPolicy actionPolicy) mutable {
             decisionHandlerWithPreferencesOrPolicies(actionPolicy, nil);
@@ -1061,7 +1032,7 @@ void NavigationState::NavigationClient::shouldAllowLegacyTLS(WebPageProxy& page,
     }).get()];
 }
 
-void NavigationState::NavigationClient::didNegotiateModernTLS(const WebCore::AuthenticationChallenge& challenge)
+void NavigationState::NavigationClient::didNegotiateModernTLS(const URL& url)
 {
     if (!m_navigationState)
         return;
@@ -1073,7 +1044,7 @@ void NavigationState::NavigationClient::didNegotiateModernTLS(const WebCore::Aut
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView didNegotiateModernTLS:mac(challenge)];
+    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView didNegotiateModernTLSForURL:url];
 }
 
 static _WKProcessTerminationReason wkProcessTerminationReason(ProcessTerminationReason reason)
@@ -1164,11 +1135,11 @@ RefPtr<API::Data> NavigationState::NavigationClient::webCryptoMasterKey(WebPageP
         return nullptr;
 
     if (!m_navigationState->m_navigationDelegateMethods.webCryptoMasterKeyForWebView) {
-        Vector<uint8_t> masterKey;
-        if (!getDefaultWebCryptoMasterKey(masterKey))
+        auto masterKey = defaultWebCryptoMasterKey();
+        if (!masterKey)
             return nullptr;
 
-        return API::Data::create(masterKey.data(), masterKey.size());
+        return API::Data::create(WTFMove(*masterKey));
     }
 
     auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
@@ -1397,10 +1368,10 @@ void NavigationState::releaseNetworkActivity(NetworkActivityReleaseReason reason
 
     switch (reason) {
     case NetworkActivityReleaseReason::LoadCompleted:
-        RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p NavigationState is releasing background process assertion because a page load completed", this);
+        RELEASE_LOG(ProcessSuspension, "%p NavigationState is releasing background process assertion because a page load completed", this);
         break;
     case NetworkActivityReleaseReason::ScreenLocked:
-        RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p NavigationState is releasing background process assertion because the screen was locked", this);
+        RELEASE_LOG(ProcessSuspension, "%p NavigationState is releasing background process assertion because the screen was locked", this);
         break;
     }
     m_networkActivity = nullptr;
@@ -1417,17 +1388,17 @@ void NavigationState::didChangeIsLoading()
             return;
 
         if (m_releaseNetworkActivityTimer.isActive()) {
-            RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - NavigationState keeps its process network assertion because a new page load started", this);
+            RELEASE_LOG(ProcessSuspension, "%p - NavigationState keeps its process network assertion because a new page load started", this);
             m_releaseNetworkActivityTimer.stop();
         }
         if (!m_networkActivity) {
-            RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - NavigationState is taking a process network assertion because a page load started", this);
+            RELEASE_LOG(ProcessSuspension, "%p - NavigationState is taking a process network assertion because a page load started", this);
             m_networkActivity = m_webView->_page->process().throttler().backgroundActivity("Page Load"_s).moveToUniquePtr();
         }
     } else if (m_networkActivity) {
         // The application is visible so we delay releasing the background activity for 3 seconds to give it a chance to start another navigation
         // before suspending the WebContent process <rdar://problem/27910964>.
-        RELEASE_LOG_IF(m_webView->_page->isAlwaysOnLoggingAllowed(), ProcessSuspension, "%p - NavigationState will release its process network assertion soon because the page load completed", this);
+        RELEASE_LOG(ProcessSuspension, "%p - NavigationState will release its process network assertion soon because the page load completed", this);
         m_releaseNetworkActivityTimer.startOneShot(3_s);
     }
 #endif

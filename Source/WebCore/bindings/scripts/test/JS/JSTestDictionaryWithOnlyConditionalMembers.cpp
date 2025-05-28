@@ -21,10 +21,13 @@
 #include "config.h"
 #include "JSTestDictionaryWithOnlyConditionalMembers.h"
 
-#include "JSDOMConvertNumbers.h"
 #include "JSDOMGlobalObject.h"
 #include <JavaScriptCore/JSCInlines.h>
 #include <JavaScriptCore/ObjectConstructor.h>
+
+#if ENABLE(TEST_CONDITIONAL)
+#include "JSTestDictionary.h"
+#endif
 
 
 namespace WebCore {
@@ -42,15 +45,15 @@ template<> TestDictionaryWithOnlyConditionalMembers convertDictionary<TestDictio
     }
     TestDictionaryWithOnlyConditionalMembers result;
 #if ENABLE(TEST_CONDITIONAL)
-    JSValue conditionalAttrValue;
+    JSValue conditionalMemberValue;
     if (isNullOrUndefined)
-        conditionalAttrValue = jsUndefined();
+        conditionalMemberValue = jsUndefined();
     else {
-        conditionalAttrValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "conditionalAttr"));
+        conditionalMemberValue = object->get(&lexicalGlobalObject, Identifier::fromString(vm, "conditionalMember"));
         RETURN_IF_EXCEPTION(throwScope, { });
     }
-    if (!conditionalAttrValue.isUndefined()) {
-        result.conditionalAttr = convert<IDLDouble>(lexicalGlobalObject, conditionalAttrValue);
+    if (!conditionalMemberValue.isUndefined()) {
+        result.conditionalMember = convert<IDLDictionary<TestDictionary>>(lexicalGlobalObject, conditionalMemberValue);
         RETURN_IF_EXCEPTION(throwScope, { });
     }
 #endif
@@ -60,17 +63,19 @@ template<> TestDictionaryWithOnlyConditionalMembers convertDictionary<TestDictio
 JSC::JSObject* convertDictionaryToJS(JSC::JSGlobalObject& lexicalGlobalObject, JSDOMGlobalObject& globalObject, const TestDictionaryWithOnlyConditionalMembers& dictionary)
 {
     auto& vm = JSC::getVM(&lexicalGlobalObject);
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
 
     auto result = constructEmptyObject(&lexicalGlobalObject, globalObject.objectPrototype());
 
 #if ENABLE(TEST_CONDITIONAL)
-    if (!IDLDouble::isNullValue(dictionary.conditionalAttr)) {
-        auto conditionalAttrValue = toJS<IDLDouble>(IDLDouble::extractValueFromNullable(dictionary.conditionalAttr));
-        result->putDirect(vm, JSC::Identifier::fromString(vm, "conditionalAttr"), conditionalAttrValue);
+    if (!IDLDictionary<TestDictionary>::isNullValue(dictionary.conditionalMember)) {
+        auto conditionalMemberValue = toJS<IDLDictionary<TestDictionary>>(lexicalGlobalObject, globalObject, throwScope, IDLDictionary<TestDictionary>::extractValueFromNullable(dictionary.conditionalMember));
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, JSC::Identifier::fromString(vm, "conditionalMember"), conditionalMemberValue);
     }
 #endif
     UNUSED_PARAM(dictionary);
-    UNUSED_PARAM(vm);
+    UNUSED_VARIABLE(throwScope);
 
     return result;
 }

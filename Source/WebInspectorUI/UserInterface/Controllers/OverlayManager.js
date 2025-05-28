@@ -30,10 +30,9 @@ WI.OverlayManager = class OverlayManager extends WI.Object
         super();
 
         this._gridOverlayForNodeMap = new Map;
-
-        // Can't reuse `this._gridOverlayForNodeMap` because nodes are removed from it when overlay isn't visible.
-        this._colorForNodeMap = new WeakMap;
-        this._nextDOMNodeColorIndex = 0;
+        this._nextDefaultGridColorIndex = 0;
+        this._gridColorForNodeMap = new WeakMap;
+        this._gridColorSettingForNodeMap = new WeakMap;
 
         WI.settings.gridOverlayShowExtendedGridLines.addEventListener(WI.Setting.Event.Changed, this._handleGridSettingChanged, this);
         WI.settings.gridOverlayShowLineNames.addEventListener(WI.Setting.Event.Changed, this._handleGridSettingChanged, this);
@@ -45,12 +44,7 @@ WI.OverlayManager = class OverlayManager extends WI.Object
 
     // Public
 
-    get nodesWithGridOverlay()
-    {
-        return Array.from(this._gridOverlayForNodeMap.keys());
-    }
-
-    showGridOverlay(domNode, {color} = {})
+    showGridOverlay(domNode, {color, initiator} = {})
     {
         console.assert(!domNode.destroyed, domNode);
         if (domNode.destroyed)
@@ -60,7 +54,7 @@ WI.OverlayManager = class OverlayManager extends WI.Object
         console.assert(!color || color instanceof WI.Color, color);
         console.assert(domNode.layoutContextType === WI.DOMNode.LayoutContextType.Grid, domNode.layoutContextType);
 
-        color ||= this.colorForNode(domNode);
+        color ||= this.getGridColorForNode(domNode);
         let target = WI.assumingMainTarget();
         let commandArguments = {
             nodeId: domNode.id,
@@ -73,11 +67,14 @@ WI.OverlayManager = class OverlayManager extends WI.Object
         };
         target.DOMAgent.showGridOverlay.invoke(commandArguments);
 
-        let overlay = {domNode, ...commandArguments};
-        this._gridOverlayForNodeMap.set(domNode, overlay);
-        this._colorForNodeMap.set(domNode, color);
+        let overlay = {domNode, ...commandArguments, initiator};
 
-        domNode.addEventListener(WI.DOMNode.Event.LayoutContextTypeChanged, this._handleLayoutContextTypeChanged, this);
+        // The method to show the overlay will be called repeatedly while updating the grid overlay color. Avoid adding duplicate event listeners
+        if (!this._gridOverlayForNodeMap.has(domNode))
+            domNode.addEventListener(WI.DOMNode.Event.LayoutContextTypeChanged, this._handleLayoutContextTypeChanged, this);
+
+        this._gridOverlayForNodeMap.set(domNode, overlay);
+
         this.dispatchEventToListeners(WI.OverlayManager.Event.GridOverlayShown, overlay);
     }
 
@@ -100,26 +97,31 @@ WI.OverlayManager = class OverlayManager extends WI.Object
         this.dispatchEventToListeners(WI.OverlayManager.Event.GridOverlayHidden, overlay);
     }
 
+    hasVisibleGridOverlays()
+    {
+        return this._gridOverlayForNodeMap.size > 0;
+    }
+
     isGridOverlayVisible(domNode)
     {
         return this._gridOverlayForNodeMap.has(domNode);
     }
 
-    toggleGridOverlay(domNode)
+    toggleGridOverlay(domNode, options)
     {
         if (this.isGridOverlayVisible(domNode))
             this.hideGridOverlay(domNode);
         else
-            this.showGridOverlay(domNode);
+            this.showGridOverlay(domNode, options);
     }
 
-    colorForNode(domNode)
+    getGridColorForNode(domNode)
     {
-        let color = this._colorForNodeMap.get(domNode);
+        let color = this._gridColorForNodeMap.get(domNode);
         if (color)
             return color;
 
-        const hslColors = [
+        const defaultGridHSLColors = [
             [329, 91, 70],
             [207, 96, 69],
             [92, 90, 64],
@@ -127,11 +129,32 @@ WI.OverlayManager = class OverlayManager extends WI.Object
             [40, 97, 57],
         ];
 
-        color = new WI.Color(WI.Color.Format.HSL, hslColors[this._nextDOMNodeColorIndex]);
-        this._colorForNodeMap.set(domNode, color);
-        this._nextDOMNodeColorIndex = (this._nextDOMNodeColorIndex + 1) % hslColors.length;
+        let colorSetting = this._gridColorSettingForNodeMap.get(domNode);
+        if (!colorSetting) {
+            let defaultColor = defaultGridHSLColors[this._nextDefaultGridColorIndex];
+            this._nextDefaultGridColorIndex = (this._nextDefaultGridColorIndex + 1) % defaultGridHSLColors.length;
+
+            let url = domNode.ownerDocument.documentURL || WI.networkManager.mainFrame.url;
+            colorSetting = new WI.Setting(`grid-overlay-color-${url.hash}-${domNode.path().hash}`, defaultColor);
+            this._gridColorSettingForNodeMap.set(domNode, colorSetting);
+        }
+
+        color = new WI.Color(WI.Color.Format.HSL, colorSetting.value);
+        this._gridColorForNodeMap.set(domNode, color);
 
         return color;
+    }
+
+    setGridColorForNode(domNode, color)
+    {
+        console.assert(domNode instanceof WI.DOMNode, domNode);
+        console.assert(color instanceof WI.Color, color);
+
+        let colorSetting = this._gridColorSettingForNodeMap.get(domNode);
+        console.assert(colorSetting, "There should already be a setting created form a previous call to getGridColorForNode()");
+        colorSetting.value = color.hsl;
+
+        this._gridColorForNodeMap.set(domNode, color);
     }
 
     // Private
@@ -152,7 +175,7 @@ WI.OverlayManager = class OverlayManager extends WI.Object
     {
         for (let [domNode, overlay] of this._gridOverlayForNodeMap) {
             // Refresh all shown overlays. Latest settings values will be used.
-            this.showGridOverlay(domNode, {color: overlay.color});
+            this.showGridOverlay(domNode, {color: overlay.color, initiator: overlay.initiator});
         }
     }
 
@@ -163,11 +186,11 @@ WI.OverlayManager = class OverlayManager extends WI.Object
         // 2. Reload the webpage.
         // 3. Click on the badge of the same element.
         //
-        // We should see the same 1st default overlay color. If we don't reset _nextDOMNodeColorIndex,
+        // We should see the same 1st default overlay color. If we don't reset _nextDefaultGridColorIndex,
         // the 2nd default color would be used instead.
         //
         // `domNode.id` is different for the same DOM element after page reload.
-        this._nextDOMNodeColorIndex = 0;
+        this._nextDefaultGridColorIndex = 0;
     }
 };
 

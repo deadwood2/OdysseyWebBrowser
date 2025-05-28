@@ -27,12 +27,14 @@
 
 #include "TestOptions.h"
 #include <wtf/FastMalloc.h>
+#include <wtf/text/WTFString.h>
 
 #if PLATFORM(COCOA) && !defined(BUILDING_GTK__)
 #include <WebKit/WKFoundation.h>
 #include <wtf/RetainPtr.h>
 OBJC_CLASS NSView;
 OBJC_CLASS UIView;
+OBJC_CLASS UIWindow;
 OBJC_CLASS TestRunnerWKWebView;
 OBJC_CLASS WKWebViewConfiguration;
 OBJC_CLASS WebKitTestRunnerWindow;
@@ -106,6 +108,10 @@ public:
     void setWindowIsKey(bool);
     bool windowIsKey() const { return m_windowIsKey; }
 
+    void setTextInChromeInputField(const String&);
+    void selectChromeInputField();
+    String getSelectedTextInChromeInputField();
+
     bool drawsBackground() const;
     void setDrawsBackground(bool);
 
@@ -133,6 +139,9 @@ private:
     PlatformWindow m_window;
     bool m_windowIsKey;
     const TestOptions m_options;
+#if PLATFORM(IOS_FAMILY)
+    RetainPtr<UIWindow> m_otherWindow;
+#endif
 #if PLATFORM(GTK)
     GtkWidget* m_otherWindow { nullptr };
 #endif

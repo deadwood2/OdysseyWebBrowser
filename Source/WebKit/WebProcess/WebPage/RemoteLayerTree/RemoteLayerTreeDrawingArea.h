@@ -35,6 +35,7 @@
 #include <atomic>
 #include <dispatch/dispatch.h>
 #include <wtf/HashMap.h>
+#include <wtf/OSObjectPtr.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
@@ -71,7 +72,7 @@ private:
 
     void addTransactionCallbackID(CallbackID) override;
 
-    RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID) override;
+    RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID) final;
     void willDestroyDisplayRefreshMonitor(WebCore::DisplayRefreshMonitor*);
     void setPreferredFramesPerSecond(WebCore::FramesPerSecond);
 
@@ -89,8 +90,8 @@ private:
     void forceRepaint() override;
     void forceRepaintAsync(WebPage&, CompletionHandler<void()>&&) override;
 
-    void setViewExposedRect(Optional<WebCore::FloatRect>) override;
-    Optional<WebCore::FloatRect> viewExposedRect() const override { return m_viewExposedRect; }
+    void setViewExposedRect(std::optional<WebCore::FloatRect>) override;
+    std::optional<WebCore::FloatRect> viewExposedRect() const override { return m_viewExposedRect; }
 
     void acceleratedAnimationDidStart(uint64_t layerID, const String& key, MonotonicTime startTime) override;
     void acceleratedAnimationDidEnd(uint64_t layerID, const String& key) override;
@@ -126,13 +127,13 @@ private:
 
     class BackingStoreFlusher : public ThreadSafeRefCounted<BackingStoreFlusher> {
     public:
-        static Ref<BackingStoreFlusher> create(IPC::Connection*, std::unique_ptr<IPC::Encoder>, Vector<std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher>>);
+        static Ref<BackingStoreFlusher> create(IPC::Connection*, UniqueRef<IPC::Encoder>&&, Vector<std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher>>);
 
         void flush();
         bool hasFlushed() const { return m_hasFlushed; }
 
     private:
-        BackingStoreFlusher(IPC::Connection*, std::unique_ptr<IPC::Encoder>, Vector<std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher>>);
+        BackingStoreFlusher(IPC::Connection*, UniqueRef<IPC::Encoder>&&, Vector<std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher>>);
 
         RefPtr<IPC::Connection> m_connection;
         std::unique_ptr<IPC::Encoder> m_commitEncoder;
@@ -146,7 +147,7 @@ private:
 
     WebCore::IntSize m_viewSize;
 
-    Optional<WebCore::FloatRect> m_viewExposedRect;
+    std::optional<WebCore::FloatRect> m_viewExposedRect;
 
     WebCore::Timer m_updateRenderingTimer;
     bool m_isRenderingSuspended { false };
@@ -157,7 +158,7 @@ private:
     bool m_waitingForBackingStoreSwap { false };
     bool m_deferredRenderingUpdateWhileWaitingForBackingStoreSwap { false };
 
-    dispatch_queue_t m_commitQueue;
+    OSObjectPtr<dispatch_queue_t> m_commitQueue;
     RefPtr<BackingStoreFlusher> m_pendingBackingStoreFlusher;
 
     HashSet<RemoteLayerTreeDisplayRefreshMonitor*> m_displayRefreshMonitors;

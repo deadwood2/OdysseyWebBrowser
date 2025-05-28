@@ -51,4 +51,16 @@ void WebProcess::platformSetCacheModel(CacheModel)
 {
 }
 
+void WebProcess::grantAccessToAssetServices(WebKit::SandboxExtension::Handle&&)
+{
+}
+
+void WebProcess::revokeAccessToAssetServices()
+{
+}
+
+void WebProcess::switchFromStaticFontRegistryToUserFontRegistry(WebKit::SandboxExtension::Handle&&)
+{
+}
+
 } // namespace WebKit

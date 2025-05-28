@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,7 +28,6 @@
 #import <JavaScriptCore/JavaScriptCore.h>
 
 #import "CurrentThisInsideBlockGetterTest.h"
-#import "DFGWorklist.h"
 #import "DateTests.h"
 #import "JSCast.h"
 #import "JSContextPrivate.h"
@@ -42,6 +41,11 @@
 #import "Regress141809.h"
 #import <wtf/spi/darwin/DataVaultSPI.h>
 
+
+#if PLATFORM(COCOA)
+#import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#endif
+
 #if __has_include(<libproc.h>)
 #define HAS_LIBPROC 1
 #import <libproc.h>
@@ -51,8 +55,8 @@
 #import <pthread.h>
 #import <vector>
 #import <wtf/MemoryFootprint.h>
-#import <wtf/Optional.h>
 #import <wtf/DataLog.h>
+#import <wtf/RetainPtr.h>
 
 extern "C" void JSSynchronousGarbageCollectForDebugging(JSContextRef);
 extern "C" void JSSynchronousEdenCollectForDebugging(JSContextRef);
@@ -217,7 +221,7 @@ bool testXYZTested = false;
 
 @implementation TinyDOMNode {
     NSMutableArray *m_children;
-    JSVirtualMachine *m_sharedVirtualMachine;
+    RetainPtr<JSVirtualMachine> m_sharedVirtualMachine;
 }
 
 - (id)initWithVirtualMachine:(JSVirtualMachine *)virtualMachine
@@ -228,9 +232,6 @@ bool testXYZTested = false;
 
     m_children = [[NSMutableArray alloc] initWithCapacity:0];
     m_sharedVirtualMachine = virtualMachine;
-#if !__has_feature(objc_arc)
-    [m_sharedVirtualMachine retain];
-#endif
 
     return self;
 }
@@ -551,14 +552,7 @@ static void runJITThreadLimitTests()
         checkResult(@"Number of FTL threads should have been updated", updatedNumberOfThreads == targetNumberOfThreads);
     };
 
-    checkResult(@"runJITThreadLimitTests() must run at the very beginning to test the case where the global JIT worklist was not initialized yet", !JSC::DFG::existingGlobalDFGWorklistOrNull() && !JSC::DFG::existingGlobalFTLWorklistOrNull());
-
     testDFG();
-    JSC::DFG::ensureGlobalDFGWorklist();
-    testDFG();
-
-    testFTL();
-    JSC::DFG::ensureGlobalFTLWorklist();
     testFTL();
 #endif // ENABLE(DFG_JIT)
 }
@@ -2741,6 +2735,40 @@ static void testDependenciesMissingImport()
     }
 }
 
+static void testMicrotaskWithFunction()
+{
+    @autoreleasepool {
+#if PLATFORM(COCOA)
+        bool useLegacyDrain = false;
+#if PLATFORM(MAC)
+        useLegacyDrain = applicationSDKVersion() < DYLD_MACOSX_VERSION_12_00;
+#elif PLATFORM(WATCH)
+            // Don't check, JSC isn't API on watch anyway.
+#elif PLATFORM(IOS_FAMILY)
+        useLegacyDrain = applicationSDKVersion() < DYLD_IOS_VERSION_15_0;
+#else
+#error "Unsupported Cocoa Platform"
+#endif
+        if (useLegacyDrain)
+            return;
+#endif
+
+        JSContext *context = [[JSContext alloc] init];
+
+        JSValue *globalObject = context.globalObject;
+
+        auto block = ^() {
+            return 1+1;
+        };
+
+        [globalObject setValue:block forProperty:@"setTimeout"];
+        JSValue *arr = [context evaluateScript:@"var arr = []; (async () => { await 1; arr.push(3); })(); arr.push(1); setTimeout(); arr.push(2); arr;"];
+        checkResult(@"arr[0] should be 1", [arr[@0] toInt32] == 1);
+        checkResult(@"arr[1] should be 2", [arr[@1] toInt32] == 2);
+        checkResult(@"arr[2] should be 3", [arr[@2] toInt32] == 3);
+    }
+}
+
 @protocol ToString <JSExport>
 - (NSString *)toString;
 @end
@@ -2858,6 +2886,8 @@ void testObjectiveCAPI(const char* filter)
     RUN(promiseCreateResolved());
     RUN(promiseCreateRejected());
     RUN(parallelPromiseResolveTest());
+
+    RUN(testMicrotaskWithFunction());
 
     if (!filter)
         testObjectiveCAPIMain();

@@ -235,9 +235,12 @@ _PATH_RULES_SPECIFIER = [
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'WebKitWebSourceGStreamer.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'WebKitAudioSinkGStreamer.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'WebKitAudioSinkGStreamer.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'graphics', 'gstreamer', 'mse', 'WebKitMediaSourceGStreamer.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'audio', 'gstreamer', 'WebKitWebAudioSourceGStreamer.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMediaStreamSource.h'),
       os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerMediaStreamSource.cpp'),
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerVideoEncoder.h'),
+      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'gstreamer', 'GStreamerVideoEncoder.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'ProxyResolverSoup.cpp'),
       os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'ProxyResolverSoup.h'),
       os.path.join('Source', 'WebCore', 'platform', 'network', 'soup', 'WebKitFormDataInputStream.cpp'),
@@ -268,25 +271,6 @@ _PATH_RULES_SPECIFIER = [
      ["-readability/naming/underscores",
       "-whitespace/declaration",
       "-whitespace/indent"]),
-
-    ([  # Files following GStreamer coding style (for a simpler upstreaming process for example)
-      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'libwebrtc', 'GStreamerVideoEncoder.cpp'),
-      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'libwebrtc', 'GStreamerVideoEncoder.h'),
-     ],
-     ["-whitespace/indent",
-      "-whitespace/declaration",
-      "-whitespace/parens",
-      "-readability/null",
-      "-whitespace/braces",
-      "-readability/naming/underscores",
-      "-readability/enum_casing",
-     ]),
-
-    ([  # Files following using WebRTC optionnal type
-      os.path.join('Source', 'WebCore', 'platform', 'mediastream', 'libwebrtc', 'GStreamerVideoDecoderFactory.cpp'),
-     ],
-     ["-runtime/wtf_optional",
-     ]),
 
     ([
       # There is no way to avoid the symbols __jit_debug_register_code
@@ -341,7 +325,6 @@ _TEXT_FILE_EXTENSIONS = [
     'html',
     'idl',
     'in',
-    'php',
     'pl',
     'pm',
     'pri',
@@ -379,6 +362,7 @@ _NEVER_SKIPPED_JS_FILES = [
 
 _NEVER_SKIPPED_FILES = _NEVER_SKIPPED_JS_FILES + [
     'TestExpectations',
+    '.py'
 ]
 
 # Files to skip that are less obvious.
@@ -435,6 +419,10 @@ _CARRIAGE_RETURN_ALLOWED_FILE_EXTENSIONS = [
     'vcproj',
     'vsprops',
     ]
+
+_INVALID_FILES = [
+    re.compile('LayoutTests/.*php'),
+]
 
 # The maximum number of errors to report per file, per category.
 # If a category is not a key, then it has no maximum.
@@ -620,7 +608,7 @@ class CheckerDispatcher(object):
         return os.path.splitext(file_path)[1].lstrip(".")
 
     def _should_skip_file_path(self, file_path, skip_array_entry):
-        match = re.search("\s*png$", file_path)
+        match = re.search(r"\s*png$", file_path)
         if match:
             return False
         if isinstance(skip_array_entry, str):
@@ -651,12 +639,19 @@ class CheckerDispatcher(object):
         basename = os.path.basename(file_path)
         if basename.startswith('ChangeLog'):
             return False
-        elif basename in _NEVER_SKIPPED_FILES:
-            return False
+        for suffix in _NEVER_SKIPPED_FILES:
+            if basename.endswith(suffix):
+                return False
         for skipped_file in _SKIPPED_FILES_WITHOUT_WARNING:
             if self._should_skip_file_path(file_path, skipped_file):
                 return True
         return False
+
+    def is_valid_file(self, file_path):
+        for regex in _INVALID_FILES:
+            if regex.match(file_path):
+                return False
+        return True
 
     def should_check_and_strip_carriage_returns(self, file_path):
         return self._file_extension(file_path) not in _CARRIAGE_RETURN_ALLOWED_FILE_EXTENSIONS
@@ -982,6 +977,16 @@ class StyleProcessor(ProcessorBase):
 
     def should_process(self, file_path):
         """Return whether the file should be checked for style."""
+        if not self._dispatcher.is_valid_file(file_path):
+            self.error_count += 1
+            self._configuration.write_style_error(
+                category='policy/language',
+                confidence_in_error=5,
+                file_path=file_path,
+                line_number='-',
+                message='File type is unsupported by the WebKit project',
+            )
+            return False
         if self._dispatcher.should_skip_without_warning(file_path):
             return False
         if self._dispatcher.should_skip_with_warning(file_path):

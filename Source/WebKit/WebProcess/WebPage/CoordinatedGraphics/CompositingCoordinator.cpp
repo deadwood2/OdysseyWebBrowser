@@ -61,7 +61,7 @@ CompositingCoordinator::CompositingCoordinator(WebPage& page, CompositingCoordin
 
     m_rootLayer = GraphicsLayer::create(this, *this);
 #ifndef NDEBUG
-    m_rootLayer->setName("CompositingCoordinator root layer");
+    m_rootLayer->setName(MAKE_STATIC_STRING_IMPL("CompositingCoordinator root layer"));
 #endif
     m_rootLayer->setDrawsContent(false);
     m_rootLayer->setSize(m_page.size());
@@ -115,7 +115,7 @@ void CompositingCoordinator::sizeDidChange(const IntSize& newSize)
     notifyFlushRequired(m_rootLayer.get());
 }
 
-bool CompositingCoordinator::flushPendingLayerChanges()
+bool CompositingCoordinator::flushPendingLayerChanges(OptionSet<FinalizeRenderingUpdateFlags> flags)
 {
     SetForScope<bool> protector(m_isFlushingLayerChanges, true);
 
@@ -130,7 +130,7 @@ bool CompositingCoordinator::flushPendingLayerChanges()
     if (m_overlayCompositingLayer)
         m_overlayCompositingLayer->flushCompositingState(FloatRect(FloatPoint(), m_rootLayer->size()));
 
-    m_page.finalizeRenderingUpdate({ FinalizeRenderingUpdateFlags::ApplyScrollingTreeLayerPositions });
+    m_page.finalizeRenderingUpdate(flags);
 
     auto& coordinatedLayer = downcast<CoordinatedGraphicsLayer>(*m_rootLayer);
     coordinatedLayer.updateContentBuffersIncludingSubLayers();
@@ -172,6 +172,8 @@ bool CompositingCoordinator::flushPendingLayerChanges()
         m_client.commitSceneState(m_state);
         m_shouldSyncFrame = false;
     }
+
+    m_page.didUpdateRendering();
 
     return true;
 }

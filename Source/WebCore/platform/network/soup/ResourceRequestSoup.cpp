@@ -101,7 +101,7 @@ void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage, BlobRegist
     // Handle the common special case of one piece of form data, with no files.
     auto& elements = formData->elements();
     if (elements.size() == 1 && !formData->alwaysStream()) {
-        if (auto* vector = WTF::get_if<Vector<char>>(elements[0].data)) {
+        if (auto* vector = WTF::get_if<Vector<uint8_t>>(elements[0].data)) {
 #if USE(SOUP2)
             soup_message_body_append(soupMessage->request_body, SOUP_MEMORY_TEMPORARY, vector->data(), vector->size());
 #else
@@ -133,11 +133,11 @@ void ResourceRequest::updateSoupMessageBody(SoupMessage* soupMessage, BlobRegist
         soup_message_body_append_buffer(soupMessage->request_body, soupBuffer);
         soup_buffer_free(soupBuffer);
     }
+    ASSERT(length == static_cast<uint64_t>(soupMessage->request_body->length));
 #else
     soup_message_set_request_body(soupMessage, nullptr, stream.get(), length);
 #endif
 
-    ASSERT(length == static_cast<uint64_t>(soupMessage->request_body->length));
 }
 
 void ResourceRequest::updateSoupMessageHeaders(SoupMessageHeaders* soupHeaders) const

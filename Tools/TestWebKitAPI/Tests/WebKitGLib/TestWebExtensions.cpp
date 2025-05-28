@@ -161,7 +161,9 @@ static void testWebKitWebViewProcessCrashed(WebViewTest* test, gconstpointer)
         G_DBUS_CALL_FLAGS_NONE,
         -1, 0, 0));
     g_assert_null(result);
+    Test::removeLogFatalFlag(G_LOG_LEVEL_WARNING);
     g_main_loop_run(test->m_mainLoop);
+    Test::addLogFatalFlag(G_LOG_LEVEL_WARNING);
     test->m_expectedWebProcessCrash = false;
 }
 
@@ -492,27 +494,27 @@ static void testWebExtensionPageID(WebViewTest* test, gconstpointer)
 
     test->loadURI("foo://host6/");
     test->waitUntilLoadFinished();
-    g_assert_true(pageIDChangedEmitted);
+    g_assert_false(pageIDChangedEmitted);
     pageIDChangedEmitted = false;
-    g_assert_cmpuint(pageID, <, webkit_web_view_get_page_id(test->m_webView));
+    g_assert_cmpuint(pageID, ==, webkit_web_view_get_page_id(test->m_webView));
     pageID = webkit_web_view_get_page_id(test->m_webView);
     proxy = test->extensionProxy();
     checkTitle(test, proxy.get(), "Title6");
 
     test->goBack();
     test->waitUntilLoadFinished();
-    g_assert_true(pageIDChangedEmitted);
+    g_assert_false(pageIDChangedEmitted);
     pageIDChangedEmitted = false;
-    g_assert_cmpuint(pageID, >, webkit_web_view_get_page_id(test->m_webView));
+    g_assert_cmpuint(pageID, ==, webkit_web_view_get_page_id(test->m_webView));
     pageID = webkit_web_view_get_page_id(test->m_webView);
     proxy = test->extensionProxy();
     checkTitle(test, proxy.get(), "Title5");
 
     test->goForward();
     test->waitUntilLoadFinished();
-    g_assert_true(pageIDChangedEmitted);
+    g_assert_false(pageIDChangedEmitted);
     pageIDChangedEmitted = false;
-    g_assert_cmpuint(pageID, <, webkit_web_view_get_page_id(test->m_webView));
+    g_assert_cmpuint(pageID, ==, webkit_web_view_get_page_id(test->m_webView));
     pageID = webkit_web_view_get_page_id(test->m_webView);
     proxy = test->extensionProxy();
     checkTitle(test, proxy.get(), "Title6");

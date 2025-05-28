@@ -115,14 +115,26 @@ private:
         case ProcessTerminationReason::ExceededMemoryLimit:
             webkitWebViewWebProcessTerminated(m_webView, WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT);
             return true;
-        case ProcessTerminationReason::ExceededCPULimit:
         case ProcessTerminationReason::RequestedByClient:
+            webkitWebViewWebProcessTerminated(m_webView, WEBKIT_WEB_PROCESS_TERMINATED_BY_API);
+            return true;
+        case ProcessTerminationReason::ExceededCPULimit:
         case ProcessTerminationReason::RequestedByNetworkProcess:
         case ProcessTerminationReason::NavigationSwap:
         case ProcessTerminationReason::RequestedByGPUProcess:
             break;
         }
         return false;
+    }
+
+    void processDidBecomeResponsive(WebKit::WebPageProxy&) override
+    {
+        webkitWebViewSetIsWebProcessResponsive(m_webView, true);
+    }
+
+    void processDidBecomeUnresponsive(WebKit::WebPageProxy&) override
+    {
+        webkitWebViewSetIsWebProcessResponsive(m_webView, false);
     }
 
     void decidePolicyForNavigationAction(WebPageProxy&, Ref<API::NavigationAction>&& navigationAction, Ref<WebFramePolicyListenerProxy>&& listener, API::Object* /* userData */) override

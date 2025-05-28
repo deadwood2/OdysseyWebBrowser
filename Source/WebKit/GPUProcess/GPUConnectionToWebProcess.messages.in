@@ -23,14 +23,14 @@
 #if ENABLE(GPU_PROCESS)
 
 messages -> GPUConnectionToWebProcess WantsDispatchMessage {
-    void CreateRenderingBackend(WebKit::RenderingBackendIdentifier identifier, IPC::Semaphore resumeDisplayListSemaphore)
+    void CreateRenderingBackend(struct WebKit::RemoteRenderingBackendCreationParameters creationParameters)
     void ReleaseRenderingBackend(WebKit::RenderingBackendIdentifier renderingBackendIdentifier)
 #if ENABLE(WEBGL)
     void CreateGraphicsContextGL(struct WebCore::GraphicsContextGLAttributes attributes, WebKit::GraphicsContextGLIdentifier graphicsContextGLIdentifier, WebKit::RenderingBackendIdentifier renderingBackendIdentifier, IPC::StreamConnectionBuffer stream)
     void ReleaseGraphicsContextGL(WebKit::GraphicsContextGLIdentifier graphicsContextGLIdentifier)
 #endif
     void ClearNowPlayingInfo()
-    void SetNowPlayingInfo(bool setAsNowPlayingApplication, struct WebCore::NowPlayingInfo nowPlayingInfo)
+    void SetNowPlayingInfo(struct WebCore::NowPlayingInfo nowPlayingInfo)
 #if USE(AUDIO_SESSION)
     EnsureAudioSession() -> (struct WebKit::RemoteAudioSessionConfiguration configuration) Synchronous
 #endif
@@ -40,11 +40,17 @@ messages -> GPUConnectionToWebProcess WantsDispatchMessage {
 #if ENABLE(VP9)
     EnableVP9Decoders(bool shouldEnableVP8Decoder, bool shouldEnableVP9Decoder, bool shouldEnableVP9SWDecoder)
 #endif
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+    CreateVisibilityPropagationContextForPage(WebKit::WebPageProxyIdentifier pageProxyID, WebCore::PageIdentifier pageID, bool canShowWhileLocked);
+    DestroyVisibilityPropagationContextForPage(WebKit::WebPageProxyIdentifier pageProxyID, WebCore::PageIdentifier pageID);
+#endif
     SetMediaOverridesForTesting(struct WebKit::MediaOverridesForTesting configuration)
     CreateAudioHardwareListener(WebKit::RemoteAudioHardwareListenerIdentifier identifier)
     ReleaseAudioHardwareListener(WebKit::RemoteAudioHardwareListenerIdentifier identifier)
     CreateRemoteCommandListener(WebKit::RemoteRemoteCommandListenerIdentifier identifier)
     ReleaseRemoteCommandListener(WebKit::RemoteRemoteCommandListenerIdentifier identifier)
+    SetUserPreferredLanguages(Vector<String> languages)
+    ConfigureLoggingChannel(String channelName, enum:uint8_t WTFLogChannelState state, enum:uint8_t WTFLogLevel level)
 }
 
 #endif // ENABLE(GPU_PROCESS)

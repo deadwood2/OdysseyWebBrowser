@@ -23,17 +23,23 @@
 import argparse
 import logging
 import os
+import sys
 
-from webkitcorepy import arguments, log as webkitcorepy_log
-from webkitscmpy import local, log, remote
-
+from .blame import Blame
+from .branch import Branch
 from .canonicalize import Canonicalize
 from .clean import Clean
 from .command import Command
 from .checkout import Checkout
-from .find import Find
+from .find import Find, Info
+from .log import Log
 from .pull import Pull
+from .pull_request import PullRequest
 from .setup_git_svn import SetupGitSvn
+from .setup import Setup
+
+from webkitcorepy import arguments, log as webkitcorepy_log
+from webkitscmpy import local, log, remote
 
 
 def main(args=None, path=None, loggers=None, contributors=None, identifier_template=None, subversion=None):
@@ -45,7 +51,11 @@ def main(args=None, path=None, loggers=None, contributors=None, identifier_templ
         description='Custom git tooling from the WebKit team to interact with a ' +
                     'repository using identifers',
     )
-    arguments.LoggingGroup(parser)
+    arguments.LoggingGroup(
+        parser,
+        loggers=loggers,
+        help='{} amount of logging and commit information displayed',
+    )
 
     group = parser.add_argument_group('Repository')
     group.add_argument(
@@ -56,22 +66,46 @@ def main(args=None, path=None, loggers=None, contributors=None, identifier_templ
     )
 
     subparsers = parser.add_subparsers(help='sub-command help')
-
-    programs = [Find, Checkout, Canonicalize, Pull, Clean]
+    programs = [Blame, Branch, Canonicalize, Checkout, Clean, Find, Info, Log, Pull, PullRequest, Setup]
     if subversion:
         programs.append(SetupGitSvn)
 
     for program in programs:
-        subparser = subparsers.add_parser(program.name, help=program.help)
+        kwargs = dict(help=program.help)
+        if sys.version_info > (3, 0):
+            kwargs['aliases'] = program.aliases
+        subparser = subparsers.add_parser(program.name, **kwargs)
         subparser.set_defaults(main=program.main)
+        subparser.set_defaults(program=program.name)
+        subparser.set_defaults(aliases=program.aliases)
+        arguments.LoggingGroup(
+            subparser,
+            loggers=loggers,
+            help='{} amount of logging and commit information displayed',
+        )
         program.parser(subparser, loggers=loggers)
 
-    parsed = parser.parse_args(args=args)
+    args = args or sys.argv[1:]
+    parsed, unknown = parser.parse_known_args(args=args)
+    if unknown:
+        program_index = 0
+        for candidate in [parsed.program] + parsed.aliases:
+            if candidate in args:
+                program_index = args.index(candidate)
+                break
+        if getattr(parsed, 'args', None):
+            parsed.args = [arg for arg in args[program_index:] if arg in parsed.args or arg in unknown]
+        if any([option not in getattr(parsed, 'args', []) for option in unknown]):
+            parsed = parser.parse_args(args=args)
 
     if parsed.repository.startswith(('https://', 'http://')):
         repository = remote.Scm.from_url(parsed.repository, contributors=contributors)
     else:
         repository = local.Scm.from_path(path=parsed.repository, contributors=contributors)
+
+    if not getattr(parsed, 'main', None):
+        parser.print_help()
+        return -1
 
     return parsed.main(
         args=parsed,

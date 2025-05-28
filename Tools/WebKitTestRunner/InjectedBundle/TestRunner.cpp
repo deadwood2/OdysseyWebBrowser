@@ -52,7 +52,6 @@
 #include <WebKit/WKSerializedScriptValue.h>
 #include <WebKit/WebKit2_C.h>
 #include <wtf/HashMap.h>
-#include <wtf/Optional.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/UniqueArray.h>
 #include <wtf/text/CString.h>
@@ -314,7 +313,7 @@ void TestRunner::execCommand(JSStringRef name, JSStringRef showUI, JSStringRef v
     WKBundlePageExecuteEditingCommand(page(), toWK(name).get(), toWK(value).get());
 }
 
-static Optional<WKFindOptions> findOptionsFromArray(JSValueRef optionsArrayAsValue)
+static std::optional<WKFindOptions> findOptionsFromArray(JSValueRef optionsArrayAsValue)
 {
     auto context = mainFrameJSContext();
     auto optionsArray = JSValueToObject(context, optionsArrayAsValue, nullptr);
@@ -609,6 +608,9 @@ static CallbackMap& callbackMap()
 enum {
     AddChromeInputFieldCallbackID = 1,
     RemoveChromeInputFieldCallbackID,
+    SetTextInChromeInputFieldCallbackID,
+    SelectChromeInputFieldCallbackID,
+    GetSelectedTextInChromeInputFieldCallbackID,
     FocusWebViewCallbackID,
     SetBackingScaleFactorCallbackID,
     DidBeginSwipeCallbackID,
@@ -646,6 +648,7 @@ enum {
     DidSetAppBoundDomainsCallbackID,
     EnterFullscreenForElementCallbackID,
     ExitFullscreenForElementCallbackID,
+    AppBoundRequestContextDataForDomainCallbackID,
     FirstUIScriptCallbackID = 100
 };
 
@@ -699,6 +702,24 @@ void TestRunner::removeChromeInputField(JSValueRef callback)
     InjectedBundle::singleton().postRemoveChromeInputField();
 }
 
+void TestRunner::setTextInChromeInputField(JSStringRef text, JSValueRef callback)
+{
+    cacheTestRunnerCallback(SetTextInChromeInputFieldCallbackID, callback);
+    InjectedBundle::singleton().postSetTextInChromeInputField(toWTFString(text));
+}
+
+void TestRunner::selectChromeInputField(JSValueRef callback)
+{
+    cacheTestRunnerCallback(SelectChromeInputFieldCallbackID, callback);
+    InjectedBundle::singleton().postSelectChromeInputField();
+}
+
+void TestRunner::getSelectedTextInChromeInputField(JSValueRef callback)
+{
+    cacheTestRunnerCallback(GetSelectedTextInChromeInputFieldCallbackID, callback);
+    InjectedBundle::singleton().postGetSelectedTextInChromeInputField();
+}
+
 void TestRunner::focusWebView(JSValueRef callback)
 {
     cacheTestRunnerCallback(FocusWebViewCallbackID, callback);
@@ -729,6 +750,22 @@ void TestRunner::callAddChromeInputFieldCallback()
 void TestRunner::callRemoveChromeInputFieldCallback()
 {
     callTestRunnerCallback(RemoveChromeInputFieldCallbackID);
+}
+
+void TestRunner::callSetTextInChromeInputFieldCallback()
+{
+    callTestRunnerCallback(SetTextInChromeInputFieldCallbackID);
+}
+
+void TestRunner::callSelectChromeInputFieldCallback()
+{
+    callTestRunnerCallback(SelectChromeInputFieldCallbackID);
+}
+
+void TestRunner::callGetSelectedTextInChromeInputFieldCallback(JSStringRef text)
+{
+    auto textValue = JSValueMakeString(mainFrameJSContext(), text);
+    callTestRunnerCallback(GetSelectedTextInChromeInputFieldCallbackID, 1, &textValue);
 }
 
 void TestRunner::callFocusWebViewCallback()
@@ -788,7 +825,7 @@ void TestRunner::setUserStyleSheetEnabled(bool enabled)
     auto emptyString = toWK("");
     auto location = enabled ? m_userStyleSheetLocation.get() : emptyString.get();
     auto& injectedBundle = InjectedBundle::singleton();
-    WKBundleSetUserStyleSheetLocation(injectedBundle.bundle(), injectedBundle.pageGroup(), location);
+    WKBundleSetUserStyleSheetLocationForTesting(injectedBundle.bundle(), location);
 }
 
 void TestRunner::setUserStyleSheetLocation(JSStringRef location)
@@ -822,7 +859,7 @@ void TestRunner::setCacheModel(int model)
 void TestRunner::setAsynchronousSpellCheckingEnabled(bool enabled)
 {
     auto& injectedBundle = InjectedBundle::singleton();
-    WKBundleSetAsynchronousSpellCheckingEnabled(injectedBundle.bundle(), injectedBundle.pageGroup(), enabled);
+    WKBundleSetAsynchronousSpellCheckingEnabledForTesting(injectedBundle.bundle(), enabled);
 }
 
 void TestRunner::grantWebNotificationPermission(JSStringRef origin)
@@ -857,7 +894,7 @@ bool TestRunner::isGeolocationProviderActive()
     return InjectedBundle::singleton().isGeolocationProviderActive();
 }
 
-void TestRunner::setMockGeolocationPosition(double latitude, double longitude, double accuracy, Optional<double> altitude, Optional<double> altitudeAccuracy, Optional<double> heading, Optional<double> speed, Optional<double> floorLevel)
+void TestRunner::setMockGeolocationPosition(double latitude, double longitude, double accuracy, std::optional<double> altitude, std::optional<double> altitudeAccuracy, std::optional<double> heading, std::optional<double> speed, std::optional<double> floorLevel)
 {
     InjectedBundle::singleton().setMockGeolocationPosition(latitude, longitude, accuracy, altitude, altitudeAccuracy, heading, speed, floorLevel);
 }
@@ -1228,12 +1265,13 @@ void TestRunner::statisticsCallDidSetMergeStatisticCallback()
     callTestRunnerCallback(SetStatisticsMergeStatisticCallbackID);
 }
 
-void TestRunner::setStatisticsExpiredStatistic(JSStringRef hostName, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, JSValueRef completionHandler)
+void TestRunner::setStatisticsExpiredStatistic(JSStringRef hostName, unsigned numberOfOperatingDaysPassed, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, JSValueRef completionHandler)
 {
     cacheTestRunnerCallback(SetStatisticsExpiredStatisticCallbackID, completionHandler);
 
     postMessage("SetStatisticsExpiredStatistic", createWKDictionary({
         { "HostName", toWK(hostName) },
+        { "NumberOfOperatingDaysPassed", adoptWK(WKUInt64Create(numberOfOperatingDaysPassed)) },
         { "HadUserInteraction", adoptWK(WKBooleanCreate(hadUserInteraction)) },
         { "IsScheduledForAllButCookieDataRemoval", adoptWK(WKBooleanCreate(isScheduledForAllButCookieDataRemoval)) },
         { "IsPrevalent", adoptWK(WKBooleanCreate(isPrevalent)) }
@@ -2020,6 +2058,11 @@ void TestRunner::markAttributedPrivateClickMeasurementsAsExpiredForTesting()
     postSynchronousPageMessage("MarkAttributedPrivateClickMeasurementsAsExpiredForTesting");
 }
 
+void TestRunner::setPrivateClickMeasurementEphemeralMeasurementForTesting(bool value)
+{
+    postSynchronousPageMessage("SetPrivateClickMeasurementEphemeralMeasurementForTesting", value);
+}
+
 void TestRunner::simulateResourceLoadStatisticsSessionRestart()
 {
     postSynchronousPageMessage("SimulateResourceLoadStatisticsSessionRestart");
@@ -2037,10 +2080,12 @@ void TestRunner::setPrivateClickMeasurementTokenSignatureURLForTesting(JSStringR
         adoptWK(WKURLCreateWithUTF8CString(toWTFString(urlString).utf8().data())));
 }
 
-void TestRunner::setPrivateClickMeasurementAttributionReportURLForTesting(JSStringRef urlString)
+void TestRunner::setPrivateClickMeasurementAttributionReportURLsForTesting(JSStringRef sourceURLString, JSStringRef destinationURLString)
 {
-    postSynchronousPageMessage("SetPrivateClickMeasurementAttributionReportURLForTesting",
-        adoptWK(WKURLCreateWithUTF8CString(toWTFString(urlString).utf8().data())));
+    postSynchronousPageMessage("SetPrivateClickMeasurementAttributionReportURLsForTesting", createWKDictionary({
+        { "SourceURLString", toWK(sourceURLString) },
+        { "AttributeOnURLString", toWK(destinationURLString) },
+    }));
 }
 
 void TestRunner::markPrivateClickMeasurementsAsExpiredForTesting()
@@ -2048,11 +2093,11 @@ void TestRunner::markPrivateClickMeasurementsAsExpiredForTesting()
     postSynchronousPageMessage("MarkPrivateClickMeasurementsAsExpiredForTesting");
 }
 
-void TestRunner::setFraudPreventionValuesForTesting(JSStringRef secretToken, JSStringRef unlinkableToken, JSStringRef signature, JSStringRef keyID)
+void TestRunner::setPrivateClickMeasurementFraudPreventionValuesForTesting(JSStringRef unlinkableToken, JSStringRef secretToken, JSStringRef signature, JSStringRef keyID)
 {
-    postSynchronousMessage("SetFraudPreventionValuesForTesting", createWKDictionary({
-        { "SecretToken", toWK(secretToken) },
+    postSynchronousMessage("SetPCMFraudPreventionValuesForTesting", createWKDictionary({
         { "UnlinkableToken", toWK(unlinkableToken) },
+        { "SecretToken", toWK(secretToken) },
         { "Signature", toWK(signature) },
         { "KeyID", toWK(keyID) },
     }));
@@ -2101,14 +2146,24 @@ void TestRunner::didSetAppBoundDomainsCallback()
     callTestRunnerCallback(DidSetAppBoundDomainsCallbackID);
 }
 
+bool TestRunner::didLoadAppInitiatedRequest()
+{
+    return postSynchronousPageMessageReturningBoolean("DidLoadAppInitiatedRequest");
+}
+
+bool TestRunner::didLoadNonAppInitiatedRequest()
+{
+    return postSynchronousPageMessageReturningBoolean("DidLoadNonAppInitiatedRequest");
+}
+
 void TestRunner::setIsSpeechRecognitionPermissionGranted(bool granted)
 {
-    postSynchronousPageMessage("setIsSpeechRecognitionPermissionGranted", granted);
+    postSynchronousPageMessage("SetIsSpeechRecognitionPermissionGranted", granted);
 }
 
 void TestRunner::setIsMediaKeySystemPermissionGranted(bool granted)
 {
-    postSynchronousPageMessage("setIsMediaKeySystemPermissionGranted", granted);
+    postSynchronousPageMessage("SetIsMediaKeySystemPermissionGranted", granted);
 }
 
 ALLOW_DEPRECATED_DECLARATIONS_END

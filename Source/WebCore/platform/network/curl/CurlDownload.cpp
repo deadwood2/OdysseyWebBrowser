@@ -35,6 +35,11 @@
 #include "ResourceResponse.h"
 #include "SharedBuffer.h"
 #include "SynchronousLoaderClient.h"
+#include "ResourceHandle.h"
+#include "ResourceHandleInternal.h"
+#include "NetworkStorageSession.h"
+#include "CookieJar.h"
+#include "SameSiteInfo.h"
 
 namespace WebCore {
 
@@ -42,41 +47,105 @@ CurlDownload::~CurlDownload()
 {
     if (m_curlRequest)
         m_curlRequest->invalidateClient();
+	if (m_deleteTmpFile && m_curlRequest)
+        FileSystem::deleteFile(m_curlRequest->getDownloadedFilePath());
 }
 
-void CurlDownload::init(CurlDownloadListener& listener, const URL& url)
+void CurlDownload::init(CurlDownloadListener& listener, const URL& url, RefPtr<NetworkingContext> networkingContext)
 {
     m_listener = &listener;
     m_request.setURL(url);
+    m_context = networkingContext;
 }
 
-void CurlDownload::init(CurlDownloadListener& listener, ResourceHandle*, const ResourceRequest& request, const ResourceResponse&)
+void CurlDownload::init(CurlDownloadListener& listener, ResourceHandle* handle, const ResourceRequest& request, const ResourceResponse&)
 {
     m_listener = &listener;
     m_request = request.isolatedCopy();
+	
+	if (handle)
+	{
+		auto* internal = handle->getInternal();
+		if (internal && internal->m_curlRequest)
+		{
+			m_user = internal->m_curlRequest->user();
+			m_password = internal->m_curlRequest->password();
+		}
+		m_context = internal->m_context;
+	}
 }
 
 void CurlDownload::start()
 {
     ASSERT(isMainThread());
 
+	m_isCancelled = false;
+	m_isResume = false;
     m_curlRequest = createCurlRequest(m_request);
     m_curlRequest->enableDownloadToFile();
+    m_curlRequest->setDeletesDownloadFileOnCancelOrError(m_deleteTmpFile);
+	m_curlRequest->setUserPass(m_user, m_password);
     m_curlRequest->start();
+}
+
+void CurlDownload::resume()
+{
+    ASSERT(isMainThread());
+    ASSERT(m_curlRequest);
+
+	if (m_curlRequest && m_curlRequest->isCompletedOrCancelled())
+	{
+		String oldPath = m_curlRequest->getDownloadedFilePath();
+		m_isCancelled = false;
+		m_isResume = true;
+		m_curlRequest = createCurlRequest(m_request);
+		m_curlRequest->resumeDownloadToFile(oldPath);
+		m_curlRequest->setUserPass(m_user, m_password);
+		m_curlRequest->setDeletesDownloadFileOnCancelOrError(m_deleteTmpFile);
+		m_curlRequest->start();
+	}
+}
+
+long long CurlDownload::resumeOffset()
+{
+    ASSERT(isMainThread());
+
+    if (m_curlRequest)
+    {
+    	return m_curlRequest->resumeOffset();
+    }
+
+    return 0;
 }
 
 bool CurlDownload::cancel()
 {
     m_isCancelled = true;
 
-    if (!m_curlRequest)
+    if (m_curlRequest)
         m_curlRequest->cancel();
 
     return true;
 }
 
+void CurlDownload::setDeleteTmpFile(bool deleteTmpFile)
+{
+	m_deleteTmpFile = deleteTmpFile;
+	if (m_curlRequest)
+		m_curlRequest->setDeletesDownloadFileOnCancelOrError(m_deleteTmpFile);
+}
+
 Ref<CurlRequest> CurlDownload::createCurlRequest(ResourceRequest& request)
 {
+    if (m_context)
+    {
+        auto& storageSession = *m_context->storageSession();
+        auto includeSecureCookies = request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
+        String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), std::nullopt, std::nullopt, includeSecureCookies, ShouldAskITP::Yes, ShouldRelaxThirdPartyCookieBlocking::No).first;
+        if (!cookieHeaderField.isEmpty())
+            request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
+    }
+
     // FIXME: Use a correct sessionID.
     auto curlRequest = CurlRequest::create(request, *this);
     return curlRequest;
@@ -126,11 +195,13 @@ void CurlDownload::curlDidComplete(CurlRequest& request, NetworkLoadMetrics&&)
             FileSystem::moveFile(request.getDownloadedFilePath(), m_destination);
     }
 
+    m_tmpPath = request.getDownloadedFilePath();
+
     if (m_listener)
         m_listener->didFinish();
 }
 
-void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&, CertificateInfo&&)
+void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&error, CertificateInfo&&)
 {
     ASSERT(isMainThread());
 
@@ -141,7 +212,7 @@ void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&, C
         FileSystem::deleteFile(request.getDownloadedFilePath());
 
     if (m_listener)
-        m_listener->didFail();
+        m_listener->didFail(error);
 }
 
 bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool crossOrigin)
@@ -172,7 +243,7 @@ void CurlDownload::willSendRequest()
 
     if (m_redirectCount++ > maxRedirects) {
         if (m_listener)
-            m_listener->didFail();
+            m_listener->didFail(ResourceError::httpError(CURLE_TOO_MANY_REDIRECTS, m_request.url()));
         return;
     }
 
@@ -196,9 +267,18 @@ void CurlDownload::willSendRequest()
         newRequest.clearHTTPOrigin();
     }
 
+	String oldPath = m_curlRequest->getDownloadedFilePath();
     m_curlRequest->cancel();
 
     m_curlRequest = createCurlRequest(newRequest);
+    m_curlRequest->setDeletesDownloadFileOnCancelOrError(m_deleteTmpFile);
+	m_curlRequest->setUserPass(m_user, m_password);
+
+	if (m_isResume)
+		m_curlRequest->resumeDownloadToFile(oldPath);
+	else
+		m_curlRequest->enableDownloadToFile();
+
     m_curlRequest->start();
 }
 

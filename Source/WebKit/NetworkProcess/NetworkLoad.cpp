@@ -37,7 +37,6 @@
 #include "WebErrors.h"
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/SharedBuffer.h>
-#include <wtf/ListHashSet.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Seconds.h>
 
@@ -199,7 +198,7 @@ void NetworkLoad::didReceiveChallenge(AuthenticationChallenge&& challenge, Negot
     auto scheme = challenge.protectionSpace().authenticationScheme();
     bool isTLSHandshake = scheme == ProtectionSpaceAuthenticationSchemeServerTrustEvaluationRequested
         || scheme == ProtectionSpaceAuthenticationSchemeClientCertificateRequested;
-    if (!isAllowedToAskUserForCredentials() && !isTLSHandshake) {
+    if (!isAllowedToAskUserForCredentials() && !isTLSHandshake && !challenge.protectionSpace().isProxy()) {
         m_client.get().didBlockAuthenticationChallenge();
         completionHandler(AuthenticationChallengeDisposition::UseCredential, { });
         return;
@@ -276,10 +275,10 @@ void NetworkLoad::wasBlockedByRestrictions()
     m_client.get().didFailLoading(wasBlockedByRestrictionsError(m_currentRequest));
 }
 
-void NetworkLoad::didNegotiateModernTLS(const WebCore::AuthenticationChallenge& challenge)
+void NetworkLoad::didNegotiateModernTLS(const URL& url)
 {
     if (m_parameters.webPageProxyID)
-        m_networkProcess->send(Messages::NetworkProcessProxy::DidNegotiateModernTLS(m_parameters.webPageProxyID, challenge));
+        m_networkProcess->send(Messages::NetworkProcessProxy::DidNegotiateModernTLS(m_parameters.webPageProxyID, url));
 }
 
 String NetworkLoad::description() const

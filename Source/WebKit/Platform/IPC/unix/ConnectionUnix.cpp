@@ -206,6 +206,9 @@ bool Connection::processMessage()
                 fd = m_fileDescriptors[fdIndex++];
             attachments[attachmentCount - i - 1] = Attachment(fd);
             break;
+        case Attachment::CustomWriterType:
+            attachments[attachmentCount - i - 1] = Attachment(Attachment::CustomWriter(m_socketDescriptor));
+            break;
         case Attachment::Uninitialized:
             attachments[attachmentCount - i - 1] = Attachment();
         default:
@@ -424,11 +427,11 @@ bool Connection::platformCanSendOutgoingMessages() const
     return !m_pendingOutputMessage;
 }
 
-bool Connection::sendOutgoingMessage(std::unique_ptr<Encoder> encoder)
+bool Connection::sendOutgoingMessage(UniqueRef<Encoder>&& encoder)
 {
     COMPILE_ASSERT(sizeof(MessageInfo) + attachmentMaxAmount * sizeof(size_t) <= messageMaxSize, AttachmentsFitToMessageInline);
 
-    UnixMessage outputMessage(*encoder);
+    UnixMessage outputMessage(encoder.get());
     if (outputMessage.attachments().size() > (attachmentMaxAmount - 1)) {
         ASSERT_NOT_REACHED();
         return false;
@@ -473,6 +476,7 @@ bool Connection::sendOutputMessage(UnixMessage& outputMessage)
 
     Vector<AttachmentInfo> attachmentInfo;
     MallocPtr<char> attachmentFDBuffer;
+    bool hasCustomWriterAttachments { false };
 
     auto& attachments = outputMessage.attachments();
     if (!attachments.isEmpty()) {
@@ -513,6 +517,9 @@ bool Connection::sendOutputMessage(UnixMessage& outputMessage)
                     fdPtr[fdIndex++] = attachments[i].fileDescriptor();
                 } else
                     attachmentInfo[i].setNull();
+                break;
+            case Attachment::CustomWriterType:
+                hasCustomWriterAttachments = true;
                 break;
             case Attachment::Uninitialized:
             default:
@@ -581,6 +588,16 @@ bool Connection::sendOutputMessage(UnixMessage& outputMessage)
             WTFLogAlways("Error sending IPC message: %s", strerror(errno));
         return false;
     }
+
+    if (hasCustomWriterAttachments) {
+        for (auto& attachment : attachments) {
+            if (attachment.type() == Attachment::CustomWriterType) {
+                ASSERT(WTF::holds_alternative<Attachment::CustomWriterFunc>(attachment.customWriter()));
+                WTF::get<Attachment::CustomWriterFunc>(attachment.customWriter())(m_socketDescriptor);
+            }
+        }
+    }
+
     return true;
 }
 

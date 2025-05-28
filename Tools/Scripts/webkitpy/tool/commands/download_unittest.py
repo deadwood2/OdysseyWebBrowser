@@ -1,4 +1,5 @@
 # Copyright (C) 2009, 2011 Google Inc. All rights reserved.
+# Copyright (C) 2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -35,7 +36,7 @@ from webkitpy.tool.mocktool import MockOptions, MockTool
 from webkitpy.common.checkout.checkout_mock import MockCheckout
 
 from webkitcorepy import OutputCapture
-from webkitscmpy import mocks, Commit
+from webkitcorepy import mocks
 
 
 class AbstractRevertPrepCommandTest(unittest.TestCase):
@@ -98,35 +99,16 @@ class DownloadCommandsTest(CommandsTest):
         return options
 
     def mock_svn_remote(self):
-        repo = mocks.remote.Svn('svn.webkit.org/repository/webkit')
-        repo.commits['trunk'].append(Commit(
-            author=dict(name='Dmitry Titov', emails=['dimich@chromium.org']),
-            identifier='5@trunk',
-            revision=49824,
-            timestamp=1601668000,
-            message=
-                'Manual Test for crash caused by JS accessing DOMWindow which is disconnected from the Frame.\n'
-                'https://bugs.webkit.org/show_bug.cgi?id=30544\n'
-                '\n'
-                'Reviewed by Darin Adler.\n'
-                '\n'
-                '    manual-tests/crash-on-accessing-domwindow-without-frame.html: Added.\n',
-        ))
-        return repo
+        return mocks.Requests('commits.webkit.org', **{
+            'r49824/json': mocks.Response.fromJson(dict(
+                identifier='5@main',
+                revision=49824,
+            )),
+        })
 
     def test_build(self):
         expected_logs = "Updating working directory\nBuilding WebKit\n"
         self.assert_execute_outputs(Build(), [], options=self._default_options(), expected_logs=expected_logs)
-
-    def test_build_and_test(self):
-        expected_logs = """Updating working directory
-Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
-"""
-        self.assert_execute_outputs(BuildAndTest(), [], options=self._default_options(), expected_logs=expected_logs)
 
     def test_apply_attachment(self):
         options = self._default_options()
@@ -161,10 +143,6 @@ Message2."
 
     def test_land(self):
         expected_logs = """Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Adding comment and closing bug 50000
 """
@@ -185,14 +163,6 @@ MOCK: user.open_url: file://...
 Was that diff correct?
 Building WebKit
 MOCK run_and_throw_if_fail: ['mock-build-webkit', 'ARCHS=MOCK ARCH'], cwd=/mock-checkout, env={'MOCK_ENVIRON_COPY': '1', 'TERM': 'dumb'}
-Running Python unit tests
-MOCK run_and_throw_if_fail: ['mock-test-webkitpy'], cwd=/mock-checkout
-Running Perl unit tests
-MOCK run_and_throw_if_fail: ['mock-test-webkitperl'], cwd=/mock-checkout
-Running JavaScriptCore tests
-MOCK run_and_throw_if_fail: ['mock-run-javacriptcore-tests'], cwd=/mock-checkout
-Running run-webkit-tests
-MOCK run_and_throw_if_fail: ['mock-run-webkit-tests', '--quiet'], cwd=/mock-checkout
 Committed r49824: <https://commits.webkit.org/r49824>
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>
 No bug id provided.
@@ -206,10 +176,6 @@ No bug id provided.
 
     def test_land_red_builders(self):
         expected_logs = """Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Adding comment and closing bug 50000
 """
@@ -237,10 +203,6 @@ MOCK run_and_throw_if_fail: ['mock-check-webkit-style', '--git-commit', 'MOCK gi
 Updating working directory
 Processing patch 10000 from bug 50000.
 Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more patches to land from this bug.
 """
@@ -254,19 +216,11 @@ Processing 2 patches from 1 bug.
 Updating working directory
 Processing patch 10000 from bug 50000.
 Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more patches to land from this bug.
 Updating working directory
 Processing patch 10001 from bug 50000.
 Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more patches to land from this bug.
 """
@@ -280,19 +234,11 @@ Processing 2 patches from 1 bug.
 Updating working directory
 Processing patch 10000 from bug 50000.
 Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more patches to land from this bug.
 Updating working directory
 Processing patch 10001 from bug 50000.
 Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more patches to land from this bug.
 """
@@ -301,10 +247,6 @@ Not closing bug 50000 as attachment 10000 has review=+.  Assuming there are more
 
     def test_land_no_comment(self):
         expected_logs = """Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Not updating bug 50000
 """
@@ -315,10 +257,6 @@ Not updating bug 50000
 
     def test_land_no_close(self):
         expected_logs = """Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Commenting without closing bug 50000
 MOCK bug comment: bug_id=50000, cc=None, see_also=None
@@ -334,10 +272,6 @@ Committed r49824 (5@main): <https://commits.webkit.org/5@main>
 
     def test_land_no_comment_no_close(self):
         expected_logs = """Building WebKit
-Running Python unit tests
-Running Perl unit tests
-Running JavaScriptCore tests
-Running run-webkit-tests
 Committed r49824: <https://commits.webkit.org/r49824>
 Not updating bug 50000
 """
@@ -359,7 +293,7 @@ Not updating bug 50000
 Updating working directory
 MOCK create_bug
 bug_title: REGRESSION(r852): Reason
-bug_description: https://commits.webkit.org/r852 broke the build:
+bug_description: https://commits.webkit.org/r852 introduced a regression:
 Reason
 component: MOCK component
 cc: MOCK cc
@@ -387,7 +321,7 @@ Unable to parse bug number from diff.
 Updating working directory
 MOCK create_bug
 bug_title: REGRESSION(r852): Reason
-bug_description: https://commits.webkit.org/r852 broke the build:
+bug_description: https://commits.webkit.org/r852 introduced a regression:
 Reason
 component: MOCK component
 cc: MOCK cc
@@ -412,7 +346,7 @@ Preparing revert for bug 50004.
 Updating working directory
 MOCK create_bug
 bug_title: REGRESSION(r852): Reason
-bug_description: https://commits.webkit.org/r852 broke the build:
+bug_description: https://commits.webkit.org/r852 introduced a regression:
 Reason
 component: MOCK component
 cc: MOCK cc
@@ -436,7 +370,7 @@ where ATTACHMENT_ID is the ID of this attachment.
 Updating working directory
 MOCK create_bug
 bug_title: REGRESSION(r3001): Reason
-bug_description: https://commits.webkit.org/r3001 broke the build:
+bug_description: https://commits.webkit.org/r3001 introduced a regression:
 Reason
 component: MOCK component
 cc: MOCK cc
@@ -462,7 +396,7 @@ Preparing revert for bug 50004.
 Updating working directory
 MOCK create_bug
 bug_title: REGRESSION(r963): Reason
-bug_description: https://commits.webkit.org/r963 broke the build:
+bug_description: https://commits.webkit.org/r963 introduced a regression:
 Reason
 component: MOCK component
 cc: MOCK cc
@@ -533,17 +467,17 @@ MOCK: user.open_url: file://...
 Was that diff correct?
 Building WebKit
 Committed r49824: <https://commits.webkit.org/r49824>
-MOCK reopen_bug 50000 with comment 'Reverted r852, r963, and r3001 for reason:
+MOCK reopen_bug 50000 with comment 'Reverted r852, r963 and r3001 for reason:
 
 Reason
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
-MOCK reopen_bug 50005 with comment 'Reverted r852, r963, and r3001 for reason:
+MOCK reopen_bug 50005 with comment 'Reverted r852, r963 and r3001 for reason:
 
 Reason
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
-MOCK reopen_bug 50004 with comment 'Reverted r852, r963, and r3001 for reason:
+MOCK reopen_bug 50004 with comment 'Reverted r852, r963 and r3001 for reason:
 
 Reason
 
@@ -561,12 +495,12 @@ MOCK: user.open_url: file://...
 Was that diff correct?
 Building WebKit
 Committed r49824: <https://commits.webkit.org/r49824>
-MOCK reopen_bug 50000 with comment 'Reverted r852, r963, and r999 for reason:
+MOCK reopen_bug 50000 with comment 'Reverted r852, r963 and r999 for reason:
 
 Reason
 
 Committed r49824 (5@main): <https://commits.webkit.org/5@main>'
-MOCK reopen_bug 50005 with comment 'Reverted r852, r963, and r999 for reason:
+MOCK reopen_bug 50005 with comment 'Reverted r852, r963 and r999 for reason:
 
 Reason
 

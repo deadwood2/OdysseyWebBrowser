@@ -27,42 +27,131 @@
 #include "ArgumentCodersGLib.h"
 
 #include "DataReference.h"
-#include <glib.h>
+#include <gio/gio.h>
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 
 namespace IPC {
 
-void encode(Encoder& encoder, GVariant* variant)
+void ArgumentCoder<GRefPtr<GVariant>>::encode(Encoder& encoder, GRefPtr<GVariant> variant)
 {
     if (!variant) {
         encoder << CString();
         return;
     }
 
-    encoder << CString(g_variant_get_type_string(variant));
-    encoder << DataReference(static_cast<const uint8_t*>(g_variant_get_data(variant)), g_variant_get_size(variant));
+    encoder << CString(g_variant_get_type_string(variant.get()));
+    encoder << DataReference(static_cast<const uint8_t*>(g_variant_get_data(variant.get())), g_variant_get_size(variant.get()));
 }
 
-Optional<GRefPtr<GVariant>> decode(Decoder& decoder)
+std::optional<GRefPtr<GVariant>> ArgumentCoder<GRefPtr<GVariant>>::decode(Decoder& decoder)
 {
     CString variantTypeString;
     if (!decoder.decode(variantTypeString))
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (variantTypeString.isNull())
         return GRefPtr<GVariant>();
 
     if (!g_variant_type_string_is_valid(variantTypeString.data()))
-        return WTF::nullopt;
+        return std::nullopt;
 
     DataReference data;
     if (!decoder.decode(data))
-        return WTF::nullopt;
+        return std::nullopt;
 
     GUniquePtr<GVariantType> variantType(g_variant_type_new(variantTypeString.data()));
     GRefPtr<GBytes> bytes = adoptGRef(g_bytes_new(data.data(), data.size()));
-    return Optional<GRefPtr<GVariant> >(g_variant_new_from_bytes(variantType.get(), bytes.get(), FALSE));
+    return std::optional<GRefPtr<GVariant> >(g_variant_new_from_bytes(variantType.get(), bytes.get(), FALSE));
+}
+
+void ArgumentCoder<GRefPtr<GTlsCertificate>>::encode(Encoder& encoder, GRefPtr<GTlsCertificate> certificate)
+{
+    if (!certificate) {
+        encoder << 0;
+        return;
+    }
+
+    Vector<GRefPtr<GByteArray>> certificatesDataList;
+    for (auto* nextCertificate = certificate.get(); nextCertificate; nextCertificate = g_tls_certificate_get_issuer(nextCertificate)) {
+        GRefPtr<GByteArray> certificateData;
+        g_object_get(nextCertificate, "certificate", &certificateData.outPtr(), nullptr);
+
+        if (!certificateData) {
+            certificatesDataList.clear();
+            break;
+        }
+
+        certificatesDataList.append(WTFMove(certificateData));
+    }
+
+    encoder << static_cast<uint32_t>(certificatesDataList.size());
+    if (certificatesDataList.isEmpty())
+        return;
+
+#if GLIB_CHECK_VERSION(2, 69, 0)
+    GRefPtr<GByteArray> privateKey;
+    GUniqueOutPtr<char> privateKeyPKCS11Uri;
+    g_object_get(certificate.get(), "private-key", &privateKey.outPtr(), "private-key-pkcs11-uri", &privateKeyPKCS11Uri.outPtr(), nullptr);
+    encoder << IPC::DataReference(privateKey ? privateKey->data : nullptr, privateKey ? privateKey->len : 0);
+    encoder << CString(privateKeyPKCS11Uri.get());
+#endif
+
+    // Encode starting from the root certificate.
+    while (!certificatesDataList.isEmpty()) {
+        auto certificateData = certificatesDataList.takeLast();
+        encoder << IPC::DataReference(certificateData->data, certificateData->len);
+    }
+}
+
+std::optional<GRefPtr<GTlsCertificate>> ArgumentCoder<GRefPtr<GTlsCertificate>>::decode(Decoder& decoder)
+{
+    uint32_t chainLength;
+    if (!decoder.decode(chainLength))
+        return std::nullopt;
+
+    if (!chainLength)
+        return GRefPtr<GTlsCertificate>();
+
+#if GLIB_CHECK_VERSION(2, 69, 0)
+    IPC::DataReference privateKeyData;
+    if (!decoder.decode(privateKeyData))
+        return std::nullopt;
+    GRefPtr<GByteArray> privateKey;
+    if (privateKeyData.size()) {
+        privateKey = adoptGRef(g_byte_array_sized_new(privateKeyData.size()));
+        g_byte_array_append(privateKey.get(), privateKeyData.data(), privateKeyData.size());
+    }
+
+    CString privateKeyPKCS11Uri;
+    if (!decoder.decode(privateKeyPKCS11Uri))
+        return std::nullopt;
+#endif
+
+    GType certificateType = g_tls_backend_get_certificate_type(g_tls_backend_get_default());
+    GRefPtr<GTlsCertificate> certificate;
+    GTlsCertificate* issuer = nullptr;
+    for (uint32_t i = 0; i < chainLength; i++) {
+        IPC::DataReference certificateDataReference;
+        if (!decoder.decode(certificateDataReference))
+            return std::nullopt;
+
+        GRefPtr<GByteArray> certificateData = adoptGRef(g_byte_array_sized_new(certificateDataReference.size()));
+        g_byte_array_append(certificateData.get(), certificateDataReference.data(), certificateDataReference.size());
+
+        certificate = adoptGRef(G_TLS_CERTIFICATE(g_initable_new(
+            certificateType, nullptr, nullptr,
+            "certificate", certificateData.get(),
+            "issuer", issuer,
+#if GLIB_CHECK_VERSION(2, 69, 0)
+            "private-key", i == chainLength - 1 ? privateKey.get() : nullptr,
+            "private-key-pkcs11-uri", i == chainLength - 1 ? privateKeyPKCS11Uri.data() : nullptr,
+#endif
+            nullptr)));
+        issuer = certificate.get();
+    }
+
+    return certificate;
 }
 
 } // namespace IPC

@@ -32,14 +32,17 @@ WebKitTestServer::WebKitTestServer(ServerOptionsBitSet options)
         m_queue = WorkQueue::create("WebKitTestServer");
     }
 
-    m_soupServer = adoptGRef(soup_server_new("server-header", "WebKitTestServer ", nullptr));
-
+    GRefPtr<GTlsCertificate> certificate;
     if (options[ServerHTTPS]) {
+        GUniqueOutPtr<GError> error;
         CString resourcesDir = Test::getResourcesDir();
         GUniquePtr<char> sslCertificateFile(g_build_filename(resourcesDir.data(), "test-cert.pem", nullptr));
         GUniquePtr<char> sslKeyFile(g_build_filename(resourcesDir.data(), "test-key.pem", nullptr));
-        g_assert_true(soup_server_set_ssl_cert_file(m_soupServer.get(), sslCertificateFile.get(), sslKeyFile.get(), nullptr));
+        certificate = adoptGRef(g_tls_certificate_new_from_files(sslCertificateFile.get(), sslKeyFile.get(), &error.outPtr()));
+        g_assert_no_error(error.get());
     }
+
+    m_soupServer = adoptGRef(soup_server_new("server-header", "WebKitTestServer ", "tls-certificate", certificate.get(), nullptr));
 }
 
 void WebKitTestServer::run(SoupServerCallback serverCallback)
@@ -51,12 +54,9 @@ void WebKitTestServer::run(SoupServerCallback serverCallback)
         options |= SOUP_SERVER_LISTEN_HTTPS;
 
     if (m_queue) {
-        BinarySemaphore semaphore;
-        m_queue->dispatch([&] {
+        m_queue->dispatchSync([&] {
             g_assert_true(soup_server_listen_local(m_soupServer.get(), 0, static_cast<SoupServerListenOptions>(options), nullptr));
-            semaphore.signal();
         });
-        semaphore.wait();
     } else
         g_assert_true(soup_server_listen_local(m_soupServer.get(), 0, static_cast<SoupServerListenOptions>(options), nullptr));
 
@@ -111,5 +111,5 @@ CString WebKitTestServer::getURIForPath(const char* path) const
 
 unsigned WebKitTestServer::port() const
 {
-    return m_baseURL.port().valueOr(0);
+    return m_baseURL.port().value_or(0);
 }

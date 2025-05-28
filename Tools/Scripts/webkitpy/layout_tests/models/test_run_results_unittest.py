@@ -35,6 +35,9 @@ from webkitpy.layout_tests.models import test_results
 from webkitpy.layout_tests.models import test_run_results
 from webkitpy.tool.mocktool import MockOptions
 
+from webkitcorepy import OutputCapture
+from webkitscmpy import mocks
+
 
 def get_result(test_name, result_type=test_expectations.PASS, run_time=0):
     failures = []
@@ -58,58 +61,56 @@ def run_results(port):
 
 
 def summarized_results(port, expected, passing, flaky, include_passes=False):
-    test_is_slow = False
-
     initial_results = run_results(port)
     if expected:
-        initial_results.add(get_result('passes/text.html', test_expectations.PASS), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/audio.html', test_expectations.AUDIO), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/timeout.html', test_expectations.TIMEOUT), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/crash.html', test_expectations.CRASH), expected, test_is_slow)
+        initial_results.add(get_result('passes/text.html', test_expectations.PASS), expected)
+        initial_results.add(get_result('failures/expected/audio.html', test_expectations.AUDIO), expected)
+        initial_results.add(get_result('failures/expected/timeout.html', test_expectations.TIMEOUT), expected)
+        initial_results.add(get_result('failures/expected/crash.html', test_expectations.CRASH), expected)
 
         if port._options.pixel_tests:
-            initial_results.add(get_result('failures/expected/pixel-fail.html', test_expectations.IMAGE), expected, test_is_slow)
+            initial_results.add(get_result('failures/expected/pixel-fail.html', test_expectations.IMAGE), expected)
         else:
-            initial_results.add(get_result('failures/expected/pixel-fail.html', test_expectations.PASS), expected, test_is_slow)
+            initial_results.add(get_result('failures/expected/pixel-fail.html', test_expectations.PASS), expected)
 
         if port._options.world_leaks:
-            initial_results.add(get_result('failures/expected/leak.html', test_expectations.LEAK), expected, test_is_slow)
+            initial_results.add(get_result('failures/expected/leak.html', test_expectations.LEAK), expected)
         else:
-            initial_results.add(get_result('failures/expected/leak.html', test_expectations.PASS), expected, test_is_slow)
+            initial_results.add(get_result('failures/expected/leak.html', test_expectations.PASS), expected)
 
     elif passing:
-        initial_results.add(get_result('passes/text.html'), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/audio.html'), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/timeout.html'), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/crash.html'), expected, test_is_slow)
+        initial_results.add(get_result('passes/text.html'), expected)
+        initial_results.add(get_result('failures/expected/audio.html'), expected)
+        initial_results.add(get_result('failures/expected/timeout.html'), expected)
+        initial_results.add(get_result('failures/expected/crash.html'), expected)
 
         if port._options.pixel_tests:
-            initial_results.add(get_result('failures/expected/pixel-fail.html'), expected, test_is_slow)
+            initial_results.add(get_result('failures/expected/pixel-fail.html'), expected)
         else:
-            initial_results.add(get_result('failures/expected/pixel-fail.html', test_expectations.IMAGE), expected, test_is_slow)
+            initial_results.add(get_result('failures/expected/pixel-fail.html', test_expectations.IMAGE), expected)
 
         if port._options.world_leaks:
-            initial_results.add(get_result('failures/expected/leak.html'), expected, test_is_slow)
+            initial_results.add(get_result('failures/expected/leak.html'), expected)
         else:
-            initial_results.add(get_result('failures/expected/leak.html', test_expectations.PASS), expected, test_is_slow)
+            initial_results.add(get_result('failures/expected/leak.html', test_expectations.PASS), expected)
     else:
-        initial_results.add(get_result('passes/text.html', test_expectations.TIMEOUT), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/audio.html', test_expectations.AUDIO), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/timeout.html', test_expectations.CRASH), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/crash.html', test_expectations.TIMEOUT), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/pixel-fail.html', test_expectations.TIMEOUT), expected, test_is_slow)
-        initial_results.add(get_result('failures/expected/leak.html', test_expectations.CRASH), expected, test_is_slow)
+        initial_results.add(get_result('passes/text.html', test_expectations.TIMEOUT), expected)
+        initial_results.add(get_result('failures/expected/audio.html', test_expectations.AUDIO), expected)
+        initial_results.add(get_result('failures/expected/timeout.html', test_expectations.CRASH), expected)
+        initial_results.add(get_result('failures/expected/crash.html', test_expectations.TIMEOUT), expected)
+        initial_results.add(get_result('failures/expected/pixel-fail.html', test_expectations.TIMEOUT), expected)
+        initial_results.add(get_result('failures/expected/leak.html', test_expectations.CRASH), expected)
 
         # we only list hang.html here, since normally this is WontFix
-        initial_results.add(get_result('failures/expected/hang.html', test_expectations.TIMEOUT), expected, test_is_slow)
+        initial_results.add(get_result('failures/expected/hang.html', test_expectations.TIMEOUT), expected)
 
     if flaky:
         retry_results = run_results(port)
-        retry_results.add(get_result('passes/text.html'), True, test_is_slow)
-        retry_results.add(get_result('failures/expected/timeout.html'), True, test_is_slow)
-        retry_results.add(get_result('failures/expected/crash.html'), True, test_is_slow)
-        retry_results.add(get_result('failures/expected/pixel-fail.html'), True, test_is_slow)
-        retry_results.add(get_result('failures/expected/leak.html'), True, test_is_slow)
+        retry_results.add(get_result('passes/text.html'), True)
+        retry_results.add(get_result('failures/expected/timeout.html'), True)
+        retry_results.add(get_result('failures/expected/crash.html'), True)
+        retry_results.add(get_result('failures/expected/pixel-fail.html'), True)
+        retry_results.add(get_result('failures/expected/leak.html'), True)
     else:
         retry_results = None
 
@@ -160,9 +161,16 @@ class SummarizedResultsTest(unittest.TestCase):
         self.assertNotEquals(summary['revision'], '')
 
     def test_svn_revision(self):
-        self.port._options.builder_name = 'dummy builder'
-        summary = summarized_results(self.port, expected=False, passing=False, flaky=False)
-        self.assertEquals(summary['revision'], '2738499')
+        with mocks.local.Svn(path='/'), mocks.local.Git():
+            self.port._options.builder_name = 'dummy builder'
+            summary = summarized_results(self.port, expected=False, passing=False, flaky=False)
+            self.assertEquals(summary['revision'], '6')
+
+    def test_svn_revision_git(self):
+        with mocks.local.Svn(), mocks.local.Git(path='/', git_svn=True), OutputCapture():
+            self.port._options.builder_name = 'dummy builder'
+            summary = summarized_results(self.port, expected=False, passing=False, flaky=False)
+            self.assertEquals(summary['revision'], '9')
 
     def test_summarized_results_wontfix(self):
         self.port._options.builder_name = 'dummy builder'

@@ -26,7 +26,6 @@
 #pragma once
 
 #include <WebCore/FloatSize.h>
-#include <wtf/Optional.h>
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
@@ -37,6 +36,15 @@ namespace WebKit {
 
 class ShareableBitmap;
 
-RefPtr<ShareableBitmap> createShareableBitmap(WebCore::RenderImage&, Optional<WebCore::FloatSize> screenSizeInPixels = WTF::nullopt);
+enum class UseSnapshotForTransparentImages : bool { No, Yes };
+enum class AllowAnimatedImages : bool { No, Yes };
+
+struct CreateShareableBitmapFromImageOptions {
+    std::optional<WebCore::FloatSize> screenSizeInPixels;
+    AllowAnimatedImages allowAnimatedImages { AllowAnimatedImages::Yes };
+    UseSnapshotForTransparentImages useSnapshotForTransparentImages { UseSnapshotForTransparentImages::No };
+};
+
+RefPtr<ShareableBitmap> createShareableBitmap(WebCore::RenderImage&, CreateShareableBitmapFromImageOptions&& = { });
 
 };

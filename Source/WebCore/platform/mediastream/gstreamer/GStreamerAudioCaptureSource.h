@@ -49,10 +49,13 @@ protected:
     void stopProducingData() override;
     CaptureDevice::DeviceType deviceType() const override { return CaptureDevice::DeviceType::Microphone; }
 
-    mutable Optional<RealtimeMediaSourceCapabilities> m_capabilities;
-    mutable Optional<RealtimeMediaSourceSettings> m_currentSettings;
+    mutable std::optional<RealtimeMediaSourceCapabilities> m_capabilities;
+    mutable std::optional<RealtimeMediaSourceSettings> m_currentSettings;
 
 private:
+    bool interrupted() const final;
+    void setInterruptedForTesting(bool) final;
+
     bool isCaptureSource() const final { return true; }
     void settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag>) final;
 

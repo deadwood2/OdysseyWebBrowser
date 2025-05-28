@@ -29,7 +29,6 @@
 #if PLATFORM(MAC)
 
 #import "APIUIClient.h"
-#import "ColorSpaceData.h"
 #import "Connection.h"
 #import "DataReference.h"
 #import "EditorState.h"
@@ -46,12 +45,15 @@
 #import "StringUtilities.h"
 #import "TextChecker.h"
 #import "WKBrowsingContextControllerInternal.h"
+#import "WKQuickLookPreviewController.h"
 #import "WKSharingServicePickerDelegate.h"
 #import "WebContextMenuProxyMac.h"
 #import "WebPageMessages.h"
+#import "WebPageProxyMessages.h"
 #import "WebPreferencesKeys.h"
 #import "WebProcessProxy.h"
 #import <WebCore/AttributedString.h>
+#import <WebCore/DestinationColorSpace.h>
 #import <WebCore/DictionaryLookup.h>
 #import <WebCore/DragItem.h>
 #import <WebCore/GraphicsLayer.h>
@@ -108,6 +110,8 @@
 }
 @end // implementation WKPDFMenuTarget
 #endif
+
+#import <pal/mac/QuickLookUISoftLink.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -344,7 +348,7 @@ void WebPageProxy::assistiveTechnologyMakeFirstResponder()
     pageClient().assistiveTechnologyMakeFirstResponder();
 }
 
-ColorSpaceData WebPageProxy::colorSpace()
+WebCore::DestinationColorSpace WebPageProxy::colorSpace()
 {
     return pageClient().colorSpace();
 }
@@ -392,10 +396,21 @@ bool WebPageProxy::acceptsFirstMouse(int eventNumber, const WebKit::WebMouseEven
     if (!hasRunningProcess())
         return false;
 
-    bool result = false;
-    const Seconds messageTimeout(3);
-    sendSync(Messages::WebPage::AcceptsFirstMouse(eventNumber, event), Messages::WebPage::AcceptsFirstMouse::Reply(result), messageTimeout);
-    return result;
+    if (!m_process->hasConnection())
+        return false;
+
+    send(Messages::WebPage::RequestAcceptsFirstMouse(eventNumber, event), IPC::SendOption::DispatchMessageEvenWhenWaitingForUnboundedSyncReply);
+    bool receivedReply = m_process->connection()->waitForAndDispatchImmediately<Messages::WebPageProxy::HandleAcceptsFirstMouse>(webPageID(), 3_s, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives);
+
+    if (!receivedReply)
+        return false;
+
+    return m_acceptsFirstMouse;
+}
+
+void WebPageProxy::handleAcceptsFirstMouse(bool acceptsFirstMouse)
+{
+    m_acceptsFirstMouse = acceptsFirstMouse;
 }
 
 void WebPageProxy::setRemoteLayerTreeRootNode(RemoteLayerTreeNode* rootNode)
@@ -411,17 +426,16 @@ CALayer *WebPageProxy::acceleratedCompositingRootLayer() const
 
 static NSString *temporaryPDFDirectoryPath()
 {
-    static NSString *temporaryPDFDirectoryPath;
-
-    if (!temporaryPDFDirectoryPath) {
+    static auto temporaryPDFDirectoryPath = makeNeverDestroyed([] {
         NSString *temporaryDirectoryTemplate = [NSTemporaryDirectory() stringByAppendingPathComponent:@"WebKitPDFs-XXXXXX"];
         CString templateRepresentation = [temporaryDirectoryTemplate fileSystemRepresentation];
 
         if (mkdtemp(templateRepresentation.mutableData()))
-            temporaryPDFDirectoryPath = [[[NSFileManager defaultManager] stringWithFileSystemRepresentation:templateRepresentation.data() length:templateRepresentation.length()] copy];
-    }
+            return adoptNS([[[NSFileManager defaultManager] stringWithFileSystemRepresentation:templateRepresentation.data() length:templateRepresentation.length()] copy]);
+        return RetainPtr<id> { };
+    }());
 
-    return temporaryPDFDirectoryPath;
+    return temporaryPDFDirectoryPath.get().get();
 }
 
 static NSString *pathToPDFOnDisk(const String& suggestedFilename)
@@ -513,10 +527,10 @@ void WebPageProxy::openPDFFromTemporaryFolderWithNativeApplication(FrameInfoData
 #endif
 
 #if ENABLE(PDFKIT_PLUGIN)
-void WebPageProxy::showPDFContextMenu(const WebKit::PDFContextMenu& contextMenu, PDFPluginIdentifier identifier, CompletionHandler<void(Optional<int32_t>&&)>&& completionHandler)
+void WebPageProxy::showPDFContextMenu(const WebKit::PDFContextMenu& contextMenu, PDFPluginIdentifier identifier, CompletionHandler<void(std::optional<int32_t>&&)>&& completionHandler)
 {
     if (!contextMenu.items.size())
-        return completionHandler(WTF::nullopt);
+        return completionHandler(std::nullopt);
     
     RetainPtr<WKPDFMenuTarget> menuTarget = adoptNS([[WKPDFMenuTarget alloc] init]);
     RetainPtr<NSMenu> nsMenu = adoptNS([[NSMenu alloc] init]);
@@ -558,7 +572,7 @@ void WebPageProxy::showPDFContextMenu(const WebKit::PDFContextMenu& contextMenu,
 #endif
         return completionHandler(tag);
     }
-    completionHandler(WTF::nullopt);
+    completionHandler(std::nullopt);
 }
 #endif
 
@@ -575,17 +589,14 @@ CGRect WebPageProxy::boundsOfLayerInLayerBackedWindowCoordinates(CALayer *layer)
     return pageClient().boundsOfLayerInLayerBackedWindowCoordinates(layer);
 }
 
-void WebPageProxy::updateEditorState(const EditorState& editorState)
+void WebPageProxy::didUpdateEditorState(const EditorState& oldEditorState, const EditorState& newEditorState)
 {
-    bool couldChangeSecureInputState = m_editorState.isInPasswordField != editorState.isInPasswordField || m_editorState.selectionIsNone;
-    
-    m_editorState = editorState;
-    
+    bool couldChangeSecureInputState = newEditorState.isInPasswordField != oldEditorState.isInPasswordField || oldEditorState.selectionIsNone;
     // Selection being none is a temporary state when editing. Flipping secure input state too quickly was causing trouble (not fully understood).
-    if (couldChangeSecureInputState && !editorState.selectionIsNone)
+    if (couldChangeSecureInputState && !newEditorState.selectionIsNone)
         pageClient().updateSecureInputState();
     
-    if (editorState.shouldIgnoreSelectionChanges)
+    if (newEditorState.shouldIgnoreSelectionChanges)
         return;
     
     pageClient().selectionDidChange();
@@ -634,6 +645,13 @@ NSWindow *WebPageProxy::paymentCoordinatorPresentingWindow(const WebPaymentCoord
 
 #if ENABLE(CONTEXT_MENUS)
 
+NSMenu *WebPageProxy::platformActiveContextMenu() const
+{
+    if (m_activeContextMenu)
+        return m_activeContextMenu->platformMenu();
+    return nil;
+}
+
 void WebPageProxy::platformDidSelectItemFromActiveContextMenu(const WebContextMenuItemData& item)
 {
     if (item.action() == ContextMenuItemTagPaste)
@@ -655,15 +673,6 @@ PlatformView* WebPageProxy::platformView() const
 bool WebPageProxy::useiTunesAVOutputContext() const
 {
     return m_preferences->store().getBoolValueForKey(WebPreferencesKey::useiTunesAVOutputContextKey());
-}
-
-void WebPageProxy::didUpdateRenderingAfterCommittingLoad()
-{
-    if (m_hasUpdatedRenderingAfterDidCommitLoad)
-        return;
-
-    m_hasUpdatedRenderingAfterDidCommitLoad = true;
-    stopMakingViewBlankDueToLackOfRenderingUpdate();
 }
 
 #if ENABLE(UI_PROCESS_PDF_HUD)
@@ -715,6 +724,86 @@ void WebPageProxy::changeUniversalAccessZoomFocus(const WebCore::IntRect& viewRe
     WebCore::changeUniversalAccessZoomFocus(viewRect, selectionRect);
 }
 #endif
+
+Color WebPageProxy::platformUnderPageBackgroundColor() const
+{
+#if ENABLE(DARK_MODE_CSS)
+    return WebCore::roundAndClampToSRGBALossy(NSColor.controlBackgroundColor.CGColor);
+#else
+    return WebCore::Color::white;
+#endif
+}
+
+void WebPageProxy::beginPreviewPanelControl(QLPreviewPanel *panel)
+{
+#if ENABLE(IMAGE_ANALYSIS)
+    [m_quickLookPreviewController beginControl:panel];
+#endif
+}
+
+void WebPageProxy::endPreviewPanelControl(QLPreviewPanel *panel)
+{
+#if ENABLE(IMAGE_ANALYSIS)
+    if (auto controller = std::exchange(m_quickLookPreviewController, nil))
+        [controller endControl:panel];
+#endif
+}
+
+void WebPageProxy::closeSharedPreviewPanelIfNecessary()
+{
+#if ENABLE(IMAGE_ANALYSIS)
+    [m_quickLookPreviewController closePanelIfNecessary];
+#endif
+}
+
+#if ENABLE(IMAGE_ANALYSIS)
+
+void WebPageProxy::handleContextMenuQuickLookImage(QuickLookPreviewActivity activity)
+{
+    auto& result = m_activeContextMenuContextData.webHitTestResultData();
+    if (!result.imageBitmap)
+        return;
+
+    showImageInQuickLookPreviewPanel(*result.imageBitmap, result.toolTipText, URL { URL { }, result.absoluteImageURL }, activity);
+}
+
+void WebPageProxy::showImageInQuickLookPreviewPanel(ShareableBitmap& imageBitmap, const String& tooltip, const URL& imageURL, QuickLookPreviewActivity activity)
+{
+    if (!PAL::isQuickLookUIFrameworkAvailable() || !PAL::getQLPreviewPanelClass() || ![PAL::getQLItemClass() instancesRespondToSelector:@selector(initWithDataProvider:contentType:previewTitle:)])
+        return;
+
+    auto image = imageBitmap.makeCGImage();
+    if (!image)
+        return;
+
+    auto imageData = adoptCF(CFDataCreateMutable(kCFAllocatorDefault, 0));
+    auto destination = adoptCF(CGImageDestinationCreateWithData(imageData.get(), (__bridge CFStringRef)UTTypePNG.identifier, 1, nullptr));
+    if (!destination)
+        return;
+
+    CGImageDestinationAddImage(destination.get(), image.get(), nil);
+    if (!CGImageDestinationFinalize(destination.get()))
+        return;
+
+    m_quickLookPreviewController = adoptNS([[WKQuickLookPreviewController alloc] initWithPage:*this imageData:(__bridge NSData *)imageData.get() title:tooltip imageURL:imageURL activity:activity]);
+
+    // When presenting the shared QLPreviewPanel, QuickLook will search the responder chain for a suitable panel controller.
+    // Make sure that we (by default) start the search at the web view, which knows how to vend the Visual Search preview
+    // controller as a delegate and data source for the preview panel.
+    pageClient().makeFirstResponder();
+
+    auto previewPanel = [PAL::getQLPreviewPanelClass() sharedPreviewPanel];
+    [previewPanel makeKeyAndOrderFront:nil];
+
+    if (![m_quickLookPreviewController isControlling:previewPanel]) {
+        // The WebKit client may have overridden QLPreviewPanelController methods on the view without calling into the superclass.
+        // In this case, hand over control to the client and clear out our state eagerly, since we don't expect any further delegate
+        // calls once the preview panel is dismissed.
+        m_quickLookPreviewController.clear();
+    }
+}
+
+#endif // ENABLE(IMAGE_ANALYSIS)
 
 } // namespace WebKit
 

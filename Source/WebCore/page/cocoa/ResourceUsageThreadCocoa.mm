@@ -161,23 +161,23 @@ void ResourceUsageThread::platformCollectCPUData(JSC::VM*, ResourceUsageData& da
 
     HashSet<mach_port_t> knownWebKitThreads;
     {
-        auto locker = holdLock(Thread::allThreadsMutex());
-        for (auto* thread : Thread::allThreads(locker)) {
+        Locker locker { Thread::allThreadsLock() };
+        for (auto* thread : Thread::allThreads()) {
             mach_port_t machThread = thread->machThread();
-            if (machThread != MACH_PORT_NULL)
+            if (MACH_PORT_VALID(machThread))
                 knownWebKitThreads.add(machThread);
         }
     }
 
     HashMap<mach_port_t, String> knownWorkerThreads;
     {
-        auto locker = holdLock(WorkerOrWorkletThread::workerOrWorkletThreadsLock());
+        Locker locker { WorkerOrWorkletThread::workerOrWorkletThreadsLock() };
         for (auto* thread : WorkerOrWorkletThread::workerOrWorkletThreads()) {
             // Ignore worker threads that have not been fully started yet.
             if (!thread->thread())
                 continue;
             mach_port_t machThread = thread->thread()->machThread();
-            if (machThread != MACH_PORT_NULL)
+            if (MACH_PORT_VALID(machThread))
                 knownWorkerThreads.set(machThread, thread->identifier().isolatedCopy());
         }
     }
@@ -272,8 +272,8 @@ void ResourceUsageThread::platformCollectMemoryData(JSC::VM* vm, ResourceUsageDa
 
     data.totalExternalSize = currentGCOwnedExternal;
 
-    data.timeOfNextEdenCollection = data.timestamp + vm->heap.edenActivityCallback()->timeUntilFire().valueOr(Seconds(std::numeric_limits<double>::infinity()));
-    data.timeOfNextFullCollection = data.timestamp + vm->heap.fullActivityCallback()->timeUntilFire().valueOr(Seconds(std::numeric_limits<double>::infinity()));
+    data.timeOfNextEdenCollection = data.timestamp + vm->heap.edenActivityCallback()->timeUntilFire().value_or(Seconds(std::numeric_limits<double>::infinity()));
+    data.timeOfNextFullCollection = data.timestamp + vm->heap.fullActivityCallback()->timeUntilFire().value_or(Seconds(std::numeric_limits<double>::infinity()));
 }
 
 }

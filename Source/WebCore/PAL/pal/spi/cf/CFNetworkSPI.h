@@ -50,6 +50,14 @@
 #import <CFNetwork/CFNSURLConnection.h>
 #endif
 
+#if HAVE(NSURLPROTOCOL_WITH_SKIPAPPSSO)
+#if defined(__OBJC__)
+@interface NSURLProtocol (NSURLConnectionAppSSOPrivate)
++ (Class)_protocolClassForRequest:(NSURLRequest *)request skipAppSSO:(BOOL)skipAppSSO;
+@end
+#endif
+#endif
+
 #else // !USE(APPLE_INTERNAL_SDK)
 
 #if HAVE(PRECONNECT_PING) && defined(__OBJC__)
@@ -114,6 +122,16 @@ CF_ENUM(CFHTTPCookieStorageAcceptPolicy)
     CFHTTPCookieStorageAcceptPolicyExclusivelyFromMainDocumentDomain = 3,
 };
 
+#if HAVE(NETWORK_CONNECTION_PRIVACY_STANCE)
+typedef enum {
+    nw_connection_privacy_stance_unknown = 0,
+    nw_connection_privacy_stance_not_eligible = 1,
+    nw_connection_privacy_stance_proxied = 2,
+    nw_connection_privacy_stance_failed = 3,
+    nw_connection_privacy_stance_direct = 4,
+} nw_connection_privacy_stance_t;
+#endif
+
 #if defined(__OBJC__)
 
 @interface NSURLSessionTask ()
@@ -165,6 +183,12 @@ CF_ENUM(CFHTTPCookieStorageAcceptPolicy)
 @interface NSURLProtocol ()
 + (Class)_protocolClassForRequest:(NSURLRequest *)request;
 @end
+
+#if HAVE(NSURLPROTOCOL_WITH_SKIPAPPSSO)
+@interface NSURLProtocol (NSURLConnectionAppSSOPrivate)
++ (Class)_protocolClassForRequest:(NSURLRequest *)request skipAppSSO:(BOOL)skipAppSSO;
+@end
+#endif
 
 @interface NSURLRequest ()
 + (NSArray *)allowsSpecificHTTPSCertificateForHost:(NSString *)host;
@@ -242,6 +266,14 @@ typedef NS_ENUM(NSInteger, NSURLSessionCompanionProxyPreference) {
 #if HAVE(NETWORK_LOADER)
 @property BOOL _usesNWLoader;
 #endif
+#if HAVE(CFNETWORK_NSURLSESSION_CONNECTION_CACHE_LIMITS)
+@property (readwrite, assign) NSInteger _connectionCacheNumPriorityLevels;
+@property (readwrite, assign) NSInteger _connectionCacheNumFastLanes;
+@property (readwrite, assign) NSInteger _connectionCacheMinimumFastLanePriority;
+#endif
+#if HAVE(CFNETWORK_NSURLSESSION_ATTRIBUTED_BUNDLE_IDENTIFIER)
+@property (nullable, copy) NSString *_attributedBundleIdentifier;
+#endif
 @end
 
 @interface NSURLSessionTask ()
@@ -264,6 +296,9 @@ typedef NS_ENUM(NSInteger, NSURLSessionCompanionProxyPreference) {
 @property (assign, readonly) NSInteger _responseHeaderBytesReceived;
 @property (assign, readonly) int64_t _responseBodyBytesReceived;
 @property (assign, readonly) int64_t _responseBodyBytesDecoded;
+#if HAVE(NETWORK_CONNECTION_PRIVACY_STANCE)
+@property (assign, readonly) nw_connection_privacy_stance_t _privacyStance;
+#endif
 @end
 
 #if HAVE(CFNETWORK_NEGOTIATED_SSL_PROTOCOL_CIPHER)
@@ -453,14 +488,20 @@ WTF_EXTERN_C_END
 - (void)_setMIMEType:(NSString *)type;
 @end
 
-@interface NSURLSessionConfiguration ()
+@interface NSURLSessionConfiguration (SPI)
 // FIXME: Remove this once rdar://problem/40650244 is in a build.
 @property (copy) NSDictionary *_socketStreamProperties;
+// FIXME: Remove this once rdar://80550123 is in a build.
+@property (nonatomic) BOOL _allowsHSTSWithUntrustedRootCertificate;
 @end
 
 @interface NSURLSessionTask ()
 - (void)_setExplicitCookieStorage:(CFHTTPCookieStorageRef)storage;
 @property (readonly) SSLProtocol _TLSNegotiatedProtocolVersion;
+@end
+
+@interface NSURLSessionWebSocketTask (SPI)
+- (void)_sendCloseCode:(NSURLSessionWebSocketCloseCode)closeCode reason:(NSData *)reason;
 @end
 
 #endif // defined(__OBJC__)

@@ -40,6 +40,8 @@ struct RemoteMediaPlayerConfiguration {
     bool supportsFullscreen { false };
     bool supportsPictureInPicture { false };
     bool supportsAcceleratedRendering { false };
+    bool supportsPlayAtHostTime { false };
+    bool supportsPauseAtHostTime { false };
     bool canPlayToWirelessPlaybackTarget { false };
     bool shouldIgnoreIntrinsicSize { false };
 
@@ -52,52 +54,64 @@ struct RemoteMediaPlayerConfiguration {
         encoder << supportsFullscreen;
         encoder << supportsPictureInPicture;
         encoder << supportsAcceleratedRendering;
+        encoder << supportsPlayAtHostTime;
+        encoder << supportsPauseAtHostTime;
         encoder << canPlayToWirelessPlaybackTarget;
         encoder << shouldIgnoreIntrinsicSize;
     }
 
     template <class Decoder>
-    static Optional<RemoteMediaPlayerConfiguration> decode(Decoder& decoder)
+    static std::optional<RemoteMediaPlayerConfiguration> decode(Decoder& decoder)
     {
-        Optional<String> engineDescription;
+        std::optional<String> engineDescription;
         decoder >> engineDescription;
         if (!engineDescription)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<double> maximumDurationToCacheMediaTime;
+        std::optional<double> maximumDurationToCacheMediaTime;
         decoder >> maximumDurationToCacheMediaTime;
         if (!maximumDurationToCacheMediaTime)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> supportsScanning;
+        std::optional<bool> supportsScanning;
         decoder >> supportsScanning;
         if (!supportsScanning)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> supportsFullscreen;
+        std::optional<bool> supportsFullscreen;
         decoder >> supportsFullscreen;
         if (!supportsFullscreen)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> supportsPictureInPicture;
+        std::optional<bool> supportsPictureInPicture;
         decoder >> supportsPictureInPicture;
         if (!supportsPictureInPicture)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> supportsAcceleratedRendering;
+        std::optional<bool> supportsAcceleratedRendering;
         decoder >> supportsAcceleratedRendering;
         if (!supportsAcceleratedRendering)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> canPlayToWirelessPlaybackTarget;
+        std::optional<bool> supportsPlayAtHostTime;
+        decoder >> supportsPlayAtHostTime;
+        if (!supportsPlayAtHostTime)
+            return std::nullopt;
+
+        std::optional<bool> supportsPauseAtHostTime;
+        decoder >> supportsPauseAtHostTime;
+        if (!supportsPauseAtHostTime)
+            return std::nullopt;
+
+        std::optional<bool> canPlayToWirelessPlaybackTarget;
         decoder >> canPlayToWirelessPlaybackTarget;
         if (!canPlayToWirelessPlaybackTarget)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> shouldIgnoreIntrinsicSize;
+        std::optional<bool> shouldIgnoreIntrinsicSize;
         decoder >> shouldIgnoreIntrinsicSize;
         if (!shouldIgnoreIntrinsicSize)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return {{
             WTFMove(*engineDescription),
@@ -106,6 +120,8 @@ struct RemoteMediaPlayerConfiguration {
             *supportsFullscreen,
             *supportsPictureInPicture,
             *supportsAcceleratedRendering,
+            *supportsPlayAtHostTime,
+            *supportsPauseAtHostTime,
             *canPlayToWirelessPlaybackTarget,
             *shouldIgnoreIntrinsicSize,
         }};

@@ -25,11 +25,15 @@
 
 #import "config.h"
 
+#import "HTTPServer.h"
 #import "PlatformUtilities.h"
 #import "RemoteObjectRegistry.h"
 #import "Test.h"
+#import "TestAwakener.h"
+#import "TestNavigationDelegate.h"
 #import "WKWebViewConfigurationExtras.h"
 #import <WebKit/WKProcessPoolPrivate.h>
+#import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/_WKRemoteObjectInterface.h>
 #import <WebKit/_WKRemoteObjectRegistry.h>
@@ -38,13 +42,14 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/WeakObjCPtr.h>
 
-TEST(WebKit, RemoteObjectRegistry)
+TEST(RemoteObjectRegistry, Basic)
 {
     __block bool isDone = false;
 
     @autoreleasepool {
         NSString * const testPlugInClassName = @"RemoteObjectRegistryPlugIn";
         auto configuration = retainPtr([WKWebViewConfiguration _test_configurationWithTestPlugInClassName:testPlugInClassName]);
+        configuration.get()._groupIdentifier = @"testGroupIdentifier";
         auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]);
 
         isDone = false;
@@ -80,6 +85,14 @@ TEST(WebKit, RemoteObjectRegistry)
         [object takeRange:NSMakeRange(345, 123) completionHandler:^(NSUInteger location, NSUInteger length) {
             EXPECT_EQ(345U, location);
             EXPECT_EQ(123U, length);
+            isDone = true;
+        }];
+        TestWebKitAPI::Util::run(&isDone);
+
+        isDone = false;
+        auto initialAwakener = adoptNS([[TestAwakener alloc] initWithValue:42]);
+        [object sendAwakener:initialAwakener.get() completionHandler:^(TestAwakener *awakener) {
+            EXPECT_EQ(awakener.value, 42);
             isDone = true;
         }];
         TestWebKitAPI::Util::run(&isDone);
@@ -143,6 +156,14 @@ TEST(WebKit, RemoteObjectRegistry)
         TestWebKitAPI::Util::run(&isDone);
 
         isDone = false;
+        
+        [object getGroupIdentifier:^(NSString *identifier) {
+            EXPECT_WK_STREQ(identifier, "testGroupIdentifier");
+            isDone = true;
+        }];
+        TestWebKitAPI::Util::run(&isDone);
+
+        isDone = false;
 
         bool exceptionThrown = false;
         NSMutableDictionary *child = [NSMutableDictionary dictionaryWithObjectsAndKeys:@"foo", @"name", [NSNumber numberWithInt:1], @"value", nil];
@@ -196,7 +217,7 @@ TEST(WebKit, RemoteObjectRegistry)
 
 @end
 
-TEST(WebKit, RemoteObjectRegistry_CallReplyBlockAfterOriginatingWebViewDeallocates)
+TEST(RemoteObjectRegistry, CallReplyBlockAfterOriginatingWebViewDeallocates)
 {
     auto localObject = adoptNS([[LocalObject alloc] init]);
     WeakObjCPtr<WKWebView> weakWebViewPtr;
@@ -227,4 +248,29 @@ TEST(WebKit, RemoteObjectRegistry_CallReplyBlockAfterOriginatingWebViewDeallocat
     }
 
     localObject->completionHandlerFromWebProcess();
+}
+
+TEST(RemoteObjectRegistry, SerializeErrorWithCertificates)
+{
+    TestWebKitAPI::HTTPServer server({ }, TestWebKitAPI::HTTPServer::Protocol::Https);
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:[WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"RemoteObjectRegistryPlugIn"]]);
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    webView.get().navigationDelegate = delegate.get();
+    [webView loadRequest:server.request()];
+    NSError *error = [delegate waitForDidFailProvisionalNavigation];
+    NSString *key = @"NSErrorPeerCertificateChainKey";
+    EXPECT_WK_STREQ(error.domain, "NSURLErrorDomain");
+    EXPECT_TRUE(error.userInfo[key]);
+    
+    _WKRemoteObjectInterface *interface = [_WKRemoteObjectInterface remoteObjectInterfaceWithProtocol:@protocol(RemoteObjectProtocol)];
+    id <RemoteObjectProtocol> object = [[webView _remoteObjectRegistry] remoteObjectProxyWithInterface:interface];
+    __block bool roundTripComplete = false;
+    [object sendError:error completionHandler:^(NSError *deserializedError) {
+        EXPECT_WK_STREQ(deserializedError.domain, "NSURLErrorDomain");
+        NSArray *chain = deserializedError.userInfo[key];
+        EXPECT_TRUE(chain);
+        EXPECT_EQ(CFGetTypeID(chain[0]), SecCertificateGetTypeID());
+        roundTripComplete = true;
+    }];
+    TestWebKitAPI::Util::run(&roundTripComplete);
 }

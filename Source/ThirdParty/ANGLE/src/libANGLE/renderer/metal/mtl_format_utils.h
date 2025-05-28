@@ -28,6 +28,8 @@ class DisplayMtl;
 namespace mtl
 {
 
+LoadFunctionMap GetLoadFunctionsMap(GLenum internalFormat, angle::FormatID angleFormat);
+
 struct FormatBase
 {
     inline bool operator==(const FormatBase &rhs) const
@@ -66,6 +68,8 @@ struct FormatCaps
 struct Format : public FormatBase
 {
     Format() = default;
+
+    static angle::FormatID MetalToAngleFormatID(MTLPixelFormat formatMtl);
 
     const gl::InternalFormat &intendedInternalFormat() const;
     const gl::InternalFormat &actualInternalFormat() const;

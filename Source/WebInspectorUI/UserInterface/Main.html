@@ -1,5 +1,5 @@
 <!--
- * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,11 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * file: blob: resource:; connect-src * ws:; media-src * blob:; font-src * blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' data:">
+    <!--
+        Note that some WebKit ports may set custom 'frame-src' and 'connect-src' directives via HTTP response header.
+        The combined CSP policy requires a request to be allowed by both directive lists, so 'default-src' is omitted.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="img-src * file: blob: resource:; media-src * blob:; font-src * blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' data:; object-src 'none'">
 
     <link rel="stylesheet" href="External/CodeMirror/codemirror.css">
 
@@ -82,6 +86,7 @@
     <link rel="stylesheet" href="Views/ContentBrowserTabContentView.css">
     <link rel="stylesheet" href="Views/ContentView.css">
     <link rel="stylesheet" href="Views/ContentViewContainer.css">
+    <link rel="stylesheet" href="Views/CSSDocumentationPopover.css">
     <link rel="stylesheet" href="Views/CookiePopover.css">
     <link rel="stylesheet" href="Views/CookieStorageContentView.css">
     <link rel="stylesheet" href="Views/CreateAuditPopover.css">
@@ -206,6 +211,7 @@
     <link rel="stylesheet" href="Views/ScrubberNavigationItem.css">
     <link rel="stylesheet" href="Views/SearchIcons.css">
     <link rel="stylesheet" href="Views/SearchSidebarPanel.css">
+    <link rel="stylesheet" href="Views/SettingEditor.css">
     <link rel="stylesheet" href="Views/SettingsTabContentView.css">
     <link rel="stylesheet" href="Views/ShaderProgramContentView.css">
     <link rel="stylesheet" href="Views/ShaderProgramTreeElement.css">
@@ -290,6 +296,8 @@
     <script src="External/CodeMirror/sql.js"></script>
     <script src="External/CodeMirror/sublime.js"></script>
     <script src="External/CodeMirror/xml.js"></script>
+
+    <script src="External/CSSDocumentation/CSSDocumentation.js"></script>
 
     <script src="External/Esprima/esprima.js"></script>
 
@@ -667,6 +675,7 @@
     <script src="Views/ContentViewContainer.js"></script>
     <script src="Views/ContextMenu.js"></script>
     <script src="Views/ContextMenuUtilities.js"></script>
+    <script src="Views/CSSDocumentationPopover.js"></script>
     <script src="Views/CookiePopover.js"></script>
     <script src="Views/CookieStorageContentView.js"></script>
     <script src="Views/CookieStorageTreeElement.js"></script>
@@ -904,6 +913,7 @@
     <script src="Controllers/DebuggerManager.js"></script>
     <script src="Controllers/DragToAdjustController.js"></script>
     <script src="Controllers/FormatterSourceMap.js"></script>
+    <script src="Controllers/GestureController.js"></script>
     <script src="Controllers/HARBuilder.js"></script>
     <script src="Controllers/HeapManager.js"></script>
     <script src="Controllers/IndexedDBManager.js"></script>
@@ -923,6 +933,8 @@
 
     <script src="Controllers/DiagnosticController.js"></script>
     <script src="Controllers/DiagnosticEventRecorder.js"></script>
+    <script src="Controllers/GridOverlayConfigurationDiagnosticEventRecorder.js"></script>
+    <script src="Controllers/GridOverlayDiagnosticEventRecorder.js"></script>
     <script src="Controllers/InspectedTargetTypesDiagnosticEventRecorder.js"></script>
     <script src="Controllers/TabActivityDiagnosticEventRecorder.js"></script>
     <script src="Controllers/TabNavigationDiagnosticEventRecorder.js"></script>
@@ -935,6 +947,8 @@
     <script src="Debug/CapturingProtocolTracer.js"></script>
     <script src="Debug/ProtocolTrace.js"></script>
     <script src="Debug/DebugContentView.js"></script>
+
+    <script src="NonMinified/DefaultAudits.js"></script>
 
     <script src="WebKitAdditions/WebInspectorUI/WebInspectorUIAdditions.js"></script>
 
