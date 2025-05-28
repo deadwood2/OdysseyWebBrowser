@@ -32,7 +32,6 @@
 #include <pal/cf/CoreMediaSoftLink.h>
 
 namespace WebCore {
-using namespace PAL;
 
 WebAudioBufferList::WebAudioBufferList(const CAAudioStreamDescription& format)
     : m_bytesPerFrame(format.bytesPerFrame())
@@ -42,10 +41,9 @@ WebAudioBufferList::WebAudioBufferList(const CAAudioStreamDescription& format)
     // with a custom size, and initialize the struct manually.
     uint32_t bufferCount = format.numberOfChannelStreams();
 
-    uint64_t bufferListSize = offsetof(AudioBufferList, mBuffers) + (sizeof(AudioBuffer) * std::max(1U, bufferCount));
-    ASSERT(bufferListSize <= SIZE_MAX);
-
-    m_listBufferSize = static_cast<size_t>(bufferListSize);
+    CheckedSize bufferListSize = offsetof(AudioBufferList, mBuffers);
+    bufferListSize += CheckedSize { sizeof(AudioBuffer) } * std::max(1U, bufferCount);
+    m_listBufferSize = bufferListSize;
     m_canonicalList = std::unique_ptr<AudioBufferList>(static_cast<AudioBufferList*>(::operator new (m_listBufferSize)));
     memset(m_canonicalList.get(), 0, m_listBufferSize);
     m_canonicalList->mNumberBuffers = bufferCount;
@@ -61,7 +59,7 @@ WebAudioBufferList::WebAudioBufferList(const CAAudioStreamDescription& format, u
     setSampleCount(sampleCount);
 }
 
-static inline Optional<std::pair<size_t, size_t>> computeBufferSizes(uint32_t numberOfInterleavedChannels, uint32_t bytesPerFrame, uint32_t numberOfChannelStreams, uint32_t sampleCount)
+static inline std::optional<std::pair<size_t, size_t>> computeBufferSizes(uint32_t numberOfInterleavedChannels, uint32_t bytesPerFrame, uint32_t numberOfChannelStreams, uint32_t sampleCount)
 {
     size_t totalSampleCount;
     bool result = WTF::safeMultiply(sampleCount, numberOfInterleavedChannels, totalSampleCount);
@@ -117,7 +115,7 @@ WebAudioBufferList::WebAudioBufferList(const CAAudioStreamDescription& format, C
         return;
 
     CMBlockBufferRef buffer = nullptr;
-    if (noErr == CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(sampleBuffer, nullptr, m_canonicalList.get(), m_listBufferSize, kCFAllocatorSystemDefault, kCFAllocatorSystemDefault, kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, &buffer))
+    if (noErr == PAL::CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(sampleBuffer, nullptr, m_canonicalList.get(), m_listBufferSize, kCFAllocatorSystemDefault, kCFAllocatorSystemDefault, kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, &buffer))
         m_blockBuffer = adoptCF(buffer);
 
     reset();

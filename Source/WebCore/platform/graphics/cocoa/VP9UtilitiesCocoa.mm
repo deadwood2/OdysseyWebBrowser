@@ -47,7 +47,6 @@
 
 namespace WebCore {
 
-using namespace PAL;
 using namespace webm;
 
 VP9TestingOverrides& VP9TestingOverrides::singleton()
@@ -56,14 +55,14 @@ VP9TestingOverrides& VP9TestingOverrides::singleton()
     return instance;
 }
 
-void VP9TestingOverrides::setHardwareDecoderDisabled(Optional<bool>&& disabled)
+void VP9TestingOverrides::setHardwareDecoderDisabled(std::optional<bool>&& disabled)
 {
     m_hardwareDecoderDisabled = WTFMove(disabled);
     if (m_configurationChangedCallback)
         m_configurationChangedCallback();
 }
 
-void VP9TestingOverrides::setVP9ScreenSizeAndScale(Optional<ScreenDataOverrides>&& overrides)
+void VP9TestingOverrides::setVP9ScreenSizeAndScale(std::optional<ScreenDataOverrides>&& overrides)
 {
     m_screenSizeAndScale = WTFMove(overrides);
     if (m_configurationChangedCallback)
@@ -148,7 +147,7 @@ static bool vp9HardwareDecoderAvailable()
     return canLoad_VideoToolbox_VTIsHardwareDecodeSupported() && VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9);
 }
 
-static bool isVP9CodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConfiguration)
+static bool isVP9CodecConfigurationRecordSupported(const VPCodecConfigurationRecord& codecConfiguration)
 {
     if (!isVP9DecoderAvailable())
         return false;
@@ -199,7 +198,7 @@ static bool isVP9CodecConfigurationRecordSupported(VPCodecConfigurationRecord& c
     return has4kScreen;
 }
 
-static bool isVP8CodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConfiguration)
+static bool isVP8CodecConfigurationRecordSupported(const VPCodecConfigurationRecord& codecConfiguration)
 {
     if (!isVP8DecoderAvailable())
         return false;
@@ -219,7 +218,7 @@ static bool isVP8CodecConfigurationRecordSupported(VPCodecConfigurationRecord& c
     return true;
 }
 
-bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConfiguration)
+bool isVPCodecConfigurationRecordSupported(const VPCodecConfigurationRecord& codecConfiguration)
 {
     if (codecConfiguration.codecName == "vp08" || codecConfiguration.codecName == "vp8")
         return isVP8CodecConfigurationRecordSupported(codecConfiguration);
@@ -230,36 +229,38 @@ bool isVPCodecConfigurationRecordSupported(VPCodecConfigurationRecord& codecConf
     return false;
 }
 
-bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaCapabilitiesInfo& info, const VideoConfiguration& videoConfiguration)
+std::optional<MediaCapabilitiesInfo> validateVPParameters(const VPCodecConfigurationRecord& codecConfiguration, const VideoConfiguration& videoConfiguration)
 {
     if (!isVPCodecConfigurationRecordSupported(codecConfiguration))
-        return false;
+        return std::nullopt;
 
     // VideoConfiguration and VPCodecConfigurationRecord can have conflicting values for HDR properties. If so, reject.
     if (videoConfiguration.transferFunction) {
         // Note: Transfer Characteristics are defined by ISO/IEC 23091-2:2019.
         if (*videoConfiguration.transferFunction == TransferFunction::SRGB && codecConfiguration.transferCharacteristics > 15)
-            return false;
+            return std::nullopt;
         if (*videoConfiguration.transferFunction == TransferFunction::PQ && codecConfiguration.transferCharacteristics != 16)
-            return false;
+            return std::nullopt;
         if (*videoConfiguration.transferFunction == TransferFunction::HLG && codecConfiguration.transferCharacteristics != 18)
-            return false;
+            return std::nullopt;
     }
 
     if (videoConfiguration.colorGamut) {
         if (*videoConfiguration.colorGamut == ColorGamut::Rec2020 && codecConfiguration.colorPrimaries != 9)
-            return false;
+            return std::nullopt;
     }
+
+    MediaCapabilitiesInfo info;
 
     if (vp9HardwareDecoderAvailable()) {
         // HW VP9 Decoder does not support alpha channel:
         if (videoConfiguration.alphaChannel && *videoConfiguration.alphaChannel)
-            return false;
+            return std::nullopt;
 
         // HW VP9 Decoder can support up to 4K @ 120 or 8K @ 30
         auto resolution = resolutionCategory({ (float)videoConfiguration.width, (float)videoConfiguration.height });
         if (resolution > ResolutionCategory::R_8K)
-            return false;
+            return std::nullopt;
         if (resolution == ResolutionCategory::R_8K && videoConfiguration.framerate > 30)
             info.smooth = false;
         else if (resolution <= ResolutionCategory::R_4K && videoConfiguration.framerate > 120)
@@ -269,7 +270,7 @@ bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaC
 
         info.powerEfficient = true;
         info.supported = true;
-        return true;
+        return info;
     }
 
     info.powerEfficient = false;
@@ -287,7 +288,7 @@ bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaC
     // For wall-powered devices, always report VP9 as supported, even if not powerEfficient.
     if (!systemHasBattery()) {
         info.supported = true;
-        return true;
+        return info;
     }
 
     // For battery-powered devices, always report VP9 as supported when running on AC power,
@@ -295,7 +296,7 @@ bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaC
     // to support 4K video.
     if (systemHasAC()) {
         info.supported = true;
-        return true;
+        return info;
     }
 
     bool has4kScreen = false;
@@ -313,10 +314,10 @@ bool validateVPParameters(VPCodecConfigurationRecord& codecConfiguration, MediaC
     }
 
     if (!has4kScreen)
-        return false;
+        return std::nullopt;
 
     info.supported = true;
-    return true;
+    return info;
 }
 
 static uint8_t convertToColorPrimaries(const Primaries& coefficients)
@@ -360,11 +361,11 @@ static CFStringRef convertToCMColorPrimaries(uint8_t primaries)
     case VPConfigurationColorPrimaries::SMPTE_ST_240:
         return kCVImageBufferColorPrimaries_SMPTE_C;
     case VPConfigurationColorPrimaries::SMPTE_RP_431_2:
-        return kCMFormatDescriptionColorPrimaries_DCI_P3;
+        return PAL::kCMFormatDescriptionColorPrimaries_DCI_P3;
     case VPConfigurationColorPrimaries::SMPTE_EG_432_1:
-        return kCMFormatDescriptionColorPrimaries_P3_D65;
+        return PAL::kCMFormatDescriptionColorPrimaries_P3_D65;
     case VPConfigurationColorPrimaries::BT_2020_Nonconstant_Luminance:
-        return kCMFormatDescriptionColorPrimaries_ITU_R_2020;
+        return PAL::kCMFormatDescriptionColorPrimaries_ITU_R_2020;
     }
 
     return nullptr;
@@ -418,18 +419,18 @@ static CFStringRef convertToCMTransferFunction(uint8_t characteristics)
     case VPConfigurationTransferCharacteristics::SMPTE_ST_240:
         return kCVImageBufferTransferFunction_SMPTE_240M_1995;
     case VPConfigurationTransferCharacteristics::SMPTE_ST_2084:
-        return kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ;
+        return PAL::kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ;
     case VPConfigurationTransferCharacteristics::BT_2020_10bit:
     case VPConfigurationTransferCharacteristics::BT_2020_12bit:
-        return kCMFormatDescriptionTransferFunction_ITU_R_2020;
+        return PAL::kCMFormatDescriptionTransferFunction_ITU_R_2020;
     case VPConfigurationTransferCharacteristics::SMPTE_ST_428_1:
-        return kCMFormatDescriptionTransferFunction_SMPTE_ST_428_1;
+        return PAL::kCMFormatDescriptionTransferFunction_SMPTE_ST_428_1;
     case VPConfigurationTransferCharacteristics::BT_2100_HLG:
-        return kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG;
+        return PAL::kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG;
     case VPConfigurationTransferCharacteristics::IEC_61966_2_1:
-        return canLoad_CoreMedia_kCMFormatDescriptionTransferFunction_sRGB() ? PAL::get_CoreMedia_kCMFormatDescriptionTransferFunction_sRGB() : nullptr;
+        return PAL::canLoad_CoreMedia_kCMFormatDescriptionTransferFunction_sRGB() ? PAL::get_CoreMedia_kCMFormatDescriptionTransferFunction_sRGB() : nullptr;
     case VPConfigurationTransferCharacteristics::Linear:
-        return kCMFormatDescriptionTransferFunction_Linear;
+        return PAL::kCMFormatDescriptionTransferFunction_Linear;
     }
 
     return nullptr;
@@ -465,7 +466,7 @@ static CFStringRef convertToCMYCbCRMatrix(uint8_t coefficients)
 {
     switch (coefficients) {
     case VPConfigurationMatrixCoefficients::BT_2020_Nonconstant_Luminance:
-        return kCMFormatDescriptionYCbCrMatrix_ITU_R_2020;
+        return PAL::kCMFormatDescriptionYCbCrMatrix_ITU_R_2020;
     case VPConfigurationMatrixCoefficients::BT_470_7_BG:
     case VPConfigurationMatrixCoefficients::BT_601_7:
         return kCVImageBufferYCbCrMatrix_ITU_R_601_4;
@@ -541,11 +542,11 @@ static RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVPCodecConfi
     CFTypeRef configurationValues[] = { data.get() };
     auto configurationDict = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, configurationKeys, configurationValues, WTF_ARRAY_LENGTH(configurationKeys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
 
-    Vector<CFTypeRef> extensionsKeys { kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms };
+    Vector<CFTypeRef> extensionsKeys { PAL::kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms };
     Vector<CFTypeRef> extensionsValues = { configurationDict.get() };
 
     if (record.videoFullRangeFlag == VPConfigurationRange::FullRange) {
-        extensionsKeys.append(kCMFormatDescriptionExtension_FullRangeVideo);
+        extensionsKeys.append(PAL::kCMFormatDescriptionExtension_FullRangeVideo);
         extensionsValues.append(kCFBooleanTrue);
     }
 
@@ -608,13 +609,13 @@ RetainPtr<CMFormatDescriptionRef> createFormatDescriptionFromVP9HeaderParser(con
     return createFormatDescriptionFromVPCodecConfigurationRecord(record, parser.width(), parser.height());
 }
 
-Optional<VP8FrameHeader> parseVP8FrameHeader(uint8_t* frameData, size_t frameSize)
+std::optional<VP8FrameHeader> parseVP8FrameHeader(uint8_t* frameData, size_t frameSize)
 {
     // VP8 frame headers are defined in RFC 6386: <https://tools.ietf.org/html/rfc6386>.
 
     // Bail if the header is below a minimum size
     if (frameSize < 11)
-        return WTF::nullopt;
+        return std::nullopt;
 
     VP8FrameHeader header;
     size_t headerSize = 11;
@@ -624,7 +625,7 @@ Optional<VP8FrameHeader> parseVP8FrameHeader(uint8_t* frameData, size_t frameSiz
 
     auto uncompressedChunk = view->get<uint32_t>(0, true, &status);
     if (!status)
-        return WTF::nullopt;
+        return std::nullopt;
 
     header.keyframe = uncompressedChunk & 0x80000000;
     header.version = (uncompressedChunk >> 28) & 0x7;
@@ -636,33 +637,33 @@ Optional<VP8FrameHeader> parseVP8FrameHeader(uint8_t* frameData, size_t frameSiz
 
     auto startCode0 = view->get<uint8_t>(3, true, &status);
     if (!status || startCode0 != 0x9d)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto startCode1 = view->get<uint8_t>(4, true, &status);
     if (!status || startCode1 != 0x01)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto startCode2 = view->get<uint8_t>(5, true, &status);
     if (!status || startCode2 != 0x2a)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto horizontalAndWidthField = view->get<uint16_t>(6, true, &status);
     if (!status)
-        return WTF::nullopt;
+        return std::nullopt;
 
     header.horizontalScale = static_cast<uint8_t>(horizontalAndWidthField >> 14);
     header.width = static_cast<uint16_t>(horizontalAndWidthField & 0x3FFF);
 
     auto verticalAndHeightField = view->get<uint16_t>(8, true, &status);
     if (!status)
-        return WTF::nullopt;
+        return std::nullopt;
 
     header.verticalScale = static_cast<uint8_t>(verticalAndHeightField >> 14);
     header.height = static_cast<uint16_t>(verticalAndHeightField & 0x3FFF);
 
     auto colorSpaceAndClampingField = view->get<uint8_t>(10, true, &status);
     if (!status)
-        return WTF::nullopt;
+        return std::nullopt;
 
     header.colorSpace = colorSpaceAndClampingField & 0x80;
     header.needsClamping = colorSpaceAndClampingField & 0x40;

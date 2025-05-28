@@ -27,6 +27,7 @@
 #if ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
 
 #import <CoreMedia/CoreMedia.h>
+#import <wtf/WorkQueue.h>
 
 typedef struct opaqueCMSampleBuffer *CMSampleBufferRef;
 typedef struct OpaqueAudioConverter* AudioConverterRef;
@@ -59,11 +60,11 @@ private:
     size_t computeBufferSizeForAudioFormat(AudioStreamBasicDescription, UInt32, Float32);
     void attachPrimingTrimsIfNeeded(CMSampleBufferRef);
     RetainPtr<NSNumber> gradualDecoderRefreshCount();
-    CMSampleBufferRef sampleBufferWithNumPackets(UInt32 numPackets, AudioBufferList);
+    RetainPtr<CMSampleBufferRef> sampleBufferWithNumPackets(UInt32 numPackets, AudioBufferList);
     void processSampleBuffersUntilLowWaterTime(CMTime);
     OSStatus provideSourceDataNumOutputPackets(UInt32*, AudioBufferList*, AudioStreamPacketDescription**);
 
-    dispatch_queue_t m_serialDispatchQueue;
+    Ref<WorkQueue> m_serialDispatchQueue;
     CMTime m_lowWaterTime { kCMTimeInvalid };
 
     RetainPtr<CMBufferQueueRef> m_outputBufferQueue;
@@ -82,14 +83,14 @@ private:
     CMTime m_currentOutputPresentationTimeStamp { kCMTimeInvalid };
     CMTime m_remainingPrimeDuration { kCMTimeInvalid };
 
-    Vector<char> m_sourceBuffer;
-    Vector<char> m_destinationBuffer;
+    Vector<uint8_t> m_sourceBuffer;
+    Vector<uint8_t> m_destinationBuffer;
 
     RetainPtr<CMBlockBufferRef> m_sampleBlockBuffer;
     size_t m_sampleBlockBufferSize { 0 };
     size_t m_currentOffsetInSampleBlockBuffer { 0 };
     AudioFormatID m_outputCodecType { kAudioFormatMPEG4AAC };
-    Optional<unsigned> m_outputBitRate;
+    std::optional<unsigned> m_outputBitRate;
 };
 
 }

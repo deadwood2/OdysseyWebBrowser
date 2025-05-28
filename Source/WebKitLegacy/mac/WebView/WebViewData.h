@@ -27,7 +27,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import "WebTypesInternal.h"
 #import "WebDelegateImplementationCaching.h"
 #import "WebUIDelegate.h"
 #if HAVE(TOUCH_BAR)
@@ -226,7 +225,7 @@ private:
     WTF::String userAgent;
     BOOL userAgentOverridden;
     
-    WebPreferences *preferences;
+    RetainPtr<WebPreferences> preferences;
 #if PLATFORM(IOS_FAMILY)
     NSURL *userStyleSheetLocation;
 #endif

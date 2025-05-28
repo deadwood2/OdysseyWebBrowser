@@ -1,3 +1,913 @@
+2022-02-17  Adrian Perez de Castro  <aperez@igalia.com>
+
+        [GTK] Build broken with ENABLE_X11_TARGET=OFF and no X11 headers present
+
+        Unreviewed build fix.
+
+        This is a fix in the same vein as the one in https://bugs.webkit.org/show_bug.cgi?id=236770
+        for the stable 2.34 release branch.
+
+        * PlatformGTK.cmake: Make sure that ANGLE_USE_X11, WL_EGL_PLATFORM, or USE_SYSTEM_EGL
+        are always defined independently of the USE_ANGLE_EGL and USE_ANGLE_WEBGL options.
+
+2022-02-16  Adrian Perez de Castro  <aperez@igalia.com>
+
+        [CMake] Cannot find OpenGL when system provides opengl.pc instead of gl.pc
+        https://bugs.webkit.org/show_bug.cgi?id=236592
+
+        Reviewed by Don Olmstead.
+
+        * PlatformGTK.cmake: Use the OpenGL::OpenGL imported target instead of the
+        OPENGL_LIBRARIES variable.
+        * PlatformWPE.cmake: Ditto, plus replace a spurious use of OPENGLES_LIBRARIES
+        with the OpenGL::GLES target.
+
+2021-08-31  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        webgl/1.0.x/conformance/glsl/misc/fragcolor-fragdata-invariant.html fails
+        https://bugs.webkit.org/show_bug.cgi?id=223317
+        <rdar://problem/75772659>
+
+        Reviewed by Kenneth Russell.
+
+        The parser maintains invariance metadata for each input and output
+        with the help of the symbol table, during parsing.
+
+        Use this metadata through the collection phase done by CollectVariables
+        section of shader compilation.
+
+        Remove the manual tree rewrite section that collected the invariance
+        information. The implementation had following problems:
+        1) It would declare the variables present. This would fail the test case
+        fixed here, due to the test case using invariant declarations to both
+        FragColor and FragData, which would cause both to be present as outputs
+        to the MSL.
+        2) It would operate on rewritten variables. For example, FragCoord would
+        be replaced with different variable, causing the invariance be marked
+        based on the rewritten name but the later lookup intended to be done
+        with the original name.
+
+        Remove logic to mark FragCoord as invariant, as MSL specification explicitly
+        says that only the vertex [[position]] output can be marked as [[invariant]].
+        As noted above, this never worked.
+
+        Fix cases where the tree rewriters assume that all variable references are
+        done within functions. The global qualifier declarations are now left
+        in the tree and as such can refer to variables but do not belong to any
+        function.
+
+        Fixes:
+        webgl/1.0.x/conformance/glsl/misc/fragcolor-fragdata-invariant.html
+        webgl/2.0.y/conformance/glsl/misc/fragcolor-fragdata-invariant.html
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::TranslatorMetalDirect::translateImpl):
+        * src/compiler/translator/TranslatorMetalDirect/DiscoverDependentFunctions.cpp:
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::GenMetalTraverser):
+        (GenMetalTraverser::emitPostQualifier):
+        (GenMetalTraverser::visitGlobalQualifierDeclaration):
+        (sh::EmitMetal):
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.h:
+        * src/compiler/translator/TranslatorMetalDirect/RewriteGlobalQualifierDecls.cpp: Removed.
+        * src/compiler/translator/TranslatorMetalDirect/RewriteGlobalQualifierDecls.h: Removed.
+        * src/compiler/translator/TranslatorMetalDirect/RewritePipelines.cpp:
+        (sh::IsVariableInvariant):
+        (sh::GeneratePipelineStruct::Exec):
+        (sh::GeneratePipelineStruct::GeneratePipelineStruct):
+        (sh::GeneratePipelineStruct::createInternalPipelineStruct):
+        (sh::UpdatePipelineSymbols):
+        (sh::RewritePipeline):
+        (sh::RewritePipelines):
+        * src/compiler/translator/TranslatorMetalDirect/RewritePipelines.h:
+        * src/compiler/translator/TranslatorMetalDirect/SeparateCompoundExpressions.cpp:
+
+2021-08-25  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal index buffer restart range cache is could be maintained more consistently
+        https://bugs.webkit.org/show_bug.cgi?id=227451
+
+        Reviewed by Kenneth Russell.
+
+        * src/libANGLE/renderer/metal/BufferMtl.h:
+        (rx::BufferMtl::RestartRangeCache::RestartRangeCache):
+        Add optional<RestartRangeCache> which contains the ranges and
+        the index type used to build the ranges.
+
+        * src/libANGLE/renderer/metal/BufferMtl.mm:
+        (rx::BufferMtl::markConversionBuffersDirty):
+        (rx::BufferMtl::clearConversionBuffers):
+        Invalidate the range cache when clearing conversion buffers.
+        Otherwise the cache would be left in inconsistent state vs.
+        the contents of the index buffer in cases of code like:
+        BufferMtl::setDataImpl() ...
+           if (...) {
+               markConversionBufferDirty();
+           } else {
+               clearConversionBuffers();
+           }
+        (rx::BufferMtl::getRestartIndices):
+
+2021-08-24  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal infinities and NaNs generated with incorrect syntax
+        https://bugs.webkit.org/show_bug.cgi?id=229439
+        <rdar://81033366>
+
+        Reviewed by Dean Jackson.
+
+        Generate NaN and infinity constant values correctly.
+        An else was missing from if-block, causing double processing.
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::emitSingleConstant):
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::CreateShaderLibrary):
+
+2021-08-17  David Kilzer  <ddkilzer@apple.com>
+
+        [Metal ANGLE] Fix over-autorelease of rx::DisplayMtl::getMetalDeviceMatchingAttribute() and various Objective-C leaks
+        <https://webkit.org/b/229128>
+        <rdar://problem/81964007>
+
+        Reviewed by Alex Christensen.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.h:
+        (rx::DisplayMtl::getMetalDeviceMatchingAttribute):
+        - Change to return mtl::AutoObjCPtr<> to make ownership clear.
+        (rx::DisplayMtl::mMetalDevice):
+        - No need to initialize to nil.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeImpl):
+        - Update for changes to getMetalDeviceMatchingAttribute().
+        (rx::DisplayMtl::getMetalDeviceMatchingAttribute):
+        - Change to return mtl::AutoObjCPtr<> to make ownership clear.
+        - Fix leak of `deviceList`, `externalGPUs`, `integratedGPUs`, and
+          `discreteGPUs`.
+        - Use mtl::adoptObjCObj<>() to prevent leak of
+          MTLCreateSystemDefaultDevice().
+
+        * src/libANGLE/renderer/metal/IOSurfaceSurfaceMtl.mm:
+        - Fix leak of `captureDescriptor` in two different if blocks.
+
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+        - Fix leak of `funcConstants` in early return on error path.
+
+        * src/libANGLE/renderer/metal/ProvokingVertexHelper.mm:
+        (rx::ProvokingVertexHelper::getSpecializedShader):
+        - Fix leak of `fcValues`.
+
+        * src/libANGLE/renderer/metal/SurfaceMtl.mm:
+        - Fix leak of `captureDescriptor` in two different if blocks.
+
+        * src/libANGLE/renderer/metal/mtl_common.h:
+        (rx::mtl::WrappedObject::retainAssign):
+        - Move statement inside #if/#endif that isn't needed for ARC.
+        (rx::mtl::WrappedObject::unretainAssign): Add.
+        (rx::mtl::AutoObjCPtr::AutoObjCPtr): Add.
+        (rx::mtl::adoptObjCObj): Add.
+        - Add a helper method to adopt an Objective-C object to
+          eliminate the need to autorelease a +1 retained object before
+          an mtl::AutoObjCPtr<> object wraps it.  Modeled after
+          WTF::RetainPtr<> in WebKit.
+
+        * src/libANGLE/renderer/metal/mtl_state_cache.mm:
+        (rx::mtl::RenderPipelineCache::createRenderPipelineState):
+        (rx::mtl::ProvokingVertexComputePipelineCache::createComputePipelineState):
+        - Use adoptObjCObj<>() to fix potential leak on the early return
+          path since these methods return an mtl::AutoObjCPtr<>.
+
+2021-08-16  David Kilzer  <ddkilzer@apple.com>
+
+        "make analyze" should run clang static analyzer in deep mode
+        <https://webkit.org/b/229127>
+        <rdar://problem/81960587>
+
+        Reviewed by Alexey Proskuryakov.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        - Treat "analyze" the same as "build" for "ACTION" environment
+          variable.
+
+2021-08-12  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Cocoa compiles contents of ContextEAGL on mac
+        https://bugs.webkit.org/show_bug.cgi?id=228987
+
+        Reviewed by Kenneth Russell.
+
+        Add include guards that are consistent with other EAGL files.
+
+        * src/libANGLE/renderer/gl/eagl/ContextEAGL.cpp:
+
+2021-08-12  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Cocoa compiles parts of HLSL translator, vulkan translator, libgl api, capture redundantly
+        https://bugs.webkit.org/show_bug.cgi?id=228986
+
+        Reviewed by Kenneth Russell.
+
+        Remove following from ANGLE (dynamic) target:
+        - HLSL translator and tree ops used only by it
+        - Vulkan translator output
+        - libgl API validation implementation
+        - API trace capture implementation (was only partially compiled)
+
+        The features are not part of Cocoa use of ANGLE, and should
+        not be compiled as such.
+        Does not affect the binary size more than few kilobytes.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * Configurations/ANGLE-dynamic.xcconfig:
+
+2021-08-11  Kyle Piddington  <kpiddington@apple.com>
+
+        Avoid infinite recursion when command buffer creation fails
+        https://bugs.webkit.org/show_bug.cgi?id=228978
+        <rdar://79224824>
+ 
+        Reviewed by Kenneth Russell.
+ 
+        In cases where the MTLCommandBuffer is not a valid metal object,
+        we can end up in an infinite recursive loop during draw call setup. Refactor setupDraw to take no more than two attempts through the setup function. 
+
+        Testing: Ran WebGL tests, use case samples. Set up synthetic 
+        repro forcing bail out path, saw WebGL content fail to render 
+        instead of a web process crash.
+
+        * src/libANGLE/renderer/metal/ContextMtl.h:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::setupDraw):
+        (rx::ContextMtl::setupDrawImpl):
+
+2021-08-11  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Cherry-pick ANGLE: Revise WebGL's shaderSource validation
+        https://bugs.webkit.org/show_bug.cgi?id=228951
+
+        Reviewed by Kenneth Russell.
+
+        Cherry-pick ANGLE commit: b4fd46288aa65d61dc9c7140c7d1cdba3f4cdf9a
+        From: Kenneth Russell <kbr@chromium.org>
+        Date: Wed, 27 Jan 2021 15:56:58 -0800
+        Revise WebGL's shaderSource validation.
+
+        Per discussion in the WebGL working group, shaderSource no longer
+        generates INVALID_VALUE for sources containing characters outside the
+        ESSL character set. Compilation and/or linking is still specified to
+        fail when illegal constructs are used.
+
+        With this change, https://github.com/KhronosGroup/WebGL/pull/3206
+        passes with the passthrough command decoder.
+
+        Revise WebGL compatibility tests to follow the new rules.
+
+        * src/libANGLE/validationES2.cpp:
+        (gl::ValidateShaderSource):
+        * src/tests/gl_tests/WebGLCompatibilityTest.cpp:
+
+2021-07-23  Dean Jackson  <dino@apple.com>
+
+        3.5 MB system-wide footprint impact due to thread-locals in libANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=228240
+        rdar://79504783
+
+        Reviewed by Ken Russell and Geoff Garen.
+
+        Apple's dyld has a bug where thread_local variables are dirtied on
+        process launch, causing a memory regression. Work around this
+        temporarily in ANGLE by using pthread thread local storage.
+
+        I don't expect this to be upstreamed to ANGLE unless they
+        want it. If it isn't, this patch will have to be applied until
+        the dyld bug is fixed.
+
+        * src/libANGLE/Context.cpp: Implement some methods to get/set what was
+        the global variable gCurrentValidContext.
+        (gl::GetCurrentValidContextTLSIndex):
+        (gl::GetCurrentValidContextTLS):
+        (gl::SetCurrentValidContextTLS):
+        (gl::Context::setContextLost):
+        * src/libANGLE/Context.h:
+        * src/libGLESv2/global_state.cpp: Ditto, but for gCurrentThread.
+        (egl::GetCurrentThreadTLSIndex):
+        (egl::GetCurrentThreadTLS):
+        (egl::SetCurrentThreadTLS):
+        (egl::GetCurrentThread):
+        (egl::SetContextCurrent):
+        * src/libGLESv2/global_state.h:
+        (gl::GetGlobalContext):
+        (gl::GetValidGlobalContext):
+
+2021-07-16  Kyle Piddington  <kpiddington@apple.com>
+
+        Build Default Metal library offline
+        https://bugs.webkit.org/show_bug.cgi?id=227333
+
+        <rdar://79923371>
+
+        This patch compiles and creates a Metal library at build time, storing
+        the library as a compiled binary file. This library is baked into the dylib,
+        and is loaded at context creation time.
+
+        Unlike the previous version of this patch, this patch does not save or store the .metallib on disk, but rather
+        bakes it into a binary.
+
+        Fixed internal build breaks by skipping Metallib bake script.
+
+        Reviewed by Kenneth Russell.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * Configurations/ANGLE-dynamic.xcconfig:
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeShaderLibrary):
+        * src/libANGLE/renderer/metal/mtl_utils.h:
+
+2021-07-16  Truitt Savell  <tsavell@apple.com>
+
+        Unreviewed, reverting r279980.
+
+        Broke Internal Builds
+
+        Reverted changeset:
+
+        "Build Default Metal library offline"
+        https://bugs.webkit.org/show_bug.cgi?id=227333
+        https://commits.webkit.org/r279980
+
+2021-07-16  Kyle Piddington  <kpiddington@apple.com>
+
+        Build Default Metal library offline
+        https://bugs.webkit.org/show_bug.cgi?id=227333
+
+        <rdar://79923371>
+
+        This patch compiles and creates a Metal library at build time, storing
+        the library as a compiled binary file. This library is baked into the dylib, 
+        and is loaded at context creation time.
+
+        Unlike the previous version of this patch, this patch does not save or store the .metallib on disk, but rather
+        bakes it into a binary.
+        
+        Reviewed by Kenneth Russell.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * Configurations/ANGLE-dynamic.xcconfig:
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeShaderLibrary):
+        * src/libANGLE/renderer/metal/mtl_utils.h:
+
+2021-07-15  Kyle Piddington  <kpiddington@apple.com>
+
+        WebGL2 demo doesn't work due to failing compilation to metal backend
+        https://bugs.webkit.org/show_bug.cgi?id=226865
+	
+        Fix translation of struct-arrays to contain the array type as well.
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/SeparateCompoundStructDeclarations.cpp:
+
+2021-07-13  Kyle Piddington  <kpiddington@apple.com>
+
+        rAF driven WebGL submits excessive amount of GPU work when frames are slow
+        https://bugs.webkit.org/show_bug.cgi?id=227059
+
+        Reviewed by Dean Jackson.
+
+        Advertise GL_ARB_sync for the Metal backend.
+    Since GL_ARB_sync is core in OpenGL ES 3.0 and the Metal backend advertises OpenGL ES 3.0,
+    the API must be working already.
+
+        Limit in-flight WebGL frames to three frames. Do not continue preparation for display
+    until the commands for the oldest frame have been executed by the GPU.
+
+        This limits the impact slow frames have, especially in the
+    case where the compositor skip frames and WebKit would issue a new slow frame
+    on top of the skipped frame.
+
+	An additional change ensures that Nvidia configs, which do not support MTLEvents
+	to a level of conformance required (See http://crbug.com/1136673), continue to run. The more powerful eGPUs will not experience throttling to the same level as integrated GPUS.
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeExtensions const):
+
+2021-07-07  Kyle Piddington  <kpiddington@apple.com>
+
+        WebGL shader link error in iOS 15 beta: "Internal error compiling shader with Metal backend"
+        https://bugs.webkit.org/show_bug.cgi?id=227723
+
+        The sequence operator can be used to combine statements. Our initial
+        logic did not account for this. 
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/SeparateCompoundExpressions.cpp:
+        (sh::Separator::isStandaloneExpr):
+
+2021-07-06  Kyle Piddington  <kpiddington@apple.com>
+
+        REGRESSION (r279466):  [Big Sur] webgl/1.0.3/conformance & webgl/2.0.0/conformance are failing
+        https://bugs.webkit.org/show_bug.cgi?id=227596
+        Provide Intel workaround for Big Sur systems. Atan and invariant have 
+        issues on older systems, and require us to disable fastmath to produce correct results. 
+
+        Reviewed by Kenneth Russell.
+
+        * include/platform/FeaturesMtl.h:
+        * src/compiler/translator/TranslatorMetalDirect.h:
+        (sh::TranslatorMetalReflection::reset):
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::emitPostQualifier):
+        (GenMetalTraverser::visitUnary):
+        (GenMetalTraverser::visitAggregate):
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeFeatures):
+        * src/libANGLE/renderer/metal/ProgramMtl.h:
+        (rx::ProgramMtl::getTranslatedShaderInfo const):
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+        * src/libANGLE/renderer/metal/mtl_glslang_mtl_utils.h:
+        * src/libANGLE/renderer/metal/mtl_glslang_mtl_utils.mm:
+        (rx::mtl::GlslangGetMSL):
+        * src/libANGLE/renderer/metal/mtl_render_utils.h:
+        * src/libANGLE/renderer/metal/mtl_render_utils.mm:
+        (rx::mtl::TransformFeedbackUtils::createMslXfbLibrary):
+        (rx::mtl::TransformFeedbackUtils::getTransformFeedbackRenderPipeline):
+        * src/libANGLE/renderer/metal/mtl_utils.h:
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::CreateShaderLibrary):
+
+2021-07-01  Ben Nham  <nham@apple.com>
+
+        Unreviewed, reverting r279172.
+
+        Broke WebGL context construction on some devices.
+
+        Reverted changeset:
+
+        "rAF driven WebGL submits excessive amount of GPU work when frames are slow"
+        https://bugs.webkit.org/show_bug.cgi?id=227059
+        https://commits.webkit.org/r279172
+
+2021-07-01  Kyle Piddington  <kpiddington@apple.com>
+
+        BabylonJS Under water demo is slower than it should be on Intel
+        https://bugs.webkit.org/show_bug.cgi?id=227226
+
+        Remove fastMath restriction on Intel
+        Removing fastmath in all scenarios leads to unacceptable performance on integrated graphics
+        Currently, webgl conformance tests and the Safari tests don't have any invariance tests that show invariance issues. deQP tests are similarly passing.
+        In Metal-ANGLE, gl_position and gl_fragcoord are valid attributes to be marked as invariant. All others will be ignored.
+
+        Reviewed by Kenneth Russell.
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::emitPostQualifier):
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::CreateShaderLibrary):
+
+2021-06-30  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ASSERT in  webgl/1.0.x/conformance/glsl/misc/uninitialized-local-global-variables.html   IdGen ASSERT(*base != '_');
+        https://bugs.webkit.org/show_bug.cgi?id=227482
+
+        Reviewed by Kenneth Russell.
+
+        Give unnamed structs normal "_<number>" name.
+        The original code thought it gave "ANGLE__unnamed<number>", but in reality it
+        gave "__unnamed<number>".
+        Since other constructs already create names of form "_<number>", it is unwarranted to
+        special case this particular case to give "_unnamed<number>" or "ANGLE_unnamed<number" or
+        "ANGLE_<number>".
+
+        * src/compiler/translator/TranslatorMetalDirect/SeparateCompoundStructDeclarations.cpp:
+        * src/tests/compiler_tests/MSLOutput_test.cpp:
+        (TEST_F):
+
+2021-06-29  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal primitive restart range computation could index with size_t
+        https://bugs.webkit.org/show_bug.cgi?id=227449
+
+        Reviewed by Kenneth Russell.
+
+        Make the `calculateRestartRanges()` a bit simpler in order
+        for it to be easier to understand.
+
+        * src/libANGLE/renderer/metal/BufferMtl.h:
+        (rx::IndexRange::IndexRange):
+        Add documentation what the mtl::IndexRange is.
+        Add constructor so that `std::vector::emplace_back()` works.
+
+        * src/libANGLE/renderer/metal/BufferMtl.mm:
+        (rx::calculateRestartRanges):
+        Index with size_t to make it simpler to understand if the index
+        overflows or not.
+        Use reinterpret_cast in order to not accidentally cast away
+        const from `mtl::BufferRef::mapReadOnly()`.
+        Skip the non-marker elements with `continue` to avoid deep nesting.
+        Give a name to the restart range marker value.
+        Remove intermediate variable `value = bufferData[i]` as it is never
+        used more than once. This simplifies the code as the do-while loop
+        does not need to check the if condition as the loop ending condition
+        already checks.
+        Make the array a returned result instead of out variable.
+
+        (rx::BufferMtl::getRestartIndices):
+
+2021-06-29  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal primitive restart range computation should not be done unless primitive restart is enabled
+        https://bugs.webkit.org/show_bug.cgi?id=227452
+
+        Reviewed by Kenneth Russell.
+
+        Primitive restart needs to scan the whole index buffer for values.
+        This should not be done unless needed.
+
+        * src/libANGLE/renderer/metal/VertexArrayMtl.mm:
+        (rx::VertexArrayMtl::getDrawIndices):
+        First check for primitive restart enabledness.
+        Compute the primitive restart values after this.
+        The algoritm should succeed when the count of primitive
+        restart ranges is zero, and it does not do much of work.
+        Use the restart range vector as reference, so that no copy
+        would be done.
+        Add spaces the if statements, comments and references.
+        Move the else arm of the if statement with return statement
+        to body of the function to reduce nesting.
+
+2021-06-28  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        iPhone 6S - iOS 15.0 - unable to retrieve WebGL2 context
+        https://bugs.webkit.org/show_bug.cgi?id=226975
+        rdar://78966563
+
+        Reviewed by Kenneth Russell.
+
+        Limit the OpenGL ES 3.0 contexts to iOS GPU Family 3, not
+        4.
+
+        The limit was most likely added to guard sample_compare
+        lod_options properties .lod and .gradient. However, these
+        are always supported on iOS.
+
+        Currently there is already ES 3.0 features implemented
+        in ANGLE that are guarded by iOS GPU Family 3.
+
+        Fixes WebGL 2.0 to work on iPhone6s and similar
+        devices  (A9, A9X).
+
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::getMaxSupportedESVersion const):
+
+2021-06-28  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal index buffer left mapped when building primitive restart ranges
+        https://bugs.webkit.org/show_bug.cgi?id=227371
+
+        Reviewed by Kenneth Russell.
+
+        * src/libANGLE/renderer/metal/BufferMtl.mm:
+        (rx::calculateRestartRanges):
+        Add unmap.
+
+2021-06-25  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [macOS] WebGL content is unable to use the discrete GPU
+        https://bugs.webkit.org/show_bug.cgi?id=227408
+        <rdar://problem/79216506>
+
+        Reviewed by Dean Jackson.
+
+        There appears to be a key collision:
+
+        Source/ThirdParty/ANGLE/include/platform/PlatformMethods.h:#define EGL_PLATFORM_ANGLE_PLATFORM_METHODS_ANGLEX 0x3482
+        Source/ThirdParty/ANGLE/include/EGL/eglext_angle.h:#define EGL_POWER_PREFERENCE_ANGLE 0x3482
+
+        Both these keys seem to be accepted by EGL_GetPlatformDisplayEXT().
+
+        This patch just changes the value of one of them to a value I picked out of a hat, just so they don't conflict.
+        We should work with upstream to either:
+        A) Find a better solution (maybe disambiguate these values based on which function is accepting them), or
+        B) Make a robust way to make sure keys don't collide in the future.
+
+        * include/platform/PlatformMethods.h:
+
+2021-06-24  John Cunningham  <johncunningham@apple.com>
+
+        [ANGLE Metal] - Set barriers on transform feedback buffers only up to the in use buffer count
+        https://bugs.webkit.org/show_bug.cgi?id=227272
+        <rdar://79587861>
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::onEndTransformFeedback):
+
+2021-06-23  Kyle Piddington  <kpiddington@apple.com>
+
+        Fix incorrect indexing / out of bounds access in getRestartIndices
+        https://bugs.webkit.org/show_bug.cgi?id=227274
+        <rdar://79244789>
+
+        In the case where a restart index is present in the last element of an index array, we can accidently
+        access out of bounds. Fix this by checking boundaries, and fixing other indexing errors
+
+        Tests: Ran deqp/functional/gles3/primitiverestart suite. Passed 8 tests.
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/BufferMtl.mm:
+        (rx::calculateRestartRanges):
+
+2021-06-23  Kyle Piddington  <kpiddington@apple.com>
+
+        Guard against compile failures of the default libraries
+        https://bugs.webkit.org/show_bug.cgi?id=227239
+        <rdar://79037623>
+
+        Under certain events (High memory usage), the MTLCompilerService can fail when creating the default library.
+        Guard against nil pipelines by failing GL calls instead, if this happens. While this can create rendering artifacts
+        due to missing blits / conversions, this can at least avoid crashing the process.
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/mtl_render_utils.h:
+        * src/libANGLE/renderer/metal/mtl_render_utils.mm:
+        (rx::mtl::ClearUtils::setupClearWithDraw):
+        (rx::mtl::ClearUtils::clearWithDraw):
+        (rx::mtl::ColorBlitUtils::setupColorBlitWithDraw):
+        (rx::mtl::ColorBlitUtils::blitColorWithDraw):
+        (rx::mtl::DepthStencilBlitUtils::setupDepthStencilBlitWithDraw):
+        (rx::mtl::DepthStencilBlitUtils::blitDepthStencilWithDraw):
+        (rx::mtl::VertexFormatConversionUtils::setupCommonConvertVertexFormatToFloat):
+        (rx::mtl::VertexFormatConversionUtils::expandVertexFormatComponentsVS):
+        (rx::mtl::VertexFormatConversionUtils::setupCommonExpandVertexFormatComponents):
+
+2021-06-23  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        rAF driven WebGL submits excessive amount of GPU work when frames are slow
+        https://bugs.webkit.org/show_bug.cgi?id=227059
+        <rdar://problem/79385858>
+
+        Reviewed by Kenneth Russell.
+
+        Advertise GL_ARB_sync for the Metal backend.
+        Since GL_ARB_sync is core in OpenGL ES 3.0 and the Metal backend advertises OpenGL ES 3.0,
+        the API must be working already.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeExtensions const):
+
+2021-06-22  Dean Jackson  <dino@apple.com>
+
+        [ANGLE] Support importing external MTLTextures
+        https://bugs.webkit.org/show_bug.cgi?id=226690
+
+        Reviewed by Tim Horton.
+
+        Support MTLTextures as GL textures.
+        Merge https://chromium-review.googlesource.com/c/angle/angle/+/2820178
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * extensions/EGL_ANGLE_metal_texture_client_buffer.txt: Added.
+        * include/EGL/eglext_angle.h:
+        * src/common/utilities.cpp:
+        (egl::IsExternalImageTarget):
+        * src/libANGLE/Caps.cpp:
+        (egl::DisplayExtensions::getStrings const):
+        * src/libANGLE/Caps.h:
+        * src/libANGLE/renderer/metal/BUILD.gn:
+        * src/libANGLE/renderer/metal/DisplayMtl.h:
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::createImage):
+        (rx::DisplayMtl::createExternalImageSibling):
+        (rx::DisplayMtl::generateExtensions const):
+        (rx::DisplayMtl::validateImageClientBuffer const):
+        (rx::DisplayMtl::initializeExtensions const):
+        * src/libANGLE/renderer/metal/ImageMtl.h: Added.
+        (rx::TextureImageSiblingMtl::getTexture const):
+        (rx::TextureImageSiblingMtl::getFormatMtl const):
+        (rx::ImageMtl::getTexture const):
+        (rx::ImageMtl::getImageTextureType const):
+        (rx::ImageMtl::getImageLevel const):
+        (rx::ImageMtl::getImageLayer const):
+        * src/libANGLE/renderer/metal/ImageMtl.mm: Added.
+        (rx::TextureImageSiblingMtl::TextureImageSiblingMtl):
+        (rx::TextureImageSiblingMtl::~TextureImageSiblingMtl):
+        (rx::TextureImageSiblingMtl::ValidateClientBuffer):
+        (rx::TextureImageSiblingMtl::initialize):
+        (rx::TextureImageSiblingMtl::initImpl):
+        (rx::TextureImageSiblingMtl::onDestroy):
+        (rx::TextureImageSiblingMtl::getFormat const):
+        (rx::TextureImageSiblingMtl::isRenderable const):
+        (rx::TextureImageSiblingMtl::isTexturable const):
+        (rx::TextureImageSiblingMtl::getSize const):
+        (rx::TextureImageSiblingMtl::getSamples const):
+        (rx::ImageMtl::ImageMtl):
+        (rx::ImageMtl::~ImageMtl):
+        (rx::ImageMtl::onDestroy):
+        (rx::ImageMtl::initialize):
+        (rx::ImageMtl::orphan):
+        * src/libANGLE/renderer/metal/RenderBufferMtl.mm:
+        (rx::RenderbufferMtl::setStorageEGLImageTarget):
+        * src/libANGLE/renderer/metal/TextureMtl.mm:
+        (rx::TextureMtl::setEGLImageTarget):
+        * src/libANGLE/renderer/metal/gen_mtl_format_table.py:
+        (gen_image_map_switch_mac_case.gen_format_assign_code):
+        (gen_image_mtl_to_angle_switch_string):
+        (main):
+        * src/libANGLE/renderer/metal/mtl_common.h:
+        * src/libANGLE/renderer/metal/mtl_format_table_autogen.mm:
+        (rx::mtl::Format::MetalToAngleFormatID):
+        * src/libANGLE/renderer/metal/mtl_format_utils.h:
+        * src/libANGLE/validationEGL.cpp:
+        (egl::ValidateCreateImage):
+        * src/tests/BUILD.gn:
+        * src/tests/gl_tests/ImageTest.cpp:
+        (angle::TEST_P):
+        * src/tests/gl_tests/ImageTestMetal.mm: Added.
+        (angle::ScopeMetalTextureRef::ScopeMetalTextureRef):
+        (angle::ScopeMetalTextureRef::~ScopeMetalTextureRef):
+        (angle::ScopeMetalTextureRef::get const):
+        (angle::ScopeMetalTextureRef::operator id<MTLTexture> const):
+        (angle::ScopeMetalTextureRef::operator=):
+        (angle::ScopeMetalTextureRef::release):
+        (angle::CreateMetalTexture2D):
+        (angle::ImageTestMetal::ImageTestMetal):
+        (angle::ImageTestMetal::getMtlDevice):
+        (angle::ImageTestMetal::createMtlTexture2D):
+        (angle::ImageTestMetal::verifyResultsTexture):
+        (angle::ImageTestMetal::verifyResults2D):
+        (angle::ImageTestMetal::reinterpretHelper):
+        (angle::ImageTestMetal::hasImageNativeMetalTextureExt const):
+        (angle::ImageTestMetal::hasOESExt const):
+        (angle::ImageTestMetal::hasBaseExt const):
+        (angle::ImageTestMetal::sourceMetalTarget2D_helper):
+        (angle::TEST_P):
+
+2021-06-17  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE] Shaders with reserved metal keywords do not translate, nor do shaders with struct and variable names that are the same except prefixed by an underscore
+        https://bugs.webkit.org/show_bug.cgi?id=226660
+
+        Fix keyword translation problem by correcting symbol space. This avoids renaming structs unnecessarily 
+
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/RewriteKeywords.cpp:
+        (sh::Rewriter::createRenamed):
+
+2021-06-16  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal gl sync objects do not work in case of listener being needed
+        https://bugs.webkit.org/show_bug.cgi?id=227024
+
+        Reviewed by Per Arne Vollan.
+
+        Add an assert to notice when MTLSharedEventListener instantiation
+        fails. Without this, the fence implementation would not signal
+        the completion until the timeout would pass.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::getOrCreateSharedEventListener):
+
+2021-06-16  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal AutoObjCPtr == nullptr comparison is inverted
+        https://bugs.webkit.org/show_bug.cgi?id=227026
+
+        Reviewed by Anders Carlsson.
+
+        Make it more correct and add != nullptr variant for
+        consistency.
+
+        Use std::nullptr_t instead of const std::nullptr_t &
+        in all functions for consistency.
+
+        * src/libANGLE/renderer/metal/mtl_common.h:
+        (rx::mtl::AutoObjCPtr::operator== const):
+        (rx::mtl::AutoObjCPtr::operator!= const):
+
+2021-06-15  Kyle Piddington  <kpiddington@apple.com>
+
+        Tensorflow.js Broken in Safari 15
+        https://bugs.webkit.org/show_bug.cgi?id=226953
+
+        Tensorflow shaders use a 'NAN' uniform. This is a reserved keyword
+        in metal. Add NAN to the reserved list.
+
+        'inf' constants need to be replaced with INFINITY, much like nan constants need to be replaced with NAN
+        Reviewed by Kenneth Russell.
+
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::GetMslKeywords):
+
+2021-06-15  Alex Christensen  <achristensen@webkit.org>
+
+        Fix typo in r276318
+        https://bugs.webkit.org/show_bug.cgi?id=227041
+        <rdar://76284889>
+
+        Reviewed by Chris Dumez.
+
+        @ uses the string @(DYLIB_INSTALL_NAME_BASE)
+        $ uses the value of the environment variable.
+        This turns out to be an important difference.
+
+        * Configurations/ANGLE-dynamic.xcconfig:
+
+2021-06-11  Eleni Maria Stea  <estea@igalia.com>
+
+        ANGLE EGL and GLES libraries should link with lib dl.
+        https://bugs.webkit.org/show_bug.cgi?id=226920
+
+        Reviewed by Kenneth Russell.
+
+        GLES and EGL that are generated from ANGLE should link
+        with libdl because they use dlsym and dlopen. Also,
+        with the updated CMakeLists.txt we can safely link with libEGL
+        when USE_ANGLE_WEBGL is set because the symbols of EGL are now
+        found.
+
+        * CMakeLists.txt:
+
+2021-06-10  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Make ANGLE library types configurable
+        https://bugs.webkit.org/show_bug.cgi?id=226840
+
+        Reviewed by Kenneth Russell.
+
+        The type for ANGLE's libraries was being hard coded. Now the libraries can be set by
+        specifying the _LIBRARY_TYPE which defaults to STATIC. Windows platforms override this
+        and use SHARED libraries.
+
+        Additionally make compiling ANGLE's EGL library contingent on USE_ANGLE_EGL being enabled
+        since its not used otherwise.
+
+        * CMakeLists.txt:
+        * PlatformFTW.cmake:
+        * PlatformWin.cmake:
+
+2021-06-02  Kyle Piddington  <kpiddington@apple.com>
+
+        Add 'mix' override with bool-vectors to MSL translator
+        https://bugs.webkit.org/show_bug.cgi?id=226366
+
+        Reviewed by Dean Jackson.
+
+        Add in 'mix' overrides, and logic for selecting mix with bool when necessary.
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GetOperatorString):
+        (GenMetalTraverser::visitAggregate):
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+
+2021-06-01  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE] transformFeedback samples on webglsamples.org do not render correctly
+        https://bugs.webkit.org/show_bug.cgi?id=226285
+        <rdar://78524773>
+
+        Reviewed by Dean Jackson.
+
+        Metal ANGLE does not render these samples correctly, for a number of reasons. 
+        For transform_feedback_interleaved and seperated, We need to start a new renderEncoder to get the results from the transform feedback. 
+        for transform_feedback-seperated_2, we need to invalidate the current render pass descriptor in order to switch to the rasterizer-enabled version of the shader.
+        Testing: Ran all transform feedback tests from deqp suite to ensure no regressions are present.
+
+        * src/libANGLE/renderer/metal/ContextMtl.h:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::drawTriFanArraysWithBaseVertex):
+        (rx::ContextMtl::drawArraysImpl):
+        (rx::ContextMtl::drawTriFanElements):
+        (rx::ContextMtl::prepareForTransformFeedbackPassTwo):
+        (rx::ContextMtl::drawLineLoopElements):
+        (rx::ContextMtl::drawElementsImpl):
+        (rx::ContextMtl::onEndTransformFeedback):
+        * src/libANGLE/renderer/metal/TransformFeedbackMtl.mm:
+        (rx::TransformFeedbackMtl::end):
+
+2021-06-01  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal translator pre-rotation code is unused and it asserts when used
+        https://bugs.webkit.org/show_bug.cgi?id=226262
+
+        Reviewed by Dean Jackson.
+
+        Remove the pre-rotation code. It is Android specific and most likely it is useful
+        only when ANGLE is used as the drawing mechanism for the primary app window picture.
+        Thus most likely it is not useful in WebKit on Cocoa platforms where the window
+        server does the compositing.
+
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::TranslatorMetalDirect::translateImpl):
+        * src/compiler/translator/TranslatorMetalDirect.h:
+        * src/libANGLE/renderer/metal/ContextMtl.h:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::handleDirtyDriverUniforms):
+
 2021-05-31  Kimmo Kinnunen  <kkinnunen@apple.com>
 
         Cherry-pick ANGLE: Add array bounds checks for WebGL shaders
@@ -19,6 +929,37 @@
 
         * src/libANGLE/renderer/vulkan/ShaderVk.cpp:
         (rx::ShaderVk::compile):
+
+2021-05-28  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE Metal translator should always collect variables
+        https://bugs.webkit.org/show_bug.cgi?id=226261
+
+        Reviewed by Dean Jackson.
+
+        Always collect the variables when translating GLSL to Metal.
+        This way tests that invoke translation without SH_VARIABLES still
+        work.
+
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::TranslatorMetalDirect::translateImpl):
+        * src/compiler/translator/TranslatorMetalDirect.h:
+
+2021-05-27  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE could be compiled with "aggressive uninitialised variable" setting
+        https://bugs.webkit.org/show_bug.cgi?id=226260
+
+        Reviewed by Alexey Proskuryakov.
+
+        Turn on compiler flag to warn about uninitialized variables that might be
+        conditionally uninitialized. This is the same flag as upstream ANGLE uses.
+        Fix a spurious warning produced by this flag.
+        This helps in scenarios where custom targets compile ANGLE sources and
+        this flag set, such as tests.
+
+        * Configurations/Base.xcconfig:
+        * src/compiler/translator/TranslatorMetalDirect/FixTypeConstructors.cpp:
 
 2021-05-27  Kimmo Kinnunen  <kkinnunen@apple.com>
 
@@ -54,6 +995,1120 @@
         (rx::ContextVk::updateScissor):
         * src/tests/gl_tests/BlitFramebufferANGLETest.cpp:
         (TEST_P):
+
+2021-05-26  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Support USE_ANGLE_EGL on additional platforms
+        https://bugs.webkit.org/show_bug.cgi?id=224888
+        <rdar://problem/77280211>
+
+        Reviewed by Ken Russell.
+
+        Support ANGLE using the OpenGL backend for GTK. Support ANGLE using Metal
+        backend for Mac. Add the generated sources for these two backends.
+
+        Clean up the CMake and introduce additional targets.
+
+        * CMakeLists.txt:
+        * Compiler.cmake:
+        * GL.cmake: Added.
+        * Metal.cmake: Added.
+        * PlatformFTW.cmake:
+        * PlatformGTK.cmake:
+        * PlatformMac.cmake:
+        * PlatformWin.cmake:
+
+2021-05-20  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE] Handle NAN constant folding correctly
+        https://bugs.webkit.org/show_bug.cgi?id=226052
+
+        NAN values (0.0f/0.0f) were being handled incorrectly. MSL was being emitted as lowercase 'nanf', instead of NAN
+        Check for an unlikely NAN case, and emit correct MSL
+
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::emitSingleConstant):
+
+2021-05-20  Kyle Piddington  <kpiddington@apple.com>
+
+        Red flashes zooming on Google Maps when using external monitor on multi-gpu systems
+        https://bugs.webkit.org/show_bug.cgi?id=225956
+        <rdar://77024179>        
+
+        Reviewed by Dean Jackson.
+        IOSurface presentation swaps require that a command buffer is queued for execution before
+        swapping. Otherwise, we're liable to drop frames, or present old IOSurface buffers. 
+        Ensure work flushed via glFlush completes before presenation by waiting for it to enqueue before 
+        swapping a surface.
+
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::flush):
+        * src/libANGLE/renderer/metal/mtl_command_buffer.h:
+        * src/libANGLE/renderer/metal/mtl_command_buffer.mm:
+        (rx::mtl::CommandBuffer::waitUntilScheduled):
+        (rx::mtl::CommandBuffer::commitImpl):
+
+2021-05-19  Kyle Piddington  <kpiddington@apple.com>
+
+        ASSERT(!toType.isArray()) failure in sh::CoerceSimple due to vector array dereference
+        https://bugs.webkit.org/show_bug.cgi?id=225864
+        <rdar://77968214> 
+
+        Reviewed by Dean Jackson.
+
+        Fixed program translation error, additional issues with transform feedback shaders
+
+        * src/compiler/translator/TranslatorMetalDirect/AddExplicitTypeCasts.cpp:
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+        (rx::ProgramMtl::reset):
+
+2021-05-19  Kyle Piddington  <kpiddington@apple.com>
+
+        [ANGLE Metal] Support Provoking Vertex Emulation, Pass Fragment Output test suite.
+        https://bugs.webkit.org/show_bug.cgi?id=225842
+
+        Reviewed by Dean Jackson.
+
+        Add support for provoking vertex emulation. Metal only supports using the first vertex
+        of a primitive as a provoking vertex. To adapt, rewrite the index buffer on the fly when provoking vertex support is required. This method does not rewrite any primitives that would be 
+        culled by primitive restart, such as simple triangles and lines. Triangle and line strips are re-written to line and triangle buffers. Tri fans and line loops are not supported for this
+        rewrite as of this patch.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * src/libANGLE/renderer/metal/ContextMtl.h:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::ContextMtl):
+        (rx::ContextMtl::initialize):
+        (rx::ContextMtl::onDestroy):
+        (rx::ContextMtl::drawElementsImpl):
+        (rx::ContextMtl::flushCommandBufer):
+        (rx::ContextMtl::present):
+        (rx::ContextMtl::ensureCommandBufferReady):
+        (rx::ContextMtl::requiresIndexRewrite):
+        * src/libANGLE/renderer/metal/ProgramMtl.h:
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+        (rx::ProgramMtl::ProgramMtl):
+        (rx::ProgramMtl::programHasFlatAttributes const):
+        (rx::ProgramMtl::linkImpl):
+        * src/libANGLE/renderer/metal/ProvokingVertexHelper.h: Added.
+        * src/libANGLE/renderer/metal/ProvokingVertexHelper.mm: Added.
+        (rx::primCountForIndexCount):
+        (rx::ProvokingVertexHelper::ProvokingVertexHelper):
+        (rx::ProvokingVertexHelper::onDestroy):
+        (rx::ProvokingVertexHelper::commitPreconditionCommandBuffer):
+        (rx::ProvokingVertexHelper::getComputeCommandEncoder):
+        (rx::ProvokingVertexHelper::ensureCommandBufferReady):
+        (rx::buildIndexBufferKey):
+        (rx::ProvokingVertexHelper::getSpecializedShader):
+        (rx::ProvokingVertexHelper::hasSpecializedShader):
+        (rx::ProvokingVertexHelper::prepareCommandEncoderForDescriptor):
+        (rx::ProvokingVertexHelper::preconditionIndexBuffer):
+        * src/libANGLE/renderer/metal/mtl_state_cache.h:
+        (std::hash<rx::mtl::ProvokingVertexComputePipelineDesc>::operator() const):
+        * src/libANGLE/renderer/metal/mtl_state_cache.mm:
+        (rx::mtl::ProvokingVertexComputePipelineDesc::ProvokingVertexComputePipelineDesc):
+        (rx::mtl::ProvokingVertexComputePipelineDesc::operator=):
+        (rx::mtl::ProvokingVertexComputePipelineDesc::operator== const):
+        (rx::mtl::ProvokingVertexComputePipelineDesc::operator!= const):
+        (rx::mtl::ProvokingVertexComputePipelineDesc::hash const):
+        (rx::mtl::ProvokingVertexComputePipelineCache::ProvokingVertexComputePipelineCache):
+        (rx::mtl::ProvokingVertexComputePipelineCache::setComputeShader):
+        (rx::mtl::ProvokingVertexComputePipelineCache::clearPipelineStates):
+        (rx::mtl::ProvokingVertexComputePipelineCache::clear):
+        (rx::mtl::ProvokingVertexComputePipelineCache::getComputePipelineState):
+        (rx::mtl::ProvokingVertexComputePipelineCache::insertComputePipelineState):
+        (rx::mtl::ProvokingVertexComputePipelineCache::recreatePipelineStates):
+        (rx::mtl::ProvokingVertexComputePipelineCache::createComputePipelineState):
+        (rx::mtl::ProvokingVertexComputePipelineCache::~ProvokingVertexComputePipelineCache):
+        * src/libANGLE/renderer/metal/mtl_utils.h:
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::CreateMslShader):
+        * src/libANGLE/renderer/metal/shaders/mtl_default_shaders_src_autogen.inc:
+        * src/libANGLE/renderer/metal/shaders/rewrite_indices.metal: Added.
+        * src/libANGLE/renderer/metal/shaders/rewrite_indices_shared.h: Added.
+
+2021-05-18  Alex Christensen  <achristensen@webkit.org>
+
+        Stop compiling ANGLE metal files twice
+        https://bugs.webkit.org/show_bug.cgi?id=225919
+        <rdar://78013511>
+
+        Reviewed by Dean Jackson.
+
+        ANGLE currently generates an unused default.metallib that conflicts with other default.metallibs being built.
+        Since it is unused, remove it.
+        What we currently do is put all the source bytes into gDefaultMetallibSrc and compile it at runtime.
+        This could be optimized to do it at compile time and use newLibraryWithData instead of newLibraryWithSource,
+        but that should be done separately.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+
+2021-05-12  Kyle Piddington  <kpiddington@apple.com>
+
+        [Angle METAL] Remove thread qualifiers and pass-by-reference qualifiers for cast functions
+        https://bugs.webkit.org/show_bug.cgi?id=225702
+        <rdar://76799461>
+
+        Cast functions fail to compile when casting from user uniforms. Update cast functions to remove pass-by-reference
+        qualifiers. 
+
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+
+2021-05-08  Basuke Suzuki  <basuke.suzuki@sony.com>
+
+        [WinCairo] Remove linker warning on ANGLE
+        https://bugs.webkit.org/show_bug.cgi?id=225501
+
+        Reviewed by Darin Adler.
+
+        libANGLE is statically linked to libGLESv2.dll so that __declspec(dllimport) is not required here.
+
+        * include/platform/PlatformMethods.h:
+
+2021-05-06  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE] Only clear dirty state bits after all state has been successfully set
+        https://bugs.webkit.org/show_bug.cgi?id=225468
+        <rdar://77066752>
+
+        When running in release, if any ANGLE calls fail, we eventually return to this part of the code.
+        We can be left with an incomplete state, where we have an incomplete program or attachment, 
+        but a 'clean' state. This can lead to errors such as setting nil render pipeline states, leading to
+        crashes.
+
+        To mitigate this, hold off on setting state bits until we've completly set up a program.
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::setupDraw):
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+
+2021-05-03  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE]: Fix conversions tests and remove failing test expectations
+        https://bugs.webkit.org/show_bug.cgi?id=225261
+        <rdar://77349615>
+                  
+        bool conversion workaround was being applied to all shaders. Correct shader translation to generate
+        better conversion code on platforms that don't need a workaround. 
+
+        Conversions for basic types like vec2, ivec2, uvec2 were only using the first components when workaround
+        was active. Correct swizzle logic to get all components when doing a conversion.
+
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/AddExplicitTypeCasts.cpp:
+        * src/compiler/translator/TranslatorMetalDirect/AstHelpers.cpp:
+        (sh::CoerceSimple):
+        * src/compiler/translator/TranslatorMetalDirect/AstHelpers.h:
+
+2021-04-30  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE]: fix webgl/2.0.0/deqp/functional/gles3/negativebufferapi 
+        https://bugs.webkit.org/show_bug.cgi?id=225222
+        <rdar://77349908>
+
+        Arbitrary alignments are not allowed in Metal. Update UBO alignment to 
+        a platform-dependant offset to match specifications.
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::ensureCapsInitialized const):
+
+2021-04-29  Kyle Piddington  <kpiddington@apple.com>
+
+        Metal-ANGLE: Shared memory texture tests failing in iOS Simulator
+        https://bugs.webkit.org/show_bug.cgi?id=222685
+        <rdar://75001722>
+
+        Using replaceRegion to perform texture uploads on simulator causes issues on some workflows.
+        As a workaround, use a GPU-driven upload instead of a CPU driven upload. 
+        Reviewed by Kenneth Russell.
+
+        * src/libANGLE/renderer/metal/TextureMtl.mm:
+
+2021-04-29  Kyle Piddington  <kpiddington@apple.com>
+
+        [ANGLE-Metal] Fix 17 textureshadow tests
+        https://bugs.webkit.org/show_bug.cgi?id=224965
+        <rdar://77053085> 
+
+        Depth24Stencil8 copies were being incorrectly managed when dealing with D24S8 emulation.
+        Fix conversion functions 
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/mtl_format_utils.h:
+        * src/libANGLE/renderer/metal/mtl_format_utils.mm:
+        (rx::mtl::priv::OffsetDataPointer):
+        (rx::mtl::LoadS8D24S8ToD32FX24S8):
+        (rx::mtl::DEPTH24_STENCIL8_to_D32_FLOAT_X24S8_UINT):
+        (rx::mtl::GetLoadFunctionsMap):
+        (rx::mtl::FormatTable::initialize):
+        (): Deleted.
+
+2021-04-28  Alex Christensen  <achristensen@webkit.org>
+
+        Stop building libANGLE.a
+        https://bugs.webkit.org/show_bug.cgi?id=225162
+        <rdar://problem/57349384>
+
+        Reviewed by Alexey Proskuryakov.
+
+        Now that everyone's linking against the dylib, we don't need to build the static library any more.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * Configurations/ANGLE-dynamic.xcconfig:
+        * src/empty.cpp: Removed.
+
+2021-04-28  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE should be compiled with thread-safe statics
+        https://bugs.webkit.org/show_bug.cgi?id=224854
+
+        Reviewed by Kenneth Russell.
+
+        Compile ANGLE with normal thread-safe c++ local statics.
+        No known threading failures. Based on ad-hoc risk vs benefit
+        evaluation of today and after future merges, it appears
+        better to err in the side of caution.
+
+        * Configurations/Base.xcconfig:
+
+2021-04-26  Alex Christensen  <achristensen@webkit.org>
+
+        Update Mac-specific CMake files
+        https://bugs.webkit.org/show_bug.cgi?id=225064
+
+        Rubber-stamped by Tim Horton.
+
+        * PlatformMac.cmake:
+
+2021-04-25  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE] support primitive restart behavior with simple data types
+        https://bugs.webkit.org/show_bug.cgi?id=225011
+
+        Primitive restart behavior for simple data types is not defined in Metal. Add a pre-draw pass to 
+        create a set of restart indices, rather than re-write the index buffer. This pass avoids 
+        storing more copies of the index buffer: instead, we cache the location of restart indices, and
+        use them to build draw lists.
+ 
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/BufferMtl.h:
+        * src/libANGLE/renderer/metal/BufferMtl.mm:
+        (rx::IndexConversionBufferMtl::IndexConversionBufferMtl):
+        (rx::BufferMtl::markConversionBuffersDirty):
+        (rx::calculateRestartRanges):
+        (rx::BufferMtl::getRestartIndices):
+        * src/libANGLE/renderer/metal/ContextMtl.h:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::drawLineLoopElements):
+        (rx::ContextMtl::drawElementsImpl):
+        (rx::ContextMtl::drawElementsSimpleTypesPrimitiveRestart): Deleted.
+        * src/libANGLE/renderer/metal/VertexArrayMtl.h:
+        * src/libANGLE/renderer/metal/VertexArrayMtl.mm:
+        (rx::VertexArrayMtl::getIndexBuffer):
+        (rx::VertexArrayMtl::getDrawIndices):
+        (rx::VertexArrayMtl::convertIndexBuffer):
+        (rx::VertexArrayMtl::streamIndexBufferFromClient):
+
+2021-04-25  John Cunningham  <johncunningham@apple.com>
+
+        [Metal ANGLE] Temporarily remove AST validation even for debug builds
+        https://bugs.webkit.org/show_bug.cgi?id=224991
+        rdar://76299178
+ 
+        Reviewed by Kenneth Russell.
+
+        * src/libANGLE/renderer/metal/ShaderMtl.mm:
+        (rx::ShaderMtl::compileImplMtl):
+
+2021-04-25  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE] Select proper IOSurface backing format for WebGL environment
+        https://bugs.webkit.org/show_bug.cgi?id=224948
+        <rdar://76284889>
+
+        Depending on the architecture, WebCore expects different 
+        IOSurface texture targets for the main buffer. When running catalyst on 
+        Arm64 devices, Metal-ANGLE needs to select the TEXTURE_2D texture target for our
+        IOSurface/Pbuffer bind point, rather than TEXTURE_RECTANGLE.
+
+	Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.h:
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::needsEAGLOnMac):
+        (rx::DisplayMtl::EGLDrawingBufferTextureTarget):
+        (rx::DisplayMtl::generateConfigs):
+
+2021-04-23  Truitt Savell  <tsavell@apple.com>
+
+        Unreviewed, reverting r276190.
+
+        broke a test internally.
+
+        Reverted changeset:
+
+        "Metal-ANGLE: Shared memory texture tests failing in iOS
+        Simulator"
+        https://bugs.webkit.org/show_bug.cgi?id=222685
+        https://commits.webkit.org/r276190
+
+2021-04-22  Lauro Moura  <lmoura@igalia.com>
+
+        [CMake][ANGLE] Silence -Wreturn-type for gcc and clang
+        https://bugs.webkit.org/show_bug.cgi?id=224949
+
+        Reviewed by Don Olmstead.
+
+        Avoid "control reaches end of non-void function" in
+        sh::TIntermRebuild::traverseChildren(...)
+
+        * CMakeLists.txt:
+
+2021-04-22  Philippe Normand  <pnormand@igalia.com>
+
+        Unreviewed, WPE build fix after r276390
+
+        Fix namespacing issues in nullptr_t invocations.
+
+        * src/compiler/translator/tree_util/IntermRebuild.cpp:
+        (sh::TIntermRebuild::BaseResult::BaseResult):
+        (sh::PreResult::PreResult):
+        (sh::PostResult::PostResult):
+        * src/compiler/translator/tree_util/IntermRebuild.h:
+
+2021-04-21  Don Olmstead  <don.olmstead@sony.com>
+
+        [Python 3] Update gni-to-cmake.py
+        https://bugs.webkit.org/show_bug.cgi?id=224880
+
+        Reviewed by Kenneth Russell.
+
+        Update gni-to-cmake.py to run on Python 3. Added ArgumentParser support to be able to run
+        the script on Windows since the script assumed it would be called through a UNIX style
+        shell.
+
+        Ran the .gni files through the converter to verify output. It appears that the
+        Compiler.cmake file wasn't generated in the last update to ANGLE so it has many changes.
+
+        * Compiler.cmake:
+        * D3D.cmake:
+        * gni-to-cmake.py:
+
+2021-04-21  Don Olmstead  <don.olmstead@sony.com>
+
+        [CMake] Add OpenGLES2 targets
+        https://bugs.webkit.org/show_bug.cgi?id=224786
+
+        Reviewed by Adrian Perez de Castro.
+
+        Add an ALIAS target mapping ANGLE's GLESv2 target to OpenGL::GLES if the target is not
+        already present. This is the case for Windows which uses ANGLE as its sole OpenGL ES
+        implementation.
+
+        * CMakeLists.txt:
+
+2021-04-20  Alex Christensen  <achristensen@webkit.org>
+
+        MacCatalyst ANGLE is linked with @loader_path/../../../libANGLE-shared.dylib
+        https://bugs.webkit.org/show_bug.cgi?id=224602
+
+        Reviewed by Alexey Proskuryakov.
+
+        * Configurations/ANGLE-dynamic.xcconfig:
+
+2021-04-19  Alex Christensen  <achristensen@webkit.org>
+
+        Build ANGLE dylib into WK_OVERRIDE_FRAMEWORKS_DIR in builds that use it
+        https://bugs.webkit.org/show_bug.cgi?id=224785
+        <rdar://76641662>
+
+        Reviewed by Alexey Proskuryakov.
+
+        * Configurations/ANGLE-dynamic.xcconfig:
+
+2021-04-16  Kyle Piddington  <kpiddington@apple.com>
+
+        Metal-ANGLE: Shared memory texture tests failing in iOS Simulator
+        https://bugs.webkit.org/show_bug.cgi?id=222685
+
+        Reviewed by Dean Jackson.
+
+        Simulator-only path drives filling textures via Blit encoders instead of mapped memory.
+        This workaround fixes dropped texture writes when using replaceRegion
+
+        * src/libANGLE/renderer/metal/TextureMtl.mm:
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::InitializeTextureContents):
+
+2021-04-15  Alex Christensen  <achristensen@webkit.org>
+
+        Use kIOMainPortDefault where available
+        https://bugs.webkit.org/show_bug.cgi?id=224632
+
+        Reviewed by Alexey Proskuryakov.
+
+        In ANGLE we don't include WTF headers, so we can't use the HAVE macro like we do elsewhere in WebKit,
+        but this is pretty close.
+
+        * src/gpu_info_util/SystemInfo_macos.mm:
+        (angle::GetVendorIDFromMetalDeviceRegistryID):
+
+2021-04-15  Alex Christensen  <achristensen@webkit.org>
+
+        Add deprecation macros
+        https://bugs.webkit.org/show_bug.cgi?id=224624
+
+        * src/gpu_info_util/SystemInfo_macos.mm:
+        (angle::GetVendorIDFromMetalDeviceRegistryID):
+
+2021-04-12  Dean Jackson  <dino@apple.com>
+
+        REGRESSION (Metal ANGLE): [Catalina] 6 consistent WebGL failures / timeouts
+        https://bugs.webkit.org/show_bug.cgi?id=224016
+        <rdar://problem/76070325>
+
+        Patch by John Cunningham <johncunnigham@apple.com>
+        Reviewed by Dean Jackson.
+
+        Implement a workaround for Intel GPUs where we explicitly type cast floating
+        point values to booleans. This is only needed for Catalina systems.
+
+        * include/GLSLANG/ShaderLang.h:
+        * include/platform/FeaturesMtl.h:
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::TranslatorMetalDirect::translateImpl):
+        * src/compiler/translator/TranslatorMetalDirect/AddExplicitTypeCasts.cpp:
+        (sh::Rewriter::Rewriter):
+        (sh::AddExplicitTypeCasts):
+        * src/compiler/translator/TranslatorMetalDirect/AddExplicitTypeCasts.h:
+        * src/compiler/translator/TranslatorMetalDirect/AstHelpers.cpp:
+        (sh::SubVector):
+        (sh::CoerceSimple):
+        * src/compiler/translator/TranslatorMetalDirect/AstHelpers.h:
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeFeatures):
+        * src/libANGLE/renderer/metal/ShaderMtl.mm:
+        (rx::ShaderMtl::compile):
+
+2021-04-12  Kyle Piddington  <kpiddington@apple.com>
+
+        Crash in webgl/2.0.y/conformance/glsl/misc/uninitialized-local-global-variables.html ANGLE+METAL
+        https://bugs.webkit.org/show_bug.cgi?id=223923
+	
+        Anonymous structs require a name in MSL, add a default name ANGLE__unnamed$id to any structs.
+        Also add a unit test to ensure this works.
+        Reviewed by Kenneth Russell.
+
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::TranslatorMetalDirect::translateImpl):
+        * src/compiler/translator/TranslatorMetalDirect/SeparateCompoundStructDeclarations.cpp:
+        (sh::Separator::Separator):
+        (sh::SeparateCompoundStructDeclarations):
+        * src/compiler/translator/TranslatorMetalDirect/SeparateCompoundStructDeclarations.h:
+        * src/tests/BUILD.gn:
+        * src/tests/angle_unittests.gni:
+        * src/tests/compiler_tests/MSLOutput_Test.cpp:
+
+2021-04-08  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal-ANGLE] Support GPU power preferences, select low-power GPU by default.
+        Respond to GPU power preference flags, expose extension, and avoid creating a high-powered GPU by default.
+        https://bugs.webkit.org/show_bug.cgi?id=224337
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.h:
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeImpl):
+        (rx::DisplayMtl::getMetalDeviceMatchingAttribute):
+        (rx::DisplayMtl::generateExtensions const):
+
+2021-04-07  Kyle Piddington  <kpiddington@apple.com>
+
+        Crash in conformance2/textures/misc/compressed-tex-image.html with ANGLE+METAL
+        Handle uploading a compressed texture with a non-aligned offset. Path requires that we still fill the entire level of a 
+        compressed texture.
+        https://bugs.webkit.org/show_bug.cgi?id=223925
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/TextureMtl.mm:
+        (rx::TextureMtl::convertAndSetPerSliceSubImage):
+
+2021-04-07  John Cunningham  <johncunnigham@apple.com>
+
+        [METAL ANGLE] Interface block declerations need to have children marked as struct accesses. Add implicit backing textures for multisample render targets
+        https://bugs.webkit.org/show_bug.cgi?id=224265
+
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/ReduceInterfaceBlocks.cpp:
+        * src/libANGLE/renderer/metal/FrameBufferMtl.h:
+        * src/libANGLE/renderer/metal/FrameBufferMtl.mm:
+        (rx::FramebufferMtl::setLoadStoreActionOnRenderPassFirstStart):
+        (rx::FramebufferMtl::onStartedDrawingToFrameBuffer):
+        * src/libANGLE/renderer/metal/RenderBufferMtl.mm:
+        (rx::RenderbufferMtl::setStorageImpl):
+
+2021-04-05  Alex Christensen  <achristensen@webkit.org>
+
+        Resurrect Mac CMake build
+        https://bugs.webkit.org/show_bug.cgi?id=224084
+
+        Reviewed by Tim Horton.
+
+        * PlatformMac.cmake: Added.
+
+2021-04-05  John Cunningham  <johncunnigham@apple.com>
+
+        [METAL ANGLE] Stencil only formats being used as the depth attachment.
+        https://bugs.webkit.org/show_bug.cgi?id=224183
+
+        Reviewed by Jon Lee.
+
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+        * src/compiler/translator/TranslatorMetalDirect/RewriteOutArgs.cpp:
+        (sh::Rewriter::argAlreadyProcessed):
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::setupDraw):
+        * src/libANGLE/renderer/metal/mtl_command_buffer.h:
+        * src/libANGLE/renderer/metal/mtl_command_buffer.mm:
+        (rx::mtl::RenderCommandEncoder::reset):
+        (rx::mtl::RenderCommandEncoder::setRenderPipelineState):
+        (rx::mtl::RenderCommandEncoder::draw):
+        (rx::mtl::RenderCommandEncoder::drawInstanced):
+        (rx::mtl::RenderCommandEncoder::drawIndexed):
+        (rx::mtl::RenderCommandEncoder::drawIndexedInstanced):
+        (rx::mtl::RenderCommandEncoder::drawIndexedInstancedBaseVertex):
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::InitializeDepthStencilTextureContentsGPU):
+
+2021-03-30  Kyle Piddington  <kpiddington@apple.com>
+
+        Enable sample_compare operations in Metal ANGLE
+        Sample_compare operations, and shadow sampling was accidently switched off when initially
+        setting up ANGLE_Metal. Enabling shadow sampling fixes most of the 
+        webgl/2.0.0/deqp/functional/gles3/textureshadow/ test suite, which is currently failing.
+
+        https://bugs.webkit.org/show_bug.cgi?id=223833
+
+        Reviewed by Jon Lee.
+
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeFeatures):
+
+2021-03-26  Jessie Berlin  <jberlin@webkit.org>
+
+        Update the BEFORE/SINCE, SYSTEM_VERSION_PREFIX, and MACOSX_DEPLOYMENT_TARGET flags
+        https://bugs.webkit.org/show_bug.cgi?id=223779
+
+        Reviewed by Tim Horton.
+
+        * Configurations/DebugRelease.xcconfig:
+        * Configurations/Version.xcconfig:
+        * Configurations/WebKitTargetConditionals.xcconfig:
+
+2021-03-25  Kyle Piddington  <kpiddington@apple.com>
+
+        ANGLE Metal crash ASAN webgl/1.0.3/conformance/misc/object-deletion-behaviour.html
+        https://bugs.webkit.org/show_bug.cgi?id=223739
+
+        Reviewed by Dean Jackson.
+
+        Previously, ANGLE would try to read color attachments off of the
+        cached render targets. However, since validation happens before
+        state sync, the cached render targets may be out of date.
+
+        For non-surface backed render targets, we instead get a fresh copy
+        of the render target when determening the native pixel format.
+
+        * src/libANGLE/renderer/metal/FrameBufferMtl.h:
+        * src/libANGLE/renderer/metal/FrameBufferMtl.mm:
+        (rx::FramebufferMtl::getImplementationColorReadFormat const):
+        (rx::FramebufferMtl::getColorReadRenderTargetNoCache const):
+
+
+2021-03-25  Kyle Piddington  <kpiddington@apple.com>
+
+        [Metal ANGLE] Add CPU mipmap generation for workaround on Intel devices.
+        https://bugs.webkit.org/show_bug.cgi?id=223778
+
+        Reviewed by Dean Jackson.
+
+        Mipmap generation on Intel does not reliably work for textures with
+        width less than four. To reliably pass webGL conformance, we need
+        to switch to CPU mipmap generation when generating mipmaps in this
+        specific circumstance.
+
+        This patch fixes the following four tests on Intel
+        webgl/1.0.3/conformance/limits/gl-max-texture-dimensions.html
+        webgl/1.0.3/conformance/textures/texture-size.html
+        webgl/2.0.0/conformance/limits/gl-max-texture-dimensions.html
+        webgl/2.0.0/conformance/textures/misc/texture-size.html
+
+        * include/platform/Feature.h:
+        (angle::FeatureCategoryToString):
+        * include/platform/FeaturesMtl.h:
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::initializeFeatures):
+        * src/libANGLE/renderer/metal/TextureMtl.mm:
+        (rx::TextureMtl::generateMipmap):
+
+2021-03-25  Jessie Berlin  <jberlin@webkit.org>
+
+        Remove 10.13 DEPLOYMENT_TARGETs and SYSTEM_VERSION_PREFIXs
+        https://bugs.webkit.org/show_bug.cgi?id=223765
+
+        Reviewed by Tim Horton.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/DebugRelease.xcconfig:
+        * Configurations/Version.xcconfig:
+
+2021-03-24  Kyle Piddington  <kpiddington@apple.com>
+
+        Metal ANGLE non-blockers: Fix webgl/1.0.3/conformance/uniforms/uniform-default-values.html, Stencil debug layer assertions
+        https://bugs.webkit.org/show_bug.cgi?id=223667
+
+        https://bugs.webkit.org/show_bug.cgi?id=223667
+
+        On Release, uniformDefaultValues was resetting program memory
+        either early, or oddly. Since program reflection should be constant
+        per Shader anyway, drop the 'reset' after assigning reflection data.
+
+        In addition, clamp stencil rectangle to always be within framebuffer bounds. Code taken from upstream ANGLE.
+
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+        (rx::ProgramMtl::linkImplDirect):
+        * src/libANGLE/renderer/metal/mtl_command_buffer.mm:
+        (rx::mtl::RenderCommandEncoder::initAttachmentWriteDependencyAndScissorRect):
+        (rx::mtl::RenderCommandEncoder::restart):
+        (rx::mtl::RenderCommandEncoder::setScissorRect):
+        * src/libANGLE/renderer/metal/mtl_glslang_mtl_utils.mm:
+        (rx::mtl::TranslatedShaderInfo::reset):
+        (rx::mtl::GlslangGetMSL):
+
+2021-03-24  Kyle Piddington  <kpiddington@apple.com>
+
+        Metal ANGLE crashes LayoutTests/inspector/canvas/updateShader-webgl.html
+        Rather than rely on an instance variable in a C++ class, just query the dictionary constant when needed.
+
+        https://bugs.webkit.org/show_bug.cgi?id=223695
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/ProgramMtl.h:
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+        (rx::ProgramMtl::ProgramMtl):
+        (rx::ProgramMtl::linkImplSpirv):
+        (rx::ProgramMtl::linkImplDirect):
+        (rx::ProgramMtl::linkTranslatedShaders):
+
+2021-03-23  Kyle Piddington  <kpiddington@apple.com>
+
+        ANGLE Metal fixes for program generation bugs
+        https://bugs.webkit.org/show_bug.cgi?id=223627
+
+        Reviewed by Dean Jackson.
+
+           webgl/2.0.0/conformance2/glsl3/texture-offset-uniform-texture-coordinate.html is fixed by dropping 'thread' qualifiers on pregenerated functions
+           webgl/2.0.0/conformance/glsl/bugs/compound-assignment-type-combination.html is fixed by introducing new operators for matrix +/- scalars
+           webgl/2.0.0/conformance/glsl/bugs/complex-glsl-does-not-crash.html is fixed by adding a pre-pass to rename any reserved keywords, such as 'vertex'
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (BuildExternalAttributeIndexMap):
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+        * src/compiler/translator/TranslatorMetalDirect/RewriteKeywords.cpp:
+        (sh::Rewriter::maybeCreateNewName):
+        (sh::Rewriter::visitSymbolPost):
+        (sh::Rewriter::predefineName):
+        (sh::RewriteKeywords):
+
+2021-03-23  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        ANGLE is missing the explicit context headers
+        https://bugs.webkit.org/show_bug.cgi?id=223470
+
+        Reviewed by Alexey Proskuryakov.
+
+        Add the autogenerated .inc files for explicit context
+        API into the ANGLE public headers.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * adjust-angle-include-paths.py:
+        (replace):
+
+2021-03-19  Kyle Piddington  <kpiddington@apple.com>
+
+        Metal-Angle on Simulator does not support D24S8 correctly
+        https://bugs.webkit.org/show_bug.cgi?id=223494
+
+        Reviewed by Dean Jackson.
+
+        Re-ran autogen script for format table to add the missing format
+        Corrected texture swizzle support. Swizzle is unsupported on simulator.
+
+        * src/libANGLE/renderer/metal/mtl_format_table_autogen.mm:
+        (rx::mtl::Format::init):
+
+2021-03-19  Alex Christensen  <achristensen@webkit.org>
+
+        libANGLE-shared.dylib needs INSTALL_PATH when building Catalyst roots
+        https://bugs.webkit.org/show_bug.cgi?id=223499
+
+        Reviewed by Dean Jackson.
+
+        INSTALL_PATH was empty, so no dylib was being included in the root.
+        This is needed to fix the Catalyst build after bug 218539
+
+        * Configurations/ANGLE-dynamic.xcconfig:
+
+2021-03-06  Dean Jackson  <dino@apple.com>
+
+        Metal-ANGLE can ASSERT because MTL signal event code is compiled out
+        https://bugs.webkit.org/show_bug.cgi?id=222859
+        <rdar://problem/75132180>
+
+        Reviewed by Ken Russell.
+
+        With the Metal backend enabled, the test
+        webgl/2.0.0/conformance2/state/gl-object-get-calls.html will
+        occasionally crash in mtl_command_buffer when it hits unreachable
+        code because ANGLE_MTL_EVENT_AVAILABLE hasn't been defined. This is
+        available on macOS 10.14 and above, so should be enabled.
+
+        At the same time, it doesn't make sense to call the method that has
+        unreachable code, so guard against that in mtl_command_buffer.
+
+        * src/libANGLE/renderer/metal/mtl_command_buffer.mm:
+        (rx::mtl::CommandBuffer::setPendingEvents):
+        * src/libANGLE/renderer/metal/mtl_common.h: Define ANGLE_MTL_EVENT_AVAILABLE.
+
+2021-03-18  Kyle Piddington  <kpiddington@apple.com>
+
+        'MTLLanguageVersion1_0' is unavailable on Catalyst
+        https://bugs.webkit.org/show_bug.cgi?id=223392
+
+        Reviewed by Jon Lee.
+
+        Disable switch case in catalyst builds
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GetOperatorString):
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+        * src/libANGLE/renderer/metal/FrameBufferMtl.mm:
+        (rx::FramebufferMtl::readPixels):
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::GetUserSetOrHighestMSLVersion):
+
+2021-03-17  Kyle Piddington  <kpiddington@apple.com>
+
+        ANGLE Metal fixups for program generation, readPixels
+        https://bugs.webkit.org/show_bug.cgi?id=223260
+
+        Reviewed by Dean Jackson.
+
+        This diff fixes the following tests:
+        webgl/2.0.0/conformance2/glsl3/texture-offset-uniform-texture-coordinate.html Is fixed by dropping 'thread' qualifiers on our intermediate texture sampling helper functions. Previously, any uniforms used in sampling textures would have had issues with their namespace.
+        webgl/2.0.0/conformance2/reading/read-pixels-pack-parameters.html is fixed by correcting an issue with reading from outside the framebuffer. ANGLE Metal was previously reading to the start of the output array, rather than a proper offset.
+        webgl/2.0.0/conformance2/glsl3/array-equality.html is fixed by adding additional equality functions for handling arrays of structs.
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GetOperatorString):
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+        * src/libANGLE/renderer/metal/FrameBufferMtl.mm:
+        (rx::FramebufferMtl::readPixels):
+
+2021-03-16  Kyle Piddington  <kpiddington@apple.com>
+
+        Regressions from ANGLE Metal enablement
+        https://bugs.webkit.org/show_bug.cgi?id=222239
+        
+        This patch addressed several large bits of funcitonality that was missing from the original patch.
+        1) Introduce support for UBO's. This patch adds a DEQP-conformant implementation for UBO structs. This includes changes to the translator,
+and the frontend.
+        2) Introduce support for Transform feedback to the translator. We use a series of substitution macros at program link time to produce a transform-feedback varient shader, and use a vertex pre-pass to emulate transform feedback.
+        3) Various fixes to handle a few webgl2 asserts, such as large uniform buffers. This change  (in ProgramMtl.mm) will reserve a uniform buffer of twice the normal size (4kb) if the program uniforms exceed that limit. (Fixes webgl/2.0.0/conformance/glsl/bugs/complex-glsl-does-not-crash.html webgl/2.0.0/conformance/glsl/misc/shader-with-too-many-uniforms.html webgl/2.0.0/conformance/uniforms/gl-uniform-arrays.html)
+
+        Reviewed by Jon Lee.
+
+        * ANGLE.xcodeproj/project.pbxproj:
+        * include/platform/FeaturesMtl.h:
+        * src/compiler.gni:
+        * src/compiler/translator/BaseTypes.h:
+        (sh::getQualifierString):
+        * src/compiler/translator/TranslatorMetalDirect.cpp:
+        (sh::TranslatorMetalDirect::insertSampleMaskWritingLogic):
+        (sh::metalShaderTypeFromGLSL):
+        (sh::TranslatorMetalDirect::translateImpl):
+        (sh::TranslatorMetalDirect::translate):
+        * src/compiler/translator/TranslatorMetalDirect.h:
+        (sh::TranslatorMetalReflection::TranslatorMetalReflection):
+        (sh::TranslatorMetalReflection::addUserUniformBufferBinding):
+        (sh::TranslatorMetalReflection::addUniformBufferBinding):
+        (sh::TranslatorMetalReflection::getUserUniformBufferBindings const):
+        (sh::TranslatorMetalReflection::getUserUniformBufferBinding const):
+        (sh::TranslatorMetalReflection::getUniformBufferBinding const):
+        (sh::TranslatorMetalReflection::reset):
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::~GenMetalTraverser):
+        (GenMetalTraverser::emitOpeningPointerParen):
+        (GenMetalTraverser::emitClosingPointerParen):
+        (GetOperatorString):
+        (GenMetalTraverser::emitPostQualifier):
+        (GenMetalTraverser::emitType):
+        (GenMetalTraverser::emitFieldDeclaration):
+        (GenMetalTraverser::emitAttributeDeclaration):
+        (GenMetalTraverser::emitUniformBufferDeclaration):
+        (GenMetalTraverser::emitStructDeclaration):
+        (GenMetalTraverser::emitOrdinaryVariableDeclaration):
+        (GenMetalTraverser::visitSymbol):
+        (GenMetalTraverser::visitBinary):
+        (GenMetalTraverser::emitFunctionSignature):
+        (GenMetalTraverser::emitFunctionReturn):
+        (GenMetalTraverser::emitFunctionParameter):
+        (GenMetalTraverser::visitFunctionDefinition):
+        (GenMetalTraverser::visitAggregate):
+        (RequiresSemicolonTerminator):
+        (GenMetalTraverser::visitBlock):
+        (GenMetalTraverser::visitBranch):
+        * src/compiler/translator/TranslatorMetalDirect/FixTypeConstructors.cpp:
+        * src/compiler/translator/TranslatorMetalDirect/IntroduceVertexIndexID.cpp: Added.
+        (sh::Rewriter::Rewriter):
+        (sh::IntroduceVertexAndInstanceIndex):
+        * src/compiler/translator/TranslatorMetalDirect/IntroduceVertexIndexID.h: Added.
+        * src/compiler/translator/TranslatorMetalDirect/Layout.cpp:
+        * src/compiler/translator/TranslatorMetalDirect/Layout.h:
+        * src/compiler/translator/TranslatorMetalDirect/ModifyStruct.cpp:
+        (sh::TryCreateModifiedStruct):
+        * src/compiler/translator/TranslatorMetalDirect/ModifyStruct.h:
+        * src/compiler/translator/TranslatorMetalDirect/Pipeline.cpp:
+        (Pipeline::uses const):
+        (Pipeline::getStructTypeName const):
+        (Pipeline::getStructInstanceName const):
+        (AllowPacking):
+        (AllowPadding):
+        (SaturateVectorOf):
+        (Pipeline::externalStructModifyConfig const):
+        (Pipeline::alwaysRequiresLocalVariableDeclarationInMain const):
+        (Pipeline::isPipelineOut const):
+        (Pipeline::externalAddressSpace const):
+        (PipelineStructs::matches const):
+        * src/compiler/translator/TranslatorMetalDirect/Pipeline.h:
+        (sh::PipelineScoped::matches const):
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.cpp:
+        (sh::ProgramPrelude::ProgramPrelude):
+        * src/compiler/translator/TranslatorMetalDirect/ProgramPrelude.h:
+        (sh::ProgramPreludeConfig::ProgramPreludeConfig):
+        * src/compiler/translator/TranslatorMetalDirect/ReduceInterfaceBlocks.cpp:
+        (sh::Reducer::Reducer):
+        * src/compiler/translator/TranslatorMetalDirect/RewritePipelines.cpp:
+        (sh::GeneratePipelineStruct::exec):
+        (sh::GeneratePipelineStruct::createInternalPipelineStruct):
+        (sh::PipelineFunctionEnv::getUpdatedFunction):
+        (sh::RewritePipelines):
+        * src/compiler/translator/TranslatorMetalDirect/SymbolEnv.cpp:
+        (SymbolEnv::removeSpace):
+        (SymbolEnv::removePointer):
+        (SymbolEnv::markAsUBO):
+        (SymbolEnv::isUBO const):
+        * src/compiler/translator/TranslatorMetalDirect/SymbolEnv.h:
+        * src/compiler/translator/tree_ops/NameNamelessUniformBuffers.cpp: Added.
+        (sh::NameNamelessUniformBuffers):
+        * src/compiler/translator/tree_ops/NameNamelessUniformBuffers.h: Added.
+        * src/compiler/translator/util.cpp:
+        (sh::IsBuiltinOutputVariable):
+        * src/libANGLE/renderer/gl/cgl/ContextCGL.cpp:
+        * src/libANGLE/renderer/metal/BufferMtl.h:
+        * src/libANGLE/renderer/metal/BufferMtl.mm:
+        (rx::IndexConversionBufferMtl::IndexConversionBufferMtl):
+        (rx::IndexConversionBufferMtl::getRangeForConvertedBuffer):
+        * src/libANGLE/renderer/metal/ContextMtl.h:
+        * src/libANGLE/renderer/metal/ContextMtl.mm:
+        (rx::ContextMtl::handleDirtyDriverUniforms):
+        (rx::ContextMtl::handleDirtyGraphicsTransformFeedbackBuffersEmulation):
+        (rx::ContextMtl::handleDirtyDepthBias):
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::getMaxSupportedESVersion const):
+        (rx::DisplayMtl::generateConfigs):
+        (rx::DisplayMtl::ensureCapsInitialized const):
+        (rx::DisplayMtl::initializeFeatures):
+        (rx::DisplayMtl::initializeShaderLibrary):
+        * src/libANGLE/renderer/metal/FrameBufferMtl.h:
+        * src/libANGLE/renderer/metal/ProgramMtl.h:
+        (rx::ProgramMtl::createMslShaderLib):
+        (rx::ProgramMtl::getXfbBindings const):
+        (rx::ProgramMtl::getTranslatedShaderSource const):
+        (rx::ProgramMtl::getXfbMslSource const): Deleted.
+        * src/libANGLE/renderer/metal/ProgramMtl.mm:
+        (rx::ProgramMtl::ProgramMtl):
+        (rx::ProgramMtl::destroy):
+        (rx::ProgramMtl::reset):
+        (rx::ProgramMtl::saveTranslatedShaders):
+        (rx::ProgramMtl::loadTranslatedShaders):
+        (rx::ProgramMtl::linkImplSpirv):
+        (rx::ProgramMtl::linkImplDirect):
+        (rx::ProgramMtl::linkImpl):
+        (rx::ProgramMtl::linkTranslatedShaders):
+        (rx::ProgramMtl::getBufferPool):
+        (rx::ProgramMtl::resizeDefaultUniformBlocksMemory):
+        (rx::ProgramMtl::getSpecializedShader):
+        (rx::ProgramMtl::createMslShaderLib):
+        (rx::ProgramMtl::commitUniforms):
+        * src/libANGLE/renderer/metal/QueryMtl.h:
+        * src/libANGLE/renderer/metal/RenderBufferMtl.mm:
+        (rx::RenderbufferMtl::setStorageImpl):
+        * src/libANGLE/renderer/metal/RenderTargetMtl.mm:
+        (rx::RenderTargetMtl::setWithImplicitMSTexture):
+        (rx::RenderTargetMtl::reset):
+        * src/libANGLE/renderer/metal/ShaderMtl.mm:
+        (rx::ShaderMtl::compile):
+        * src/libANGLE/renderer/metal/SurfaceMtl.mm:
+        (rx::WindowSurfaceMtl::initialize):
+        * src/libANGLE/renderer/metal/TextureMtl.mm:
+        (rx::TextureMtl::ensureSamplerStateCreated):
+        (rx::TextureMtl::setPerSliceSubImage):
+        (rx::TextureMtl::initializeContents):
+        * src/libANGLE/renderer/metal/TransformFeedbackMtl.mm:
+        * src/libANGLE/renderer/metal/VertexArrayMtl.mm:
+        (rx::VertexArrayMtl::getIndexBuffer):
+        * src/libANGLE/renderer/metal/mtl_common.h:
+        * src/libANGLE/renderer/metal/mtl_constants.h:
+        * src/libANGLE/renderer/metal/mtl_format_map.json:
+        * src/libANGLE/renderer/metal/mtl_format_table_autogen.mm:
+        (rx::mtl::Format::init):
+        * src/libANGLE/renderer/metal/mtl_format_utils.mm:
+        (rx::mtl::FormatTable::initialize):
+        * src/libANGLE/renderer/metal/mtl_glslang_mtl_utils.h:
+        * src/libANGLE/renderer/metal/mtl_glslang_mtl_utils.mm:
+        (rx::mtl::updateShaderAttributes):
+        (rx::mtl::SubstituteTransformFeedbackMarkers):
+        (rx::mtl::GenerateTransformFeedbackVaryingOutput):
+        (rx::mtl::GenerateTransformFeedbackEmulationOutputs):
+        (rx::mtl::getReflectionFromCompiler):
+        (rx::mtl::GlslangGetMSL):
+        * src/libANGLE/renderer/metal/mtl_render_utils.mm:
+        (rx::mtl::TransformFeedbackUtils::createMslXfbLibrary):
+        (rx::mtl::TransformFeedbackUtils::getTransformFeedbackRenderPipeline):
+        * src/libANGLE/renderer/metal/mtl_resources.h:
+        * src/libANGLE/renderer/metal/mtl_resources.mm:
+        (rx::mtl::Texture::Texture):
+        * src/libANGLE/renderer/metal/mtl_state_cache.mm:
+        (rx::mtl::SamplerDesc::SamplerDesc):
+        (rx::mtl::SamplerDesc::reset):
+        (rx::mtl::RenderPipelineCache::RenderPipelineCache):
+        (rx::mtl::RenderPipelineCache::createRenderPipelineState):
+        * src/libANGLE/renderer/metal/mtl_utils.h:
+        * src/libANGLE/renderer/metal/mtl_utils.mm:
+        (rx::mtl::GetUserSetOrHighestMSLVersion):
+        (rx::mtl::CreateShaderLibrary):
+        (rx::mtl::GetHighestSupportedMSLVersion): Deleted.
+        * src/libANGLE/renderer/metal/shaders/blit.metal:
+        * src/libANGLE/renderer/metal/shaders/format_autogen.h:
+        * src/libANGLE/renderer/metal/shaders/mtl_default_shaders_src_autogen.inc:
+
+2021-03-03  Kyle Piddington  <kpiddington@apple.com>
+
+        Support Depth24_Stencil8 simulation in the MTLSimulator
+        https://bugs.webkit.org/show_bug.cgi?id=222624
+
+        Reviewed by Dean Jackson.
+
+        Fixes the following tests:
+        fast/canvas/webgl/context-creation-attributes.html
+        fast/canvas/webgl/webgl-depth-texture.html
+        webgl/1.0.3/conformance/misc/webgl-specific.html
+        webgl/1.0.3/conformance/renderbuffers/framebuffer-object-attachment.html
+
+        * src/libANGLE/renderer/metal/mtl_format_map.json:
+        * src/libANGLE/renderer/metal/mtl_format_table_autogen.mm:
+        (rx::mtl::Format::init):
+
+2021-02-26  Kyle Piddington  <kpiddington@apple.com>
+
+        Support  fast/canvas/webgl/copyBufferSubData.html, fix bugs in fast/canvas/webgl/getBufferSubData-webgl1.html in Metal ANGLE on Simulator
+        https://bugs.webkit.org/show_bug.cgi?id=222508
+
+        Reviewed by Dean Jackson.
+
+        * src/libANGLE/renderer/metal/BufferMtl.mm:
+        (rx::BufferMtl::unmap):
+        * src/libANGLE/renderer/metal/DisplayMtl.mm:
+        (rx::DisplayMtl::getMaxSupportedESVersion const):
+
+2021-02-26  Kyle Piddington  <kpiddington@apple.com>
+
+        Fix iOS simulator crashes due to unsupported simulator pixel formats: r8Unorm_srgb, a1bgr5Unorm, b5g6r5Unorm, abgr4Unorm, bgr5A1Unorm, and program generation asserts.
+
+        iOS Simulator doesn't support the following packed 16 bit formats natively. While some of these can be emulated, we should fix up the crashing cases first.
+
+        Also fix up program generation issues for void fragment shaders
+
+        Disable support for PVRTC temporarily, as Non-square / NPOT PVRTC textures are not supported nativley on metal.
+
+        https://bugs.webkit.org/show_bug.cgi?id=222458
+
+        Reviewed by Dean Jackson.
+
+        * src/compiler/translator/TranslatorMetalDirect/EmitMetal.cpp:
+        (GenMetalTraverser::emitStructDeclaration):
+        (GenMetalTraverser::emitFunctionReturn):
+        (GenMetalTraverser::emitFunctionParameter):
+        * src/compiler/translator/TranslatorMetalDirect/Pipeline.cpp:
+        (PipelineStructs::matches const):
+        * src/compiler/translator/TranslatorMetalDirect/Pipeline.h:
+        (sh::PipelineScoped::matches const):
+        * src/libANGLE/renderer/metal/TextureMtl.mm:
+        (rx::TextureMtl::setPerSliceSubImage):
+        * src/libANGLE/renderer/metal/gen_mtl_format_table.py:
+        * src/libANGLE/renderer/metal/mtl_format_map.json:
+        * src/libANGLE/renderer/metal/mtl_format_table_autogen.mm:
+        (rx::mtl::Format::init):
+        (rx::mtl::VertexFormat::init):
+        (rx::mtl::FormatTable::initNativeFormatCapsAutogen):
+        * src/libANGLE/renderer/metal/mtl_format_utils.mm:
+        (rx::mtl::FormatTable::initialize):
+        * src/libANGLE/renderer/metal/mtl_resources.mm:
+        (rx::mtl::Texture::Make2DTexture):
+        (rx::mtl::Texture::MakeTexture):
+
+2021-02-26  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Textures Fail to Render in WebGL from HLS Stream on iPhone 12 [iOS 14.2]
+        https://bugs.webkit.org/show_bug.cgi?id=218637
+        <rdar://problem/71102126>
+
+        Reviewed by Kenneth Russell.
+
+        Remove incorrect validation that IOSurface pixel format matches
+        the pixel format of the texture image being specified.
+
+        The "Element" in IOSurface is a block of pixels, while the validation assumed
+        it means one pixel. The validation failed for a compressed format.
+
+        Currently we map non-public YUV formats, to which there is no elequent way
+        of implementing the validation.
+        Most likely this started to reproduce if IOSurfaceGetBytesPerElementOfPlane
+        was changed to produce correct results for the above YUV format.
+
+        Later commits could add the validation back for formats that we know the
+        pixel format type.
+
+        * src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm:
+        (rx::IOSurfaceSurfaceEAGL::validateAttributes):
 
 2021-02-25  Kyle Piddington  <kpiddington@apple.com>
 

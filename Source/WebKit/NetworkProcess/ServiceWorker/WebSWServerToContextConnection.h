@@ -30,7 +30,9 @@
 #include "MessageReceiver.h"
 #include "MessageSender.h"
 #include "ServiceWorkerFetchTask.h"
+#include "WebPageProxyIdentifier.h"
 #include <WebCore/SWServerToContextConnection.h>
+#include <wtf/URLHash.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
@@ -54,7 +56,7 @@ class WebSWServerConnection;
 
 class WebSWServerToContextConnection: public WebCore::SWServerToContextConnection, public IPC::MessageSender, public IPC::MessageReceiver {
 public:
-    WebSWServerToContextConnection(NetworkConnectionToWebProcess&, WebCore::RegistrableDomain&&, WebCore::SWServer&);
+    WebSWServerToContextConnection(NetworkConnectionToWebProcess&, WebPageProxyIdentifier, WebCore::RegistrableDomain&&, WebCore::SWServer&);
     ~WebSWServerToContextConnection();
 
     IPC::Connection& ipcConnection() const;
@@ -84,10 +86,12 @@ private:
 
     // Messages to the SW host WebProcess
     void installServiceWorkerContext(const WebCore::ServiceWorkerContextData&, const String& userAgent) final;
+    void updateAppInitiatedValue(WebCore::ServiceWorkerIdentifier, WebCore::LastNavigationWasAppInitiated) final;
     void fireInstallEvent(WebCore::ServiceWorkerIdentifier) final;
     void fireActivateEvent(WebCore::ServiceWorkerIdentifier) final;
     void terminateWorker(WebCore::ServiceWorkerIdentifier) final;
-    void findClientByIdentifierCompleted(uint64_t requestIdentifier, const Optional<WebCore::ServiceWorkerClientData>&, bool hasSecurityError) final;
+    void didSaveScriptsToDisk(WebCore::ServiceWorkerIdentifier, const WebCore::ScriptBuffer&, const HashMap<URL, WebCore::ScriptBuffer>& importedScripts) final;
+    void findClientByIdentifierCompleted(uint64_t requestIdentifier, const std::optional<WebCore::ServiceWorkerClientData>&, bool hasSecurityError) final;
     void matchAllCompleted(uint64_t requestIdentifier, const Vector<WebCore::ServiceWorkerClientData>&) final;
 
     void connectionIsNoLongerNeeded() final;
@@ -99,6 +103,7 @@ private:
     WeakPtr<WebCore::SWServer> m_server;
     HashMap<WebCore::FetchIdentifier, WeakPtr<ServiceWorkerFetchTask>> m_ongoingFetches;
     bool m_isThrottleable { true };
+    WebPageProxyIdentifier m_webPageProxyID;
 }; // class WebSWServerToContextConnection
 
 } // namespace WebKit

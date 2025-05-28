@@ -30,10 +30,12 @@
 #include "AuxiliaryProcessProxy.h"
 #include "GPUProcessProxyMessagesReplies.h"
 #include "ProcessLauncher.h"
+#include "ProcessTerminationReason.h"
 #include "ProcessThrottler.h"
 #include "ProcessThrottlerClient.h"
 #include "WebPageProxyIdentifier.h"
 #include "WebProcessProxyMessagesReplies.h"
+#include <WebCore/PageIdentifier.h>
 #include <memory>
 #include <pal/SessionID.h>
 
@@ -41,8 +43,13 @@
 #include "LayerHostingContext.h"
 #endif
 
+#if PLATFORM(MAC)
+#include <CoreGraphics/CGDisplayConfiguration.h>
+#endif
+
 namespace WebCore {
 struct MockMediaDevice;
+struct SecurityOriginData;
 }
 
 namespace WebKit {
@@ -52,7 +59,7 @@ class WebsiteDataStore;
 struct GPUProcessConnectionParameters;
 struct GPUProcessCreationParameters;
 
-class GPUProcessProxy final : public AuxiliaryProcessProxy, private ProcessThrottlerClient, public RefCounted<GPUProcessProxy> {
+class GPUProcessProxy final : public AuxiliaryProcessProxy, private ProcessThrottlerClient {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(GPUProcessProxy);
     friend LazyNeverDestroyed<GPUProcessProxy>;
@@ -70,7 +77,7 @@ public:
     void setUseMockCaptureDevices(bool);
     void setOrientationForMediaCapture(uint64_t orientation);
     void updateCaptureAccess(bool allowAudioCapture, bool allowVideoCapture, bool allowDisplayCapture, WebCore::ProcessIdentifier, CompletionHandler<void()>&&);
-
+    void updateCaptureOrigin(const WebCore::SecurityOriginData&, WebCore::ProcessIdentifier);
     void addMockMediaDevice(const WebCore::MockMediaDevice&);
     void clearMockMediaDevices();
     void removeMockMediaDevice(const String&);
@@ -79,9 +86,11 @@ public:
 
     void removeSession(PAL::SessionID);
 
-#if HAVE(VISIBILITY_PROPAGATION_VIEW)
-    LayerHostingContextID contextIDForVisibilityPropagation() const;
+#if PLATFORM(MAC)
+    void displayConfigurationChanged(CGDirectDisplayID, CGDisplayChangeSummaryFlags);
 #endif
+
+    void updatePreferences();
 
 private:
     explicit GPUProcessProxy();
@@ -95,7 +104,7 @@ private:
     void connectionWillOpen(IPC::Connection&) override;
     void processWillShutDown(IPC::Connection&) override;
 
-    void gpuProcessCrashed();
+    void gpuProcessExited(GPUProcessTerminationReason);
 
     // ProcessThrottlerClient
     ASCIILiteral clientName() const final { return "GPUProcess"_s; }
@@ -110,11 +119,19 @@ private:
     void didClose(IPC::Connection&) override;
     void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName) override;
 
+    // ResponsivenessTimer::Client
+    void didBecomeUnresponsive() final;
+
     void terminateWebProcess(WebCore::ProcessIdentifier);
+    void processIsReadyToExit();
+
+    void updateSandboxAccess(bool allowAudioCapture, bool allowVideoCapture);
 
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
-    void didCreateContextForVisibilityPropagation(LayerHostingContextID);
+    void didCreateContextForVisibilityPropagation(WebPageProxyIdentifier, WebCore::PageIdentifier, LayerHostingContextID);
 #endif
+
+    void platformInitializeGPUProcessParameters(GPUProcessCreationParameters&);
 
     ProcessThrottler m_throttler;
     ProcessThrottler::ActivityVariant m_activityFromWebProcesses;
@@ -122,12 +139,12 @@ private:
     bool m_useMockCaptureDevices { false };
     uint64_t m_orientation { 0 };
 #endif
-    HashSet<PAL::SessionID> m_sessionIDs;
-
-#if HAVE(VISIBILITY_PROPAGATION_VIEW)
-    LayerHostingContextID m_contextIDForVisibilityPropagation { 0 };
-    Vector<WeakPtr<WebProcessProxy>> m_processesPendingVisibilityPropagationNotification;
+#if PLATFORM(COCOA)
+    bool m_hasSentTCCDSandboxExtension { false };
+    bool m_hasSentCameraSandboxExtension { false };
+    bool m_hasSentMicrophoneSandboxExtension { false };
 #endif
+    HashSet<PAL::SessionID> m_sessionIDs;
 };
 
 } // namespace WebKit

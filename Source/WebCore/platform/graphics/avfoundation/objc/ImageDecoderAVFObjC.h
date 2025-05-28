@@ -71,7 +71,7 @@ public:
     RepetitionCount repetitionCount() const final;
     String uti() const final;
     String filenameExtension() const final;
-    Optional<IntPoint> hotSpot() const final { return WTF::nullopt; }
+    std::optional<IntPoint> hotSpot() const final { return std::nullopt; }
     String accessibilityDescription() const final { return String(); }
 
     IntSize frameSizeAtIndex(size_t, SubsamplingLevel = SubsamplingLevel::Default) const final;
@@ -88,7 +88,7 @@ public:
     WEBCORE_EXPORT void setExpectedContentSize(long long) final;
     WEBCORE_EXPORT void setData(SharedBuffer&, bool allDataReceived) final;
     bool isAllDataReceived() const final { return m_isAllDataReceived; }
-    void clearFrameBufferCache(size_t) final;
+    WEBCORE_EXPORT void clearFrameBufferCache(size_t) final;
 
     bool hasTrack() const { return !!m_track; }
     WEBCORE_EXPORT Vector<ImageDecoder::FrameInfo> frameInfos() const;
@@ -119,7 +119,7 @@ private:
     DecodeOrderSampleMap::iterator m_cursor;
     Lock m_sampleGeneratorLock;
     bool m_isAllDataReceived { false };
-    Optional<IntSize> m_size;
+    std::optional<IntSize> m_size;
 };
 
 }

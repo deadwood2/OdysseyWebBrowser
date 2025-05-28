@@ -45,6 +45,7 @@ static const Seconds PostAnimationDelay { 100_ms };
 @implementation WKVideoLayerRemote {
     WeakPtr<WebKit::MediaPlayerPrivateRemote> _mediaPlayerPrivateRemote;
     RetainPtr<CAContext> _context;
+    WebCore::MediaPlayerEnums::VideoGravity _videoGravity;
 
     std::unique_ptr<WebCore::Timer> _resolveBoundsTimer;
     bool _shouldRestartWhenTimerFires;
@@ -80,6 +81,25 @@ static const Seconds PostAnimationDelay { 100_ms };
     _mediaPlayerPrivateRemote = makeWeakPtr(*mediaPlayerPrivateRemote);
 }
 
+- (WebCore::MediaPlayerEnums::VideoGravity)videoGravity
+{
+    return _videoGravity;
+}
+
+- (void)setVideoGravity:(WebCore::MediaPlayerEnums::VideoGravity)videoGravity
+{
+    _videoGravity = videoGravity;
+}
+
+- (bool)resizePreservingGravity
+{
+    auto* player = self.mediaPlayerPrivateRemote;
+    if (player && player->inVideoFullscreenOrPictureInPicture())
+        return true;
+    
+    return _videoGravity != WebCore::MediaPlayer::VideoGravity::Resize;
+}
+
 - (void)layoutSublayers
 {
     auto* sublayers = [self sublayers];
@@ -91,7 +111,14 @@ static const Seconds PostAnimationDelay { 100_ms };
 
     WebCore::FloatRect sourceVideoFrame = self.videoLayerFrame;
     WebCore::FloatRect targetVideoFrame = self.bounds;
-    CGAffineTransform transform = CGAffineTransformMakeScale(targetVideoFrame.width() / sourceVideoFrame.width(), targetVideoFrame.height() / sourceVideoFrame.height());
+    CGAffineTransform transform = CGAffineTransformIdentity;
+    if (!sourceVideoFrame.isEmpty()) {
+        if ([self resizePreservingGravity]) {
+            auto scale = std::fmax(targetVideoFrame.width() / sourceVideoFrame.width(), targetVideoFrame.height() / sourceVideoFrame.height());
+            transform = CGAffineTransformMakeScale(scale, scale);
+        } else
+            transform = CGAffineTransformMakeScale(targetVideoFrame.width() / sourceVideoFrame.width(), targetVideoFrame.height() / sourceVideoFrame.height());
+    }
 
     auto* videoSublayer = [sublayers objectAtIndex:0];
     [CATransaction begin];
@@ -136,7 +163,7 @@ static const Seconds PostAnimationDelay { 100_ms };
         self.videoLayerFrame = self.bounds;
         if (auto* mediaPlayerPrivateRemote = self.mediaPlayerPrivateRemote) {
             MachSendRight fenceSendRight = MachSendRight::adopt([_context createFencePort]);
-            mediaPlayerPrivateRemote->setVideoInlineSizeFenced(WebCore::IntSize(self.videoLayerFrame.size), fenceSendRight);
+            mediaPlayerPrivateRemote->setVideoInlineSizeFenced(WebCore::FloatSize(self.videoLayerFrame.size), fenceSendRight);
         }
     }
 
@@ -151,12 +178,13 @@ static const Seconds PostAnimationDelay { 100_ms };
 
 namespace WebKit {
 
-PlatformLayerContainer createVideoLayerRemote(MediaPlayerPrivateRemote* mediaPlayerPrivateRemote, LayerHostingContextID contextId)
+PlatformLayerContainer createVideoLayerRemote(MediaPlayerPrivateRemote* mediaPlayerPrivateRemote, LayerHostingContextID contextId, WebCore::MediaPlayerEnums::VideoGravity videoGravity)
 {
     // Initially, all the layers will be empty (both width and height are 0) and invisible.
     // The renderer will change the sizes of WKVideoLayerRemote to trigger layout of sublayers and make them visible.
     auto videoLayerRemote = adoptNS([[WKVideoLayerRemote alloc] init]);
     [videoLayerRemote setName:@"WKVideoLayerRemote"];
+    [videoLayerRemote setVideoGravity:videoGravity];
     [videoLayerRemote setMediaPlayerPrivateRemote:mediaPlayerPrivateRemote];
     [videoLayerRemote addSublayer:LayerHostingContext::createPlatformLayerForHostingContext(contextId).get()];
 

@@ -36,7 +36,6 @@
 #import "WKFoundation.h"
 #import "XPCServiceEntryPoint.h"
 #import <WebCore/FileHandle.h>
-#import <WebCore/FloatingPointEnvironment.h>
 #import <WebCore/SystemVersion.h>
 #import <mach-o/dyld.h>
 #import <mach/mach.h>
@@ -44,6 +43,7 @@
 #import <pal/crypto/CryptoDigest.h>
 #import <pal/spi/cocoa/CoreServicesSPI.h>
 #import <pal/spi/cocoa/LaunchServicesSPI.h>
+#import <pal/spi/cocoa/NotifySPI.h>
 #import <pwd.h>
 #import <stdlib.h>
 #import <sys/sysctl.h>
@@ -52,20 +52,26 @@
 #import <wtf/FileSystem.h>
 #import <wtf/RandomNumber.h>
 #import <wtf/Scope.h>
+#import <wtf/SoftLinking.h>
 #import <wtf/SystemTracing.h>
 #import <wtf/WallTime.h>
 #import <wtf/spi/darwin/SandboxSPI.h>
 #import <wtf/text/Base64.h>
 #import <wtf/text/StringBuilder.h>
+#import <wtf/text/cf/StringConcatenateCF.h>
 
 #if USE(APPLE_INTERNAL_SDK)
 #import <rootless.h>
 #endif
 
-#import <wtf/SoftLinking.h>
-
 SOFT_LINK_SYSTEM_LIBRARY(libsystem_info)
 SOFT_LINK_OPTIONAL(libsystem_info, mbr_close_connections, int, (), ());
+SOFT_LINK_OPTIONAL(libsystem_info, lookup_close_connections, int, (), ());
+
+#if ENABLE(NOTIFY_FILTERING)
+SOFT_LINK_SYSTEM_LIBRARY(libsystem_notify)
+SOFT_LINK_OPTIONAL(libsystem_notify, notify_set_options, void, __cdecl, (uint32_t));
+#endif
 
 #if PLATFORM(MAC)
 #define USE_CACHE_COMPILED_SANDBOX 1
@@ -145,14 +151,6 @@ struct SandboxInfo {
 constexpr uint32_t CachedSandboxVersionNumber = 1;
 #endif // USE(CACHE_COMPILED_SANDBOX)
 
-static void initializeTimerCoalescingPolicy()
-{
-    // Set task_latency and task_throughput QOS tiers as appropriate for a visible application.
-    struct task_qos_policy qosinfo = { LATENCY_QOS_TIER_0, THROUGHPUT_QOS_TIER_0 };
-    kern_return_t kr = task_policy_set(mach_task_self(), TASK_BASE_QOS_POLICY, (task_policy_t)&qosinfo, TASK_QOS_POLICY_COUNT);
-    ASSERT_UNUSED(kr, kr == KERN_SUCCESS);
-}
-
 void AuxiliaryProcess::launchServicesCheckIn()
 {
 #if HAVE(CSCHECKFIXDISABLE)
@@ -162,15 +160,6 @@ void AuxiliaryProcess::launchServicesCheckIn()
 
     _LSSetApplicationLaunchServicesServerConnectionStatus(0, 0);
     RetainPtr<CFDictionaryRef> unused = _LSApplicationCheckIn(kLSDefaultSessionID, CFBundleGetInfoDictionary(CFBundleGetMainBundle()));
-}
-
-void AuxiliaryProcess::platformInitialize()
-{
-    initializeTimerCoalescingPolicy();
-
-    FloatingPointEnvironment::singleton().saveMainThreadEnvironment();
-
-    [[NSFileManager defaultManager] changeCurrentDirectoryPath:[[NSBundle mainBundle] bundlePath]];
 }
 
 static OSStatus enableSandboxStyleFileQuarantine()
@@ -198,13 +187,21 @@ static OSStatus enableSandboxStyleFileQuarantine()
 #endif
 }
 
+static void setNotifyOptions()
+{
+#if ENABLE(NOTIFY_FILTERING)
+    if (notify_set_optionsPtr())
+        notify_set_optionsPtr()(NOTIFY_OPT_DISPATCH | NOTIFY_OPT_REGEN | NOTIFY_OPT_FILTERED);
+#endif
+}
+
 #if USE(CACHE_COMPILED_SANDBOX)
-static Optional<Vector<char>> fileContents(const String& path, bool shouldLock = false, OptionSet<FileSystem::FileLockMode> lockMode = FileSystem::FileLockMode::Exclusive)
+static std::optional<Vector<char>> fileContents(const String& path, bool shouldLock = false, OptionSet<FileSystem::FileLockMode> lockMode = FileSystem::FileLockMode::Exclusive)
 {
     FileHandle file = shouldLock ? FileHandle(path, FileSystem::FileOpenMode::Read, lockMode) : FileHandle(path, FileSystem::FileOpenMode::Read);
     file.open();
     if (!file)
-        return WTF::nullopt;
+        return std::nullopt;
 
     char chunk[4096];
     constexpr size_t chunkSize = WTF_ARRAY_LENGTH(chunk);
@@ -244,7 +241,7 @@ constexpr const char* processStorageClass(WebCore::AuxiliaryProcessType type)
 }
 #endif // USE(APPLE_INTERNAL_SDK)
 
-static Optional<CString> setAndSerializeSandboxParameters(const SandboxInitializationParameters& initializationParameters, const SandboxParametersPtr& sandboxParameters, const String& profileOrProfilePath, bool isProfilePath)
+static std::optional<CString> setAndSerializeSandboxParameters(const SandboxInitializationParameters& initializationParameters, const SandboxParametersPtr& sandboxParameters, const String& profileOrProfilePath, bool isProfilePath)
 {
     StringBuilder builder;
     for (size_t i = 0; i < initializationParameters.count(); ++i) {
@@ -259,7 +256,7 @@ static Optional<CString> setAndSerializeSandboxParameters(const SandboxInitializ
     if (isProfilePath) {
         auto contents = fileContents(profileOrProfilePath);
         if (!contents)
-            return WTF::nullopt;
+            return std::nullopt;
         builder.appendCharacters(contents->data(), contents->size());
     } else
         builder.append(profileOrProfilePath);
@@ -319,25 +316,20 @@ static String sandboxDirectory(WebCore::AuxiliaryProcessType processType, const 
 
 static String sandboxFilePath(const String& directoryPath, const CString& header)
 {
-    StringBuilder sandboxFile;
-    sandboxFile.append(directoryPath);
-    sandboxFile.append("/CompiledSandbox+");
-
     // Make the filename semi-unique based on the contents of the header.
+
     auto crypto = PAL::CryptoDigest::create(PAL::CryptoDigest::Algorithm::SHA_256);
     crypto->addBytes(header.data(), header.length());
-    Vector<uint8_t> hash = crypto->computeHash();
-    String readableHash = WTF::base64URLEncode(hash.data(), hash.size());
+    auto hash = crypto->computeHash();
 
-    sandboxFile.append(readableHash);
-    return sandboxFile.toString();
+    return makeString(directoryPath, "/CompiledSandbox+", base64URLEncoded(hash.data(), hash.size()));
 }
 
 static bool ensureSandboxCacheDirectory(const SandboxInfo& info)
 {
-    if (!FileSystem::fileIsDirectory(info.parentDirectoryPath, FileSystem::ShouldFollowSymbolicLinks::Yes)) {
+    if (FileSystem::fileTypeFollowingSymlinks(info.parentDirectoryPath) != FileSystem::FileType::Directory) {
         FileSystem::makeAllDirectories(info.parentDirectoryPath);
-        if (!FileSystem::fileIsDirectory(info.parentDirectoryPath, FileSystem::ShouldFollowSymbolicLinks::Yes)) {
+        if (FileSystem::fileTypeFollowingSymlinks(info.parentDirectoryPath) != FileSystem::FileType::Directory) {
             WTFLogAlways("%s: Could not create sandbox directory\n", getprogname());
             return false;
         }
@@ -367,8 +359,7 @@ static bool ensureSandboxCacheDirectory(const SandboxInfo& info)
         if (!rootless_check_datavault_flag(directoryPath.data(), storageClass))
             return true;
 
-        bool isDirectory = FileSystem::fileIsDirectory(info.directoryPath, FileSystem::ShouldFollowSymbolicLinks::No);
-        if (isDirectory) {
+        if (FileSystem::fileType(info.directoryPath) == FileSystem::FileType::Directory) {
             if (!FileSystem::deleteNonEmptyDirectory(info.directoryPath))
                 return false;
         } else {
@@ -383,14 +374,14 @@ static bool ensureSandboxCacheDirectory(const SandboxInfo& info)
         return false;
     }
 #else
-    bool hasSandboxDirectory = FileSystem::fileIsDirectory(info.directoryPath, FileSystem::ShouldFollowSymbolicLinks::Yes);
+    bool hasSandboxDirectory = FileSystem::fileTypeFollowingSymlinks(info.directoryPath) == FileSystem::FileType::Directory;
     if (!hasSandboxDirectory) {
         if (FileSystem::makeAllDirectories(info.directoryPath)) {
-            ASSERT(FileSystem::fileIsDirectory(info.directoryPath, FileSystem::ShouldFollowSymbolicLinks::Yes));
+            ASSERT(FileSystem::fileTypeFollowingSymlinks(info.directoryPath) == FileSystem::FileType::Directory);
             hasSandboxDirectory = true;
         } else {
             // We may have raced with someone else making it. That's ok.
-            hasSandboxDirectory = FileSystem::fileIsDirectory(info.directoryPath, FileSystem::ShouldFollowSymbolicLinks::Yes);
+            hasSandboxDirectory = FileSystem::fileTypeFollowingSymlinks(info.directoryPath) == FileSystem::FileType::Directory;
         }
     }
 
@@ -524,6 +515,8 @@ static bool tryApplyCachedSandbox(const SandboxInfo& info)
     ASSERT(static_cast<void *>(sandboxDataPtr + profile.size) <= static_cast<void *>(cachedSandboxContents.data() + cachedSandboxContents.size()));
     profile.data = sandboxDataPtr;
 
+    setNotifyOptions();
+
     if (sandbox_apply(&profile)) {
         WTFLogAlways("%s: Could not apply cached sandbox: %s\n", getprogname(), strerror(errno));
         return false;
@@ -562,6 +555,9 @@ static bool compileAndApplySandboxSlowCase(const String& profileOrProfilePath, b
     char* errorBuf;
     CString temp = isProfilePath ? FileSystem::fileSystemRepresentation(profileOrProfilePath) : profileOrProfilePath.utf8();
     uint64_t flags = isProfilePath ? SANDBOX_NAMED_EXTERNAL : 0;
+
+    setNotifyOptions();
+
     ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (sandbox_init_with_parameters(temp.data(), flags, parameters.namedParameterArray(), &errorBuf)) {
         ALLOW_DEPRECATED_DECLARATIONS_END
@@ -621,6 +617,8 @@ static bool applySandbox(const AuxiliaryProcessInitializationParameters& paramet
     if (!sandboxProfile)
         return compileAndApplySandboxSlowCase(profileOrProfilePath, isProfilePath, sandboxInitializationParameters);
 
+    setNotifyOptions();
+    
     if (sandbox_apply(sandboxProfile.get())) {
         WTFLogAlways("%s: Could not apply compiled sandbox: %s\n", getprogname(), strerror(errno));
         CRASH();
@@ -649,8 +647,7 @@ static void initializeSandboxParameters(const AuxiliaryProcessInitializationPara
             String clientIdentifier = codeSigningIdentifier(parameters.connectionIdentifier.xpcConnection.get());
             if (clientIdentifier.isNull())
                 clientIdentifier = parameters.clientIdentifier;
-            String defaultUserDirectorySuffix = makeString(String([[NSBundle mainBundle] bundleIdentifier]), '+', clientIdentifier);
-            sandboxParameters.setUserDirectorySuffix(defaultUserDirectorySuffix);
+            sandboxParameters.setUserDirectorySuffix(makeString([[NSBundle mainBundle] bundleIdentifier], '+', clientIdentifier));
         }
     }
 
@@ -701,6 +698,8 @@ static void initializeSandboxParameters(const AuxiliaryProcessInitializationPara
 #endif
     if (mbr_close_connectionsPtr())
         mbr_close_connectionsPtr()();
+    if (lookup_close_connectionsPtr())
+        lookup_close_connectionsPtr()();
 }
 
 void AuxiliaryProcess::initializeSandbox(const AuxiliaryProcessInitializationParameters& parameters, SandboxInitializationParameters& sandboxParameters)

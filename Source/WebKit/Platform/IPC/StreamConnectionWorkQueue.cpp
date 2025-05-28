@@ -36,7 +36,7 @@ StreamConnectionWorkQueue::StreamConnectionWorkQueue(const char* name)
 void StreamConnectionWorkQueue::dispatch(WTF::Function<void()>&& function)
 {
     {
-        Locker locker(m_lock);
+        Locker locker { m_lock };
         m_functions.append(WTFMove(function));
         ASSERT(!m_shouldQuit); // Re-entering during shutdown not supported.
     }
@@ -46,7 +46,7 @@ void StreamConnectionWorkQueue::dispatch(WTF::Function<void()>&& function)
 void StreamConnectionWorkQueue::addStreamConnection(StreamServerConnectionBase& connection)
 {
     {
-        Locker locker(m_lock);
+        Locker locker { m_lock };
         m_connections.add(connection);
         ASSERT(!m_shouldQuit); // Re-entering during shutdown not supported.
     }
@@ -57,32 +57,26 @@ void StreamConnectionWorkQueue::removeStreamConnection(StreamServerConnectionBas
 {
     ASSERT(m_processingThread);
     {
-        Locker locker(m_lock);
+        Locker locker { m_lock };
         m_connections.remove(connection);
         ASSERT(!m_shouldQuit); // Re-entering during shutdown not supported.
     }
-#if PLATFORM(COCOA)
     m_wakeUpSemaphore.signal();
-#endif
 }
 
 void StreamConnectionWorkQueue::stop()
 {
     m_shouldQuit = true;
-#if PLATFORM(COCOA)
     if (!m_processingThread)
         return;
     m_wakeUpSemaphore.signal();
     m_processingThread->waitForCompletion();
     m_processingThread = nullptr;
-#endif
 }
 
 void StreamConnectionWorkQueue::wakeUp()
 {
-#if PLATFORM(COCOA)
     m_wakeUpSemaphore.signal();
-#endif
 }
 
 IPC::Semaphore& StreamConnectionWorkQueue::wakeUpSemaphore()
@@ -92,7 +86,6 @@ IPC::Semaphore& StreamConnectionWorkQueue::wakeUpSemaphore()
 
 void StreamConnectionWorkQueue::wakeUpProcessingThread()
 {
-#if PLATFORM(COCOA)
     if (m_processingThread) {
         m_wakeUpSemaphore.signal();
         return;
@@ -109,7 +102,6 @@ void StreamConnectionWorkQueue::wakeUpProcessingThread()
         }
     };
     m_processingThread = Thread::create(m_name, WTFMove(task), ThreadType::Graphics, Thread::QOS::UserInteractive);
-#endif
 }
 
 void StreamConnectionWorkQueue::processStreams()
@@ -120,7 +112,7 @@ void StreamConnectionWorkQueue::processStreams()
         Deque<WTF::Function<void()>> functions;
         HashSet<Ref<StreamServerConnectionBase>> connections;
         {
-            auto locker = holdLock(m_lock);
+            Locker locker { m_lock };
             functions.swap(m_functions);
             connections = m_connections;
         }

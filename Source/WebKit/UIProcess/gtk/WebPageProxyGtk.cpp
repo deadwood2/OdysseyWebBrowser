@@ -58,25 +58,18 @@ void WebPageProxy::bindAccessibilityTree(const String& plugID)
 #endif
 }
 
-void WebPageProxy::updateEditorState(const EditorState& editorState)
+void WebPageProxy::didUpdateEditorState(const EditorState&, const EditorState& newEditorState)
 {
-    m_editorState = editorState;
-    
-    if (editorState.shouldIgnoreSelectionChanges)
+    if (newEditorState.shouldIgnoreSelectionChanges)
         return;
-    if (m_editorState.selectionIsRange)
+    if (newEditorState.selectionIsRange)
         WebPasteboardProxy::singleton().setPrimarySelectionOwner(focusedFrame());
     pageClient().selectionDidChange();
 }
 
-void WebPageProxy::setInputMethodState(Optional<InputMethodState>&& state)
+void WebPageProxy::setInputMethodState(std::optional<InputMethodState>&& state)
 {
     webkitWebViewBaseSetInputMethodState(WEBKIT_WEB_VIEW_BASE(viewWidget()), WTFMove(state));
-}
-
-void WebPageProxy::getCenterForZoomGesture(const WebCore::IntPoint& centerInViewCoordinates, WebCore::IntPoint& center)
-{
-    sendSync(Messages::WebPage::GetCenterForZoomGesture(centerInViewCoordinates), Messages::WebPage::GetCenterForZoomGesture::Reply(center));
 }
 
 bool WebPageProxy::makeGLContextCurrent()
@@ -102,15 +95,6 @@ void WebPageProxy::sendMessageToWebViewWithReply(UserMessage&& message, Completi
 void WebPageProxy::sendMessageToWebView(UserMessage&& message)
 {
     sendMessageToWebViewWithReply(WTFMove(message), [](UserMessage&&) { });
-}
-
-void WebPageProxy::themeDidChange()
-{
-    if (!hasRunningProcess())
-        return;
-
-    send(Messages::WebPage::ThemeDidChange(pageClient().themeName()));
-    effectiveAppearanceDidChange();
 }
 
 } // namespace WebKit

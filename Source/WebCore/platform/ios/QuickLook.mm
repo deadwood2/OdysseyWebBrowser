@@ -29,11 +29,12 @@
 #if USE(QUICK_LOOK)
 
 #import "ResourceRequest.h"
-#import <pal/ios/QuickLookSoftLink.h>
 #import <pal/spi/cocoa/NSFileManagerSPI.h>
 #import <wtf/FileSystem.h>
 #import <wtf/Lock.h>
 #import <wtf/NeverDestroyed.h>
+
+#import <pal/ios/QuickLookSoftLink.h>
 
 namespace WebCore {
 
@@ -41,13 +42,13 @@ const char* QLPreviewProtocol = "x-apple-ql-id";
 
 NSSet *QLPreviewGetSupportedMIMETypesSet()
 {
-    static NSSet *set = [PAL::softLink_QuickLook_QLPreviewGetSupportedMIMETypes() retain];
-    return set;
+    static NeverDestroyed<RetainPtr<NSSet>> set = PAL::softLink_QuickLook_QLPreviewGetSupportedMIMETypes();
+    return set.get().get();
 }
 
 static Lock qlPreviewConverterDictionaryLock;
 
-static NSMutableDictionary *QLPreviewConverterDictionary()
+static NSMutableDictionary *QLPreviewConverterDictionary() WTF_REQUIRES_LOCK(qlPreviewConverterDictionaryLock)
 {
     static NSMutableDictionary *dictionary = [[NSMutableDictionary alloc] init];
     return dictionary;
@@ -61,7 +62,7 @@ static NSMutableDictionary *QLContentDictionary()
 
 void removeQLPreviewConverterForURL(NSURL *url)
 {
-    auto locker = holdLock(qlPreviewConverterDictionaryLock);
+    Locker locker { qlPreviewConverterDictionaryLock };
     [QLPreviewConverterDictionary() removeObjectForKey:url];
     [QLContentDictionary() removeObjectForKey:url];
 }
@@ -70,7 +71,7 @@ static void addQLPreviewConverterWithFileForURL(NSURL *url, id converter, NSStri
 {
     ASSERT(url);
     ASSERT(converter);
-    auto locker = holdLock(qlPreviewConverterDictionaryLock);
+    Locker locker { qlPreviewConverterDictionaryLock };
     [QLPreviewConverterDictionary() setObject:converter forKey:url];
     [QLContentDictionary() setObject:(fileName ? fileName : @"") forKey:url];
 }
@@ -102,21 +103,21 @@ bool isQuickLookPreviewURL(const URL& url)
 
 static NSDictionary *temporaryFileAttributes()
 {
-    static NSDictionary *attributes = [@{
+    static NeverDestroyed<RetainPtr<NSDictionary>> attributes = @{
         NSFileOwnerAccountName : NSUserName(),
         NSFilePosixPermissions : [NSNumber numberWithInteger:(WEB_UREAD | WEB_UWRITE)],
-        } retain];
-    return attributes;
+    };
+    return attributes.get().get();
 }
 
 static NSDictionary *temporaryDirectoryAttributes()
 {
-    static NSDictionary *attributes = [@{
+    static NeverDestroyed<RetainPtr<NSDictionary>> attributes = @{
         NSFileOwnerAccountName : NSUserName(),
         NSFilePosixPermissions : [NSNumber numberWithInteger:(WEB_UREAD | WEB_UWRITE | WEB_UEXEC)],
         NSFileProtectionKey : NSFileProtectionCompleteUnlessOpen,
-        } retain];
-    return attributes;
+    };
+    return attributes.get().get();
 }
 
 NSString *createTemporaryFileForQuickLook(NSString *fileName)

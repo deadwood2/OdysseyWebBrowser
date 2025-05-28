@@ -35,6 +35,7 @@
 #import "WebPageProxy.h"
 #import "WebProcessProxy.h"
 #import <QuartzCore/QuartzCore.h>
+#import <WebCore/DestinationColorSpace.h>
 #import <WebCore/GraphicsContextCG.h>
 #import <WebCore/IOSurface.h>
 #import <WebCore/PlatformLayer.h>
@@ -48,7 +49,7 @@
 namespace WebKit {
 using namespace WebCore;
 
-#define RELEASE_LOG_IF_ALLOWED(...) RELEASE_LOG_IF(m_drawingArea && m_drawingArea->isAlwaysOnLoggingAllowed(), ViewState, __VA_ARGS__)
+#define REMOTE_LAYER_TREE_HOST_RELEASE_LOG(...) RELEASE_LOG(ViewState, __VA_ARGS__)
 
 RemoteLayerTreeHost::RemoteLayerTreeHost(RemoteLayerTreeDrawingAreaProxy& drawingArea)
     : m_drawingArea(&drawingArea)
@@ -75,7 +76,7 @@ bool RemoteLayerTreeHost::updateLayerTree(const RemoteLayerTreeTransaction& tran
     auto* rootNode = nodeForID(transaction.rootLayerID());
     
     if (!rootNode)
-        RELEASE_LOG_IF_ALLOWED("%p RemoteLayerTreeHost::updateLayerTree - failed to find root layer with ID %llu", this, transaction.rootLayerID());
+        REMOTE_LAYER_TREE_HOST_RELEASE_LOG("%p RemoteLayerTreeHost::updateLayerTree - failed to find root layer with ID %llu", this, transaction.rootLayerID());
 
     if (m_rootNode != rootNode) {
         m_rootNode = rootNode;
@@ -103,7 +104,7 @@ bool RemoteLayerTreeHost::updateLayerTree(const RemoteLayerTreeTransaction& tran
 
         if (!node) {
             // We have evidence that this can still happen, but don't know how (see r241899 for one already-fixed cause).
-            RELEASE_LOG_IF_ALLOWED("%p RemoteLayerTreeHost::updateLayerTree - failed to find layer with ID %llu", this, layerID);
+            REMOTE_LAYER_TREE_HOST_RELEASE_LOG("%p RemoteLayerTreeHost::updateLayerTree - failed to find layer with ID %llu", this, layerID);
             continue;
         }
 
@@ -119,7 +120,7 @@ bool RemoteLayerTreeHost::updateLayerTree(const RemoteLayerTreeTransaction& tran
 
         if (!node) {
             // We have evidence that this can still happen, but don't know how (see r241899 for one already-fixed cause).
-            RELEASE_LOG_IF_ALLOWED("%p RemoteLayerTreeHost::updateLayerTree - failed to find layer with ID %llu", this, layerID);
+            REMOTE_LAYER_TREE_HOST_RELEASE_LOG("%p RemoteLayerTreeHost::updateLayerTree - failed to find layer with ID %llu", this, layerID);
             continue;
         }
 
@@ -271,6 +272,9 @@ std::unique_ptr<RemoteLayerTreeNode> RemoteLayerTreeHost::makeNode(const RemoteL
     case PlatformCALayer::LayerTypePageTiledBackingLayer:
     case PlatformCALayer::LayerTypeTiledBackingTileLayer:
     case PlatformCALayer::LayerTypeScrollContainerLayer:
+#if ENABLE(MODEL_ELEMENT)
+    case PlatformCALayer::LayerTypeModelLayer:
+#endif
         return RemoteLayerTreeNode::createWithPlainLayer(properties.layerID);
 
     case PlatformCALayer::LayerTypeTransformLayer:
@@ -314,7 +318,7 @@ static void recursivelyMapIOSurfaceBackingStore(CALayer *layer)
 {
     if (layer.contents && CFGetTypeID((__bridge CFTypeRef)layer.contents) == CAMachPortGetTypeID()) {
         MachSendRight port = MachSendRight::create(CAMachPortGetPort((__bridge CAMachPortRef)layer.contents));
-        auto surface = WebCore::IOSurface::createFromSendRight(WTFMove(port), sRGBColorSpaceRef());
+        auto surface = WebCore::IOSurface::createFromSendRight(WTFMove(port), WebCore::DestinationColorSpace::SRGB());
         layer.contents = surface ? surface->asLayerContents() : nil;
     }
 
@@ -329,4 +333,4 @@ void RemoteLayerTreeHost::mapAllIOSurfaceBackingStore()
 
 } // namespace WebKit
 
-#undef RELEASE_LOG_IF_ALLOWED
+#undef REMOTE_LAYER_TREE_HOST_RELEASE_LOG

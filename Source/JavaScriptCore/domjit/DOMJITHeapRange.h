@@ -28,6 +28,12 @@
 #include <wtf/MathExtras.h>
 #include <wtf/PrintStream.h>
 
+#if OS(MORPHOS)
+#ifndef UINT16_MAX
+#define UINT16_MAX 0xffff
+#endif
+#endif
+
 namespace JSC { namespace DOMJIT {
 
 class HeapRange {

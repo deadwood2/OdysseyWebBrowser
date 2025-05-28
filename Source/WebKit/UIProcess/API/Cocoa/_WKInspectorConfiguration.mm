@@ -27,8 +27,9 @@
 #import "_WKInspectorConfigurationInternal.h"
 
 #import "WKProcessPoolInternal.h"
-#import "WKWebViewConfigurationPrivate.h"
+#import <WebKit/WKWebViewConfigurationPrivate.h>
 #import "WebURLSchemeHandlerCocoa.h"
+#import <WebCore/WebCoreObjCExtras.h>
 
 @implementation _WKInspectorConfiguration
 
@@ -44,6 +45,8 @@
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(_WKInspectorConfiguration.class, self))
+        return;
     _configuration->API::InspectorConfiguration::~InspectorConfiguration();
     [super dealloc];
 }

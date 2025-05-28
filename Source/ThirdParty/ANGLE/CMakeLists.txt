@@ -1,19 +1,26 @@
-if (UNIX AND NOT APPLE)
-    set(is_linux TRUE)
-endif()
-if (WIN32)
+set_property(DIRECTORY . PROPERTY FOLDER "ANGLE")
+
+if (APPLE)
+    set(is_mac TRUE)
+elseif (WIN32)
     set(is_win TRUE)
     set(angle_enable_d3d9 TRUE)
     set(angle_enable_d3d11 TRUE)
     set(angle_is_winuwp FALSE)
-endif()
-if (APPLE)
-    set(is_mac TRUE)
-endif()
+elseif (UNIX)
+    set(is_linux TRUE)
+    if (ENABLE_X11_TARGET)
+        set(angle_use_x11 TRUE)
+    endif ()
+endif ()
 
 include(Compiler.cmake)
 include(GLESv2.cmake)
+
+# ANGLE Renderer backends
 include(D3D.cmake)
+include(GL.cmake)
+include(Metal.cmake)
 
 set(no_gl_prototypes
     GL_GLES_PROTOTYPES=0
@@ -26,6 +33,12 @@ set(gl_prototypes
     GL_GLEXT_PROTOTYPES
     EGL_EGLEXT_PROTOTYPES
 )
+
+# Default library types for ANGLE
+# Override these in Platform*.cmake for your port as needed.
+set(ANGLE_LIBRARY_TYPE STATIC)
+set(GLESv2_LIBRARY_TYPE STATIC)
+set(EGL_LIBRARY_TYPE STATIC)
 
 # ANGLE makes a number of small static libraries that are then joined into a
 # bigger library that is built shared. Rather than making the small libraries
@@ -89,7 +102,6 @@ if (WIN32)
     endif()
 endif ()
 
-
 set(ANGLEGLESv2_LIBRARIES
     ANGLE
 )
@@ -111,8 +123,8 @@ add_subdirectory(include)
 add_library(ANGLEFramework INTERFACE)
 add_dependencies(ANGLEFramework GLSLANGHeaders ANGLEHeaders)
 
-if (USE_ANGLE_EGL)
-    add_library(ANGLE STATIC
+if (USE_ANGLE_EGL OR USE_ANGLE_WEBGL)
+    add_library(ANGLE ${ANGLE_LIBRARY_TYPE}
         ${ANGLE_SOURCES}
         ${libangle_sources}
         ${libangle_headers}
@@ -127,37 +139,61 @@ if (USE_ANGLE_EGL)
         LIBANGLE_IMPLEMENTATION
     )
     target_compile_definitions(ANGLE PUBLIC ${ANGLE_DEFINITIONS})
+    target_link_libraries(ANGLE PRIVATE ZLIB::ZLIB)
 
-    add_library(GLESv2 SHARED
+    target_compile_definitions(ANGLEFramework INTERFACE ${gl_prototypes})
+
+    add_library(GLESv2 ${GLESv2_LIBRARY_TYPE}
         ${libglesv2_sources}
     )
     target_include_directories(GLESv2 PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
-    target_compile_definitions(GLESv2 PRIVATE LIBGLESV2_IMPLEMENTATION)
-    target_link_libraries(GLESv2 ${ANGLEGLESv2_LIBRARIES})
+    target_compile_definitions(GLESv2 PRIVATE 
+        ${no_gl_prototypes}
+        LIBGLESV2_IMPLEMENTATION
+    )
 
-    add_library(EGL SHARED
-        ${libegl_sources}
-    )
-    target_include_directories(EGL PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
-    target_compile_definitions(EGL PRIVATE
-        ${gl_prototypes}
-        EGLAPI=
-    )
-    target_link_libraries(EGL GLESv2)
+    target_link_libraries(GLESv2 PRIVATE ${ANGLEGLESv2_LIBRARIES} ${CMAKE_DL_LIBS})
 
     if (WIN32)
+        # Output library name according to the .def
         target_sources(GLESv2 PRIVATE src/libGLESv2/libGLESv2_autogen.def)
-        target_sources(EGL PRIVATE src/libEGL/libEGL.def)
-
-        # Output library names according to the .def
         set_target_properties(GLESv2 PROPERTIES OUTPUT_NAME libGLESv2)
-        set_target_properties(EGL PROPERTIES OUTPUT_NAME libEGL)
     endif ()
 
-    target_link_libraries(ANGLEFramework INTERFACE EGL GLESv2)
-    target_compile_definitions(ANGLEFramework INTERFACE ${gl_prototypes})
+    add_library(GLESv2Framework INTERFACE)
+    target_link_libraries(GLESv2Framework INTERFACE GLESv2)
+    target_include_directories(GLESv2Framework INTERFACE ${ANGLE_FRAMEWORK_HEADERS_DIR})
+    target_compile_definitions(GLESv2Framework INTERFACE USE_SYSTEM_EGL)
+    add_library(ANGLE::GLES ALIAS GLESv2Framework)
+
+    if (USE_ANGLE_EGL)
+        add_library(EGL ${EGL_LIBRARY_TYPE}
+            ${libegl_sources}
+        )
+        target_include_directories(EGL PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
+        target_compile_definitions(EGL PRIVATE
+            ${ANGLE_DEFINITIONS}
+            ${gl_prototypes}
+            EGLAPI=
+        )
+
+        target_link_libraries(EGL PRIVATE GLESv2 ${CMAKE_DL_LIBS})
+
+        set_target_properties(EGL PROPERTIES LINKER_LANGUAGE CXX)
+        if (WIN32)
+            # Output library names according to the .def
+            target_sources(EGL PRIVATE src/libEGL/libEGL.def)
+            set_target_properties(EGL PROPERTIES OUTPUT_NAME libEGL)
+        endif ()
+
+        add_library(EGLFramework INTERFACE)
+        target_include_directories(EGLFramework INTERFACE ${ANGLE_FRAMEWORK_HEADERS_DIR}/)
+        target_compile_definitions(EGLFramework INTERFACE ${gl_prototypes})
+        target_link_libraries(EGLFramework INTERFACE EGL)
+        add_library(ANGLE::EGL ALIAS EGLFramework)
+    endif ()
 else ()
-    add_library(ANGLE STATIC ${ANGLE_SOURCES})
+    add_library(ANGLE ${ANGLE_LIBRARY_TYPE} ${ANGLE_SOURCES})
     target_include_directories(ANGLE PRIVATE ${ANGLE_PRIVATE_INCLUDE_DIRECTORIES})
     target_link_libraries(ANGLE PRIVATE ${CMAKE_DL_LIBS})
     target_compile_definitions(ANGLE PRIVATE
@@ -197,7 +233,7 @@ if (USE_ANGLE_WEBGL)
             ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/adjust-angle-include-paths.py
         VERBATIM
     )
-    add_dependencies(ANGLEFramework ANGLE-webgl-headers)
+    add_dependencies(GLESv2Framework ANGLE-webgl-headers)
 endif ()
 
 if (COMPILER_IS_GCC_OR_CLANG)
@@ -205,10 +241,11 @@ if (COMPILER_IS_GCC_OR_CLANG)
                                       -Wno-extra
                                       -Wno-suggest-attribute=format
                                       -Wno-undef
-                                      -Wno-unused-parameter)
+                                      -Wno-unused-parameter
+                                      -Wno-return-type)
 endif ()
 
 target_link_libraries(ANGLEFramework INTERFACE ANGLE)
 target_include_directories(ANGLEFramework INTERFACE ${ANGLE_FRAMEWORK_HEADERS_DIR})
 
-set_property(DIRECTORY . PROPERTY FOLDER "ANGLE")
+add_library(ANGLE::ANGLE ALIAS ANGLEFramework)

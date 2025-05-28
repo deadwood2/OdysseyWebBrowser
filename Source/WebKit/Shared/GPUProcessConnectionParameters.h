@@ -35,30 +35,50 @@ struct GPUProcessConnectionParameters {
 #if HAVE(TASK_IDENTITY_TOKEN)
     MachSendRight webProcessIdentityToken;
 #endif
+    Vector<String> overrideLanguages;
+#if ENABLE(IPC_TESTING_API)
+    bool ignoreInvalidMessageForTesting { false };
+#endif
 
     void encode(IPC::Encoder& encoder) const
     {
 #if HAVE(TASK_IDENTITY_TOKEN)
         encoder << webProcessIdentityToken;
-#else
-        UNUSED_PARAM(encoder);
+#endif
+        encoder << overrideLanguages;
+#if ENABLE(IPC_TESTING_API)
+        encoder << ignoreInvalidMessageForTesting;
 #endif
     }
 
-    static Optional<GPUProcessConnectionParameters> decode(IPC::Decoder& decoder)
+    static std::optional<GPUProcessConnectionParameters> decode(IPC::Decoder& decoder)
     {
 #if HAVE(TASK_IDENTITY_TOKEN)
-        Optional<MachSendRight> webProcessIdentityToken;
+        std::optional<MachSendRight> webProcessIdentityToken;
         decoder >> webProcessIdentityToken;
         if (!webProcessIdentityToken)
-            return WTF::nullopt;
-#else
-        UNUSED_PARAM(decoder);
+            return std::nullopt;
+#endif
+
+        std::optional<Vector<String>> overrideLanguages;
+        decoder >> overrideLanguages;
+        if (!overrideLanguages)
+            return std::nullopt;
+
+#if ENABLE(IPC_TESTING_API)
+        std::optional<bool> ignoreInvalidMessageForTesting;
+        decoder >> ignoreInvalidMessageForTesting;
+        if (!ignoreInvalidMessageForTesting)
+            return std::nullopt;
 #endif
 
         return GPUProcessConnectionParameters {
 #if HAVE(TASK_IDENTITY_TOKEN)
             WTFMove(*webProcessIdentityToken),
+#endif
+            WTFMove(*overrideLanguages),
+#if ENABLE(IPC_TESTING_API)
+            *ignoreInvalidMessageForTesting,
 #endif
         };
     }

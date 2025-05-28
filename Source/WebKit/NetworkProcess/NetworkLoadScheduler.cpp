@@ -31,7 +31,7 @@
 
 namespace WebKit {
 
-static constexpr size_t maximumActiveCountForLowPriority = 6;
+static constexpr size_t maximumActiveCountForLowPriority = 2;
 
 class NetworkLoadScheduler::HostContext {
     WTF_MAKE_FAST_ALLOCATED;
@@ -42,8 +42,6 @@ public:
     void schedule(NetworkLoad&);
     void unschedule(NetworkLoad&);
     void prioritize(NetworkLoad&);
-
-    void finishPage(WebCore::PageIdentifier);
 
 private:
     void start(NetworkLoad&);
@@ -56,8 +54,11 @@ private:
 void NetworkLoadScheduler::HostContext::schedule(NetworkLoad& load)
 {
     auto startImmediately = [&] {
-        auto priority = load.parameters().request.priority();
-        if (priority > WebCore::ResourceLoadPriority::Low)
+        auto& request = load.currentRequest();
+        if (request.priority() > WebCore::ResourceLoadPriority::Low)
+            return true;
+        
+        if (request.isConditional())
             return true;
 
         if (!shouldDelayLowPriority())

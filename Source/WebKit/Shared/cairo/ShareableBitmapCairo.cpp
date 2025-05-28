@@ -31,8 +31,7 @@
 #include <WebCore/BitmapImage.h>
 #include <WebCore/CairoOperations.h>
 #include <WebCore/CairoUtilities.h>
-#include <WebCore/GraphicsContextImplCairo.h>
-#include <WebCore/PlatformContextCairo.h>
+#include <WebCore/GraphicsContextCairo.h>
 #include <WebCore/NotImplemented.h>
 
 namespace WebKit {
@@ -40,12 +39,12 @@ using namespace WebCore;
 
 static const cairo_format_t cairoFormat = CAIRO_FORMAT_ARGB32;
 
-Checked<unsigned, RecordOverflow> ShareableBitmap::calculateBytesPerRow(WebCore::IntSize size, const Configuration&)
+CheckedUint32 ShareableBitmap::calculateBytesPerRow(WebCore::IntSize size, const Configuration&)
 {
     return cairo_format_stride_for_width(cairoFormat, size.width());
 }
 
-Checked<unsigned, RecordOverflow> ShareableBitmap::calculateBytesPerPixel(const Configuration&)
+CheckedUint32 ShareableBitmap::calculateBytesPerPixel(const Configuration&)
 {
     return 4;
 }
@@ -59,8 +58,7 @@ static inline RefPtr<cairo_surface_t> createSurfaceFromData(void* data, const We
 std::unique_ptr<GraphicsContext> ShareableBitmap::createGraphicsContext()
 {
     RefPtr<cairo_surface_t> image = createCairoSurface();
-    RefPtr<cairo_t> bitmapContext = adoptRef(cairo_create(image.get()));
-    return makeUnique<GraphicsContext>(GraphicsContextImplCairo::createFactory(bitmapContext.get()));
+    return makeUnique<GraphicsContextCairo>(image.get());
 }
 
 void ShareableBitmap::paint(GraphicsContext& context, const IntPoint& dstPoint, const IntRect& srcRect)

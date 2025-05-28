@@ -34,16 +34,18 @@
 #import "ResourceHandleClient.h"
 #import "ResourceRequest.h"
 #import "ResourceResponse.h"
+#import "SecurityOrigin.h"
 #import "SharedBuffer.h"
 #import "SynchronousLoaderClient.h"
 #import "WebCoreURLResponse.h"
 #import <pal/spi/cf/CFNetworkSPI.h>
+#import <pal/spi/cocoa/NSURLConnectionSPI.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/MainThread.h>
 
 using namespace WebCore;
 
-static bool scheduledWithCustomRunLoopMode(const Optional<SchedulePairHashSet>& pairs)
+static bool scheduledWithCustomRunLoopMode(const std::optional<SchedulePairHashSet>& pairs)
 {
     if (!pairs)
         return false;
@@ -97,7 +99,7 @@ static bool scheduledWithCustomRunLoopMode(const Optional<SchedulePairHashSet>& 
 
 - (void)detachHandle
 {
-    LockHolder lock(m_mutex);
+    Locker locker { m_lock };
 
     m_handle = nullptr;
 
@@ -139,6 +141,7 @@ static bool scheduledWithCustomRunLoopMode(const Optional<SchedulePairHashSet>& 
             return;
         }
 
+        ResourceResponse response(redirectResponse.get());
         ResourceRequest redirectRequest = newRequest.get();
         if ([newRequest.get() HTTPBodyStream]) {
             ASSERT(m_handle->firstRequest().httpBody());
@@ -146,7 +149,15 @@ static bool scheduledWithCustomRunLoopMode(const Optional<SchedulePairHashSet>& 
         }
         if (m_handle->firstRequest().httpContentType().isEmpty())
             redirectRequest.clearHTTPContentType();
-        m_handle->willSendRequest(WTFMove(redirectRequest), redirectResponse.get(), [self, protectedSelf = WTFMove(protectedSelf)](ResourceRequest&& request) {
+
+        // Check if the redirected url is allowed to access the redirecting url's timing information.
+        if (!m_handle->hasCrossOriginRedirect() && !WebCore::SecurityOrigin::create(redirectRequest.url())->canRequest(redirectResponse.get().URL))
+            m_handle->markAsHavingCrossOriginRedirect();
+        m_handle->checkTAO(response);
+
+        m_handle->incrementRedirectCount();
+
+        m_handle->willSendRequest(WTFMove(redirectRequest), WTFMove(response), [self, protectedSelf = WTFMove(protectedSelf)](ResourceRequest&& request) {
             m_requestResult = request.nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody);
             m_semaphore.signal();
         });
@@ -155,7 +166,7 @@ static bool scheduledWithCustomRunLoopMode(const Optional<SchedulePairHashSet>& 
     [self callFunctionOnMainThread:WTFMove(work)];
     m_semaphore.wait();
 
-    LockHolder lock(m_mutex);
+    Locker locker { m_lock };
     if (!m_handle)
         return nil;
 
@@ -213,7 +224,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
     [self callFunctionOnMainThread:WTFMove(work)];
     m_semaphore.wait();
 
-    LockHolder lock(m_mutex);
+    Locker locker { m_lock };
     if (!m_handle)
         return NO;
 
@@ -251,8 +262,13 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
             [r _setMIMEType:@"text/html"];
 
         ResourceResponse resourceResponse(r.get());
+        m_handle->checkTAO(resourceResponse);
+
+        auto metrics = copyTimingData(connection.get(), *m_handle);
         resourceResponse.setSource(ResourceResponse::Source::Network);
-        resourceResponse.setDeprecatedNetworkLoadMetrics(ResourceHandle::getConnectionTimingData(connection.get()));
+        resourceResponse.setDeprecatedNetworkLoadMetrics(Box<NetworkLoadMetrics> { metrics });
+
+        m_handle->setNetworkLoadMetrics(WTFMove(metrics));
 
         m_handle->didReceiveResponse(WTFMove(resourceResponse), [self, protectedSelf = WTFMove(protectedSelf)] {
             m_semaphore.signal();
@@ -314,11 +330,26 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 
     LOG(Network, "Handle %p delegate connectionDidFinishLoading:%p", m_handle, connection);
 
-    auto work = [self = self, protectedSelf = retainPtr(self)] () mutable {
+    auto work = [self = self, protectedSelf = retainPtr(self), connection = retainPtr(connection), timingData = retainPtr([connection _timingData])] () mutable {
         if (!m_handle || !m_handle->client())
             return;
 
-        m_handle->client()->didFinishLoading(m_handle);
+        if (auto metrics = m_handle->networkLoadMetrics()) {
+            if (double responseEndTime = [[timingData objectForKey:@"_kCFNTimingDataResponseEnd"] doubleValue])
+                metrics->responseEnd = WallTime::fromRawSeconds(adoptNS([[NSDate alloc] initWithTimeIntervalSinceReferenceDate:responseEndTime]).get().timeIntervalSince1970).approximateMonotonicTime();
+            else
+                metrics->responseEnd = metrics->responseStart;
+            metrics->protocol = (NSString *)[timingData objectForKey:@"_kCFNTimingDataNetworkProtocolName"];
+            metrics->responseBodyBytesReceived = [[timingData objectForKey:@"_kCFNTimingDataResponseBodyBytesReceived"] unsignedLongLongValue];
+            metrics->responseBodyDecodedSize = [[timingData objectForKey:@"_kCFNTimingDataResponseBodyBytesDecoded"] unsignedLongLongValue];
+            metrics->markComplete();
+            m_handle->client()->didFinishLoading(m_handle, *metrics);
+        } else {
+            NetworkLoadMetrics emptyMetrics;
+            emptyMetrics.markComplete();
+            m_handle->client()->didFinishLoading(m_handle, emptyMetrics);
+        }
+
         if (m_messageQueue) {
             m_messageQueue->kill();
             m_messageQueue = nullptr;
@@ -374,7 +405,7 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
     [self callFunctionOnMainThread:WTFMove(work)];
     m_semaphore.wait();
 
-    LockHolder lock(m_mutex);
+    Locker locker { m_lock };
     if (!m_handle)
         return nil;
 

@@ -47,6 +47,7 @@
 #import <UIKit/UIViewController_Private.h>
 #import <UIKit/UIWKTextInteractionAssistant.h>
 #import <UIKit/UIWebFormAccessory.h>
+#import <UIKit/UIWebTouchEventsGestureRecognizer.h>
 #import <UIKit/_UINavigationInteractiveTransition.h>
 
 IGNORE_WARNINGS_BEGIN("deprecated-implementations")
@@ -188,6 +189,10 @@ typedef NS_OPTIONS(NSInteger, UIWKDocumentRequestFlags) {
 - (void)accessoryDone;
 @end
 
+typedef NS_ENUM(NSInteger, UIWKGestureType) {
+    UIWKGestureLoupe
+};
+
 @protocol UIWKInteractionViewProtocol
 - (void)pasteWithCompletionHandler:(void (^)(void))completionHandler;
 - (void)requestAutocorrectionRectsForString:(NSString *)input withCompletionHandler:(void (^)(UIWKAutocorrectionRects *rectsForInput))completionHandler;
@@ -198,6 +203,7 @@ typedef NS_OPTIONS(NSInteger, UIWKDocumentRequestFlags) {
 - (void)updateSelectionWithExtentPoint:(CGPoint)point completionHandler:(void (^)(BOOL selectionEndIsMoving))completionHandler;
 - (void)updateSelectionWithExtentPoint:(CGPoint)point withBoundary:(UITextGranularity)granularity completionHandler:(void (^)(BOOL selectionEndIsMoving))completionHandler;
 - (void)selectWordForReplacement;
+- (BOOL)textInteractionGesture:(UIWKGestureType)gesture shouldBeginAtPoint:(CGPoint)point;
 @property (nonatomic, readonly) NSString *selectedText;
 
 @optional
@@ -247,6 +253,13 @@ IGNORE_WARNINGS_END
 
 @interface NSObject (UIScrollViewDelegate_ForWebKitOnly)
 - (void)_scrollView:(UIScrollView *)scrollView asynchronouslyHandleScrollEvent:(UIScrollEvent *)scrollEvent completion:(void (^)(BOOL handled))completion;
+@end
+
+@interface UITextInteractionAssistant : NSObject <UIResponderStandardEditActions>
+@end
+
+@interface UIWKTextInteractionAssistant : UITextInteractionAssistant
+- (void)lookup:(NSString *)textWithContext withRange:(NSRange)range fromRect:(CGRect)presentationRect;
 @end
 
 #endif // USE(APPLE_INTERNAL_SDK)
@@ -306,6 +319,13 @@ typedef NS_ENUM(NSUInteger, _UIClickInteractionEvent) {
 
 @interface UIResponder (Internal)
 - (void)_share:(id)sender;
+@end
+
+@interface UIWebGeolocationPolicyDecider : NSObject
+@end
+
+@interface UIWebGeolocationPolicyDecider ()
++ (instancetype)sharedPolicyDecider;
 @end
 
 #endif // PLATFORM(IOS_FAMILY)

@@ -31,6 +31,7 @@
 #include "GPUConnectionToWebProcess.h"
 #include "MessageReceiver.h"
 #include "RemoteSourceBufferIdentifier.h"
+#include "RemoteSourceBufferProxyMessagesReplies.h"
 #include "TrackPrivateRemoteIdentifier.h"
 #include <WebCore/MediaDescription.h>
 #include <WebCore/SourceBufferPrivate.h>
@@ -44,6 +45,7 @@ class Decoder;
 }
 
 namespace WebCore {
+class ContentType;
 class MediaSample;
 class PlatformTimeRanges;
 }
@@ -75,15 +77,15 @@ private:
     void sourceBufferPrivateDidParseSample(double sampleDuration) final;
     void sourceBufferPrivateDidDropSample() final;
     void sourceBufferPrivateBufferedDirtyChanged(bool) final;
-    void sourceBufferPrivateBufferedRangesChanged(const WebCore::PlatformTimeRanges&) final;
     void sourceBufferPrivateDidReceiveRenderingError(int64_t errorCode) final;
     void sourceBufferPrivateReportExtraMemoryCost(uint64_t extraMemory) final;
 
     // IPC::MessageReceiver
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
-    // void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) final;
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
 
     void setActive(bool);
+    void canSwitchToType(const WebCore::ContentType&, CompletionHandler<void(bool)>&&);
     void setMode(WebCore::SourceBufferAppendMode);
     void append(const IPC::DataReference&);
     void abort();
@@ -92,14 +94,16 @@ private:
     void setMediaSourceEnded(bool);
     void setReadyState(WebCore::MediaPlayer::ReadyState);
     void startChangingType();
-    void updateBufferedFromTrackBuffers(bool sourceIsEnded);
-    void removeCodedFrames(const MediaTime& start, const MediaTime& end, const MediaTime& currentTime, bool isEnded, CompletionHandler<void()>&&);
-    void evictCodedFrames(uint64_t newDataSize, uint64_t pendingAppendDataCapacity, uint64_t maximumBufferSize, const MediaTime& currentTime, const MediaTime& duration, bool isEnded);
+    void updateBufferedFromTrackBuffers(bool sourceIsEnded, CompletionHandler<void(WebCore::PlatformTimeRanges&&)>&&);
+    using RemoveCodedFramesAsyncReply = Messages::RemoteSourceBufferProxy::RemoveCodedFramesAsyncReply;
+    using EvictCodedFramesDelayedReply= Messages::RemoteSourceBufferProxy::EvictCodedFramesDelayedReply;
+    void removeCodedFrames(const MediaTime& start, const MediaTime& end, const MediaTime& currentTime, bool isEnded, RemoveCodedFramesAsyncReply&&);
+    void evictCodedFrames(uint64_t newDataSize, uint64_t maximumBufferSize, const MediaTime& currentTime, const MediaTime& duration, bool isEnded, EvictCodedFramesDelayedReply&&);
     void addTrackBuffer(TrackPrivateRemoteIdentifier);
     void resetTrackBuffers();
     void clearTrackBuffers();
     void setAllTrackBuffersNeedRandomAccess();
-    void reenqueueMediaIfNeeded(const MediaTime& currentMediaTime, uint64_t pendingAppendDataCapacity, uint64_t maximumBufferSize);
+    void reenqueueMediaIfNeeded(const MediaTime& currentMediaTime);
     void setGroupStartTimestamp(const MediaTime&);
     void setGroupStartTimestampToEndTimestamp();
     void setShouldGenerateTimestamps(bool);
@@ -110,6 +114,7 @@ private:
     void seekToTime(const MediaTime&);
     void updateTrackIds(Vector<std::pair<TrackPrivateRemoteIdentifier, TrackPrivateRemoteIdentifier>>&&);
     void bufferedSamplesForTrackId(TrackPrivateRemoteIdentifier, CompletionHandler<void(Vector<String>&&)>&&);
+    void enqueuedSamplesForTrackID(TrackPrivateRemoteIdentifier, CompletionHandler<void(Vector<String>&&)>&&);
 
     WeakPtr<GPUConnectionToWebProcess> m_connectionToWebProcess;
     RemoteSourceBufferIdentifier m_identifier;

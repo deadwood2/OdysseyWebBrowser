@@ -1,4 +1,4 @@
-; Copyright (C) 2010-2020 Apple Inc. All rights reserved.
+; Copyright (C) 2010-2021 Apple Inc. All rights reserved.
 ;
 ; Redistribution and use in source and binary forms, with or without
 ; modification, are permitted provided that the following conditions
@@ -23,6 +23,7 @@
 
 (version 1)
 (deny default (with partial-symbolication))
+(deny nvram*)
 (allow system-audit file-read-metadata)
 
 ;;;
@@ -58,7 +59,8 @@
     (subpath "/System/Library/Frameworks")
     (subpath "/System/Library/PrivateFrameworks")
     (subpath "/usr/lib")
-    (subpath "/usr/appleinternal/lib/sanitizers"))
+    (subpath "/usr/appleinternal/lib") ;; <rdar://problem/72317112>
+)
 
 (allow file-read-metadata
     (literal "/etc")
@@ -151,6 +153,7 @@
 
 ;;; process-info* defaults to allow; deny it and then allow operations we actually need.
 (deny process-info*)
+(allow process-info-dirtycontrol (target self))
 (allow process-info-pidinfo)
 (allow process-info-setcontrol (target self))
 (allow process-codesigning-status*)
@@ -158,16 +161,34 @@
 (deny sysctl*)
 (allow sysctl-read
     (sysctl-name
+        "hw.activecpu" ;; <rdar://problem/56795575>
         "hw.byteorder"
         "hw.busfrequency_max"
+        "hw.cacheconfig" ;; <rdar://problem/78213563>
+        "hw.cachelinesize" ;; <rdar://problem/56795575>
+        "hw.cachesize" ;; <rdar://problem/78213563>
+        "hw.cpusubfamily"
+        "hw.cputhreadtype"
         "hw.cputype"
+        "hw.l1dcachesize" ;; <rdar://problem/56795575>
+        "hw.l1icachesize" ;; <rdar://problem/56795575>
+        "hw.l2cachesize" ;; <rdar://problem/56795575>
+        "hw.l3cachesize" ;; <rdar://problem/56795575>
+        "hw.logicalcpu" ;; <rdar://problem/56795575>
+        "hw.logicalcpu_max" ;; <rdar://problem/56795575>
         "hw.machine"
         "hw.memsize"
         "hw.model"
         "hw.ncpu"
+        "hw.nperflevels" ;; <rdar://problem/76783596>
+        "hw.pagesize" ;; <rdar://problem/76783596>
+        "hw.pagesize_compat" ;; <rdar://problem/76783596>
+        "hw.physicalcpu" ;; <rdar://problem/58416475>
+        "hw.physicalcpu_max" ;; <rdar://problem/58416475>
         "hw.vectorunit"
         "kern.bootargs" ;; <rdar://problem/47738015>
         "kern.hostname"
+        "kern.hv_vmm_present"
         "kern.maxfilesperproc"
         "kern.memorystatus_level"
         "kern.osproductversion" ;; <rdar://problem/51756739>
@@ -184,9 +205,10 @@
     (sysctl-name-regex #"^hw.(busfrequency|cachelinesize|cpufrequency(|_max)|pagesize|tbfrequency)(|_compat)")
     (sysctl-name-regex #"^hw.l.+cachesize")
     (sysctl-name-regex #"^hw.(logical|physical)cpu_max")
-    (sysctl-name-regex #"^hw.optional\.")
     (sysctl-name-regex #"^kern.os(release|type|variant_status|version)")
     (sysctl-name-regex #"^net.routetable")
+    (sysctl-name-prefix "hw.optional.") ;; <rdar://problem/71462790>
+    (sysctl-name-prefix "hw.perflevel") ;; <rdar://problem/76783596>
 )
 
 (allow sysctl-write
@@ -223,6 +245,7 @@
     (iokit-property "Description")
     (iokit-property "Development")
     (iokit-property-regex #"^Device( Characteristics|EqID)")
+    (iokit-property "DiskImageURL")
     (iokit-property "DisplayRouting")
     (iokit-property "Driver is Ready")
     (iokit-property "Ejectable")
@@ -371,6 +394,7 @@
     (iokit-property "filevault-image") ;; Needed by LaunchServices
     (iokit-property "graphic-options")
     (iokit-property "hda-gfx")
+    (iokit-property "housing-color")
     (iokit-property-regex #"^id(Product|Vendor)")
     (iokit-property "iofb_version")
     (iokit-property "image-encrypted")
@@ -458,12 +482,14 @@
 (deny mach-lookup (xpc-service-name-prefix ""))
 (allow mach-lookup
     (xpc-service-name "com.apple.PerformanceAnalysis.animationperfd")
-    (xpc-service-name "com.apple.accessibility.mediaaccessibilityd")
     (xpc-service-name "com.apple.audio.SandboxHelper")
     (xpc-service-name "com.apple.coremedia.videodecoder")
     (xpc-service-name "com.apple.coremedia.videoencoder")
     (xpc-service-name "com.apple.hiservices-xpcservice")
-    (xpc-service-name "com.apple.print.normalizerd")
+)
+
+(allow mach-lookup
+    (global-name "com.apple.accessibility.mediaaccessibilityd")
 )
 
 ;; Utility functions for home directory relative path filters
@@ -572,6 +598,42 @@
         "pbs" ;; Needed for NSAttributedString <rdar://problem/10844321>
 ))
 
+#if ENABLE(CFPREFS_DIRECT_MODE)
+(allow file-read*
+    (literal "/Library/Preferences/.GlobalPreferences.plist")
+    (home-subpath "/Library/Preferences/.GlobalPreferences.plist")
+    (home-subpath "/Library/Preferences/.GlobalPreferences_m.plist")
+    (home-subpath "/Library/Preferences/com.apple.security.plist")
+    (home-subpath "/Library/Preferences/com.apple.Accessibility.plist")
+    (home-subpath "/Library/Preferences/com.apple.ATS.plist")
+    (home-subpath "/Library/Preferences/com.apple.CoreGraphics.plist")
+    (home-subpath "/Library/Preferences/com.apple.DownloadAssessment.plist")
+    (home-subpath "/Library/Preferences/com.apple.HIToolbox.plist")
+    (home-subpath "/Library/Preferences/com.apple.LaunchServices.plist")
+    (home-subpath "/Library/Preferences/com.apple.MultitouchSupport.plist")
+    (home-subpath "/Library/Preferences/com.apple.ServicesMenu.Services.plist")
+    (home-subpath "/Library/Preferences/com.apple.ViewBridge.plist")
+    (home-subpath "/Library/Preferences/com.apple.WebKit.plist")
+    (home-subpath "/Library/Preferences/com.apple.WebFoundation.plist")
+    (home-subpath "/Library/Preferences/com.apple.avfoundation.plist")
+    (home-subpath "/Library/Preferences/com.apple.avfoundation.frecents.plist")
+    (home-subpath "/Library/Preferences/com.apple.avfoundation.videoperformancehud.plist")
+    (home-subpath "/Library/Preferences/com.apple.coremedia.plist")
+    (home-subpath "/Library/Preferences/com.apple.crypto.plist")
+    (home-subpath "/Library/Preferences/com.apple.driver.AppleBluetoothMultitouch.mouse.plist")
+    (home-subpath "/Library/Preferences/com.apple.driver.AppleBluetoothMultitouch.trackpad.plist")
+    (home-subpath "/Library/Preferences/com.apple.driver.AppleHIDMouse.plist")
+    (home-subpath "/Library/Preferences/com.apple.lookup.shared.plist")
+    (home-subpath "/Library/Preferences/com.apple.mediaaccessibility.plist")
+    (home-subpath "/Library/Preferences/com.apple.networkConnect.plist")
+    (home-subpath "/Library/Preferences/com.apple.speech.voice.prefs.plist")
+    (home-subpath "/Library/Preferences/com.apple.systemsound.plist")
+    (home-subpath "/Library/Preferences/com.apple.universalaccess.plist")
+    (home-subpath "/Library/Preferences/edu.mit.Kerberos.plist")
+    (home-subpath "/Library/Preferences/pbs.plist")
+)
+#endif
+
 ; (Temporary) backward compatibility with non-CFPreferences readers.
 (allow file-read*
     (literal "/Library/Preferences/com.apple.ViewBridge.plist"))
@@ -643,7 +705,9 @@
 #endif
     (global-name "com.apple.audio.AudioComponentRegistrar")
     (global-name "com.apple.awdd")
+#if !ENABLE(CFPREFS_DIRECT_MODE)
     (global-name "com.apple.cfprefsd.agent")
+#endif
     (global-name "com.apple.cookied")
     (global-name "com.apple.iconservices")
     (global-name "com.apple.iconservices.store")
@@ -667,7 +731,9 @@
        (global-name "com.apple.audio.toolbox.reporting.service")
        (global-name "com.apple.audio.SystemSoundServer-OSX")
        (global-name "com.apple.audio.audiohald")
+#if !ENABLE(CFPREFS_DIRECT_MODE)
        (global-name "com.apple.cfprefsd.daemon")
+#endif
        (global-name "com.apple.coreservices.launchservicesd")
        (global-name "com.apple.fonts")
        (global-name "com.apple.mediaremoted.xpc")
@@ -795,6 +861,7 @@
 (allow mach-lookup
     (global-name "com.apple.coremedia.endpoint.xpc")
     (global-name "com.apple.coremedia.endpointstream.xpc")
+    (global-name "com.apple.coremedia.endpointstreamaudioengine.xpc") ;; <rdar://76029596>
     (global-name "com.apple.coremedia.endpointplaybacksession.xpc")
     ; <rdar://problem/35509194>
     (global-name "com.apple.coremedia.endpointremotecontrolsession.xpc")
@@ -866,22 +933,37 @@
             domains))
 
 ;; Media capture, microphone access
-;; FIXME: make device-microphone access gated by the "com.apple.webkit.microphone" extension.
-(allow device-microphone)
+(with-filter (extension "com.apple.webkit.microphone")
+    (allow device-microphone))
 
 ;; Media capture, camera access
 (with-filter (extension "com.apple.webkit.camera")
+    (shared-preferences-read "com.apple.cmio")
     (shared-preferences-read "com.apple.coremedia")
     (allow file-read* (subpath "/Library/CoreMediaIO/Plug-Ins/DAL"))
     (allow mach-lookup (extension "com.apple.app-sandbox.mach"))
     (allow mach-lookup
         (global-name "com.apple.cmio.AppleCameraAssistant")
+        (global-name "com.apple.cmio.registerassistantservice")
+        (global-name "com.apple.cmio.registerassistantservice.system-extensions")
         ;; Apple DAL assistants
         (global-name "com.apple.cmio.VDCAssistant")
         (global-name "com.apple.cmio.AVCAssistant")
         (global-name "com.apple.cmio.IIDCVideoAssistant")
         ;; QuickTimeIIDCDigitizer assistant
-        (global-name "com.apple.IIDCAssistant"))
+        (global-name "com.apple.IIDCAssistant")
+        ;; applecamerad
+        (require-all
+            (extension "com.apple.webkit.extension.mach")
+            (global-name "com.apple.applecamerad")
+        )
+#if HAVE(ADDITIONAL_APPLE_CAMERA_SERVICE)
+        (require-all
+            (extension "com.apple.webkit.extension.mach")
+            (global-name "com.apple.appleh13camerad")
+        )
+#endif
+        )
     (allow iokit-open
         ;; QuickTimeUSBVDCDigitizer
         (iokit-user-client-class "IOUSBDeviceUserClientV2")
@@ -895,4 +977,12 @@
 
 (allow iokit-open
     (iokit-user-client-class "AppleAVDUserClient")
+)
+
+(when (equal? (param "CPU") "arm64")
+    (allow iokit-open
+        (iokit-user-client-class "IOMobileFramebufferUserClient")
+        ;; VideoToolbox VTImageRotationSession
+        (iokit-user-client-class "IOSurfaceAcceleratorClient")
+    )
 )

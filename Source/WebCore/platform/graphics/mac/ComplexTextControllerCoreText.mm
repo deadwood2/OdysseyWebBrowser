@@ -142,13 +142,13 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
         static const void* optionKeys[] = { kCTTypesetterOptionForcedEmbeddingLevel };
         static const void* ltrOptionValues[] = { CFNumberCreate(kCFAllocatorDefault, kCFNumberShortType, &ltrForcedEmbeddingLevelValue) };
         static const void* rtlOptionValues[] = { CFNumberCreate(kCFAllocatorDefault, kCFNumberShortType, &rtlForcedEmbeddingLevelValue) };
-        static CFDictionaryRef ltrTypesetterOptions = CFDictionaryCreate(kCFAllocatorDefault, optionKeys, ltrOptionValues, WTF_ARRAY_LENGTH(optionKeys), &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-        static CFDictionaryRef rtlTypesetterOptions = CFDictionaryCreate(kCFAllocatorDefault, optionKeys, rtlOptionValues, WTF_ARRAY_LENGTH(optionKeys), &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+        static NeverDestroyed<RetainPtr<CFDictionaryRef>> ltrTypesetterOptions = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, optionKeys, ltrOptionValues, WTF_ARRAY_LENGTH(optionKeys), &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+        static NeverDestroyed<RetainPtr<CFDictionaryRef>> rtlTypesetterOptions = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, optionKeys, rtlOptionValues, WTF_ARRAY_LENGTH(optionKeys), &kCFCopyStringDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
 
         ProviderInfo info = { cp, length, stringAttributes.get() };
         // FIXME: Some SDKs complain that the second parameter below cannot be null.
         IGNORE_NULL_CHECK_WARNINGS_BEGIN
-        RetainPtr<CTTypesetterRef> typesetter = adoptCF(CTTypesetterCreateWithUniCharProviderAndOptions(&provideStringAndAttributes, 0, &info, m_run.ltr() ? ltrTypesetterOptions : rtlTypesetterOptions));
+        RetainPtr<CTTypesetterRef> typesetter = adoptCF(CTTypesetterCreateWithUniCharProviderAndOptions(&provideStringAndAttributes, 0, &info, m_run.ltr() ? ltrTypesetterOptions.get().get() : rtlTypesetterOptions.get().get()));
         IGNORE_NULL_CHECK_WARNINGS_END
 
         if (!typesetter)
@@ -185,13 +185,13 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
             CTFontRef runCTFont = static_cast<CTFontRef>(CFDictionaryGetValue(runAttributes, kCTFontAttributeName));
             ASSERT(runCTFont && CFGetTypeID(runCTFont) == CTFontGetTypeID());
             RetainPtr<CFTypeRef> runFontEqualityObject = FontPlatformData::objectForEqualityCheck(runCTFont);
-            if (!WTF::safeCFEqual(runFontEqualityObject.get(), font->platformData().objectForEqualityCheck().get())) {
+            if (!safeCFEqual(runFontEqualityObject.get(), font->platformData().objectForEqualityCheck().get())) {
                 // Begin trying to see if runFont matches any of the fonts in the fallback list.
                 for (unsigned i = 0; !m_font.fallbackRangesAt(i).isNull(); ++i) {
                     runFont = m_font.fallbackRangesAt(i).fontForCharacter(baseCharacter);
                     if (!runFont)
                         continue;
-                    if (WTF::safeCFEqual(runFont->platformData().objectForEqualityCheck().get(), runFontEqualityObject.get()))
+                    if (safeCFEqual(runFont->platformData().objectForEqualityCheck().get(), runFontEqualityObject.get()))
                         break;
                     runFont = nullptr;
                 }

@@ -60,6 +60,8 @@
 
 #if !COMPILER(CLANG) || WTF_CPP_STD_VER >= 14
 
+extern "C" { void dprintf(const char *,...); }
+
 namespace WTF {
 
 #if COMPILER_SUPPORTS(EXCEPTIONS)
@@ -67,7 +69,11 @@ namespace WTF {
 #define __NOEXCEPT noexcept
 #define __NOEXCEPT_(__exception) noexcept(__exception)
 #else
+#if OS(MORPHOS)
+#define __THROW_EXCEPTION(__exception) do { auto ex = __exception; dprintf("" __FILE__ "/%d: " #__exception "(%s)\n", __LINE__, ex.what()); CRASH(); } while (0);
+#else
 #define __THROW_EXCEPTION(__exception) do { (void)__exception; CRASH(); } while (0);
+#endif
 #define __NOEXCEPT
 #define __NOEXCEPT_(...)
 #endif
@@ -78,6 +84,8 @@ struct __in_place_private{
 
     template<size_t>
     struct __value_holder;
+	
+    const char *what() { return "__in_place_private"; }
 };
 
 

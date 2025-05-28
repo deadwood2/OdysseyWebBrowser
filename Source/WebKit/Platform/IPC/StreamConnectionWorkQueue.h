@@ -54,14 +54,15 @@ private:
     void processStreams();
 
     const char* const m_name;
+
     Semaphore m_wakeUpSemaphore;
     RefPtr<Thread> m_processingThread;
 
     std::atomic<bool> m_shouldQuit { false };
 
     Lock m_lock;
-    Deque<Function<void()>> m_functions;
-    HashSet<Ref<StreamServerConnectionBase>> m_connections;
+    Deque<Function<void()>> m_functions WTF_GUARDED_BY_LOCK(m_lock);
+    HashSet<Ref<StreamServerConnectionBase>> m_connections WTF_GUARDED_BY_LOCK(m_lock);
 };
 
 }

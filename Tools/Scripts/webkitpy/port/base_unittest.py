@@ -41,6 +41,7 @@ from webkitpy.port import Port
 from webkitpy.port.test import add_unit_tests_to_mock_filesystem, TestPort
 
 from webkitcorepy import OutputCapture
+from webkitscmpy import mocks
 
 
 def cmp(a, b):
@@ -323,8 +324,24 @@ class PortTest(unittest.TestCase):
         )
 
     def test_commits_for_upload(self):
-        port = self.make_port(port_name='foo')
-        self.assertEqual([{'repository_id': 'webkit', 'id': '2738499', 'branch': 'trunk'}], port.commits_for_upload())
+        with mocks.local.Svn(path='/'), mocks.local.Git():
+            port = self.make_port(port_name='foo')
+            self.assertEqual([{'repository_id': 'webkit', 'id': '6', 'branch': 'trunk'}], port.commits_for_upload())
+
+    def test_commits_for_upload_git_svn(self):
+        with mocks.local.Svn(), mocks.local.Git(path='/', git_svn=True), OutputCapture():
+            port = self.make_port(port_name='foo')
+            self.assertEqual([{
+                'repository_id': 'webkit',
+                'revision': 9,
+                'hash': 'd8bce26fa65c6fc8f39c17927abb77f69fab82fc',
+                'identifier': '5@main',
+                'branch': 'main',
+                'author': {'emails': ['jbedard@apple.com'], 'name': 'Jonathan Bedard'},
+                'message': 'Patch Series\ngit-svn-id: https://svn.example.org/repository//trunk@9 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
+                'timestamp': 1601668000,
+                'order': 1,
+            }], port.commits_for_upload())
 
 
 class NaturalCompareTest(unittest.TestCase):

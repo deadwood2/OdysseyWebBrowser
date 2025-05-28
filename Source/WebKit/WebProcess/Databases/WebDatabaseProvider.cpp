@@ -35,14 +35,14 @@
 namespace WebKit {
 using namespace WebCore;
 
-static HashMap<uint64_t, WebDatabaseProvider*>& databaseProviders()
+static HashMap<PageGroupIdentifier, WebDatabaseProvider*>& databaseProviders()
 {
-    static NeverDestroyed<HashMap<uint64_t, WebDatabaseProvider*>> databaseProviders;
+    static NeverDestroyed<HashMap<PageGroupIdentifier, WebDatabaseProvider*>> databaseProviders;
 
     return databaseProviders;
 }
 
-Ref<WebDatabaseProvider> WebDatabaseProvider::getOrCreate(uint64_t identifier)
+Ref<WebDatabaseProvider> WebDatabaseProvider::getOrCreate(PageGroupIdentifier identifier)
 {
     auto& slot = databaseProviders().add(identifier, nullptr).iterator->value;
     if (slot)
@@ -54,7 +54,7 @@ Ref<WebDatabaseProvider> WebDatabaseProvider::getOrCreate(uint64_t identifier)
     return databaseProvider;
 }
 
-WebDatabaseProvider::WebDatabaseProvider(uint64_t identifier)
+WebDatabaseProvider::WebDatabaseProvider(PageGroupIdentifier identifier)
     : m_identifier(identifier)
 {
 }
@@ -66,11 +66,9 @@ WebDatabaseProvider::~WebDatabaseProvider()
     databaseProviders().remove(m_identifier);
 }
 
-#if ENABLE(INDEXED_DATABASE)
-WebCore::IDBClient::IDBConnectionToServer& WebDatabaseProvider::idbConnectionToServerForSession(const PAL::SessionID&)
+WebCore::IDBClient::IDBConnectionToServer& WebDatabaseProvider::idbConnectionToServerForSession(PAL::SessionID)
 {
     return WebProcess::singleton().ensureNetworkProcessConnection().idbConnectionToServer().coreConnectionToServer();
 }
-#endif
 
 }

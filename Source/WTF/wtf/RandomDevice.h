@@ -35,7 +35,7 @@ class RandomDevice {
     WTF_MAKE_NONCOPYABLE(RandomDevice);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-#if OS(DARWIN) || OS(FUCHSIA) || OS(WINDOWS)
+#if OS(DARWIN) || OS(FUCHSIA) || OS(WINDOWS) || OS(MORPHOS)
     RandomDevice() = default;
 #else
     RandomDevice();
@@ -48,7 +48,7 @@ public:
     void cryptographicallyRandomValues(unsigned char* buffer, size_t length);
 
 private:
-#if OS(DARWIN) || OS(FUCHSIA) || OS(WINDOWS)
+#if OS(DARWIN) || OS(FUCHSIA) || OS(WINDOWS) || OS(MORPHOS)
 #elif OS(UNIX)
     int m_fd { -1 };
 #else

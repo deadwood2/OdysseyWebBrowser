@@ -55,6 +55,24 @@ RefPtr<SourceBufferParser> SourceBufferParser::create(const ContentType& type, b
     return nullptr;
 }
 
+static SourceBufferParser::CallOnClientThreadCallback callOnMainThreadCallback()
+{
+    return [](Function<void()>&& function) {
+        callOnMainThread(WTFMove(function));
+    };
+}
+
+void SourceBufferParser::setCallOnClientThreadCallback(CallOnClientThreadCallback&& callback)
+{
+    ASSERT(callback);
+    m_callOnClientThreadCallback = WTFMove(callback);
+}
+
+SourceBufferParser::SourceBufferParser()
+    : m_callOnClientThreadCallback(callOnMainThreadCallback())
+{
+}
+
 void SourceBufferParser::setMinimumAudioSampleDuration(float)
 {
 }
@@ -96,7 +114,7 @@ size_t SourceBufferParser::Segment::read(size_t position, size_t sizeToRead, uin
         [&](const RetainPtr<MTPluginByteSourceRef>& byteSource) -> size_t
         {
             size_t sizeRead = 0;
-            if (MTPluginByteSourceRead(byteSource.get(), sizeToRead, CheckedInt64(position).unsafeGet(), destination, &sizeRead) != noErr)
+            if (MTPluginByteSourceRead(byteSource.get(), sizeToRead, CheckedInt64(position), destination, &sizeRead) != noErr)
                 return 0;
             return sizeRead;
         },

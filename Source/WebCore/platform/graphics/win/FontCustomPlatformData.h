@@ -21,6 +21,7 @@
 #ifndef FontCustomPlatformData_h
 #define FontCustomPlatformData_h
 
+#include "FontPlatformData.h"
 #include "TextFlags.h"
 #include <windows.h>
 #include <wtf/Forward.h>
@@ -36,7 +37,7 @@ typedef struct CGFont* CGFontRef;
 namespace WebCore {
 
 class FontDescription;
-class FontPlatformData;
+class FontMemoryResource;
 class SharedBuffer;
 struct FontSelectionSpecifiedCapabilities;
 struct FontVariantSettings;
@@ -48,23 +49,18 @@ struct FontCustomPlatformData {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(FontCustomPlatformData);
 public:
-    FontCustomPlatformData(HANDLE fontReference, const String& name)
-        : fontReference(fontReference)
-        , name(name)
-    {
-    }
-
+    FontCustomPlatformData(const String& name, FontPlatformData::CreationData&&);
     ~FontCustomPlatformData();
 
     FontPlatformData fontPlatformData(const FontDescription&, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities);
 
     static bool supportsFormat(const String&);
 
-    HANDLE fontReference;
     String name;
 #if USE(CORE_TEXT)
     RetainPtr<CTFontDescriptorRef> fontDescriptor;
 #endif
+    FontPlatformData::CreationData creationData;
 };
 
 std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer&, const String&);

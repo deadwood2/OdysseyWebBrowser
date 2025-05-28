@@ -28,6 +28,7 @@
 #include "JSDOMConstructorNotConstructable.h"
 #include "JSDOMConvertStrings.h"
 #include "JSDOMExceptionHandling.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMWrapperCache.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreJSClientData.h"
@@ -84,6 +85,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestInterfaceLeadingUnderscorePrototype, J
 
 using JSTestInterfaceLeadingUnderscoreDOMConstructor = JSDOMConstructorNotConstructable<JSTestInterfaceLeadingUnderscore>;
 
+template<> const ClassInfo JSTestInterfaceLeadingUnderscoreDOMConstructor::s_info = { "TestInterfaceLeadingUnderscore", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestInterfaceLeadingUnderscoreDOMConstructor) };
+
 template<> JSValue JSTestInterfaceLeadingUnderscoreDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -96,8 +99,6 @@ template<> void JSTestInterfaceLeadingUnderscoreDOMConstructor::initializeProper
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestInterfaceLeadingUnderscore"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestInterfaceLeadingUnderscoreDOMConstructor::s_info = { "TestInterfaceLeadingUnderscore", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestInterfaceLeadingUnderscoreDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -144,18 +145,13 @@ JSObject* JSTestInterfaceLeadingUnderscore::prototype(VM& vm, JSDOMGlobalObject&
 
 JSValue JSTestInterfaceLeadingUnderscore::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestInterfaceLeadingUnderscoreDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestInterfaceLeadingUnderscoreDOMConstructor, DOMConstructorID::TestInterfaceLeadingUnderscore>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 void JSTestInterfaceLeadingUnderscore::destroy(JSC::JSCell* cell)
 {
     JSTestInterfaceLeadingUnderscore* thisObject = static_cast<JSTestInterfaceLeadingUnderscore*>(cell);
     thisObject->JSTestInterfaceLeadingUnderscore::~JSTestInterfaceLeadingUnderscore();
-}
-
-template<> inline JSTestInterfaceLeadingUnderscore* IDLAttribute<JSTestInterfaceLeadingUnderscore>::cast(JSGlobalObject& lexicalGlobalObject, EncodedJSValue thisValue)
-{
-    return jsDynamicCast<JSTestInterfaceLeadingUnderscore*>(JSC::getVM(&lexicalGlobalObject), JSValue::decode(thisValue));
 }
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestInterfaceLeadingUnderscoreConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
@@ -176,9 +172,9 @@ static inline JSValue jsTestInterfaceLeadingUnderscore_readonlyGetter(JSGlobalOb
     RELEASE_AND_RETURN(throwScope, (toJS<IDLDOMString>(lexicalGlobalObject, throwScope, impl.readonly())));
 }
 
-JSC_DEFINE_CUSTOM_GETTER(jsTestInterfaceLeadingUnderscore_readonly, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
+JSC_DEFINE_CUSTOM_GETTER(jsTestInterfaceLeadingUnderscore_readonly, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestInterfaceLeadingUnderscore>::get<jsTestInterfaceLeadingUnderscore_readonlyGetter, CastedThisErrorBehavior::Assert>(*lexicalGlobalObject, thisValue, "readonly");
+    return IDLAttribute<JSTestInterfaceLeadingUnderscore>::get<jsTestInterfaceLeadingUnderscore_readonlyGetter, CastedThisErrorBehavior::Assert>(*lexicalGlobalObject, thisValue, attributeName);
 }
 
 JSC::IsoSubspace* JSTestInterfaceLeadingUnderscore::subspaceForImpl(JSC::VM& vm)

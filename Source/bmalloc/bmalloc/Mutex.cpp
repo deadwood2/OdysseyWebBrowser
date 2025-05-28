@@ -33,6 +33,10 @@
 #endif
 #include <thread>
 
+#if BOS(MORPHOS)
+#include <sched.h>
+#endif
+
 namespace bmalloc {
 
 static inline void yield()

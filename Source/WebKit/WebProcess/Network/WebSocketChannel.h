@@ -28,6 +28,7 @@
 #include "DataReference.h"
 #include "MessageReceiver.h"
 #include "MessageSender.h"
+#include "WebPageProxyIdentifier.h"
 #include <WebCore/NetworkSendQueue.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ResourceResponse.h>
@@ -45,7 +46,7 @@ namespace WebKit {
 
 class WebSocketChannel : public IPC::MessageSender, public IPC::MessageReceiver, public WebCore::ThreadableWebSocketChannel, public RefCounted<WebSocketChannel> {
 public:
-    static Ref<WebSocketChannel> create(WebCore::Document&, WebCore::WebSocketChannelClient&);
+    static Ref<WebSocketChannel> create(WebPageProxyIdentifier, WebCore::Document&, WebCore::WebSocketChannelClient&);
     ~WebSocketChannel();
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
@@ -56,7 +57,7 @@ public:
     using RefCounted<WebSocketChannel>::deref;
 
 private:
-    WebSocketChannel(WebCore::Document&, WebCore::WebSocketChannelClient&);
+    WebSocketChannel(WebPageProxyIdentifier, WebCore::Document&, WebCore::WebSocketChannelClient&);
 
     static WebCore::NetworkSendQueue createMessageQueue(WebCore::Document&, WebSocketChannel&);
 
@@ -76,7 +77,7 @@ private:
     void refThreadableWebSocketChannel() final { ref(); }
     void derefThreadableWebSocketChannel() final { deref(); }
 
-    void notifySendFrame(WebCore::WebSocketFrame::OpCode, const char* data, size_t length);
+    void notifySendFrame(WebCore::WebSocketFrame::OpCode, const uint8_t* data, size_t length);
     void logErrorMessage(const String&);
 
     // Message receivers
@@ -116,6 +117,7 @@ private:
     WebCore::WebSocketChannelInspector m_inspector;
     WebCore::ResourceRequest m_handshakeRequest;
     WebCore::ResourceResponse m_handshakeResponse;
+    WebPageProxyIdentifier m_webPageProxyID;
 };
 
 } // namespace WebKit

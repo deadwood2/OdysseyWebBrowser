@@ -32,6 +32,10 @@
 #include <climits>
 #include <mutex>
 
+#if BOS(MORPHOS) && !defined(UINT8_MAX)
+#   define UINT8_MAX       ((uint8_t)(255U))
+#endif
+
 namespace bmalloc {
 
 class IsoHeapImplBase;

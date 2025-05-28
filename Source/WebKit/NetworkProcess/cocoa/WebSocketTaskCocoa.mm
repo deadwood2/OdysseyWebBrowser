@@ -40,9 +40,12 @@ namespace WebKit {
 
 using namespace WebCore;
 
-WebSocketTask::WebSocketTask(NetworkSocketChannel& channel, RetainPtr<NSURLSessionWebSocketTask>&& task)
+WebSocketTask::WebSocketTask(NetworkSocketChannel& channel, WebPageProxyIdentifier pageID, WeakPtr<SessionSet>&& sessionSet, const WebCore::ResourceRequest& request, RetainPtr<NSURLSessionWebSocketTask>&& task)
     : m_channel(channel)
     , m_task(WTFMove(task))
+    , m_pageID(pageID)
+    , m_sessionSet(WTFMove(sessionSet))
+    , m_partition(request.cachePartition())
 {
     readNextMessage();
     m_channel.didSendHandshakeRequest(ResourceRequest { [m_task currentRequest] });
@@ -137,11 +140,14 @@ void WebSocketTask::sendData(const IPC::DataReference& data, CompletionHandler<v
 
 void WebSocketTask::close(int32_t code, const String& reason)
 {
-    // FIXME: Should NSURLSession provide a way to call cancelWithCloseCode without any specific code.
     if (code == WebCore::WebSocketChannel::CloseEventCodeNotSpecified)
-        code = 1005;
+        code = NSURLSessionWebSocketCloseCodeInvalid;
     auto utf8 = reason.utf8();
     auto nsData = adoptNS([[NSData alloc] initWithBytes:utf8.data() length:utf8.length()]);
+    if ([m_task respondsToSelector:@selector(_sendCloseCode:reason:)]) {
+        [m_task _sendCloseCode:(NSURLSessionWebSocketCloseCode)code reason:nsData.get()];
+        return;
+    }
     [m_task cancelWithCloseCode:(NSURLSessionWebSocketCloseCode)code reason:nsData.get()];
 }
 

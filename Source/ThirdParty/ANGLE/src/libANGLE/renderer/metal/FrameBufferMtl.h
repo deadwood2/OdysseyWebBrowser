@@ -23,7 +23,7 @@ namespace mtl
 class RenderCommandEncoder;
 }  // namespace mtl
 class ContextMtl;
-class WindowSurfaceMtl;
+class SurfaceMtl;
 
 class FramebufferMtl : public FramebufferImpl
 {
@@ -154,7 +154,7 @@ class FramebufferMtl : public FramebufferImpl
 
     // Initialize load store options for a render pass's first start (i.e. not render pass resuming
     // from interruptions such as those caused by a conversion compute pass)
-    void setLoadStoreActionOnRenderPassFirstStart(mtl::RenderPassAttachmentDesc *attachmentOut);
+    void setLoadStoreActionOnRenderPassFirstStart(mtl::RenderPassAttachmentDesc *attachmentOut, const bool forceDepthStencilMultisampleLoad);
 
     // Fill RenderPassDesc with relevant attachment's info from GL front end.
     angle::Result prepareRenderPass(const gl::Context *context, mtl::RenderPassDesc *descOut);
@@ -205,6 +205,8 @@ class FramebufferMtl : public FramebufferImpl
                                      uint32_t dstBufferOffset,
                                      uint32_t dstBufferRowPitch,
                                      const mtl::BufferRef *dstBuffer) const;
+
+    RenderTargetMtl * getColorReadRenderTargetNoCache(const gl::Context *context) const;
 
     // NOTE: we cannot use RenderTargetCache here because it doesn't support separate
     // depth & stencil attachments as of now. Separate depth & stencil could be useful to

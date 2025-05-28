@@ -36,48 +36,26 @@
 #include <libgen.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#if !OS(MORPHOS)
 #include <sys/statvfs.h>
+#endif
 #include <sys/types.h>
 #include <unistd.h>
 #include <wtf/EnumTraits.h>
-#include <wtf/FileMetadata.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
+#include <wtf/text/StringHash.h>
+#include <wtf/HashMap.h>
+
+#if OS(MORPHOS)
+#include <libraries/charsets.h>
+#include <proto/dos.h>
+#endif
 
 namespace WTF {
 
 namespace FileSystemImpl {
-
-bool fileExists(const String& path)
-{
-    if (path.isNull())
-        return false;
-
-    CString fsRep = fileSystemRepresentation(path);
-
-    if (!fsRep.data() || fsRep.data()[0] == '\0')
-        return false;
-
-    return access(fsRep.data(), F_OK) != -1;
-}
-
-bool deleteFile(const String& path)
-{
-    CString fsRep = fileSystemRepresentation(path);
-
-    if (!fsRep.data() || fsRep.data()[0] == '\0') {
-        LOG_ERROR("File failed to delete. Failed to get filesystem representation to create CString from cfString or filesystem representation is a null value");
-        return false;
-    }
-
-    // unlink(...) returns 0 on successful deletion of the path and non-zero in any other case (including invalid permissions or non-existent file)
-    bool unlinked = !unlink(fsRep.data());
-    if (!unlinked && errno != ENOENT)
-        LOG_ERROR("File failed to delete. Error message: %s", strerror(errno));
-
-    return unlinked;
-}
 
 PlatformFileHandle openFile(const String& path, FileOpenMode mode, FileAccessPermission permission, bool failIfFileExists)
 {
@@ -149,7 +127,7 @@ bool truncateFile(PlatformFileHandle handle, long long offset)
     return !ftruncate(handle, offset);
 }
 
-int writeToFile(PlatformFileHandle handle, const char* data, int length)
+int writeToFile(PlatformFileHandle handle, const void* data, int length)
 {
     do {
         int bytesWritten = write(handle, data, static_cast<size_t>(length));
@@ -159,7 +137,7 @@ int writeToFile(PlatformFileHandle handle, const char* data, int length)
     return -1;
 }
 
-int readFromFile(PlatformFileHandle handle, char* data, int length)
+int readFromFile(PlatformFileHandle handle, void* data, int length)
 {
     do {
         int bytesRead = read(handle, data, static_cast<size_t>(length));
@@ -186,158 +164,184 @@ bool unlockFile(PlatformFileHandle handle)
 }
 #endif
 
-#if !PLATFORM(MAC)
-bool deleteEmptyDirectory(const String& path)
-{
-    CString fsRep = fileSystemRepresentation(path);
-
-    if (!fsRep.data() || fsRep.data()[0] == '\0')
-        return false;
-
-    // rmdir(...) returns 0 on successful deletion of the path and non-zero in any other case (including invalid permissions or non-existent file)
-    return !rmdir(fsRep.data());
-}
-#endif
-
-bool getFileSize(const String& path, long long& result)
-{
-    CString fsRep = fileSystemRepresentation(path);
-
-    if (!fsRep.data() || fsRep.data()[0] == '\0')
-        return false;
-
-    struct stat fileInfo;
-
-    if (stat(fsRep.data(), &fileInfo))
-        return false;
-
-    result = fileInfo.st_size;
-    return true;
-}
-
-bool getFileSize(PlatformFileHandle handle, long long& result)
+std::optional<uint64_t> fileSize(PlatformFileHandle handle)
 {
     struct stat fileInfo;
     if (fstat(handle, &fileInfo))
-        return false;
+        return std::nullopt;
 
-    result = fileInfo.st_size;
-    return true;
+    return fileInfo.st_size;
 }
 
-Optional<WallTime> getFileCreationTime(const String& path)
+std::optional<WallTime> fileCreationTime(const String& path)
 {
 #if OS(DARWIN) || OS(OPENBSD) || OS(NETBSD) || OS(FREEBSD)
     CString fsRep = fileSystemRepresentation(path);
 
     if (!fsRep.data() || fsRep.data()[0] == '\0')
-        return WTF::nullopt;
+        return std::nullopt;
 
     struct stat fileInfo;
 
     if (stat(fsRep.data(), &fileInfo))
-        return WTF::nullopt;
+        return std::nullopt;
 
     return WallTime::fromRawSeconds(fileInfo.st_birthtime);
 #else
     UNUSED_PARAM(path);
-    return WTF::nullopt;
+    return std::nullopt;
 #endif
 }
 
-Optional<WallTime> getFileModificationTime(const String& path)
+std::optional<uint32_t> volumeFileBlockSize(const String& path)
 {
-    CString fsRep = fileSystemRepresentation(path);
-
-    if (!fsRep.data() || fsRep.data()[0] == '\0')
-        return WTF::nullopt;
-
-    struct stat fileInfo;
-
-    if (stat(fsRep.data(), &fileInfo))
-        return WTF::nullopt;
-
-    return WallTime::fromRawSeconds(fileInfo.st_mtime);
+#if !OS(MORPHOS)
+    struct statvfs fileStat;
+    if (!statvfs(fileSystemRepresentation(path).data(), &fileStat))
+        return fileStat.f_frsize;
+#endif
+    return std::nullopt;
 }
 
-static FileMetadata::Type toFileMetataType(struct stat fileInfo)
+#if !USE(CF)
+String stringFromFileSystemRepresentation(const char* path)
 {
-    if (S_ISDIR(fileInfo.st_mode))
-        return FileMetadata::Type::Directory;
-    if (S_ISLNK(fileInfo.st_mode))
-        return FileMetadata::Type::SymbolicLink;
-    return FileMetadata::Type::File;
+    if (!path)
+        return String();
+#if OS(MORPHOS)
+	return String(path, strlen(path), MIBENUM_SYSTEM);
+#else
+    return String::fromUTF8(path);
+#endif
 }
 
-static Optional<FileMetadata> fileMetadataUsingFunction(const String& path, int (*statFunc)(const char*, struct stat*))
+CString fileSystemRepresentation(const String& path)
 {
-    CString fsRep = fileSystemRepresentation(path);
+#if OS(MORPHOS)
+	// some fixes for unix style path fuckups here...
+	// file:///progdir:foo will give us /progdir:foo, so let's account for that
+	if (path.contains(':') && path.startsWith('/'))
+	{
+		String sub = path.substring(1);
+		return sub.native();
+	}
+	return path.native();
+#else
+    return path.utf8();
+#endif
+}
+#endif
 
-    if (!fsRep.data() || fsRep.data()[0] == '\0')
-        return WTF::nullopt;
+#if !PLATFORM(COCOA)
+String openTemporaryFile(const String& tmpPath, const String& prefix, PlatformFileHandle& handle, const String& suffix)
+{
+    // FIXME: Suffix is not supported, but OK for now since the code using it is macOS-port-only.
+    ASSERT_UNUSED(suffix, suffix.isEmpty());
 
-    struct stat fileInfo;
-    if (statFunc(fsRep.data(), &fileInfo))
-        return WTF::nullopt;
+    char buffer[PATH_MAX];
+#if OS(MORPHOS)
+	stccpy(buffer, fileSystemRepresentation(tmpPath).data(), sizeof(buffer));
+	auto prefixadd = fileSystemRepresentation(prefix);
+	if (0 == AddPart(buffer, prefixadd.data(), sizeof(buffer)))
+		goto end;
+    if (strlen(buffer) >= PATH_MAX - 7)
+    	goto end;
+	strcat(buffer, "XXXXXX");
+#else
+    const char* tmpDir = getenv("TMPDIR");
 
-    String filename = pathGetFileName(path);
-    bool isHidden = !filename.isEmpty() && filename[0] == '.';
-    return FileMetadata {
-        WallTime::fromRawSeconds(fileInfo.st_mtime),
-        fileInfo.st_size,
-        isHidden,
-        toFileMetataType(fileInfo)
-    };
+    if (!tmpDir)
+        tmpDir = "/tmp";
+
+    if (snprintf(buffer, PATH_MAX, "%s/%sXXXXXX", tmpDir, prefix.utf8().data()) >= PATH_MAX)
+        goto end;
+#endif
+
+    handle = mkstemp(buffer);
+    if (handle < 0)
+        goto end;
+
+#if OS(MORPHOS)
+	return String(buffer, strlen(buffer), MIBENUM_SYSTEM);
+#else
+    return String::fromUTF8(buffer);
+#endif
+
+end:
+    handle = invalidPlatformFileHandle;
+    return String();
 }
 
-Optional<FileMetadata> fileMetadata(const String& path)
+HashMap<String, String> tmpPathPrefixes;
+
+String temporaryFilePathForPrefix(const String& prefix)
 {
-    return fileMetadataUsingFunction(path, &lstat);
+	if (tmpPathPrefixes.contains(prefix))
+		return tmpPathPrefixes.get(prefix);
+	return { };
 }
 
-Optional<FileMetadata> fileMetadataFollowingSymlinks(const String& path)
+void setTemporaryFilePathForPrefix(const char * tmpPath, const String& prefix)
 {
-    return fileMetadataUsingFunction(path, &stat);
+#if OS(MORPHOS)
+	tmpPathPrefixes.set(prefix, String(tmpPath, strlen(tmpPath), MIBENUM_SYSTEM));
+#endif
 }
 
-bool createSymbolicLink(const String& targetPath, const String& symbolicLinkPath)
+String openTemporaryFile(const String& prefix, PlatformFileHandle& handle, const String& suffix)
 {
-    CString targetPathFSRep = fileSystemRepresentation(targetPath);
-    if (!targetPathFSRep.data() || targetPathFSRep.data()[0] == '\0')
-        return false;
+#if OS(MORPHOS)
+	const char* tmpDir = "PROGDIR:Tmp";
+	if (tmpPathPrefixes.contains(prefix))
+	{
+		return openTemporaryFile(tmpPathPrefixes.get(prefix), prefix, handle, suffix);
+	}
+	return openTemporaryFile(String(tmpDir, strlen(tmpDir), MIBENUM_SYSTEM), prefix, handle, suffix);
+#else
+    const char* tmpDir = getenv("TMPDIR");
 
-    CString symbolicLinkPathFSRep = fileSystemRepresentation(symbolicLinkPath);
-    if (!symbolicLinkPathFSRep.data() || symbolicLinkPathFSRep.data()[0] == '\0')
-        return false;
+    if (!tmpDir)
+        tmpDir = "/tmp";
 
-    return !symlink(targetPathFSRep.data(), symbolicLinkPathFSRep.data());
+	return openTemporaryFile(String::fromUTF8(tmpDir), prefix, handle);
+#endif
+}
+#endif // !PLATFORM(COCOA)
+
+std::optional<int32_t> getFileDeviceId(const CString& fsFile)
+{
+    struct stat fileStat;
+    if (stat(fsFile.data(), &fileStat) == -1)
+        return std::nullopt;
+
+    return fileStat.st_dev;
 }
 
-String pathByAppendingComponent(const String& path, const String& component)
+#if ENABLE(FILESYSTEM_POSIX_FAST_PATH)
+
+bool fileExists(const String& path)
 {
-    if (path.endsWith('/'))
-        return path + component;
-    return path + "/" + component;
+    return access(fileSystemRepresentation(path).data(), F_OK) != -1;
 }
 
-String pathByAppendingComponents(StringView path, const Vector<StringView>& components)
+bool deleteFile(const String& path)
 {
-    StringBuilder builder;
-    builder.append(path);
-    for (auto& component : components)
-        builder.append('/', component);
-    return builder.toString();
+    // unlink(...) returns 0 on successful deletion of the path and non-zero in any other case (including invalid permissions or non-existent file)
+    bool unlinked = !unlink(fileSystemRepresentation(path).data());
+    if (!unlinked && errno != ENOENT)
+        LOG_ERROR("File failed to delete. Error message: %s", strerror(errno));
+
+    return unlinked;
 }
 
 bool makeAllDirectories(const String& path)
 {
-    CString fullPath = fileSystemRepresentation(path);
+    auto fullPath = fileSystemRepresentation(path);
     if (!access(fullPath.data(), F_OK))
         return true;
 
     char* p = fullPath.mutableData() + 1;
     int length = fullPath.length();
-
     if (p[length - 1] == '/')
         p[length - 1] = '\0';
     for (; *p; ++p) {
@@ -358,179 +362,36 @@ bool makeAllDirectories(const String& path)
     return true;
 }
 
-String pathGetFileName(const String& path)
+String pathByAppendingComponent(const String& path, const String& component)
 {
-    return path.substring(path.reverseFind('/') + 1);
-}
-
-String directoryName(const String& path)
-{
-    CString fsRep = fileSystemRepresentation(path);
-
-    if (!fsRep.data() || fsRep.data()[0] == '\0')
-        return String();
-
-    return String::fromUTF8(dirname(fsRep.mutableData()));
-}
-
-Vector<String> listDirectory(const String& path, const String& filter)
-{
-    Vector<String> entries;
-    CString cpath = fileSystemRepresentation(path);
-    CString cfilter = fileSystemRepresentation(filter);
-    DIR* dir = opendir(cpath.data());
-    if (dir) {
-        struct dirent* dp;
-        while ((dp = readdir(dir))) {
-            const char* name = dp->d_name;
-            if (!strcmp(name, ".") || !strcmp(name, ".."))
-                continue;
-            if (fnmatch(cfilter.data(), name, 0))
-                continue;
-            char filePath[PATH_MAX];
-            if (static_cast<int>(sizeof(filePath) - 1) < snprintf(filePath, sizeof(filePath), "%s/%s", cpath.data(), name))
-                continue; // buffer overflow
-
-            auto string = stringFromFileSystemRepresentation(filePath);
-
-            // Some file system representations cannot be represented as a UTF-16 string,
-            // so this string might be null.
-            if (!string.isNull())
-                entries.append(WTFMove(string));
-        }
-        closedir(dir);
-    }
-    return entries;
-}
-
-#if !USE(CF)
-String stringFromFileSystemRepresentation(const char* path)
-{
-    if (!path)
-        return String();
-
-    return String::fromUTF8(path);
-}
-
-CString fileSystemRepresentation(const String& path)
-{
-    return path.utf8();
-}
+#if OS(MORPHOS)
+    if (path.endsWith('/') || path.endsWith(':'))
+#else
+      if (path.endsWith('/'))
 #endif
-
-#if !PLATFORM(COCOA)
-bool moveFile(const String& oldPath, const String& newPath)
-{
-    auto oldFilename = fileSystemRepresentation(oldPath);
-    if (oldFilename.isNull())
-        return false;
-
-    auto newFilename = fileSystemRepresentation(newPath);
-    if (newFilename.isNull())
-        return false;
-
-    return rename(oldFilename.data(), newFilename.data()) != -1;
+        return path + component;
+    return path + "/" + component;
 }
 
-bool getVolumeFreeSpace(const String& path, uint64_t& freeSpace)
+String pathByAppendingComponents(StringView path, const Vector<StringView>& components)
 {
-    struct statvfs fileSystemStat;
-    if (!statvfs(fileSystemRepresentation(path).data(), &fileSystemStat)) {
-        freeSpace = fileSystemStat.f_bavail * fileSystemStat.f_frsize;
-        return true;
+    StringBuilder builder;
+    builder.append(path);
+    bool isFirstComponent = true;
+    for (auto& component : components) {
+        if (isFirstComponent) {
+            isFirstComponent = false;
+            if (path.endsWith('/')) {
+                builder.append(component);
+                continue;
+            }
+        }
+        builder.append('/', component);
     }
-    return false;
+    return builder.toString();
 }
 
-String openTemporaryFile(const String& prefix, PlatformFileHandle& handle, const String& suffix)
-{
-    // FIXME: Suffix is not supported, but OK for now since the code using it is macOS-port-only.
-    ASSERT_UNUSED(suffix, suffix.isEmpty());
-
-    char buffer[PATH_MAX];
-    const char* tmpDir = getenv("TMPDIR");
-
-    if (!tmpDir)
-        tmpDir = "/tmp";
-
-    if (snprintf(buffer, PATH_MAX, "%s/%sXXXXXX", tmpDir, prefix.utf8().data()) >= PATH_MAX)
-        goto end;
-
-    handle = mkstemp(buffer);
-    if (handle < 0)
-        goto end;
-
-    return String::fromUTF8(buffer);
-
-end:
-    handle = invalidPlatformFileHandle;
-    return String();
-}
-#endif // !PLATFORM(COCOA)
-
-bool hardLink(const String& source, const String& destination)
-{
-    if (source.isEmpty() || destination.isEmpty())
-        return false;
-
-    auto fsSource = fileSystemRepresentation(source);
-    if (!fsSource.data())
-        return false;
-
-    auto fsDestination = fileSystemRepresentation(destination);
-    if (!fsDestination.data())
-        return false;
-
-    return !link(fsSource.data(), fsDestination.data());
-}
-
-bool hardLinkOrCopyFile(const String& source, const String& destination)
-{
-    if (hardLink(source, destination))
-        return true;
-
-    // Hard link failed. Perform a copy instead.
-    if (source.isEmpty() || destination.isEmpty())
-        return false;
-
-    auto fsSource = fileSystemRepresentation(source);
-    if (!fsSource.data())
-        return false;
-
-    auto fsDestination = fileSystemRepresentation(destination);
-    if (!fsDestination.data())
-        return false;
-
-    auto handle = open(fsDestination.data(), O_WRONLY | O_CREAT | O_EXCL, 0666);
-    if (handle == -1)
-        return false;
-
-    bool appendResult = appendFileContentsToFileHandle(source, handle);
-    close(handle);
-
-    // If the copy failed, delete the unusable file.
-    if (!appendResult)
-        unlink(fsDestination.data());
-
-    return appendResult;
-}
-
-Optional<int32_t> getFileDeviceId(const CString& fsFile)
-{
-    struct stat fileStat;
-    if (stat(fsFile.data(), &fileStat) == -1)
-        return WTF::nullopt;
-
-    return fileStat.st_dev;
-}
-
-String realPath(const String& filePath)
-{
-    CString fsRep = fileSystemRepresentation(filePath);
-    char resolvedName[PATH_MAX];
-    const char* result = realpath(fsRep.data(), resolvedName);
-    return result ? String::fromUTF8(result) : filePath;
-}
+#endif
 
 } // namespace FileSystemImpl
 } // namespace WTF

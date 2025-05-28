@@ -32,7 +32,6 @@
 #import <pal/spi/cocoa/IOKitSPI.h>
 #import <wtf/Assertions.h>
 #import <wtf/BlockPtr.h>
-#import <wtf/Optional.h>
 #import <wtf/SoftLinking.h>
 
 SOFT_LINK_PRIVATE_FRAMEWORK(BackBoardServices)
@@ -319,7 +318,7 @@ static InterpolationType interpolationFromString(NSString *string)
         if ([touchInfo[HIDEventPressureKey] floatValue])
             childEventMask |= kIOHIDDigitizerEventAttribute;
 
-        IOHIDEventRef subEvent = IOHIDEventCreateDigitizerFingerEvent(kCFAllocatorDefault, machTime,
+        auto subEvent = adoptCF(IOHIDEventCreateDigitizerFingerEvent(kCFAllocatorDefault, machTime,
             [touchInfo[HIDEventTouchIDKey] intValue],               // index
             2,                                                      // identifier (which finger we think it is). FIXME: this should come from the data.
             childEventMask,
@@ -330,13 +329,12 @@ static InterpolationType interpolationFromString(NSString *string)
             [touchInfo[HIDEventTwistKey] floatValue],
             touch,                                                  // range
             touch,                                                  // touch
-            kIOHIDEventOptionNone);
+            kIOHIDEventOptionNone));
 
-        IOHIDEventSetFloatValue(subEvent, kIOHIDEventFieldDigitizerMajorRadius, [touchInfo[HIDEventMajorRadiusKey] floatValue]);
-        IOHIDEventSetFloatValue(subEvent, kIOHIDEventFieldDigitizerMinorRadius, [touchInfo[HIDEventMinorRadiusKey] floatValue]);
+        IOHIDEventSetFloatValue(subEvent.get(), kIOHIDEventFieldDigitizerMajorRadius, [touchInfo[HIDEventMajorRadiusKey] floatValue]);
+        IOHIDEventSetFloatValue(subEvent.get(), kIOHIDEventFieldDigitizerMinorRadius, [touchInfo[HIDEventMinorRadiusKey] floatValue]);
 
-        IOHIDEventAppendEvent(eventRef, subEvent, 0);
-        CFRelease(subEvent);
+        IOHIDEventAppendEvent(eventRef, subEvent.get(), 0);
     }
 
     return eventRef;
@@ -825,7 +823,7 @@ static inline bool shouldWrapWithShiftKeyEventForCharacter(NSString *key)
     return false;
 }
 
-static Optional<uint32_t> keyCodeForDOMFunctionKey(NSString *key)
+static std::optional<uint32_t> keyCodeForDOMFunctionKey(NSString *key)
 {
     // Compare the input string with the function-key names defined by the DOM spec (i.e. "F1",...,"F24").
     // If the input string is a function-key name, set its key code. On iOS the key codes for the first 12
@@ -838,7 +836,7 @@ static Optional<uint32_t> keyCodeForDOMFunctionKey(NSString *key)
         if ([key isEqualToString:[NSString stringWithFormat:@"F%d", i]])
             return kHIDUsage_KeyboardF13 + i - 13;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 static inline uint32_t hidUsageCodeForCharacter(NSString *key)

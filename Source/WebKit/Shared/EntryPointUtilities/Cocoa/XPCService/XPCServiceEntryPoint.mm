@@ -31,9 +31,9 @@
 #import <WebCore/ProcessIdentifier.h>
 #import <wtf/cocoa/Entitlements.h>
 #import <wtf/spi/darwin/SandboxSPI.h>
+#import <wtf/text/StringToIntegerConversion.h>
 
 namespace WebKit {
-using namespace WebCore;
 
 XPCServiceInitializerDelegate::~XPCServiceInitializerDelegate()
 {
@@ -62,7 +62,7 @@ bool XPCServiceInitializerDelegate::checkEntitlements()
 bool XPCServiceInitializerDelegate::getConnectionIdentifier(IPC::Connection::Identifier& identifier)
 {
     mach_port_t port = xpc_dictionary_copy_mach_send(m_initializerMessage, "server-port");
-    if (port == MACH_PORT_NULL)
+    if (!MACH_PORT_VALID(port))
         return false;
 
     identifier = IPC::Connection::Identifier(port, m_connection);
@@ -72,32 +72,36 @@ bool XPCServiceInitializerDelegate::getConnectionIdentifier(IPC::Connection::Ide
 bool XPCServiceInitializerDelegate::getClientIdentifier(String& clientIdentifier)
 {
     clientIdentifier = xpc_dictionary_get_string(m_initializerMessage, "client-identifier");
-    if (clientIdentifier.isEmpty())
-        return false;
-    return true;
+    return !clientIdentifier.isEmpty();
 }
 
-bool XPCServiceInitializerDelegate::getProcessIdentifier(ProcessIdentifier& identifier)
+bool XPCServiceInitializerDelegate::getClientBundleIdentifier(String& clientBundleIdentifier)
 {
-    String processIdentifierString = xpc_dictionary_get_string(m_initializerMessage, "process-identifier");
-    if (processIdentifierString.isEmpty())
+    clientBundleIdentifier = xpc_dictionary_get_string(m_initializerMessage, "client-bundle-identifier");
+    return !clientBundleIdentifier.isEmpty();
+}
+
+bool XPCServiceInitializerDelegate::getClientSDKVersion(uint32_t& clientSDKVersion)
+{
+    auto version = parseInteger<uint32_t>(xpc_dictionary_get_string(m_initializerMessage, "client-sdk-version"));
+    clientSDKVersion = version.value_or(0);
+    return version.has_value();
+}
+
+bool XPCServiceInitializerDelegate::getProcessIdentifier(WebCore::ProcessIdentifier& identifier)
+{
+    auto parsedIdentifier = parseInteger<uint64_t>(xpc_dictionary_get_string(m_initializerMessage, "process-identifier"));
+    if (!parsedIdentifier)
         return false;
 
-    bool ok;
-    auto parsedIdentifier = processIdentifierString.toUInt64Strict(&ok);
-    if (!ok)
-        return false;
-
-    identifier = makeObjectIdentifier<ProcessIdentifierType>(parsedIdentifier);
+    identifier = makeObjectIdentifier<WebCore::ProcessIdentifierType>(*parsedIdentifier);
     return true;
 }
 
 bool XPCServiceInitializerDelegate::getClientProcessName(String& clientProcessName)
 {
     clientProcessName = xpc_dictionary_get_string(m_initializerMessage, "ui-process-name");
-    if (clientProcessName.isEmpty())
-        return false;
-    return true;
+    return !clientProcessName.isEmpty();
 }
 
 bool XPCServiceInitializerDelegate::getExtraInitializationData(HashMap<String, String>& extraInitializationData)
@@ -144,16 +148,21 @@ bool XPCServiceInitializerDelegate::isClientSandboxed()
     return connectedProcessIsSandboxed(m_connection.get());
 }
 
+#if PLATFORM(MAC)
+OSObjectPtr<os_transaction_t>& osTransaction()
+{
+    static NeverDestroyed<OSObjectPtr<os_transaction_t>> transaction;
+    return transaction.get();
+}
+#endif
+
 void XPCServiceExit(OSObjectPtr<xpc_object_t>&& priorityBoostMessage)
 {
     // Make sure to destroy the priority boost message to avoid leaking a transaction.
     priorityBoostMessage = nullptr;
 
-    // Balances the xpc_transaction_begin() in XPCServiceInitializer.
 #if PLATFORM(MAC)
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    xpc_transaction_end();
-ALLOW_DEPRECATED_DECLARATIONS_END
+    osTransaction() = nullptr;
 #endif
 
     xpc_transaction_exit_clean();

@@ -29,6 +29,8 @@
 #import "GraphicsContextCG.h"
 #import "HTMLInputElement.h"
 #import "RenderText.h"
+#import "UserAgentScripts.h"
+#import "UserAgentStyleSheets.h"
 #import <algorithm>
 #import <pal/spi/cf/CoreTextSPI.h>
 
@@ -48,11 +50,28 @@
 #import <pal/cocoa/PassKitSoftLink.h>
 #endif
 
+@interface WebCoreRenderThemeBundle : NSObject
+@end
+
+@implementation WebCoreRenderThemeBundle
+@end
+
 namespace WebCore {
 
 RenderThemeCocoa& RenderThemeCocoa::singleton()
 {
     return static_cast<RenderThemeCocoa&>(RenderTheme::singleton());
+}
+
+void RenderThemeCocoa::purgeCaches()
+{
+#if ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
+    m_mediaControlsLocalizedStringsScript.clearImplIfNotShared();
+    m_mediaControlsScript.clearImplIfNotShared();
+    m_mediaControlsStyleSheet.clearImplIfNotShared();
+#endif // ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
+
+    RenderTheme::purgeCaches();
 }
 
 bool RenderThemeCocoa::shouldHaveCapsLockIndicator(const HTMLInputElement& element) const
@@ -155,6 +174,39 @@ bool RenderThemeCocoa::paintApplePayButton(const RenderObject& renderer, const P
 
 #endif // ENABLE(APPLE_PAY)
 
+#if ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
+
+String RenderThemeCocoa::mediaControlsStyleSheet()
+{
+    if (m_mediaControlsStyleSheet.isEmpty())
+        m_mediaControlsStyleSheet = StringImpl::createWithoutCopying(ModernMediaControlsUserAgentStyleSheet, sizeof(ModernMediaControlsUserAgentStyleSheet));
+    return m_mediaControlsStyleSheet;
+}
+
+Vector<String, 2> RenderThemeCocoa::mediaControlsScripts()
+{
+    // FIXME: Localized strings are not worth having a script. We should make it JSON data etc. instead.
+    if (m_mediaControlsLocalizedStringsScript.isEmpty()) {
+        NSBundle *bundle = [NSBundle bundleForClass:[WebCoreRenderThemeBundle class]];
+        m_mediaControlsLocalizedStringsScript = [NSString stringWithContentsOfFile:[bundle pathForResource:@"modern-media-controls-localized-strings" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil];
+    }
+
+    if (m_mediaControlsScript.isEmpty())
+        m_mediaControlsScript = StringImpl::createWithoutCopying(ModernMediaControlsJavaScript, sizeof(ModernMediaControlsJavaScript));
+
+    return {
+        m_mediaControlsLocalizedStringsScript,
+        m_mediaControlsScript,
+    };
+}
+
+String RenderThemeCocoa::mediaControlsBase64StringForIconNameAndType(const String& iconName, const String& iconType)
+{
+    NSString *directory = @"modern-media-controls/images";
+    NSBundle *bundle = [NSBundle bundleForClass:[WebCoreRenderThemeBundle class]];
+    return [[NSData dataWithContentsOfFile:[bundle pathForResource:iconName ofType:iconType inDirectory:directory]] base64EncodedStringWithOptions:0];
+}
+
 String RenderThemeCocoa::mediaControlsFormattedStringForDuration(const double durationInSeconds)
 {
     if (!std::isfinite(durationInSeconds))
@@ -171,6 +223,8 @@ String RenderThemeCocoa::mediaControlsFormattedStringForDuration(const double du
     return [m_durationFormatter.get() stringFromTimeInterval:durationInSeconds];
     END_BLOCK_OBJC_EXCEPTIONS
 }
+
+#endif // ENABLE(VIDEO) && ENABLE(MODERN_MEDIA_CONTROLS)
 
 FontCascadeDescription& RenderThemeCocoa::cachedSystemFontDescription(CSSValueID valueID) const
 {

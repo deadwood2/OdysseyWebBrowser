@@ -173,7 +173,7 @@ void WebInspectorClient::showPaintRect(const FloatRect& rect)
 
     auto paintLayer = GraphicsLayer::create(m_page->drawingArea()->graphicsLayerFactory(), *m_paintIndicatorLayerClient);
     
-    paintLayer->setName("paint rect");
+    paintLayer->setName(MAKE_STATIC_STRING_IMPL("paint rect"));
     paintLayer->setAnchorPoint(FloatPoint3D());
     paintLayer->setPosition(rect.location());
     paintLayer->setSize(rect.size());
@@ -235,7 +235,7 @@ void WebInspectorClient::timelineRecordingChanged(bool active)
         m_page->inspector()->timelineRecordingChanged(active);
 }
 
-void WebInspectorClient::setDeveloperPreferenceOverride(WebCore::InspectorClient::DeveloperPreference developerPreference, Optional<bool> overrideValue)
+void WebInspectorClient::setDeveloperPreferenceOverride(WebCore::InspectorClient::DeveloperPreference developerPreference, std::optional<bool> overrideValue)
 {
     if (m_page->inspector())
         m_page->inspector()->setDeveloperPreferenceOverride(developerPreference, overrideValue);

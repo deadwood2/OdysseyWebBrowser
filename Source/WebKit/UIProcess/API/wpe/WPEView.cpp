@@ -257,6 +257,40 @@ View::View(struct wpe_view_backend* backend, const API::PageConfiguration& baseC
     };
     wpe_view_backend_set_input_client(m_backend, &s_inputClient, this);
 
+#if ENABLE(FULLSCREEN_API) && WPE_CHECK_VERSION(1, 11, 1)
+    static struct wpe_view_backend_fullscreen_client s_fullscreenClient = {
+        // did_enter_fullscreen
+        [](void* data)
+        {
+            auto& view = *reinterpret_cast<View*>(data);
+            view.page().fullScreenManager()->didEnterFullScreen();
+        },
+        // did_exit_fullscreen
+        [](void* data)
+        {
+            auto& view = *reinterpret_cast<View*>(data);
+            view.page().fullScreenManager()->didExitFullScreen();
+        },
+        // request_enter_fullscreen
+        [](void* data)
+        {
+            auto& view = *reinterpret_cast<View*>(data);
+            view.page().fullScreenManager()->requestEnterFullScreen();
+        },
+        // request_exit_fullscreen
+        [](void* data)
+        {
+            auto& view = *reinterpret_cast<View*>(data);
+            view.page().fullScreenManager()->requestExitFullScreen();
+        },
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr
+    };
+    wpe_view_backend_set_fullscreen_client(m_backend, &s_fullscreenClient, this);
+#endif
+
     wpe_view_backend_initialize(m_backend);
 
     m_pageProxy->initializeWebPage();
@@ -313,7 +347,7 @@ WebKitInputMethodContext* View::inputMethodContext() const
     return m_inputMethodFilter.context();
 }
 
-void View::setInputMethodState(Optional<InputMethodState>&& state)
+void View::setInputMethodState(std::optional<InputMethodState>&& state)
 {
     m_inputMethodFilter.setState(WTFMove(state));
 }
@@ -357,10 +391,10 @@ void View::handleKeyboardEvent(struct wpe_input_keyboard_event* event)
     if (filterResult.handled)
         return;
 
-    page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(event, event->pressed ? filterResult.keyText : String(), NativeWebKeyboardEvent::HandledByInputMethod::No, WTF::nullopt, WTF::nullopt));
+    page().handleKeyboardEvent(WebKit::NativeWebKeyboardEvent(event, event->pressed ? filterResult.keyText : String(), NativeWebKeyboardEvent::HandledByInputMethod::No, std::nullopt, std::nullopt));
 }
 
-void View::synthesizeCompositionKeyPress(const String& text, Optional<Vector<WebCore::CompositionUnderline>>&& underlines, Optional<EditingRange>&& selectionRange)
+void View::synthesizeCompositionKeyPress(const String& text, std::optional<Vector<WebCore::CompositionUnderline>>&& underlines, std::optional<EditingRange>&& selectionRange)
 {
     // The Windows composition key event code is 299 or VK_PROCESSKEY. We need to
     // emit this code for web compatibility reasons when key events trigger
@@ -374,6 +408,18 @@ void View::close()
 {
     m_pageProxy->close();
 }
+
+#if ENABLE(FULLSCREEN_API)
+bool View::setFullScreen(bool fullScreenState)
+{
+#if WPE_CHECK_VERSION(1, 11, 1)
+    if (!wpe_view_backend_platform_set_fullscreen(m_backend, fullScreenState))
+        return false;
+#endif
+    m_fullScreenModeActive = fullScreenState;
+    return true;
+};
+#endif
 
 #if ENABLE(ACCESSIBILITY)
 WebKitWebViewAccessible* View::accessible() const

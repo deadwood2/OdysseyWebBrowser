@@ -33,6 +33,7 @@
 #import "APIString.h"
 #import "Logging.h"
 #import "NSInvocationSPI.h"
+#import "_WKErrorRecoveryAttempting.h"
 #import "_WKRemoteObjectInterfaceInternal.h"
 #import <objc/runtime.h>
 #import <wtf/RetainPtr.h>
@@ -299,6 +300,120 @@ static void encodeString(WKRemoteObjectEncoder *encoder, NSString *string)
     encoder->_currentDictionary->set(stringKey, API::String::create(string));
 }
 
+static RetainPtr<id> decodeObjCObject(WKRemoteObjectDecoder *decoder, Class objectClass)
+{
+    id allocation = [objectClass allocWithZone:decoder.zone];
+    if (!allocation)
+        [NSException raise:NSInvalidUnarchiveOperationException format:@"Class \"%@\" returned nil from +alloc while being decoded", NSStringFromClass(objectClass)];
+
+    RetainPtr<id> result = adoptNS([allocation initWithCoder:decoder]);
+    if (!result)
+        [NSException raise:NSInvalidUnarchiveOperationException format:@"Object of class \"%@\" returned nil from -initWithCoder: while being decoded", NSStringFromClass(objectClass)];
+
+    result = adoptNS([result.leakRef() awakeAfterUsingCoder:decoder]);
+    if (!result)
+        [NSException raise:NSInvalidUnarchiveOperationException format:@"Object of class \"%@\" returned nil from -awakeAfterUsingCoder: while being decoded", NSStringFromClass(objectClass)];
+
+    return result;
+}
+
+static constexpr NSString *peerCertificateKey = @"NSErrorPeerCertificateChainKey";
+static constexpr NSString *peerTrustKey = @"NSURLErrorFailingURLPeerTrustErrorKey";
+static constexpr NSString *clientCertificateKey = @"NSErrorClientCertificateChainKey";
+
+static RetainPtr<NSArray<NSData *>> transformCertificatesToData(NSArray *input)
+{
+    auto dataArray = adoptNS([[NSMutableArray alloc] initWithCapacity:input.count]);
+    for (id certificate in input) {
+        if (CFGetTypeID(certificate) != SecCertificateGetTypeID())
+            [NSException raise:NSInvalidArgumentException format:@"Error encoding invalid certificate in chain"];
+        [dataArray addObject:(NSData *)adoptCF(SecCertificateCopyData((SecCertificateRef)certificate)).get()];
+    }
+    return dataArray;
+}
+
+static RetainPtr<NSData> transformTrustToData(SecTrustRef trust)
+{
+    if (CFGetTypeID(trust) != SecTrustGetTypeID())
+        [NSException raise:NSInvalidArgumentException format:@"Error encoding invalid SecTrustRef"];
+    CFErrorRef error = nullptr;
+    auto data = adoptCF(SecTrustSerialize(trust, &error));
+    if (error)
+        [NSException raise:NSInvalidArgumentException format:@"Error serializing SecTrustRef: %@", error];
+    return data;
+}
+
+static void encodeError(WKRemoteObjectEncoder *encoder, NSError *error)
+{
+    RetainPtr<NSMutableDictionary> copy;
+    if (error.userInfo[_WKRecoveryAttempterErrorKey]) {
+        copy = adoptNS([error.userInfo mutableCopy]);
+        [copy removeObjectForKey:_WKRecoveryAttempterErrorKey];
+    }
+    if (error.userInfo[clientCertificateKey]) {
+        if (!copy)
+            copy = adoptNS([error.userInfo mutableCopy]);
+        [copy removeObjectForKey:clientCertificateKey];
+    }
+    if (NSArray *certificateChain = error.userInfo[peerCertificateKey]) {
+        if (!copy)
+            copy = adoptNS([error.userInfo mutableCopy]);
+        copy.get()[peerCertificateKey] = transformCertificatesToData(certificateChain).get();
+    }
+    if (id trust = error.userInfo[peerTrustKey]) {
+        if (!copy)
+            copy = adoptNS([error.userInfo mutableCopy]);
+        copy.get()[peerTrustKey] = transformTrustToData((SecTrustRef)trust).get();
+    }
+    if (!copy)
+        [error encodeWithCoder:encoder];
+    else
+        [[NSError errorWithDomain:error.domain code:error.code userInfo:copy.get()] encodeWithCoder:encoder];
+}
+
+static RetainPtr<NSArray> transformDataToCertificates(NSArray *input)
+{
+    auto array = adoptNS([[NSMutableArray alloc] initWithCapacity:input.count]);
+    for (NSData *data in input) {
+        if (CFGetTypeID(data) != CFDataGetTypeID())
+            [NSException raise:NSInvalidUnarchiveOperationException format:@"Error decoding certificate from object that is not data %@", NSStringFromClass([data class])];
+        auto certificate = adoptCF(SecCertificateCreateWithData(nullptr, (CFDataRef)data));
+        if (!certificate)
+            [NSException raise:NSInvalidUnarchiveOperationException format:@"Error decoding nvalid certificate in chain"];
+        [array addObject:(id)certificate.get()];
+    }
+    return array;
+}
+
+static RetainPtr<id> transformDataToTrust(NSData *data)
+{
+    if (CFGetTypeID(data) != CFDataGetTypeID())
+        [NSException raise:NSInvalidUnarchiveOperationException format:@"Invalid SecTrustRef data %@", NSStringFromClass([data class])];
+    CFErrorRef error = nullptr;
+    auto trust = adoptCF(SecTrustDeserialize((CFDataRef)data, &error));
+    if (error || !trust)
+        [NSException raise:NSInvalidUnarchiveOperationException format:@"Invalid SecTrustRef %@", error];
+    return trust;
+}
+
+static RetainPtr<NSError> decodeError(WKRemoteObjectDecoder *decoder)
+{
+    RetainPtr<NSError> error = decodeObjCObject(decoder, [NSError class]);
+    RetainPtr<NSMutableDictionary> copy;
+    if (NSArray *certificateChain = error.get().userInfo[peerCertificateKey]) {
+        copy = adoptNS([error.get().userInfo mutableCopy]);
+        copy.get()[peerCertificateKey] = transformDataToCertificates(certificateChain).get();
+    }
+    if (NSData *trust = error.get().userInfo[peerTrustKey]) {
+        if (!copy)
+            copy = adoptNS([error.get().userInfo mutableCopy]);
+        copy.get()[peerTrustKey] = transformDataToTrust(trust).get();
+    }
+    if (!copy)
+        return error;
+    return [NSError errorWithDomain:error.get().domain code:error.get().code userInfo:copy.get()];
+}
+
 static void encodeObject(WKRemoteObjectEncoder *encoder, id object)
 {
     ASSERT(object);
@@ -337,6 +452,9 @@ static void encodeObject(WKRemoteObjectEncoder *encoder, id object)
         return;
     }
 
+    if (objectClass == [NSError class])
+        return encodeError(encoder, object);
+    
     [object encodeWithCoder:encoder];
 }
 
@@ -798,16 +916,14 @@ static void decodeInvocationArguments(WKRemoteObjectDecoder *decoder, NSInvocati
 static NSInvocation *decodeInvocation(WKRemoteObjectDecoder *decoder)
 {
     SEL selector = nullptr;
-    NSMethodSignature *localMethodSignature = nil;
-
+    NSInvocation* invocation = nil;
     BOOL isReplyBlock = [decoder decodeBoolForKey:isReplyBlockKey];
-
     if (isReplyBlock) {
         if (!decoder->_replyToSelector)
             [NSException raise:NSInvalidUnarchiveOperationException format:@"%@: Received unknown reply block", decoder];
 
-        localMethodSignature = [decoder->_interface _methodSignatureForReplyBlockOfSelector:decoder->_replyToSelector];
-        if (!localMethodSignature)
+        invocation = [decoder->_interface _invocationForReplyBlockOfSelector:decoder->_replyToSelector];
+        if (!invocation)
             [NSException raise:NSInvalidUnarchiveOperationException format:@"Reply block for selector \"%s\" is not defined in the local interface", sel_getName(decoder->_replyToSelector)];
     } else {
         NSString *selectorString = [decoder decodeObjectOfClass:[NSString class] forKey:selectorKey];
@@ -817,8 +933,8 @@ static NSInvocation *decodeInvocation(WKRemoteObjectDecoder *decoder)
         selector = NSSelectorFromString(selectorString);
         ASSERT(selector);
 
-        localMethodSignature = [decoder->_interface _methodSignatureForSelector:selector];
-        if (!localMethodSignature)
+        invocation = [decoder->_interface _invocationForSelector:selector];
+        if (!invocation)
             [NSException raise:NSInvalidUnarchiveOperationException format:@"Selector \"%@\" is not defined in the local interface", selectorString];
     }
 
@@ -827,10 +943,8 @@ static NSInvocation *decodeInvocation(WKRemoteObjectDecoder *decoder)
         [NSException raise:NSInvalidUnarchiveOperationException format:@"Invocation had no type signature"];
 
     NSMethodSignature *remoteMethodSignature = [NSMethodSignature signatureWithObjCTypes:typeSignature.UTF8String];
-    if (![localMethodSignature isEqual:remoteMethodSignature])
+    if (![[invocation methodSignature] isEqual:remoteMethodSignature])
         [NSException raise:NSInvalidUnarchiveOperationException format:@"Local and remote method signatures are not equal for method \"%s\"", selector ? sel_getName(selector) : "(no selector)"];
-
-    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:localMethodSignature];
 
     if (isReplyBlock) {
         const auto& allowedClasses = [decoder->_interface _allowedArgumentClassesForReplyBlockOfSelector:decoder->_replyToSelector];
@@ -873,23 +987,14 @@ static id decodeObject(WKRemoteObjectDecoder *decoder)
 
     if (objectClass == [NSString class])
         return decodeString(decoder);
+    
+    if (objectClass == [NSError class])
+        return decodeError(decoder).autorelease();
 
     if (objectClass == [NSMutableString class])
         return [NSMutableString stringWithString:decodeString(decoder)];
 
-    id result = [objectClass allocWithZone:decoder.zone];
-    if (!result)
-        [NSException raise:NSInvalidUnarchiveOperationException format:@"Class \"%s\" returned nil from +alloc while being decoded", className.data()];
-
-    result = [result initWithCoder:decoder];
-    if (!result)
-        [NSException raise:NSInvalidUnarchiveOperationException format:@"Object of class \"%s\" returned nil from -initWithCoder: while being decoded", className.data()];
-
-    result = [result awakeAfterUsingCoder:decoder];
-    if (!result)
-        [NSException raise:NSInvalidUnarchiveOperationException format:@"Object of class \"%s\" returned nil from -awakeAfterUsingCoder: while being decoded", className.data()];
-
-    return [result autorelease];
+    return decodeObjCObject(decoder, objectClass).autorelease();
 }
 
 static id decodeObject(WKRemoteObjectDecoder *decoder, const API::Dictionary* dictionary, const HashSet<CFTypeRef>& allowedClasses)

@@ -28,7 +28,7 @@
 
 #if PLATFORM(MAC)
 
-#import "ColorSpaceData.h"
+#import "DisplayRefreshMonitorMac.h"
 #import "DrawingAreaProxyMessages.h"
 #import "LayerHostingContext.h"
 #import "LayerTreeContext.h"
@@ -44,6 +44,7 @@
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <QuartzCore/QuartzCore.h>
 #import <WebCore/DebugPageOverlays.h>
+#import <WebCore/DestinationColorSpace.h>
 #import <WebCore/Frame.h>
 #import <WebCore/FrameView.h>
 #import <WebCore/GraphicsContext.h>
@@ -90,6 +91,7 @@ TiledCoreAnimationDrawingArea::TiledCoreAnimationDrawingArea(WebPage& webPage, c
     });
 
     updateLayerHostingContext();
+    
     setColorSpace(parameters.colorSpace);
 
     if (auto viewExposedRect = parameters.viewExposedRect)
@@ -371,28 +373,20 @@ void TiledCoreAnimationDrawingArea::dispatchAfterEnsuringUpdatedScrollPosition(W
         return;
     }
 
-    m_webPage.ref();
     m_webPage.corePage()->scrollingCoordinator()->commitTreeStateIfNeeded();
 
     if (!m_layerTreeStateIsFrozen)
         invalidateRenderingUpdateRunLoopObserver();
 
-    // It is possible for the drawing area to be destroyed before the bound block
-    // is invoked, so grab a reference to the web page here so we can access the drawing area through it.
-    // (The web page is already kept alive by dispatchAfterEnsuringUpdatedScrollPosition).
-    WebPage* webPage = &m_webPage;
-
-    ScrollingThread::dispatchBarrier([this, webPage, function = WTFMove(function)] {
-        DrawingArea* drawingArea = webPage->drawingArea();
-        if (!drawingArea)
+    ScrollingThread::dispatchBarrier([this, retainedPage = makeRef(m_webPage), function = WTFMove(function)] {
+        // It is possible for the drawing area to be destroyed before the bound block is invoked.
+        if (!retainedPage->drawingArea())
             return;
 
         function();
 
         if (!m_layerTreeStateIsFrozen)
             scheduleRenderingUpdateRunLoopObserver();
-
-        webPage->deref();
     });
 #else
     function();
@@ -450,6 +444,7 @@ void TiledCoreAnimationDrawingArea::updateRendering(UpdateRenderingType flushTyp
         m_webPage.updateRendering();
         m_webPage.flushPendingThemeColorChange();
         m_webPage.flushPendingPageExtendedBackgroundColorChange();
+        m_webPage.flushPendingSampledPageTopColorChange();
         m_webPage.flushPendingEditorStateUpdate();
         m_webPage.flushPendingIntrinsicContentSizeUpdate();
 
@@ -573,7 +568,7 @@ void TiledCoreAnimationDrawingArea::resumePainting()
     [[NSNotificationCenter defaultCenter] postNotificationName:@"NSCAViewRenderDidResumeNotification" object:nil userInfo:@{ @"layer": m_hostingLayer.get() }];
 }
 
-void TiledCoreAnimationDrawingArea::setViewExposedRect(Optional<FloatRect> viewExposedRect)
+void TiledCoreAnimationDrawingArea::setViewExposedRect(std::optional<FloatRect> viewExposedRect)
 {
     m_viewExposedRect = viewExposedRect;
 
@@ -648,9 +643,14 @@ void TiledCoreAnimationDrawingArea::setLayerHostingMode(LayerHostingMode)
     send(Messages::DrawingAreaProxy::UpdateAcceleratedCompositingMode(0, layerTreeContext));
 }
 
-void TiledCoreAnimationDrawingArea::setColorSpace(const ColorSpaceData& colorSpace)
+void TiledCoreAnimationDrawingArea::setColorSpace(std::optional<WebCore::DestinationColorSpace> colorSpace)
 {
-    m_layerHostingContext->setColorSpace(colorSpace.cgColorSpace.get());
+    m_layerHostingContext->setColorSpace(colorSpace ? colorSpace->platformColorSpace() : nullptr);
+}
+
+RefPtr<WebCore::DisplayRefreshMonitor> TiledCoreAnimationDrawingArea::createDisplayRefreshMonitor(PlatformDisplayID displayID)
+{
+    return DisplayRefreshMonitorMac::create(displayID);
 }
 
 void TiledCoreAnimationDrawingArea::updateLayerHostingContext()

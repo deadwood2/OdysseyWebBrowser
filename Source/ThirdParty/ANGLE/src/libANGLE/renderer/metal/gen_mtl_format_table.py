@@ -46,10 +46,21 @@ namespace rx
 namespace mtl
 {{
 
+angle::FormatID Format::MetalToAngleFormatID(MTLPixelFormat formatMtl)
+{{
+    // Actual conversion
+    switch (formatMtl)
+    {{
+{mtl_pixel_format_switch}
+    }}
+}}
+
 void Format::init(const DisplayMtl *display, angle::FormatID intendedFormatId_)
 {{
     this->intendedFormatId = intendedFormatId_;
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
     id<MTLDevice> metalDevice = display->getMetalDevice();
+#endif
 
     // Actual conversion
     switch (this->intendedFormatId)
@@ -150,6 +161,10 @@ case_image_format_template2 = """        case angle::FormatID::{angle_format}:
             }}
             break;
 
+"""
+
+case_image_mtl_to_angle_template = """        case {mtl_format}:
+            return angle::FormatID::{angle_format};
 """
 
 case_vertex_format_template1 = """        case angle::FormatID::{angle_format}:
@@ -302,6 +317,8 @@ def gen_image_map_switch_mac_case(angle_format, actual_angle_format_info, angle_
             # This format requires fallback when depth24Stencil8PixelFormatSupported flag is false.
             # Fallback format:
             actual_angle_format_fallback = mac_fallbacks[actual_angle_format]
+            fallback_condition = "metalDevice.depth24Stencil8PixelFormatSupported && \
+                                 !display->getFeatures().forceD24S8AsUnsupported.enabled"
             # return if else block:
             return image_format_assign_template2.format(
                 actual_angle_format=actual_angle_format,
@@ -359,11 +376,13 @@ def gen_image_map_switch_string(image_table, angle_to_gl):
     angle_override = image_table["override"]
     mac_override = image_table["override_mac"]
     ios_override = image_table["override_ios"]
+    sim_override = image_table["override_sim"]
     mac_fallbacks = image_table["fallbacks_mac"]
     ios_fallbacks = image_table["fallbacks_ios"]
     angle_to_mtl = image_table["map"]
     mac_specific_map = image_table["map_mac"]
     ios_specific_map = image_table["map_ios"]
+    sim_specific_map = image_table["map_sim"]
 
     # mac_specific_map + angle_to_mtl:
     mac_angle_to_mtl = mac_specific_map.copy()
@@ -371,7 +390,9 @@ def gen_image_map_switch_string(image_table, angle_to_gl):
     # ios_specific_map + angle_to_mtl
     ios_angle_to_mtl = ios_specific_map.copy()
     ios_angle_to_mtl.update(angle_to_mtl)
-
+    # sim_specific_map + angle_to_mtl
+    sim_angle_to_mtl = sim_specific_map.copy()
+    sim_angle_to_mtl.update(angle_to_mtl)
     switch_data = ''
 
     def gen_image_map_switch_common_case(angle_format, actual_angle_format):
@@ -405,8 +426,15 @@ def gen_image_map_switch_string(image_table, angle_to_gl):
         switch_data += gen_image_map_switch_mac_case(angle_format, mac_override[angle_format],
                                                      angle_to_gl, mac_angle_to_mtl, mac_fallbacks)
 
+    switch_data += "#elif TARGET_OS_SIMULATOR\n"
+    for angle_format in sorted(sim_specific_map.keys()):
+        switch_data += gen_image_map_switch_simple_case(angle_format, angle_format, angle_to_gl,
+                                                        sim_specific_map)
+    for angle_format in sorted(sim_override.keys()):
+        switch_data += gen_image_map_switch_simple_case(angle_format, sim_override[angle_format],
+                                                        angle_to_gl, sim_angle_to_mtl)
     # iOS specific
-    switch_data += "#elif TARGET_OS_IOS || TARGET_OS_TV // TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
+    switch_data += "#elif (TARGET_OS_IOS || TARGET_OS_TV) // TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
     for angle_format in sorted(ios_specific_map.keys()):
         switch_data += gen_image_map_switch_simple_case(angle_format, angle_format, angle_to_gl,
                                                         ios_specific_map)
@@ -417,6 +445,40 @@ def gen_image_map_switch_string(image_table, angle_to_gl):
     switch_data += "        default:\n"
     switch_data += "            this->metalFormat = MTLPixelFormatInvalid;\n"
     switch_data += "            this->actualFormatId = angle::FormatID::NONE;"
+    return switch_data
+
+
+def gen_image_mtl_to_angle_switch_string(image_table):
+    angle_to_mtl = image_table["map"]
+    mac_specific_map = image_table["map_mac"]
+    ios_specific_map = image_table["map_ios"]
+
+    switch_data = ''
+
+    # Common case
+    for angle_format in sorted(angle_to_mtl.keys()):
+        switch_data += case_image_mtl_to_angle_template.format(
+            mtl_format=angle_to_mtl[angle_format], angle_format=angle_format)
+
+    # Mac specific
+    switch_data += "#if TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
+    for angle_format in sorted(mac_specific_map.keys()):
+        switch_data += case_image_mtl_to_angle_template.format(
+            mtl_format=mac_specific_map[angle_format], angle_format=angle_format)
+    switch_data += "#endif  // TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
+
+    # iOS + macOS 11.0+ specific
+    switch_data += "#if TARGET_OS_IOS || TARGET_OS_TV || (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 101600))\n"
+    for angle_format in sorted(ios_specific_map.keys()):
+        # ETC1_R8G8B8_UNORM_BLOCK is a duplicated of ETC2_R8G8B8_UNORM_BLOCK
+        if angle_format == 'ETC1_R8G8B8_UNORM_BLOCK':
+            continue
+        switch_data += case_image_mtl_to_angle_template.format(
+            mtl_format=ios_specific_map[angle_format], angle_format=angle_format)
+    switch_data += "#endif  // TARGET_OS_IOS || TARGET_OS_TV || mac 11.0+\n"
+
+    switch_data += "        default:\n"
+    switch_data += "            return angle::FormatID::NONE;\n"
     return switch_data
 
 
@@ -511,7 +573,7 @@ def gen_mtl_format_caps_init_string(map_image):
     caps_init_str += "#if TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
     caps_init_str += caps_to_cpp(mac_caps)
 
-    caps_init_str += "#elif TARGET_OS_IOS || TARGET_OS_TV  // TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
+    caps_init_str += "#elif !TARGET_OS_SIMULATOR && (TARGET_OS_IOS || TARGET_OS_TV)  // TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
     caps_init_str += caps_to_cpp(ios_caps)
 
     caps_init_str += "#endif  // TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
@@ -542,6 +604,7 @@ def main():
     map_vertex = map_json["vertex"]
 
     image_switch_data = gen_image_map_switch_string(map_image, angle_to_gl)
+    image_mtl_to_angle_switch_data = gen_image_mtl_to_angle_switch_string(map_image)
 
     vertex_switch_data = gen_vertex_map_switch_string(map_vertex)
 

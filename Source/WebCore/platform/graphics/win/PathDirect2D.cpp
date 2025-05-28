@@ -35,7 +35,6 @@
 #include "IntRect.h"
 #include "NotImplemented.h"
 #include "PlatformContextDirect2D.h"
-#include "StrokeStyleApplier.h"
 #include <d2d1.h>
 #include <wtf/MathExtras.h>
 #include <wtf/RetainPtr.h>
@@ -225,14 +224,16 @@ bool Path::contains(const FloatPoint& point, WindRule rule) const
     return contains;
 }
 
-bool Path::strokeContains(StrokeStyleApplier& applier, const FloatPoint& point) const
+bool Path::strokeContains(const FloatPoint& point, const Function<void(GraphicsContext&)>& strokeStyleApplier) const
 {
+    ASSERT(strokeStyleApplier);
+
     if (isNull())
         return false;
 
     PlatformContextDirect2D scratchContextD2D(scratchRenderTarget());
-    GraphicsContext scratchContext(&scratchContextD2D, GraphicsContext::BitmapRenderingContextType::GPUMemory);
-    applier.strokeStyle(&scratchContext);
+    GraphicsContextDirect2D scratchContext(&scratchContextD2D, GraphicsContext::BitmapRenderingContextType::GPUMemory);
+    strokeStyleApplier(scratchContext);
 
 #if ASSERT_ENABLED
     unsigned before = refCount(m_path.get());
@@ -335,16 +336,16 @@ FloatRect Path::fastBoundingRectForStroke(const PlatformContextDirect2D& platfor
     return bounds;
 }
 
-FloatRect Path::strokeBoundingRect(StrokeStyleApplier* applier) const
+FloatRect Path::strokeBoundingRect(const Function<void(GraphicsContext&)>& strokeStyleApplier) const
 {
     if (isNull())
         return FloatRect();
 
     PlatformContextDirect2D scratchContextD2D(scratchRenderTarget());
-    GraphicsContext scratchContext(&scratchContextD2D, GraphicsContext::BitmapRenderingContextType::GPUMemory);
+    GraphicsContextDirect2D scratchContext(&scratchContextD2D, GraphicsContext::BitmapRenderingContextType::GPUMemory);
 
-    if (applier)
-        applier->strokeStyle(&scratchContext);
+    if (strokeStyleApplier)
+        strokeStyleApplier(scratchContext);
 
     return fastBoundingRectForStroke(scratchContextD2D);
 }

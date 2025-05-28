@@ -837,7 +837,7 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
                 }, WI.isBeingEdited(attributeNode));
             }
 
-            if (InspectorBackend.hasCommand("DOM.setNodeName") && !DOMTreeElement.EditTagBlacklist.has(this.representedObject.nodeNameInCorrectCase())) {
+            if (InspectorBackend.hasCommand("DOM.setNodeName") && !DOMTreeElement.UneditableTagNames.has(this.representedObject.nodeNameInCorrectCase())) {
                 let tagNameNode = event.target.closest(".html-tag-name");
 
                 subMenus.edit.appendItem(WI.UIString("Tag", "A submenu item of 'Edit' to change DOM element's tag name"), () => {
@@ -1026,7 +1026,7 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         }
 
         var tagName = tagNameElement.textContent;
-        if (WI.DOMTreeElement.EditTagBlacklist.has(tagName.toLowerCase()))
+        if (WI.DOMTreeElement.UneditableTagNames.has(tagName.toLowerCase()))
             return false;
 
         if (WI.isBeingEdited(tagNameElement))
@@ -2012,9 +2012,6 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
 
     _updateGridBadge()
     {
-        if (!WI.settings.experimentalEnableGridBadges.value)
-            return;
-
         if (!this.listItemElement || this._elementCloseTag)
             return;
 
@@ -2044,7 +2041,7 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         // Don't expand or collapse a tree element when clicking on the grid badge.
         event.stop();
 
-        WI.overlayManager.toggleGridOverlay(this.representedObject);
+        WI.overlayManager.toggleGridOverlay(this.representedObject, {initiator: WI.GridOverlayDiagnosticEventRecorder.Initiator.Badge});
     }
 
     _gridBadgeDoubleClicked(event)
@@ -2057,7 +2054,17 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         if (!this._gridBadgeElement)
             return;
 
-        this._gridBadgeElement.classList.toggle("activated", WI.overlayManager.isGridOverlayVisible(this.representedObject));
+        let isGridVisible = WI.overlayManager.isGridOverlayVisible(this.representedObject);
+        this._gridBadgeElement.classList.toggle("activated", isGridVisible);
+
+        if (isGridVisible) {
+            let color = WI.overlayManager.getGridColorForNode(this.representedObject);
+            let hue = color.hsl[0];
+            this._gridBadgeElement.style.borderColor = color.toString();
+            this._gridBadgeElement.style.backgroundColor = `hsl(${hue}, 90%, 95%)`;
+            this._gridBadgeElement.style.setProperty("color", `hsl(${hue}, 55%, 40%)`);
+        } else
+            this._gridBadgeElement.removeAttribute("style");
     }
 
     _handleLayoutContextTypeChanged(event)
@@ -2087,7 +2094,7 @@ WI.DOMTreeElement.ForbiddenClosingTagElements = new Set([
 ]);
 
 // These tags we do not allow editing their tag name.
-WI.DOMTreeElement.EditTagBlacklist = new Set([
+WI.DOMTreeElement.UneditableTagNames = new Set([
     "html", "head", "body"
 ]);
 

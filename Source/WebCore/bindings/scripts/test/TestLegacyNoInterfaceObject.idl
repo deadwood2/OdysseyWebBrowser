@@ -37,10 +37,9 @@
     static attribute DOMString staticStringAttribute;
 
     undefined voidOperation();
-    [CallWith=ScriptExecutionContext, MayThrowException] TestObj throwingOperation(DOMString strArg, TestObj objArg);
     [Custom] undefined customOperation();
     static undefined staticOperation();
 
     const unsigned short CONSTANT1 = 1;
-    [Reflect=CONST_IMPL] const unsigned short CONSTANT2 = 2;
+    [ImplementedAs=CONST_IMPL] const unsigned short CONSTANT2 = 2;
 };

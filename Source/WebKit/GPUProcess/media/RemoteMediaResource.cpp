@@ -50,7 +50,7 @@ RemoteMediaResource::RemoteMediaResource(RemoteMediaResourceManager& remoteMedia
 
 RemoteMediaResource::~RemoteMediaResource()
 {
-    ASSERT(isMainThread());
+    ASSERT(isMainRunLoop());
     stop();
     if (!m_remoteMediaResourceManager)
         return;
@@ -76,7 +76,7 @@ void RemoteMediaResource::responseReceived(const ResourceResponse& response, boo
 
     m_didPassAccessControlCheck = didPassAccessControlCheck;
     m_client->responseReceived(*this, response, [protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)](auto shouldContinue) mutable {
-        ASSERT(isMainThread());
+        ASSERT(isMainRunLoop());
         if (shouldContinue == ShouldContinuePolicyCheck::No)
             protectedThis->stop();
 
@@ -96,7 +96,7 @@ void RemoteMediaResource::dataSent(uint64_t bytesSent, uint64_t totalBytesToBeSe
         m_client->dataSent(*this, bytesSent, totalBytesToBeSent);
 }
 
-void RemoteMediaResource::dataReceived(const char* data, int64_t length)
+void RemoteMediaResource::dataReceived(const uint8_t* data, int64_t length)
 {
     if (m_client)
         m_client->dataReceived(*this, data, length);

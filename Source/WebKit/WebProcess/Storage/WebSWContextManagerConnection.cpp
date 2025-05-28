@@ -33,6 +33,7 @@
 #include "Logging.h"
 #include "NetworkConnectionToWebProcessMessages.h"
 #include "NetworkProcessMessages.h"
+#include "RTCDataChannelRemoteManager.h"
 #include "ServiceWorkerFetchTaskMessages.h"
 #include "ServiceWorkerInitializationData.h"
 #include "WebCacheStorageProvider.h"
@@ -74,6 +75,16 @@ using namespace PAL;
 using namespace WebCore;
 
 
+#if ENABLE(WEB_RTC)
+class ServiceWorkerLibWebRTCProvider final : public WebCore::LibWebRTCProvider {
+public:
+    ServiceWorkerLibWebRTCProvider() = default;
+
+private:
+    RefPtr<WebCore::RTCDataChannelRemoteHandlerConnection> createRTCDataChannelRemoteHandlerConnection() final { return &RTCDataChannelRemoteManager::sharedManager().remoteHandlerConnection(); }
+};
+#endif
+
 ServiceWorkerFrameLoaderClient::ServiceWorkerFrameLoaderClient(WebPageProxyIdentifier webPageProxyID, PageIdentifier pageID, FrameIdentifier frameID, const String& userAgent)
     : m_webPageProxyID(webPageProxyID)
     , m_pageID(pageID)
@@ -88,7 +99,7 @@ Ref<DocumentLoader> ServiceWorkerFrameLoaderClient::createDocumentLoader(const R
     return WebDocumentLoader::create(request, substituteData);
 }
 
-WebSWContextManagerConnection::WebSWContextManagerConnection(Ref<IPC::Connection>&& connection, WebCore::RegistrableDomain&& registrableDomain, uint64_t pageGroupID, WebPageProxyIdentifier webPageProxyID, PageIdentifier pageID, const WebPreferencesStore& store, ServiceWorkerInitializationData&& initializationData)
+WebSWContextManagerConnection::WebSWContextManagerConnection(Ref<IPC::Connection>&& connection, WebCore::RegistrableDomain&& registrableDomain, PageGroupIdentifier pageGroupID, WebPageProxyIdentifier webPageProxyID, PageIdentifier pageID, const WebPreferencesStore& store, ServiceWorkerInitializationData&& initializationData)
     : m_connectionToNetworkProcess(WTFMove(connection))
     , m_registrableDomain(WTFMove(registrableDomain))
     , m_pageGroupID(pageGroupID)
@@ -113,7 +124,7 @@ WebSWContextManagerConnection::~WebSWContextManagerConnection() = default;
 
 void WebSWContextManagerConnection::establishConnection(CompletionHandler<void()>&& completionHandler)
 {
-    m_connectionToNetworkProcess->sendWithAsyncReply(Messages::NetworkConnectionToWebProcess::EstablishSWContextConnection { m_registrableDomain }, WTFMove(completionHandler), 0);
+    m_connectionToNetworkProcess->sendWithAsyncReply(Messages::NetworkConnectionToWebProcess::EstablishSWContextConnection { m_webPageProxyID, m_registrableDomain }, WTFMove(completionHandler), 0);
 }
 
 void WebSWContextManagerConnection::updatePreferencesStore(const WebPreferencesStore& store)
@@ -124,15 +135,22 @@ void WebSWContextManagerConnection::updatePreferencesStore(const WebPreferencesS
     setShouldUseShortTimeout(store.getBoolValueForKey(WebPreferencesKey::shouldUseServiceWorkerShortTimeoutKey()));
 }
 
-void WebSWContextManagerConnection::installServiceWorker(const ServiceWorkerContextData& data, String&& userAgent)
+void WebSWContextManagerConnection::updateAppInitiatedValue(ServiceWorkerIdentifier serviceWorkerIdentifier, WebCore::LastNavigationWasAppInitiated lastNavigationWasAppInitiated)
+{
+    if (auto* serviceWorkerThreadProxy = SWContextManager::singleton().serviceWorkerThreadProxy(serviceWorkerIdentifier))
+        serviceWorkerThreadProxy->setLastNavigationWasAppInitiated(lastNavigationWasAppInitiated == WebCore::LastNavigationWasAppInitiated::Yes);
+}
+
+void WebSWContextManagerConnection::installServiceWorker(ServiceWorkerContextData&& data, String&& userAgent)
 {
     auto pageConfiguration = pageConfigurationWithEmptyClients(WebProcess::singleton().sessionID());
 
-#if ENABLE(INDEXED_DATABASE)
     pageConfiguration.databaseProvider = WebDatabaseProvider::getOrCreate(m_pageGroupID);
-#endif
-    pageConfiguration.socketProvider = WebSocketProvider::create();
+    pageConfiguration.socketProvider = WebSocketProvider::create(m_webPageProxyID);
     pageConfiguration.userContentProvider = m_userContentController;
+#if ENABLE(WEB_RTC)
+    pageConfiguration.libWebRTCProvider = makeUniqueRef<ServiceWorkerLibWebRTCProvider>();
+#endif
 
     auto effectiveUserAgent =  WTFMove(userAgent);
     if (effectiveUserAgent.isNull())
@@ -140,10 +158,19 @@ void WebSWContextManagerConnection::installServiceWorker(const ServiceWorkerCont
 
     pageConfiguration.loaderClientForMainFrame = makeUniqueRef<ServiceWorkerFrameLoaderClient>(m_webPageProxyID, m_pageID, FrameIdentifier::generate(), effectiveUserAgent);
 
-    auto serviceWorkerThreadProxy = ServiceWorkerThreadProxy::create(WTFMove(pageConfiguration), data, WTFMove(effectiveUserAgent), WebProcess::singleton().cacheStorageProvider(), m_storageBlockingPolicy);
+#if !RELEASE_LOG_DISABLED
+    auto serviceWorkerIdentifier = data.serviceWorkerIdentifier;
+#endif
+    
+    auto lastNavigationWasAppInitiated = data.lastNavigationWasAppInitiated;
+    auto serviceWorkerThreadProxy = ServiceWorkerThreadProxy::create(WTFMove(pageConfiguration), WTFMove(data), WTFMove(effectiveUserAgent), WebProcess::singleton().cacheStorageProvider(), m_storageBlockingPolicy);
+
+    if (lastNavigationWasAppInitiated)
+        serviceWorkerThreadProxy->setLastNavigationWasAppInitiated(lastNavigationWasAppInitiated == WebCore::LastNavigationWasAppInitiated::Yes);
+
     SWContextManager::singleton().registerServiceWorkerThreadForInstall(WTFMove(serviceWorkerThreadProxy));
 
-    RELEASE_LOG(ServiceWorker, "Created service worker %" PRIu64 " in process PID %i", data.serviceWorkerIdentifier.toUInt64(), getCurrentProcessID());
+    RELEASE_LOG(ServiceWorker, "Created service worker %" PRIu64 " in process PID %i", serviceWorkerIdentifier.toUInt64(), getCurrentProcessID());
 }
 
 void WebSWContextManagerConnection::setUserAgent(String&& userAgent)
@@ -151,12 +178,12 @@ void WebSWContextManagerConnection::setUserAgent(String&& userAgent)
     m_userAgent = WTFMove(userAgent);
 }
 
-void WebSWContextManagerConnection::serviceWorkerStarted(Optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, bool doesHandleFetch)
+void WebSWContextManagerConnection::serviceWorkerStarted(std::optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, bool doesHandleFetch)
 {
     m_connectionToNetworkProcess->send(Messages::WebSWServerToContextConnection::ScriptContextStarted { jobDataIdentifier, serviceWorkerIdentifier, doesHandleFetch }, 0);
 }
 
-void WebSWContextManagerConnection::serviceWorkerFailedToStart(Optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, const String& exceptionMessage)
+void WebSWContextManagerConnection::serviceWorkerFailedToStart(std::optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, const String& exceptionMessage)
 {
     m_connectionToNetworkProcess->send(Messages::WebSWServerToContextConnection::ScriptContextFailedToStart { jobDataIdentifier, serviceWorkerIdentifier, exceptionMessage }, 0);
 }
@@ -213,13 +240,15 @@ void WebSWContextManagerConnection::startFetch(SWServerConnectionIdentifier serv
         return;
     }
 
+    serviceWorkerThreadProxy->setLastNavigationWasAppInitiated(request.isAppInitiated());
+
     if (!isValidFetch(request, options, serviceWorkerThreadProxy->scriptURL(), referrer)) {
         m_connectionToNetworkProcess->send(Messages::ServiceWorkerFetchTask::DidNotHandle { }, fetchIdentifier);
         return;
     }
 
     auto client = WebServiceWorkerFetchTaskClient::create(m_connectionToNetworkProcess.copyRef(), serviceWorkerIdentifier, serverConnectionIdentifier, fetchIdentifier, request.requester() == ResourceRequest::Requester::Main);
-    Optional<ServiceWorkerClientIdentifier> clientId;
+    std::optional<ServiceWorkerClientIdentifier> clientId;
     if (options.clientIdentifier)
         clientId = ServiceWorkerClientIdentifier { serverConnectionIdentifier, options.clientIdentifier.value() };
 
@@ -247,12 +276,19 @@ void WebSWContextManagerConnection::terminateWorker(ServiceWorkerIdentifier iden
     SWContextManager::singleton().terminateWorker(identifier, SWContextManager::workerTerminationTimeout, nullptr);
 }
 
+#if ENABLE(SHAREABLE_RESOURCE) && PLATFORM(COCOA)
+void WebSWContextManagerConnection::didSaveScriptsToDisk(WebCore::ServiceWorkerIdentifier identifier, ScriptBuffer&& script, HashMap<URL, ScriptBuffer>&& importedScripts)
+{
+    SWContextManager::singleton().didSaveScriptsToDisk(identifier, WTFMove(script), WTFMove(importedScripts));
+}
+#endif
+
 void WebSWContextManagerConnection::postMessageToServiceWorkerClient(const ServiceWorkerClientIdentifier& destinationIdentifier, const MessageWithMessagePorts& message, ServiceWorkerIdentifier sourceIdentifier, const String& sourceOrigin)
 {
     m_connectionToNetworkProcess->send(Messages::WebSWServerToContextConnection::PostMessageToServiceWorkerClient(destinationIdentifier, message, sourceIdentifier, sourceOrigin), 0);
 }
 
-void WebSWContextManagerConnection::didFinishInstall(Optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, bool wasSuccessful)
+void WebSWContextManagerConnection::didFinishInstall(std::optional<ServiceWorkerJobDataIdentifier> jobDataIdentifier, ServiceWorkerIdentifier serviceWorkerIdentifier, bool wasSuccessful)
 {
     m_connectionToNetworkProcess->send(Messages::WebSWServerToContextConnection::DidFinishInstall(jobDataIdentifier, serviceWorkerIdentifier, wasSuccessful), 0);
 }
@@ -274,7 +310,7 @@ void WebSWContextManagerConnection::skipWaiting(ServiceWorkerIdentifier serviceW
 
 void WebSWContextManagerConnection::setScriptResource(ServiceWorkerIdentifier serviceWorkerIdentifier, const URL& url, const ServiceWorkerContextData::ImportedScript& script)
 {
-    m_connectionToNetworkProcess->send(Messages::WebSWServerToContextConnection::SetScriptResource { serviceWorkerIdentifier, url, script.script, script.responseURL, script.mimeType }, 0);
+    m_connectionToNetworkProcess->send(Messages::WebSWServerToContextConnection::SetScriptResource { serviceWorkerIdentifier, url, script }, 0);
 }
 
 void WebSWContextManagerConnection::workerTerminated(ServiceWorkerIdentifier serviceWorkerIdentifier)
@@ -289,7 +325,7 @@ void WebSWContextManagerConnection::findClientByIdentifier(WebCore::ServiceWorke
     m_connectionToNetworkProcess->send(Messages::WebSWServerToContextConnection::FindClientByIdentifier { requestIdentifier, serviceWorkerIdentifier, clientIdentifier }, 0);
 }
 
-void WebSWContextManagerConnection::findClientByIdentifierCompleted(uint64_t requestIdentifier, Optional<ServiceWorkerClientData>&& clientData, bool hasSecurityError)
+void WebSWContextManagerConnection::findClientByIdentifierCompleted(uint64_t requestIdentifier, std::optional<ServiceWorkerClientData>&& clientData, bool hasSecurityError)
 {
     if (auto callback = m_findClientByIdentifierRequests.take(requestIdentifier)) {
         if (hasSecurityError) {

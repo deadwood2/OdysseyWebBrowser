@@ -39,6 +39,7 @@
 #import "RealtimeMediaSourceSettings.h"
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <wtf/cf/TypeCastsCF.h>
+#import <wtf/text/StringToIntegerConversion.h>
 
 #import <pal/cf/CoreMediaSoftLink.h>
 #import "CoreVideoSoftLink.h"
@@ -46,7 +47,6 @@
 WTF_DECLARE_CF_TYPE_TRAIT(CGImage);
 
 namespace WebCore {
-using namespace PAL;
 
 static bool anyOfCGWindow(const Function<bool(CFDictionaryRef info, unsigned id, const String& title)>& predicate)
 {
@@ -71,8 +71,7 @@ static bool anyOfCGWindow(const Function<bool(CFDictionaryRef info, unsigned id,
         if (windowLayer)
             continue;
 
-        auto onScreen = checked_cf_cast<CFBooleanRef>(CFDictionaryGetValue(windowInfo, kCGWindowIsOnscreen));
-        if (!CFBooleanGetValue(onScreen))
+        if (CFDictionaryGetValue(windowInfo, kCGWindowIsOnscreen) == kCFBooleanFalse)
             continue;
 
         auto windowIDRef = checked_cf_cast<CFNumberRef>(CFDictionaryGetValue(windowInfo, kCGWindowNumber));
@@ -104,16 +103,15 @@ static RetainPtr<CFDictionaryRef> windowDescription(CGWindowID id)
 
 Expected<UniqueRef<DisplayCaptureSourceCocoa::Capturer>, String> WindowDisplayCapturerMac::create(const String& deviceID)
 {
-    bool ok;
-    auto displayID = deviceID.toUIntStrict(&ok);
-    if (!ok)
+    auto displayID = parseInteger<uint32_t>(deviceID);
+    if (!displayID)
         return makeUnexpected("Invalid window device ID"_s);
 
-    auto windowInfo = windowDescription(displayID);
+    auto windowInfo = windowDescription(*displayID);
     if (!windowInfo)
         return makeUnexpected("Invalid window ID"_s);
 
-    return UniqueRef<DisplayCaptureSourceCocoa::Capturer>(makeUniqueRef<WindowDisplayCapturerMac>(displayID));
+    return UniqueRef<DisplayCaptureSourceCocoa::Capturer>(makeUniqueRef<WindowDisplayCapturerMac>(*displayID));
 }
 
 WindowDisplayCapturerMac::WindowDisplayCapturerMac(uint32_t windowID)
@@ -135,13 +133,12 @@ DisplayCaptureSourceCocoa::DisplayFrameType WindowDisplayCapturerMac::generateFr
     return DisplayCaptureSourceCocoa::DisplayFrameType { RetainPtr<CGImageRef> { windowImage() } };
 }
 
-Optional<CaptureDevice> WindowDisplayCapturerMac::windowCaptureDeviceWithPersistentID(const String& idString)
+std::optional<CaptureDevice> WindowDisplayCapturerMac::windowCaptureDeviceWithPersistentID(const String& idString)
 {
-    bool ok;
-    auto windowID = idString.toUIntStrict(&ok);
-    if (!ok) {
+    auto windowID = parseInteger<uint32_t>(idString);
+    if (!windowID) {
         RELEASE_LOG(WebRTC, "WindowDisplayCapturerMac::windowCaptureDeviceWithPersistentID: window ID does not convert to 32-bit integer");
-        return WTF::nullopt;
+        return std::nullopt;
     }
 
     String windowTitle;
@@ -154,10 +151,10 @@ Optional<CaptureDevice> WindowDisplayCapturerMac::windowCaptureDeviceWithPersist
 
     })) {
         RELEASE_LOG(WebRTC, "WindowDisplayCapturerMac::windowCaptureDeviceWithPersistentID: window ID is not valid");
-        return WTF::nullopt;
+        return std::nullopt;
     }
 
-    auto device = CaptureDevice(String::number(windowID), CaptureDevice::DeviceType::Window, windowTitle);
+    auto device = CaptureDevice(String::number(*windowID), CaptureDevice::DeviceType::Window, windowTitle);
     device.setEnabled(true);
 
     return device;

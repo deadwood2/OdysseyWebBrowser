@@ -44,10 +44,11 @@
 namespace WebKit {
 using namespace WebCore;
 
-WebSWServerToContextConnection::WebSWServerToContextConnection(NetworkConnectionToWebProcess& connection, RegistrableDomain&& registrableDomain, SWServer& server)
+WebSWServerToContextConnection::WebSWServerToContextConnection(NetworkConnectionToWebProcess& connection, WebPageProxyIdentifier webPageProxyID, RegistrableDomain&& registrableDomain, SWServer& server)
     : SWServerToContextConnection(WTFMove(registrableDomain))
     , m_connection(connection)
     , m_server(makeWeakPtr(server))
+    , m_webPageProxyID(webPageProxyID)
 {
     server.addContextConnection(*this);
 }
@@ -91,6 +92,11 @@ void WebSWServerToContextConnection::installServiceWorkerContext(const ServiceWo
     send(Messages::WebSWContextManagerConnection::InstallServiceWorker { data, userAgent });
 }
 
+void WebSWServerToContextConnection::updateAppInitiatedValue(ServiceWorkerIdentifier serviceWorkerIdentifier, WebCore::LastNavigationWasAppInitiated lastNavigationWasAppInitiated)
+{
+    send(Messages::WebSWContextManagerConnection::UpdateAppInitiatedValue(serviceWorkerIdentifier, lastNavigationWasAppInitiated));
+}
+
 void WebSWServerToContextConnection::fireInstallEvent(ServiceWorkerIdentifier serviceWorkerIdentifier)
 {
     send(Messages::WebSWContextManagerConnection::FireInstallEvent(serviceWorkerIdentifier));
@@ -106,12 +112,30 @@ void WebSWServerToContextConnection::terminateWorker(ServiceWorkerIdentifier ser
     send(Messages::WebSWContextManagerConnection::TerminateWorker(serviceWorkerIdentifier));
 }
 
+void WebSWServerToContextConnection::didSaveScriptsToDisk(ServiceWorkerIdentifier serviceWorkerIdentifier, const ScriptBuffer& script, const HashMap<URL, ScriptBuffer>& importedScripts)
+{
+#if ENABLE(SHAREABLE_RESOURCE) && PLATFORM(COCOA)
+    // Send file-mapped ScriptBuffers over to the ServiceWorker process so that it can replace its heap-allocated copies and save on dirty memory.
+    auto scriptToSend = script.containsSingleFileMappedSegment() ? script : ScriptBuffer();
+    HashMap<URL, ScriptBuffer> importedScriptsToSend;
+    for (auto& pair : importedScripts) {
+        if (pair.value.containsSingleFileMappedSegment())
+            importedScriptsToSend.add(pair.key, pair.value);
+    }
+    if (scriptToSend || !importedScriptsToSend.isEmpty())
+        send(Messages::WebSWContextManagerConnection::DidSaveScriptsToDisk { serviceWorkerIdentifier, scriptToSend, importedScriptsToSend });
+#else
+    UNUSED_PARAM(script);
+    UNUSED_PARAM(importedScripts);
+#endif
+}
+
 void WebSWServerToContextConnection::terminateDueToUnresponsiveness()
 {
     m_connection.networkProcess().parentProcessConnection()->send(Messages::NetworkProcessProxy::TerminateUnresponsiveServiceWorkerProcesses { webProcessIdentifier() }, 0);
 }
 
-void WebSWServerToContextConnection::findClientByIdentifierCompleted(uint64_t requestIdentifier, const Optional<ServiceWorkerClientData>& data, bool hasSecurityError)
+void WebSWServerToContextConnection::findClientByIdentifierCompleted(uint64_t requestIdentifier, const std::optional<ServiceWorkerClientData>& data, bool hasSecurityError)
 {
     send(Messages::WebSWContextManagerConnection::FindClientByIdentifierCompleted { requestIdentifier, data, hasSecurityError });
 }

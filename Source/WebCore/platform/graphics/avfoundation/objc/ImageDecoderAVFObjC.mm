@@ -52,7 +52,6 @@
 #import <wtf/MainThread.h>
 #import <wtf/MediaTime.h>
 #import <wtf/NeverDestroyed.h>
-#import <wtf/Optional.h>
 #import <wtf/Vector.h>
 
 #import "CoreVideoSoftLink.h"
@@ -97,7 +96,7 @@
 
 - (void)setExpectedContentSize:(long long)expectedContentSize
 {
-    LockHolder holder { _dataLock };
+    Locker locker { _dataLock };
     _expectedContentSize = expectedContentSize;
 
     [self fulfillPendingRequests];
@@ -105,7 +104,7 @@
 
 - (void)updateData:(NSData *)data complete:(BOOL)complete
 {
-    LockHolder holder { _dataLock };
+    Locker locker { _dataLock };
     _data = data;
     _complete = complete;
 
@@ -190,7 +189,7 @@
 
 - (BOOL)resourceLoader:(AVAssetResourceLoader *)resourceLoader shouldWaitForLoadingOfRequestedResource:(AVAssetResourceLoadingRequest *)loadingRequest
 {
-    LockHolder holder { _dataLock };
+    Locker locker { _dataLock };
 
     UNUSED_PARAM(resourceLoader);
 
@@ -206,7 +205,7 @@
 
 - (void)resourceLoader:(AVAssetResourceLoader *)resourceLoader didCancelLoadingRequest:(AVAssetResourceLoadingRequest *)loadingRequest
 {
-    LockHolder holder { _dataLock };
+    Locker locker { _dataLock };
 
     UNUSED_PARAM(resourceLoader);
     _requests.removeAll(loadingRequest);
@@ -225,13 +224,11 @@ static NSURL *customSchemeURL()
 
 static NSDictionary *imageDecoderAssetOptions()
 {
-    static NSDictionary *options = [] {
-        return [@{
-            AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidAll),
-            AVURLAssetUsesNoPersistentCacheKey: @YES,
-        } retain];
-    }();
-    return options;
+    static NeverDestroyed<RetainPtr<NSDictionary>> options = @{
+        AVURLAssetReferenceRestrictionsKey: @(AVAssetReferenceRestrictionForbidAll),
+        AVURLAssetUsesNoPersistentCacheKey: @YES,
+    };
+    return options.get().get();
 }
 
 class ImageDecoderAVFObjCSample : public MediaSampleAVFObjC {
@@ -254,12 +251,12 @@ public:
         m_hasAlpha = alphaInfo != kCGImageAlphaNone && alphaInfo != kCGImageAlphaNoneSkipLast && alphaInfo != kCGImageAlphaNoneSkipFirst;
     }
 
-    Optional<ByteRange> byteRange() const final
+    std::optional<ByteRange> byteRange() const final
     {
         if (PAL::CMSampleBufferGetDataBuffer(m_sample.get())
             || PAL::CMSampleBufferGetImageBuffer(m_sample.get())
             || !PAL::CMSampleBufferDataIsReady(m_sample.get()))
-            return WTF::nullopt;
+            return std::nullopt;
 
         return byteRangeForAttachment(PAL::kCMSampleBufferAttachmentKey_SampleReferenceByteOffset);
     }
@@ -392,7 +389,7 @@ void ImageDecoderAVFObjC::readTrackMetadata()
         || !m_imageRotationSession->transform()
         || m_imageRotationSession->transform().value() != finalTransform
         || m_imageRotationSession->size() != size)
-        m_imageRotationSession = makeUnique<ImageRotationSessionVT>(WTFMove(finalTransform), size, kCVPixelFormatType_32BGRA, ImageRotationSessionVT::IsCGImageCompatible::Yes);
+        m_imageRotationSession = makeUnique<ImageRotationSessionVT>(WTFMove(finalTransform), size, ImageRotationSessionVT::IsCGImageCompatible::Yes);
 
     m_size = expandedIntSize(m_imageRotationSession->rotatedSize());
 }
@@ -439,7 +436,7 @@ void ImageDecoderAVFObjC::setTrack(AVAssetTrack *track)
         return;
     m_track = track;
 
-    LockHolder holder { m_sampleGeneratorLock };
+    Locker locker { m_sampleGeneratorLock };
     m_sampleData.clear();
     m_size.reset();
     m_cursor = m_sampleData.decodeOrder().end();
@@ -558,12 +555,12 @@ unsigned ImageDecoderAVFObjC::frameBytesAtIndex(size_t index, SubsamplingLevel s
         return 0;
 
     IntSize frameSize = frameSizeAtIndex(index, subsamplingLevel);
-    return (frameSize.area() * 4).unsafeGet();
+    return frameSize.area() * 4;
 }
 
 PlatformImagePtr ImageDecoderAVFObjC::createFrameImageAtIndex(size_t index, SubsamplingLevel, const DecodingOptions&)
 {
-    LockHolder holder { m_sampleGeneratorLock };
+    Locker locker { m_sampleGeneratorLock };
 
     auto* sampleData = sampleAtIndex(index);
     if (!sampleData)

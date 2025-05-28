@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2009, 2010, 2012 Google Inc. All rights reserved.
 # Copyright (C) 2009 Torch Mobile Inc.
-# Copyright (C) 2009-2020 Apple Inc. All rights reserved.
+# Copyright (C) 2009-2021 Apple Inc. All rights reserved.
 # Copyright (C) 2010 Chris Jerdonek (cjerdonek@webkit.org)
 #
 # Redistribution and use in source and binary forms, with or without
@@ -45,10 +45,12 @@ import re
 import string
 import unicodedata
 
-from webkitcorepy import unicode
+from webkitcorepy import unicode, Version
 
 from webkitpy.style.checkers.common import match, search, sub, subn
+from webkitpy.style.checkers.inclusive_language import InclusiveLanguageChecker
 from webkitpy.common.memoized import memoized
+from webkitpy.common.version_name_map import VersionNameMap
 
 # The key to use to provide a class to fake loading a header file.
 INCLUDE_IO_INJECTION_KEY = 'include_header_io'
@@ -683,7 +685,7 @@ class FileInfo:
         return os.path.abspath(self._filename).replace('\\', '/')
 
     def repository_name(self):
-        """Full name after removing the local path to the repository.
+        r"""Full name after removing the local path to the repository.
 
         If we have a real absolute path name here we can try to do something smart:
         detecting the root of the checkout and truncating /path/to/checkout from
@@ -1423,7 +1425,7 @@ regex_for_lambdas_and_blocks.__last_error = None
 
 def check_for_non_standard_constructs(clean_lines, line_number,
                                       class_state, error):
-    """Logs an error if we see certain non-ANSI constructs ignored by gcc-2.
+    r"""Logs an error if we see certain non-ANSI constructs ignored by gcc-2.
 
     Complain about several constructs which gcc-2 accepts, but which are
     not standard C++.  Warning about these in lint is one way to ease the
@@ -2209,7 +2211,7 @@ def check_spacing(file_extension, clean_lines, line_number, file_state, error):
                   'Should have spaces around = in property synthesis.')
 
     # Don't try to do spacing checks for operator methods
-    line = sub(r'operator(==|!=|<|<<|<=|>=|>>|>|\+=|-=|\*=|/=|%=|&=|\|=|^=|<<=|>>=|/)\(', 'operator\(', line)
+    line = sub(r'operator(==|!=|<|<<|<=|>=|>>|>|\+=|-=|\*=|/=|%=|&=|\|=|^=|<<=|>>=|/)\(', r'operator\(', line)
     # Don't try to do spacing checks for #include, #import, #if, or #elif statements at
     # minimum because it messes up checks for spacing around /
     if match(r'\s*#\s*(?:include|import|if|elif)', line):
@@ -2487,7 +2489,7 @@ def check_namespace_indentation(clean_lines, line_number, file_extension, file_s
 
 
 # Enum declaration allowlist
-_ALLOW_ALL_UPPERCASE_ENUM = ['JSTokenType']
+_ALLOW_ALL_UPPERCASE_ENUM = ['JSTokenType', 'Meridiem']
 
 
 def check_enum_casing(clean_lines, line_number, enum_state, error):
@@ -2703,10 +2705,11 @@ def check_wtf_move(clean_lines, line_number, file_state, error):
     error(line_number, 'runtime/wtf_move', 4, "Use 'WTFMove()' instead of 'std::move()'.")
 
 
-def check_wtf_optional(clean_lines, line_number, file_state, error):
-    """Looks for use of 'std::optional<>' which should be replaced with 'WTF::Optional<>'.
+def check_callonmainthread(filename, clean_lines, line_number, file_state, error):
+    """Looks for use of 'callOnMainThread()' which should be replaced with 'callOnMainRunLoop()'.
 
     Args:
+      filename: The current file cpp_style is running over.
       clean_lines: A CleansedLines instance containing the file.
       line_number: The number of the line to check.
       file_state: A _FileState instance which maintains information about
@@ -2714,13 +2717,39 @@ def check_wtf_optional(clean_lines, line_number, file_state, error):
       error: The function to call with any errors found.
     """
 
-    line = clean_lines.elided[line_number]  # Get rid of comments and strings.
-
-    using_std_optional = search(r'\boptional\s*\<', line)
-    if not using_std_optional:
+    if not _is_webkit2_file(filename):
         return
 
-    error(line_number, 'runtime/wtf_optional', 4, "Use 'WTF::Optional<>' instead of 'std::optional<>'.")
+    line = clean_lines.elided[line_number]  # Get rid of comments and strings.
+    using_callonmainthread = search(r'\bcallOnMainThread\s*\(', line)
+    if using_callonmainthread:
+        error(line_number, 'runtime/callonmainthread', 4, "Use 'callOnMainRunLoop()' instead of 'callOnMainThread()' in Source/WebKit.")
+    using_callonmainthreadandwait = search(r'\bcallOnMainThreadAndWait\s*\(', line)
+    if using_callonmainthreadandwait:
+        error(line_number, 'runtime/callonmainthread', 4, "Use 'callOnMainRunLoopAndWait()' instead of 'callOnMainThreadAndWait()' in Source/WebKit.")
+
+
+def check_ismainthread(filename, clean_lines, line_number, file_state, error):
+    """Looks for use of 'isMainThread()' which should be replaced with 'isMainRunLoop()'.
+
+    Args:
+      filename: The current file cpp_style is running over.
+      clean_lines: A CleansedLines instance containing the file.
+      line_number: The number of the line to check.
+      file_state: A _FileState instance which maintains information about
+                  the state of things in the file.
+      error: The function to call with any errors found.
+    """
+
+    if not _is_webkit2_file(filename):
+        return
+
+    line = clean_lines.elided[line_number]  # Get rid of comments and strings.
+    using_ismainthread = search(r'\bisMainThread\s*\(', line)
+    if not using_ismainthread:
+        return
+
+    error(line_number, 'runtime/ismainthread', 4, "Use 'isMainRunLoop()' instead of 'isMainThread()' in Source/WebKit.")
 
 
 def check_wtf_make_unique(clean_lines, line_number, file_state, error):
@@ -2789,7 +2818,7 @@ def check_lock_guard(clean_lines, line_number, file_state, error):
     if not using_std_lock_guard_search:
         return
 
-    error(line_number, 'runtime/lock_guard', 4, "Use 'auto locker = holdLock(mutex)' instead of 'std::lock_guard<>'.")
+    error(line_number, 'runtime/lock_guard', 4, "Use 'Locker locker { lock }' instead of 'std::lock_guard<>'.")
 
 
 def check_ctype_functions(clean_lines, line_number, file_state, error):
@@ -3249,8 +3278,8 @@ def get_line_width(line):
     return len(line)
 
 
-def check_min_versions_of_wk_api_available(clean_lines, line_number, error):
-    """Checks the min version numbers of WK_API_AVAILABLE
+def check_arguments_for_wk_api_available(clean_lines, line_number, error):
+    """Checks the allowable arguments of WK_API_AVAILABLE
 
     Args:
       clean_lines: A CleansedLines instance containing the file.
@@ -3258,34 +3287,60 @@ def check_min_versions_of_wk_api_available(clean_lines, line_number, error):
       error: The function to call with any errors found.
     """
 
+    @memoized
+    def max_version_for_platform(platform_name):
+        return VersionNameMap.map().max_public_version(platform=platform_name)
+
+    def check_version_string(version_string, platform_name):
+        mapping = {
+            'macos': 'WK_MAC_TBA',
+            'ios': 'WK_IOS_TBA',
+        }
+
+        platform_tba_macro = mapping.get(platform_name)
+        if version_string == platform_tba_macro:
+            return
+
+        try:
+            version = Version.from_string(version_string)
+        except ValueError:
+            error(line_number, 'build/wk_api_available', 5, '%s(%s) is invalid; expected %s or a major.minor version' % (platform_name, version_string, platform_tba_macro))
+            return
+
+        if not version_string.count('.'):
+            error(line_number, 'build/wk_api_available', 5, '%s(%s) is invalid; version number should have one decimal' % (platform_name, version_string))
+            return
+
+        max_version = max_version_for_platform(platform_name)
+        if version > max_version:
+            error(line_number, 'build/wk_api_available', 5, '%s(%s) is invalid; version number should not exceed %s' % (platform_name, version_string, max_version))
+            return
+
     line = clean_lines.elided[line_number]  # Get rid of comments and strings.
 
     wk_api_available = search(r'WK_API_AVAILABLE\(macosx\(', line)
     if wk_api_available:
         error(line_number, 'build/wk_api_available', 5, 'macosx() is deprecated; use macos() instead')
+        return
 
-    # FIXME: This should support any order.
     wk_api_available = search(r'WK_API_AVAILABLE\(macos\(([^\)]+)\), ios\(([^\)]+)\)\)', line)
     if wk_api_available:
-        macosMinVersion = wk_api_available.group(1)
-        if not match(r'^([\d\.]+|WK_MAC_TBA)$', macosMinVersion):
-            error(line_number, 'build/wk_api_available', 5, 'macos(%s) is invalid; expected WK_MAC_TBA or a number' % macosMinVersion)
+        check_version_string(wk_api_available.group(1), "macos")
+        check_version_string(wk_api_available.group(2), "ios")
 
-        iosMinVersion = wk_api_available.group(2)
-        if not match(r'^([\d\.]+|WK_IOS_TBA)$', iosMinVersion):
-            error(line_number, 'build/wk_api_available', 5, 'ios(%s) is invalid; expected WK_IOS_TBA or a number' % iosMinVersion)
+    wk_api_available = search(r'WK_API_AVAILABLE\(ios\(([^\)]+)\), macos\(([^\)]+)\)\)', line)
+    if wk_api_available:
+        check_version_string(wk_api_available.group(1), "ios")
+        check_version_string(wk_api_available.group(2), "macos")
 
     wk_api_available = search(r'WK_API_AVAILABLE\(macos\(([^\)]+)\)\)', line)
     if wk_api_available:
-        macosMinVersion = wk_api_available.group(1)
-        if not match(r'^([\d\.]+|WK_MAC_TBA)$', macosMinVersion):
-            error(line_number, 'build/wk_api_available', 5, 'macos(%s) is invalid; expected WK_MAC_TBA or a number' % macosMinVersion)
+        check_version_string(wk_api_available.group(1), "macos")
 
     wk_api_available = search(r'WK_API_AVAILABLE\(ios\(([^\)]+)\)\)', line)
     if wk_api_available:
-        iosMinVersion = wk_api_available.group(1)
-        if not match(r'^([\d\.]+|WK_IOS_TBA)$', iosMinVersion):
-            error(line_number, 'build/wk_api_available', 5, 'ios(%s) is invalid; expected WK_IOS_TBA or a number' % iosMinVersion)
+        check_version_string(wk_api_available.group(1), "ios")
+
 
 def check_style(clean_lines, line_number, file_extension, class_state, file_state, enum_state, error):
     """Checks rules from the 'C++ style rules' section of cppguide.html.
@@ -3351,7 +3406,6 @@ def check_style(clean_lines, line_number, file_extension, class_state, file_stat
     check_max_min_macros(clean_lines, line_number, file_state, error)
     check_wtf_checked_size(clean_lines, line_number, file_state, error)
     check_wtf_move(clean_lines, line_number, file_state, error)
-    check_wtf_optional(clean_lines, line_number, file_state, error)
     check_wtf_make_unique(clean_lines, line_number, file_state, error)
     check_wtf_never_destroyed(clean_lines, line_number, file_state, error)
     check_lock_guard(clean_lines, line_number, file_state, error)
@@ -3368,7 +3422,7 @@ def check_style(clean_lines, line_number, file_extension, class_state, file_stat
     check_indentation_amount(clean_lines, line_number, error)
     check_enum_casing(clean_lines, line_number, enum_state, error)
     check_once_flag(clean_lines, line_number, file_state, error)
-    check_min_versions_of_wk_api_available(clean_lines, line_number, error)
+    check_arguments_for_wk_api_available(clean_lines, line_number, error)
 
 
 _RE_PATTERN_INCLUDE_NEW_STYLE = re.compile(r'#(?:include|import) +"[^/]+\.h"')
@@ -3489,6 +3543,10 @@ def _does_primary_header_exist(filename):
 
 def _is_javascriptcore_file(filename):
     return filename.startswith('Source/JavaScriptCore/')
+
+
+def _is_webkit2_file(filename):
+    return filename.startswith('Source/WebKit/')
 
 
 def check_include_line(filename, file_extension, clean_lines, line_number, include_state, error):
@@ -3784,7 +3842,7 @@ def check_language(filename, clean_lines, line_number, file_extension, include_s
                   'Never soft-link frameworks in headers. Put the soft-link macros in a source file, or create {framework}SoftLink.{{cpp,mm}} instead.'.format(framework=framework_name))
 
         frameworks_with_soft_links = ['CoreMedia', 'CoreVideo', 'DataDetectorsCore', 'LocalAuthentication', 'MediaAccessibility', 'MediaRemote', 'PassKit', 'QuickLook', 'UIKit', 'VideoToolbox']
-        if framework_name in frameworks_with_soft_links and not re.compile('^\s*SOFT_LINK_(PRIVATE_)?FRAMEWORK_FOR_(HEADER|SOURCE)(_WITH_EXPORT)?\({}\)'.format(framework_name)).search(line):
+        if framework_name in frameworks_with_soft_links and not re.compile(r'^\s*SOFT_LINK_(PRIVATE_)?FRAMEWORK_FOR_(HEADER|SOURCE)(_WITH_EXPORT)?\({}\)'.format(framework_name)).search(line):
             error(line_number, 'softlink/framework', 5,
                   'Use {framework}SoftLink.{{cpp,h,mm}} to soft-link to {framework}.framework.'.format(framework=framework_name))
 
@@ -4431,6 +4489,8 @@ def process_line(filename, file_extension,
     check_posix_threading(clean_lines, line, error)
     check_invalid_increment(clean_lines, line, error)
     check_os_version_checks(filename, clean_lines, line, error)
+    check_callonmainthread(filename, clean_lines, line, file_state, error)
+    check_ismainthread(filename, clean_lines, line, file_state, error)
 
 
 class _InlineASMState(object):
@@ -4524,6 +4584,7 @@ class CppChecker(object):
         'build/wk_api_available',
         'build/version_check',
         'legal/copyright',
+        'policy/language',
         'readability/braces',
         'readability/casting',
         'readability/check',
@@ -4547,6 +4608,7 @@ class CppChecker(object):
         'readability/utf8',
         'runtime/arrays',
         'runtime/bitfields',
+        'runtime/callonmainthread',
         'runtime/casting',
         'runtime/ctype_function',
         'runtime/dispatch_set_target_queue',
@@ -4555,6 +4617,7 @@ class CppChecker(object):
         'runtime/init',
         'runtime/int',
         'runtime/invalid_increment',
+        'runtime/ismainthread',
         'runtime/leaky_pattern',
         'runtime/lock_guard',
         'runtime/max_min_macros',
@@ -4572,7 +4635,6 @@ class CppChecker(object):
         'runtime/unsigned',
         'runtime/virtual',
         'runtime/wtf_checked_size',
-        'runtime/wtf_optional',
         'runtime/wtf_make_unique',
         'runtime/wtf_move',
         'runtime/wtf_never_destroyed',
@@ -4618,6 +4680,7 @@ class CppChecker(object):
         self.file_path = file_path
         self.handle_style_error = handle_style_error
         self.min_confidence = min_confidence
+        self._inclusive_language_checker = InclusiveLanguageChecker(handle_style_error)
         _unit_test_config = unit_test_config
 
     # Useful for unit testing.
@@ -4644,3 +4707,4 @@ class CppChecker(object):
             return
         _process_lines(self.file_path, self.file_extension, lines,
                        self.handle_style_error, self.min_confidence)
+        self._inclusive_language_checker.check(lines)

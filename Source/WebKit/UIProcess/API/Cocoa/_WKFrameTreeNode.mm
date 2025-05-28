@@ -27,14 +27,18 @@
 
 #import "WKSecurityOriginInternal.h"
 #import "WKWebViewInternal.h"
+#import "WebPageProxy.h"
 #import "_WKFrameHandleInternal.h"
 #import "_WKFrameTreeNodeInternal.h"
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
 @implementation _WKFrameTreeNode
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(_WKFrameTreeNode.class, self))
+        return;
     _node->API::FrameTreeNode::~FrameTreeNode();
     [super dealloc];
 }
@@ -58,7 +62,7 @@
 
 - (WKWebView *)webView
 {
-    return retainPtr(fromWebPageProxy(_node->page())).autorelease();
+    return _node->page().cocoaView().autorelease();
 }
 
 - (NSArray<_WKFrameTreeNode *> *)childFrames

@@ -28,15 +28,10 @@
 
 #if HAVE(RSA_BSSA)
 
-#include <Security/SecKeyPriv.h>
-#include <WebCore/PrivateClickMeasurement.h>
+#include "CoreCryptoSPI.h"
 
-extern "C" {
-#include <corecrypto/cc_priv.h>
-#include <corecrypto/ccrng.h>
-#include <corecrypto/ccrsa.h>
-#include <corecrypto/ccrsabssa.h>
-}
+#include <WebCore/PrivateClickMeasurement.h>
+#include <wtf/spi/cocoa/SecuritySPI.h>
 
 using namespace WebCore;
 
@@ -81,23 +76,24 @@ TEST(PrivateClickMeasurement, ValidBlindedSecret)
     auto *nsSpkiData = (__bridge NSData *)spkiData.get();
 
     // Continue the test.
-    EXPECT_TRUE(pcm.calculateAndUpdateSourceSecretToken(WTF::base64URLEncode(nsSpkiData.bytes, nsSpkiData.length)));
-    auto sourceSecretToken = pcm.tokenSignatureJSON();
-    EXPECT_EQ(sourceSecretToken->asObject()->size(), 4ul);
-    EXPECT_STREQ(sourceSecretToken->getString("source_engagement_type"_s).utf8().data(), "click");
-    EXPECT_STREQ(sourceSecretToken->getString("source_nonce"_s).utf8().data(), "ABCDEFabcdef0123456789");
-    EXPECT_FALSE(sourceSecretToken->getString("source_secret_token"_s).isEmpty());
-    EXPECT_EQ(sourceSecretToken->getInteger("version"_s), 2);
+    auto errorMessage = pcm.calculateAndUpdateSourceUnlinkableToken(base64URLEncodeToString(nsSpkiData.bytes, nsSpkiData.length));
+    EXPECT_FALSE(errorMessage);
+    auto sourceUnlinkableToken = pcm.tokenSignatureJSON();
+    EXPECT_EQ(sourceUnlinkableToken->asObject()->size(), 4ul);
+    EXPECT_STREQ(sourceUnlinkableToken->getString("source_engagement_type"_s).utf8().data(), "click");
+    EXPECT_STREQ(sourceUnlinkableToken->getString("source_nonce"_s).utf8().data(), "ABCDEFabcdef0123456789");
+    EXPECT_FALSE(sourceUnlinkableToken->getString("source_unlinkable_token"_s).isEmpty());
+    EXPECT_EQ(sourceUnlinkableToken->getInteger("version"_s), 2);
 
     // Generate the signature.
-    Vector<uint8_t> blindedMessage;
-    base64URLDecode(sourceSecretToken->getString("source_secret_token"_s), blindedMessage);
+    auto blindedMessage = base64URLDecode(sourceUnlinkableToken->getString("source_unlinkable_token"_s));
 
-    auto blindedSignature = adoptNS([[NSMutableData alloc] initWithLength: modulusNBytes]);
-    ccrsabssa_sign_blinded_message(ciphersuite, rsaPrivateKey, blindedMessage.data(), blindedMessage.size(), static_cast<uint8_t *>([blindedSignature mutableBytes]), [blindedSignature length], rng);
+    auto blindedSignature = adoptNS([[NSMutableData alloc] initWithLength:modulusNBytes]);
+    ccrsabssa_sign_blinded_message(ciphersuite, rsaPrivateKey, blindedMessage->data(), blindedMessage->size(), static_cast<uint8_t *>([blindedSignature mutableBytes]), [blindedSignature length], rng);
 
     // Continue the test.
-    EXPECT_TRUE(pcm.calculateAndUpdateSourceUnlinkableToken(WTF::base64URLEncode([blindedSignature bytes], [blindedSignature length])));
+    errorMessage = pcm.calculateAndUpdateSourceSecretToken(base64URLEncodeToString([blindedSignature bytes], [blindedSignature length]));
+    EXPECT_FALSE(errorMessage);
     auto& persistentToken = pcm.sourceUnlinkableToken();
     EXPECT_TRUE(persistentToken);
     EXPECT_FALSE(persistentToken->tokenBase64URL.isEmpty());

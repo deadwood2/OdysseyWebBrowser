@@ -258,13 +258,13 @@ template<> struct LogArgument<WebCore::SourceBufferParserWebM::State> {
 
 namespace WebCore {
 
-using namespace PAL;
-
 static WTFLogChannel& logChannel() { return LogMedia; }
 static const char* logClassName() { return "SourceBufferParserWebM"; }
 
 // FIXME: Remove this once kCMVideoCodecType_VP9 is added to CMFormatDescription.h
 constexpr CMVideoCodecType kCMVideoCodecType_VP9 { 'vp09' };
+
+constexpr uint32_t k_us_in_seconds = 1000000000;
 
 static bool isWebmParserAvailable()
 {
@@ -286,10 +286,13 @@ public:
     Status Read(std::size_t numToRead, uint8_t* outputBuffer, uint64_t* numActuallyRead) final
     {
         ASSERT(outputBuffer && numActuallyRead);
-        if (!outputBuffer || !numActuallyRead)
+        if (!numActuallyRead)
             return Status(Status::kNotEnoughMemory);
 
         *numActuallyRead = 0;
+        if (!outputBuffer)
+            return Status(Status::kNotEnoughMemory);
+
         while (numToRead && m_currentSegment != m_data.end()) {
             auto& currentSegment = *m_currentSegment;
 
@@ -298,10 +301,11 @@ public:
                 continue;
             }
 
-            *numActuallyRead = currentSegment.read(m_positionWithinSegment, numToRead, outputBuffer);
-            m_position += *numActuallyRead;
-            m_positionWithinSegment += *numActuallyRead;
-            numToRead -= *numActuallyRead;
+            uint64_t lastRead = currentSegment.read(m_positionWithinSegment, numToRead, outputBuffer);
+            m_position += lastRead;
+            *numActuallyRead += lastRead;
+            m_positionWithinSegment += lastRead;
+            numToRead -= lastRead;
             if (m_positionWithinSegment == currentSegment.size())
                 advanceToNextSegment();
         }
@@ -446,7 +450,7 @@ public:
 
         auto slashLocation = codecID.find('/');
         auto length = slashLocation == notFound ? codecID.length() - 2 : slashLocation - 2;
-        m_codec = AtomString { codecID.substring(2, length).convertToASCIILowercase() };
+        m_codec = codecID.substring(2, length).convertToASCIILowercaseAtom();
         return *m_codec;
     }
     bool isVideo() const final { return m_track.track_type.is_present() && m_track.track_type.value() == TrackType::kVideo; }
@@ -456,7 +460,7 @@ public:
     const webm::TrackEntry& track() { return m_track; }
 
 private:
-    mutable Optional<AtomString> m_codec;
+    mutable std::optional<AtomString> m_codec;
     webm::TrackEntry m_track;
 };
 
@@ -590,16 +594,8 @@ RefPtr<SourceBufferParserWebM> SourceBufferParserWebM::create(const ContentType&
     return nullptr;
 }
 
-static SourceBufferParserWebM::CallOnClientThreadCallback callOnMainThreadCallback()
-{
-    return [](Function<void()>&& function) {
-        callOnMainThread(WTFMove(function));
-    };
-}
-
 SourceBufferParserWebM::SourceBufferParserWebM()
     : m_reader(WTF::makeUniqueRef<StreamingVectorReader>())
-    , m_callOnClientThreadCallback(callOnMainThreadCallback())
 {
     if (isWebmParserAvailable())
         m_parser = WTF::makeUniqueWithoutFastMallocCheck<WebmParser>();
@@ -628,6 +624,12 @@ void SourceBufferParserWebM::appendData(Segment&& segment, CompletionHandler<voi
         m_status = m_parser->Feed(this, &m_reader);
         if (m_status.ok() || m_status.code == Status::kEndOfFile || m_status.code == Status::kWouldBlock) {
             m_reader->reclaimSegments();
+
+            // Audio tracks are grouped into meta-samples of a duration no more than m_minimumSampleDuration.
+            // But at the end of a file, no more audio data may be incoming, so flush and emit any pending
+            // audio buffers.
+            flushPendingAudioBuffers();
+
             completionHandler();
             return;
         }
@@ -648,7 +650,7 @@ void SourceBufferParserWebM::appendData(Segment&& segment, CompletionHandler<voi
         }
 
         ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER, "received Ebml element while parsing Segment element. Rewound reader and reset parser, retrying");
-        m_rewindToPosition = WTF::nullopt;
+        m_rewindToPosition = std::nullopt;
         m_parser->DidSeek();
         m_state = State::None;
         continue;
@@ -681,14 +683,15 @@ bool SourceBufferParserWebM::shouldProvideMediadataForTrackID(uint64_t)
 void SourceBufferParserWebM::resetParserState()
 {
     INFO_LOG_IF_POSSIBLE(LOGIDENTIFIER);
-    flushPendingAudioBuffers();
     if (m_parser)
         m_parser->DidSeek();
-    m_state = State::None;
-    m_tracks.clear();
+    m_reader->reset();
+    m_state = m_initializationSegmentProcessed ? State::ReadingSegment : State::None;
     m_initializationSegment = nullptr;
     m_initializationSegmentEncountered = false;
     m_currentBlock.reset();
+    for (auto& track : m_tracks)
+        track->reset();
 }
 
 void SourceBufferParserWebM::invalidate()
@@ -778,13 +781,15 @@ Status SourceBufferParserWebM::OnElementEnd(const ElementMetadata& metadata)
             return Status(Status::Code(ErrorCode::ContentEncrypted));
         }
 
-        if (m_initializationSegmentEncountered && m_didParseInitializationDataCallback) {
+        if (m_initializationSegmentEncountered) {
             m_callOnClientThreadCallback([this, protectedThis = makeRef(*this), initializationSegment = WTFMove(*m_initializationSegment)]() mutable {
-                m_didParseInitializationDataCallback(WTFMove(initializationSegment));
+                if (m_didParseInitializationDataCallback)
+                    m_didParseInitializationDataCallback(WTFMove(initializationSegment));
             });
         }
         m_initializationSegmentEncountered = false;
         m_initializationSegment = nullptr;
+        m_initializationSegmentProcessed = true;
 
         if (!m_keyIds.isEmpty()) {
             for (auto& keyIdPair : m_keyIds)
@@ -806,6 +811,12 @@ Status SourceBufferParserWebM::OnEbml(const ElementMetadata& metadata, const Ebm
 
     m_initializationSegmentEncountered = true;
     m_initializationSegment = WTF::makeUniqueWithoutFastMallocCheck<InitializationSegment>();
+    // TODO: Setting this to false here, will prevent adding a new media segment should a
+    // partial init segment be encountered after a call to sourceBuffer.abort().
+    // It's probably fine as no-one in their right mind should send partial init segment only
+    // to immediately abort it. We do it this way mostly to avoid getting into a rabbit hole
+    // of ensuring that libwebm does something sane with rubbish input.
+    m_initializationSegmentProcessed = false;
 
     return Status(Status::kOkCompleted);
 }
@@ -839,7 +850,7 @@ Status SourceBufferParserWebM::OnInfo(const ElementMetadata& metadata, const Inf
     }
 
     auto timecodeScale = info.timecode_scale.is_present() ? info.timecode_scale.value() : 1000000;
-    m_timescale = 1000000000 / timecodeScale;
+    m_timescale = k_us_in_seconds / timecodeScale;
     m_initializationSegment->duration = info.duration.is_present() ? MediaTime(info.duration.value(), m_timescale) : MediaTime::indefiniteTime();
 
     return Status(Status::kOkCompleted);
@@ -955,7 +966,7 @@ webm::Status SourceBufferParserWebM::OnBlockBegin(const ElementMetadata& metadat
 
     *action = Action::kRead;
 
-    m_currentBlock = makeOptional<BlockVariant>(Block(block));
+    m_currentBlock = std::make_optional<BlockVariant>(Block(block));
 
     return Status(Status::kOkCompleted);
 }
@@ -966,7 +977,7 @@ webm::Status SourceBufferParserWebM::OnBlockEnd(const ElementMetadata& metadata,
     UNUSED_PARAM(block);
     INFO_LOG_IF_POSSIBLE(LOGIDENTIFIER);
 
-    m_currentBlock = WTF::nullopt;
+    m_currentBlock = std::nullopt;
 
     return Status(Status::kOkCompleted);
 }
@@ -982,7 +993,7 @@ webm::Status SourceBufferParserWebM::OnSimpleBlockBegin(const ElementMetadata& m
 
     *action = Action::kRead;
 
-    m_currentBlock = makeOptional<BlockVariant>(SimpleBlock(block));
+    m_currentBlock = std::make_optional<BlockVariant>(SimpleBlock(block));
 
     return Status(Status::kOkCompleted);
 }
@@ -994,7 +1005,7 @@ webm::Status SourceBufferParserWebM::OnSimpleBlockEnd(const ElementMetadata& met
 
     UNUSED_PARAM(block);
 
-    m_currentBlock = WTF::nullopt;
+    m_currentBlock = std::nullopt;
 
     return Status(Status::kOkCompleted);
 }
@@ -1015,8 +1026,21 @@ webm::Status SourceBufferParserWebM::OnBlockGroupBegin(const webm::ElementMetada
 webm::Status SourceBufferParserWebM::OnBlockGroupEnd(const webm::ElementMetadata& metadata, const webm::BlockGroup& blockGroup)
 {
     UNUSED_PARAM(metadata);
-    UNUSED_PARAM(blockGroup);
     INFO_LOG_IF_POSSIBLE(LOGIDENTIFIER);
+    if (blockGroup.block.is_present() && blockGroup.discard_padding.is_present()) {
+        auto trackNumber = blockGroup.block.value().track_number;
+        auto* trackData = trackDataForTrackNumber(trackNumber);
+        if (!trackData) {
+            ERROR_LOG_IF_POSSIBLE(LOGIDENTIFIER, "Ignoring unknown track number ", trackNumber);
+            return Status(Status::kOkCompleted);
+        }
+        if (trackData->track().track_uid.is_present() && blockGroup.discard_padding.value() > 0) {
+            m_callOnClientThreadCallback([this, protectedThis = makeRef(*this), trackID = trackData->track().track_uid.value(), padding = MediaTime(blockGroup.discard_padding.value(), k_us_in_seconds)]() {
+                if (m_didParseTrimmingDataCallback)
+                    m_didParseTrimmingDataCallback(trackID, padding);
+            });
+        }
+    }
     return Status(Status::kOkCompleted);
 }
 
@@ -1057,10 +1081,10 @@ webm::Status SourceBufferParserWebM::OnFrame(const FrameMetadata& metadata, Read
         return Skip(reader, bytesRemaining);
     }
 
-    return trackData->consumeFrameData(*reader, metadata, bytesRemaining, CMTimeMake(block->timecode + m_currentTimecode, m_timescale), block->num_frames);
+    return trackData->consumeFrameData(*reader, metadata, bytesRemaining, PAL::CMTimeMake(block->timecode + m_currentTimecode, m_timescale), block->num_frames);
 }
 
-void SourceBufferParserWebM::provideMediaData(RetainPtr<CMSampleBufferRef> sampleBuffer, uint64_t trackID, Optional<size_t> byteRangeOffset)
+void SourceBufferParserWebM::provideMediaData(RetainPtr<CMSampleBufferRef> sampleBuffer, uint64_t trackID, std::optional<size_t> byteRangeOffset)
 {
     m_callOnClientThreadCallback([this, protectedThis = makeRef(*this), sampleBuffer = WTFMove(sampleBuffer), trackID, byteRangeOffset] () mutable {
         if (!m_didProvideMediaDataCallback)
@@ -1075,52 +1099,80 @@ void SourceBufferParserWebM::provideMediaData(RetainPtr<CMSampleBufferRef> sampl
 
 #define PARSER_LOG_ERROR_IF_POSSIBLE(...) if (parser().loggerPtr()) parser().loggerPtr()->error(logChannel(), WTF::Logger::LogSiteIdentifier(logClassName(), __func__, parser().logIdentifier()), __VA_ARGS__)
 
+#if ENABLE(VP9)
+void SourceBufferParserWebM::VideoTrackData::reset()
+{
+    m_currentBlockBuffer = nullptr;
+    TrackData::reset();
+}
+#endif
+
 webm::Status SourceBufferParserWebM::VideoTrackData::consumeFrameData(webm::Reader& reader, const FrameMetadata& metadata, uint64_t* bytesRemaining, const CMTime& presentationTime, int sampleCount)
 {
 #if ENABLE(VP9)
     CMBlockBufferRef rawBlockBuffer = nullptr;
 
+    if (m_currentPacketSize && *m_currentPacketSize != metadata.size) {
+        // The packet's metadata doesn't match the currently pending partial packet; restart.
+        ASSERT_NOT_REACHED_WITH_MESSAGE("VideoTrackData::consumeFrameData: webm in nonsensical state");
+        m_partialBytesRead = 0;
+        m_currentBlockBuffer = nullptr;
+        m_currentPacketSize = std::nullopt;
+    }
+
+    if (!m_currentPacketSize)
+        m_currentPacketSize = metadata.size;
+
     if (!m_currentBlockBuffer) {
-        auto err = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, nullptr, metadata.size, kCFAllocatorDefault, nullptr, 0, metadata.size, 0, &rawBlockBuffer);
+        auto err = PAL::CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, nullptr, *m_currentPacketSize, kCFAllocatorDefault, nullptr, 0, *m_currentPacketSize, 0, &rawBlockBuffer);
         if (err) {
             PARSER_LOG_ERROR_IF_POSSIBLE("CMBlockBufferCreateWithMemoryBlock failed with error", err);
             return Skip(&reader, bytesRemaining);
         }
 
         m_currentBlockBuffer = adoptCF(rawBlockBuffer);
-        m_currentBlockBufferPosition = 0;
+        m_partialBytesRead = 0;
 
-        err = CMBlockBufferAssureBlockMemory(m_currentBlockBuffer.get());
+        err = PAL::CMBlockBufferAssureBlockMemory(m_currentBlockBuffer.get());
         if (err) {
             PARSER_LOG_ERROR_IF_POSSIBLE("CMAudioSampleBufferCreateWithPacketDescriptions failed with error", err);
             return Skip(&reader, bytesRemaining);
         }
     }
 
-    size_t bytesToRead = metadata.size - m_currentBlockBufferPosition;
-    while (bytesToRead) {
+    if (*m_currentPacketSize < m_partialBytesRead + *bytesRemaining) {
+        PARSER_LOG_ERROR_IF_POSSIBLE("Invalid frame size allocated, ignoring the entire frame");
+        m_partialBytesRead += *bytesRemaining;
+        return Skip(&reader, bytesRemaining);
+    }
+    while (*bytesRemaining) {
         size_t segmentSizeAtPosition = 0;
         uint8_t* blockBufferData = nullptr;
-        auto err = CMBlockBufferGetDataPointer(m_currentBlockBuffer.get(), m_currentBlockBufferPosition, &segmentSizeAtPosition, nullptr, (char**)&blockBufferData);
+        auto err = PAL::CMBlockBufferGetDataPointer(m_currentBlockBuffer.get(), m_partialBytesRead, &segmentSizeAtPosition, nullptr, (char**)&blockBufferData);
         if (err) {
             PARSER_LOG_ERROR_IF_POSSIBLE("CMBlockBufferGetDataPointer failed with error", err);
             return Skip(&reader, bytesRemaining);
         }
-
-        size_t bytesToReadFromThisSegment = std::min(bytesToRead, segmentSizeAtPosition);
+        if (*bytesRemaining < segmentSizeAtPosition) {
+            PARSER_LOG_ERROR_IF_POSSIBLE("An error occurred, destination buffer too small to contain our frame");
+            return Skip(&reader, bytesRemaining);
+        }
         uint64_t bytesRead;
-
-        auto status = reader.Read(bytesToReadFromThisSegment, (uint8_t*)blockBufferData, &bytesRead);
-        bytesToRead -= bytesRead;
+        auto status = reader.Read(*bytesRemaining, (uint8_t*)blockBufferData, &bytesRead);
         *bytesRemaining -= bytesRead;
-        m_currentBlockBufferPosition += bytesRead;
+        m_partialBytesRead += bytesRead;
 
-        // FIXME: We can't yet handle parsing a Frame that doesn't have all its memory available.
-        if (status.code == webm::Status::kOkPartial || status.code == webm::Status::kWouldBlock)
+        if (!status.completed_ok())
             return status;
     }
 
+    ASSERT(m_partialBytesRead <= *m_currentPacketSize);
+    if (m_partialBytesRead < *m_currentPacketSize)
+        return webm::Status(webm::Status::kOkPartial);
+
     createSampleBuffer(presentationTime, sampleCount, metadata);
+
+    reset();
 #else
     UNUSED_PARAM(metadata);
     UNUSED_PARAM(presentationTime);
@@ -1135,7 +1187,7 @@ void SourceBufferParserWebM::VideoTrackData::createSampleBuffer(const CMTime& pr
 #if ENABLE(VP9)
     uint8_t* blockBufferData = nullptr;
     size_t segmentSizeAtPosition = 0;
-    auto err = CMBlockBufferGetDataPointer(m_currentBlockBuffer.get(), 0, &segmentSizeAtPosition, nullptr, (char**)&blockBufferData);
+    auto err = PAL::CMBlockBufferGetDataPointer(m_currentBlockBuffer.get(), 0, &segmentSizeAtPosition, nullptr, (char**)&blockBufferData);
     if (err) {
         PARSER_LOG_ERROR_IF_POSSIBLE("CMBlockBufferGetDataPointer failed with error", err);
         return;
@@ -1176,22 +1228,19 @@ void SourceBufferParserWebM::VideoTrackData::createSampleBuffer(const CMTime& pr
 
     uint64_t duration = 0;
     if (track.default_duration.is_present())
-        duration = track.default_duration.value() * presentationTime.timescale / 1000000000;
+        duration = track.default_duration.value() * presentationTime.timescale / k_us_in_seconds;
 
     CMSampleBufferRef rawSampleBuffer = nullptr;
-    size_t frameSize = CMBlockBufferGetDataLength(m_currentBlockBuffer.get());
-    CMSampleTimingInfo timing = { CMTimeMake(duration, presentationTime.timescale), presentationTime, presentationTime };
-    err = CMSampleBufferCreateReady(kCFAllocatorDefault, m_currentBlockBuffer.get(), this->formatDescription().get(), sampleCount, 1, &timing, 1, &frameSize, &rawSampleBuffer);
+    size_t frameSize = PAL::CMBlockBufferGetDataLength(m_currentBlockBuffer.get());
+    CMSampleTimingInfo timing = { PAL::CMTimeMake(duration, presentationTime.timescale), presentationTime, presentationTime };
+    err = PAL::CMSampleBufferCreateReady(kCFAllocatorDefault, m_currentBlockBuffer.get(), this->formatDescription().get(), sampleCount, 1, &timing, 1, &frameSize, &rawSampleBuffer);
     if (err) {
         PARSER_LOG_ERROR_IF_POSSIBLE("CMSampleBufferCreateReady failed with error", err);
         return;
     }
     auto sampleBuffer = adoptCF(rawSampleBuffer);
 
-    m_currentBlockBuffer = nullptr;
-    m_currentBlockBufferPosition = 0;
-
-    auto attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer.get(), true);
+    auto attachmentsArray = PAL::CMSampleBufferGetSampleAttachmentsArray(sampleBuffer.get(), true);
     ASSERT(attachmentsArray);
     if (!attachmentsArray) {
         PARSER_LOG_ERROR_IF_POSSIBLE("CMSampleBufferGetSampleAttachmentsArray returned NULL");
@@ -1201,7 +1250,7 @@ void SourceBufferParserWebM::VideoTrackData::createSampleBuffer(const CMTime& pr
     if (!isKey) {
         for (CFIndex i = 0, count = CFArrayGetCount(attachmentsArray); i < count; ++i) {
             CFMutableDictionaryRef attachments = checked_cf_cast<CFMutableDictionaryRef>(CFArrayGetValueAtIndex(attachmentsArray, i));
-            CFDictionarySetValue(attachments, kCMSampleAttachmentKey_NotSync, kCFBooleanTrue);
+            CFDictionarySetValue(attachments, PAL::kCMSampleAttachmentKey_NotSync, kCFBooleanTrue);
         }
     }
 
@@ -1214,38 +1263,56 @@ void SourceBufferParserWebM::VideoTrackData::createSampleBuffer(const CMTime& pr
 #endif // ENABLE(VP9)
 }
 
+void SourceBufferParserWebM::AudioTrackData::reset()
+{
+    m_packetDescriptions.clear();
+    m_packetsData.clear();
+    m_currentPacketByteOffset = std::nullopt;
+    TrackData::reset();
+}
+
 webm::Status SourceBufferParserWebM::AudioTrackData::consumeFrameData(webm::Reader& reader, const FrameMetadata& metadata, uint64_t* bytesRemaining, const CMTime& presentationTime, int sampleCount)
 {
     ASSERT(sampleCount);
 
     if (m_packetDescriptions.isEmpty()) {
-        m_packetBytesRead = 0;
         m_byteOffset = metadata.position;
         m_samplePresentationTime = presentationTime;
     }
 
-    m_packetData.resize(m_packetBytesRead + metadata.size);
-    size_t packetDataOffset = m_packetBytesRead;
-
-    ASSERT(m_partialBytesRead < metadata.size);
-    size_t bytesToRead = metadata.size;
-    if (m_partialBytesRead && m_partialBytesRead < bytesToRead)
-        bytesToRead -= m_partialBytesRead;
-    while (bytesToRead) {
-        uint64_t bytesRead;
-        auto status = reader.Read(bytesToRead, m_packetData.data() + m_packetBytesRead, &bytesRead);
-        bytesToRead -= bytesRead;
-        *bytesRemaining -= bytesRead;
-        m_packetBytesRead += bytesRead;
-
-        // FIXME: We can't yet handle parsing a Frame that doesn't have all its memory available.
-        if (status.code == webm::Status::kOkPartial || status.code == webm::Status::kWouldBlock) {
-            m_partialBytesRead += bytesRead;
-            return status;
-        }
-
+    if (m_currentPacketSize && *m_currentPacketSize != metadata.size) {
+        // The packet's metadata doesn't match the currently pending partial packet; restart.
+        ASSERT_NOT_REACHED_WITH_MESSAGE("AudioTrackData::consumeFrameData: webm in nonsensical state");
         m_partialBytesRead = 0;
+        m_currentPacketSize = std::nullopt;
     }
+
+    if (!m_currentPacketSize)
+        m_currentPacketSize = metadata.size;
+
+    // Ensure we have room to store the full pending frame.
+    if (m_packetsData.size() < m_packetsBytesRead + metadata.size)
+        m_packetsData.grow(m_packetsBytesRead + metadata.size);
+
+    if (!m_currentPacketByteOffset)
+        m_currentPacketByteOffset = m_packetsBytesRead;
+
+    while (*bytesRemaining) {
+        uint64_t bytesRead;
+        auto status = reader.Read(*bytesRemaining, m_packetsData.data() + m_packetsBytesRead + m_partialBytesRead, &bytesRead);
+        *bytesRemaining -= bytesRead;
+        m_partialBytesRead += bytesRead;
+
+        if (!status.completed_ok())
+            return status;
+    }
+
+    ASSERT(m_partialBytesRead <= *m_currentPacketSize);
+    if (m_partialBytesRead < *m_currentPacketSize)
+        return webm::Status(webm::Status::kOkPartial);
+
+    m_packetsBytesRead += m_partialBytesRead;
+    m_partialBytesRead = 0;
 
     if (!formatDescription()) {
         if (!track().codec_private.is_present()) {
@@ -1257,62 +1324,94 @@ webm::Status SourceBufferParserWebM::AudioTrackData::consumeFrameData(webm::Read
         auto& privateData = track().codec_private.value();
         if (codec() == CodecType::Vorbis)
             formatDescription = createVorbisAudioFormatDescription(privateData.size(), privateData.data());
-        else if (codec() == CodecType::Opus)
-            formatDescription = createOpusAudioFormatDescription(privateData.size(), privateData.data(), m_packetData.size(), m_packetData.data());
+        else if (codec() == CodecType::Opus) {
+            OpusCookieContents cookieContents;
+            if (!parseOpusPrivateData(privateData.size(), privateData.data(), m_packetsBytesRead, m_packetsData.data(), cookieContents)) {
+                PARSER_LOG_ERROR_IF_POSSIBLE("Failed to parse Opus private data");
+                return Skip(&reader, bytesRemaining);
+            }
+            if (!cookieContents.framesPerPacket) {
+                PARSER_LOG_ERROR_IF_POSSIBLE("Opus private data indicates 0 frames per packet; bailing");
+                return Skip(&reader, bytesRemaining);
+            }
+            m_framesPerPacket = cookieContents.framesPerPacket;
+            m_frameDuration = cookieContents.frameDuration;
+            formatDescription = createOpusAudioFormatDescription(cookieContents);
+        }
 
         if (!formatDescription) {
             PARSER_LOG_ERROR_IF_POSSIBLE("Failed to create format description from audio track header");
             return Skip(&reader, bytesRemaining);
         }
 
-        auto streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription.get());
+        auto streamDescription = PAL::CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription.get());
         if (!streamDescription) {
             PARSER_LOG_ERROR_IF_POSSIBLE("CMAudioFormatDescriptionGetStreamBasicDescription failed");
             return Skip(&reader, bytesRemaining);
         }
-        m_packetDuration = CMTimeMake(streamDescription->mFramesPerPacket, streamDescription->mSampleRate);
+        m_packetDuration = PAL::CMTimeMake(streamDescription->mFramesPerPacket, streamDescription->mSampleRate);
 
         setFormatDescription(WTFMove(formatDescription));
+    } else if (codec() == CodecType::Opus) {
+        // Opus technically allows the frame duration and frames-per-packet values to change from packet to packet.
+        // CoreAudio doesn't support ASBD values like these to change on a per-packet basis, so throw an error when
+        // that kind of variablility is encountered.
+        OpusCookieContents cookieContents;
+        auto& privateData = track().codec_private.value();
+        if (!parseOpusPrivateData(privateData.size(), privateData.data(), m_packetsBytesRead, m_packetsData.data(), cookieContents)
+            || cookieContents.framesPerPacket != m_framesPerPacket
+            || cookieContents.frameDuration != m_frameDuration) {
+            PARSER_LOG_ERROR_IF_POSSIBLE("Opus frames-per-packet changed within a track; error");
+            return Status(Status::Code(ErrorCode::VariableFrameDuration));
+        }
     }
 
-    m_packetDescriptions.append({ static_cast<int64_t>(packetDataOffset), 0, static_cast<UInt32>(metadata.size) });
-    auto sampleDuration = CMTimeGetSeconds(CMTimeSubtract(presentationTime, m_samplePresentationTime)) + CMTimeGetSeconds(m_packetDuration) * sampleCount;
+    m_packetDescriptions.append({ static_cast<int64_t>(*m_currentPacketByteOffset), 0, static_cast<UInt32>(*m_currentPacketSize) });
+    m_currentPacketByteOffset = std::nullopt;
+    m_currentPacketSize = std::nullopt;
+
+    auto sampleDuration = PAL::CMTimeGetSeconds(PAL::CMTimeSubtract(presentationTime, m_samplePresentationTime)) + PAL::CMTimeGetSeconds(m_packetDuration) * sampleCount;
+
     if (sampleDuration >= m_minimumSampleDuration)
         createSampleBuffer(metadata.position);
 
-    return Skip(&reader, bytesRemaining);
+    ASSERT(!*bytesRemaining);
+    return webm::Status(webm::Status::kOkCompleted);
 }
 
-void SourceBufferParserWebM::AudioTrackData::createSampleBuffer(Optional<size_t> latestByteRangeOffset)
+void SourceBufferParserWebM::AudioTrackData::createSampleBuffer(std::optional<size_t> latestByteRangeOffset)
 {
-    if (m_packetDescriptions.isEmpty())
+    if (m_packetDescriptions.isEmpty() || !m_packetsBytesRead)
         return;
 
-    ASSERT(!m_packetData.isEmpty());
+    ASSERT(!m_packetsData.isEmpty());
 
     CMBlockBufferRef blockBuffer = nullptr;
-    auto err = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, nullptr, m_packetData.sizeInBytes(), kCFAllocatorDefault, nullptr, 0, m_packetData.sizeInBytes(), kCMBlockBufferAssureMemoryNowFlag, &blockBuffer);
+    auto err = PAL::CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, nullptr, m_packetsBytesRead, kCFAllocatorDefault, nullptr, 0, m_packetsBytesRead, kCMBlockBufferAssureMemoryNowFlag, &blockBuffer);
     if (err) {
         PARSER_LOG_ERROR_IF_POSSIBLE("CMBlockBufferCreateWithMemoryBlock failed with %d", err);
         return;
     }
     auto buffer = adoptCF(blockBuffer);
 
-    err = CMBlockBufferReplaceDataBytes(m_packetData.data(), buffer.get(), 0, m_packetData.sizeInBytes());
+    err = PAL::CMBlockBufferReplaceDataBytes(m_packetsData.data(), buffer.get(), 0, m_packetsBytesRead);
     if (err) {
         PARSER_LOG_ERROR_IF_POSSIBLE("CMBlockBufferReplaceDataBytes failed with %d", err);
         return;
     }
 
     CMSampleBufferRef rawSampleBuffer = nullptr;
-    err = CMAudioSampleBufferCreateReadyWithPacketDescriptions(kCFAllocatorDefault, buffer.get(), formatDescription().get(), m_packetDescriptions.size(), m_samplePresentationTime, m_packetDescriptions.data(), &rawSampleBuffer);
+    err = PAL::CMAudioSampleBufferCreateReadyWithPacketDescriptions(kCFAllocatorDefault, buffer.get(), formatDescription().get(), m_packetDescriptions.size(), m_samplePresentationTime, m_packetDescriptions.data(), &rawSampleBuffer);
     if (err) {
         PARSER_LOG_ERROR_IF_POSSIBLE("CMAudioSampleBufferCreateWithPacketDescriptions failed with %d", err);
         return;
     }
     auto sampleBuffer = adoptCF(rawSampleBuffer);
 
-    m_packetData.clear();
+    m_packetsData.remove(0, m_packetsBytesRead);
+    if (m_currentPacketByteOffset)
+        *m_currentPacketByteOffset -= m_packetsBytesRead;
+    m_packetsBytesRead = 0;
     m_packetDescriptions.clear();
 
     auto trackID = track().track_uid.value();
@@ -1332,21 +1431,15 @@ void SourceBufferParserWebM::setMinimumAudioSampleDuration(float duration)
     m_minimumAudioSampleDuration = duration;
 }
 
-void SourceBufferParserWebM::setCallOnClientThreadCallback(CallOnClientThreadCallback&& callback)
+const MemoryCompactLookupOnlyRobinHoodHashSet<String>& SourceBufferParserWebM::supportedVideoCodecs()
 {
-    ASSERT(callback);
-    m_callOnClientThreadCallback = WTFMove(callback);
-}
-
-const HashSet<String>& SourceBufferParserWebM::supportedVideoCodecs()
-{
-    static auto codecs = makeNeverDestroyed<HashSet<String>>({ "V_VP8", "V_VP9" });
+    static auto codecs = makeNeverDestroyed<MemoryCompactLookupOnlyRobinHoodHashSet<String>>({ "V_VP8"_s, "V_VP9"_s });
     return codecs;
 }
 
-const HashSet<String>& SourceBufferParserWebM::supportedAudioCodecs()
+const MemoryCompactLookupOnlyRobinHoodHashSet<String>& SourceBufferParserWebM::supportedAudioCodecs()
 {
-    static auto codecs = makeNeverDestroyed<HashSet<String>>({ "A_VORBIS", "A_OPUS" });
+    static auto codecs = makeNeverDestroyed<MemoryCompactLookupOnlyRobinHoodHashSet<String>>({ "A_VORBIS"_s, "A_OPUS"_s });
     return codecs;
 }
 

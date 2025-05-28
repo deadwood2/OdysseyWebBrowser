@@ -47,16 +47,14 @@ struct WebsiteDataStoreParameters {
     ~WebsiteDataStoreParameters();
 
     void encode(IPC::Encoder&) const;
-    static Optional<WebsiteDataStoreParameters> decode(IPC::Decoder&);
+    static std::optional<WebsiteDataStoreParameters> decode(IPC::Decoder&);
 
     Vector<uint8_t> uiProcessCookieStorageIdentifier;
     SandboxExtension::Handle cookieStoragePathExtensionHandle;
     NetworkSessionCreationParameters networkSessionParameters;
 
-#if ENABLE(INDEXED_DATABASE)
     String indexedDatabaseDirectory;
     SandboxExtension::Handle indexedDatabaseDirectoryExtensionHandle;
-#endif
 
 #if ENABLE(SERVICE_WORKER)
     String serviceWorkerRegistrationDirectory;

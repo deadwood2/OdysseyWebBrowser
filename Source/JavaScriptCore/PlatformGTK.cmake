@@ -3,11 +3,17 @@ include(inspector/remote/GLib.cmake)
 
 set(JavaScriptCore_OUTPUT_NAME javascriptcoregtk-${WEBKITGTK_API_VERSION})
 
-list(APPEND JavaScriptCore_PRIVATE_INCLUDE_DIRECTORIES
-    "${DERIVED_SOURCES_JAVASCRIPCOREGTK_DIR}"
-)
-
 configure_file(javascriptcoregtk.pc.in ${JavaScriptCore_PKGCONFIG_FILE} @ONLY)
+
+if (EXISTS "${TOOLS_DIR}/glib/apply-build-revision-to-files.py")
+    add_custom_target(JavaScriptCore-build-revision
+        ${PYTHON_EXECUTABLE} "${TOOLS_DIR}/glib/apply-build-revision-to-files.py" ${JavaScriptCore_PKGCONFIG_FILE}
+        DEPENDS ${JavaScriptCore_PKGCONFIG_FILE}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} VERBATIM)
+    list(APPEND JavaScriptCore_DEPENDENCIES
+        JavaScriptCore-build-revision
+    )
+endif ()
 
 install(FILES "${CMAKE_BINARY_DIR}/Source/JavaScriptCore/javascriptcoregtk-${WEBKITGTK_API_VERSION}.pc"
         DESTINATION "${LIB_INSTALL_DIR}/pkgconfig"
@@ -70,6 +76,7 @@ if (ENABLE_INTROSPECTION)
             ${INTROSPECTION_SCANNER}
             --quiet
             --warn-all
+            --warn-error
             --symbol-prefix=jsc
             --identifier-prefix=JSC
             --namespace=JavaScriptCore
@@ -85,10 +92,9 @@ if (ENABLE_INTROSPECTION)
             ${GIR_SOURCES_TOP_DIRS}
             --c-include="jsc/jsc.h"
             -DJSC_COMPILATION
-            -I${CMAKE_SOURCE_DIR}/Source
-            -I${JAVASCRIPTCORE_DIR}
-            -I${DERIVED_SOURCES_JAVASCRIPCOREGTK_DIR}
-            -I${FORWARDING_HEADERS_DIR}/JavaScriptCore/glib
+            -I${JAVASCRIPTCORE_DIR}/API/glib
+            -I${JavaScriptCoreGLib_DERIVED_SOURCES_DIR}
+            -I${JavaScriptCoreGLib_FRAMEWORK_HEADERS_DIR}
             ${JavaScriptCore_INSTALLED_HEADERS}
             ${JAVASCRIPTCORE_DIR}/API/glib/*.cpp
     )
@@ -109,10 +115,9 @@ file(WRITE ${CMAKE_BINARY_DIR}/gtkdoc-jsc-glib.cfg
     "decorator=JSC_API\n"
     "deprecation_guard=JSC_DISABLE_DEPRECATED\n"
     "namespace=jsc\n"
-    "cflags=-I${CMAKE_SOURCE_DIR}/Source\n"
-    "       -I${JAVASCRIPTCORE_DIR}/API/glib\n"
-    "       -I${DERIVED_SOURCES_JAVASCRIPCOREGTK_DIR}\n"
-    "       -I${FORWARDING_HEADERS_DIR}/JavaScriptCore/glib\n"
+    "cflags=-I${JAVASCRIPTCORE_DIR}/API/glib\n"
+    "       -I${JavaScriptCoreGLib_DERIVED_SOURCES_DIR}\n"
+    "       -I${JavaScriptCoreGLib_FRAMEWORK_HEADERS_DIR}\n"
     "doc_dir=${JAVASCRIPTCORE_DIR}/API/glib/docs\n"
     "source_dirs=${JAVASCRIPTCORE_DIR}/API/glib\n"
     "headers=${JavaScriptCore_INSTALLED_HEADERS}\n"

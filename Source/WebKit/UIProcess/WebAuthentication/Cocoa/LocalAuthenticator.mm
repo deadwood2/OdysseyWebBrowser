@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,7 @@
 
 #import <Security/SecItem.h>
 #import <WebCore/AuthenticatorAssertionResponse.h>
+#import <WebCore/AuthenticatorAttachment.h>
 #import <WebCore/AuthenticatorAttestationResponse.h>
 #import <WebCore/CBORReader.h>
 #import <WebCore/CBORWriter.h>
@@ -43,9 +44,18 @@
 #import <wtf/RetainPtr.h>
 #import <wtf/RunLoop.h>
 #import <wtf/Vector.h>
+#import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/spi/cocoa/SecuritySPI.h>
 #import <wtf/text/Base64.h>
 #import <wtf/text/StringHash.h>
+
+#if USE(APPLE_INTERNAL_SDK)
+#import <WebKitAdditions/LocalAuthenticatorAdditions.h>
+#else
+static void updateQueryIfNecessary(NSMutableDictionary *)
+{
+}
+#endif
 
 namespace WebKit {
 using namespace fido;
@@ -56,7 +66,9 @@ namespace LocalAuthenticatorInternal {
 
 // See https://www.w3.org/TR/webauthn/#flags.
 const uint8_t makeCredentialFlags = 0b01000101; // UP, UV and AT are set.
+const uint8_t otherMakeCredentialFlags = 0b01000001; // UP and AT are set.
 const uint8_t getAssertionFlags = 0b00000101; // UP and UV are set.
+const uint8_t otherGetAssertionFlags = 0b00000001; // UP is set.
 // Credential ID is currently SHA-1 of the corresponding public key.
 const uint16_t credentialIdLength = 20;
 const uint64_t counter = 0;
@@ -72,26 +84,16 @@ static inline HashSet<String> produceHashSet(const Vector<PublicKeyCredentialDes
 {
     HashSet<String> result;
     for (auto& credentialDescriptor : credentialDescriptors) {
-        if (emptyTransportsOrContain(credentialDescriptor.transports, AuthenticatorTransport::Internal)
-            && credentialDescriptor.type == PublicKeyCredentialType::PublicKey
-            && credentialDescriptor.idVector.size() == credentialIdLength)
-            result.add(base64Encode(credentialDescriptor.idVector.data(), credentialDescriptor.idVector.size()));
+        if (emptyTransportsOrContain(credentialDescriptor.transports, AuthenticatorTransport::Internal) && credentialDescriptor.type == PublicKeyCredentialType::PublicKey && credentialDescriptor.idVector.size() == credentialIdLength)
+            result.add(base64EncodeToString(credentialDescriptor.idVector.data(), credentialDescriptor.idVector.size()));
     }
-    return result;
-}
-
-static inline Vector<uint8_t> toVector(NSData *data)
-{
-    Vector<uint8_t> result;
-    result.append(reinterpret_cast<const uint8_t*>(data.bytes), data.length);
     return result;
 }
 
 static inline Vector<uint8_t> aaguidVector()
 {
-    Vector<uint8_t> result;
-    result.append(aaguid, aaguidLength);
-    return result;
+    static NeverDestroyed<Vector<uint8_t>> aaguidVector = { aaguid, aaguidLength };
+    return aaguidVector;
 }
 
 static inline RetainPtr<NSData> toNSData(const Vector<uint8_t>& data)
@@ -115,10 +117,11 @@ static inline Ref<ArrayBuffer> toArrayBuffer(const Vector<uint8_t>& data)
     return ArrayBuffer::create(data.data(), data.size());
 }
 
-static Optional<Vector<Ref<AuthenticatorAssertionResponse>>> getExistingCredentials(const String& rpId)
+static std::optional<Vector<Ref<AuthenticatorAssertionResponse>>> getExistingCredentials(const String& rpId)
 {
     // Search Keychain for existing credential matched the RP ID.
-    NSDictionary *query = @{
+    auto query = adoptNS([[NSMutableDictionary alloc] init]);
+    [query setDictionary:@{
         (id)kSecClass: (id)kSecClassKey,
         (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate,
         (id)kSecAttrLabel: rpId,
@@ -129,11 +132,13 @@ static Optional<Vector<Ref<AuthenticatorAssertionResponse>>> getExistingCredenti
 #else
         (id)kSecAttrNoLegacy: @YES
 #endif
-    };
+    }];
+    updateQueryIfNecessary(query.get());
+
     CFTypeRef attributesArrayRef = nullptr;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &attributesArrayRef);
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query.get(), &attributesArrayRef);
     if (status && status != errSecItemNotFound)
-        return WTF::nullopt;
+        return std::nullopt;
     auto retainAttributesArray = adoptCF(attributesArrayRef);
     NSArray *sortedAttributesArray = [(NSArray *)attributesArrayRef sortedArrayUsingComparator:^(NSDictionary *a, NSDictionary *b) {
         return [b[(id)kSecAttrModificationDate] compare:a[(id)kSecAttrModificationDate]];
@@ -142,28 +147,28 @@ static Optional<Vector<Ref<AuthenticatorAssertionResponse>>> getExistingCredenti
     Vector<Ref<AuthenticatorAssertionResponse>> result;
     result.reserveInitialCapacity(sortedAttributesArray.count);
     for (NSDictionary *attributes in sortedAttributesArray) {
-        auto decodedResponse = cbor::CBORReader::read(toVector(attributes[(id)kSecAttrApplicationTag]));
+        auto decodedResponse = cbor::CBORReader::read(vectorFromNSData(attributes[(id)kSecAttrApplicationTag]));
         if (!decodedResponse || !decodedResponse->isMap()) {
             ASSERT_NOT_REACHED();
-            return WTF::nullopt;
+            return std::nullopt;
         }
         auto& responseMap = decodedResponse->getMap();
 
         auto it = responseMap.find(CBOR(fido::kEntityIdMapKey));
         if (it == responseMap.end() || !it->second.isByteString()) {
             ASSERT_NOT_REACHED();
-            return WTF::nullopt;
+            return std::nullopt;
         }
         auto& userHandle = it->second.getByteString();
 
         it = responseMap.find(CBOR(fido::kEntityNameMapKey));
         if (it == responseMap.end() || !it->second.isString()) {
             ASSERT_NOT_REACHED();
-            return WTF::nullopt;
+            return std::nullopt;
         }
         auto& username = it->second.getString();
 
-        result.uncheckedAppend(AuthenticatorAssertionResponse::create(toArrayBuffer(attributes[(id)kSecAttrApplicationLabel]), toArrayBuffer(userHandle), String(username), (__bridge SecAccessControlRef)attributes[(id)kSecAttrAccessControl]));
+        result.uncheckedAppend(AuthenticatorAssertionResponse::create(toArrayBuffer(attributes[(id)kSecAttrApplicationLabel]), toArrayBuffer(userHandle), String(username), (__bridge SecAccessControlRef)attributes[(id)kSecAttrAccessControl], AuthenticatorAttachment::Platform));
     }
     return result;
 }
@@ -173,7 +178,8 @@ static Optional<Vector<Ref<AuthenticatorAssertionResponse>>> getExistingCredenti
 void LocalAuthenticator::clearAllCredentials()
 {
     // FIXME<rdar://problem/57171201>: We should guard the method with a first party entitlement once WebAuthn is avaliable for third parties.
-    NSDictionary* deleteQuery = @{
+    auto query = adoptNS([[NSMutableDictionary alloc] init]);
+    [query setDictionary:@{
         (id)kSecClass: (id)kSecClassKey,
         (id)kSecAttrAccessGroup: (id)String(LocalAuthenticatiorAccessGroup),
 #if HAVE(DATA_PROTECTION_KEYCHAIN)
@@ -181,8 +187,10 @@ void LocalAuthenticator::clearAllCredentials()
 #else
         (id)kSecAttrNoLegacy: @YES
 #endif
-    };
-    OSStatus status = SecItemDelete((__bridge CFDictionaryRef)deleteQuery);
+    }];
+    updateQueryIfNecessary(query.get());
+
+    OSStatus status = SecItemDelete((__bridge CFDictionaryRef)query.get());
     if (status && status != errSecItemNotFound)
         LOG_ERROR(makeString("Couldn't clear all credential: "_s, status).utf8().data());
 }
@@ -225,7 +233,7 @@ void LocalAuthenticator::makeCredential()
         if (notFound != m_existingCredentials.findMatching([&excludeCredentialIds] (auto& credential) {
             auto* rawId = credential->rawId();
             ASSERT(rawId);
-            return excludeCredentialIds.contains(base64Encode(rawId->data(), rawId->byteLength()));
+            return excludeCredentialIds.contains(base64EncodeToString(rawId->data(), rawId->byteLength()));
         })) {
             receiveException({ NotAllowedError, "At least one credential matches an entry of the excludeCredentials list in the platform attached authenticator."_s }, WebAuthenticationStatus::LAExcludeCredentialsMatched);
             return;
@@ -292,7 +300,7 @@ void LocalAuthenticator::continueMakeCredentialAfterDecidePolicy(LocalAuthentica
 
         weakThis->continueMakeCredentialAfterUserVerification(accessControl.get(), verification, context);
     };
-    m_connection->verifyUser(creationOptions.rp.id, getClientDataType(requestData().options), accessControlRef, WTFMove(callback));
+    m_connection->verifyUser(creationOptions.rp.id, getClientDataType(requestData().options), accessControlRef, getUserVerificationRequirement(requestData().options), WTFMove(callback));
 }
 
 void LocalAuthenticator::continueMakeCredentialAfterReceivingLAContext(LAContext *context)
@@ -380,7 +388,8 @@ void LocalAuthenticator::continueMakeCredentialAfterUserVerification(SecAccessCo
         m_provisionalCredentialId = toNSData(credentialId);
 
 #ifndef NDEBUG
-        NSDictionary *credentialIdQuery = @{
+        auto query = adoptNS([[NSMutableDictionary alloc] init]);
+        [query setDictionary:@{
             (id)kSecClass: (id)kSecClassKey,
             (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate,
             (id)kSecAttrLabel: secAttrLabel,
@@ -390,8 +399,10 @@ void LocalAuthenticator::continueMakeCredentialAfterUserVerification(SecAccessCo
 #else
             (id)kSecAttrNoLegacy: @YES
 #endif
-        };
-        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)credentialIdQuery, nullptr);
+        }];
+        updateQueryIfNecessary(query.get());
+
+        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query.get(), nullptr);
         ASSERT(!status);
 #endif // NDEBUG
     }
@@ -408,19 +419,20 @@ void LocalAuthenticator::continueMakeCredentialAfterUserVerification(SecAccessCo
         cosePublicKey = encodeES256PublicKeyAsCBOR(WTFMove(x), WTFMove(y));
     }
 
+    auto flags = verification == LocalConnection::UserVerification::Presence ? otherMakeCredentialFlags : makeCredentialFlags;
     // Step 12.
     // Skip Apple Attestation for none attestation.
     if (creationOptions.attestation == AttestationConveyancePreference::None) {
         deleteDuplicateCredential();
 
-        auto authData = buildAuthData(creationOptions.rp.id, makeCredentialFlags, counter, buildAttestedCredentialData(Vector<uint8_t>(aaguidLength, 0), credentialId, cosePublicKey));
+        auto authData = buildAuthData(creationOptions.rp.id, flags, counter, buildAttestedCredentialData(Vector<uint8_t>(aaguidLength, 0), credentialId, cosePublicKey));
         auto attestationObject = buildAttestationObject(WTFMove(authData), "", { }, AttestationConveyancePreference::None);
-        receiveRespond(AuthenticatorAttestationResponse::create(credentialId, attestationObject));
+        receiveRespond(AuthenticatorAttestationResponse::create(credentialId, attestationObject, AuthenticatorAttachment::Platform));
         return;
     }
 
     // Step 13. Apple Attestation
-    auto authData = buildAuthData(creationOptions.rp.id, makeCredentialFlags, counter, buildAttestedCredentialData(aaguidVector(), credentialId, cosePublicKey));
+    auto authData = buildAuthData(creationOptions.rp.id, flags, counter, buildAttestedCredentialData(aaguidVector(), credentialId, cosePublicKey));
     auto nsAuthData = toNSData(authData);
     auto callback = [credentialId = WTFMove(credentialId), authData = WTFMove(authData), weakThis = makeWeakPtr(*this)] (NSArray * _Nullable certificates, NSError * _Nullable error) mutable {
         ASSERT(RunLoop::isMain());
@@ -453,13 +465,13 @@ void LocalAuthenticator::continueMakeCredentialAfterAttested(Vector<uint8_t>&& c
     {
         Vector<cbor::CBORValue> cborArray;
         for (size_t i = 0; i < [certificates count]; i++)
-            cborArray.append(cbor::CBORValue(toVector((NSData *)adoptCF(SecCertificateCopyData((__bridge SecCertificateRef)certificates[i])).get())));
+            cborArray.append(cbor::CBORValue(vectorFromNSData((NSData *)adoptCF(SecCertificateCopyData((__bridge SecCertificateRef)certificates[i])).get())));
         attestationStatementMap[cbor::CBORValue("x5c")] = cbor::CBORValue(WTFMove(cborArray));
     }
     auto attestationObject = buildAttestationObject(WTFMove(authData), "apple", WTFMove(attestationStatementMap), creationOptions.attestation);
 
     deleteDuplicateCredential();
-    receiveRespond(AuthenticatorAttestationResponse::create(credentialId, attestationObject));
+    receiveRespond(AuthenticatorAttestationResponse::create(credentialId, attestationObject, AuthenticatorAttachment::Platform));
 }
 
 void LocalAuthenticator::getAssertion()
@@ -498,7 +510,7 @@ void LocalAuthenticator::getAssertion()
         }
 
         auto* rawId = credential->rawId();
-        if (allowCredentialIds.contains(base64Encode(rawId->data(), rawId->byteLength())))
+        if (allowCredentialIds.contains(base64EncodeToString(rawId->data(), rawId->byteLength())))
             assertionResponses.uncheckedAppend(credential.copyRef());
     }
     if (assertionResponses.isEmpty()) {
@@ -562,7 +574,7 @@ void LocalAuthenticator::continueGetAssertionAfterResponseSelected(Ref<WebCore::
 
         weakThis->continueGetAssertionAfterUserVerification(WTFMove(response), verification, context);
     };
-    m_connection->verifyUser(requestOptions.rpId, getClientDataType(requestData().options), accessControlRef, WTFMove(callback));
+    m_connection->verifyUser(requestOptions.rpId, getClientDataType(requestData().options), accessControlRef, getUserVerificationRequirement(requestData().options), WTFMove(callback));
 }
 
 void LocalAuthenticator::continueGetAssertionAfterUserVerification(Ref<WebCore::AuthenticatorAssertionResponse>&& response, LocalConnection::UserVerification verification, LAContext *context)
@@ -576,26 +588,32 @@ void LocalAuthenticator::continueGetAssertionAfterUserVerification(Ref<WebCore::
 
     // Step 10.
     auto requestOptions = WTF::get<PublicKeyCredentialRequestOptions>(requestData().options);
-    auto authData = buildAuthData(requestOptions.rpId, getAssertionFlags, counter, { });
+    auto authData = buildAuthData(requestOptions.rpId, verification == LocalConnection::UserVerification::Presence ? otherGetAssertionFlags : getAssertionFlags, counter, { });
 
     // Step 11.
     RetainPtr<CFDataRef> signature;
     auto nsCredentialId = toNSData(response->rawId());
     {
-        NSDictionary *query = @{
+        NSMutableDictionary *queryDictionary = [@{
             (id)kSecClass: (id)kSecClassKey,
             (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate,
             (id)kSecAttrApplicationLabel: nsCredentialId.get(),
-            (id)kSecUseAuthenticationContext: context,
             (id)kSecReturnRef: @YES,
 #if HAVE(DATA_PROTECTION_KEYCHAIN)
             (id)kSecUseDataProtectionKeychain: @YES
 #else
             (id)kSecAttrNoLegacy: @YES
 #endif
-        };
+        } mutableCopy];
+
+        if (context)
+            queryDictionary[(id)kSecUseAuthenticationContext] = context;
+
+        auto query = adoptNS(queryDictionary);
+        updateQueryIfNecessary(query.get());
+
         CFTypeRef privateKeyRef = nullptr;
-        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &privateKeyRef);
+        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query.get(), &privateKeyRef);
         if (status) {
             receiveException({ UnknownError, makeString("Couldn't get the private key reference: ", status) });
             return;
@@ -617,7 +635,8 @@ void LocalAuthenticator::continueGetAssertionAfterUserVerification(Ref<WebCore::
 
     // Extra step: update the Keychain item with the same value to update its modification date such that LRU can be used
     // for selectAssertionResponse
-    NSDictionary *updateQuery = @{
+    auto query = adoptNS([[NSMutableDictionary alloc] init]);
+    [query setDictionary:@{
         (id)kSecClass: (id)kSecClassKey,
         (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate,
         (id)kSecAttrApplicationLabel: nsCredentialId.get(),
@@ -626,11 +645,13 @@ void LocalAuthenticator::continueGetAssertionAfterUserVerification(Ref<WebCore::
 #else
         (id)kSecAttrNoLegacy: @YES
 #endif
-    };
+    }];
+    updateQueryIfNecessary(query.get());
+
     NSDictionary *updateParams = @{
         (id)kSecAttrLabel: requestOptions.rpId,
     };
-    auto status = SecItemUpdate((__bridge CFDictionaryRef)updateQuery, (__bridge CFDictionaryRef)updateParams);
+    auto status = SecItemUpdate((__bridge CFDictionaryRef)query.get(), (__bridge CFDictionaryRef)updateParams);
     if (status)
         LOG_ERROR("Couldn't update the Keychain item: %d", status);
 
@@ -646,7 +667,8 @@ void LocalAuthenticator::receiveException(ExceptionData&& exception, WebAuthenti
 
     // Roll back the just created credential.
     if (m_provisionalCredentialId) {
-        NSDictionary* deleteQuery = @{
+        auto query = adoptNS([[NSMutableDictionary alloc] init]);
+        [query setDictionary:@{
             (id)kSecClass: (id)kSecClassKey,
             (id)kSecAttrApplicationLabel: m_provisionalCredentialId.get(),
 #if HAVE(DATA_PROTECTION_KEYCHAIN)
@@ -654,8 +676,10 @@ void LocalAuthenticator::receiveException(ExceptionData&& exception, WebAuthenti
 #else
             (id)kSecAttrNoLegacy: @YES
 #endif
-        };
-        OSStatus status = SecItemDelete((__bridge CFDictionaryRef)deleteQuery);
+        }];
+        updateQueryIfNecessary(query.get());
+
+        OSStatus status = SecItemDelete((__bridge CFDictionaryRef)query.get());
         if (status)
             LOG_ERROR(makeString("Couldn't delete provisional credential while handling error: "_s, status).utf8().data());
     }
@@ -680,7 +704,8 @@ void LocalAuthenticator::deleteDuplicateCredential() const
         if (memcmp(userHandle->data(), creationOptions.user.idVector.data(), userHandle->byteLength()))
             return false;
 
-        NSDictionary* deleteQuery = @{
+        auto query = adoptNS([[NSMutableDictionary alloc] init]);
+        [query setDictionary:@{
             (id)kSecClass: (id)kSecClassKey,
             (id)kSecAttrApplicationLabel: toNSData(credential->rawId()).get(),
 #if HAVE(DATA_PROTECTION_KEYCHAIN)
@@ -688,8 +713,10 @@ void LocalAuthenticator::deleteDuplicateCredential() const
 #else
             (id)kSecAttrNoLegacy: @YES
 #endif
-        };
-        OSStatus status = SecItemDelete((__bridge CFDictionaryRef)deleteQuery);
+        }];
+        updateQueryIfNecessary(query.get());
+
+        OSStatus status = SecItemDelete((__bridge CFDictionaryRef)query.get());
         if (status && status != errSecItemNotFound)
             LOG_ERROR(makeString("Couldn't delete older credential: "_s, status).utf8().data());
         return true;

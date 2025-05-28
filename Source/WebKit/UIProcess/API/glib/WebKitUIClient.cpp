@@ -22,6 +22,7 @@
 
 #include "APIUIClient.h"
 #include "DrawingAreaProxy.h"
+#include "NotificationPermissionRequest.h"
 #include "WebKitDeviceInfoPermissionRequestPrivate.h"
 #include "WebKitFileChooserRequestPrivate.h"
 #include "WebKitGeolocationPermissionRequestPrivate.h"
@@ -80,18 +81,21 @@ private:
         webkitWebViewClosePage(m_webView);
     }
 
-    void runJavaScriptAlert(WebPageProxy&, const String& message, WebFrameProxy*, WebKit::FrameInfoData&&, Function<void()>&& completionHandler) final
+    void runJavaScriptAlert(WebPageProxy& page, const String& message, WebFrameProxy*, WebKit::FrameInfoData&&, Function<void()>&& completionHandler) final
     {
+        page.makeViewBlankIfUnpaintedSinceLastLoadCommit();
         webkitWebViewRunJavaScriptAlert(m_webView, message.utf8(), WTFMove(completionHandler));
     }
 
-    void runJavaScriptConfirm(WebPageProxy&, const String& message, WebFrameProxy*, WebKit::FrameInfoData&&, Function<void(bool)>&& completionHandler) final
+    void runJavaScriptConfirm(WebPageProxy& page, const String& message, WebFrameProxy*, WebKit::FrameInfoData&&, Function<void(bool)>&& completionHandler) final
     {
+        page.makeViewBlankIfUnpaintedSinceLastLoadCommit();
         webkitWebViewRunJavaScriptConfirm(m_webView, message.utf8(), WTFMove(completionHandler));
     }
 
-    void runJavaScriptPrompt(WebPageProxy&, const String& message, const String& defaultValue, WebFrameProxy*, WebKit::FrameInfoData&&, Function<void(const String&)>&& completionHandler) final
+    void runJavaScriptPrompt(WebPageProxy& page, const String& message, const String& defaultValue, WebFrameProxy*, WebKit::FrameInfoData&&, Function<void(const String&)>&& completionHandler) final
     {
+        page.makeViewBlankIfUnpaintedSinceLastLoadCommit();
         webkitWebViewRunJavaScriptPrompt(m_webView, message.utf8(), defaultValue.utf8(), WTFMove(completionHandler));
     }
 
@@ -302,7 +306,7 @@ private:
         webkitWebViewMakePermissionRequest(m_webView, WEBKIT_PERMISSION_REQUEST(deviceInfoPermissionRequest.get()));
     }
 
-    void decidePolicyForNotificationPermissionRequest(WebPageProxy&, API::SecurityOrigin&, Function<void(bool)>&& completionHandler) final
+    void decidePolicyForNotificationPermissionRequest(WebPageProxy&, API::SecurityOrigin&, CompletionHandler<void(bool allowed)>&& completionHandler) final
     {
         GRefPtr<WebKitNotificationPermissionRequest> notificationPermissionRequest = adoptGRef(webkitNotificationPermissionRequestCreate(NotificationPermissionRequest::create(WTFMove(completionHandler)).ptr()));
         webkitWebViewMakePermissionRequest(m_webView, WEBKIT_PERMISSION_REQUEST(notificationPermissionRequest.get()));
@@ -348,6 +352,11 @@ private:
         webkitWebViewIsPlayingAudioChanged(m_webView);
     }
 
+    void mediaCaptureStateDidChange(WebCore::MediaProducer::MediaStateFlags mediaStateFlags) final
+    {
+        webkitWebViewMediaCaptureStateDidChange(m_webView, mediaStateFlags);
+    }
+
 #if ENABLE(POINTER_LOCK)
     void requestPointerLock(WebPageProxy* page) final
     {
@@ -379,4 +388,3 @@ void attachUIClientToView(WebKitWebView* webView)
 {
     webkitWebViewGetPage(webView).setUIClient(makeUnique<UIClient>(webView));
 }
-

@@ -35,6 +35,7 @@
 #import <WebKit/WKWebViewConfiguration.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/text/WTFString.h>
 
 @interface WKWebView ()
 - (WKPageRef)_pageForTesting;
@@ -72,7 +73,7 @@ PlatformWebView::PlatformWebView(WKWebViewConfiguration* configuration, const Te
     [m_view _setWindowOcclusionDetectionEnabled:NO];
 
     NSScreen *firstScreen = [[NSScreen screens] objectAtIndex:0];
-    NSRect windowRect = m_options.shouldShowWebView() ? NSOffsetRect(rect, 100, 100) : NSOffsetRect(rect, -10000, [firstScreen frame].size.height - rect.size.height + 10000);
+    NSRect windowRect = m_options.shouldShowWindow() ? NSOffsetRect(rect, 100, 100) : NSOffsetRect(rect, -10000, [firstScreen frame].size.height - rect.size.height + 10000);
     m_window = [[WebKitTestRunnerWindow alloc] initWithContentRect:windowRect styleMask:NSWindowStyleMaskBorderless backing:(NSBackingStoreType)_NSBackingStoreUnbuffered defer:YES];
     m_window.platformWebView = this;
     [m_window setColorSpace:[firstScreen colorSpace]];
@@ -165,6 +166,19 @@ void PlatformWebView::removeChromeInputField()
         [textField removeFromSuperview];
         makeWebViewFirstResponder();
     }
+}
+
+void PlatformWebView::setTextInChromeInputField(const String&)
+{
+}
+
+void PlatformWebView::selectChromeInputField()
+{
+}
+
+String PlatformWebView::getSelectedTextInChromeInputField()
+{
+    return { };
 }
 
 void PlatformWebView::addToWindow()

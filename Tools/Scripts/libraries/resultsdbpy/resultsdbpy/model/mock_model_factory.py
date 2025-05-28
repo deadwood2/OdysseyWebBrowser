@@ -1,4 +1,4 @@
-# Copyright (C) 2019 Apple Inc. All rights reserved.
+# Copyright (C) 2019-2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -21,14 +21,16 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import base64
+import contextlib
 import io
 import time
 
-import calendar
 from resultsdbpy.controller.configuration import Configuration
 from resultsdbpy.model.configuration_context_unittest import ConfigurationContextTest
-from resultsdbpy.model.mock_repository import MockStashRepository, MockSVNRepository
 from resultsdbpy.model.model import Model
+from resultsdbpy.model.repository import StashRepository, WebKitRepository
+
+from webkitscmpy import mocks, Commit
 
 
 class MockModelFactory(object):
@@ -60,29 +62,68 @@ class MockModelFactory(object):
     THREE_WEEKS = 60 * 60 * 24 * 21
 
     @classmethod
+    def safari(cls):
+        return mocks.remote.BitBucket(remote='bitbucket.example.com/projects/SAFARI/repos/safari')
+
+    @classmethod
+    @contextlib.contextmanager
+    def webkit(cls):
+        svn = mocks.remote.Svn(remote='svn.webkit.org/repository/webkit')
+        github = mocks.remote.GitHub(remote='github.com/WebKit/WebKit', git_svn=True)
+        github.commits = {}
+
+        for branch, commits in svn.commits.items():
+            if 'tag' in branch:
+                continue
+            if branch == 'trunk':
+                branch = 'main'
+            github.commits[branch] = []
+
+            for commit in commits:
+                github.commits[branch].append(Commit(
+                    repository_id=commit.repository_id,
+                    branch=branch,
+                    author=commit.author,
+                    message=commit.message,
+                    timestamp=commit.timestamp,
+                    order=commit.order,
+                    identifier=commit.identifier,
+                    branch_point=commit.branch_point,
+                    revision=commit.revision,
+                    hash=commit.hash,
+                ))
+
+        with svn, github:
+            yield github
+
+    @classmethod
     def create(cls, redis, cassandra, async_processing=False):
         oldest_commit = time.time()
-        for repo in [MockStashRepository.safari(), MockSVNRepository.webkit()]:
-            for commits in repo.commits.values():
-                for commit in commits:
-                    oldest_commit = min(oldest_commit, calendar.timegm(commit.timestamp.timetuple()))
+        with cls.safari() as safari, cls.webkit() as webkit:
+            for repo in [safari, webkit]:
+                for commits in repo.commits.values():
+                    for commit in commits:
+                        oldest_commit = min(oldest_commit, commit.timestamp)
 
         model = Model(
             redis=redis,
             cassandra=cassandra,
             repositories=[
-                MockStashRepository.safari(redis=redis),
-                MockSVNRepository.webkit(redis=redis),
+                StashRepository('https://bitbucket.example.com/projects/SAFARI/repos/safari'),
+                WebKitRepository(),
             ],
             default_ttl_seconds=time.time() - oldest_commit + Model.TTL_WEEK,
             archive_ttl_seconds=time.time() - oldest_commit + Model.TTL_WEEK,
             async_processing=async_processing,
         )
-        with model.commit_context, model.commit_context.cassandra.batch_query_context():
-            for repository in model.commit_context.repositories.values():
-                for branch_commits in repository.commits.values():
-                    for commit in branch_commits:
-                        model.commit_context.register_commit(commit)
+        with cls.safari() as safari, cls.webkit() as webkit:
+            with model.commit_context, model.commit_context.cassandra.batch_query_context():
+                for key, repository in dict(safari=safari, webkit=webkit).items():
+                    for branch, commits in repository.commits.items():
+                        for commit in commits:
+                            model.commit_context.register_partial_commit(
+                                key, hash=commit.hash, revision=commit.revision, fast=False,
+                            )
         return model
 
     @classmethod
@@ -106,7 +147,7 @@ class MockModelFactory(object):
     @classmethod
     def iterate_all_commits(cls, model, callback):
         repos = ('webkit', 'safari')
-        branches = (None, 'safari-606-branch')
+        branches = (None, 'branch-a')
         for branch in branches:
             commit_index = {repo: 0 for repo in repos}
             commits_for_repo = {repo: sorted(model.commit_context.find_commits_in_range(repo, branch)) for repo in repos}

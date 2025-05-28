@@ -34,15 +34,18 @@ using namespace WebCore;
 
 void EditorState::encode(IPC::Encoder& encoder) const
 {
+    encoder << identifier;
     encoder << originIdentifierForPasteboard;
     encoder << shouldIgnoreSelectionChanges;
     encoder << selectionIsNone;
     encoder << selectionIsRange;
+    encoder << selectionIsRangeInsideImageOverlay;
     encoder << isContentEditable;
     encoder << isContentRichlyEditable;
     encoder << isInPasswordField;
     encoder << isInPlugin;
     encoder << hasComposition;
+    encoder << triggeredByAccessibilitySelectionChange;
     encoder << isMissingPostLayoutData;
     if (!isMissingPostLayoutData)
         m_postLayoutData.encode(encoder);
@@ -50,6 +53,9 @@ void EditorState::encode(IPC::Encoder& encoder) const
 
 bool EditorState::decode(IPC::Decoder& decoder, EditorState& result)
 {
+    if (!decoder.decode(result.identifier))
+        return false;
+
     if (!decoder.decode(result.originIdentifierForPasteboard))
         return false;
 
@@ -60,6 +66,9 @@ bool EditorState::decode(IPC::Decoder& decoder, EditorState& result)
         return false;
 
     if (!decoder.decode(result.selectionIsRange))
+        return false;
+
+    if (!decoder.decode(result.selectionIsRangeInsideImageOverlay))
         return false;
 
     if (!decoder.decode(result.isContentEditable))
@@ -75,6 +84,9 @@ bool EditorState::decode(IPC::Decoder& decoder, EditorState& result)
         return false;
 
     if (!decoder.decode(result.hasComposition))
+        return false;
+
+    if (!decoder.decode(result.triggeredByAccessibilitySelectionChange))
         return false;
 
     if (!decoder.decode(result.isMissingPostLayoutData))
@@ -104,7 +116,7 @@ void EditorState::PostLayoutData::encode(IPC::Encoder& encoder) const
 #if PLATFORM(IOS_FAMILY)
     encoder << selectionClipRect;
     encoder << caretRectAtEnd;
-    encoder << selectionRects;
+    encoder << selectionGeometries;
     encoder << markedTextRects;
     encoder << markedText;
     encoder << markedTextCaretRectAtStart;
@@ -170,7 +182,7 @@ bool EditorState::PostLayoutData::decode(IPC::Decoder& decoder, PostLayoutData& 
         return false;
     if (!decoder.decode(result.caretRectAtEnd))
         return false;
-    if (!decoder.decode(result.selectionRects))
+    if (!decoder.decode(result.selectionGeometries))
         return false;
     if (!decoder.decode(result.markedTextRects))
         return false;
@@ -238,7 +250,7 @@ bool EditorState::PostLayoutData::decode(IPC::Decoder& decoder, PostLayoutData& 
         return false;
 #endif
 
-    Optional<Optional<FontAttributes>> optionalFontAttributes;
+    std::optional<std::optional<FontAttributes>> optionalFontAttributes;
     decoder >> optionalFontAttributes;
     if (!optionalFontAttributes)
         return false;
@@ -273,6 +285,8 @@ TextStream& operator<<(TextStream& ts, const EditorState& editorState)
         ts.dumpProperty("isInPlugin", editorState.isInPlugin);
     if (editorState.hasComposition)
         ts.dumpProperty("hasComposition", editorState.hasComposition);
+    if (editorState.triggeredByAccessibilitySelectionChange)
+        ts.dumpProperty("triggeredByAccessibilitySelectionChange", editorState.triggeredByAccessibilitySelectionChange);
     if (editorState.isMissingPostLayoutData)
         ts.dumpProperty("isMissingPostLayoutData", editorState.isMissingPostLayoutData);
 
@@ -304,8 +318,8 @@ TextStream& operator<<(TextStream& ts, const EditorState& editorState)
         ts.dumpProperty("selectionClipRect", editorState.postLayoutData().selectionClipRect);
     if (editorState.postLayoutData().caretRectAtEnd != IntRect())
         ts.dumpProperty("caretRectAtEnd", editorState.postLayoutData().caretRectAtEnd);
-    if (!editorState.postLayoutData().selectionRects.isEmpty())
-        ts.dumpProperty("selectionRects", editorState.postLayoutData().selectionRects);
+    if (!editorState.postLayoutData().selectionGeometries.isEmpty())
+        ts.dumpProperty("selectionGeometries", editorState.postLayoutData().selectionGeometries);
     if (!editorState.postLayoutData().markedTextRects.isEmpty())
         ts.dumpProperty("markedTextRects", editorState.postLayoutData().markedTextRects);
     if (editorState.postLayoutData().markedText.length())

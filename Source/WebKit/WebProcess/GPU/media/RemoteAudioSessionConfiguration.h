@@ -32,86 +32,77 @@
 namespace WebKit {
 
 struct RemoteAudioSessionConfiguration {
-
-    WebCore::AudioSession::CategoryType category { WebCore::AudioSession::CategoryType::None };
-    WebCore::RouteSharingPolicy routeSharingPolicy { WebCore::RouteSharingPolicy::Default };
     String routingContextUID;
     float sampleRate { 0 };
-    uint64_t bufferSize { 0 };
-    uint64_t numberOfOutputChannels { 0 };
-    uint64_t preferredBufferSize { 0 };
+    size_t bufferSize { 0 };
+    size_t numberOfOutputChannels { 0 };
+    size_t maximumNumberOfOutputChannels { 0 };
+    size_t preferredBufferSize { 0 };
     bool isMuted { false };
     bool isActive { false };
 
     template<class Encoder>
     void encode(Encoder& encoder) const
     {
-        encoder << category;
-        encoder << routeSharingPolicy;
         encoder << routingContextUID;
         encoder << sampleRate;
         encoder << bufferSize;
         encoder << numberOfOutputChannels;
+        encoder << maximumNumberOfOutputChannels;
         encoder << preferredBufferSize;
         encoder << isMuted;
         encoder << isActive;
     }
 
     template <class Decoder>
-    static Optional<RemoteAudioSessionConfiguration> decode(Decoder& decoder)
+    static std::optional<RemoteAudioSessionConfiguration> decode(Decoder& decoder)
     {
-        Optional<WebCore::AudioSession::CategoryType> category;
-        decoder >> category;
-        if (!category)
-            return WTF::nullopt;
-
-        Optional<WebCore::RouteSharingPolicy> routeSharingPolicy;
-        decoder >> routeSharingPolicy;
-        if (!routeSharingPolicy)
-            return WTF::nullopt;
-
-        Optional<String> routingContextUID;
+        std::optional<String> routingContextUID;
         decoder >> routingContextUID;
         if (!routingContextUID)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<float> sampleRate;
+        std::optional<float> sampleRate;
         decoder >> sampleRate;
         if (!sampleRate)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<uint64_t> bufferSize;
+        std::optional<size_t> bufferSize;
         decoder >> bufferSize;
         if (!bufferSize)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<uint64_t> numberOfOutputChannels;
+        std::optional<size_t> numberOfOutputChannels;
         decoder >> numberOfOutputChannels;
         if (!numberOfOutputChannels)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<uint64_t> preferredBufferSize;
+        std::optional<size_t> maximumNumberOfOutputChannels;
+        decoder >> maximumNumberOfOutputChannels;
+        if (!maximumNumberOfOutputChannels)
+            return std::nullopt;
+
+        std::optional<size_t> preferredBufferSize;
         decoder >> preferredBufferSize;
         if (!preferredBufferSize)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> isMuted;
+        std::optional<bool> isMuted;
         decoder >> isMuted;
         if (!isMuted)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> isActive;
+        std::optional<bool> isActive;
         decoder >> isActive;
         if (!isActive)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return {{
-            WTFMove(*category),
-            WTFMove(*routeSharingPolicy),
             WTFMove(*routingContextUID),
             *sampleRate,
             *bufferSize,
             *numberOfOutputChannels,
+            *maximumNumberOfOutputChannels,
             *preferredBufferSize,
             *isMuted,
             *isActive,

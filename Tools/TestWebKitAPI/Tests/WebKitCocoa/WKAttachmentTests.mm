@@ -1487,8 +1487,6 @@ TEST(WKAttachmentTests, CustomFileWrapperSubclass)
     EXPECT_EQ([FileWrapper class], [insertedAttachments.firstObject.info.fileWrapper class]);
 }
 
-// FIXME: Remove this version guard once rdar://51752593 is resolved.
-#if PLATFORM(IOS) && __IPHONE_OS_VERSION_MAX_ALLOWED < 130000
 TEST(WKAttachmentTests, CopyAndPasteBetweenWebViews)
 {
     auto file = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:testHTMLData()]);
@@ -1534,7 +1532,6 @@ TEST(WKAttachmentTests, CopyAndPasteBetweenWebViews)
     EXPECT_WK_STREQ("public.directory", pastedFolderInfo.contentType);
     EXPECT_WK_STREQ("application/zip", pastedArchiveInfo.contentType);
 }
-#endif // PLATFORM(IOS) && __IPHONE_OS_VERSION_MAX_ALLOWED < 130000
 
 TEST(WKAttachmentTests, AttachmentIdentifierOfClonedAttachment)
 {
@@ -1896,7 +1893,8 @@ TEST(WKAttachmentTestsIOS, InsertDroppedRichAndPlainTextFilesAsAttachments)
     EXPECT_WK_STREQ("hello.rtf", [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[0].getAttribute('title')"]);
     EXPECT_WK_STREQ((__bridge NSString *)kUTTypeFlatRTFD, [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[0].getAttribute('type')"]);
     EXPECT_WK_STREQ("world.txt", [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[1].getAttribute('title')"]);
-    EXPECT_WK_STREQ((__bridge NSString *)kUTTypeUTF8PlainText, [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[1].getAttribute('type')"]);
+    auto contentType = [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[1].getAttribute('type')"];
+    EXPECT_TRUE([contentType isEqualToString:(__bridge NSString *)kUTTypeUTF8PlainText] || [contentType containsString:@"text/plain"]);
 }
 
 TEST(WKAttachmentTestsIOS, InsertDroppedZipArchiveAsAttachment)
@@ -1953,7 +1951,8 @@ TEST(WKAttachmentTestsIOS, InsertDroppedItemProvidersInOrder)
     [webView expectElementTagsInOrder:@[ @"ATTACHMENT", @"A", @"ATTACHMENT" ]];
 
     EXPECT_WK_STREQ("first.txt", [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[0].getAttribute('title')"]);
-    EXPECT_WK_STREQ((__bridge NSString *)kUTTypeUTF8PlainText, [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[0].getAttribute('type')"]);
+    auto contentType = [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[0].getAttribute('type')"];
+    EXPECT_TRUE([contentType isEqualToString:(__bridge NSString *)kUTTypeUTF8PlainText] || [contentType containsString:@"text/plain"]);
     EXPECT_WK_STREQ([appleURL absoluteString], [webView valueOfAttribute:@"href" forQuerySelector:@"a"]);
     EXPECT_WK_STREQ("second.pdf", [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[1].getAttribute('title')"]);
     EXPECT_WK_STREQ("application/pdf", [webView stringByEvaluatingJavaScript:@"document.querySelectorAll('attachment')[1].getAttribute('type')"]);

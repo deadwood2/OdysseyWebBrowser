@@ -67,9 +67,7 @@ namespace WebCore {
     
 static void applyBasicAuthorizationHeader(ResourceRequest& request, const Credential& credential)
 {
-    String authenticationHeader = "Basic " + base64Encode(String(credential.user() + ":" + credential.password()).utf8());
-
-    request.setHTTPHeaderField(HTTPHeaderName::Authorization, authenticationHeader);
+    request.setHTTPHeaderField(HTTPHeaderName::Authorization, credential.serializationForBasicAuthorizationHeader());
 }
 
 static NSOperationQueue *operationQueueForAsyncClients()
@@ -99,7 +97,7 @@ ResourceHandle::~ResourceHandle()
 
 static bool synchronousWillSendRequestEnabled()
 {
-    static bool disabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"WebKitDisableSynchronousWillSendRequestPreferenceKey"] || IOSApplication::isIBooks();
+    static bool disabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"WebKitDisableSynchronousWillSendRequestPreferenceKey"] || CocoaApplication::isIBooks();
     return !disabled;
 }
 
@@ -269,6 +267,7 @@ bool ResourceHandle::start()
 
     [connection() setDelegateQueue:operationQueueForAsyncClients()];
     [connection() start];
+    d->m_startTime = MonotonicTime::now();
 
     LOG(Network, "Handle %p starting connection %p for %@", this, connection(), firstRequest().nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody));
     
@@ -352,7 +351,7 @@ CFStringRef ResourceHandle::synchronousLoadRunLoopMode()
     return CFSTR("WebCoreSynchronousLoaderRunLoopMode");
 }
 
-void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* context, const ResourceRequest& request, StoredCredentialsPolicy storedCredentialsPolicy, ResourceError& error, ResourceResponse& response, Vector<char>& data)
+void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* context, const ResourceRequest& request, StoredCredentialsPolicy storedCredentialsPolicy, SecurityOrigin* sourceOrigin, ResourceError& error, ResourceResponse& response, Vector<uint8_t>& data)
 {
     LOG(Network, "ResourceHandle::platformLoadResourceSynchronously:%@ storedCredentialsPolicy:%u", request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody), static_cast<unsigned>(storedCredentialsPolicy));
 
@@ -364,7 +363,7 @@ void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* contex
     bool defersLoading = false;
     bool shouldContentSniff = true;
     bool shouldContentEncodingSniff = true;
-    RefPtr<ResourceHandle> handle = adoptRef(new ResourceHandle(context, request, &client, defersLoading, shouldContentSniff, shouldContentEncodingSniff));
+    RefPtr<ResourceHandle> handle = adoptRef(new ResourceHandle(context, request, &client, defersLoading, shouldContentSniff, shouldContentEncodingSniff, sourceOrigin, false));
 
     handle->d->m_storageSession = context->storageSession()->platformSession();
 
@@ -651,11 +650,6 @@ void ResourceHandle::receivedChallengeRejection(const AuthenticationChallenge& c
     [[d->m_currentMacChallenge sender] rejectProtectionSpaceAndContinueWithChallenge:d->m_currentMacChallenge];
 
     clearAuthentication();
-}
-
-Box<NetworkLoadMetrics> ResourceHandle::getConnectionTimingData(NSURLConnection *connection)
-{
-    return copyTimingData([connection _timingData]);
 }
 
 } // namespace WebCore

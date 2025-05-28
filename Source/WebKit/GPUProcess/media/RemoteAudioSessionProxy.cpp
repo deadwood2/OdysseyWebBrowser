@@ -60,12 +60,11 @@ RemoteAudioSessionConfiguration RemoteAudioSessionProxy::configuration()
 {
     auto& session = audioSessionManager().session();
     return {
-        session.category(),
-        session.routeSharingPolicy(),
         session.routingContextUID(),
         session.sampleRate(),
         session.bufferSize(),
         session.numberOfOutputChannels(),
+        session.maximumNumberOfOutputChannels(),
         session.preferredBufferSize(),
         session.isMuted(),
         m_active
@@ -74,12 +73,13 @@ RemoteAudioSessionConfiguration RemoteAudioSessionProxy::configuration()
 
 void RemoteAudioSessionProxy::setCategory(AudioSession::CategoryType category, RouteSharingPolicy policy)
 {
-    if (m_category == category && m_routeSharingPolicy == policy)
+    if (m_category == category && m_routeSharingPolicy == policy && !m_isPlayingToBluetoothOverrideChanged)
         return;
 
     m_category = category;
     m_routeSharingPolicy = policy;
-    audioSessionManager().setCategoryForProcess(*this, category, policy);
+    m_isPlayingToBluetoothOverrideChanged = false;
+    audioSessionManager().updateCategory();
 }
 
 void RemoteAudioSessionProxy::setPreferredBufferSize(uint64_t size)
@@ -92,6 +92,17 @@ void RemoteAudioSessionProxy::tryToSetActive(bool active, SetActiveCompletion&& 
 {
     m_active = audioSessionManager().tryToSetActiveForProcess(*this, active);
     completion(m_active);
+}
+
+void RemoteAudioSessionProxy::setIsPlayingToBluetoothOverride(std::optional<bool>&& value)
+{
+    m_isPlayingToBluetoothOverrideChanged = true;
+    audioSessionManager().session().setIsPlayingToBluetoothOverride(WTFMove(value));
+}
+
+void RemoteAudioSessionProxy::configurationChanged()
+{
+    connection().send(Messages::RemoteAudioSession::ConfigurationChanged(configuration()), { });
 }
 
 void RemoteAudioSessionProxy::beginInterruption()

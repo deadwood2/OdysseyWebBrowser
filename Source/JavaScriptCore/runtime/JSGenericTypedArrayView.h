@@ -28,6 +28,7 @@
 #include "JSArrayBufferView.h"
 #include "ThrowScope.h"
 #include "ToNativeFromValue.h"
+#include <wtf/FlipBytes.h>
 
 namespace JSC {
 
@@ -99,7 +100,7 @@ public:
     using ElementType = typename Adaptor::Type;
     static constexpr TypedArrayContentType contentType = Adaptor::contentType;
 
-    static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetOwnPropertyNames | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero;
+    static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetOwnPropertyNames | OverridesPut | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero;
 
     static constexpr unsigned elementSize = sizeof(typename Adaptor::Type);
 
@@ -146,7 +147,18 @@ public:
     
     JSValue getIndexQuickly(unsigned i) const
     {
+#if CPU(BIG_ENDIAN)
+        switch (Adaptor::typeValue) {
+        case TypeFloat32:
+        case TypeFloat64:
+            return Adaptor::toJSValue(nullptr, getIndexQuicklyAsNativeValue(i));
+        default:
+            // typed array views are commonly expected to be little endian views of the underlying data
+            return Adaptor::toJSValue(nullptr, flipBytes(getIndexQuicklyAsNativeValue(i)));
+        }
+#else
         return Adaptor::toJSValue(nullptr, getIndexQuicklyAsNativeValue(i));
+#endif
     }
     
     void setIndexQuicklyToNativeValue(unsigned i, typename Adaptor::Type value)
@@ -158,7 +170,20 @@ public:
     void setIndexQuickly(unsigned i, JSValue value)
     {
         ASSERT(!value.isObject());
+#if CPU(BIG_ENDIAN)
+        switch (Adaptor::typeValue) {
+        case TypeFloat32:
+        case TypeFloat64:
+            setIndexQuicklyToNativeValue(i, toNativeFromValue<Adaptor>(value));
+            break;
+        default:
+            // typed array views are commonly expected to be little endian views of the underlying data
+            setIndexQuicklyToNativeValue(i, flipBytes(toNativeFromValue<Adaptor>(value)));
+            break;
+        }
+#else
         setIndexQuicklyToNativeValue(i, toNativeFromValue<Adaptor>(value));
+#endif
     }
     
     bool setIndex(JSGlobalObject* globalObject, unsigned i, JSValue jsValue)
@@ -172,13 +197,56 @@ public:
         if (isDetached() || i >= m_length)
             return false;
 
+#if CPU(BIG_ENDIAN)
+        switch (Adaptor::typeValue) {
+        case TypeFloat32:
+        case TypeFloat64:
+            setIndexQuicklyToNativeValue(i, value);
+            break;
+        default:
+            // typed array views are commonly expected to be little endian views of the underlying data
+           setIndexQuicklyToNativeValue(i, flipBytes(value));
+            break;
+        }
+#else
         setIndexQuicklyToNativeValue(i, value);
+#endif
         return true;
     }
 
-    static ElementType toAdaptorNativeFromValue(JSGlobalObject* globalObject, JSValue jsValue) { return toNativeFromValue<Adaptor>(globalObject, jsValue); }
-
-    static Optional<ElementType> toAdaptorNativeFromValueWithoutCoercion(JSValue jsValue) { return toNativeFromValueWithoutCoercion<Adaptor>(jsValue); }
+    static ElementType toAdaptorNativeFromValue(JSGlobalObject* globalObject, JSValue jsValue)
+    {
+#if CPU(BIG_ENDIAN)
+        switch (Adaptor::typeValue) {
+        case TypeFloat32:
+        case TypeFloat64:
+            return toNativeFromValue<Adaptor>(globalObject, jsValue);
+        default:
+            // typed array views are commonly expected to be little endian views of the underlying data
+            return flipBytes(toNativeFromValue<Adaptor>(globalObject, jsValue));
+        }
+#else
+        return toNativeFromValue<Adaptor>(globalObject, jsValue);
+#endif
+    }
+ 
+    static std::optional<ElementType> toAdaptorNativeFromValueWithoutCoercion(JSValue jsValue)
+    {
+        auto opt = toNativeFromValueWithoutCoercion<Adaptor>(jsValue);
+#if CPU(BIG_ENDIAN)
+        switch (Adaptor::typeValue) {
+        case TypeFloat32:
+        case TypeFloat64:
+            break;
+        default:
+            // typed array views are commonly expected to be little endian views of the underlying data
+            if (!opt)
+                break;
+            return std::optional<ElementType>{flipBytes(*opt)};
+        }
+#endif
+        return opt;
+    }
 
     void sort()
     {

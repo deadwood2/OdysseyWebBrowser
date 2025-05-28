@@ -48,7 +48,6 @@ using WebCore::PlaybackSessionInterfaceMac;
 @synthesize seekToTime = _seekToTime;
 @synthesize hasEnabledAudio = _hasEnabledAudio;
 @synthesize hasEnabledVideo = _hasEnabledVideo;
-@synthesize rate = _rate;
 @synthesize canTogglePlayback = _canTogglePlayback;
 @synthesize allowsPictureInPicturePlayback;
 @synthesize pictureInPictureActive;
@@ -61,6 +60,21 @@ using WebCore::PlaybackSessionInterfaceMac;
     [super dealloc];
 }
 
+- (BOOL)canSeek
+{
+    return _canSeek;
+}
+
+- (void)setCanSeek:(BOOL)canSeek
+{
+    _canSeek = canSeek;
+}
+
++ (NSSet<NSString *> *)keyPathsForValuesAffectingContentDuration
+{
+    return [NSSet setWithObject:@"seekableTimeRanges"];
+}
+
 - (NSTimeInterval)contentDuration
 {
     return [_seekableTimeRanges count] ? _contentDuration : std::numeric_limits<double>::infinity();
@@ -68,7 +82,15 @@ using WebCore::PlaybackSessionInterfaceMac;
 
 - (void)setContentDuration:(NSTimeInterval)duration
 {
+    bool needCanSeekUpdate = std::isfinite(_contentDuration) != std::isfinite(duration);
     _contentDuration = duration;
+    // Workaround rdar://82275552. We do so by toggling the canSeek property to force
+    // a content refresh that will make the scrubber appear/disappear accordingly.
+    if (needCanSeekUpdate) {
+        bool canSeek = _canSeek;
+        self.canSeek = !canSeek;
+        self.canSeek = canSeek;
+    }
 }
 
 - (AVValueTiming *)timing
@@ -89,6 +111,7 @@ using WebCore::PlaybackSessionInterfaceMac;
 - (void)setSeekableTimeRanges:(NSArray *)timeRanges
 {
     _seekableTimeRanges = timeRanges;
+    self.canSeek = timeRanges.count;
 }
 
 - (BOOL)isSeeking
@@ -123,13 +146,18 @@ using WebCore::PlaybackSessionInterfaceMac;
     completionHandler(@[ ]);
 }
 
++ (NSSet<NSString *> *)keyPathsForValuesAffectingCanBeginTouchBarScrubbing
+{
+    return [NSSet setWithObjects:@"canSeek", @"contentDuration", nil];
+}
+
 - (BOOL)canBeginTouchBarScrubbing
 {
     // At this time, we return YES for all media that is not a live stream and media that is not Netflix. (A Netflix
     // quirk means we pretend Netflix is a live stream for Touch Bar.) It's not ideal to return YES all the time for
     // other media. The intent of the API is that we return NO when the media is being scrubbed via the on-screen scrubber.
     // But we can only possibly get the right answer for media that uses the default controls.
-    return std::isfinite(_contentDuration) && [_seekableTimeRanges count];
+    return _canSeek && std::isfinite(_contentDuration);
 }
 
 - (void)beginTouchBarScrubbing
@@ -142,7 +170,7 @@ using WebCore::PlaybackSessionInterfaceMac;
         return;
         
     _playbackSessionInterfaceMac->willBeginScrubbing();
-    model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::BeginScrubbing, { });
+    model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::BeginScrubbingCommand, { });
 }
 
 - (void)endTouchBarScrubbing
@@ -151,7 +179,7 @@ using WebCore::PlaybackSessionInterfaceMac;
         return;
 
     if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel())
-        model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::EndScrubbing, { });
+        model->sendRemoteCommand(WebCore::PlatformMediaSession::RemoteControlCommandType::EndScrubbingCommand, { });
 }
 
 - (NSArray<AVTouchBarMediaSelectionOption *> *)audioTouchBarMediaSelectionOptions
@@ -325,6 +353,69 @@ static RetainPtr<NSArray> mediaSelectionOptions(const Vector<MediaSelectionOptio
 - (BOOL)isPlaying
 {
     return _playing;
+}
+
+- (double)defaultPlaybackRate
+{
+    return _defaultPlaybackRate;
+}
+
+- (void)setDefaultPlaybackRate:(double)defaultPlaybackRate
+{
+    [self setDefaultPlaybackRate:defaultPlaybackRate fromJavaScript:NO];
+}
+
+- (void)setDefaultPlaybackRate:(double)defaultPlaybackRate fromJavaScript:(BOOL)fromJavaScript
+{
+    if (defaultPlaybackRate == _defaultPlaybackRate)
+        return;
+
+    _defaultPlaybackRate = defaultPlaybackRate;
+
+    if (!fromJavaScript && _playbackSessionInterfaceMac) {
+        if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel(); model && model->defaultPlaybackRate() != _defaultPlaybackRate)
+            model->setDefaultPlaybackRate(_defaultPlaybackRate);
+    }
+
+    if ([self isPlaying])
+        [self setRate:_defaultPlaybackRate fromJavaScript:fromJavaScript];
+}
+
+- (float)rate
+{
+    return _rate;
+}
+
+- (void)setRate:(float)rate
+{
+    [self setRate:rate fromJavaScript:NO];
+}
+
+- (void)setRate:(double)rate fromJavaScript:(BOOL)fromJavaScript
+{
+    if (rate == _rate)
+        return;
+
+    _rate = rate;
+
+    // AVKit doesn't have a separate variable for "paused", instead representing it by a `rate` of
+    // `0`. Unfortunately, `HTMLMediaElement::play` doesn't call `HTMLMediaElement::setPlaybackRate`
+    // so if we propagate a `rate` of `0` along to the `HTMLMediaElement` then any attempt to
+    // `HTMLMediaElement::play` will effectively be a no-op since the `playbackRate` will be `0`.
+    if (!_rate)
+        return;
+
+    // In AVKit, the `defaultPlaybackRate` is used when playback starts, such as resuming after
+    // pausing. In WebKit, however, `defaultPlaybackRate` is only used when first loading and after
+    // ending scanning, with the `playbackRate` being used in all other cases, including when
+    // resuming after pausing. As such, WebKit should return the `playbackRate` instead of the
+    // `defaultPlaybackRate` in these cases when communicating with AVKit.
+    [self setDefaultPlaybackRate:_rate fromJavaScript:fromJavaScript];
+
+    if (!fromJavaScript && _playbackSessionInterfaceMac) {
+        if (auto* model = _playbackSessionInterfaceMac->playbackSessionModel(); model && model->playbackRate() != _rate)
+            model->setPlaybackRate(_rate);
+    }
 }
 
 - (void)togglePictureInPicture

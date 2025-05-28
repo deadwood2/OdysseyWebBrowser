@@ -39,6 +39,7 @@ VPATH = \
     $(WebKit2)/NetworkProcess/WebStorage \
     $(WebKit2)/PluginProcess \
     $(WebKit2)/PluginProcess/mac \
+    $(WebKit2)/Resources/SandboxProfiles/ios \
     $(WebKit2)/Shared/Plugins \
     $(WebKit2)/Shared \
     $(WebKit2)/Shared/API/Cocoa \
@@ -62,6 +63,7 @@ VPATH = \
     $(WebKit2)/WebProcess/IconDatabase \
     $(WebKit2)/WebProcess/Inspector \
     $(WebKit2)/WebProcess/MediaCache \
+    $(WebKit2)/WebProcess/MediaSession \
     $(WebKit2)/WebProcess/MediaStream \
     $(WebKit2)/WebProcess/Network \
     $(WebKit2)/WebProcess/Network/webrtc \
@@ -116,6 +118,7 @@ else
 endif
 
 MESSAGE_RECEIVERS = \
+	NetworkProcess/NetworkBroadcastChannelRegistry \
 	NetworkProcess/NetworkConnectionToWebProcess \
 	NetworkProcess/IndexedDB/WebIDBServer \
 	NetworkProcess/NetworkContentRuleListManager \
@@ -132,6 +135,7 @@ MESSAGE_RECEIVERS = \
 	NetworkProcess/webrtc/NetworkMDNSRegister \
 	NetworkProcess/webrtc/NetworkRTCProvider \
 	NetworkProcess/webrtc/NetworkRTCMonitor \
+	NetworkProcess/webrtc/RTCDataChannelRemoteManagerProxy \
 	NetworkProcess/Cookies/WebCookieManager \
 	Shared/Plugins/NPObjectMessageReceiver \
 	Shared/AuxiliaryProcess \
@@ -146,8 +150,8 @@ MESSAGE_RECEIVERS = \
 	UIProcess/WebAuthentication/WebAuthnProcessProxy \
 	UIProcess/WebPasteboardProxy \
 	UIProcess/UserContent/WebUserContentControllerProxy \
-	UIProcess/Inspector/WebInspectorProxy \
-	UIProcess/Inspector/RemoteWebInspectorProxy \
+	UIProcess/Inspector/WebInspectorUIProxy \
+	UIProcess/Inspector/RemoteWebInspectorUIProxy \
 	UIProcess/Inspector/WebInspectorUIExtensionControllerProxy \
 	UIProcess/Plugins/PluginProcessProxy \
 	UIProcess/DrawingAreaProxy \
@@ -169,8 +173,10 @@ MESSAGE_RECEIVERS = \
 	UIProcess/WebProcessPool \
 	UIProcess/Downloads/DownloadProxy \
 	UIProcess/Media/AudioSessionRoutingArbitratorProxy \
+	UIProcess/Media/RemoteMediaSessionCoordinatorProxy \
 	UIProcess/SpeechRecognitionRemoteRealtimeMediaSourceManager \
 	UIProcess/SpeechRecognitionServer \
+	UIProcess/XR/PlatformXRSystem \
 	WebProcess/Databases/IndexedDB/WebIDBConnectionToServer \
 	WebProcess/GPU/GPUProcessConnection \
 	WebProcess/GPU/graphics/RemoteRenderingBackendProxy \
@@ -196,6 +202,7 @@ MESSAGE_RECEIVERS = \
 	WebProcess/Inspector/WebInspectorUIExtensionController \
 	WebProcess/Inspector/WebInspector \
 	WebProcess/Inspector/RemoteWebInspectorUI \
+	WebProcess/MediaSession/RemoteMediaSessionCoordinator \
 	WebProcess/Plugins/PluginProcessConnectionManager \
 	WebProcess/Plugins/PluginProxy \
 	WebProcess/Plugins/PluginProcessConnection \
@@ -203,10 +210,12 @@ MESSAGE_RECEIVERS = \
 	WebProcess/Network/NetworkProcessConnection \
 	WebProcess/Network/WebSocketStream \
 	WebProcess/Network/WebResourceLoader \
-	WebProcess/Network/webrtc/WebRTCMonitor \
 	WebProcess/Network/webrtc/LibWebRTCNetwork \
+	WebProcess/Network/webrtc/RTCDataChannelRemoteManager \
+	WebProcess/Network/webrtc/WebRTCMonitor \
 	WebProcess/Network/webrtc/WebMDNSRegister \
 	WebProcess/Network/webrtc/WebRTCResolver \
+	WebProcess/WebCoreSupport/WebBroadcastChannelRegistry \
 	WebProcess/WebCoreSupport/WebDeviceOrientationUpdateProvider \
 	WebProcess/WebCoreSupport/WebSpeechRecognitionConnection \
 	WebProcess/Speech/SpeechRecognitionRealtimeMediaSourceManager \
@@ -231,6 +240,7 @@ MESSAGE_RECEIVERS = \
 	WebProcess/WebPage/Cocoa/TextCheckingControllerProxy \
 	WebProcess/WebPage/ViewUpdateDispatcher \
 	WebProcess/WebAuthentication/WebAuthnProcessConnection \
+	WebProcess/XR/PlatformXRSystemProxy \
 	PluginProcess/WebProcessConnection \
 	PluginProcess/PluginControllerProxy \
 	PluginProcess/PluginProcess \
@@ -239,11 +249,10 @@ MESSAGE_RECEIVERS = \
 	GPUProcess/graphics/RemoteGraphicsContextGL \
 	GPUProcess/webrtc/LibWebRTCCodecsProxy \
 	GPUProcess/webrtc/RemoteSampleBufferDisplayLayerManager \
-	GPUProcess/webrtc/RemoteAudioMediaStreamTrackRendererManager \
 	GPUProcess/webrtc/RemoteMediaRecorderManager \
 	GPUProcess/webrtc/RemoteSampleBufferDisplayLayer \
 	GPUProcess/webrtc/RemoteMediaRecorder \
-	GPUProcess/webrtc/RemoteAudioMediaStreamTrackRenderer \
+	GPUProcess/webrtc/RemoteAudioMediaStreamTrackRendererInternalUnitManager \
 	GPUProcess/GPUProcess \
 	GPUProcess/media/RemoteImageDecoderAVFProxy \
 	GPUProcess/media/RemoteLegacyCDMSessionProxy \
@@ -312,8 +321,13 @@ SANDBOX_PROFILES = \
 	com.apple.WebKit.NetworkProcess.sb \
 	com.apple.WebKit.GPUProcess.sb \
 	com.apple.WebKit.WebAuthnProcess.sb
+	
+SANDBOX_PROFILES_IOS = \
+	com.apple.WebKit.WebContent.sb \
 
-all : $(SANDBOX_PROFILES)
+sandbox-profiles-ios : $(SANDBOX_PROFILES_IOS)
+
+all : $(SANDBOX_PROFILES) $(SANDBOX_PROFILES_IOS)
 
 %.sb : %.sb.in
 	@echo Pre-processing $* sandbox profile...
@@ -396,12 +410,3 @@ $(WEB_PREFERENCES_COMBINED_INPUT_FILE) : $(WEB_PREFERENCES_INPUT_FILES)
 
 $(WEB_PREFERENCES_PATTERNS) : $(WTF_BUILD_SCRIPTS_DIR)/GeneratePreferences.rb $(WEB_PREFERENCES_TEMPLATES) $(WEB_PREFERENCES_COMBINED_INPUT_FILE) $(WEB_PREFERENCES_CATEGORY_INPUT_FILES)
 	$(RUBY) $< --frontend WebKit --base $(WEB_PREFERENCES_COMBINED_INPUT_FILE) --debug ${WTF_BUILD_SCRIPTS_DIR}/Preferences/WebPreferencesDebug.yaml --experimental ${WTF_BUILD_SCRIPTS_DIR}/Preferences/WebPreferencesExperimental.yaml	--internal ${WTF_BUILD_SCRIPTS_DIR}/Preferences/WebPreferencesInternal.yaml $(addprefix --template , $(WEB_PREFERENCES_TEMPLATES))
-
-
-# FIXME: We should switch to the internal HTTPSUpgradeList.txt once the feature is ready.
-# VPATH += $(WebKit2)/Shared/HTTPSUpgrade/
-VPATH := $(WebKit2)/Shared/HTTPSUpgrade/ $(VPATH)
-
-all : HTTPSUpgradeList.db
-HTTPSUpgradeList.db : HTTPSUpgradeList.txt $(WebKit2)/Scripts/generate-https-upgrade-database.sh
-	sh $(WebKit2)/Scripts/generate-https-upgrade-database.sh $< $@

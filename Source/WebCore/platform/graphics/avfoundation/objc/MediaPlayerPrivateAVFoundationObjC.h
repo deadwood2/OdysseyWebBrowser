@@ -117,6 +117,7 @@ public:
     void outputObscuredDueToInsufficientExternalProtectionChanged(bool);
 
     MediaTime currentMediaTime() const final;
+    void outputMediaDataWillChange();
 
 private:
 #if ENABLE(ENCRYPTED_MEDIA)
@@ -135,9 +136,9 @@ private:
     static void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types);
     static MediaPlayer::SupportsType supportsTypeAndCodecs(const MediaEngineSupportParameters&);
     static bool supportsKeySystem(const String& keySystem, const String& mimeType);
-    static HashSet<RefPtr<SecurityOrigin>> originsInMediaCache(const String&);
+    static HashSet<SecurityOriginData> originsInMediaCache(const String&);
     static void clearMediaCache(const String&, WallTime modifiedSince);
-    static void clearMediaCacheForOrigins(const String&, const HashSet<RefPtr<SecurityOrigin>>&);
+    static void clearMediaCacheForOrigins(const String&, const HashSet<SecurityOriginData>&);
 
     void setBufferingPolicy(MediaPlayer::BufferingPolicy) final;
 
@@ -171,7 +172,7 @@ private:
     void setVideoFullscreenMode(MediaPlayer::VideoFullscreenMode) final;
     void videoFullscreenStandbyChanged() final;
 #endif
-    void setPlayerRate(double);
+    void setPlayerRate(double, std::optional<MonotonicTime>&& = std::nullopt);
 
 #if PLATFORM(IOS_FAMILY)
     NSArray *timedMetadata() const final;
@@ -197,6 +198,7 @@ private:
     void checkPlayability();
     void setRateDouble(double) final;
     double rate() const final;
+    double effectiveRate() const final;
     void setPreservesPitch(bool) final;
     void setPitchCorrectionAlgorithm(MediaPlayer::PitchCorrectionAlgorithm) final;
     void seekToTime(const MediaTime&, const MediaTime& negativeTolerance, const MediaTime& positiveTolerance) final;
@@ -224,7 +226,7 @@ private:
     void updateVideoLayerGravity() final;
 
     bool didPassCORSAccessCheck() const final;
-    Optional<bool> wouldTaintOrigin(const SecurityOrigin&) const final;
+    std::optional<bool> wouldTaintOrigin(const SecurityOrigin&) const final;
 
     MediaTime getStartDate() const final;
 
@@ -254,7 +256,7 @@ private:
     RefPtr<NativeImage> nativeImageForCurrentTime() final;
     void waitForVideoOutputMediaDataWillChange();
 
-    CVPixelBufferRef pixelBufferForCurrentTime() final;
+    RetainPtr<CVPixelBufferRef> pixelBufferForCurrentTime() final;
 
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
     void keyAdded() final;
@@ -271,6 +273,7 @@ private:
     AVMediaSelectionGroup *safeMediaSelectionGroupForVisualMedia();
 
     NSArray *safeAVAssetTracksForAudibleMedia();
+    NSArray *safeAVAssetTracksForVisualMedia();
 
 #if ENABLE(DATACUE_VALUE)
     void processMetadataTrack();
@@ -307,7 +310,7 @@ private:
     void setShouldDisableSleep(bool) final;
     void updateRotationSession();
 
-    Optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() final;
+    std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() final;
 
 #if !RELEASE_LOG_DISABLED
     const char* logClassName() const final { return "MediaPlayerPrivateAVFoundationObjC"; }
@@ -320,6 +323,16 @@ private:
 
     void setPreferredDynamicRangeMode(DynamicRangeMode) final;
     void audioOutputDeviceChanged() final;
+
+    void currentMediaTimeDidChange(MediaTime&&) const;
+    bool setCurrentTimeDidChangeCallback(MediaPlayer::CurrentTimeDidChangeCallback&&) final;
+
+    bool currentMediaTimeIsBuffered() const;
+
+    bool supportsPlayAtHostTime() const final { return true; }
+    bool supportsPauseAtHostTime() const final { return true; }
+    bool playAtHostTime(const MonotonicTime&) final;
+    bool pauseAtHostTime(const MonotonicTime&) final;
 
     RetainPtr<AVURLAsset> m_avAsset;
     RetainPtr<AVPlayer> m_avPlayer;
@@ -384,6 +397,7 @@ private:
 
     RetainPtr<AVPlayerItemMetadataCollector> m_metadataCollector;
     RetainPtr<AVPlayerItemMetadataOutput> m_metadataOutput;
+    RetainPtr<id> m_currentTimeObserver;
 
     mutable RetainPtr<NSArray> m_cachedSeekableRanges;
     mutable RetainPtr<NSArray> m_cachedLoadedRanges;
@@ -391,6 +405,11 @@ private:
     RetainPtr<NSArray> m_currentMetaData;
     FloatSize m_cachedPresentationSize;
     MediaTime m_cachedDuration;
+    mutable MediaPlayer::CurrentTimeDidChangeCallback m_currentTimeDidChangeCallback;
+    mutable MediaTime m_cachedCurrentMediaTime;
+    mutable std::optional<WallTime> m_wallClockAtCachedCurrentTime;
+    mutable int m_timeControlStatusAtCachedCurrentTime { 0 };
+    mutable double m_requestedRateAtCachedCurrentTime { 0 };
     RefPtr<SharedBuffer> m_keyID;
     double m_cachedRate { 0 };
     bool m_requestedPlaying { false };
@@ -408,13 +427,17 @@ private:
     bool m_haveBeenAskedToCreateLayer { false };
     bool m_cachedCanPlayFastForward { false };
     bool m_cachedCanPlayFastReverse { false };
+    mutable bool m_cachedAssetIsLoaded { false };
+    mutable std::optional<bool> m_cachedAssetIsPlayable;
     bool m_muted { false };
     bool m_shouldObserveTimeControlStatus { false };
-    mutable Optional<bool> m_tracksArePlayable;
+    mutable std::optional<bool> m_tracksArePlayable;
+    bool m_automaticallyWaitsToMinimizeStalling { false };
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     mutable bool m_allowsWirelessVideoPlayback { true };
     bool m_shouldPlayToPlaybackTarget { false };
 #endif
+    bool m_runningModalPaint { false };
 };
 
 }

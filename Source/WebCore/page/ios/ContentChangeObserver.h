@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if PLATFORM(IOS_FAMILY)
+#if ENABLE(CONTENT_CHANGE_OBSERVER)
 
 #include "CSSPropertyNames.h"
 #include "Document.h"
@@ -86,7 +86,7 @@ public:
     private:
         ContentChangeObserver& m_contentChangeObserver;
         const Element& m_element;
-        Optional<bool> m_wasHidden;
+        std::optional<bool> m_wasHidden;
         bool m_hadRenderer { false };
     };
 
@@ -182,6 +182,9 @@ private:
     bool visibleRendererWasDestroyed(const Element& element) const { return m_elementsWithDestroyedVisibleRenderer.contains(&element); }
     bool shouldObserveVisibilityChangeForElement(const Element&);
 
+    enum class ElementHadRenderer { No, Yes };
+    bool isConsideredActionableContent(const Element&, ElementHadRenderer) const;
+
     enum class Event {
         StartedTouchStartEventDispatching,
         EndedTouchStartEventDispatching,
@@ -241,4 +244,4 @@ inline void ContentChangeObserver::setShouldObserveDOMTimerSchedulingAndTransiti
 }
 
 }
-#endif
+#endif // ENABLE(CONTENT_CHANGE_OBSERVER)

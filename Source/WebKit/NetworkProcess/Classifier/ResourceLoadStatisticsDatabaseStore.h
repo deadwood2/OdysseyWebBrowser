@@ -27,20 +27,16 @@
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
 
+#include "DatabaseUtilities.h"
 #include "ResourceLoadStatisticsStore.h"
 #include "WebResourceLoadStatisticsStore.h"
-#include <WebCore/SQLiteDatabase.h>
 #include <WebCore/SQLiteStatement.h>
-#include <WebCore/SQLiteStatementAutoResetScope.h>
 #include <pal/SessionID.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/StdSet.h>
 #include <wtf/Vector.h>
-#include <wtf/WorkQueue.h>
 
 namespace WebCore {
-class SQLiteDatabase;
-class SQLiteStatement;
 enum class StorageAccessPromptWasShown : bool;
 enum class StorageAccessWasGranted : bool;
 struct ResourceLoadStatistics;
@@ -55,24 +51,22 @@ static constexpr std::array<unsigned, numberOfBucketsPerStatistic> bucketSizes {
 class ResourceLoadStatisticsMemoryStore;
 class PrivateClickMeasurementManager;
 
-using AttributedPrivateClickMeasurement = WebCore::PrivateClickMeasurement;
-using UnattributedPrivateClickMeasurement = WebCore::PrivateClickMeasurement;
 using SourceSite = WebCore::PrivateClickMeasurement::SourceSite;
-using AttributeOnSite = WebCore::PrivateClickMeasurement::AttributeOnSite;
+using AttributionDestinationSite = WebCore::PrivateClickMeasurement::AttributionDestinationSite;
 using AttributionTriggerData = WebCore::PrivateClickMeasurement::AttributionTriggerData;
 
+typedef std::pair<String, std::optional<String>> TableAndIndexPair;
+
 // This is always constructed / used / destroyed on the WebResourceLoadStatisticsStore's statistics queue.
-class ResourceLoadStatisticsDatabaseStore final : public ResourceLoadStatisticsStore {
+class ResourceLoadStatisticsDatabaseStore final : public ResourceLoadStatisticsStore, public DatabaseUtilities {
 public:
-    ResourceLoadStatisticsDatabaseStore(WebResourceLoadStatisticsStore&, WorkQueue&, ShouldIncludeLocalhost, const String& storageDirectoryPath, PAL::SessionID);
+    ResourceLoadStatisticsDatabaseStore(WebResourceLoadStatisticsStore&, SuspendableWorkQueue&, ShouldIncludeLocalhost, const String& storageDirectoryPath, PAL::SessionID);
     ~ResourceLoadStatisticsDatabaseStore();
 
-    static HashSet<ResourceLoadStatisticsDatabaseStore*>& allStores();
     void populateFromMemoryStore(const ResourceLoadStatisticsMemoryStore&);
     void mergeStatistics(Vector<ResourceLoadStatistics>&&) override;
     void clear(CompletionHandler<void()>&&) override;
     bool isEmpty() const override;
-    void close();
 
     Vector<WebResourceLoadStatisticsStore::ThirdPartyData> aggregatedThirdPartyData() const override;
     void updateCookieBlocking(CompletionHandler<void()>&&) override;
@@ -106,7 +100,7 @@ public:
     void setTopFrameUniqueRedirectTo(const TopFrameDomain&, const RedirectDomain&) override;
     void setTopFrameUniqueRedirectFrom(const TopFrameDomain&, const RedirectDomain&) override;
 
-    void hasStorageAccess(const SubFrameDomain&, const TopFrameDomain&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&) override;
+    void hasStorageAccess(const SubFrameDomain&, const TopFrameDomain&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, CompletionHandler<void(bool)>&&) override;
     void requestStorageAccess(SubFrameDomain&&, TopFrameDomain&&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebCore::StorageAccessScope, CompletionHandler<void(StorageAccessStatus)>&&) override;
     void grantStorageAccess(SubFrameDomain&&, TopFrameDomain&&, WebCore::FrameIdentifier, WebCore::PageIdentifier, WebCore::StorageAccessPromptWasShown, WebCore::StorageAccessScope, CompletionHandler<void(WebCore::StorageAccessWasGranted)>&&) override;
 
@@ -127,20 +121,11 @@ public:
     void removeDataForDomain(const RegistrableDomain&) override;
     Vector<RegistrableDomain> allDomains() const final;
     bool domainIDExistsInDatabase(int);
-    Optional<Vector<String>> checkForMissingTablesInSchema();
-    void insertExpiredStatisticForTesting(const RegistrableDomain&, bool hasUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent) override;
-    void interrupt();
+    std::optional<Vector<String>> checkForMissingTablesInSchema();
+    void insertExpiredStatisticForTesting(const RegistrableDomain&, unsigned numberOfOperatingDaysPassed, bool hasUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent) override;
+    static void interruptAllDatabases();
 
-    // Private Click Measurement.
-    void insertPrivateClickMeasurement(WebCore::PrivateClickMeasurement&&, PrivateClickMeasurementAttributionType) override;
-    void markAllUnattributedPrivateClickMeasurementAsExpiredForTesting() override;
-    Optional<Seconds> attributePrivateClickMeasurement(const WebCore::PrivateClickMeasurement::SourceSite&, const WebCore::PrivateClickMeasurement::AttributeOnSite&, WebCore::PrivateClickMeasurement::AttributionTriggerData&&) override;
-    Vector<WebCore::PrivateClickMeasurement> allAttributedPrivateClickMeasurement() override;
-    void clearPrivateClickMeasurement(Optional<RegistrableDomain>) override;
-    void clearExpiredPrivateClickMeasurement() override;
-    String privateClickMeasurementToString() override;
-    void clearSentAttribution(WebCore::PrivateClickMeasurement&&) override;
-    void markAttributedPrivateClickMeasurementsAsExpiredForTesting() override;
+    Vector<String> columnsForTable(const String&);
 
 private:
     void includeTodayAsOperatingDateIfNecessary() override;
@@ -150,18 +135,22 @@ private:
 
     void openITPDatabase();
     void addMissingTablesIfNecessary();
-    bool needsUpdatedPrivateClickMeasurementSchema();
-    void enableForeignKeys();
+    bool missingUniqueIndices();
+    bool needsUpdatedSchema();
+    TableAndIndexPair currentTableAndIndexQueries(const String&);
     bool missingReferenceToObservedDomains();
     void migrateDataToNewTablesIfNecessary();
-    void destroyStatements();
-    WebCore::SQLiteStatementAutoResetScope scopedStatement(std::unique_ptr<WebCore::SQLiteStatement>&, const String&, const String&) const;
+    void migrateDataToPCMDatabaseIfNecessary();
+    bool tableExists(StringView);
+    void deleteTable(StringView);
+
+    void destroyStatements() final;
 
     bool hasStorageAccess(const TopFrameDomain&, const SubFrameDomain&) const;
     Vector<WebResourceLoadStatisticsStore::ThirdPartyDataForSpecificFirstParty> getThirdPartyDataForSpecificFirstPartyDomains(unsigned, const RegistrableDomain&) const;
     void openAndUpdateSchemaIfNecessary();
-    String getDomainStringFromDomainID(unsigned) const;
-    String getSubStatisticStatement(const String&) const;
+    String getDomainStringFromDomainID(unsigned) const final;
+    ASCIILiteral getSubStatisticStatement(const String&) const;
     void appendSubStatisticList(StringBuilder&, const String& tableName, const String& domain) const;
     void mergeStatistic(const ResourceLoadStatistics&);
     void merge(WebCore::SQLiteStatement*, const ResourceLoadStatistics&);
@@ -169,8 +158,8 @@ private:
     bool insertObservedDomain(const ResourceLoadStatistics&) WARN_UNUSED_RETURN;
     void insertDomainRelationships(const ResourceLoadStatistics&);
     void insertDomainRelationshipList(const String&, const HashSet<RegistrableDomain>&, unsigned);
-    bool relationshipExists(WebCore::SQLiteStatementAutoResetScope&, Optional<unsigned> firstDomainID, const RegistrableDomain& secondDomain) const;
-    Optional<unsigned> domainID(const RegistrableDomain&) const;
+    bool relationshipExists(WebCore::SQLiteStatementAutoResetScope&, std::optional<unsigned> firstDomainID, const RegistrableDomain& secondDomain) const;
+    std::optional<unsigned> domainID(const RegistrableDomain&) const;
     bool domainExists(const RegistrableDomain&) const;
     void updateLastSeen(const RegistrableDomain&, WallTime);
     void updateDataRecordsRemoved(const RegistrableDomain&, int);
@@ -214,13 +203,13 @@ private:
     void setPrevalentResource(const RegistrableDomain&, ResourceLoadPrevalence);
     unsigned recursivelyFindNonPrevalentDomainsThatRedirectedToThisDomain(unsigned primaryDomainID, StdSet<unsigned>& nonPrevalentRedirectionSources, unsigned numberOfRecursiveCalls);
     void setDomainsAsPrevalent(StdSet<unsigned>&&);
-    void grantStorageAccessInternal(SubFrameDomain&&, TopFrameDomain&&, Optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, WebCore::StorageAccessPromptWasShown, WebCore::StorageAccessScope, CompletionHandler<void(WebCore::StorageAccessWasGranted)>&&);
+    void grantStorageAccessInternal(SubFrameDomain&&, TopFrameDomain&&, std::optional<WebCore::FrameIdentifier>, WebCore::PageIdentifier, WebCore::StorageAccessPromptWasShown, WebCore::StorageAccessScope, CompletionHandler<void(WebCore::StorageAccessWasGranted)>&&);
     void markAsPrevalentIfHasRedirectedToPrevalent();
     Vector<RegistrableDomain> ensurePrevalentResourcesForDebugMode() override;
     void removeDataRecords(CompletionHandler<void()>&&);
     void pruneStatisticsIfNeeded() override;
     enum class AddedRecord { No, Yes };
-    std::pair<AddedRecord, Optional<unsigned>> ensureResourceStatisticsForRegistrableDomain(const RegistrableDomain&) WARN_UNUSED_RETURN;
+    std::pair<AddedRecord, std::optional<unsigned>> ensureResourceStatisticsForRegistrableDomain(const RegistrableDomain&) WARN_UNUSED_RETURN;
     bool shouldRemoveAllWebsiteDataFor(const DomainData&, bool shouldCheckForGrandfathering);
     bool shouldRemoveAllButCookiesFor(const DomainData&, bool shouldCheckForGrandfathering);
     bool shouldEnforceSameSiteStrictFor(DomainData&, bool shouldCheckForGrandfathering);
@@ -228,17 +217,10 @@ private:
     bool isDatabaseStore() const final { return true; }
 
     bool createUniqueIndices();
-    bool createSchema();
+    bool createSchema() final;
     String ensureAndMakeDomainList(const HashSet<RegistrableDomain>&);
-    Optional<WallTime> mostRecentUserInteractionTime(const DomainData&);
-    
-    void removeUnattributed(WebCore::PrivateClickMeasurement&);
-    WebCore::PrivateClickMeasurement buildPrivateClickMeasurementFromDatabase(WebCore::SQLiteStatement*, PrivateClickMeasurementAttributionType);
-    String attributionToString(WebCore::SQLiteStatement*, PrivateClickMeasurementAttributionType);
-    std::pair<Optional<UnattributedPrivateClickMeasurement>, Optional<AttributedPrivateClickMeasurement>> findPrivateClickMeasurement(const WebCore::PrivateClickMeasurement::SourceSite&, const WebCore::PrivateClickMeasurement::AttributeOnSite&);
+    std::optional<WallTime> mostRecentUserInteractionTime(const DomainData&);
 
-    const String m_storageDirectoryPath;
-    mutable WebCore::SQLiteDatabase m_database;
     mutable std::unique_ptr<WebCore::SQLiteStatement> m_observedDomainCountStatement;
     std::unique_ptr<WebCore::SQLiteStatement> m_insertObservedDomainStatement;
     std::unique_ptr<WebCore::SQLiteStatement> m_insertTopLevelDomainStatement;
@@ -276,23 +258,13 @@ private:
     mutable std::unique_ptr<WebCore::SQLiteStatement> m_uniqueRedirectExistsStatement;
     mutable std::unique_ptr<WebCore::SQLiteStatement> m_observedDomainsExistsStatement;
     mutable std::unique_ptr<WebCore::SQLiteStatement> m_removeAllDataStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_insertUnattributedPrivateClickMeasurementStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_insertAttributedPrivateClickMeasurementStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_setUnattributedPrivateClickMeasurementAsExpiredStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_clearUnattributedPrivateClickMeasurementStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_clearAttributedPrivateClickMeasurementStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_clearExpiredPrivateClickMeasurementStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_allUnattributedPrivateClickMeasurementAttributionsStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_allAttributedPrivateClickMeasurementStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_findUnattributedStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_findAttributedStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_updateAttributionsEarliestTimeToSendStatement;
-    std::unique_ptr<WebCore::SQLiteStatement> m_removeUnattributedStatement;
-    
+    mutable std::unique_ptr<WebCore::SQLiteStatement> m_checkIfTableExistsStatement;
+
     PAL::SessionID m_sessionID;
     bool m_isNewResourceLoadStatisticsDatabaseFile { false };
     unsigned m_operatingDatesSize { 0 };
-    OperatingDate m_leastRecentOperatingDate;
+    std::optional<OperatingDate> m_longWindowOperatingDate;
+    std::optional<OperatingDate> m_shortWindowOperatingDate;
     OperatingDate m_mostRecentOperatingDate;
 };
 

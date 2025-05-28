@@ -27,6 +27,8 @@
 #pragma once
 
 #include "ResourceErrorBase.h"
+#include "CertificateInfo.h"
+#include <optional>
 
 namespace WebCore {
 
@@ -39,8 +41,8 @@ public:
     {
     }
 
-    ResourceError(const String& domain, int errorCode, const URL& failingURL, const String& localizedDescription, Type type = Type::General)
-        : ResourceErrorBase(domain, errorCode, failingURL, localizedDescription, type)
+    ResourceError(const String& domain, int errorCode, const URL& failingURL, const String& localizedDescription, Type type = Type::General, IsSanitized isSanitized = IsSanitized::No)
+        : ResourceErrorBase(domain, errorCode, failingURL, localizedDescription, type, isSanitized)
     {
     }
 
@@ -55,12 +57,17 @@ public:
 
     static bool platformCompare(const ResourceError& a, const ResourceError& b);
 
+    std::optional<CertificateInfo> certificateInfo() const { return m_certificateInfo; }
+    void setCertificateInfo(CertificateInfo&&info) { m_certificateInfo = WTFMove(info); };
+
 private:
     void doPlatformIsolatedCopy(const ResourceError&);
 
     static const char* const curlErrorDomain;
 
     unsigned m_sslErrors { 0 };
+	
+    std::optional<CertificateInfo> m_certificateInfo;
 };
 
 } // namespace WebCore

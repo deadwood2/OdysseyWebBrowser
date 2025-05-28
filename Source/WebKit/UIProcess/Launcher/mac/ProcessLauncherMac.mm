@@ -26,7 +26,10 @@
 #import "config.h"
 #import "ProcessLauncher.h"
 
+#import "Logging.h"
+#import "ReasonSPI.h"
 #import "WebPreferencesDefaultValues.h"
+#import <WebCore/RuntimeApplicationChecks.h>
 #import <crt_externs.h>
 #import <mach-o/dyld.h>
 #import <mach/mach_error.h>
@@ -39,6 +42,7 @@
 #import <wtf/RunLoop.h>
 #import <wtf/SoftLinking.h>
 #import <wtf/Threading.h>
+#import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
 #import <wtf/spi/cf/CFBundleSPI.h>
 #import <wtf/spi/darwin/XPCSPI.h>
 #import <wtf/text/CString.h>
@@ -100,16 +104,16 @@ static bool shouldLeakBoost(const ProcessLauncher::LaunchOptions& launchOptions)
 
 static NSString *systemDirectoryPath()
 {
-    static NSString *path = [^{
+    static NeverDestroyed<RetainPtr<NSString>> path = adoptNS([^{
 #if PLATFORM(IOS_FAMILY_SIMULATOR)
         char *simulatorRoot = getenv("SIMULATOR_ROOT");
         return simulatorRoot ? [NSString stringWithFormat:@"%s/System/", simulatorRoot] : @"/System/";
 #else
         return @"/System/";
 #endif
-    }() copy];
+    }() copy]);
 
-    return path;
+    return path.get().get();
 }
 
 void ProcessLauncher::launchProcess()
@@ -148,6 +152,7 @@ void ProcessLauncher::launchProcess()
 
     auto languagesIterator = m_launchOptions.extraInitializationData.find("OverrideLanguages");
     if (languagesIterator != m_launchOptions.extraInitializationData.end()) {
+        LOG_WITH_STREAM(Language, stream << "Process Launcher is copying OverrideLanguages into initialization message: " << languagesIterator->value);
         auto languages = adoptOSObject(xpc_array_create(nullptr, 0));
         for (auto& language : languagesIterator->value.split(','))
             xpc_array_set_string(languages.get(), XPC_ARRAY_APPEND, language.utf8().data());
@@ -200,6 +205,8 @@ void ProcessLauncher::launchProcess()
             xpc_dictionary_set_bool(bootstrapMessage.get(), "configure-jsc-for-testing", true);
         if (!m_client->isJITEnabled())
             xpc_dictionary_set_bool(bootstrapMessage.get(), "disable-jit", true);
+        if (m_client->shouldEnableSharedArrayBuffer())
+            xpc_dictionary_set_bool(bootstrapMessage.get(), "enable-shared-array-buffer", true);
     }
 
     xpc_dictionary_set_string(bootstrapMessage.get(), "message-name", "bootstrap");
@@ -207,6 +214,8 @@ void ProcessLauncher::launchProcess()
     xpc_dictionary_set_mach_send(bootstrapMessage.get(), "server-port", listeningPort);
 
     xpc_dictionary_set_string(bootstrapMessage.get(), "client-identifier", !clientIdentifier.isEmpty() ? clientIdentifier.utf8().data() : *_NSGetProgname());
+    xpc_dictionary_set_string(bootstrapMessage.get(), "client-bundle-identifier", WebCore::applicationBundleIdentifier().utf8().data());
+    xpc_dictionary_set_string(bootstrapMessage.get(), "client-sdk-version", String::number(applicationSDKVersion()).utf8().data());
     xpc_dictionary_set_string(bootstrapMessage.get(), "process-identifier", String::number(m_launchOptions.processIdentifier.toUInt64()).utf8().data());
     xpc_dictionary_set_string(bootstrapMessage.get(), "ui-process-name", [[[NSProcessInfo processInfo] processName] UTF8String]);
     xpc_dictionary_set_string(bootstrapMessage.get(), "service-name", name);
@@ -332,11 +341,15 @@ void ProcessLauncher::platformInvalidate()
         return;
 
     xpc_connection_cancel(m_xpcConnection.get());
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    // FIXME: This was deprecated in favor of terminate_with_reason().
-    xpc_connection_kill(m_xpcConnection.get(), SIGKILL);
-ALLOW_DEPRECATED_DECLARATIONS_END
+    terminateWithReason(m_xpcConnection.get(), WebKit::ReasonCode::Invalidation, "ProcessLauncher::platformInvalidate");
     m_xpcConnection = nullptr;
+}
+
+void terminateWithReason(xpc_connection_t connection, ReasonCode, const char*)
+{
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    xpc_connection_kill(connection, SIGKILL);
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 } // namespace WebKit

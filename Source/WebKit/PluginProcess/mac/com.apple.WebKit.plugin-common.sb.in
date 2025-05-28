@@ -164,7 +164,6 @@
     (xpc-service-name "com.apple.coremedia.videoencoder")
     (xpc-service-name-regex #"\.apple-extension-service$")
     (xpc-service-name "com.apple.hiservices-xpcservice")
-    (xpc-service-name "com.apple.print.normalizerd")
 )
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= 101400
@@ -262,6 +261,7 @@
 (shared-preferences-read
     ".GlobalPreferences"
     "com.apple.ATS"
+    "com.apple.Accessibility"
     "com.apple.Bluetooth"
     "com.apple.CoreGraphics"
     "com.apple.HIToolbox"

@@ -36,11 +36,11 @@
 #include "PlatformWebView.h"
 #include "StringFunctions.h"
 #include "TestController.h"
-#include "WebKitWebViewBaseInternal.h"
 #include <WebCore/GtkUtilities.h>
 #include <WebCore/GtkVersioning.h>
 #include <gdk/gdk.h>
 #include <gdk/gdkkeysyms.h>
+#include <webkit2/WebKitWebViewBaseInternal.h>
 #include <wtf/StdLibExtras.h>
 #include <wtf/UniqueArray.h>
 #include <wtf/glib/GUniquePtr.h>
@@ -68,6 +68,11 @@ EventSenderProxy::EventSenderProxy(TestController* testController)
     , m_clickTime(0)
     , m_clickButton(kWKEventMouseButtonNoButton)
 {
+}
+
+static inline WebKitWebViewBase* toWebKitGLibAPI(PlatformWKView view)
+{
+    return const_cast<WebKitWebViewBase*>(reinterpret_cast<const WebKitWebViewBase*>(view));
 }
 
 EventSenderProxy::~EventSenderProxy()
@@ -232,11 +237,6 @@ static int getGDKKeySymForKeyRef(WKStringRef keyRef, unsigned location, guint* m
     return gdk_unicode_to_keyval(static_cast<guint32>(buffer.get()[0]));
 }
 
-static inline WebKitWebViewBase* toWebKitGLibAPI(PlatformWKView view)
-{
-    return const_cast<WebKitWebViewBase*>(reinterpret_cast<const WebKitWebViewBase*>(view));
-}
-
 void EventSenderProxy::keyDown(WKStringRef keyRef, WKEventModifiers wkModifiers, unsigned location)
 {
     guint modifiers = webkitModifiersToGDKModifiers(wkModifiers);
@@ -289,7 +289,7 @@ void EventSenderProxy::mouseScrollBy(int horizontal, int vertical)
         return;
 
     webkitWebViewBaseSynthesizeWheelEvent(toWebKitGLibAPI(m_testController->mainWebView()->platformView()),
-        horizontal, vertical, m_position.x, m_position.y, WheelEventPhase::NoPhase, WheelEventPhase::NoPhase);
+        horizontal, vertical, m_position.x, m_position.y, WheelEventPhase::NoPhase, WheelEventPhase::NoPhase, m_hasPreciseDeltas);
 }
 
 void EventSenderProxy::continuousMouseScrollBy(int horizontal, int vertical, bool paged)
@@ -301,7 +301,7 @@ void EventSenderProxy::continuousMouseScrollBy(int horizontal, int vertical, boo
     }
 
     webkitWebViewBaseSynthesizeWheelEvent(toWebKitGLibAPI(m_testController->mainWebView()->platformView()),
-        horizontal / pixelsPerScrollTick, vertical / pixelsPerScrollTick, m_position.x, m_position.y, WheelEventPhase::NoPhase, WheelEventPhase::NoPhase);
+        horizontal / pixelsPerScrollTick, vertical / pixelsPerScrollTick, m_position.x, m_position.y, WheelEventPhase::NoPhase, WheelEventPhase::NoPhase, m_hasPreciseDeltas);
 }
 
 void EventSenderProxy::mouseScrollByWithWheelAndMomentumPhases(int horizontal, int vertical, int phase, int momentum)
@@ -345,7 +345,12 @@ void EventSenderProxy::mouseScrollByWithWheelAndMomentumPhases(int horizontal, i
     }
 
     webkitWebViewBaseSynthesizeWheelEvent(toWebKitGLibAPI(m_testController->mainWebView()->platformView()),
-        horizontal, vertical, m_position.x, m_position.y, eventPhase, eventMomentumPhase);
+        horizontal, vertical, m_position.x, m_position.y, eventPhase, eventMomentumPhase, m_hasPreciseDeltas);
+}
+
+void EventSenderProxy::setWheelHasPreciseDeltas(bool hasPreciseDeltas)
+{
+    m_hasPreciseDeltas = hasPreciseDeltas;
 }
 
 void EventSenderProxy::leapForward(int milliseconds)

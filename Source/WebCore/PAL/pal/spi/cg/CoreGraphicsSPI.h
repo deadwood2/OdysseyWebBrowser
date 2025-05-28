@@ -32,10 +32,6 @@
 #include <pal/spi/cocoa/IOSurfaceSPI.h>
 #endif
 
-#if PLATFORM(MAC)
-#include <ColorSync/ColorSync.h>
-#endif
-
 #if USE(APPLE_INTERNAL_SDK)
 
 #include <CoreGraphics/CGContextDelegatePrivate.h>
@@ -45,7 +41,6 @@
 #include <CoreGraphics/CGStylePrivate.h>
 
 #if PLATFORM(MAC)
-#include <ColorSync/ColorSyncPriv.h>
 #include <CoreGraphics/CGAccessibility.h>
 #endif
 
@@ -232,6 +227,7 @@ typedef void (*CGSNotifyProcPtr)(CGSNotificationType, void* data, uint32_t data_
 
 WTF_EXTERN_C_BEGIN
 
+bool CGColorTransformConvertColorComponents(CGColorTransformRef, CGColorSpaceRef, CGColorRenderingIntent, const CGFloat srcComponents[], CGFloat dstComponents[]);
 CGColorRef CGColorTransformConvertColor(CGColorTransformRef, CGColorRef, CGColorRenderingIntent);
 CGColorTransformRef CGColorTransformCreate(CGColorSpaceRef, CFDictionaryRef attributes);
 
@@ -281,6 +277,8 @@ CGStyleRef CGGStateGetStyle(CGGStateRef);
 CGStyleType CGStyleGetType(CGStyleRef);
 const void *CGStyleGetData(CGStyleRef);
 CGColorRef CGStyleGetColor(CGStyleRef);
+bool CGColorSpaceEqualToColorSpace(CGColorSpaceRef, CGColorSpaceRef);
+CFStringRef CGColorSpaceCopyICCProfileDescription(CGColorSpaceRef);
 
 #if HAVE(CGPATH_GET_NUMBER_OF_ELEMENTS)
 size_t CGPathGetNumberOfElements(CGPathRef);
@@ -346,7 +344,6 @@ CGError CGSCopyConnectionProperty(CGSConnectionID, CGSConnectionID ownerCid, CFS
 CGError CGSGetScreenRectForWindow(CGSConnectionID, CGSWindowID, CGRect *);
 CGError CGSRegisterConnectionNotifyProc(CGSConnectionID, CGSNotifyConnectionProcPtr, CGSNotificationType, void* arg);
 CGError CGSRegisterNotifyProc(CGSNotifyProcPtr, CGSNotificationType, void* arg);
-bool ColorSyncProfileIsWideGamut(ColorSyncProfileRef);
 
 size_t CGDisplayModeGetPixelsWide(CGDisplayModeRef);
 size_t CGDisplayModeGetPixelsHigh(CGDisplayModeRef);

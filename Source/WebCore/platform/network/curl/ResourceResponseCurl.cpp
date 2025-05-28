@@ -27,6 +27,7 @@
 
 #if USE(CURL)
 #include "ResourceResponse.h"
+#include "MIMETypeRegistry.h"
 
 #include "CurlContext.h"
 #include "CurlResponse.h"
@@ -102,7 +103,11 @@ ResourceResponse::ResourceResponse(const CurlResponse& response)
         break;
     }
 
-    setMimeType(extractMIMETypeFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)).convertToASCIILowercase());
+	String mimeType = extractMIMETypeFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)).convertToASCIILowercase();
+	if (mimeType.isEmpty()) {
+	    mimeType = MIMETypeRegistry::mimeTypeForPath(response.url.path().toString());
+	}
+    setMimeType(mimeType);
     setTextEncodingName(extractCharsetFromMediaType(httpHeaderField(HTTPHeaderName::ContentType)));
     setSource(ResourceResponse::Source::Network);
 }

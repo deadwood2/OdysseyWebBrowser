@@ -48,7 +48,6 @@
 #import <wtf/text/WTFString.h>
 
 namespace WebKit {
-using namespace WebCore;
 
 void NetworkProcess::initializeProcess(const AuxiliaryProcessInitializationParameters&)
 {
@@ -79,7 +78,7 @@ void NetworkProcess::platformInitializeNetworkProcess(const NetworkProcessCreati
 #endif
 }
 
-void NetworkProcess::allowSpecificHTTPSCertificateForHost(const CertificateInfo& certificateInfo, const String& host)
+void NetworkProcess::allowSpecificHTTPSCertificateForHost(const WebCore::CertificateInfo& certificateInfo, const String& host)
 {
     [NSURLRequest setAllowsSpecificHTTPSCertificate:(__bridge NSArray *)certificateInfo.certificateChain() forHost:(NSString *)host];
 }
@@ -97,9 +96,8 @@ void NetworkProcess::initializeSandbox(const AuxiliaryProcessInitializationParam
 void NetworkProcess::platformTerminate()
 {
     if (m_clearCacheDispatchGroup) {
-        dispatch_group_wait(m_clearCacheDispatchGroup, DISPATCH_TIME_FOREVER);
-        dispatch_release(m_clearCacheDispatchGroup);
-        m_clearCacheDispatchGroup = 0;
+        dispatch_group_wait(m_clearCacheDispatchGroup.get(), DISPATCH_TIME_FOREVER);
+        m_clearCacheDispatchGroup = nullptr;
     }
 }
 

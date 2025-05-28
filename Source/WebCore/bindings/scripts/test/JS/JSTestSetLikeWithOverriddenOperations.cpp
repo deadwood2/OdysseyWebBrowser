@@ -23,13 +23,16 @@
 
 #include "ActiveDOMObject.h"
 #include "DOMIsoSubspaces.h"
+#include "IDLTypes.h"
 #include "JSDOMAttribute.h"
 #include "JSDOMBinding.h"
 #include "JSDOMConstructorNotConstructable.h"
 #include "JSDOMConvertAny.h"
+#include "JSDOMConvertBase.h"
 #include "JSDOMConvertNumbers.h"
 #include "JSDOMConvertStrings.h"
 #include "JSDOMExceptionHandling.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMOperation.h"
 #include "JSDOMSetLike.h"
 #include "JSDOMWrapperCache.h"
@@ -101,6 +104,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestSetLikeWithOverriddenOperationsPrototy
 
 using JSTestSetLikeWithOverriddenOperationsDOMConstructor = JSDOMConstructorNotConstructable<JSTestSetLikeWithOverriddenOperations>;
 
+template<> const ClassInfo JSTestSetLikeWithOverriddenOperationsDOMConstructor::s_info = { "TestSetLikeWithOverriddenOperations", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestSetLikeWithOverriddenOperationsDOMConstructor) };
+
 template<> JSValue JSTestSetLikeWithOverriddenOperationsDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     UNUSED_PARAM(vm);
@@ -113,8 +118,6 @@ template<> void JSTestSetLikeWithOverriddenOperationsDOMConstructor::initializeP
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestSetLikeWithOverriddenOperations"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestSetLikeWithOverriddenOperationsDOMConstructor::s_info = { "TestSetLikeWithOverriddenOperations", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestSetLikeWithOverriddenOperationsDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -170,23 +173,13 @@ JSObject* JSTestSetLikeWithOverriddenOperations::prototype(VM& vm, JSDOMGlobalOb
 
 JSValue JSTestSetLikeWithOverriddenOperations::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestSetLikeWithOverriddenOperationsDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
+    return getDOMConstructor<JSTestSetLikeWithOverriddenOperationsDOMConstructor, DOMConstructorID::TestSetLikeWithOverriddenOperations>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 void JSTestSetLikeWithOverriddenOperations::destroy(JSC::JSCell* cell)
 {
     JSTestSetLikeWithOverriddenOperations* thisObject = static_cast<JSTestSetLikeWithOverriddenOperations*>(cell);
     thisObject->JSTestSetLikeWithOverriddenOperations::~JSTestSetLikeWithOverriddenOperations();
-}
-
-template<> inline JSTestSetLikeWithOverriddenOperations* IDLAttribute<JSTestSetLikeWithOverriddenOperations>::cast(JSGlobalObject& lexicalGlobalObject, EncodedJSValue thisValue)
-{
-    return jsDynamicCast<JSTestSetLikeWithOverriddenOperations*>(JSC::getVM(&lexicalGlobalObject), JSValue::decode(thisValue));
-}
-
-template<> inline JSTestSetLikeWithOverriddenOperations* IDLOperation<JSTestSetLikeWithOverriddenOperations>::cast(JSGlobalObject& lexicalGlobalObject, CallFrame& callFrame)
-{
-    return jsDynamicCast<JSTestSetLikeWithOverriddenOperations*>(JSC::getVM(&lexicalGlobalObject), callFrame.thisValue());
 }
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestSetLikeWithOverriddenOperationsConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
@@ -207,9 +200,9 @@ static inline JSValue jsTestSetLikeWithOverriddenOperations_addGetter(JSGlobalOb
     RELEASE_AND_RETURN(throwScope, (toJS<IDLLong>(lexicalGlobalObject, throwScope, impl.add())));
 }
 
-JSC_DEFINE_CUSTOM_GETTER(jsTestSetLikeWithOverriddenOperations_add, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
+JSC_DEFINE_CUSTOM_GETTER(jsTestSetLikeWithOverriddenOperations_add, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestSetLikeWithOverriddenOperations>::get<jsTestSetLikeWithOverriddenOperations_addGetter, CastedThisErrorBehavior::Assert>(*lexicalGlobalObject, thisValue, "add");
+    return IDLAttribute<JSTestSetLikeWithOverriddenOperations>::get<jsTestSetLikeWithOverriddenOperations_addGetter, CastedThisErrorBehavior::Assert>(*lexicalGlobalObject, thisValue, attributeName);
 }
 
 static inline bool setJSTestSetLikeWithOverriddenOperations_addSetter(JSGlobalObject& lexicalGlobalObject, JSTestSetLikeWithOverriddenOperations& thisObject, JSValue value)
@@ -219,15 +212,15 @@ static inline bool setJSTestSetLikeWithOverriddenOperations_addSetter(JSGlobalOb
     auto& impl = thisObject.wrapped();
     auto nativeValue = convert<IDLLong>(lexicalGlobalObject, value);
     RETURN_IF_EXCEPTION(throwScope, false);
-    AttributeSetter::call(lexicalGlobalObject, throwScope, [&] {
+    invokeFunctorPropagatingExceptionIfNecessary(lexicalGlobalObject, throwScope, [&] {
         return impl.setAdd(WTFMove(nativeValue));
     });
     return true;
 }
 
-JSC_DEFINE_CUSTOM_SETTER(setJSTestSetLikeWithOverriddenOperations_add, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, EncodedJSValue encodedValue))
+JSC_DEFINE_CUSTOM_SETTER(setJSTestSetLikeWithOverriddenOperations_add, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, EncodedJSValue encodedValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestSetLikeWithOverriddenOperations>::set<setJSTestSetLikeWithOverriddenOperations_addSetter>(*lexicalGlobalObject, thisValue, encodedValue, "add");
+    return IDLAttribute<JSTestSetLikeWithOverriddenOperations>::set<setJSTestSetLikeWithOverriddenOperations_addSetter>(*lexicalGlobalObject, thisValue, encodedValue, attributeName);
 }
 
 static inline JSValue jsTestSetLikeWithOverriddenOperations_sizeGetter(JSGlobalObject& lexicalGlobalObject, JSTestSetLikeWithOverriddenOperations& thisObject)
@@ -237,9 +230,9 @@ static inline JSValue jsTestSetLikeWithOverriddenOperations_sizeGetter(JSGlobalO
     RELEASE_AND_RETURN(throwScope, (toJS<IDLAny>(lexicalGlobalObject, throwScope, forwardSizeToSetLike(lexicalGlobalObject, thisObject))));
 }
 
-JSC_DEFINE_CUSTOM_GETTER(jsTestSetLikeWithOverriddenOperations_size, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
+JSC_DEFINE_CUSTOM_GETTER(jsTestSetLikeWithOverriddenOperations_size, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestSetLikeWithOverriddenOperations>::get<jsTestSetLikeWithOverriddenOperations_sizeGetter>(*lexicalGlobalObject, thisValue, "size");
+    return IDLAttribute<JSTestSetLikeWithOverriddenOperations>::get<jsTestSetLikeWithOverriddenOperations_sizeGetter>(*lexicalGlobalObject, thisValue, attributeName);
 }
 
 static inline JSC::EncodedJSValue jsTestSetLikeWithOverriddenOperationsPrototypeFunction_deleteBody(JSC::JSGlobalObject* lexicalGlobalObject, JSC::CallFrame* callFrame, typename IDLOperation<JSTestSetLikeWithOverriddenOperations>::ClassParameter castedThis)
@@ -249,9 +242,7 @@ static inline JSC::EncodedJSValue jsTestSetLikeWithOverriddenOperationsPrototype
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
     auto& impl = castedThis->wrapped();
-    throwScope.release();
-    impl.delete();
-    return JSValue::encode(jsUndefined());
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLUndefined>(*lexicalGlobalObject, throwScope, [&]() -> decltype(auto) { return impl.delete(); })));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikeWithOverriddenOperationsPrototypeFunction_delete, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -270,7 +261,7 @@ static inline JSC::EncodedJSValue jsTestSetLikeWithOverriddenOperationsPrototype
     EnsureStillAliveScope argument0 = callFrame->uncheckedArgument(0);
     auto key = convert<IDLDOMString>(*lexicalGlobalObject, argument0.value());
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardHasToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(key)))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardHasToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(key)))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikeWithOverriddenOperationsPrototypeFunction_has, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -284,7 +275,7 @@ static inline JSC::EncodedJSValue jsTestSetLikeWithOverriddenOperationsPrototype
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardEntriesToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardEntriesToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikeWithOverriddenOperationsPrototypeFunction_entries, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -298,7 +289,7 @@ static inline JSC::EncodedJSValue jsTestSetLikeWithOverriddenOperationsPrototype
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardKeysToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardKeysToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikeWithOverriddenOperationsPrototypeFunction_keys, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -312,7 +303,7 @@ static inline JSC::EncodedJSValue jsTestSetLikeWithOverriddenOperationsPrototype
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardValuesToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardValuesToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikeWithOverriddenOperationsPrototypeFunction_values, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -331,7 +322,7 @@ static inline JSC::EncodedJSValue jsTestSetLikeWithOverriddenOperationsPrototype
     EnsureStillAliveScope argument0 = callFrame->uncheckedArgument(0);
     auto callback = convert<IDLAny>(*lexicalGlobalObject, argument0.value());
     RETURN_IF_EXCEPTION(throwScope, encodedJSValue());
-    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(forwardForEachToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(callback)))));
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardForEachToSetLike(*lexicalGlobalObject, *callFrame, *castedThis, WTFMove(callback)))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikeWithOverriddenOperationsPrototypeFunction_forEach, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))
@@ -345,9 +336,7 @@ static inline JSC::EncodedJSValue jsTestSetLikeWithOverriddenOperationsPrototype
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     UNUSED_PARAM(throwScope);
     UNUSED_PARAM(callFrame);
-    throwScope.release();
-    forwardClearToSetLike(*lexicalGlobalObject, *callFrame, *castedThis);
-    return JSValue::encode(jsUndefined());
+    RELEASE_AND_RETURN(throwScope, JSValue::encode(toJS<IDLAny>(*lexicalGlobalObject, throwScope, forwardClearToSetLike(*lexicalGlobalObject, *callFrame, *castedThis))));
 }
 
 JSC_DEFINE_HOST_FUNCTION(jsTestSetLikeWithOverriddenOperationsPrototypeFunction_clear, (JSGlobalObject* lexicalGlobalObject, CallFrame* callFrame))

@@ -155,6 +155,8 @@ WI.CSSManager = class CSSManager extends WI.Object
             return WI.unlocalizedString("::after");
         case CSSManager.PseudoSelectorNames.Selection:
             return WI.unlocalizedString("::selection");
+        case CSSManager.PseudoSelectorNames.Backdrop:
+            return WI.unlocalizedString("::backdrop");
         case CSSManager.PseudoSelectorNames.Scrollbar:
             return WI.unlocalizedString("::scrollbar");
         case CSSManager.PseudoSelectorNames.ScrollbarThumb:
@@ -353,6 +355,8 @@ WI.CSSManager = class CSSManager extends WI.Object
     addModifiedStyle(style)
     {
         this._modifiedStyles.set(style.stringId, style);
+
+        this.dispatchEventToListeners(WI.CSSManager.Event.ModifiedStylesChanged);
     }
 
     getModifiedStyle(style)
@@ -363,6 +367,8 @@ WI.CSSManager = class CSSManager extends WI.Object
     removeModifiedStyle(style)
     {
         this._modifiedStyles.delete(style.stringId);
+
+        this.dispatchEventToListeners(WI.CSSManager.Event.ModifiedStylesChanged);
     }
 
     // PageObserver
@@ -672,6 +678,7 @@ WI.CSSManager = class CSSManager extends WI.Object
 WI.CSSManager.Event = {
     StyleSheetAdded: "css-manager-style-sheet-added",
     StyleSheetRemoved: "css-manager-style-sheet-removed",
+    ModifiedStylesChanged: "css-manager-modified-styles-changed",
     DefaultAppearanceDidChange: "css-manager-default-appearance-did-change",
     ForcedAppearanceDidChange: "css-manager-forced-appearance-did-change",
 };
@@ -684,6 +691,7 @@ WI.CSSManager.Appearance = {
 WI.CSSManager.PseudoSelectorNames = {
     After: "after",
     Before: "before",
+    Backdrop: "backdrop",
     FirstLetter: "first-letter",
     FirstLine: "first-line",
     Highlight: "highlight",

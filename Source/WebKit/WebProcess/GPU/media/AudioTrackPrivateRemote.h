@@ -32,28 +32,25 @@
 #include <WebCore/AudioTrackPrivate.h>
 #include <WebCore/MediaPlayerIdentifier.h>
 
-namespace IPC {
-class Connection;
-}
-
 namespace WebKit {
 
+class GPUProcessConnection;
 class MediaPlayerPrivateRemote;
 struct TrackPrivateRemoteConfiguration;
 
 class AudioTrackPrivateRemote final : public WebCore::AudioTrackPrivate {
     WTF_MAKE_NONCOPYABLE(AudioTrackPrivateRemote)
 public:
-    static Ref<AudioTrackPrivateRemote> create(IPC::Connection& connection, WebCore::MediaPlayerIdentifier playerIdentifier, TrackPrivateRemoteIdentifier idendifier, TrackPrivateRemoteConfiguration&& configuration)
+    static Ref<AudioTrackPrivateRemote> create(GPUProcessConnection& gpuProcessConnection, WebCore::MediaPlayerIdentifier playerIdentifier, TrackPrivateRemoteIdentifier idendifier, TrackPrivateRemoteConfiguration&& configuration)
     {
-        return adoptRef(*new AudioTrackPrivateRemote(connection, playerIdentifier, idendifier, WTFMove(configuration)));
+        return adoptRef(*new AudioTrackPrivateRemote(gpuProcessConnection, playerIdentifier, idendifier, WTFMove(configuration)));
     }
 
     AtomString id() const final { return m_id; }
     void updateConfiguration(TrackPrivateRemoteConfiguration&&);
 
 private:
-    AudioTrackPrivateRemote(IPC::Connection&, WebCore::MediaPlayerIdentifier, TrackPrivateRemoteIdentifier, TrackPrivateRemoteConfiguration&&);
+    AudioTrackPrivateRemote(GPUProcessConnection&, WebCore::MediaPlayerIdentifier, TrackPrivateRemoteIdentifier, TrackPrivateRemoteConfiguration&&);
 
     using AudioTrackKind = WebCore::AudioTrackPrivate::Kind;
     AudioTrackKind kind() const final { return m_kind; }
@@ -61,8 +58,9 @@ private:
     AtomString language() const final { return m_language; }
     int trackIndex() const final { return m_trackIndex; }
     void setEnabled(bool) final;
+    MediaTime startTimeVariance() const final { return m_startTimeVariance; }
 
-    IPC::Connection& m_connection;
+    WeakPtr<GPUProcessConnection> m_gpuProcessConnection;
     AudioTrackKind m_kind { None };
     AtomString m_id;
     AtomString m_label;

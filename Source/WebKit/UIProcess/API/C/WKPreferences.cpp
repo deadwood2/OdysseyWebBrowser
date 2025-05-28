@@ -58,6 +58,16 @@ WKPreferencesRef WKPreferencesCreateCopy(WKPreferencesRef preferencesRef)
     return toAPI(&preferences.leakRef());
 }
 
+void WKPreferencesStartBatchingUpdates(WKPreferencesRef preferencesRef)
+{
+    toImpl(preferencesRef)->startBatchingUpdates();
+}
+
+void WKPreferencesEndBatchingUpdates(WKPreferencesRef preferencesRef)
+{
+    toImpl(preferencesRef)->endBatchingUpdates();
+}
+
 void WKPreferencesEnableAllExperimentalFeatures(WKPreferencesRef preferencesRef)
 {
     toImpl(preferencesRef)->enableAllExperimentalFeatures();
@@ -824,16 +834,6 @@ void WKPreferencesSetMediaControlsScaleWithPageZoom(WKPreferencesRef preferences
 bool WKPreferencesGetMediaControlsScaleWithPageZoom(WKPreferencesRef preferencesRef)
 {
     return toImpl(preferencesRef)->mediaControlsScaleWithPageZoom();
-}
-
-void WKPreferencesSetModernMediaControlsEnabled(WKPreferencesRef preferencesRef, bool flag)
-{
-    toImpl(preferencesRef)->setModernMediaControlsEnabled(flag);
-}
-
-bool WKPreferencesGetModernMediaControlsEnabled(WKPreferencesRef preferencesRef)
-{
-    return toImpl(preferencesRef)->modernMediaControlsEnabled();
 }
 
 void WKPreferencesSetWebAuthenticationEnabled(WKPreferencesRef preferencesRef, bool flag)
@@ -1996,16 +1996,6 @@ bool WKPreferencesGetPunchOutWhiteBackgroundsInDarkMode(WKPreferencesRef prefere
     return toImpl(preferencesRef)->punchOutWhiteBackgroundsInDarkMode();
 }
 
-void WKPreferencesSetWebSQLDisabled(WKPreferencesRef preferencesRef, bool flag)
-{
-    toImpl(preferencesRef)->setWebSQLDisabled(flag);
-}
-
-bool WKPreferencesGetWebSQLDisabled(WKPreferencesRef preferencesRef)
-{
-    return toImpl(preferencesRef)->webSQLDisabled();
-}
-
 void WKPreferencesSetCaptureAudioInUIProcessEnabled(WKPreferencesRef preferencesRef, bool flag)
 {
     toImpl(preferencesRef)->setCaptureAudioInUIProcessEnabled(flag);
@@ -2226,4 +2216,13 @@ void WKPreferencesSetSubpixelCSSOMElementMetricsEnabled(WKPreferencesRef, bool)
 bool WKPreferencesGetSubpixelCSSOMElementMetricsEnabled(WKPreferencesRef)
 {
     return false;
+}
+
+void WKPreferencesSetWebSQLDisabled(WKPreferencesRef, bool)
+{
+}
+
+bool WKPreferencesGetWebSQLDisabled(WKPreferencesRef preferencesRef)
+{
+    return true;
 }

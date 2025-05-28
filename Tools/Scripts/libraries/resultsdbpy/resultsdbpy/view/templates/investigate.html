@@ -30,7 +30,7 @@
 <script type="module">
 import {ArchiveRouter} from '/assets/js/archiveRouter.js';
 import {CommitBank} from '/assets/js/commit.js';
-import {ErrorDisplay, QueryModifier, paramsToQuery, queryToParams, percentage, elapsedTime} from '/assets/js/common.js';
+import {ErrorDisplay, QueryModifier, paramsToQuery, queryToParams, percentage, elapsedTime, escapeHTML} from '/assets/js/common.js';
 import {Configuration} from '/assets/js/configuration.js';
 import {Expectations} from '/assets/js/expectations.js';
 import {Drawer, BranchSelector, ConfigurationSelectors} from '/assets/js/drawer.js';
@@ -148,6 +148,7 @@ class SuiteFailuresView {
                                         const branches = new Set(commits.map(commit => commit.branch));
                                         branches.delete('trunk');
                                         branches.delete('master');
+                                        branches.delete('main');
 
                                         const repositories = new Set(commits.map(commit => commit.repository_id));
 
@@ -159,7 +160,7 @@ class SuiteFailuresView {
 
                                         return `<a href="/commits?${paramsToQuery(commitParams)}">${
                                             commits.length == repositories.size ?
-                                                commits.reverse().map(commit => commit.id.substring(0,12)).join(', ') :
+                                                commits.reverse().map(commit => commit.label()).join(', ') :
                                                 `${commits.length} commits`
                                         }</a>`;
                                     })()}
@@ -221,7 +222,7 @@ class SuiteFailuresView {
                                             </div>
                                             <a class="text block" style="width: calc(100% - var(--mediumSize) - 16px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; "href="/investigate?${paramsToQuery(failure.toParams())}">
                                                 ${commits.length ?
-                                                    `${commits[0].id.substring(0,12)} ${commits.length > 1 ? commits[commits.length - 1].id.substring(0,12) : ''}` :
+                                                    `${commits[0].label()} ${commits.length > 1 ? commits[commits.length - 1].label() : ''}` :
                                                     '?'} on ${failure.configuration}
                                             </a>
                                         </div>`;
@@ -261,7 +262,7 @@ class SuiteFailuresView {
                                         <div class="tiny text" style="font-weight: normal;margin-top: 0px">${Expectations.symbolMap[type]}</div>
                                     </div>
                                     <a class="text block" style="width: calc(100% - var(--mediumSize) - 16px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis;" href="/?suite=${this.suite}&test=${test}" target="_blank">
-                                        ${test}
+                                        ${escapeHTML(test)}
                                     </a>
                                 </div>`;
                             }).join('');
@@ -391,7 +392,7 @@ class SuiteFailuresView {
     toString() {
         return `<div class="section" ref="${this.ref}">
                 <div class="header row">
-                    <div class="col-s-4 title">${this.suite}</div>
+                    <div class="col-s-4 title">${escapeHTML(this.suite)}</div>
                     <div class="col-s-8">
                         <div class="input">
                             <select required ref="${this.selectConfigurations}"></select>

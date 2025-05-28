@@ -25,7 +25,7 @@
 
 #include "Filter.h"
 #include "GraphicsContext.h"
-#include "ImageData.h"
+#include "PixelBuffer.h"
 #include <wtf/MathExtras.h>
 #include <wtf/text/TextStream.h>
 
@@ -35,16 +35,16 @@
 
 namespace WebCore {
 
-FEColorMatrix::FEColorMatrix(Filter& filter, ColorMatrixType type, const Vector<float>& values)
+FEColorMatrix::FEColorMatrix(Filter& filter, ColorMatrixType type, Vector<float>&& values)
     : FilterEffect(filter, Type::ColorMatrix)
     , m_type(type)
-    , m_values(values)
+    , m_values(WTFMove(values))
 {
 }
 
-Ref<FEColorMatrix> FEColorMatrix::create(Filter& filter, ColorMatrixType type, const Vector<float>& values)
+Ref<FEColorMatrix> FEColorMatrix::create(Filter& filter, ColorMatrixType type, Vector<float>&& values)
 {
-    return adoptRef(*new FEColorMatrix(filter, type, values));
+    return adoptRef(*new FEColorMatrix(filter, type, WTFMove(values)));
 }
 
 bool FEColorMatrix::setType(ColorMatrixType type)
@@ -87,7 +87,7 @@ inline void saturateAndHueRotate(float& red, float& green, float& blue, const fl
     blue    = r * components[6] + g * components[7] + b * components[8];
 }
 
-// FIXME: this should use luminance(const ColorComponents<float>& sRGBCompontents).
+// FIXME: this should use the luminance(...) function in ColorLuminance.h.
 inline void luminance(float& red, float& green, float& blue, float& alpha)
 {
     alpha = 0.2125 * red + 0.7154 * green + 0.0721 * blue;
@@ -100,7 +100,7 @@ inline void luminance(float& red, float& green, float& blue, float& alpha)
 template<ColorMatrixType filterType>
 bool effectApplyAccelerated(Uint8ClampedArray& pixelArray, const Vector<float>& values, float components[9], IntSize bufferSize)
 {
-    ASSERT(pixelArray.length() == bufferSize.area().unsafeGet() * 4);
+    ASSERT(pixelArray.length() == bufferSize.area() * 4);
     
     if (filterType == FECOLORMATRIX_TYPE_MATRIX) {
         // vImageMatrixMultiply_ARGB8888 takes a 4x4 matrix, if any value in the last column of the FEColorMatrix 5x4 matrix
@@ -208,6 +208,142 @@ bool effectApplyAccelerated(Uint8ClampedArray& pixelArray, const Vector<float>& 
 }
 #endif
 
+#if OS(MORPHOS)
+static inline uint32_t matrixOnePixel(const int32_t *values, const uint32_t pixel)
+{
+	int32_t alpha, a;
+	int32_t red, r, green, g, blue, b;
+
+	r = (pixel >> 24);
+	g = (pixel >> 16) & 0xff;
+	b = (pixel >> 8) & 0xff;
+	a = pixel & 0xff;
+
+	red     = values[ 0] * r + values[ 1] * g + values[ 2] * b + values[ 3] * a + values[ 4];
+	green   = values[ 5] * r + values[ 6] * g + values [7] * b + values[ 8] * a + values[ 9];
+	blue    = values[10] * r + values[11] * g + values[12] * b + values[13] * a + values[14];
+	alpha   = values[15] * r + values[16] * g + values[17] * b + values[18] * a + values[19];
+
+	if (red < 0) red = 0;
+	if (green < 0) green = 0;
+	if (blue < 0) blue = 0;
+	if (alpha < 0) alpha = 0;
+	
+	red >>= 8;
+	green >>= 8;
+	blue >>= 8;
+	alpha >>= 8;
+	
+	if (red > 255) red = 255;
+	if (green > 255) green = 255;
+	if (blue > 255) blue = 255;
+	if (alpha > 255) alpha = 255;
+
+	return (red << 24) | (green << 16) | (blue << 8) | alpha;
+}
+
+void applyMatrixFast(const Vector<float>& matrix, uint8_t *pixels, const int width, const int height)
+{
+	const size_t pixelArrayLength = width * height;
+
+	int32_t values[20];
+	for (size_t i = 0; i < 20; i++)
+	{
+		values[i] = roundf(matrix[i] * 256.f);
+	}
+
+	values[4]  *= 256;
+	values[9]  *= 256;
+	values[14] *= 256;
+	values[19] *= 256;
+
+	uint32_t *p = (uint32_t *)pixels;
+	for (size_t i = 0; i < pixelArrayLength; i++)
+	{
+		uint32_t pixel = matrixOnePixel(values, *p);
+		*p++ = pixel;
+	}
+}
+
+static inline uint32_t saturateOnePixel(int32_t *components, const uint32_t pixel)
+{
+	int32_t a;
+	int32_t red, r, green, g, blue, b;
+	
+	r = (pixel >> 24);
+	g = (pixel >> 16) & 0xff;
+	b = (pixel >> 8) & 0xff;
+	a = pixel & 0xff;
+
+    red     = r * components[0] + g * components[1] + b * components[2];
+    green   = r * components[3] + g * components[4] + b * components[5];
+    blue    = r * components[6] + g * components[7] + b * components[8];
+
+	if (red < 0) red = 0;
+	if (green < 0) green = 0;
+	if (blue < 0) blue = 0;
+	
+	red >>= 8;
+	green >>= 8;
+	blue >>= 8;
+	
+	if (red > 255) red = 255;
+	if (green > 255) green = 255;
+	if (blue > 255) blue = 255;
+
+	return (red << 24) | (green << 16) | (blue << 8) | a;
+}
+
+void applyHueSaturateFast(const float *components, uint8_t *pixels, const int width, const int height)
+{
+	const size_t pixelArrayLength = width * height;
+
+	int32_t values[9];
+	for (size_t i = 0; i < 9; i++)
+	{
+		values[i] = roundf(components[i] * 256.f);
+	}
+
+	uint32_t *p = (uint32_t *)pixels;
+	for (size_t i = 0; i < pixelArrayLength; i++)
+	{
+		uint32_t pixel = saturateOnePixel(values, *p);
+		*p++ = pixel;
+	}
+}
+
+static inline uint32_t luminanceOnePixel(const uint32_t pixel)
+{
+	int32_t alpha;
+	int32_t r, g, b;
+
+	r = (pixel >> 24);
+	g = (pixel >> 16) & 0xff;
+	b = (pixel >> 8) & 0xff;
+	
+	alpha = 54 * r + 183 * g + 18 * b;
+
+	if (alpha < 0) alpha = 0;
+	alpha >>= 8;
+	if (alpha > 255) alpha = 255;
+
+	return alpha;
+}
+
+void applyLuminanceFast(uint8_t *pixels, const int width, const int height)
+{
+	const size_t pixelArrayLength = width * height;
+
+	uint32_t *p = (uint32_t *)pixels;
+	for (size_t i = 0; i < pixelArrayLength; i++)
+	{
+		uint32_t pixel = luminanceOnePixel(*p);
+		*p++ = pixel;
+	}
+}
+
+#endif
+
 template<ColorMatrixType filterType>
 void effectType(Uint8ClampedArray& pixelArray, const Vector<float>& values, IntSize bufferSize)
 {
@@ -223,6 +359,19 @@ void effectType(Uint8ClampedArray& pixelArray, const Vector<float>& values, IntS
 #if USE(ACCELERATE)
     if (effectApplyAccelerated<filterType>(pixelArray, values, components, bufferSize))
         return;
+#elif OS(MORPHOS)
+	switch (filterType) {
+	case FECOLORMATRIX_TYPE_MATRIX:
+		applyMatrixFast(values, pixelArray.data(), bufferSize.width(), bufferSize.height());
+		return;
+    case FECOLORMATRIX_TYPE_SATURATE:
+    case FECOLORMATRIX_TYPE_HUEROTATE:
+		applyHueSaturateFast(components, pixelArray.data(), bufferSize.width(), bufferSize.height());
+		return;
+	case FECOLORMATRIX_TYPE_LUMINANCETOALPHA:
+		applyLuminanceFast(pixelArray.data(), bufferSize.width(), bufferSize.height());
+		return;
+	}
 #else
     UNUSED_PARAM(bufferSize);
 #endif
@@ -285,13 +434,14 @@ void FEColorMatrix::platformApplySoftware()
     if (inBuffer)
         resultImage->context().drawImageBuffer(*inBuffer, drawingRegionOfInputImage(in->absolutePaintRect()));
 
+    PixelBufferFormat format { AlphaPremultiplication::Unpremultiplied, PixelFormat::RGBA8, resultColorSpace() };
     IntRect imageRect(IntPoint(), resultImage->logicalSize());
-    auto imageData = resultImage->getImageData(AlphaPremultiplication::Unpremultiplied, imageRect);
-    if (!imageData)
+    auto pixelBuffer = resultImage->getPixelBuffer(format, imageRect);
+    if (!pixelBuffer)
         return;
 
-    auto* pixelArray = imageData->data();
-    IntSize pixelArrayDimensions = imageData->size();
+    auto& pixelArray = pixelBuffer->data();
+    auto pixelArrayDimensions = pixelBuffer->size();
 
     Vector<float> values = normalizedFloats(m_values);
     
@@ -299,21 +449,21 @@ void FEColorMatrix::platformApplySoftware()
     case FECOLORMATRIX_TYPE_UNKNOWN:
         break;
     case FECOLORMATRIX_TYPE_MATRIX:
-        effectType<FECOLORMATRIX_TYPE_MATRIX>(*pixelArray, values, pixelArrayDimensions);
+        effectType<FECOLORMATRIX_TYPE_MATRIX>(pixelArray, values, pixelArrayDimensions);
         break;
     case FECOLORMATRIX_TYPE_SATURATE: 
-        effectType<FECOLORMATRIX_TYPE_SATURATE>(*pixelArray, values, pixelArrayDimensions);
+        effectType<FECOLORMATRIX_TYPE_SATURATE>(pixelArray, values, pixelArrayDimensions);
         break;
     case FECOLORMATRIX_TYPE_HUEROTATE:
-        effectType<FECOLORMATRIX_TYPE_HUEROTATE>(*pixelArray, values, pixelArrayDimensions);
+        effectType<FECOLORMATRIX_TYPE_HUEROTATE>(pixelArray, values, pixelArrayDimensions);
         break;
     case FECOLORMATRIX_TYPE_LUMINANCETOALPHA:
-        effectType<FECOLORMATRIX_TYPE_LUMINANCETOALPHA>(*pixelArray, values, pixelArrayDimensions);
+        effectType<FECOLORMATRIX_TYPE_LUMINANCETOALPHA>(pixelArray, values, pixelArrayDimensions);
         setIsAlphaImage(true);
         break;
     }
 
-    resultImage->putImageData(AlphaPremultiplication::Unpremultiplied, *imageData, imageRect);
+    resultImage->putPixelBuffer(*pixelBuffer, imageRect);
 }
 
 static TextStream& operator<<(TextStream& ts, const ColorMatrixType& type)

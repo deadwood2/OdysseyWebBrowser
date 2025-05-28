@@ -76,12 +76,14 @@ public:
     WEBCORE_EXPORT void setUserPass(const String&, const String&);
     bool isServerTrustEvaluationDisabled() { return m_shouldDisableServerTrustEvaluation; }
     void disableServerTrustEvaluation() { m_shouldDisableServerTrustEvaluation = true; }
-    void setStartTime(const MonotonicTime& startTime) { m_requestStartTime = startTime.isolatedCopy(); }
 
     void start();
     void cancel();
     WEBCORE_EXPORT void suspend();
     WEBCORE_EXPORT void resume();
+
+    long long resumeOffset() { return m_downloadResumeOffset; }
+    void setResumeOffset(long long offset) { m_downloadResumeOffset = offset; }
 
     const ResourceRequest& resourceRequest() const { return m_request; }
     bool isCancelled();
@@ -96,7 +98,12 @@ public:
 
     // Download
     void enableDownloadToFile();
-    const String& getDownloadedFilePath();
+    void resumeDownloadToFile(const String &tmpDownloadPath);
+    void setDeletesDownloadFileOnCancelOrError(bool deletesFile) { m_deletesDownloadFileOnCancelOrError = deletesFile; }
+    long long getDownloadResumeOffset() const { return m_downloadResumeOffset; }
+    String getDownloadedFilePath();
+		
+    static void SetDownloadPath(const String &downloadPath) { m_downloadPath = downloadPath; }
 
 private:
     enum class Action {
@@ -135,8 +142,8 @@ private:
 
     // For setup 
     void appendAcceptLanguageHeader(HTTPHeaderMap&);
-    void setupPOST(ResourceRequest&);
-    void setupPUT(ResourceRequest&);
+    void setupPOST();
+    void setupPUT();
     void setupSendData(bool forPutMethod);
 
     // Processing for DidReceiveResponse
@@ -176,9 +183,11 @@ private:
     String m_password;
     unsigned long m_authType { CURLAUTH_ANY };
     bool m_shouldDisableServerTrustEvaluation { false };
-    bool m_shouldSuspend { false };
     bool m_enableMultipart { false };
 
+    enum class StartState : uint8_t { StartSuspended, WaitingForStart, DidStart };
+    StartState m_startState;
+    
     std::unique_ptr<CurlHandle> m_curlHandle;
     CurlFormDataStream m_formDataStream;
     std::unique_ptr<CurlMultipartHandle> m_multipartHandle;
@@ -205,12 +214,14 @@ private:
 
     Lock m_downloadMutex;
     bool m_isEnabledDownloadToFile { false };
+    bool m_deletesDownloadFileOnCancelOrError { false };
     String m_downloadFilePath;
     FileSystem::PlatformFileHandle m_downloadFileHandle { FileSystem::invalidPlatformFileHandle };
+    long long m_downloadResumeOffset { 0 };
+    static String m_downloadPath;
 
     bool m_captureExtraMetrics;
     HTTPHeaderMap m_requestHeaders;
-    MonotonicTime m_requestStartTime { MonotonicTime::nan() };
     MonotonicTime m_performStartTime;
     size_t m_totalReceivedSize { 0 };
 };

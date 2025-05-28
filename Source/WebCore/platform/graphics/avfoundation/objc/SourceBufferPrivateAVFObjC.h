@@ -27,11 +27,11 @@
 
 #if ENABLE(MEDIA_SOURCE) && USE(AVFOUNDATION)
 
-#include "GenericTaskQueue.h"
 #include "SourceBufferParser.h"
 #include "SourceBufferPrivate.h"
 #include <dispatch/group.h>
 #include <wtf/Box.h>
+#include <wtf/CancellableTask.h>
 #include <wtf/Deque.h>
 #include <wtf/HashMap.h>
 #include <wtf/LoggerHelper.h>
@@ -102,17 +102,21 @@ public:
     FloatSize naturalSize();
 
     uint64_t protectedTrackID() const { return m_protectedTrackID; }
-    AVStreamDataParser* parser() const;
+    AVStreamDataParser* streamDataParser() const;
     void setCDMSession(CDMSessionMediaSourceAVFObjC*);
     void setCDMInstance(CDMInstance*);
     void attemptToDecrypt();
     bool waitingForKey() const { return m_waitingForKey; }
 
     void flush();
+#if PLATFORM(IOS_FAMILY)
+    void flushIfNeeded();
+#endif
 
     void registerForErrorNotifications(SourceBufferPrivateAVFObjCErrorClient*);
     void unregisterForErrorNotifications(SourceBufferPrivateAVFObjCErrorClient*);
     void layerDidReceiveError(AVSampleBufferDisplayLayer *, NSError *);
+    void rendererWasAutomaticallyFlushed(AVSampleBufferAudioRenderer *, const CMTime&);
     void outputObscuredDueToInsufficientExternalProtectionChanged(bool);
     ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
     void rendererDidReceiveError(AVSampleBufferAudioRenderer *, NSError *);
@@ -168,7 +172,7 @@ private:
 
     void didBecomeReadyForMoreSamples(uint64_t trackID);
     void appendCompleted();
-    void destroyParser();
+    void destroyStreamDataParser();
     void destroyRenderers();
     void clearTracks();
 
@@ -186,16 +190,18 @@ private:
     WeakPtrFactory<SourceBufferPrivateAVFObjC> m_appendWeakFactory;
 
     Ref<SourceBufferParser> m_parser;
-    bool m_initializationSegmentIsHandled { false };
+    bool m_processingInitializationSegment { false };
     bool m_hasPendingAppendCompletedCallback { false };
     Vector<std::pair<uint64_t, Ref<MediaSample>>> m_mediaSamples;
-    GenericTaskQueue<Timer> m_mediaSampleTaskQueue;
 
     RetainPtr<AVSampleBufferDisplayLayer> m_displayLayer;
     ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
     HashMap<uint64_t, RetainPtr<AVSampleBufferAudioRenderer>, DefaultHash<uint64_t>, WTF::UnsignedWithZeroKeyHashTraits<uint64_t>> m_audioRenderers;
     ALLOW_NEW_API_WITHOUT_GUARDS_END
     RetainPtr<WebAVSampleBufferErrorListener> m_errorListener;
+#if PLATFORM(IOS_FAMILY)
+    bool m_displayLayerWasInterrupted { false };
+#endif
     RetainPtr<NSError> m_hdcpError;
     Box<BinarySemaphore> m_hasSessionSemaphore;
     Box<Semaphore> m_abortSemaphore;
@@ -213,13 +219,14 @@ private:
     Vector<Ref<SharedBuffer>> m_keyIDs;
 #endif
 
-    Optional<FloatSize> m_cachedSize;
+    std::optional<FloatSize> m_cachedSize;
     FloatSize m_currentSize;
     bool m_parsingSucceeded { true };
     bool m_waitingForKey { true };
     uint64_t m_enabledVideoTrackID { notFound };
     uint64_t m_protectedTrackID { notFound };
     uint64_t m_mapID;
+    uint32_t m_abortCalled { 0 };
 
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;

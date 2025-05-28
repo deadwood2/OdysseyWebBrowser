@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MediaPlayerPrivateMediaSourceAVFObjC_h
-#define MediaPlayerPrivateMediaSourceAVFObjC_h
+#pragma once
 
 #if ENABLE(MEDIA_SOURCE) && USE(AVFOUNDATION)
 
@@ -54,7 +53,6 @@ class CDMSessionMediaSourceAVFObjC;
 class EffectiveRateChangedListener;
 class MediaSourcePrivateAVFObjC;
 class PixelBufferConformerCV;
-class PlatformClockCM;
 class VideoLayerManagerObjC;
 class WebCoreDecompressionSession;
 
@@ -180,10 +178,10 @@ private:
     bool supportsFullscreen() const override { return true; }
 
     void play() override;
-    void playInternal();
+    void playInternal(std::optional<MonotonicTime>&& = std::nullopt);
 
     void pause() override;
-    void pauseInternal();
+    void pauseInternal(std::optional<MonotonicTime>&& = std::nullopt);
 
     bool paused() const override;
 
@@ -197,7 +195,7 @@ private:
     bool hasVideo() const override;
     bool hasAudio() const override;
 
-    void setVisible(bool) override;
+    void setPageIsVisible(bool) final;
 
     MediaTime durationMediaTime() const override;
     MediaTime startTime() const override;
@@ -206,6 +204,8 @@ private:
     void seekWithTolerance(const MediaTime&, const MediaTime& negativeThreshold, const MediaTime& positiveThreshold) override;
     bool seeking() const override;
     void setRateDouble(double) override;
+    double rate() const override;
+    double effectiveRate() const override;
 
     void setPreservesPitch(bool) override;
 
@@ -221,7 +221,7 @@ private:
     bool updateLastImage();
     void paint(GraphicsContext&, const FloatRect&) override;
     void paintCurrentFrameInContext(GraphicsContext&, const FloatRect&) override;
-    CVPixelBufferRef pixelBufferForCurrentTime() final;
+    RetainPtr<CVPixelBufferRef> pixelBufferForCurrentTime() final;
 
     bool supportsAcceleratedRendering() const override;
     // called when the rendering system flips the into or out of accelerated rendering mode.
@@ -244,7 +244,7 @@ private:
 
     size_t extraMemoryCost() const override;
 
-    Optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() override;
+    std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() override;
 
 #if ENABLE(WIRELESS_PLAYBACK_TARGET)
     bool isCurrentPlaybackTargetWireless() const override;
@@ -264,6 +264,15 @@ private:
     bool shouldBePlaying() const;
 
     bool isVideoOutputAvailable() const;
+
+    bool setCurrentTimeDidChangeCallback(MediaPlayer::CurrentTimeDidChangeCallback&&) final;
+
+#if HAVE(AVSAMPLEBUFFERRENDERSYNCHRONIZER_RATEATHOSTTIME)
+    bool supportsPlayAtHostTime() const final { return true; }
+    bool supportsPauseAtHostTime() const final { return true; }
+    bool playAtHostTime(const MonotonicTime&) final;
+    bool pauseAtHostTime(const MonotonicTime&) final;
+#endif
 
     friend class MediaSourcePrivateAVFObjC;
 
@@ -297,6 +306,8 @@ private:
     HashMap<RetainPtr<CFTypeRef>, AudioRendererProperties> m_sampleBufferAudioRendererMap;
     RetainPtr<AVSampleBufferRenderSynchronizer> m_synchronizer;
     ALLOW_NEW_API_WITHOUT_GUARDS_END
+    mutable MediaPlayer::CurrentTimeDidChangeCallback m_currentTimeDidChangeCallback;
+    RetainPtr<id> m_timeChangedObserver;
     RetainPtr<id> m_timeJumpedObserver;
     RetainPtr<id> m_durationObserver;
     RetainPtr<id> m_performTaskObserver;
@@ -355,6 +366,3 @@ struct LogArgument<WebCore::MediaPlayerPrivateMediaSourceAVFObjC::SeekState> {
 } // namespace WTF
 
 #endif // ENABLE(MEDIA_SOURCE) && USE(AVFOUNDATION)
-
-#endif // MediaPlayerPrivateMediaSourceAVFObjC_h
-

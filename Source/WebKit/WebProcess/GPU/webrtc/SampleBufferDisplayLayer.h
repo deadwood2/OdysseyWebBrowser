@@ -27,6 +27,7 @@
 
 #if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM)
 
+#include "GPUProcessConnection.h"
 #include "MessageReceiver.h"
 #include "SampleBufferDisplayLayerIdentifier.h"
 #include <WebCore/SampleBufferDisplayLayer.h>
@@ -36,20 +37,26 @@ namespace WebKit {
 
 class SampleBufferDisplayLayerManager;
 
-class SampleBufferDisplayLayer final : public WebCore::SampleBufferDisplayLayer, public IPC::MessageReceiver {
+class SampleBufferDisplayLayer final : public WebCore::SampleBufferDisplayLayer, public IPC::MessageReceiver, public GPUProcessConnection::Client {
 public:
-    static std::unique_ptr<SampleBufferDisplayLayer> create(SampleBufferDisplayLayerManager&, Client&);
+    static std::unique_ptr<SampleBufferDisplayLayer> create(SampleBufferDisplayLayerManager&, WebCore::SampleBufferDisplayLayer::Client&);
     ~SampleBufferDisplayLayer();
 
     SampleBufferDisplayLayerIdentifier identifier() const { return m_identifier; }
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
 
+    using GPUProcessConnection::Client::weakPtrFactory;
+    using WeakValueType = GPUProcessConnection::Client::WeakValueType;
+
 private:
-    SampleBufferDisplayLayer(SampleBufferDisplayLayerManager&, Client&);
+    SampleBufferDisplayLayer(SampleBufferDisplayLayerManager&, WebCore::SampleBufferDisplayLayer::Client&);
 
     // WebCore::SampleBufferDisplayLayer
     void initialize(bool hideRootLayer, WebCore::IntSize, CompletionHandler<void(bool)>&&) final;
+#if !RELEASE_LOG_DISABLED
+    void setLogIdentifier(String&&) final;
+#endif
     bool didFail() const final;
     void updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer) final;
     void updateAffineTransform(CGAffineTransform) final;
@@ -62,6 +69,9 @@ private:
     void clearEnqueuedSamples() final;
     PlatformLayer* rootLayer() final;
 
+    // GPUProcessConnection::Client
+    void gpuProcessConnectionDidClose(GPUProcessConnection&) final;
+
     void setDidFail(bool);
 
     WeakPtr<SampleBufferDisplayLayerManager> m_manager;
@@ -70,6 +80,7 @@ private:
 
     PlatformLayerContainer m_videoLayer;
     bool m_didFail { false };
+    bool m_paused { false };
 };
 
 }

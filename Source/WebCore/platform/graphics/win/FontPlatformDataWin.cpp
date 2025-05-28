@@ -41,13 +41,12 @@ using std::min;
 
 namespace WebCore {
 
-FontPlatformData::FontPlatformData(GDIObject<HFONT> font, float size, bool bold, bool oblique, bool useGDI)
-    : m_font(SharedGDIObject<HFONT>::create(WTFMove(font)))
-    , m_size(size)
-    , m_syntheticBold(bold)
-    , m_syntheticOblique(oblique)
-    , m_useGDI(useGDI)
+FontPlatformData::FontPlatformData(GDIObject<HFONT> font, float size, bool bold, bool oblique, bool useGDI, const CreationData* creationData)
+    : FontPlatformData(size, bold, oblique, FontOrientation::Horizontal, FontWidthVariant::RegularWidth, TextRenderingMode::AutoTextRendering, creationData)
 {
+    m_font = SharedGDIObject<HFONT>::create(WTFMove(font));
+    m_useGDI = useGDI;
+
     HWndDC hdc(0);
     SaveDC(hdc);
     
@@ -68,7 +67,7 @@ RefPtr<SharedBuffer> FontPlatformData::platformOpenTypeTable(uint32_t table) con
     DWORD size = GetFontData(hdc, table, 0, 0, 0);
     RefPtr<SharedBuffer> buffer;
     if (size != GDI_ERROR) {
-        Vector<char> data(size);
+        Vector<uint8_t> data(size);
         DWORD result = GetFontData(hdc, table, 0, (PVOID)data.data(), size);
         ASSERT_UNUSED(result, result == size);
         buffer = SharedBuffer::create(WTFMove(data));

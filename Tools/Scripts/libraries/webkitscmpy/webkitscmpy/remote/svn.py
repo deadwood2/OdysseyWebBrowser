@@ -32,26 +32,40 @@ import xmltodict
 
 from datetime import datetime
 
-from webkitcorepy import log, run, decorators
+from webkitcorepy import decorators, string_utils
 from webkitscmpy.remote.scm import Scm
-from webkitscmpy import Commit, Contributor, Version
+from webkitscmpy import Commit, Version
 
 
 class Svn(Scm):
     URL_RE = re.compile(r'\Ahttps?://svn.(?P<host>\S+)/repository/\S+\Z')
-    HISTORY_RE = re.compile(b'<D:version-name>(?P<revision>\d+)</D:version-name>')
+    DATA_RE = re.compile(br'<[SD]:(?P<tag>\S+)>(?P<content>.*)</[SD]:.+>')
     CACHE_VERSION = Version(1)
 
     @classmethod
     def is_webserver(cls, url):
         return True if cls.URL_RE.match(url) else False
 
-    def __init__(self, url, dev_branches=None, prod_branches=None, contributors=None):
+    def __init__(self, url, dev_branches=None, prod_branches=None, contributors=None, id=None, cache_path=None):
         if url[-1] != '/':
             url += '/'
         if not self.is_webserver(url):
             raise self.Exception("'{}' is not a valid SVN webserver".format(url))
-        super(Svn, self).__init__(url, dev_branches=dev_branches, prod_branches=prod_branches, contributors=contributors)
+
+        super(Svn, self).__init__(
+            url,
+            dev_branches=dev_branches, prod_branches=prod_branches,
+            contributors=contributors,
+            id=id or url.split('/')[-2].lower(),
+        )
+
+        if not cache_path:
+            from webkitscmpy.mocks import remote
+            host = 'svn.{}'.format(self.URL_RE.match(self.url).group('host'))
+            if host in remote.Svn.remotes:
+                host = 'mock-{}'.format(host)
+            cache_path = os.path.join(tempfile.gettempdir(), host, 'webkitscmpy-cache.json')
+        self._cache_path = cache_path
 
         if os.path.exists(self._cache_path):
             try:
@@ -188,15 +202,6 @@ class Svn(Scm):
     def tags(self):
         return self.list('tags')
 
-    @property
-    @decorators.Memoize()
-    def _cache_path(self):
-        from webkitscmpy.mocks import remote
-        host = 'svn.{}'.format(self.URL_RE.match(self.url).group('host'))
-        if host in remote.Svn.remotes:
-            host = 'mock-{}'.format(host)
-        return os.path.join(tempfile.gettempdir(), host, 'webkitscmpy-cache.json')
-
     def _cache_lock(self):
         return fasteners.InterProcessLock(os.path.join(os.path.dirname(self._cache_path), 'cache.lock'))
 
@@ -236,10 +241,10 @@ class Svn(Scm):
             if response.status_code != 200:
                 raise self.Exception("Failed to construct branch history for '{}'".format(branch))
 
-            was_last_on_default = False
+            default_count = 0
             for line in response.iter_lines():
-                match = self.HISTORY_RE.match(line)
-                if not match:
+                match = self.DATA_RE.match(line)
+                if not match or match.group('tag') != b'version-name':
                     continue
 
                 if not did_warn:
@@ -248,18 +253,21 @@ class Svn(Scm):
                         self.log('Caching commit data for {}, this will take a few minutes...'.format(branch))
                         did_warn = True
 
-                revision = int(match.group('revision'))
+                revision = int(match.group('content'))
                 if pos > 0 and self._metadata_cache[branch][pos - 1] == revision:
                     break
                 if not is_default_branch:
                     if revision in self._metadata_cache[self.default_branch]:
-                        if was_last_on_default:
+                        # Only handle 2 sequential cross-branch commits
+                        if default_count > 2:
                             break
-                        was_last_on_default = True
+                        default_count += 1
                     else:
-                        was_last_on_default = False
+                        default_count = 0
                 self._metadata_cache[branch].insert(pos, revision)
 
+        if default_count:
+            self._metadata_cache[branch] = self._metadata_cache[branch][default_count - 1:]
         if self._metadata_cache[self.default_branch][0] == [0]:
             self._metadata_cache['identifier'] = len(self._metadata_cache[branch])
 
@@ -437,6 +445,7 @@ class Svn(Scm):
         author = self.contributors.create(name, name) if name and '@' in name else self.contributors.create(name)
 
         return Commit(
+            repository_id=self.id,
             revision=int(revision),
             branch=branch,
             identifier=identifier if include_identifier else None,
@@ -445,3 +454,67 @@ class Svn(Scm):
             author=author,
             message=message,
         )
+
+    def _args_from_content(self, content, include_log=True):
+        xml = xmltodict.parse(content)
+        date = datetime.strptime(string_utils.decode(xml['S:log-item']['S:date']).split('.')[0], '%Y-%m-%dT%H:%M:%S')
+        name = string_utils.decode(xml['S:log-item']['D:creator-displayname'])
+
+        return dict(
+            revision=int(xml['S:log-item']['D:version-name']),
+            author=self.contributors.create(name, name) if name and '@' in name else self.contributors.create(name),
+            timestamp=int(calendar.timegm(date.timetuple())),
+            message=string_utils.decode(xml['S:log-item']['D:comment']) if include_log else None,
+        )
+
+    def commits(self, begin=None, end=None, include_log=True, include_identifier=True):
+        begin, end = self._commit_range(begin=begin, end=end, include_identifier=include_identifier)
+        previous = end
+
+        content = b''
+        with requests.request(
+                method='REPORT',
+                url='{}!svn/rvr/{}/{}'.format(
+                    self.url,
+                    end.revision,
+                    end.branch if end.branch == self.default_branch or '/' in end.branch else 'branches/{}'.format(end.branch),
+                ), stream=True,
+                headers={
+                    'Content-Type': 'text/xml',
+                    'Accept-Encoding': 'gzip',
+                    'DEPTH': '1',
+                }, data='<S:log-report xmlns:S="svn:">\n'
+                        '<S:start-revision>{end}</S:start-revision>\n'
+                        '<S:end-revision>{begin}</S:end-revision>\n'
+                        '<S:path></S:path>\n'
+                        '</S:log-report>\n'.format(end=end.revision, begin=begin.revision),
+        ) as response:
+            if response.status_code != 200:
+                raise self.Exception("Failed to construct branch history for '{}'".format(branch))
+            for line in response.iter_lines():
+                if line == b'<S:log-item>':
+                    content = line + b'\n'
+                else:
+                    content += line + b'\n'
+                if line != b'</S:log-item>':
+                    continue
+
+                args = self._args_from_content(content, include_log=include_log)
+
+                branch_point = previous.branch_point if include_identifier else None
+                identifier = previous.identifier if include_identifier else None
+                if args['revision'] != previous.revision:
+                    identifier -= 1
+                if not identifier:
+                    identifier = branch_point
+                    branch_point = None
+
+                previous = Commit(
+                    repository_id=self.id,
+                    branch=end.branch if branch_point else self.default_branch,
+                    identifier=identifier,
+                    branch_point=branch_point,
+                    **args
+                )
+                yield previous
+                content = b''

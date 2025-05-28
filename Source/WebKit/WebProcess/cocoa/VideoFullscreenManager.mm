@@ -59,7 +59,7 @@
 namespace WebKit {
 using namespace WebCore;
 
-static IntRect inlineVideoFrame(HTMLVideoElement& element)
+static FloatRect inlineVideoFrame(HTMLVideoElement& element)
 {
     auto& document = element.document();
     if (!document.hasLivingRenderTree() || document.activeDOMObjectsAreStopped())
@@ -73,7 +73,7 @@ static IntRect inlineVideoFrame(HTMLVideoElement& element)
     if (renderer->hasLayer() && renderer->enclosingLayer()->isComposited()) {
         FloatQuad contentsBox = static_cast<FloatRect>(renderer->enclosingLayer()->backing()->contentsBox());
         contentsBox = renderer->localToAbsoluteQuad(contentsBox);
-        return element.document().view()->contentsToRootView(contentsBox.enclosingBoundingBox());
+        return element.document().view()->contentsToRootView(contentsBox.boundingBox());
     }
 
     auto rect = renderer->videoBox();
@@ -227,7 +227,11 @@ bool VideoFullscreenManager::supportsVideoFullscreen(WebCore::HTMLMediaElementEn
 {
 #if PLATFORM(IOS_FAMILY)
     UNUSED_PARAM(mode);
-    return DeprecatedGlobalSettings::avKitEnabled();
+#if HAVE(AVKIT)
+    return true;
+#else
+    return false;
+#endif
 #else
     return mode == HTMLMediaElementEnums::VideoFullscreenModeStandard || (mode == HTMLMediaElementEnums::VideoFullscreenModePictureInPicture && supportsPictureInPicture());
 #endif
@@ -389,7 +393,7 @@ void VideoFullscreenManager::requestUpdateInlineRect(PlaybackSessionContextIdent
         return;
 
     auto& model = ensureModel(contextId);
-    IntRect inlineRect = inlineVideoFrame(*model.videoElement());
+    auto inlineRect = inlineVideoFrame(*model.videoElement());
     m_page->send(Messages::VideoFullscreenManagerProxy::SetInlineRect(contextId, inlineRect, inlineRect != IntRect(0, 0, 0, 0)));
 }
 
@@ -460,7 +464,7 @@ void VideoFullscreenManager::willExitFullscreen(PlaybackSessionContextIdentifier
     });
 }
 
-void VideoFullscreenManager::didEnterFullscreen(PlaybackSessionContextIdentifier contextId, Optional<WebCore::FloatSize> size)
+void VideoFullscreenManager::didEnterFullscreen(PlaybackSessionContextIdentifier contextId, std::optional<WebCore::FloatSize> size)
 {
     LOG(Fullscreen, "VideoFullscreenManager::didEnterFullscreen(%p, %x)", this, contextId);
 
@@ -473,7 +477,7 @@ void VideoFullscreenManager::didEnterFullscreen(PlaybackSessionContextIdentifier
     if (!videoElement)
         return;
 
-    videoElement->didEnterFullscreenOrPictureInPicture(size.valueOr(WebCore::FloatSize()));
+    videoElement->didEnterFullscreenOrPictureInPicture(size.value_or(WebCore::FloatSize()));
 
     if (interface->targetIsFullscreen() || interface->fullscreenStandby())
         return;
@@ -542,7 +546,7 @@ void VideoFullscreenManager::didCleanupFullscreen(PlaybackSessionContextIdentifi
     interface->setFullscreenStandby(false);
     removeClientForContext(contextId);
 
-    if (!videoElement || !targetIsFullscreen)
+    if (!videoElement || !targetIsFullscreen || mode == HTMLMediaElementEnums::VideoFullscreenModeNone)
         return;
 
     RunLoop::main().dispatch([protectedThis = makeRefPtr(this), videoElement, mode, standby] {

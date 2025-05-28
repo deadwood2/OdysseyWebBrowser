@@ -118,11 +118,11 @@ body.docked.left #docked-resizer {
     background: var(--undocked-title-area-background);
 }
 
-body.big-sur #undocked-title-area {
+body:is(.mac-platform.monterey, .mac-platform.big-sur) #undocked-title-area {
     --undocked-title-area-background: white;
 }
 
-body:not(.big-sur) #undocked-title-area {
+body:not(.mac-platform.monterey, .mac-platform.big-sur) #undocked-title-area {
     --undocked-title-area-background: linear-gradient(to bottom, hsl(0, 0%, 92%), hsl(0, 0%, 87%));
     box-shadow: inset hsla(0, 0%, 100%, 0.5) 0 1px 1px;
 }
@@ -333,6 +333,25 @@ body[dir=rtl] [dir=ltr] .go-to-arrow {
 :focus .selected .go-to-arrow:active,
 .selected:focus .go-to-arrow:active {
     background-image: url(../Images/GoToArrow.svg#selected-active);
+}
+
+.css-documentation-button {
+    -webkit-appearance: none;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    background-image: url(../Images/InfoIcon.svg#normal);
+    background-position: center;
+    background-size: 10px 10px;
+    background-repeat: no-repeat;
+    width: 1em;
+    height: 1em;
+    vertical-align: -2px;
+}
+
+.css-documentation-button:active {
+    background-image: url(../Images/InfoIcon.svg#active);
 }
 
 .search-settings {
@@ -571,19 +590,19 @@ body[dir=rtl] [dir=ltr] .go-to-arrow {
         box-shadow: none;
     }
 
-    body.big-sur #undocked-title-area {
-        --undocked-title-area-background: hsl(0, 0%, 19%);
+    body:is(.mac-platform.monterey, .mac-platform.big-sur) #undocked-title-area {
+        --undocked-title-area-background: var(--background-color-content);
     }
 
-    body:not(.big-sur) #undocked-title-area {
+    body:not(.mac-platform.monterey, .mac-platform.big-sur) #undocked-title-area {
         --undocked-title-area-background: linear-gradient(to bottom, hsl(0, 0%, 26%), hsl(0, 0%, 23%));
     }
 
-    body.big-sur.window-inactive #undocked-title-area {
+    body:is(.mac-platform.monterey, .mac-platform.big-sur).window-inactive #undocked-title-area {
         --undocked-title-area-background: hsl(0, 0%, 11%);
     }
 
-    body:not(.big-sur).window-inactive #undocked-title-area {
+    body:not(.mac-platform.monterey, .mac-platform.big-sur).window-inactive #undocked-title-area {
         --undocked-title-area-background: hsl(0, 0%, 19%);
     }
 
@@ -594,6 +613,10 @@ body[dir=rtl] [dir=ltr] .go-to-arrow {
     :focus .selected .go-to-arrow,
     .selected:focus .go-to-arrow {
         filter: unset;
+    }
+
+    .css-documentation-button {
+        filter: invert();
     }
 
     .expand-list-button {

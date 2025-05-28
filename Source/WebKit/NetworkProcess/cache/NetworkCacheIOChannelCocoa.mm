@@ -51,11 +51,11 @@ static long dispatchQueueIdentifier(WorkQueue::QOS qos)
     }
 }
 
-IOChannel::IOChannel(const String& filePath, Type type, Optional<WorkQueue::QOS> qos)
-    : m_path(filePath)
+IOChannel::IOChannel(String&& filePath, Type type, std::optional<WorkQueue::QOS> qos)
+    : m_path(WTFMove(filePath))
     , m_type(type)
 {
-    auto path = FileSystem::fileSystemRepresentation(filePath);
+    auto path = FileSystem::fileSystemRepresentation(m_path);
     int oflag;
     mode_t mode;
     WorkQueue::QOS dispatchQOS;
@@ -66,17 +66,17 @@ IOChannel::IOChannel(const String& filePath, Type type, Optional<WorkQueue::QOS>
         unlink(path.data());
         oflag = O_RDWR | O_CREAT | O_NONBLOCK;
         mode = S_IRUSR | S_IWUSR;
-        dispatchQOS = qos.valueOr(WorkQueue::QOS::Background);
+        dispatchQOS = qos.value_or(WorkQueue::QOS::Background);
         break;
     case Type::Write:
         oflag = O_WRONLY | O_NONBLOCK;
         mode = S_IRUSR | S_IWUSR;
-        dispatchQOS = qos.valueOr(WorkQueue::QOS::Background);
+        dispatchQOS = qos.value_or(WorkQueue::QOS::Background);
         break;
     case Type::Read:
         oflag = O_RDONLY | O_NONBLOCK;
         mode = 0;
-        dispatchQOS = qos.valueOr(WorkQueue::QOS::Default);
+        dispatchQOS = qos.value_or(WorkQueue::QOS::Default);
     }
 
     int fd = ::open(path.data(), oflag, mode);
@@ -96,12 +96,11 @@ IOChannel::~IOChannel()
     RELEASE_ASSERT(!m_wasDeleted.exchange(true));
 }
 
-void IOChannel::read(size_t offset, size_t size, WorkQueue* queue, Function<void (Data&, int error)>&& completionHandler)
+void IOChannel::read(size_t offset, size_t size, WorkQueue& queue, Function<void (Data&, int error)>&& completionHandler)
 {
     RefPtr<IOChannel> channel(this);
     bool didCallCompletionHandler = false;
-    auto dispatchQueue = queue ? queue->dispatchQueue() : dispatch_get_main_queue();
-    dispatch_io_read(m_dispatchIO.get(), offset, size, dispatchQueue, makeBlockPtr([channel, completionHandler = WTFMove(completionHandler), didCallCompletionHandler](bool done, dispatch_data_t fileData, int error) mutable {
+    dispatch_io_read(m_dispatchIO.get(), offset, size, queue.dispatchQueue(), makeBlockPtr([channel, completionHandler = WTFMove(completionHandler), didCallCompletionHandler](bool done, dispatch_data_t fileData, int error) mutable {
         ASSERT_UNUSED(done, done || !didCallCompletionHandler);
         if (didCallCompletionHandler)
             return;
@@ -112,12 +111,11 @@ void IOChannel::read(size_t offset, size_t size, WorkQueue* queue, Function<void
     }).get());
 }
 
-void IOChannel::write(size_t offset, const Data& data, WorkQueue* queue, Function<void (int error)>&& completionHandler)
+void IOChannel::write(size_t offset, const Data& data, WorkQueue& queue, Function<void (int error)>&& completionHandler)
 {
     RefPtr<IOChannel> channel(this);
     auto dispatchData = data.dispatchData();
-    auto dispatchQueue = queue ? queue->dispatchQueue() : dispatch_get_main_queue();
-    dispatch_io_write(m_dispatchIO.get(), offset, dispatchData, dispatchQueue, makeBlockPtr([channel, completionHandler = WTFMove(completionHandler)](bool done, dispatch_data_t fileData, int error) mutable {
+    dispatch_io_write(m_dispatchIO.get(), offset, dispatchData, queue.dispatchQueue(), makeBlockPtr([channel, completionHandler = WTFMove(completionHandler)](bool done, dispatch_data_t fileData, int error) mutable {
         ASSERT_UNUSED(done, done);
         auto callback = WTFMove(completionHandler);
         callback(error);

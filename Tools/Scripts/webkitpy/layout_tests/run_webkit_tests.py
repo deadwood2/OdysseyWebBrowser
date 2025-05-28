@@ -32,11 +32,10 @@ from __future__ import print_function
 import logging
 import optparse
 import os
-import sys
 import traceback
 
 from webkitpy.common.host import Host
-from webkitpy.common.interrupt_debugging import log_stack_trace_on_ctrl_c, log_stack_trace_on_term
+from webkitpy.common.interrupt_debugging import log_stack_trace_on_signal
 from webkitpy.layout_tests.controllers.manager import Manager
 from webkitpy.layout_tests.models.test_run_results import INTERRUPTED_EXIT_STATUS
 from webkitpy.port import configuration_options, platform_options
@@ -77,10 +76,10 @@ def main(argv, stdout, stderr):
         return EXCEPTIONAL_EXIT_STATUS
 
     stack_trace_path = host.filesystem.join(port.results_directory(), 'python_stack_trace.txt')
-    log_stack_trace_on_ctrl_c(output_file=stack_trace_path)
-    log_stack_trace_on_term(output_file=stack_trace_path)
+    log_stack_trace_on_signal('SIGTERM', output_file=stack_trace_path)
+    log_stack_trace_on_signal('SIGINT', output_file=stack_trace_path)
 
-    if options.print_expectations:
+    if options.print_expectations or options.print_summary:
         return _print_expectations(port, options, args, stderr)
 
     try:
@@ -126,6 +125,8 @@ def parse_args(args):
             help="Enable (disable) an internal feature (--internal-feature FeatureName[=true|false])"),
         optparse.make_option("--experimental-feature", type="string", action="append", default=[],
             help="Enable (disable) an experimental feature (--experimental-feature FeatureName[=true|false])"),
+        optparse.make_option("--no-enable-all-experimental-features", action="store_false", default=True, dest="enable_all_experimental_features",
+            help="Enables all experimental features in WebKitTestRunner"),
     ]))
 
     option_group_definitions.append(("WebKit Options", [
@@ -257,7 +258,7 @@ def parse_args(args):
                  "'ignore' == Run them anyway, "
                  "'only' == only run the SKIP tests, "
                  "'always' == always skip, even if listed on the command line.")),
-        optparse.make_option("--force", action="store_true", default=False,
+        optparse.make_option("--expect-pass", "--force", action="store_true", default=False, dest="force",
             help="Run all tests with PASS as expected result, even those marked SKIP in the test list or " + \
                  "those which are device-specific (implies --skipped=ignore)"),
         optparse.make_option("--time-out-ms", "--timeout",
@@ -310,6 +311,7 @@ def parse_args(args):
                  '"weston": Use a virtualized Weston server. "wayland": Use the current wayland session.'),
         optparse.make_option("--world-leaks", action="store_true", default=False, help="Check for world leaks (currently, only documents). Differs from --leaks in that this uses internal instrumentation, rather than external tools."),
         optparse.make_option("--accessibility-isolated-tree", action="store_true", default=False, help="Runs tests in accessibility isolated tree mode."),
+        optparse.make_option("--allowed-host", type="string", action="append", default=[], help="If specified, tests are allowed to make requests to the specified hostname."),
     ]))
 
     option_group_definitions.append(("iOS Options", [
@@ -330,6 +332,9 @@ def parse_args(args):
             "--print-expectations", action="store_true", default=False,
             help=("Print the expected outcome for the given test, or all tests listed in TestExpectations. Does not run any tests.")),
         optparse.make_option(
+            "--print-summary", action="store_true", default=False,
+            help=("Print a summary of how tests are expected to run, grouped by directory. Does not run any tests.")),
+        optparse.make_option(
             "--webgl-test-suite", action="store_true", default=False,
             help=("Run exhaustive webgl list, including test ordinarily skipped for performance reasons. Equivalent to '--additional-expectations=LayoutTests/webgl/TestExpectations webgl'")),
         optparse.make_option(
@@ -338,29 +343,11 @@ def parse_args(args):
         optparse.make_option(
             "--prefer-integrated-gpu", action="store_true", default=False,
             help=("Prefer using the lower-power integrated GPU on a dual-GPU system. Note that other running applications and the tests themselves can override this request.")),
+        optparse.make_option('--show-window', action="store_true", default=False, help="Make the test runner window visible during testing."),
     ]))
 
     option_group_definitions.append(("Web Platform Test Server Options", [
         optparse.make_option("--wptserver-doc-root", type="string", help=("Set web platform server document root, relative to LayoutTests directory")),
-    ]))
-
-    # FIXME: Remove this group once the old results dashboards are deprecated.
-    option_group_definitions.append(("Legacy Result Options", [
-        optparse.make_option("--master-name", help="The name of the buildbot master."),
-        optparse.make_option("--build-name", default="DUMMY_BUILD_NAME",
-            help=("The name of the builder used in its path, e.g. webkit-rel.")),
-        optparse.make_option("--build-slave", default="DUMMY_BUILD_SLAVE",
-            help=("The name of the worker used. e.g. apple-macpro-6.")),
-        optparse.make_option("--test-results-server", action="append", default=[],
-            help=("If specified, upload results json files to this appengine server.")),
-        optparse.make_option("--results-server-host", action="append", default=[],
-            help=("If specified, upload results JSON file to this results server.")),
-        optparse.make_option("--additional-repository-name",
-            help=("The name of an additional subversion or git checkout")),
-        optparse.make_option("--additional-repository-path",
-            help=("The path to an additional subversion or git checkout (requires --additional-repository-name)")),
-        optparse.make_option("--allowed-host", type="string", action="append", default=[],
-            help=("If specified, tests are allowed to make requests to the specified hostname."))
     ]))
 
     option_group_definitions.append(('Upload Options', upload_options()))
@@ -391,10 +378,10 @@ def parse_args(args):
         options.internal_feature.append('CaptureVideoInGPUProcessEnabled')
         options.internal_feature.append('UseGPUProcessForCanvasRenderingEnabled')
         options.internal_feature.append('UseGPUProcessForDOMRenderingEnabled')
-        options.internal_feature.append('UseGPUProcessForWebGLEnabled')
         if not options.experimental_feature:
             options.experimental_feature = []
         options.experimental_feature.append('WebRTCPlatformCodecsInGPUProcessEnabled')
+        options.experimental_feature.append('UseGPUProcessForWebGLEnabled')
         if options.result_report_flavor:
             raise RuntimeError('--use-gpu-process implicitly sets the result flavor, this should not be overridden')
         options.result_report_flavor = 'gpuprocess'
@@ -411,7 +398,10 @@ def _print_expectations(port, options, args, logging_stream):
         _set_up_derived_options(port, options)
         manager = Manager(port, options, printer)
 
-        exit_code = manager.print_expectations(args)
+        if options.print_expectations:
+            exit_code = manager.print_expectations(args)
+        else:
+            exit_code = manager.print_summary(args)
         _log.debug("Printing expectations completed, Exit status: %d", exit_code)
         return exit_code
     except Exception as error:
@@ -506,6 +496,3 @@ def run(port, options, args, logging_stream):
         return run_details
     finally:
         printer.cleanup()
-
-if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:], sys.stdout, sys.stderr))

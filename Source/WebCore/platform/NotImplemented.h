@@ -35,13 +35,38 @@
 #endif
 
 #if LOG_DISABLED
-    #define notImplemented() ((void)0)
+	#if OS(MORPHOS)
+	extern "C" { void dprintf(const char *fmt, ...); };
+	#if 1
+		#define notImplemented() ((void)0)
+	#else
+		#define notImplemented() do { \
+				static bool havePrinted = false; \
+				if (!havePrinted) { \
+					dprintf("<<< notImplemented: %s/%d - %s\n", __FILE__, __LINE__, WTF_PRETTY_FUNCTION); \
+					havePrinted = true; \
+				} \
+			} while (0)
+	#endif
+	#else
+		#define notImplemented() ((void)0)
+	#endif
 #else
 
 namespace WebCore {
 WEBCORE_EXPORT WTFLogChannel* notImplementedLoggingChannel();
 }
 
+#if OS(MORPHOS)
+extern "C" { void dprintf(const char *fmt, ...); };
+#define notImplemented() do { \
+        static bool havePrinted = false; \
+        if (!havePrinted) { \
+            dprintf("<<< notImplemented: %s/%d - %s\n", __FILE__, __LINE__, WTF_PRETTY_FUNCTION); \
+            havePrinted = true; \
+        } \
+    } while (0)
+#else
 #define notImplemented() do { \
         static bool havePrinted = false; \
         if (!havePrinted && !suppressNotImplementedWarning()) { \
@@ -49,6 +74,7 @@ WEBCORE_EXPORT WTFLogChannel* notImplementedLoggingChannel();
             havePrinted = true; \
         } \
     } while (0)
+#endif
 
 #endif // NDEBUG
 

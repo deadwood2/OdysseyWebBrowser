@@ -73,14 +73,14 @@ bool Data::isNull() const
     return !m_buffer;
 }
 
-bool Data::apply(const Function<bool(const uint8_t*, size_t)>& applier) const
+bool Data::apply(const Function<bool(Span<const uint8_t>)>& applier) const
 {
     if (!m_size)
         return false;
 
     gsize length;
     const auto* data = g_bytes_get_data(m_buffer.get(), &length);
-    return applier(reinterpret_cast<const uint8_t*>(data), length);
+    return applier({ reinterpret_cast<const uint8_t*>(data), length });
 }
 
 Data Data::subrange(size_t offset, size_t size) const
@@ -115,12 +115,10 @@ struct MapWrapper {
 
     ~MapWrapper()
     {
-        munmap(map, size);
         FileSystem::closeFile(fileDescriptor);
     }
 
-    void* map;
-    size_t size;
+    FileSystem::MappedFileData mappedFile;
     FileSystem::PlatformFileHandle fileDescriptor;
 };
 
@@ -132,10 +130,10 @@ static void deleteMapWrapper(MapWrapper* wrapper)
 Data Data::adoptMap(FileSystem::MappedFileData&& mappedFile, FileSystem::PlatformFileHandle fd)
 {
     size_t size = mappedFile.size();
-    void* map = mappedFile.leakHandle();
+    const void* map = mappedFile.data();
     ASSERT(map);
     ASSERT(map != MAP_FAILED);
-    MapWrapper* wrapper = new MapWrapper { map, size, fd };
+    MapWrapper* wrapper = new MapWrapper { WTFMove(mappedFile), fd };
     return { adoptGRef(g_bytes_new_with_free_func(map, size, reinterpret_cast<GDestroyNotify>(deleteMapWrapper), wrapper)), fd };
 }
 

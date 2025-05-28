@@ -384,8 +384,8 @@ void PageClientImpl::enterFullScreen()
     WebFullScreenManagerProxy* fullScreenManagerProxy = m_view.page().fullScreenManager();
     if (fullScreenManagerProxy) {
         fullScreenManagerProxy->willEnterFullScreen();
-        m_view.setFullScreen(true);
-        fullScreenManagerProxy->didEnterFullScreen();
+        if (!m_view.setFullScreen(true))
+            fullScreenManagerProxy->didExitFullScreen();
     }
 }
 
@@ -397,8 +397,9 @@ void PageClientImpl::exitFullScreen()
     WebFullScreenManagerProxy* fullScreenManagerProxy = m_view.page().fullScreenManager();
     if (fullScreenManagerProxy) {
         fullScreenManagerProxy->willExitFullScreen();
-        m_view.setFullScreen(false);
-        fullScreenManagerProxy->didExitFullScreen();
+        if (!m_view.setFullScreen(false))
+            fullScreenManagerProxy->didEnterFullScreen();
+
     }
 }
 
@@ -436,7 +437,7 @@ void PageClientImpl::sendMessageToWebView(UserMessage&& message, CompletionHandl
     m_view.didReceiveUserMessage(WTFMove(message), WTFMove(completionHandler));
 }
 
-void PageClientImpl::setInputMethodState(Optional<InputMethodState>&& state)
+void PageClientImpl::setInputMethodState(std::optional<InputMethodState>&& state)
 {
     m_view.setInputMethodState(WTFMove(state));
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,7 +47,7 @@
 #import <wtf/ProcessPrivilege.h>
 #import <wtf/URL.h>
 #import <wtf/cocoa/Entitlements.h>
-#import <wtf/text/StringBuilder.h>
+#import <wtf/text/cf/StringConcatenateCF.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import <UIKit/UIApplication.h>
@@ -115,15 +115,10 @@ void WebsiteDataStore::platformSetNetworkParameters(WebsiteDataStoreParameters& 
             firstPartyWebsiteDataRemovalMode = WebCore::FirstPartyWebsiteDataRemovalMode::AllButCookies;
     }
 
-    auto* manualPrevalentResource = [defaults stringForKey:@"ITPManualPrevalentResource"];
-    if (manualPrevalentResource) {
-        URL url { URL(), manualPrevalentResource };
-        if (!url.isValid()) {
-            StringBuilder builder;
-            builder.appendLiteral("http://");
-            builder.append(manualPrevalentResource);
-            url = { URL(), builder.toString() };
-        }
+    if (auto manualPrevalentResource = [defaults stringForKey:@"ITPManualPrevalentResource"]) {
+        URL url { { }, manualPrevalentResource };
+        if (!url.isValid())
+            url = { { }, makeString("http://", manualPrevalentResource) };
         if (url.isValid())
             resourceLoadStatisticsManualPrevalentResource = WebCore::RegistrableDomain { url };
     }
@@ -153,12 +148,12 @@ void WebsiteDataStore::platformSetNetworkParameters(WebsiteDataStoreParameters& 
 
 #if HAVE(CFNETWORK_ALTERNATIVE_SERVICE)
     bool http3Enabled = WebsiteDataStore::http3Enabled();
-    String alternativeServiceStorageDirectory;
     SandboxExtension::Handle alternativeServiceStorageDirectoryExtensionHandle;
-    if (http3Enabled) {
-        alternativeServiceStorageDirectory = resolvedAlternativeServicesStorageDirectory();
-        if (!alternativeServiceStorageDirectory.isEmpty())
-            SandboxExtension::createHandleForReadWriteDirectory(alternativeServiceStorageDirectory, alternativeServiceStorageDirectoryExtensionHandle);
+    String alternativeServiceStorageDirectory = resolvedAlternativeServicesStorageDirectory();
+    if (!alternativeServiceStorageDirectory.isEmpty()) {
+        // FIXME: SandboxExtension::createHandleForReadWriteDirectory resolves the directory, but that has already been done. Remove this duplicate work.
+        if (auto handle = SandboxExtension::createHandleForReadWriteDirectory(alternativeServiceStorageDirectory))
+            alternativeServiceStorageDirectoryExtensionHandle = WTFMove(*handle);
     }
 #endif
 
@@ -193,8 +188,10 @@ void WebsiteDataStore::platformSetNetworkParameters(WebsiteDataStoreParameters& 
 
     parameters.uiProcessCookieStorageIdentifier = m_uiProcessCookieStorageIdentifier;
 
-    if (!cookieFile.isEmpty())
-        SandboxExtension::createHandleForReadWriteDirectory(FileSystem::directoryName(cookieFile), parameters.cookieStoragePathExtensionHandle);
+    if (!cookieFile.isEmpty()) {
+        if (auto handle = SandboxExtension::createHandleForReadWriteDirectory(FileSystem::parentPath(cookieFile)))
+            parameters.cookieStoragePathExtensionHandle = WTFMove(*handle);
+    }
 }
 
 #if HAVE(CFNETWORK_ALTERNATIVE_SERVICE) || HAVE(NETWORK_LOADER)
@@ -329,10 +326,17 @@ WTF::String WebsiteDataStore::defaultJavaScriptConfigurationDirectory()
     return tempDirectoryFileSystemRepresentation("JavaScriptCoreDebug", ShouldCreateDirectory::No);
 }
 
+#if HAVE(ARKIT_INLINE_PREVIEW)
+WTF::String WebsiteDataStore::defaultModelElementCacheDirectory()
+{
+    return tempDirectoryFileSystemRepresentation("ModelElement", ShouldCreateDirectory::No);
+}
+#endif
+
 WTF::String WebsiteDataStore::tempDirectoryFileSystemRepresentation(const WTF::String& directoryName, ShouldCreateDirectory shouldCreateDirectory)
 {
     static dispatch_once_t onceToken;
-    static NSURL *tempURL;
+    static NeverDestroyed<RetainPtr<NSURL>> tempURL;
     
     dispatch_once(&onceToken, ^{
         NSURL *url = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
@@ -346,10 +350,10 @@ WTF::String WebsiteDataStore::tempDirectoryFileSystemRepresentation(const WTF::S
             url = [url URLByAppendingPathComponent:bundleIdentifier isDirectory:YES];
         }
         
-        tempURL = [[url URLByAppendingPathComponent:@"WebKit" isDirectory:YES] retain];
+        tempURL.get() = [url URLByAppendingPathComponent:@"WebKit" isDirectory:YES];
     });
     
-    NSURL *url = [tempURL URLByAppendingPathComponent:directoryName isDirectory:YES];
+    NSURL *url = [tempURL.get() URLByAppendingPathComponent:directoryName isDirectory:YES];
 
     if (shouldCreateDirectory == ShouldCreateDirectory::Yes
         && (![[NSFileManager defaultManager] createDirectoryAtURL:url withIntermediateDirectories:YES attributes:nil error:nullptr]))
@@ -361,7 +365,7 @@ WTF::String WebsiteDataStore::tempDirectoryFileSystemRepresentation(const WTF::S
 WTF::String WebsiteDataStore::cacheDirectoryFileSystemRepresentation(const WTF::String& directoryName, ShouldCreateDirectory shouldCreateDirectory)
 {
     static dispatch_once_t onceToken;
-    static NSURL *cacheURL;
+    static NeverDestroyed<RetainPtr<NSURL>> cacheURL;
 
     dispatch_once(&onceToken, ^{
         NSURL *url = [[NSFileManager defaultManager] URLForDirectory:NSCachesDirectory inDomain:NSUserDomainMask appropriateForURL:nullptr create:NO error:nullptr];
@@ -375,10 +379,10 @@ WTF::String WebsiteDataStore::cacheDirectoryFileSystemRepresentation(const WTF::
             url = [url URLByAppendingPathComponent:bundleIdentifier isDirectory:YES];
         }
 
-        cacheURL = [[url URLByAppendingPathComponent:@"WebKit" isDirectory:YES] retain];
+        cacheURL.get() = [url URLByAppendingPathComponent:@"WebKit" isDirectory:YES];
     });
 
-    NSURL *url = [cacheURL URLByAppendingPathComponent:directoryName isDirectory:YES];
+    NSURL *url = [cacheURL.get() URLByAppendingPathComponent:directoryName isDirectory:YES];
     if (shouldCreateDirectory == ShouldCreateDirectory::Yes
         && ![[NSFileManager defaultManager] createDirectoryAtURL:url withIntermediateDirectories:YES attributes:nil error:nullptr])
         LOG_ERROR("Failed to create directory %@", url);
@@ -389,7 +393,7 @@ WTF::String WebsiteDataStore::cacheDirectoryFileSystemRepresentation(const WTF::
 WTF::String WebsiteDataStore::websiteDataDirectoryFileSystemRepresentation(const WTF::String& directoryName)
 {
     static dispatch_once_t onceToken;
-    static NSURL *websiteDataURL;
+    static NeverDestroyed<RetainPtr<NSURL>> websiteDataURL;
 
     dispatch_once(&onceToken, ^{
         NSURL *url = [[NSFileManager defaultManager] URLForDirectory:NSLibraryDirectory inDomain:NSUserDomainMask appropriateForURL:nullptr create:NO error:nullptr];
@@ -405,10 +409,10 @@ WTF::String WebsiteDataStore::websiteDataDirectoryFileSystemRepresentation(const
             url = [url URLByAppendingPathComponent:bundleIdentifier isDirectory:YES];
         }
 
-        websiteDataURL = [[url URLByAppendingPathComponent:@"WebsiteData" isDirectory:YES] retain];
+        websiteDataURL.get() = [url URLByAppendingPathComponent:@"WebsiteData" isDirectory:YES];
     });
 
-    NSURL *url = [websiteDataURL URLByAppendingPathComponent:directoryName isDirectory:YES];
+    NSURL *url = [websiteDataURL.get() URLByAppendingPathComponent:directoryName isDirectory:YES];
     if (![[NSFileManager defaultManager] createDirectoryAtURL:url withIntermediateDirectories:YES attributes:nil error:nullptr])
         LOG_ERROR("Failed to create directory %@", url);
 
@@ -530,7 +534,7 @@ void WebsiteDataStore::beginAppBoundDomainCheck(const String& host, const String
         // because test cases may have app bound domains but no key.
         bool hasAppBoundDomains = keyExists || !domains.isEmpty();
         if (!hasAppBoundDomains) {
-            listener->didReceiveAppBoundDomainResult(WTF::nullopt);
+            listener->didReceiveAppBoundDomainResult(std::nullopt);
             return;
         }
         listener->didReceiveAppBoundDomainResult(schemeOrDomainIsAppBound(host, protocol, domains, schemes));
@@ -555,11 +559,11 @@ void WebsiteDataStore::getAppBoundSchemes(CompletionHandler<void(const HashSet<S
     });
 }
 
-Optional<HashSet<WebCore::RegistrableDomain>> WebsiteDataStore::appBoundDomainsIfInitialized()
+std::optional<HashSet<WebCore::RegistrableDomain>> WebsiteDataStore::appBoundDomainsIfInitialized()
 {
     ASSERT(RunLoop::isMain());
     if (!hasInitializedAppBoundDomains)
-        return WTF::nullopt;
+        return std::nullopt;
     return appBoundDomains();
 }
 

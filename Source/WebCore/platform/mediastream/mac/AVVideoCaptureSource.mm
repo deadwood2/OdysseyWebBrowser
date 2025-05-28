@@ -51,7 +51,6 @@
 #import <pal/cf/CoreMediaSoftLink.h>
 
 using namespace WebCore;
-using namespace PAL;
 
 @interface WebCoreAVVideoCaptureSourceObserver : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate> {
     AVVideoCaptureSource* m_callback;
@@ -135,6 +134,8 @@ AVVideoCaptureSource::AVVideoCaptureSource(AVCaptureDevice* device, String&& id,
 
 AVVideoCaptureSource::~AVVideoCaptureSource()
 {
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
+
 #if PLATFORM(IOS_FAMILY)
     RealtimeMediaSourceCenter::singleton().videoCaptureFactory().unsetActiveSource(*this);
 #endif
@@ -192,10 +193,11 @@ void AVVideoCaptureSource::startProducingData()
             return;
     }
 
-    if ([m_session isRunning])
+    bool isRunning = !![m_session isRunning];
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, isRunning);
+    if (isRunning)
         return;
 
-    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
     [m_objcObserver addNotificationObservers];
     [m_session startRunning];
 }
@@ -205,11 +207,9 @@ void AVVideoCaptureSource::stopProducingData()
     if (!m_session)
         return;
 
-    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, !![m_session isRunning]);
     [m_objcObserver removeNotificationObservers];
-
-    if ([m_session isRunning])
-        [m_session stopRunning];
+    [m_session stopRunning];
 
     m_interrupted = false;
 
@@ -232,7 +232,7 @@ void AVVideoCaptureSource::commitConfiguration()
 
 void AVVideoCaptureSource::settingsDidChange(OptionSet<RealtimeMediaSourceSettings::Flag>)
 {
-    m_currentSettings = WTF::nullopt;
+    m_currentSettings = std::nullopt;
 }
 
 const RealtimeMediaSourceSettings& AVVideoCaptureSource::settings()
@@ -326,13 +326,20 @@ void AVVideoCaptureSource::setSessionSizeAndFrameRate()
 
     ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, SizeAndFrameRate { m_currentPreset->size.width(), m_currentPreset->size.height(), m_currentFrameRate });
 
+    auto* frameRateRange = frameDurationForFrameRate(m_currentFrameRate);
+    ASSERT(frameRateRange);
+
+    if (m_appliedPreset && m_appliedPreset->format.get() == m_currentPreset->format.get() && m_appliedFrameRateRange.get() == frameRateRange) {
+        ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, " settings already match");
+        return;
+    }
+
     ASSERT(avPreset->format);
 
     NSError *error = nil;
     [m_session beginConfiguration];
     @try {
         if ([device() lockForConfiguration:&error]) {
-            ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, "setting preset to ", m_currentSize);
             [device() setActiveFormat:avPreset->format.get()];
 
 #if PLATFORM(MAC)
@@ -345,15 +352,13 @@ void AVVideoCaptureSource::setSessionSizeAndFrameRate()
             [m_videoOutput setVideoSettings:settingsDictionary];
 #endif
 
-            auto* frameRateRange = frameDurationForFrameRate(m_currentFrameRate);
-            ASSERT(frameRateRange);
             if (frameRateRange) {
                 m_currentFrameRate = clampTo(m_currentFrameRate, frameRateRange.minFrameRate, frameRateRange.maxFrameRate);
 
-                auto frameDuration = CMTimeMake(1, m_currentFrameRate);
-                if (CMTimeCompare(frameDuration, frameRateRange.minFrameDuration) < 0)
+                auto frameDuration = PAL::CMTimeMake(1, m_currentFrameRate);
+                if (PAL::CMTimeCompare(frameDuration, frameRateRange.minFrameDuration) < 0)
                     frameDuration = frameRateRange.minFrameDuration;
-                else if (CMTimeCompare(frameDuration, frameRateRange.maxFrameDuration) > 0)
+                else if (PAL::CMTimeCompare(frameDuration, frameRateRange.maxFrameDuration) > 0)
                     frameDuration = frameRateRange.maxFrameDuration;
 
                 ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, "setting frame rate to ", m_currentFrameRate, ", duration ", PAL::toMediaTime(frameDuration));
@@ -364,6 +369,8 @@ void AVVideoCaptureSource::setSessionSizeAndFrameRate()
                 ERROR_LOG_IF(loggerPtr(), LOGIDENTIFIER, "cannot find proper frame rate range for the selected preset\n");
 
             [device() unlockForConfiguration];
+            m_appliedFrameRateRange = frameRateRange;
+            m_appliedPreset = m_currentPreset;
         }
     } @catch(NSException *exception) {
         ERROR_LOG_IF(loggerPtr(), LOGIDENTIFIER, "error configuring device ", [[exception name] UTF8String], ", reason : ", [[exception reason] UTF8String]);
@@ -417,7 +424,7 @@ bool AVVideoCaptureSource::setupSession()
 
     m_session = adoptNS([PAL::allocAVCaptureSessionInstance() init]);
 #if PLATFORM(IOS_FAMILY)
-    AVCaptureSessionSetAuthorizedToUseCameraInMultipleForegroundAppLayout(m_session.get());
+    PAL::AVCaptureSessionSetAuthorizedToUseCameraInMultipleForegroundAppLayout(m_session.get());
 #endif
     [m_session addObserver:m_objcObserver.get() forKeyPath:@"running" options:NSKeyValueObservingOptionNew context:(void *)nil];
 
@@ -433,6 +440,8 @@ bool AVVideoCaptureSource::setupSession()
 
 AVFrameRateRange* AVVideoCaptureSource::frameDurationForFrameRate(double rate)
 {
+    using namespace PAL; // For CMTIME_COMPARE_INLINE
+
     AVFrameRateRange *bestFrameRateRange = nil;
     for (AVFrameRateRange *frameRateRange in [[device() activeFormat] videoSupportedFrameRateRanges]) {
         if (frameRateRangeIncludesRate({ [frameRateRange minFrameRate], [frameRateRange maxFrameRate] }, rate)) {
@@ -491,6 +500,7 @@ bool AVVideoCaptureSource::setupCaptureSession()
 
 void AVVideoCaptureSource::shutdownCaptureSession()
 {
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER);
     m_buffer = nullptr;
 }
 
@@ -509,6 +519,7 @@ void AVVideoCaptureSource::orientationChanged(int orientation)
     ASSERT(orientation == 0 || orientation == 90 || orientation == -90 || orientation == 180);
     m_deviceOrientation = orientation;
     computeSampleRotation();
+    ALWAYS_LOG_IF(loggerPtr(), LOGIDENTIFIER, "rotation = ", m_sampleRotation, ", orientation = ", m_deviceOrientation);
 }
 
 void AVVideoCaptureSource::computeSampleRotation()
@@ -595,7 +606,7 @@ void AVVideoCaptureSource::generatePresets()
     Vector<Ref<VideoPreset>> presets;
     for (AVCaptureDeviceFormat* format in [device() formats]) {
 
-        CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+        CMVideoDimensions dimensions = PAL::CMVideoFormatDescriptionGetDimensions(format.formatDescription);
         IntSize size = { dimensions.width, dimensions.height };
         auto index = presets.findMatching([&size](auto& preset) {
             return size == preset->size;

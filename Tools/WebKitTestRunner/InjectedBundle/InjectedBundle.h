@@ -51,8 +51,7 @@ public:
     // Initialize the InjectedBundle.
     void initialize(WKBundleRef, WKTypeRef initializationUserData);
 
-    WKBundleRef bundle() const { return m_bundle; }
-    WKBundlePageGroupRef pageGroup() const { return m_pageGroup; }
+    WKBundleRef bundle() const { return m_bundle.get(); }
 
     TestRunner* testRunner() { return m_testRunner.get(); }
     GCController* gcController() { return m_gcController.get(); }
@@ -88,6 +87,9 @@ public:
     void postNewBeforeUnloadReturnValue(bool);
     void postAddChromeInputField();
     void postRemoveChromeInputField();
+    void postSetTextInChromeInputField(const String&);
+    void postSelectChromeInputField();
+    void postGetSelectedTextInChromeInputField();
     void postFocusWebView();
     void postSetBackingScaleFactor(double);
     void postSetWindowIsKey(bool);
@@ -97,7 +99,7 @@ public:
 
     // Geolocation.
     void setGeolocationPermission(bool);
-    void setMockGeolocationPosition(double latitude, double longitude, double accuracy, Optional<double> altitude, Optional<double> altitudeAccuracy, Optional<double> heading, Optional<double> speed, Optional<double> floorLevel);
+    void setMockGeolocationPosition(double latitude, double longitude, double accuracy, std::optional<double> altitude, std::optional<double> altitudeAccuracy, std::optional<double> heading, std::optional<double> speed, std::optional<double> floorLevel);
     void setMockGeolocationPositionUnavailableError(WKStringRef errorMessage);
     bool isGeolocationProviderActive() const;
 
@@ -152,13 +154,11 @@ private:
 
     static void didCreatePage(WKBundleRef, WKBundlePageRef, const void* clientInfo);
     static void willDestroyPage(WKBundleRef, WKBundlePageRef, const void* clientInfo);
-    static void didInitializePageGroup(WKBundleRef, WKBundlePageGroupRef, const void* clientInfo);
     static void didReceiveMessage(WKBundleRef, WKStringRef messageName, WKTypeRef messageBody, const void* clientInfo);
     static void didReceiveMessageToPage(WKBundleRef, WKBundlePageRef, WKStringRef messageName, WKTypeRef messageBody, const void* clientInfo);
 
     void didCreatePage(WKBundlePageRef);
     void willDestroyPage(WKBundlePageRef);
-    void didInitializePageGroup(WKBundlePageGroupRef);
     void didReceiveMessage(WKStringRef messageName, WKTypeRef messageBody);
     void didReceiveMessageToPage(WKBundlePageRef, WKStringRef messageName, WKTypeRef messageBody);
 
@@ -169,8 +169,7 @@ private:
     enum class BegingTestingMode { New, Resume };
     void beginTesting(WKDictionaryRef initialSettings, BegingTestingMode);
 
-    WKBundleRef m_bundle { nullptr };
-    WKBundlePageGroupRef m_pageGroup { nullptr };
+    WKRetainPtr<WKBundleRef> m_bundle;
     Vector<std::unique_ptr<InjectedBundlePage>> m_pages;
 
 #if HAVE(ACCESSIBILITY)

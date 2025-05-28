@@ -74,6 +74,9 @@ void* OSAllocator::reserveUncommitted(size_t bytes, Usage usage, bool writable, 
 
 void* OSAllocator::reserveAndCommit(size_t bytes, Usage usage, bool writable, bool executable, bool jitCageEnabled, bool includesGuardPages)
 {
+#if OS(MORPHOS)
+    return malloc(bytes);
+#else
     // All POSIX reservations start out logically committed.
     int protection = PROT_READ;
     if (writable)
@@ -100,7 +103,11 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage usage, bool writable, bo
     int fd = -1;
 #endif
 
+#if OS(MORPHOS)
+    caddr_t result = 0;
+#else
     void* result = 0;
+#endif
 #if (OS(DARWIN) && CPU(X86_64))
     if (executable) {
         ASSERT(includesGuardPages);
@@ -137,6 +144,7 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage usage, bool writable, bo
         mmap(static_cast<char*>(result) + bytes - pageSize(), pageSize(), PROT_NONE, MAP_FIXED | MAP_PRIVATE | MAP_ANON, fd, 0);
     }
     return result;
+#endif
 }
 
 void OSAllocator::commit(void* address, size_t bytes, bool writable, bool executable)
@@ -193,9 +201,13 @@ void OSAllocator::hintMemoryNotNeededSoon(void* address, size_t bytes)
 
 void OSAllocator::releaseDecommitted(void* address, size_t bytes)
 {
+#if OS(MORPHOS)
+    free(address);
+#else
     int result = munmap(address, bytes);
     if (result == -1)
         CRASH();
+#endif
 }
 
 } // namespace WTF

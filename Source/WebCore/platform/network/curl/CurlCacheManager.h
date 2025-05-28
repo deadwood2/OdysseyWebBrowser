@@ -36,25 +36,28 @@
 namespace WebCore {
 
 class CurlCacheManager {
+	typedef uint64_t CurlCacheSizeType;
     friend NeverDestroyed<CurlCacheManager>;
 public:
     static CurlCacheManager& singleton();
 
     void setCacheDirectory(const String&);
     const String& cacheDirectory() { return m_cacheDir; }
-    void setStorageSizeLimit(size_t);
+    void setStorageSizeLimit(CurlCacheSizeType);
 
     bool isCached(const String&) const;
     HTTPHeaderMap& requestHeaders(const String&); // Load headers
     bool getCachedResponse(const String& url, ResourceResponse&);
 
     void didReceiveResponse(ResourceHandle&, ResourceResponse&);
-    void didReceiveData(ResourceHandle&, const char*, size_t); // Save data
+    void didReceiveData(ResourceHandle&, const uint8_t*, size_t); // Save data
     void didFinishLoading(ResourceHandle&);
     void didFail(ResourceHandle&);
 
     void addCacheEntryClient(const String& url, ResourceHandle* job);
     void removeCacheEntryClient(const String& url, ResourceHandle* job);
+
+	void removeEntriesMatchingHost(const String& host);
 
 private:
     CurlCacheManager();
@@ -67,8 +70,8 @@ private:
     HashMap<String, std::unique_ptr<CurlCacheEntry>> m_index;
 
     ListHashSet<String> m_LRUEntryList;
-    size_t m_currentStorageSize;
-    size_t m_storageSizeLimit;
+    CurlCacheSizeType m_currentStorageSize;
+    CurlCacheSizeType m_storageSizeLimit;
 
     void saveIndex();
     void loadIndex();

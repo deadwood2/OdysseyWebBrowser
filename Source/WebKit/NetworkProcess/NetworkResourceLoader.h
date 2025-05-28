@@ -85,19 +85,23 @@ public:
     void start();
     void abort();
 
+    void transferToNewWebProcess(NetworkConnectionToWebProcess&, ResourceLoadIdentifier);
+
     // Message handlers.
     void didReceiveNetworkResourceLoaderMessage(IPC::Connection&, IPC::Decoder&);
 
     void continueWillSendRequest(WebCore::ResourceRequest&& newRequest, bool isAllowedToAskUserForCredentials);
 
+    void setResponse(WebCore::ResourceResponse&& response) { m_response = WTFMove(response); }
     const WebCore::ResourceResponse& response() const { return m_response; }
 
     NetworkConnectionToWebProcess& connectionToWebProcess() const { return m_connection; }
     PAL::SessionID sessionID() const { return m_connection->sessionID(); }
-    ResourceLoadIdentifier identifier() const { return m_parameters.identifier; }
+    ResourceLoadIdentifier coreIdentifier() const { return m_parameters.identifier; }
     WebCore::FrameIdentifier frameID() const { return m_parameters.webFrameID; }
     WebCore::PageIdentifier pageID() const { return m_parameters.webPageID; }
     const NetworkResourceLoadParameters& parameters() const { return m_parameters; }
+    NetworkResourceLoadIdentifier identifier() const { return m_resourceLoadID; }
 
     NetworkCache::GlobalFrameID globalFrameID() { return { m_parameters.webPageProxyID, pageID(), frameID() }; }
 
@@ -125,11 +129,9 @@ public:
     bool isMainFrameLoad() const { return isMainResource() && m_parameters.frameAncestorOrigins.isEmpty(); }
     bool isCrossOriginPrefetch() const;
 
-    bool isAlwaysOnLoggingAllowed() const;
-
 #if ENABLE(RESOURCE_LOAD_STATISTICS) && !RELEASE_LOG_DISABLED
-    static bool shouldLogCookieInformation(NetworkConnectionToWebProcess&, const PAL::SessionID&);
-    static void logCookieInformation(NetworkConnectionToWebProcess&, const String& label, const void* loggedObject, const WebCore::NetworkStorageSession&, const URL& firstParty, const WebCore::SameSiteInfo&, const URL&, const String& referrer, Optional<WebCore::FrameIdentifier>, Optional<WebCore::PageIdentifier>, Optional<uint64_t> identifier);
+    static bool shouldLogCookieInformation(NetworkConnectionToWebProcess&, PAL::SessionID);
+    static void logCookieInformation(NetworkConnectionToWebProcess&, const String& label, const void* loggedObject, const WebCore::NetworkStorageSession&, const URL& firstParty, const WebCore::SameSiteInfo&, const URL&, const String& referrer, std::optional<WebCore::FrameIdentifier>, std::optional<WebCore::PageIdentifier>, std::optional<uint64_t> identifier);
 #endif
 
     void disableExtraNetworkLoadMetricsCapture() { m_shouldCaptureExtraNetworkLoadMetrics = false; }
@@ -142,6 +144,8 @@ public:
     void startWithServiceWorker();
     void serviceWorkerDidNotHandle(ServiceWorkerFetchTask*);
 #endif
+
+    bool isAppInitiated();
 
 private:
     NetworkResourceLoader(NetworkResourceLoadParameters&&, NetworkConnectionToWebProcess&, Messages::NetworkConnectionToWebProcess::PerformSynchronousLoadDelayedReply&&);
@@ -163,6 +167,8 @@ private:
 
     bool shouldInterruptLoadForXFrameOptions(const String&, const URL&);
     bool shouldInterruptLoadForCSPFrameAncestorsOrXFrameOptions(const WebCore::ResourceResponse&);
+    bool shouldInterruptNavigationForCrossOriginEmbedderPolicy(const WebCore::ResourceResponse&);
+    bool shouldInterruptWorkerLoadForCrossOriginEmbedderPolicy(const WebCore::ResourceResponse&);
 
     enum class FirstLoad { No, Yes };
     void startNetworkLoad(WebCore::ResourceRequest&&, FirstLoad);
@@ -191,7 +197,7 @@ private:
     void logCookieInformation() const;
 #endif
 
-    void continueWillSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&&, Optional<WebCore::PrivateClickMeasurement::AttributionTriggerData>&&);
+    void continueWillSendRedirectedRequest(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&&, std::optional<WebCore::PrivateClickMeasurement::AttributionTriggerData>&&);
     void didFinishWithRedirectResponse(WebCore::ResourceRequest&&, WebCore::ResourceRequest&& redirectRequest, WebCore::ResourceResponse&&);
     WebCore::ResourceResponse sanitizeResponseIfPossible(WebCore::ResourceResponse&&, WebCore::ResourceResponse::SanitizationType);
 
@@ -204,7 +210,7 @@ private:
 
     void handlePrivateClickMeasurementConversion(WebCore::PrivateClickMeasurement::AttributionTriggerData&&, const URL&, const WebCore::ResourceRequest&);
 
-    Optional<Seconds> validateCacheEntryForMaxAgeCapValidation(const WebCore::ResourceRequest&, const WebCore::ResourceRequest& redirectRequest, const WebCore::ResourceResponse&);
+    std::optional<Seconds> validateCacheEntryForMaxAgeCapValidation(const WebCore::ResourceRequest&, const WebCore::ResourceRequest& redirectRequest, const WebCore::ResourceResponse&);
 
     ResourceLoadInfo resourceLoadInfo();
 
@@ -243,7 +249,7 @@ private:
     bool m_shouldCaptureExtraNetworkLoadMetrics { false };
     bool m_isKeptAlive { false };
 
-    Optional<NetworkActivityTracker> m_networkActivityTracker;
+    std::optional<NetworkActivityTracker> m_networkActivityTracker;
 #if ENABLE(SERVICE_WORKER)
     std::unique_ptr<ServiceWorkerFetchTask> m_serviceWorkerFetchTask;
 #endif

@@ -32,11 +32,11 @@
 #include "COMPtr.h"
 #include "Direct2DUtilities.h"
 #include "GraphicsContext.h"
-#include "ImageData.h"
 #include "ImageDecoderDirect2D.h"
 #include "IntRect.h"
 #include "MIMETypeRegistry.h"
 #include "NotImplemented.h"
+#include "PixelBuffer.h"
 #include "PlatformContextDirect2D.h"
 #include <d2d1_1.h>
 #include <math.h>
@@ -78,7 +78,7 @@ std::unique_ptr<ImageBufferDirect2DBackend> ImageBufferDirect2DBackend::create(c
     if (!platformContext)
         return nullptr;
 
-    auto context = makeUnique<GraphicsContext>(platformContext.get(), GraphicsContext::BitmapRenderingContextType::GPUMemory);
+    auto context = makeUnique<GraphicsContextDirect2D>(platformContext.get(), GraphicsContext::BitmapRenderingContextType::GPUMemory);
     if (!context)
         return nullptr;
 
@@ -123,7 +123,7 @@ RefPtr<NativeImage> ImageBufferDirect2DBackend::copyNativeImage(BackingStoreCopy
     if (copyBehavior == CopyBackingStore && m_data.data.isEmpty())
         copyBehavior = DontCopyBackingStore;
 
-    CheckedSize numBytes = Checked<unsigned, RecordOverflow>(m_data.backingStoreSize.height()) * m_data.bytesPerRow;
+    CheckedSize numBytes = CheckedUint32(m_data.backingStoreSize.height()) * m_data.bytesPerRow;
     if (numBytes.hasOverflowed())
         return nullptr;
 
@@ -219,7 +219,7 @@ PlatformImagePtr ImageBufferDirect2DBackend::compatibleBitmap(ID2D1RenderTarget*
     auto size = m_bitmap->GetPixelSize();
     ASSERT(size.height && size.width);
 
-    Checked<unsigned, RecordOverflow> numBytes = size.width * size.height * 4;
+    CheckedUint32 numBytes = size.width * size.height * 4;
     if (numBytes.hasOverflowed())
         return nullptr;
 
@@ -233,7 +233,7 @@ PlatformImagePtr ImageBufferDirect2DBackend::compatibleBitmap(ID2D1RenderTarget*
 
     COMPtr<ID2D1Bitmap1> sourceCPUBitmap;
     D2D1_BITMAP_PROPERTIES1 bitmapProperties = D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW, Direct2D::pixelFormat());
-    HRESULT hr = sourceDeviceContext->CreateBitmap(m_bitmap->GetPixelSize(), nullptr, bytesPerRow.unsafeGet(), bitmapProperties, &sourceCPUBitmap);
+    HRESULT hr = sourceDeviceContext->CreateBitmap(m_bitmap->GetPixelSize(), nullptr, bytesPerRow, bitmapProperties, &sourceCPUBitmap);
     if (!SUCCEEDED(hr))
         return nullptr;
 
@@ -294,34 +294,28 @@ void ImageBufferDirect2DBackend::clipToMask(GraphicsContext&, const FloatRect&)
     notImplemented();
 }
 
-String ImageBufferDirect2DBackend::toDataURL(const String&, Optional<double>, PreserveResolution) const
+String ImageBufferDirect2DBackend::toDataURL(const String&, std::optional<double>, PreserveResolution) const
 {
     notImplemented();
     return "data:,"_s;
 }
 
-Vector<uint8_t> ImageBufferDirect2DBackend::toData(const String& mimeType, Optional<double> quality) const
+Vector<uint8_t> ImageBufferDirect2DBackend::toData(const String& mimeType, std::optional<double> quality) const
 {
     notImplemented();
     return { };
 }
 
-Vector<uint8_t> ImageBufferDirect2DBackend::toBGRAData() const
+std::optional<PixelBuffer> ImageBufferDirect2DBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect) const
 {
     notImplemented();
-    return { };
+    return ImageBufferBackend::getPixelBuffer(outputFormat, srcRect, nullptr);
 }
 
-RefPtr<ImageData> ImageBufferDirect2DBackend::getImageData(AlphaPremultiplication outputFormat, const IntRect& srcRect) const
+void ImageBufferDirect2DBackend::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
 {
     notImplemented();
-    return ImageBufferBackend::getImageData(outputFormat, srcRect, nullptr);
-}
-
-void ImageBufferDirect2DBackend::putImageData(AlphaPremultiplication inputFormat, const ImageData& imageData, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
-{
-    notImplemented();
-    ImageBufferBackend::putImageData(inputFormat, imageData, srcRect, destPoint, destFormat, nullptr);
+    ImageBufferBackend::putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat, nullptr);
 }
 
 } // namespace WebCore

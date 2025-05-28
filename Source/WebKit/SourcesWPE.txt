@@ -52,6 +52,7 @@ NetworkProcess/webrtc/NetworkRTCProvider.cpp
 
 Platform/IPC/unix/AttachmentUnix.cpp
 Platform/IPC/unix/ConnectionUnix.cpp
+Platform/IPC/unix/IPCSemaphoreUnix.cpp
 
 Platform/classifier/ResourceLoadStatisticsClassifier.cpp
 
@@ -138,6 +139,7 @@ UIProcess/API/glib/WebKitInputMethodContext.cpp @no-unify
 UIProcess/API/glib/WebKitInstallMissingMediaPluginsPermissionRequest.cpp @no-unify
 UIProcess/API/glib/WebKitJavascriptResult.cpp @no-unify
 UIProcess/API/glib/WebKitMediaKeySystemPermissionRequest.cpp @no-unify
+UIProcess/API/glib/WebKitMemoryPressureSettings.cpp @no-unify
 UIProcess/API/glib/WebKitMimeInfo.cpp @no-unify
 UIProcess/API/glib/WebKitNavigationAction.cpp @no-unify
 UIProcess/API/glib/WebKitNavigationClient.cpp @no-unify
@@ -205,6 +207,7 @@ UIProcess/glib/WebsiteDataStoreGLib.cpp @no-unify
 UIProcess/Launcher/glib/ProcessLauncherGLib.cpp
 UIProcess/Launcher/glib/BubblewrapLauncher.cpp
 UIProcess/Launcher/glib/FlatpakLauncher.cpp
+UIProcess/Launcher/glib/XDGDBusProxy.cpp
 
 UIProcess/WebsiteData/soup/WebsiteDataStoreSoup.cpp
 UIProcess/WebsiteData/unix/WebsiteDataStoreUnix.cpp

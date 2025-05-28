@@ -31,6 +31,15 @@ from webkitpy.test.printer import Printer
 from webkitpy.test.runner import Runner
 
 
+class FakeTestCase(object):
+    def __init__(self, name):
+        self.name = name
+        self.failureException = AssertionError
+
+    def id(self):
+        return self.name
+
+
 class FakeModuleSuite(object):
     def __init__(self, name, result, msg):
         self.name = name
@@ -41,11 +50,19 @@ class FakeModuleSuite(object):
         return self.name
 
     def run(self, result):
-        result.testsRun += 1
-        if self.result == 'F':
-            result.failures.append((self.name, self.msg))
-        elif self.result == 'E':
-            result.errors.append((self.name, self.msg))
+        tc = FakeTestCase(self.name)
+        result.startTest(tc)
+        try:
+            if self.result == 'F':
+                result.addFailure(tc, (None, None, None))
+            elif self.result == 'E':
+                result.addError(tc, (None, None, None))
+            elif self.result == '.':
+                result.addSuccess(tc)
+            else:
+                assert False, "unreachable"
+        finally:
+            result.stopTest(tc)
 
 
 class FakeTopSuite(object):
@@ -60,7 +77,7 @@ class FakeLoader(object):
         self._results = {}
         for test_name, result, msg in self.triples:
             self._tests.append(test_name)
-            m = re.match("(\w+) \(([\w.]+)\)", test_name)
+            m = re.match(r"(\w+) \(([\w.]+)\)", test_name)
             self._results['%s.%s' % (m.group(2), m.group(1))] = tuple([test_name, result, msg])
 
     def top_suite(self):

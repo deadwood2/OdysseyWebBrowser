@@ -37,16 +37,13 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIPanGestureRecognizer.h>
 #import <UIKit/UIScrollView.h>
+#import <WebCore/ScrollSnapOffsetsInfo.h>
 #import <WebCore/ScrollingStateOverflowScrollingNode.h>
 #import <WebCore/ScrollingTree.h>
 #import <WebCore/ScrollingTreeFrameScrollingNode.h>
 #import <WebCore/ScrollingTreeScrollingNode.h>
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/SetForScope.h>
-
-#if ENABLE(CSS_SCROLL_SNAP)
-#import <WebCore/ScrollSnapOffsetsInfo.h>
-#endif
 
 
 @implementation WKScrollingNodeScrollViewDelegate
@@ -99,25 +96,22 @@
         }
     }
 
-#if ENABLE(CSS_SCROLL_SNAP)
-    CGFloat horizontalTarget = targetContentOffset->x;
-    CGFloat verticalTarget = targetContentOffset->y;
+    std::optional<unsigned> originalHorizontalSnapPosition = _scrollingTreeNodeDelegate->scrollingNode().currentHorizontalSnapPointIndex();
+    std::optional<unsigned> originalVerticalSnapPosition = _scrollingTreeNodeDelegate->scrollingNode().currentVerticalSnapPointIndex();
 
-    unsigned originalHorizontalSnapPosition = _scrollingTreeNodeDelegate->scrollingNode().currentHorizontalSnapPointIndex();
-    unsigned originalVerticalSnapPosition = _scrollingTreeNodeDelegate->scrollingNode().currentVerticalSnapPointIndex();
-
+    WebCore::FloatSize viewportSize(static_cast<float>(CGRectGetWidth([scrollView bounds])), static_cast<float>(CGRectGetHeight([scrollView bounds])));
     const auto& snapOffsetsInfo = _scrollingTreeNodeDelegate->scrollingNode().snapOffsetsInfo();
     if (!snapOffsetsInfo.horizontalSnapOffsets.isEmpty()) {
-        auto [potentialSnapPosition, index] = snapOffsetsInfo.closestSnapOffset(WebCore::ScrollEventAxis::Horizontal, horizontalTarget, velocity.x);
+        auto [potentialSnapPosition, index] = snapOffsetsInfo.closestSnapOffset(WebCore::ScrollEventAxis::Horizontal, viewportSize, WebCore::FloatPoint(*targetContentOffset), velocity.x, scrollView.contentOffset.x);
         _scrollingTreeNodeDelegate->scrollingNode().setCurrentHorizontalSnapPointIndex(index);
-        if (horizontalTarget >= 0 && horizontalTarget <= scrollView.contentSize.width)
+        if (targetContentOffset->x >= 0 && targetContentOffset->x <= scrollView.contentSize.width)
             targetContentOffset->x = potentialSnapPosition;
     }
 
     if (!snapOffsetsInfo.verticalSnapOffsets.isEmpty()) {
-        auto [potentialSnapPosition, index] = snapOffsetsInfo.closestSnapOffset(WebCore::ScrollEventAxis::Vertical, verticalTarget, velocity.x);
+        auto [potentialSnapPosition, index] = snapOffsetsInfo.closestSnapOffset(WebCore::ScrollEventAxis::Vertical, viewportSize, WebCore::FloatPoint(*targetContentOffset), velocity.y, scrollView.contentOffset.y);
         _scrollingTreeNodeDelegate->scrollingNode().setCurrentVerticalSnapPointIndex(index);
-        if (verticalTarget >= 0 && verticalTarget <= scrollView.contentSize.height)
+        if (targetContentOffset->y >= 0 && targetContentOffset->y <= scrollView.contentSize.height)
             targetContentOffset->y = potentialSnapPosition;
     }
 
@@ -125,7 +119,6 @@
         || originalVerticalSnapPosition != _scrollingTreeNodeDelegate->scrollingNode().currentVerticalSnapPointIndex()) {
         _scrollingTreeNodeDelegate->currentSnapPointIndicesDidChange(_scrollingTreeNodeDelegate->scrollingNode().currentHorizontalSnapPointIndex(), _scrollingTreeNodeDelegate->scrollingNode().currentVerticalSnapPointIndex());
     }
-#endif
 }
 
 - (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)willDecelerate
@@ -277,14 +270,12 @@ void ScrollingTreeScrollingNodeDelegateIOS::commitStateAfterChildren(const Scrol
         END_BLOCK_OBJC_EXCEPTIONS
     }
 
-#if ENABLE(CSS_SCROLL_SNAP)
     // FIXME: If only one axis snaps in 2D scrolling, the other axis will decelerate fast as well. Is this what we want?
     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::SnapOffsetsInfo)) {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
         scrollView().decelerationRate = scrollingNode().snapOffsetsInfo().horizontalSnapOffsets.size() || scrollingNode().snapOffsetsInfo().verticalSnapOffsets.size() ? UIScrollViewDecelerationRateFast : UIScrollViewDecelerationRateNormal;
         END_BLOCK_OBJC_EXCEPTIONS
     }
-#endif
 
     if (scrollingStateNode.hasChangedProperty(ScrollingStateNode::Property::ScrollableAreaParams)) {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
@@ -343,7 +334,7 @@ void ScrollingTreeScrollingNodeDelegateIOS::scrollViewDidScroll(const FloatPoint
     scrollingNode().wasScrolledByDelegatedScrolling(scrollPosition, { }, inUserInteraction ? ScrollingLayerPositionAction::Sync : ScrollingLayerPositionAction::Set);
 }
 
-void ScrollingTreeScrollingNodeDelegateIOS::currentSnapPointIndicesDidChange(unsigned horizontal, unsigned vertical) const
+void ScrollingTreeScrollingNodeDelegateIOS::currentSnapPointIndicesDidChange(std::optional<unsigned> horizontal, std::optional<unsigned> vertical) const
 {
     if (m_updatingFromStateNode)
         return;

@@ -30,9 +30,7 @@
 #include "CDMInstance.h"
 #include "CDMInstanceSession.h"
 #include <wtf/Function.h>
-#include <wtf/HashMap.h>
 #include <wtf/RetainPtr.h>
-#include <wtf/text/WTFString.h>
 
 OBJC_CLASS AVContentKeyReportGroup;
 OBJC_CLASS AVContentKeyRequest;
@@ -192,11 +190,11 @@ private:
     bool ensureSessionOrGroup();
     bool isLicenseTypeSupported(LicenseType) const;
 
-    KeyStatusVector keyStatuses(Optional<PlatformDisplayID> = WTF::nullopt) const;
+    KeyStatusVector keyStatuses(std::optional<PlatformDisplayID> = std::nullopt) const;
     void nextRequest();
     AVContentKeyRequest* lastKeyRequest() const;
 
-    Optional<CDMKeyStatus> protectionStatusForDisplayID(AVContentKeyRequest *, Optional<PlatformDisplayID>) const;
+    std::optional<CDMKeyStatus> protectionStatusForDisplayID(AVContentKeyRequest *, std::optional<PlatformDisplayID>) const;
 
 #if !RELEASE_LOG_DISABLED
     WTF::Logger* loggerPtr() const { return m_logger.get(); };
@@ -209,7 +207,7 @@ private:
     Ref<CDMInstanceFairPlayStreamingAVFObjC> m_instance;
     RetainPtr<AVContentKeyReportGroup> m_group;
     RetainPtr<AVContentKeySession> m_session;
-    Optional<Request> m_currentRequest;
+    std::optional<Request> m_currentRequest;
     RetainPtr<WebCoreFPSContentKeySessionDelegate> m_delegate;
     Vector<RetainPtr<NSData>> m_expiredSessions;
     WeakPtr<CDMInstanceSessionClient> m_client;

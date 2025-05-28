@@ -82,8 +82,8 @@ public:
 
     void setInputMethodContext(WebKitInputMethodContext*);
     WebKitInputMethodContext* inputMethodContext() const;
-    void setInputMethodState(Optional<WebKit::InputMethodState>&&);
-    void synthesizeCompositionKeyPress(const String&, Optional<Vector<WebCore::CompositionUnderline>>&&, Optional<WebKit::EditingRange>&&);
+    void setInputMethodState(std::optional<WebKit::InputMethodState>&&);
+    void synthesizeCompositionKeyPress(const String&, std::optional<Vector<WebCore::CompositionUnderline>>&&, std::optional<WebKit::EditingRange>&&);
 
     void selectionDidChange();
 
@@ -100,7 +100,7 @@ public:
 
 #if ENABLE(FULLSCREEN_API)
     bool isFullScreen() { return m_fullScreenModeActive; };
-    void setFullScreen(bool fullScreenState) { m_fullScreenModeActive = fullScreenState; };
+    bool setFullScreen(bool);
 #endif
 
 #if ENABLE(ACCESSIBILITY)

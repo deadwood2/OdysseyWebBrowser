@@ -42,31 +42,6 @@ namespace WTF {
 
 // Declarations of string operations
 
-WTF_EXPORT_PRIVATE int charactersToIntStrict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
-WTF_EXPORT_PRIVATE int charactersToIntStrict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
-WTF_EXPORT_PRIVATE unsigned charactersToUIntStrict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
-WTF_EXPORT_PRIVATE unsigned charactersToUIntStrict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
-int64_t charactersToInt64Strict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
-int64_t charactersToInt64Strict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
-WTF_EXPORT_PRIVATE uint64_t charactersToUInt64Strict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
-WTF_EXPORT_PRIVATE uint64_t charactersToUInt64Strict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
-intptr_t charactersToIntPtrStrict(const LChar*, size_t, bool* ok = nullptr, int base = 10);
-intptr_t charactersToIntPtrStrict(const UChar*, size_t, bool* ok = nullptr, int base = 10);
-
-WTF_EXPORT_PRIVATE int charactersToInt(const LChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-WTF_EXPORT_PRIVATE int charactersToInt(const UChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-unsigned charactersToUInt(const LChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-unsigned charactersToUInt(const UChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-int64_t charactersToInt64(const LChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-int64_t charactersToInt64(const UChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-uint64_t charactersToUInt64(const LChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-WTF_EXPORT_PRIVATE uint64_t charactersToUInt64(const UChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-intptr_t charactersToIntPtr(const LChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-intptr_t charactersToIntPtr(const UChar*, size_t, bool* ok = nullptr); // ignores trailing garbage
-
-// FIXME: Like the strict functions above, these give false for "ok" when there is trailing garbage.
-// Like the non-strict functions above, these return the value when there is trailing garbage.
-// It would be better if these were more consistent with the above functions instead.
 WTF_EXPORT_PRIVATE double charactersToDouble(const LChar*, size_t, bool* ok = nullptr);
 WTF_EXPORT_PRIVATE double charactersToDouble(const UChar*, size_t, bool* ok = nullptr);
 WTF_EXPORT_PRIVATE float charactersToFloat(const LChar*, size_t, bool* ok = nullptr);
@@ -121,6 +96,10 @@ public:
     String(StaticStringImpl&);
     String(StaticStringImpl*);
 
+#if OS(MORPHOS)
+       String(const char * characters, unsigned length, unsigned mib);
+#endif
+
     // Construct a string from a constant string literal.
     WTF_EXPORT_PRIVATE String(ASCIILiteral);
 
@@ -162,6 +141,9 @@ public:
 
     WTF_EXPORT_PRIVATE CString ascii() const;
     WTF_EXPORT_PRIVATE CString latin1() const;
+#if OS(MORPHOS)
+    CString native() const;
+#endif
 
     WTF_EXPORT_PRIVATE CString utf8(ConversionMode) const;
     WTF_EXPORT_PRIVATE CString utf8() const;
@@ -281,25 +263,8 @@ public:
     WTF_EXPORT_PRIVATE Vector<String> splitAllowingEmptyEntries(UChar separator) const;
     WTF_EXPORT_PRIVATE Vector<String> splitAllowingEmptyEntries(const String& separator) const;
 
-    WTF_EXPORT_PRIVATE int toIntStrict(bool* ok = nullptr, int base = 10) const;
-    WTF_EXPORT_PRIVATE unsigned toUIntStrict(bool* ok = nullptr, int base = 10) const;
-    WTF_EXPORT_PRIVATE int64_t toInt64Strict(bool* ok = nullptr, int base = 10) const;
-    WTF_EXPORT_PRIVATE uint64_t toUInt64Strict(bool* ok = nullptr, int base = 10) const;
-    WTF_EXPORT_PRIVATE intptr_t toIntPtrStrict(bool* ok = nullptr, int base = 10) const;
-
-    WTF_EXPORT_PRIVATE int toInt(bool* ok = nullptr) const;
-    WTF_EXPORT_PRIVATE unsigned toUInt(bool* ok = nullptr) const;
-    WTF_EXPORT_PRIVATE int64_t toInt64(bool* ok = nullptr) const;
-    WTF_EXPORT_PRIVATE uint64_t toUInt64(bool* ok = nullptr) const;
-    WTF_EXPORT_PRIVATE intptr_t toIntPtr(bool* ok = nullptr) const;
-
-    // FIXME: Like the strict functions above, these give false for "ok" when there is trailing garbage.
-    // Like the non-strict functions above, these return the value when there is trailing garbage.
-    // It would be better if these were more consistent with the above functions instead.
     WTF_EXPORT_PRIVATE double toDouble(bool* ok = nullptr) const;
     WTF_EXPORT_PRIVATE float toFloat(bool* ok = nullptr) const;
-
-    bool percentage(int& percentage) const;
 
     WTF_EXPORT_PRIVATE String isolatedCopy() const &;
     WTF_EXPORT_PRIVATE String isolatedCopy() &&;
@@ -464,9 +429,11 @@ template<> struct IntegerToStringConversionTrait<String> {
 #ifdef __OBJC__
 
 WTF_EXPORT_PRIVATE RetainPtr<id> makeNSArrayElement(const String&);
-WTF_EXPORT_PRIVATE Optional<String> makeVectorElement(const String*, id);
+WTF_EXPORT_PRIVATE std::optional<String> makeVectorElement(const String*, id);
 
 #endif
+
+WTF_EXPORT_PRIVATE String replaceUnpairedSurrogatesWithReplacementCharacter(String&&);
 
 // Definitions of string operations
 
@@ -682,16 +649,6 @@ using WTF::String;
 using WTF::appendNumber;
 using WTF::charactersToDouble;
 using WTF::charactersToFloat;
-using WTF::charactersToInt64;
-using WTF::charactersToInt64Strict;
-using WTF::charactersToInt;
-using WTF::charactersToIntPtr;
-using WTF::charactersToIntPtrStrict;
-using WTF::charactersToIntStrict;
-using WTF::charactersToUInt64;
-using WTF::charactersToUInt64Strict;
-using WTF::charactersToUInt;
-using WTF::charactersToUIntStrict;
 using WTF::emptyString;
 using WTF::nullString;
 using WTF::equal;

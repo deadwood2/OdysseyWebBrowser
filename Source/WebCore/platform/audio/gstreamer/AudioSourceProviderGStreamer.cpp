@@ -23,6 +23,7 @@
 
 #include "AudioBus.h"
 #include "AudioSourceProviderClient.h"
+#include "GStreamerCommon.h"
 #include <gst/app/gstappsink.h>
 #include <gst/audio/audio-info.h>
 #include <gst/base/gstadapter.h>
@@ -132,11 +133,11 @@ void AudioSourceProviderGStreamer::configureAudioBin(GstElement* audioBin, GstEl
 
     GstElement* audioTee = gst_element_factory_make("tee", "audioTee");
     GstElement* audioQueue = gst_element_factory_make("queue", nullptr);
-    GstElement* audioConvert = gst_element_factory_make("audioconvert", nullptr);
-    GstElement* audioConvert2 = gst_element_factory_make("audioconvert", nullptr);
-    GstElement* audioResample = gst_element_factory_make("audioresample", nullptr);
-    GstElement* audioResample2 = gst_element_factory_make("audioresample", nullptr);
-    GstElement* volumeElement = gst_element_factory_make("volume", "volume");
+    GstElement* audioConvert = makeGStreamerElement("audioconvert", nullptr);
+    GstElement* audioConvert2 = makeGStreamerElement("audioconvert", nullptr);
+    GstElement* audioResample = makeGStreamerElement("audioresample", nullptr);
+    GstElement* audioResample2 = makeGStreamerElement("audioresample", nullptr);
+    GstElement* volumeElement = makeGStreamerElement("volume", "volume");
 
     gst_bin_add_many(GST_BIN_CAST(m_audioSinkBin.get()), audioTee, audioQueue, audioConvert, audioResample, volumeElement, audioConvert2, audioResample2, audioSink, nullptr);
 
@@ -159,7 +160,10 @@ void AudioSourceProviderGStreamer::configureAudioBin(GstElement* audioBin, GstEl
 void AudioSourceProviderGStreamer::provideInput(AudioBus* bus, size_t framesToProcess)
 {
     GST_TRACE("Fetching buffers from adapters");
-    auto locker = holdLock(m_adapterMutex);
+    if (!m_adapterLock.tryLock())
+        return;
+
+    Locker locker { AdoptLock, m_adapterLock };
     for (auto& it : m_adapters)
         copyGStreamerBuffersToAudioChannel(it.value.get(), bus, it.key - 1, framesToProcess);
 }
@@ -180,7 +184,7 @@ GstFlowReturn AudioSourceProviderGStreamer::handleSample(GstAppSink* sink, bool 
 
     GST_TRACE("Storing audio sample %" GST_PTR_FORMAT, sample.get());
     {
-        auto locker = holdLock(m_adapterMutex);
+        Locker locker { m_adapterLock };
         GQuark quark = g_quark_from_static_string("channel-id");
         int channelId = GPOINTER_TO_INT(g_object_get_qdata(G_OBJECT(sink), quark));
         GST_DEBUG("Channel ID: %d", channelId);
@@ -246,10 +250,10 @@ void AudioSourceProviderGStreamer::setClient(AudioSourceProviderClient* newClien
         // ensure deinterleave and the sinks downstream receive buffers in
         // the format specified by the capsfilter.
         auto* audioQueue = gst_element_factory_make("queue", "queue");
-        auto* audioConvert = gst_element_factory_make("audioconvert", "audioconvert");
-        auto* audioResample = gst_element_factory_make("audioresample", "audioresample");
+        auto* audioConvert = makeGStreamerElement("audioconvert", "audioconvert");
+        auto* audioResample = makeGStreamerElement("audioresample", "audioresample");
         auto* capsFilter = gst_element_factory_make("capsfilter", "capsfilter");
-        auto* deInterleave = gst_element_factory_make("deinterleave", "deinterleave");
+        auto* deInterleave = makeGStreamerElement("deinterleave", "deinterleave");
 
         GST_DEBUG("Setting up audio deinterleave chain");
         g_object_set(deInterleave, "keep-positions", TRUE, nullptr);
@@ -297,7 +301,7 @@ void AudioSourceProviderGStreamer::handleNewDeinterleavePad(GstPad* pad)
     // channel. Pipeline looks like:
     // ... deinterleave ! queue ! appsink.
     auto* queue = gst_element_factory_make("queue", nullptr);
-    auto* sink = gst_element_factory_make("appsink", nullptr);
+    auto* sink = makeGStreamerElement("appsink", nullptr);
 
     static GstAppSinkCallbacks callbacks = {
         nullptr,
@@ -307,6 +311,10 @@ void AudioSourceProviderGStreamer::handleNewDeinterleavePad(GstPad* pad)
         [](GstAppSink* sink, gpointer userData) -> GstFlowReturn {
             return static_cast<AudioSourceProviderGStreamer*>(userData)->handleSample(sink, false);
         },
+#if GST_CHECK_VERSION(1, 20, 0)
+        // new_event
+        nullptr,
+#endif
         { nullptr }
     };
     gst_app_sink_set_callbacks(GST_APP_SINK(sink), &callbacks, this, nullptr);
@@ -382,7 +390,7 @@ void AudioSourceProviderGStreamer::deinterleavePadsConfigured()
 
 void AudioSourceProviderGStreamer::clearAdapters()
 {
-    auto locker = holdLock(m_adapterMutex);
+    Locker locker { m_adapterLock };
     for (auto& adapter : m_adapters.values())
         gst_adapter_clear(adapter.get());
 }

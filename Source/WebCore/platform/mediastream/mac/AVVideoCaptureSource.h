@@ -126,15 +126,16 @@ private:
     int m_deviceOrientation { 0 };
     MediaSample::VideoRotation m_sampleRotation { MediaSample::VideoRotation::None };
 
-    Optional<RealtimeMediaSourceSettings> m_currentSettings;
-    Optional<RealtimeMediaSourceCapabilities> m_capabilities;
+    std::optional<RealtimeMediaSourceSettings> m_currentSettings;
+    std::optional<RealtimeMediaSourceCapabilities> m_capabilities;
     RetainPtr<WebCoreAVVideoCaptureSourceObserver> m_objcObserver;
     RetainPtr<AVCaptureSession> m_session;
     RetainPtr<AVCaptureDevice> m_device;
 
-    Lock m_presetMutex;
     RefPtr<AVVideoPreset> m_currentPreset;
-    IntSize m_currentSize;
+    RefPtr<AVVideoPreset> m_appliedPreset;
+    RetainPtr<AVFrameRateRange> m_appliedFrameRateRange;
+
     double m_currentFrameRate;
     bool m_interrupted { false };
     bool m_isRunning { false };

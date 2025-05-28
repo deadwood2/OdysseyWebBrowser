@@ -46,7 +46,7 @@ WebFramePolicyListenerProxy::WebFramePolicyListenerProxy(Reply&& reply, ShouldEx
 
 WebFramePolicyListenerProxy::~WebFramePolicyListenerProxy() = default;
 
-void WebFramePolicyListenerProxy::didReceiveAppBoundDomainResult(Optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain)
+void WebFramePolicyListenerProxy::didReceiveAppBoundDomainResult(std::optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain)
 {
     ASSERT(RunLoop::isMain());
 
@@ -59,7 +59,7 @@ void WebFramePolicyListenerProxy::didReceiveAppBoundDomainResult(Optional<Naviga
 
 void WebFramePolicyListenerProxy::didReceiveSafeBrowsingResults(RefPtr<SafeBrowsingWarning>&& safeBrowsingWarning)
 {
-    ASSERT(isMainThread());
+    ASSERT(isMainRunLoop());
     ASSERT(!m_safeBrowsingWarning);
     if (m_policyResult && m_isNavigatingToAppBoundDomain) {
         if (m_reply)

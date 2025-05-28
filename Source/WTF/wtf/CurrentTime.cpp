@@ -64,6 +64,11 @@
 #include <glib.h>
 #endif
 
+#if OS(MORPHOS)
+#include <exec/system.h>
+#include <proto/exec.h>
+#endif
+
 namespace WTF {
 
 #if OS(WINDOWS)
@@ -251,7 +256,7 @@ WallTime WallTime::now()
 }
 
 #if OS(DARWIN)
-MonotonicTime MonotonicTime::fromMachAbsoluteTime(uint64_t machAbsoluteTime)
+static mach_timebase_info_data_t& machTimebaseInfo()
 {
     // Based on listing #2 from Apple QA 1398, but modified to be thread-safe.
     static mach_timebase_info_data_t timebaseInfo;
@@ -261,7 +266,17 @@ MonotonicTime MonotonicTime::fromMachAbsoluteTime(uint64_t machAbsoluteTime)
         ASSERT_UNUSED(kr, kr == KERN_SUCCESS);
         ASSERT(timebaseInfo.denom);
     });
-    return fromRawSeconds((machAbsoluteTime * timebaseInfo.numer) / (1.0e9 * timebaseInfo.denom));
+    return timebaseInfo;
+}
+
+MonotonicTime MonotonicTime::fromMachAbsoluteTime(uint64_t machAbsoluteTime)
+{
+    return fromRawSeconds((machAbsoluteTime * machTimebaseInfo().numer) / (1.0e9 * machTimebaseInfo().denom));
+}
+
+uint64_t MonotonicTime::toMachAbsoluteTime() const
+{
+    return static_cast<uint64_t>((m_value * 1.0e9 * machTimebaseInfo().denom) / machTimebaseInfo().numer);
 }
 #endif
 
@@ -273,6 +288,21 @@ MonotonicTime MonotonicTime::now()
     return fromMachAbsoluteTime(mach_absolute_time());
 #elif OS(FUCHSIA)
     return fromRawSeconds(zx_clock_get_monotonic() / static_cast<double>(ZX_SEC(1)));
+#elif OS(MORPHOS)
+    class tbClock {
+    public:
+        tbClock() {
+            ULONG freq;
+            NewGetSystemAttrsA(&freq, sizeof(freq), SYSTEMINFOTYPE_TBCLOCKFREQUENCY, NULL);
+            _frequency = static_cast<double>(freq);
+        }
+        ~tbClock() = default;
+        inline double clockFrequency() const { return _frequency; }
+    protected:
+        double _frequency;
+    };
+    static const tbClock tb;
+    return fromRawSeconds(static_cast<double>(__builtin_ppc_get_timebase()) / tb.clockFrequency());
 #elif OS(LINUX) || OS(FREEBSD) || OS(OPENBSD) || OS(NETBSD)
     struct timespec ts { };
     clock_gettime(CLOCK_MONOTONIC, &ts);

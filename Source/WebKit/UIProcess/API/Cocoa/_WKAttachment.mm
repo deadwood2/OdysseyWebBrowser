@@ -24,13 +24,14 @@
  */
 
 #import "config.h"
-#import "_WKAttachment.h"
+#import <WebKit/_WKAttachment.h>
 
 #import "APIAttachment.h"
 #import "WKErrorPrivate.h"
 #import "_WKAttachmentInternal.h"
 #import <WebCore/MIMETypeRegistry.h>
 #import <WebCore/SharedBuffer.h>
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/CompletionHandler.h>
 
@@ -105,6 +106,9 @@ static const NSInteger InvalidAttachmentErrorCode = 2;
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(_WKAttachment.class, self))
+        return;
+
     _attachment->~Attachment();
 
     [super dealloc];

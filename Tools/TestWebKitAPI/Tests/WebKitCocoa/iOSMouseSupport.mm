@@ -234,6 +234,76 @@ TEST(iOSMouseSupport, MouseTimestampTimebase)
     TestWebKitAPI::Util::run(&done);
 }
 
+TEST(iOSMouseSupport, EndedTouchesTriggerClick)
+{
+    auto webViewConfiguration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:webViewConfiguration.get()]);
+    [webView synchronouslyLoadHTMLString:@"<script>"
+    "window.wasClicked = false;"
+    "document.documentElement.addEventListener('click', function (e) {"
+    "    window.wasClicked = true;"
+    "});"
+    "</script>"];
+
+    auto contentView = [webView wkContentView];
+    auto gesture = mouseGesture(contentView);
+
+    auto touch = adoptNS([[WKTestingTouch alloc] init]);
+    RetainPtr<NSSet> touchSet = [NSSet setWithObject:touch.get()];
+
+    auto hoverEvent = adoptNS([[NSClassFromString(@"UIHoverEvent") alloc] init]);
+    auto event = adoptNS([[WKTestingEvent alloc] init]);
+
+    [gesture _hoverEntered:touchSet.get() withEvent:hoverEvent.get()];
+    [contentView mouseGestureRecognizerChanged:gesture];
+    [touch setTapCount:1];
+    [event _setButtonMask:UIEventButtonMaskPrimary];
+    [gesture touchesBegan:touchSet.get() withEvent:event.get()];
+    [contentView mouseGestureRecognizerChanged:gesture];
+    [gesture touchesEnded:touchSet.get() withEvent:event.get()];
+    [contentView mouseGestureRecognizerChanged:gesture];
+
+    [webView waitForPendingMouseEvents];
+
+    bool wasClicked = [[webView objectByEvaluatingJavaScript:@"window.wasClicked"] boolValue];
+    EXPECT_TRUE(wasClicked);
+}
+
+TEST(iOSMouseSupport, CancelledTouchesDoNotTriggerClick)
+{
+    auto webViewConfiguration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:webViewConfiguration.get()]);
+    [webView synchronouslyLoadHTMLString:@"<script>"
+    "window.wasClicked = false;"
+    "document.documentElement.addEventListener('click', function (e) {"
+    "    window.wasClicked = true;"
+    "});"
+    "</script>"];
+
+    auto contentView = [webView wkContentView];
+    auto gesture = mouseGesture(contentView);
+
+    auto touch = adoptNS([[WKTestingTouch alloc] init]);
+    RetainPtr<NSSet> touchSet = [NSSet setWithObject:touch.get()];
+
+    auto hoverEvent = adoptNS([[NSClassFromString(@"UIHoverEvent") alloc] init]);
+    auto event = adoptNS([[WKTestingEvent alloc] init]);
+
+    [gesture _hoverEntered:touchSet.get() withEvent:hoverEvent.get()];
+    [contentView mouseGestureRecognizerChanged:gesture];
+    [touch setTapCount:1];
+    [event _setButtonMask:UIEventButtonMaskPrimary];
+    [gesture touchesBegan:touchSet.get() withEvent:event.get()];
+    [contentView mouseGestureRecognizerChanged:gesture];
+    [gesture touchesCancelled:touchSet.get() withEvent:event.get()];
+    [contentView mouseGestureRecognizerChanged:gesture];
+
+    [webView waitForPendingMouseEvents];
+
+    bool wasClicked = [[webView objectByEvaluatingJavaScript:@"window.wasClicked"] boolValue];
+    EXPECT_FALSE(wasClicked);
+}
+
 #if ENABLE(IOS_TOUCH_EVENTS)
 
 TEST(iOSMouseSupport, WebsiteMouseEventPolicies)
@@ -300,9 +370,7 @@ TEST(iOSMouseSupport, WebsiteMouseEventPolicies)
 
 #endif // ENABLE(IOS_TOUCH_EVENTS)
 
-#if HAVE(UIKIT_WITH_MOUSE_SUPPORT)
-
-#if PLATFORM(IOS)
+#if HAVE(MOUSE_DEVICE_OBSERVATION)
 
 @interface WKMouseDeviceObserver
 + (WKMouseDeviceObserver *)sharedInstance;
@@ -454,7 +522,7 @@ TEST(iOSMouseSupport, MouseLaterConnected)
     EXPECT_TRUE([webView evaluateMediaQuery:@"any-pointer: fine"]);
 }
 
-#endif // PLATFORM(IOS)
+#endif // HAVE(MOUSE_DEVICE_OBSERVATION)
 
 #if PLATFORM(MACCATALYST)
 
@@ -464,9 +532,9 @@ TEST(iOSMouseSupport, MouseAlwaysConnected)
 
     [webView synchronouslyLoadHTMLString:@""];
 
-    EXPECT_FALSE([webView evaluateMediaQuery:@"hover"]);
-    EXPECT_TRUE([webView evaluateMediaQuery:@"hover: none"]);
-    EXPECT_FALSE([webView evaluateMediaQuery:@"hover: hover"]);
+    EXPECT_TRUE([webView evaluateMediaQuery:@"hover"]);
+    EXPECT_FALSE([webView evaluateMediaQuery:@"hover: none"]);
+    EXPECT_TRUE([webView evaluateMediaQuery:@"hover: hover"]);
 
     EXPECT_TRUE([webView evaluateMediaQuery:@"any-hover"]);
     EXPECT_FALSE([webView evaluateMediaQuery:@"any-hover: none"]);
@@ -474,17 +542,15 @@ TEST(iOSMouseSupport, MouseAlwaysConnected)
 
     EXPECT_TRUE([webView evaluateMediaQuery:@"pointer"]);
     EXPECT_FALSE([webView evaluateMediaQuery:@"pointer: none"]);
-    EXPECT_TRUE([webView evaluateMediaQuery:@"pointer: coarse"]);
-    EXPECT_FALSE([webView evaluateMediaQuery:@"pointer: fine"]);
+    EXPECT_FALSE([webView evaluateMediaQuery:@"pointer: coarse"]);
+    EXPECT_TRUE([webView evaluateMediaQuery:@"pointer: fine"]);
 
     EXPECT_TRUE([webView evaluateMediaQuery:@"any-pointer"]);
     EXPECT_FALSE([webView evaluateMediaQuery:@"any-pointer: none"]);
-    EXPECT_TRUE([webView evaluateMediaQuery:@"any-pointer: coarse"]);
+    EXPECT_FALSE([webView evaluateMediaQuery:@"any-pointer: coarse"]);
     EXPECT_TRUE([webView evaluateMediaQuery:@"any-pointer: fine"]);
 }
 
 #endif // PLATFORM(MACCATALYST)
-
-#endif // HAVE(UIKIT_WITH_MOUSE_SUPPORT)
 
 #endif // PLATFORM(IOS) || PLATFORM(MACCATALYST)

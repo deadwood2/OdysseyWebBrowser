@@ -31,11 +31,22 @@
 #import <AppKit/NSTextInputClient_Private.h>
 #import <AppKit/NSWindow_Private.h>
 
+#if HAVE(NSSCROLLVIEW_SEPARATOR_TRACKING_ADAPTER)
+#import <AppKit/NSScrollViewSeparatorTrackingAdapter_Private.h>
+#endif
+
 #else
 
 @interface NSInspectorBar : NSObject
 @property (getter=isVisible) BOOL visible;
 @end
+
+#if HAVE(NSSCROLLVIEW_SEPARATOR_TRACKING_ADAPTER)
+@protocol NSScrollViewSeparatorTrackingAdapter
+@property (readonly) NSRect scrollViewFrame;
+@property (readonly) BOOL hasScrolledContentsUnderTitlebar;
+@end
+#endif
 
 @protocol NSTextInputClient_Async
 @end
@@ -54,9 +65,18 @@ typedef NS_OPTIONS(NSUInteger, NSWindowShadowOptions) {
 @property CGFloat titlebarAlphaValue;
 #endif
 
+#if HAVE(NSSCROLLVIEW_SEPARATOR_TRACKING_ADAPTER)
+- (BOOL)registerScrollViewSeparatorTrackingAdapter:(NSObject<NSScrollViewSeparatorTrackingAdapter> *)adapter;
+- (void)unregisterScrollViewSeparatorTrackingAdapter:(NSObject<NSScrollViewSeparatorTrackingAdapter> *)adapter;
+#endif
+
 @end
 
 #endif
+
+@interface NSWorkspace (NSWorkspaceAccessibilityDisplayInternal_IPI)
++ (void)_invalidateAccessibilityDisplayValues;
+@end
 
 @interface NSInspectorBar (IPI)
 - (void)_update;

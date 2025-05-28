@@ -34,6 +34,7 @@
 #import <wtf/WeakObjCPtr.h>
 #import <wtf/WeakPtr.h>
 
+@class WebDataSource;
 @class WebDownload;
 @class WebFrame;
 @class WebFramePolicyListener;
@@ -64,8 +65,8 @@ public:
 private:
     bool hasWebView() const final; // mainly for assertions
 
-    Optional<WebCore::PageIdentifier> pageID() const final;
-    Optional<WebCore::FrameIdentifier> frameID() const final;
+    std::optional<WebCore::PageIdentifier> pageID() const final;
+    std::optional<WebCore::FrameIdentifier> frameID() const final;
 
     void makeRepresentation(WebCore::DocumentLoader*) final;
     bool hasHTMLView() const final;
@@ -116,7 +117,7 @@ private:
     void dispatchWillClose() final;
     void dispatchDidStartProvisionalLoad() final;
     void dispatchDidReceiveTitle(const WebCore::StringWithDirection&) final;
-    void dispatchDidCommitLoad(Optional<WebCore::HasInsecureContent>, Optional<WebCore::UsedLegacyTLS>) final;
+    void dispatchDidCommitLoad(std::optional<WebCore::HasInsecureContent>, std::optional<WebCore::UsedLegacyTLS>) final;
     void dispatchDidFailProvisionalLoad(const WebCore::ResourceError&, WebCore::WillContinueLoading) final;
     void dispatchDidFailLoad(const WebCore::ResourceError&) final;
     void dispatchDidFinishDocumentLoad() final;
@@ -126,7 +127,7 @@ private:
     WebCore::Frame* dispatchCreatePage(const WebCore::NavigationAction&, WebCore::NewFrameOpenerPolicy) final;
     void dispatchShow() final;
 
-    void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::PolicyCheckIdentifier, const String&,  WebCore::FramePolicyFunction&&) final;
+    void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::PolicyCheckIdentifier, const String&, WebCore::BrowsingContextGroupSwitchDecision, WebCore::FramePolicyFunction&&) final;
     void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const WTF::String& frameName, WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&) final;
     void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, const WebCore::ResourceResponse& redirectResponse, WebCore::FormState*, WebCore::PolicyDecisionMode, WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&) final;
     void cancelPolicyCheck() final;
@@ -150,7 +151,7 @@ private:
     void willReplaceMultipartContent() final { }
     void didReplaceMultipartContent() final;
 
-    void committedLoad(WebCore::DocumentLoader*, const char*, int) final;
+    void committedLoad(WebCore::DocumentLoader*, const uint8_t*, int) final;
     void finishedLoading(WebCore::DocumentLoader*) final;
     void updateGlobalHistory() final;
     void updateGlobalHistoryRedirectLinks() final;

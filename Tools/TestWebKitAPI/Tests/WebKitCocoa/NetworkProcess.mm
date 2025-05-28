@@ -29,12 +29,14 @@
 #import "TestWKWebView.h"
 #import "Utilities.h"
 #import <WebKit/WKProcessPoolPrivate.h>
+#import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
+#import <WebKit/_WKWebsiteDataStoreConfiguration.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/Vector.h>
 
-TEST(WebKit, NetworkProcessEntitlements)
+TEST(NetworkProcess, Entitlements)
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:adoptNS([[WKWebViewConfiguration alloc] init]).get()]);
     [webView synchronouslyLoadTestPageNamed:@"simple"];
@@ -64,7 +66,7 @@ TEST(WebKit, HTTPReferer)
             });
         });
         auto webView = adoptNS([WKWebView new]);
-        [webView loadHTMLString:[NSString stringWithFormat:@"<body onload='document.getElementById(\"formID\").submit()'><form id='formID' method='post' action='http://127.0.0.1:%d/'></form></body>", server.port()] baseURL:baseURL];
+        [webView loadHTMLString:[NSString stringWithFormat:@"<meta name='referrer' content='unsafe-url'><body onload='document.getElementById(\"formID\").submit()'><form id='formID' method='post' action='http://127.0.0.1:%d/'></form></body>", server.port()] baseURL:baseURL];
         Util::run(&done);
     };
     
@@ -74,17 +76,119 @@ TEST(WebKit, HTTPReferer)
     NSString *shorterPath = [NSString stringWithFormat:@"http://webkit.org/%s?asdf", a3k.data()];
     NSString *longHost = [NSString stringWithFormat:@"http://webkit.org%s/path", a5k.data()];
     NSString *shorterHost = [NSString stringWithFormat:@"http://webkit.org%s/path", a3k.data()];
-    checkReferer([NSURL URLWithString:longPath], "http://webkit.org");
+    checkReferer([NSURL URLWithString:longPath], "http://webkit.org/");
     checkReferer([NSURL URLWithString:shorterPath], shorterPath.UTF8String);
     checkReferer([NSURL URLWithString:longHost], nullptr);
     checkReferer([NSURL URLWithString:shorterHost], shorterHost.UTF8String);
 }
 
-TEST(WebKit, NetworkProcessLaunchOnlyWhenNecessary)
+TEST(NetworkProcess, LaunchOnlyWhenNecessary)
 {
     auto webView = adoptNS([WKWebView new]);
     [webView configuration].websiteDataStore._resourceLoadStatisticsEnabled = YES;
     [[webView configuration].processPool _registerURLSchemeAsSecure:@"test"];
     [[webView configuration].processPool _registerURLSchemeAsBypassingContentSecurityPolicy:@"test"];
     EXPECT_FALSE([[webView configuration].websiteDataStore _networkProcessExists]);
+}
+
+TEST(NetworkProcess, CrashWhenNotAssociatedWithDataStore)
+{
+    pid_t networkProcessPID = 0;
+    @autoreleasepool {
+        auto viewConfiguration = adoptNS([[WKWebViewConfiguration alloc] init]);
+        auto dataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration]);
+        auto dataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration.get()]);
+        [viewConfiguration setWebsiteDataStore:dataStore.get()];
+        auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:viewConfiguration.get()]);
+        [webView loadHTMLString:@"foo" baseURL:[NSURL URLWithString:@"about:blank"]];
+        while (![dataStore _networkProcessIdentifier])
+            TestWebKitAPI::Util::spinRunLoop(10);
+        networkProcessPID = [dataStore _networkProcessIdentifier];
+        EXPECT_TRUE(!!networkProcessPID);
+    }
+    TestWebKitAPI::Util::spinRunLoop(10);
+
+    // Kill the network process once it is no longer associated with any WebsiteDataStore.
+    kill(networkProcessPID, 9);
+    TestWebKitAPI::Util::spinRunLoop(10);
+
+    auto viewConfiguration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto dataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration]);
+    auto dataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration.get()]);
+    [viewConfiguration setWebsiteDataStore:dataStore.get()];
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:viewConfiguration.get()]);
+    [webView synchronouslyLoadTestPageNamed:@"simple"];
+    EXPECT_NE(networkProcessPID, [webView configuration].websiteDataStore._networkProcessIdentifier);
+}
+
+TEST(NetworkProcess, TerminateWhenUnused)
+{
+    RetainPtr<WKProcessPool> retainedPool;
+    @autoreleasepool {
+        auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+        configuration.get().websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+        retainedPool = configuration.get().processPool;
+        auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 0, 0) configuration:configuration.get()]);
+        [webView synchronouslyLoadTestPageNamed:@"simple"];
+        EXPECT_TRUE([WKWebsiteDataStore _defaultNetworkProcessExists]);
+    }
+    while ([WKWebsiteDataStore _defaultNetworkProcessExists])
+        TestWebKitAPI::Util::spinRunLoop();
+    
+    retainedPool = nil;
+    
+    @autoreleasepool {
+        auto webView = adoptNS([WKWebView new]);
+        [webView synchronouslyLoadTestPageNamed:@"simple"];
+        EXPECT_TRUE([WKWebsiteDataStore _defaultNetworkProcessExists]);
+    }
+    while ([WKWebsiteDataStore _defaultNetworkProcessExists])
+        TestWebKitAPI::Util::spinRunLoop();
+}
+
+TEST(NetworkProcess, CORSPreflightCachePartitioned)
+{
+    using namespace TestWebKitAPI;
+    size_t preflightRequestsReceived { 0 };
+    HTTPServer server([&] (Connection connection) {
+        connection.receiveHTTPRequest([&, connection] (Vector<char>&& request) {
+            const char* expectedRequestBegin = "OPTIONS / HTTP/1.1\r\n";
+            EXPECT_TRUE(!memcmp(request.data(), expectedRequestBegin, strlen(expectedRequestBegin)));
+            EXPECT_TRUE(strnstr(request.data(), "Origin: http://example.com\r\n", request.size()));
+            EXPECT_TRUE(strnstr(request.data(), "Access-Control-Request-Method: DELETE\r\n", request.size()));
+            
+            const char* response =
+            "HTTP/1.1 204 No Content\r\n"
+            "Access-Control-Allow-Origin: http://example.com\r\n"
+            "Access-Control-Allow-Methods: OPTIONS, GET, POST, DELETE\r\n"
+            "Cache-Control: max-age=604800\r\n\r\n";
+            connection.send(response, [&, connection] {
+                connection.receiveHTTPRequest([&, connection] (Vector<char>&& request) {
+                    const char* expectedRequestBegin = "DELETE / HTTP/1.1\r\n";
+                    EXPECT_TRUE(!memcmp(request.data(), expectedRequestBegin, strlen(expectedRequestBegin)));
+                    EXPECT_TRUE(strnstr(request.data(), "Origin: http://example.com\r\n", request.size()));
+                    const char* response =
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Length: 2\r\n\r\n"
+                    "hi";
+                    connection.send(response, [&, connection] {
+                        preflightRequestsReceived++;
+                    });
+                });
+            });
+        });
+    });
+    NSString *html = [NSString stringWithFormat:@"<script>var xhr = new XMLHttpRequest();xhr.open('DELETE', 'http://localhost:%d/');xhr.send()</script>", server.port()];
+    NSURL *baseURL = [NSURL URLWithString:@"http://example.com/"];
+    auto firstWebView = adoptNS([WKWebView new]);
+    [firstWebView loadHTMLString:html baseURL:baseURL];
+    while (preflightRequestsReceived != 1)
+        TestWebKitAPI::Util::spinRunLoop();
+
+    auto configuration = adoptNS([WKWebViewConfiguration new]);
+    configuration.get().websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+    auto secondWebView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    [secondWebView loadHTMLString:html baseURL:baseURL];
+    while (preflightRequestsReceived != 2)
+        TestWebKitAPI::Util::spinRunLoop();
 }

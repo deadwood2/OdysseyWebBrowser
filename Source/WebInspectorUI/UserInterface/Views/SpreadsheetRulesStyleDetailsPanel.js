@@ -68,7 +68,7 @@ WI.SpreadsheetRulesStyleDetailsPanel = class SpreadsheetRulesStyleDetailsPanel e
 
     scrollToSectionAndHighlightProperty(property)
     {
-        if (!this._visible) {
+        if (!this.isAttached || this.layoutPending) {
             this._propertyToSelectAndHighlight = property;
             return;
         }
@@ -201,6 +201,12 @@ WI.SpreadsheetRulesStyleDetailsPanel = class SpreadsheetRulesStyleDetailsPanel e
     {
         this._newRuleSelector = selector;
         this.nodeStyles.addRule(this._newRuleSelector, text);
+    }
+
+    spreadsheetCSSStyleDeclarationSectionSetAllPropertyVisibilityMode(section, propertyVisibilityMode)
+    {
+        for (let section of this._sections)
+            section.propertyVisibilityMode = propertyVisibilityMode;
     }
 
     // Protected

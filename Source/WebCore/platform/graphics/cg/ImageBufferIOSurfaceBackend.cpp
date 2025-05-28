@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,9 +29,9 @@
 #if HAVE(IOSURFACE)
 
 #include "GraphicsContextCG.h"
-#include "ImageData.h"
-#include "IntRect.h"
 #include "IOSurface.h"
+#include "IntRect.h"
+#include "PixelBuffer.h"
 #include <CoreGraphics/CoreGraphics.h>
 #include <pal/spi/cg/CoreGraphicsSPI.h>
 #include <wtf/IsoMallocInlines.h>
@@ -41,9 +41,9 @@ namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferIOSurfaceBackend);
 
-IntSize ImageBufferIOSurfaceBackend::calculateBackendSize(const FloatSize& size, float resolutionScale)
+IntSize ImageBufferIOSurfaceBackend::calculateSafeBackendSize(const Parameters& parameters)
 {
-    IntSize backendSize = ImageBufferCGBackend::calculateBackendSize(size, resolutionScale);
+    IntSize backendSize = calculateBackendSize(parameters);
     if (backendSize.isEmpty())
         return { };
 
@@ -52,6 +52,23 @@ IntSize ImageBufferIOSurfaceBackend::calculateBackendSize(const FloatSize& size,
         return { };
 
     return backendSize;
+}
+
+unsigned ImageBufferIOSurfaceBackend::calculateBytesPerRow(const IntSize& backendSize)
+{
+    unsigned bytesPerRow = ImageBufferCGBackend::calculateBytesPerRow(backendSize);
+    return IOSurfaceAlignProperty(kIOSurfaceBytesPerRow, bytesPerRow);
+}
+
+size_t ImageBufferIOSurfaceBackend::calculateMemoryCost(const Parameters& parameters)
+{
+    IntSize backendSize = calculateBackendSize(parameters);
+    return ImageBufferBackend::calculateMemoryCost(backendSize, calculateBytesPerRow(backendSize));
+}
+
+size_t ImageBufferIOSurfaceBackend::calculateExternalMemoryCost(const Parameters& parameters)
+{
+    return calculateMemoryCost(parameters);
 }
 
 RetainPtr<CGColorSpaceRef> ImageBufferIOSurfaceBackend::contextColorSpace(const GraphicsContext& context)
@@ -64,13 +81,13 @@ RetainPtr<CGColorSpaceRef> ImageBufferIOSurfaceBackend::contextColorSpace(const 
     return ImageBufferCGBackend::contextColorSpace(context);
 }
 
-std::unique_ptr<ImageBufferIOSurfaceBackend> ImageBufferIOSurfaceBackend::create(const Parameters& parameters, CGColorSpaceRef cgColorSpace, const HostWindow* hostWindow)
+std::unique_ptr<ImageBufferIOSurfaceBackend> ImageBufferIOSurfaceBackend::create(const Parameters& parameters, const HostWindow* hostWindow)
 {
-    IntSize backendSize = calculateBackendSize(parameters.logicalSize, parameters.resolutionScale);
+    IntSize backendSize = calculateSafeBackendSize(parameters);
     if (backendSize.isEmpty())
         return nullptr;
 
-    auto surface = IOSurface::create(backendSize, backendSize, cgColorSpace, IOSurface::formatForPixelFormat(parameters.pixelFormat));
+    auto surface = IOSurface::create(backendSize, backendSize, parameters.colorSpace, IOSurface::formatForPixelFormat(parameters.pixelFormat));
     if (!surface)
         return nullptr;
 
@@ -85,15 +102,14 @@ std::unique_ptr<ImageBufferIOSurfaceBackend> ImageBufferIOSurfaceBackend::create
 
 std::unique_ptr<ImageBufferIOSurfaceBackend> ImageBufferIOSurfaceBackend::create(const Parameters& parameters, const GraphicsContext& context)
 {
-    if (auto cgColorSpace = context.hasPlatformContext() ? contextColorSpace(context) : nullptr)
-        return ImageBufferIOSurfaceBackend::create(parameters, cgColorSpace.get(), nullptr);
+    if (auto cgColorSpace = context.hasPlatformContext() ? contextColorSpace(context) : nullptr) {
+        auto overrideParameters = parameters;
+        overrideParameters.colorSpace = DestinationColorSpace { cgColorSpace };
+
+        return ImageBufferIOSurfaceBackend::create(overrideParameters, nullptr);
+    }
 
     return ImageBufferIOSurfaceBackend::create(parameters, nullptr);
-}
-
-std::unique_ptr<ImageBufferIOSurfaceBackend> ImageBufferIOSurfaceBackend::create(const Parameters& parameters, const HostWindow* hostWindow)
-{
-    return ImageBufferIOSurfaceBackend::create(parameters, cachedCGColorSpace(parameters.colorSpace), hostWindow);
 }
 
 ImageBufferIOSurfaceBackend::ImageBufferIOSurfaceBackend(const Parameters& parameters, std::unique_ptr<IOSurface>&& surface)
@@ -106,7 +122,6 @@ ImageBufferIOSurfaceBackend::ImageBufferIOSurfaceBackend(const Parameters& param
 
 GraphicsContext& ImageBufferIOSurfaceBackend::context() const
 {
-
     GraphicsContext& context = m_surface->ensureGraphicsContext();
     if (m_needsSetupContext) {
         m_needsSetupContext = false;
@@ -125,19 +140,29 @@ IntSize ImageBufferIOSurfaceBackend::backendSize() const
     return m_surface->size();
 }
 
-size_t ImageBufferIOSurfaceBackend::memoryCost() const
-{
-    return m_surface->totalBytes();
-}
-
-size_t ImageBufferIOSurfaceBackend::externalMemoryCost() const
-{
-    return memoryCost();
-}
-
 unsigned ImageBufferIOSurfaceBackend::bytesPerRow() const
 {
     return m_surface->bytesPerRow();
+}
+
+void ImageBufferIOSurfaceBackend::prepareToDrawIntoContext(GraphicsContext& destContext)
+{
+    auto currentSeed = m_surface->seed();
+    if (std::exchange(m_lastSeedWhenDrawingImage, currentSeed) == currentSeed)
+        return;
+
+    if (destContext.renderingMode() == RenderingMode::Unaccelerated)
+        invalidateCachedNativeImage();
+}
+
+void ImageBufferIOSurfaceBackend::invalidateCachedNativeImage() const
+{
+    // Force QuartzCore to invalidate its cached CGImageRef for this IOSurface.
+    // This is necessary in cases where we know (a priori) that the IOSurface has been
+    // modified, but QuartzCore may have a cached CGImageRef that does not reflect the
+    // current state of the IOSurface.
+    // See https://webkit.org/b/157966 and https://webkit.org/b/228682 for more context.
+    context().fillRect({ });
 }
 
 RefPtr<NativeImage> ImageBufferIOSurfaceBackend::copyNativeImage(BackingStoreCopy) const
@@ -152,6 +177,8 @@ RefPtr<NativeImage> ImageBufferIOSurfaceBackend::sinkIntoNativeImage()
 
 void ImageBufferIOSurfaceBackend::drawConsuming(GraphicsContext& destContext, const FloatRect& destRect, const FloatRect& srcRect, const ImagePaintingOptions& options)
 {
+    prepareToDrawIntoContext(destContext);
+
     FloatRect adjustedSrcRect = srcRect;
     adjustedSrcRect.scale(resolutionScale());
 
@@ -160,34 +187,26 @@ void ImageBufferIOSurfaceBackend::drawConsuming(GraphicsContext& destContext, co
         destContext.drawNativeImage(*image, backendSize, destRect, adjustedSrcRect, options);
 }
 
-RetainPtr<CFDataRef> ImageBufferIOSurfaceBackend::toCFData(const String& mimeType, Optional<double> quality, PreserveResolution preserveResolution) const
+RetainPtr<CGImageRef> ImageBufferIOSurfaceBackend::copyCGImageForEncoding(CFStringRef destinationUTI, PreserveResolution preserveResolution) const
 {
-    if (m_requiresDrawAfterPutImageData) {
-        // Force recreating the IOSurface cached image.
-        // See https://bugs.webkit.org/show_bug.cgi?id=157966 for explaining why this is necessary.
-        context().fillRect(FloatRect(1, 1, 0, 0));
-        m_requiresDrawAfterPutImageData = false;
+    if (m_requiresDrawAfterPutPixelBuffer) {
+        invalidateCachedNativeImage();
+        m_requiresDrawAfterPutPixelBuffer = false;
     }
-    return ImageBufferCGBackend::toCFData(mimeType, quality, preserveResolution);
+    return ImageBufferCGBackend::copyCGImageForEncoding(destinationUTI, preserveResolution);
 }
 
-Vector<uint8_t> ImageBufferIOSurfaceBackend::toBGRAData() const
+std::optional<PixelBuffer> ImageBufferIOSurfaceBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect) const
 {
     IOSurface::Locker lock(*m_surface);
-    return ImageBufferBackend::toBGRAData(lock.surfaceBaseAddress());
+    return ImageBufferBackend::getPixelBuffer(outputFormat, srcRect, lock.surfaceBaseAddress());
 }
 
-RefPtr<ImageData> ImageBufferIOSurfaceBackend::getImageData(AlphaPremultiplication outputFormat, const IntRect& srcRect) const
-{
-    IOSurface::Locker lock(*m_surface);
-    return ImageBufferBackend::getImageData(outputFormat, srcRect, lock.surfaceBaseAddress());
-}
-
-void ImageBufferIOSurfaceBackend::putImageData(AlphaPremultiplication inputFormat, const ImageData& imageData, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
+void ImageBufferIOSurfaceBackend::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
 {
     IOSurface::Locker lock(*m_surface, IOSurface::Locker::AccessMode::ReadWrite);
-    ImageBufferBackend::putImageData(inputFormat, imageData, srcRect, destPoint, destFormat, lock.surfaceBaseAddress());
-    m_requiresDrawAfterPutImageData = true;
+    ImageBufferBackend::putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat, lock.surfaceBaseAddress());
+    m_requiresDrawAfterPutPixelBuffer = true;
 }
 
 IOSurface* ImageBufferIOSurfaceBackend::surface()

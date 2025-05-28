@@ -36,7 +36,9 @@
 #import <WebKit/WebKitPrivate.h>
 #import <WebKit/_WKActivatedElementInfo.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
+#import <WebKit/_WKTextInputContext.h>
 #import <objc/runtime.h>
+#import <wtf/BlockPtr.h>
 #import <wtf/RetainPtr.h>
 
 #if PLATFORM(MAC)
@@ -129,6 +131,27 @@ static NSString *overrideBundleIdentifier(id, SEL)
     TestWebKitAPI::Util::run(&done);
     return success;
 }
+
+#if PLATFORM(IOS_FAMILY)
+
+- (UIView <UITextInputPrivate, UITextInputMultiDocument> *)textInputContentView
+{
+    return (UIView <UITextInputPrivate, UITextInputMultiDocument> *)[self valueForKey:@"_currentContentView"];
+}
+
+- (NSArray<_WKTextInputContext *> *)synchronouslyRequestTextInputContextsInRect:(CGRect)rect
+{
+    __block bool finished = false;
+    __block RetainPtr<NSArray<_WKTextInputContext *>> result;
+    [self _requestTextInputContextsInRect:rect completionHandler:^(NSArray<_WKTextInputContext *> *contexts) {
+        result = contexts;
+        finished = true;
+    }];
+    TestWebKitAPI::Util::run(&finished);
+    return result.autorelease();
+}
+
+#endif // PLATFORM(IOS_FAMILY)
 
 - (NSString *)contentsAsString
 {
@@ -255,6 +278,7 @@ static NSString *overrideBundleIdentifier(id, SEL)
 
 @implementation TestMessageHandler {
     NSMutableDictionary<NSString *, dispatch_block_t> *_messageHandlers;
+    BlockPtr<void(NSString *)> _wildcardMessageHandler;
 }
 
 - (void)addMessage:(NSString *)message withHandler:(dispatch_block_t)handler
@@ -263,6 +287,11 @@ static NSString *overrideBundleIdentifier(id, SEL)
         _messageHandlers = [NSMutableDictionary dictionary];
 
     _messageHandlers[message] = [handler copy];
+}
+
+- (void)setWildcardMessageHandler:(void (^)(NSString *))handler
+{
+    _wildcardMessageHandler = handler;
 }
 
 - (void)removeMessage:(NSString *)message
@@ -275,6 +304,9 @@ static NSString *overrideBundleIdentifier(id, SEL)
     dispatch_block_t handler = _messageHandlers[message.body];
     if (handler)
         handler();
+
+    if (_wildcardMessageHandler)
+        _wildcardMessageHandler(message.body);
 }
 
 @end
@@ -511,6 +543,15 @@ static UICalloutBar *suppressUICalloutBar()
     [_testHandler addMessage:message withHandler:action];
 }
 
+- (void)performAfterReceivingAnyMessage:(void (^)(NSString *))action
+{
+    if (!_testHandler) {
+        _testHandler = adoptNS([[TestMessageHandler alloc] init]);
+        [[[self configuration] userContentController] addScriptMessageHandler:_testHandler.get() name:@"testHandler"];
+    }
+    [_testHandler setWildcardMessageHandler:action];
+}
+
 - (void)synchronouslyLoadHTMLStringAndWaitUntilAllImmediateChildFramesPaint:(NSString *)html
 {
     bool didFireDOMLoadEvent = false;
@@ -617,6 +658,24 @@ static UICalloutBar *suppressUICalloutBar()
     [self evaluateJavaScript:[NSString stringWithFormat:@"document.getElementById('%@').click();", elementID] completionHandler:nil];
 }
 
+- (void)waitForPendingMouseEvents
+{
+    __block bool doneProcessingMouseEvents = false;
+    [self _doAfterProcessingAllPendingMouseEvents:^{
+        doneProcessingMouseEvents = true;
+    }];
+    TestWebKitAPI::Util::run(&doneProcessingMouseEvents);
+}
+
+- (void)focus
+{
+#if PLATFORM(MAC)
+    [_hostWindow makeFirstResponder:self];
+#else
+    [super becomeFirstResponder];
+#endif
+}
+
 #if PLATFORM(IOS_FAMILY)
 
 - (void)didStartFormControlInteraction
@@ -657,11 +716,6 @@ static UICalloutBar *suppressUICalloutBar()
     }
 }
 
-- (UIView <UITextInputPrivate, UITextInputMultiDocument> *)textInputContentView
-{
-    return (UIView <UITextInputPrivate, UITextInputMultiDocument> *)[self valueForKey:@"_currentContentView"];
-}
-
 - (RetainPtr<NSArray>)selectionRectsAfterPresentationUpdate
 {
     RetainPtr<TestWKWebView> retainedSelf = self;
@@ -669,7 +723,7 @@ static UICalloutBar *suppressUICalloutBar()
     __block bool isDone = false;
     __block RetainPtr<NSArray> selectionRects;
     [self _doAfterNextPresentationUpdate:^() {
-        selectionRects = adoptNS([[retainedSelf _uiTextSelectionRects] retain]);
+        selectionRects = [retainedSelf _uiTextSelectionRects];
         isDone = true;
     }];
 
@@ -814,20 +868,16 @@ static WKContentView *recursiveFindWKContentView(UIView *view)
 
 - (void)typeCharacter:(char)character
 {
+    [self typeCharacter:character modifiers:0];
+}
+
+- (void)typeCharacter:(char)character modifiers:(NSEventModifierFlags)modifiers
+{
     NSString *characterAsString = [NSString stringWithFormat:@"%c" , character];
     NSEventType keyDownEventType = NSEventTypeKeyDown;
     NSEventType keyUpEventType = NSEventTypeKeyUp;
-    [self keyDown:[NSEvent keyEventWithType:keyDownEventType location:NSZeroPoint modifierFlags:0 timestamp:self.eventTimestamp windowNumber:[_hostWindow windowNumber] context:nil characters:characterAsString charactersIgnoringModifiers:characterAsString isARepeat:NO keyCode:character]];
-    [self keyUp:[NSEvent keyEventWithType:keyUpEventType location:NSZeroPoint modifierFlags:0 timestamp:self.eventTimestamp windowNumber:[_hostWindow windowNumber] context:nil characters:characterAsString charactersIgnoringModifiers:characterAsString isARepeat:NO keyCode:character]];
-}
-
-- (void)waitForPendingMouseEvents
-{
-    __block bool doneProcessingMouseEvents = false;
-    [self _doAfterProcessingAllPendingMouseEvents:^{
-        doneProcessingMouseEvents = true;
-    }];
-    TestWebKitAPI::Util::run(&doneProcessingMouseEvents);
+    [self keyDown:[NSEvent keyEventWithType:keyDownEventType location:NSZeroPoint modifierFlags:modifiers timestamp:self.eventTimestamp windowNumber:[_hostWindow windowNumber] context:nil characters:characterAsString charactersIgnoringModifiers:characterAsString isARepeat:NO keyCode:character]];
+    [self keyUp:[NSEvent keyEventWithType:keyUpEventType location:NSZeroPoint modifierFlags:modifiers timestamp:self.eventTimestamp windowNumber:[_hostWindow windowNumber] context:nil characters:characterAsString charactersIgnoringModifiers:characterAsString isARepeat:NO keyCode:character]];
 }
 
 @end

@@ -52,9 +52,9 @@ struct WindowFeatures;
 }
 
 namespace WebKit {
+enum class TapHandlingResult : uint8_t;
 class NativeWebKeyboardEvent;
 class NativeWebWheelEvent;
-class NotificationPermissionRequest;
 class UserMediaPermissionRequestProxy;
 class WebColorPickerResultListenerProxy;
 class WebFrameProxy;
@@ -137,7 +137,7 @@ public:
     virtual void decidePolicyForGeolocationPermissionRequest(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, const WebKit::FrameInfoData&, Function<void(bool)>&) { }
     virtual void decidePolicyForUserMediaPermissionRequest(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, SecurityOrigin&, SecurityOrigin&, WebKit::UserMediaPermissionRequestProxy& request) { request.doDefaultAction(); }
     virtual void checkUserMediaPermissionForOrigin(WebKit::WebPageProxy&, WebKit::WebFrameProxy&, SecurityOrigin&, SecurityOrigin&, WebKit::UserMediaPermissionCheckProxy& request) { request.deny(); }
-    virtual void decidePolicyForNotificationPermissionRequest(WebKit::WebPageProxy&, SecurityOrigin&, Function<void(bool)>&& completionHandler) { completionHandler(false); }
+    virtual void decidePolicyForNotificationPermissionRequest(WebKit::WebPageProxy&, SecurityOrigin&, CompletionHandler<void(bool allowed)>&& completionHandler) { completionHandler(false); }
     virtual void requestStorageAccessConfirm(WebKit::WebPageProxy&, WebKit::WebFrameProxy*, const WebCore::RegistrableDomain& requestingDomain, const WebCore::RegistrableDomain& currentDomain, CompletionHandler<void(bool)>&& completionHandler) { completionHandler(true); }
 
     // Printing.
@@ -195,9 +195,9 @@ public:
     virtual void runWebAuthenticationPanel(WebKit::WebPageProxy&, WebAuthenticationPanel&, WebKit::WebFrameProxy&, WebKit::FrameInfoData&&, CompletionHandler<void(WebKit::WebAuthenticationPanelResult)>&& completionHandler) { completionHandler(WebKit::WebAuthenticationPanelResult::Unavailable); }
 #endif
 
-    virtual void didAttachLocalInspector(WebKit::WebPageProxy&, WebKit::WebInspectorProxy&) { }
-    virtual void willCloseLocalInspector(WebKit::WebPageProxy&, WebKit::WebInspectorProxy&) { }
-    virtual Ref<API::InspectorConfiguration> configurationForLocalInspector(WebKit::WebPageProxy&, WebKit::WebInspectorProxy&)
+    virtual void didAttachLocalInspector(WebKit::WebPageProxy&, WebKit::WebInspectorUIProxy&) { }
+    virtual void willCloseLocalInspector(WebKit::WebPageProxy&, WebKit::WebInspectorUIProxy&) { }
+    virtual Ref<API::InspectorConfiguration> configurationForLocalInspector(WebKit::WebPageProxy&, WebKit::WebInspectorUIProxy&)
     {
         return API::InspectorConfiguration::create();
     }
@@ -208,6 +208,9 @@ public:
 
     virtual void decidePolicyForMediaKeySystemPermissionRequest(WebKit::WebPageProxy& page, API::SecurityOrigin& origin, const WTF::String& keySystem, CompletionHandler<void(bool)>&& completionHandler) { page.requestMediaKeySystemPermissionByDefaultAction(origin.securityOrigin(), WTFMove(completionHandler)); }
 
+#if ENABLE(WEBXR) && PLATFORM(COCOA)
+    virtual void startXRSession(WebKit::WebPageProxy&, CompletionHandler<void(RetainPtr<id>)>&& completionHandler) { completionHandler(nil); }
+#endif
 };
 
 } // namespace API

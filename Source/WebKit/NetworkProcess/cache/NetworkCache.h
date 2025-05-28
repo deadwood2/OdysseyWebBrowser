@@ -59,11 +59,7 @@ struct GlobalFrameID {
 
 inline unsigned GlobalFrameID::hash() const
 {
-    unsigned hashes[2];
-    hashes[0] = WTF::intHash(webPageID.toUInt64());
-    hashes[1] = WTF::intHash(frameID.toUInt64());
-
-    return StringHasher::hashMemory(hashes, sizeof(hashes));
+    return computeHash(webPageID, frameID);
 }
 
 inline bool operator==(const GlobalFrameID& a, const GlobalFrameID& b)
@@ -73,8 +69,8 @@ inline bool operator==(const GlobalFrameID& a, const GlobalFrameID& b)
     return a.webPageID == b.webPageID &&  a.frameID == b.frameID;
 }
 
-};
-} // namespace NetworkCache
+}
+}
 
 namespace WTF {
 
@@ -87,9 +83,9 @@ struct GlobalFrameIDHash {
 template<> struct HashTraits<WebKit::NetworkCache::GlobalFrameID> : GenericHashTraits<WebKit::NetworkCache::GlobalFrameID> {
     static WebKit::NetworkCache::GlobalFrameID emptyValue() { return { }; }
 
-    static void constructDeletedValue(WebKit::NetworkCache::GlobalFrameID& slot) { slot.webPageID = makeObjectIdentifier<WebCore::PageIdentifierType>(std::numeric_limits<uint64_t>::max()); }
+    static void constructDeletedValue(WebKit::NetworkCache::GlobalFrameID& slot) { new (NotNull, &slot.webPageID) WebCore::PageIdentifier(WTF::HashTableDeletedValue); }
 
-    static bool isDeletedValue(const WebKit::NetworkCache::GlobalFrameID& slot) { return slot.webPageID.toUInt64() == std::numeric_limits<uint64_t>::max(); }
+    static bool isDeletedValue(const WebKit::NetworkCache::GlobalFrameID& slot) { return slot.webPageID.isHashTableDeletedValue(); }
 };
 
 template<> struct DefaultHash<WebKit::NetworkCache::GlobalFrameID> : GlobalFrameIDHash { };
@@ -169,9 +165,9 @@ public:
         WTF_MAKE_FAST_ALLOCATED;
     };
     using RetrieveCompletionHandler = Function<void(std::unique_ptr<Entry>, const RetrieveInfo&)>;
-    void retrieve(const WebCore::ResourceRequest&, const GlobalFrameID&, Optional<NavigatingToAppBoundDomain>, RetrieveCompletionHandler&&);
+    void retrieve(const WebCore::ResourceRequest&, const GlobalFrameID&, std::optional<NavigatingToAppBoundDomain>, RetrieveCompletionHandler&&);
     std::unique_ptr<Entry> store(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&, RefPtr<WebCore::SharedBuffer>&&, Function<void(MappedBody&)>&& = nullptr);
-    std::unique_ptr<Entry> storeRedirect(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&, const WebCore::ResourceRequest& redirectRequest, Optional<Seconds> maxAgeCap);
+    std::unique_ptr<Entry> storeRedirect(const WebCore::ResourceRequest&, const WebCore::ResourceResponse&, const WebCore::ResourceRequest& redirectRequest, std::optional<Seconds> maxAgeCap);
     std::unique_ptr<Entry> update(const WebCore::ResourceRequest&, const Entry&, const WebCore::ResourceResponse& validatingResponse);
 
     struct TraversalEntry {
@@ -201,13 +197,13 @@ public:
 #endif
 
 #if ENABLE(NETWORK_CACHE_STALE_WHILE_REVALIDATE)
-    void startAsyncRevalidationIfNeeded(const WebCore::ResourceRequest&, const NetworkCache::Key&, std::unique_ptr<Entry>&&, const GlobalFrameID&, Optional<NavigatingToAppBoundDomain>);
+    void startAsyncRevalidationIfNeeded(const WebCore::ResourceRequest&, const NetworkCache::Key&, std::unique_ptr<Entry>&&, const GlobalFrameID&, std::optional<NavigatingToAppBoundDomain>);
 #endif
 
     void browsingContextRemoved(WebPageProxyIdentifier, WebCore::PageIdentifier, WebCore::FrameIdentifier);
 
     NetworkProcess& networkProcess() { return m_networkProcess.get(); }
-    const PAL::SessionID& sessionID() const { return m_sessionID; }
+    PAL::SessionID sessionID() const { return m_sessionID; }
     const String& storageDirectory() const { return m_storageDirectory; }
 
     ~Cache();
@@ -222,7 +218,7 @@ private:
     String dumpFilePath() const;
     void deleteDumpFile();
 
-    Optional<Seconds> maxAgeCap(Entry&, const WebCore::ResourceRequest&, PAL::SessionID);
+    std::optional<Seconds> maxAgeCap(Entry&, const WebCore::ResourceRequest&, PAL::SessionID);
 
     Ref<Storage> m_storage;
     Ref<NetworkProcess> m_networkProcess;

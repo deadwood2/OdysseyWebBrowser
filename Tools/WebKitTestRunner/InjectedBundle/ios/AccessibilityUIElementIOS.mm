@@ -50,6 +50,7 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (id)accessibilityElementForRow:(NSInteger)row andColumn:(NSInteger)column;
 - (NSURL *)accessibilityURL;
 - (NSArray *)accessibilityHeaderElements;
+- (NSArray *)accessibilityDetailsElements;
 - (NSArray *)accessibilityErrorMessageElements;
 - (NSString *)accessibilityPlaceholderValue;
 - (NSString *)stringForRange:(NSRange)range;
@@ -57,6 +58,7 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (NSAttributedString *)attributedStringForElement;
 - (NSArray *)elementsForRange:(NSRange)range;
 - (NSString *)selectionRangeString;
+- (NSArray *)lineRectsAndText;
 - (CGPoint)accessibilityClickPoint;
 - (void)accessibilityModifySelection:(WebCore::TextGranularity)granularity increase:(BOOL)increase;
 - (NSRange)_accessibilitySelectedTextRange;
@@ -78,6 +80,7 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (NSUInteger)accessibilityARIAColumnCount;
 - (NSUInteger)accessibilityARIARowIndex;
 - (NSUInteger)accessibilityARIAColumnIndex;
+- (NSString *)accessibilityInvalidStatus;
 - (BOOL)accessibilityIsInDescriptionListDefinition;
 - (BOOL)accessibilityIsInDescriptionListTerm;
 - (UIAccessibilityTraits)_axContainedByFieldsetTrait;
@@ -100,11 +103,13 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (id)_accessibilityLandmarkAncestor;
 - (id)_accessibilityListAncestor;
 - (id)_accessibilityPhotoDescription;
+- (NSArray *)accessibilityImageOverlayElements;
 
 // TextMarker related
 - (NSArray *)textMarkerRange;
 - (NSInteger)lengthForTextMarkers:(NSArray *)textMarkers;
 - (NSString *)stringForTextMarkers:(NSArray *)markers;
+- (NSArray *)textRectsFromMarkers:(NSArray *)markers withText:(NSString *)text;
 - (id)startOrEndTextMarkerForTextMarkers:(NSArray*)textMarkers isStart:(BOOL)isStart;
 - (NSArray *)textMarkerRangeForMarkers:(NSArray *)textMarkers;
 - (NSInteger)positionForTextMarker:(id)marker;
@@ -130,7 +135,7 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
     if (!jsStringRef)
         return nil;
     
-    return CFBridgingRelease(JSStringCopyCFString(kCFAllocatorDefault, jsStringRef));
+    return adoptCF(JSStringCopyCFString(kCFAllocatorDefault, jsStringRef)).bridgingAutorelease();
 }
 
 - (JSRetainPtr<JSStringRef>)createJSStringRef
@@ -212,6 +217,11 @@ void AccessibilityUIElement::getDocumentLinks(Vector<RefPtr<AccessibilityUIEleme
 {
 }
 
+JSValueRef AccessibilityUIElement::children() const
+{
+    return makeJSArray(makeVector<RefPtr<AccessibilityUIElement>>([m_element accessibilityElements]));
+}
+
 void AccessibilityUIElement::getChildren(Vector<RefPtr<AccessibilityUIElement> >& elementVector)
 {
     NSInteger childCount = [m_element accessibilityElementCount];
@@ -267,6 +277,14 @@ RefPtr<AccessibilityUIElement> AccessibilityUIElement::childAtIndex(unsigned ind
 RefPtr<AccessibilityUIElement> AccessibilityUIElement::linkedUIElementAtIndex(unsigned index)
 {
     return nullptr;
+}
+
+JSValueRef AccessibilityUIElement::detailsElements() const
+{
+    NSArray *elements = [m_element accessibilityDetailsElements];
+    if ([elements isKindOfClass:NSArray.class])
+        return makeJSArray(makeVector<RefPtr<AccessibilityUIElement>>(elements));
+    return { };
 }
 
 JSValueRef AccessibilityUIElement::errorMessageElements() const
@@ -392,10 +410,13 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::stringAttributeValue(JSStringRe
 
     if (JSStringIsEqualToUTF8CString(attribute, "AXExpandedTextValue"))
         return [[m_element accessibilityExpandedTextValue] createJSStringRef];
-    
+
+    if (JSStringIsEqualToUTF8CString(attribute, "AXInvalid"))
+        return [[m_element accessibilityInvalidStatus] createJSStringRef];
+
     if (JSStringIsEqualToUTF8CString(attribute, "AXSortDirection"))
         return [[m_element accessibilitySortDirection] createJSStringRef];
-    
+
     if (JSStringIsEqualToUTF8CString(attribute, "AXVisibleContentRect")) {
         CGRect screenRect = [m_element accessibilityVisibleContentRect];
         NSString *rectStr = [NSString stringWithFormat:@"{%.2f, %.2f, %.2f, %.2f}", screenRect.origin.x, screenRect.origin.y, screenRect.size.width, screenRect.size.height];
@@ -404,7 +425,7 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::stringAttributeValue(JSStringRe
 
     if (JSStringIsEqualToUTF8CString(attribute, "AXTextualContext"))
         return [[m_element accessibilityTextualContext] createJSStringRef];
-    
+
     return createJSString();
 }
 
@@ -551,6 +572,11 @@ double AccessibilityUIElement::clickPointX()
 double AccessibilityUIElement::clickPointY()
 {
     return [m_element accessibilityClickPoint].y;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::lineRectsAndText() const
+{
+    return [[[m_element lineRectsAndText] componentsJoinedByString:@"|"] createJSStringRef];
 }
 
 double AccessibilityUIElement::intValue() const
@@ -904,7 +930,7 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::selectedTextRange()
     return [rangeDescription createJSStringRef];
 }
 
-bool AccessibilityUIElement::setSelectedVisibleTextRange(AccessibilityTextMarkerRange*)
+bool AccessibilityUIElement::setSelectedTextMarkerRange(AccessibilityTextMarkerRange*)
 {
     return false;
 }
@@ -1087,6 +1113,11 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::embeddedImageDescription() cons
     return concatenateAttributeAndValue(@"AXEmbeddedImageDescription", [m_element _accessibilityPhotoDescription]);
 }
 
+JSValueRef AccessibilityUIElement::imageOverlayElements() const
+{
+    return makeJSArray(makeVector<RefPtr<AccessibilityUIElement>>([m_element accessibilityImageOverlayElements]));
+}
+
 bool AccessibilityUIElement::isCollapsed() const
 {
     return false;
@@ -1180,6 +1211,14 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::stringForTextMarkerRange(Access
     if (![textMarkers isKindOfClass:[NSArray class]])
         return createJSString();
     return [[m_element stringForTextMarkers:textMarkers] createJSStringRef];
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::rectsForTextMarkerRange(AccessibilityTextMarkerRange* markerRange, JSStringRef text)
+{
+    id textMarkers = markerRange->platformTextMarkerRange();
+    if (![textMarkers isKindOfClass:[NSArray class]])
+        return createJSString();
+    return [[[m_element textRectsFromMarkers:textMarkers withText:[NSString stringWithJSStringRef:text]] componentsJoinedByString:@","] createJSStringRef];
 }
 
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::textMarkerRangeForMarkers(AccessibilityTextMarker* startMarker, AccessibilityTextMarker* endMarker)

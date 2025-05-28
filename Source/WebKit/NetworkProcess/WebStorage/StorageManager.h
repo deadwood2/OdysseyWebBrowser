@@ -74,15 +74,15 @@ public:
     void clearStorageNamespaces();
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>& replyEncoder);
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>& replyEncoder);
     
     LocalStorageDatabaseTracker* localStorageDatabaseTracker() const { return m_localStorageDatabaseTracker.get(); }
     
     static const unsigned localStorageDatabaseQuotaInBytes;
 
-    StorageArea* createLocalStorageArea(StorageNamespaceIdentifier, WebCore::SecurityOriginData&&, Ref<WorkQueue>&&);
-    StorageArea* createTransientLocalStorageArea(StorageNamespaceIdentifier, WebCore::SecurityOriginData&&, WebCore::SecurityOriginData&&, Ref<WorkQueue>&&);
-    StorageArea* createSessionStorageArea(StorageNamespaceIdentifier, WebCore::SecurityOriginData&&, Ref<WorkQueue>&&);
+    StorageArea* createLocalStorageArea(StorageNamespaceIdentifier, WebCore::SecurityOriginData&&, Ref<SuspendableWorkQueue>&&);
+    StorageArea* createTransientLocalStorageArea(StorageNamespaceIdentifier, WebCore::SecurityOriginData&&, WebCore::SecurityOriginData&&, Ref<SuspendableWorkQueue>&&);
+    StorageArea* createSessionStorageArea(StorageNamespaceIdentifier, WebCore::SecurityOriginData&&, Ref<SuspendableWorkQueue>&&);
 
     Vector<StorageAreaIdentifier> allStorageAreaIdentifiers() const;
 

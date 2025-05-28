@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "CallbackID.h"
 #include "Connection.h"
 #include "WebEvent.h"
 #include <WebCore/PageIdentifier.h>
@@ -43,6 +42,7 @@
 #endif
 
 namespace WebCore {
+struct DisplayUpdate;
 class ThreadedScrollingTree;
 using PlatformDisplayID = uint32_t;
 }
@@ -106,8 +106,8 @@ private:
     static void sendDidReceiveEvent(WebCore::PageIdentifier, WebEvent::Type, bool didHandleEvent);
 #endif
 
-#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
-    void displayWasRefreshed(WebCore::PlatformDisplayID);
+#if PLATFORM(MAC)
+    void displayWasRefreshed(WebCore::PlatformDisplayID, const WebCore::DisplayUpdate&, bool sendToMainThread);
 #endif
 
 #if ENABLE(SCROLLING_THREAD)
@@ -117,13 +117,13 @@ private:
     Ref<WorkQueue> m_queue;
 
 #if ENABLE(SCROLLING_THREAD)
-    Lock m_scrollingTreesMutex;
-    HashMap<WebCore::PageIdentifier, RefPtr<WebCore::ThreadedScrollingTree>> m_scrollingTrees;
+    Lock m_scrollingTreesLock;
+    HashMap<WebCore::PageIdentifier, RefPtr<WebCore::ThreadedScrollingTree>> m_scrollingTrees WTF_GUARDED_BY_LOCK(m_scrollingTreesLock);
 #endif
     std::unique_ptr<WebCore::WheelEventDeltaFilter> m_recentWheelEventDeltaFilter;
 #if ENABLE(IOS_TOUCH_EVENTS)
     Lock m_touchEventsLock;
-    HashMap<WebCore::PageIdentifier, TouchEventQueue> m_touchEvents;
+    HashMap<WebCore::PageIdentifier, TouchEventQueue> m_touchEvents WTF_GUARDED_BY_LOCK(m_touchEventsLock);
 #endif
 };
 

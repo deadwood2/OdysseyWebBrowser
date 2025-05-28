@@ -154,14 +154,13 @@ void CACFLayerTreeHost::initialize()
     // cause any repositioning.
     // Scrolling will affect only the position of the scroll layer without affecting the bounds.
 
-    m_rootLayer->setName("CACFLayerTreeHost rootLayer");
+    m_rootLayer->setName(MAKE_STATIC_STRING_IMPL("CACFLayerTreeHost rootLayer"));
     m_rootLayer->setAnchorPoint(FloatPoint3D(0, 0, 0));
     m_rootLayer->setGeometryFlipped(true);
 
 #ifndef NDEBUG
-    CGColorRef debugColor = CGColorCreateGenericRGB(1, 0, 0, 0.8);
-    m_rootLayer->setBackgroundColor(debugColor);
-    CGColorRelease(debugColor);
+    auto debugColor = adoptCF(CGColorCreateGenericRGB(1, 0, 0, 0.8));
+    m_rootLayer->setBackgroundColor(roundAndClampToSRGBALossy(debugColor.get()));
 #endif
 }
 
@@ -372,7 +371,7 @@ void CACFLayerTreeHost::updateDebugInfoLayer(bool showLayer)
 
         if (m_debugInfoLayer) {
 #ifndef NDEBUG
-            m_debugInfoLayer->setName("Debug Info");
+            m_debugInfoLayer->setName(MAKE_STATIC_STRING_IMPL("Debug Info"));
 #endif
             m_rootLayer->appendSublayer(*m_debugInfoLayer);
         }

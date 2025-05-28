@@ -171,7 +171,7 @@ void SpeechRecognitionPermissionManager::continueProcessingRequest()
     completeCurrentRequest();
 }
 
-void SpeechRecognitionPermissionManager::completeCurrentRequest(Optional<WebCore::SpeechRecognitionError>&& error)
+void SpeechRecognitionPermissionManager::completeCurrentRequest(std::optional<WebCore::SpeechRecognitionError>&& error)
 {
     ASSERT(!m_requests.isEmpty());
     auto currentRequest = m_requests.takeFirst();
@@ -243,8 +243,7 @@ void SpeechRecognitionPermissionManager::requestUserPermission(WebCore::SpeechRe
 void SpeechRecognitionPermissionManager::decideByDefaultAction(const WebCore::SecurityOriginData& origin, CompletionHandler<void(bool)>&& completionHandler)
 {
 #if PLATFORM(COCOA)
-    OptionSet<MediaPermissionType> type = MediaPermissionType::Audio;
-    alertForPermission(m_page, MediaPermissionReason::SpeechRecognition, type, origin, WTFMove(completionHandler));
+    alertForPermission(m_page, MediaPermissionReason::SpeechRecognition, origin, WTFMove(completionHandler));
 #else
     completionHandler(false);
 #endif

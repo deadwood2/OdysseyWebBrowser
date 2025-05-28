@@ -59,6 +59,9 @@ RemoteGraphicsContextGLProxy::RemoteGraphicsContextGLProxy(GPUProcessConnection&
     m_gpuProcessConnection->addClient(*this);
     m_gpuProcessConnection->messageReceiverMap().addMessageReceiver(Messages::RemoteGraphicsContextGLProxy::messageReceiverName(), m_graphicsContextGLIdentifier.toUInt64(), *this);
     connection().send(Messages::GPUConnectionToWebProcess::CreateGraphicsContextGL(attributes, m_graphicsContextGLIdentifier, renderingBackend, m_streamConnection.streamBuffer()), 0, IPC::SendOption::DispatchMessageEvenWhenWaitingForSyncReply);
+    // TODO: We must wait until initialized, because at the moment we cannot receive IPC messages
+    // during wait while in synchronous stream send. Should be fixed as part of https://bugs.webkit.org/show_bug.cgi?id=217211.
+    waitUntilInitialized();
 }
 
 RemoteGraphicsContextGLProxy::~RemoteGraphicsContextGLProxy()
@@ -91,11 +94,8 @@ void RemoteGraphicsContextGLProxy::prepareForDisplay()
         markContextLost();
         return;
     }
-    auto displayBuffer = IOSurface::createFromSendRight(WTFMove(displayBufferSendRight), sRGBColorSpaceRef());
+    auto displayBuffer = IOSurface::createFromSendRight(WTFMove(displayBufferSendRight), WebCore::DestinationColorSpace::SRGB());
     if (displayBuffer) {
-        // Claim in the WebProcess ownership of the IOSurface constructed by the GPUProcess so that Jetsam knows which processes to kill.
-        displayBuffer->setOwnership(mach_task_self());
-
         auto& sc = platformSwapChain();
         sc.recycleBuffer();
         sc.present({ WTFMove(displayBuffer), nullptr });
@@ -128,12 +128,6 @@ void RemoteGraphicsContextGLProxy::notifyMarkContextChanged()
         markContextLost();
 }
 
-void RemoteGraphicsContextGLProxy::simulateContextChanged()
-{
-    // FIXME: Currently not implemented because it's not clear this is the right way. https://bugs.webkit.org/show_bug.cgi?id=219349
-    notImplemented();
-}
-
 void RemoteGraphicsContextGLProxy::paintRenderingResultsToCanvas(ImageBuffer& buffer)
 {
     // FIXME: the buffer is "relatively empty" always, but for consistency, we need to ensure
@@ -142,7 +136,7 @@ void RemoteGraphicsContextGLProxy::paintRenderingResultsToCanvas(ImageBuffer& bu
 
     // FIXME: We cannot synchronize so that we would know no pending operations are using the `buffer`.
 
-    // FIXME: Currently RemoteImageBufferProxy::getImageData et al do not wait for the flushes of the images
+    // FIXME: Currently RemoteImageBufferProxy::getPixelBuffer et al do not wait for the flushes of the images
     // inside the display lists. Rather, it assumes that processing its sequence (e.g. the display list) will equal to read flush being
     // fulfilled. For below, we cannot create a new flush id since we go through different sequence (RemoteGraphicsContextGL sequence)
 
@@ -181,7 +175,7 @@ void RemoteGraphicsContextGLProxy::synthesizeGLError(GCGLenum error)
     if (!isContextLost()) {
         auto sendResult = send(Messages::RemoteGraphicsContextGL::SynthesizeGLError(error));
         if (!sendResult)
-            wasLost();
+            markContextLost();
         return;
     }
     m_errorWhenContextIsLost = error;
@@ -193,10 +187,19 @@ GCGLenum RemoteGraphicsContextGLProxy::getError()
         uint32_t returnValue = 0;
         auto sendResult = sendSync(Messages::RemoteGraphicsContextGL::GetError(), Messages::RemoteGraphicsContextGL::GetError::Reply(returnValue));
         if (!sendResult)
-            wasLost();
+            markContextLost();
         return static_cast<GCGLenum>(returnValue);
     }
     return std::exchange(m_errorWhenContextIsLost, NO_ERROR);
+}
+
+void RemoteGraphicsContextGLProxy::simulateEventForTesting(SimulatedEventForTesting event)
+{
+    if (!isContextLost()) {
+        auto sendResult = send(Messages::RemoteGraphicsContextGL::SimulateEventForTesting(event));
+        if (!sendResult)
+            markContextLost();
+    }
 }
 
 void RemoteGraphicsContextGLProxy::wasCreated(bool didSucceed, IPC::Semaphore&& semaphore, String&& availableExtensions, String&& requestedExtensions)

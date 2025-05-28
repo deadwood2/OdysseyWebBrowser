@@ -31,6 +31,7 @@
 #import <WebCore/ScrollingTreeScrollingNodeDelegate.h>
 
 @class CALayer;
+@class UIScrollEvent;
 @class UIScrollView;
 @class WKScrollingNodeScrollViewDelegate;
 
@@ -56,7 +57,7 @@ public:
     void scrollViewWillStartPanGesture() const;
     void scrollViewDidScroll(const WebCore::FloatPoint& scrollOffset, bool inUserInteraction);
 
-    void currentSnapPointIndicesDidChange(unsigned horizontal, unsigned vertical) const;
+    void currentSnapPointIndicesDidChange(std::optional<unsigned> horizontal, std::optional<unsigned> vertical) const;
     CALayer *scrollLayer() const { return m_scrollLayer.get(); }
 
     void resetScrollViewDelegate();

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Copyright (C) 2009-2020 Apple Inc. All rights reserved.
 # Copyright (C) 2012 Google Inc. All rights reserved.
@@ -110,8 +110,10 @@ def copyBuildFiles(source, destination, patterns):
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns(*patterns))
 
 
-def createZipFromList(listToZip, configuration, excludePattern=None):
-    archiveDir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'WebKitBuild'))
+def createZipFromList(listToZip, configuration, excludePatterns=None):
+    global _topLevelBuildDirectory
+    global _configurationBuildDirectory
+    archiveDir = _topLevelBuildDirectory
     archiveFile = os.path.join(archiveDir, configuration + '.zip')
 
     try:
@@ -122,8 +124,9 @@ def createZipFromList(listToZip, configuration, excludePattern=None):
 
     if sys.platform.startswith('linux'):
         zipCommand = ['zip', '-y', '-r', archiveFile] + listToZip
-        if excludePattern:
-            zipCommand += ['-x', excludePattern]
+        if excludePatterns:
+            for excludePattern in excludePatterns:
+                zipCommand += ['-x', excludePattern]
         return subprocess.call(zipCommand, cwd=_configurationBuildDirectory)
 
     raise NotImplementedError('Unsupported platform: {platform}'.format(platform=sys.platform))
@@ -195,6 +198,7 @@ def minifyDirectory(platform, directory):
 
 def archiveBuiltProduct(configuration, platform, fullPlatform, minify=False):
     assert platform in ('gtk', 'ios', 'jsc', 'mac', 'tvos', 'watchos', 'win', 'wincairo', 'wpe')
+    global _configurationBuildDirectory
 
     if platform in ['ios', 'tvos', 'watchos']:
         combinedDirectory = os.path.join(_topLevelBuildDirectory, 'combined-mac-and-{}'.format(platform))
@@ -237,14 +241,27 @@ def archiveBuiltProduct(configuration, platform, fullPlatform, minify=False):
         # On GTK+/WPE/JSC we don't need the intermediate step of creating a thinDirectory
         # to be compressed in a ZIP file, because we can create the ZIP directly.
         # This is faster and requires less disk resources.
-        neededDirectories = ['bin', 'lib']
+        contents = ['bin', 'lib']
+
+        # For WPE pack the Cog browser as well if it's present.
+        cogDirectory = os.path.join('Tools', 'cog-prefix', 'src', 'cog-build')
+        absoluteCogDirectory = os.path.join(_configurationBuildDirectory, cogDirectory)
+        if platform == 'wpe' and os.path.isdir(absoluteCogDirectory):
+            contents.extend([os.path.join(cogDirectory, filename_or_directory) for filename_or_directory in ['cog', 'cogctl', 'modules']])
+            for filename in os.listdir(absoluteCogDirectory):
+                if filename.startswith('libcogcore'):
+                    contents.append(os.path.join(cogDirectory, filename))
+
+        if platform == 'gtk':
+            contents.extend([os.path.join('install', directory) for directory in ['include', os.path.join('lib', 'pkgconfig')]])
+
         # When debug fission is enabled the directories below contain dwo files
         # with the debug information needed to generate backtraces with GDB.
         for objectDir in ['Tools', 'Source']:
             if dirContainsdwo(objectDir):
-                neededDirectories.append(objectDir)
+                contents.append(objectDir)
 
-        if createZipFromList(neededDirectories, configuration, excludePattern='*.o'):
+        if createZipFromList(contents, configuration, excludePatterns=['*.o', '*.a']):
             return 1
 
 def unzipArchive(directoryToExtractTo, configuration):

@@ -27,6 +27,7 @@
 #import "_WKProcessPoolConfigurationInternal.h"
 
 #import "LegacyGlobalSettings.h"
+#import <WebCore/WebCoreObjCExtras.h>
 #import <objc/runtime.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/cocoa/VectorCocoa.h>
@@ -45,6 +46,9 @@
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(_WKProcessPoolConfiguration.class, self))
+        return;
+
     _processPoolConfiguration->~ProcessPoolConfiguration();
 
     [super dealloc];
@@ -135,6 +139,16 @@
 - (void)setAttrStyleEnabled:(BOOL)enabled
 {
     return _processPoolConfiguration->setAttrStyleEnabled(enabled);
+}
+
+- (BOOL)shouldThrowExceptionForGlobalConstantRedeclaration
+{
+    return _processPoolConfiguration->shouldThrowExceptionForGlobalConstantRedeclaration();
+}
+
+- (void)setShouldThrowExceptionForGlobalConstantRedeclaration:(BOOL)shouldThrow
+{
+    return _processPoolConfiguration->setShouldThrowExceptionForGlobalConstantRedeclaration(shouldThrow);
 }
 
 - (NSArray<NSURL *> *)additionalReadAccessAllowedURLs
@@ -269,6 +283,16 @@
 - (BOOL)processSwapsOnWindowOpenWithOpener
 {
     return _processPoolConfiguration->processSwapsOnWindowOpenWithOpener();
+}
+
+- (void)setProcessSwapsOnNavigationWithinSameNonHTTPFamilyProtocol:(BOOL)swaps
+{
+    _processPoolConfiguration->setProcessSwapsOnNavigationWithinSameNonHTTPFamilyProtocol(swaps);
+}
+
+- (BOOL)processSwapsOnNavigationWithinSameNonHTTPFamilyProtocol
+{
+    return _processPoolConfiguration->processSwapsOnNavigationWithinSameNonHTTPFamilyProtocol();
 }
 
 - (BOOL)pageCacheEnabled

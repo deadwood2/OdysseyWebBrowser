@@ -21,7 +21,7 @@
 #include "libANGLE/renderer/metal/mtl_resources.h"
 #include "libANGLE/renderer/metal/mtl_state_cache.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
-
+#include "libANGLE/renderer/metal/ProvokingVertexHelper.h"
 namespace rx
 {
 class DisplayMtl;
@@ -157,13 +157,6 @@ class ContextMtl : public ContextImpl, public mtl::Context
                                                                    const GLint *baseVertices,
                                                                    const GLuint *baseInstances,
                                                                    GLsizei drawcount) override;
-    angle::Result drawElementsSimpleTypesPrimitiveRestart(const gl::Context *context,
-                                                          gl::PrimitiveMode mode,
-                                                          GLsizei count,
-                                                          gl::DrawElementsType type,
-                                                          const void *indices,
-                                                          GLsizei instances);
-
     // Device loss
     gl::GraphicsResetStatus getResetStatus() override;
 
@@ -287,7 +280,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     void invalidateCurrentTextures();
     void invalidateDriverUniforms();
     void invalidateRenderPipeline();
-
+    void prepareForTransformFeedbackPassTwo();
     // Call this to notify ContextMtl whenever FramebufferMtl's state changed
     void onDrawFrameBufferChangedState(const gl::Context *context,
                                        FramebufferMtl *framebuffer,
@@ -341,7 +334,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     // Ends any active command encoder
     void endEncoding(bool forceSaveRenderPassContent);
 
-    void flushCommandBufer();
+    void flushCommandBuffer(mtl::CommandBufferFinishOperation operation);
     void present(const gl::Context *context, id<CAMetalDrawable> presentationDrawable);
     angle::Result finishCommandBuffer();
 
@@ -381,6 +374,14 @@ class ContextMtl : public ContextImpl, public mtl::Context
     void ensureCommandBufferReady();
     angle::Result ensureIncompleteTexturesCreated(const gl::Context *context);
     angle::Result setupDraw(const gl::Context *context,
+                            gl::PrimitiveMode mode,
+                            GLint firstVertex,
+                            GLsizei vertexOrIndexCount,
+                            GLsizei instanceCount,
+                            gl::DrawElementsType indexTypeOrNone,
+                            const void *indices,
+                            bool transformFeedbackDraw);
+    angle::Result setupDrawImpl(const gl::Context *context,
                             gl::PrimitiveMode mode,
                             GLint firstVertex,
                             GLsizei vertexOrIndexCount,
@@ -463,7 +464,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     void updateDrawFrameBufferBinding(const gl::Context *context);
     void updateProgramExecutable(const gl::Context *context);
     void updateVertexArray(const gl::Context *context);
-
+    bool requiresIndexRewrite(const gl::State &state);
     angle::Result updateDefaultAttribute(size_t attribIndex);
     void filterOutXFBOnlyDirtyBits(const gl::Context *context);
     angle::Result handleDirtyActiveTextures(const gl::Context *context);
@@ -507,7 +508,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
         DIRTY_BIT_MAX,
     };
 
-    // See compiler/translator/TranslatorVulkan.cpp: AddDriverUniformsToShader()
+    // Keep this in sync with TranslatorMetalDirect.cpp: kGraphicsDriverUniformNames.
     struct DriverUniforms
     {
         float viewport[4];
@@ -524,21 +525,11 @@ class ContextMtl : public ContextImpl, public mtl::Context
         // NOTE: Explicit padding. Fill in with useful data when needed in the future.
         int32_t padding_0[3];
 
-        int32_t xfbBufferOffsets[4];
+        std::array<int32_t, 4> xfbBufferOffsets;
         uint32_t acbBufferOffsets[4];
 
         // We'll use x, y, z, w for near / far / diff / zscale respectively.
         float depthRange[4];
-
-        // Used to pre-rotate gl_Position for Vulkan swapchain images on Android (a mat2, which is
-        // padded to the size of two vec4's).
-        // Unused in Metal.
-        float preRotation[8] = {};
-
-        // Used to pre-rotate gl_FragCoord for Vulkan swapchain images on Android (a mat2, which is
-        // padded to the size of two vec4's).
-        // Unused in Metal.
-        float fragRotation[8] = {};
 
         uint32_t coverageMask;
 
@@ -556,6 +547,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     mtl::OcclusionQueryPool mOcclusionQueryPool;
 
     mtl::CommandBuffer mCmdBuffer;
+
     mtl::RenderCommandEncoder mRenderEncoder;
     mtl::BlitCommandEncoder mBlitEncoder;
     mtl::ComputeCommandEncoder mComputeEncoder;
@@ -598,8 +590,6 @@ class ContextMtl : public ContextImpl, public mtl::Context
     mtl::BufferPool mTriFanIndexBuffer;
     // one buffer can be reused for any starting vertex in DrawArrays()
     mtl::BufferRef mTriFanArraysIndexBuffer;
-    //
-    mtl::BufferPool mPrimitiveRestartBuffer;
 
     // Dummy texture to be used for transform feedback only pass.
     mtl::TextureRef mDummyXFBRenderTexture;
@@ -613,6 +603,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
 
     IncompleteTextureSet mIncompleteTextures;
     bool mIncompleteTexturesInitialized = false;
+    ProvokingVertexHelper mProvokingVertexHelper;
 };
 
 }  // namespace rx

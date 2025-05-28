@@ -33,6 +33,7 @@
 #import "TestWKWebView.h"
 #import <JavaScriptCore/JSCConfig.h>
 #import <WebKit/WKHTTPCookieStorePrivate.h>
+#import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKPreferencesRef.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKUserContentControllerPrivate.h>
@@ -46,6 +47,7 @@
 #import <WebKit/_WKWebsiteDataStoreConfiguration.h>
 #import <wtf/Deque.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/text/StringToIntegerConversion.h>
 #import <wtf/text/WTFString.h>
 
 static bool receivedScriptMessage;
@@ -146,7 +148,7 @@ static void runWebsiteDataStoreCustomPaths(ShouldEnableProcessPrewarming shouldE
     // We expect 4 messages, 1 each for WebSQL, IndexedDB, cookies, and localStorage.
     EXPECT_STREQ([getNextMessage().body UTF8String], "localstorage written");
     EXPECT_STREQ([getNextMessage().body UTF8String], "cookie written");
-    EXPECT_STREQ([getNextMessage().body UTF8String], "Exception: QuotaExceededError: The quota has been exceeded.");
+    EXPECT_STREQ([getNextMessage().body UTF8String], "Exception: UnknownError: Web SQL is deprecated");
     EXPECT_STREQ([getNextMessage().body UTF8String], "Success opening indexed database");
 
     __block bool flushed = false;
@@ -290,60 +292,6 @@ TEST(WebKit, WebsiteDataStoreCustomPathsWithPrewarming)
     runWebsiteDataStoreCustomPaths(ShouldEnableProcessPrewarming::Yes);
 }
 
-TEST(WebKit, CustomDataStorePathsVersusCompletionHandlers)
-{
-    // Copy the baked database files to the database directory
-    NSURL *url1 = [[NSBundle mainBundle] URLForResource:@"SimpleServiceWorkerRegistrations-4" withExtension:@"sqlite3" subdirectory:@"TestWebKitAPI.resources"];
-
-    NSURL *swPath = [NSURL fileURLWithPath:[@"~/Library/Caches/com.apple.WebKit.TestWebKitAPI/WebKit/ServiceWorkers/" stringByExpandingTildeInPath]];
-    [[NSFileManager defaultManager] removeItemAtURL:swPath error:nil];
-    EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:swPath.path]);
-
-    [[NSFileManager defaultManager] createDirectoryAtURL:swPath withIntermediateDirectories:YES attributes:nil error:nil];
-    [[NSFileManager defaultManager] copyItemAtURL:url1 toURL:[swPath URLByAppendingPathComponent:@"ServiceWorkerRegistrations-5.sqlite3"] error:nil];
-
-    auto websiteDataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
-    websiteDataStoreConfiguration.get()._serviceWorkerRegistrationDirectory = swPath;
-    auto dataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]);
-
-    // Fetch SW records
-    auto websiteDataTypes = adoptNS([[NSSet alloc] initWithArray:@[WKWebsiteDataTypeServiceWorkerRegistrations]]);
-    static bool readyToContinue;
-    [dataStore fetchDataRecordsOfTypes:websiteDataTypes.get() completionHandler:^(NSArray<WKWebsiteDataRecord *> *dataRecords) {
-        EXPECT_EQ(1U, dataRecords.count);
-        readyToContinue = true;
-    }];
-    TestWebKitAPI::Util::run(&readyToContinue);
-    readyToContinue = false;
-
-    // Fetch records again, this time releasing our reference to the data store while the request is in flight.
-    [dataStore fetchDataRecordsOfTypes:websiteDataTypes.get() completionHandler:^(NSArray<WKWebsiteDataRecord *> *dataRecords) {
-        EXPECT_EQ(1U, dataRecords.count);
-        readyToContinue = true;
-    }];
-    dataStore = nil;
-    TestWebKitAPI::Util::run(&readyToContinue);
-    readyToContinue = false;
-
-    // Delete all SW records, releasing our reference to the data store while the request is in flight.
-    dataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]);
-    [dataStore removeDataOfTypes:websiteDataTypes.get() modifiedSince:[NSDate distantPast] completionHandler:^() {
-        readyToContinue = true;
-    }];
-    dataStore = nil;
-    TestWebKitAPI::Util::run(&readyToContinue);
-    readyToContinue = false;
-
-    // The records should have been deleted, and the callback should have been made.
-    // Now refetch the records to verify they are gone.
-    dataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]);
-    [dataStore fetchDataRecordsOfTypes:websiteDataTypes.get() completionHandler:^(NSArray<WKWebsiteDataRecord *> *dataRecords) {
-        EXPECT_EQ(0U, dataRecords.count);
-        readyToContinue = true;
-    }];
-    TestWebKitAPI::Util::run(&readyToContinue);
-}
-
 TEST(WebKit, CustomDataStoreDestroyWhileFetchingNetworkProcessData)
 {
     NSURL *cookieStorageFile = [NSURL fileURLWithPath:[@"~/Library/WebKit/com.apple.WebKit.TestWebKitAPI/CustomWebsiteData/CookieStorage/Cookie.File" stringByExpandingTildeInPath] isDirectory:NO];
@@ -448,13 +396,14 @@ TEST(WebKit, AlternativeServicesDefaultDirectoryCreation)
 {
     NSURL *defaultDirectory = [NSURL fileURLWithPath:[@"~/Library/Caches/com.apple.WebKit.TestWebKitAPI/WebKit/AlternativeServices" stringByExpandingTildeInPath] isDirectory:YES];
     [[NSFileManager defaultManager] removeItemAtURL:defaultDirectory error:nil];
-    
+    EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:defaultDirectory.path]);
+
     auto webView1 = adoptNS([[TestWKWebView alloc] init]);
     [webView1 synchronouslyLoadHTMLString:@"start auxiliary processes" baseURL:nil];
 
-    EXPECT_FALSE([[NSFileManager defaultManager] fileExistsAtPath:defaultDirectory.path]);
-    
 #if HAVE(CFNETWORK_ALTERNATIVE_SERVICE)
+    // We always create the path, even if HTTP/3 is turned off.
+    EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:defaultDirectory.path]);
 
 #if PLATFORM(MAC)
     NSString *key = @"ExperimentalHTTP3Enabled";
@@ -712,6 +661,7 @@ TEST(WebKit, ApplicationCacheDirectories)
     [webViewConfiguration setWebsiteDataStore:adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]).get()];
     
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:webViewConfiguration.get()]);
+    [webView.get().configuration.preferences _setOfflineApplicationCacheIsEnabled:YES];
     [webView synchronouslyLoadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/index.html", server.port()]]]];
 
     while (![fileManager fileExistsAtPath:subdirectoryPath])
@@ -821,8 +771,8 @@ TEST(WebKit, MediaCache)
             auto end = request.find('\r', dash);
             ASSERT(end != notFound);
 
-            auto rangeBegin = *request.substring(begin + rangeBytes.length(), dash - begin - rangeBytes.length()).toUInt64Strict();
-            auto rangeEnd = *request.substring(dash + 1, end - dash - 1).toUInt64Strict();
+            auto rangeBegin = parseInteger<uint64_t>(request.substring(begin + rangeBytes.length(), dash - begin - rangeBytes.length())).value();
+            auto rangeEnd = parseInteger<uint64_t>(request.substring(dash + 1, end - dash - 1)).value();
 
             NSString *responseHeaderString = [NSString stringWithFormat:
                 @"HTTP/1.1 206 Partial Content\r\n"

@@ -47,6 +47,7 @@ public:
     bool enableAttachmentElement() const { return boolWebPreferenceFeatureValue("AttachmentElementEnabled", false); }
     bool punchOutWhiteBackgroundsInDarkMode() const { return boolWebPreferenceFeatureValue("PunchOutWhiteBackgroundsInDarkMode", false); }
     bool useServiceWorkerShortTimeout() const { return boolWebPreferenceFeatureValue("ShouldUseServiceWorkerShortTimeout", false); }
+    bool accessibilityIsolatedTreeMode() const { return boolWebPreferenceFeatureValue("IsAccessibilityIsolatedTreeEnabled", false); }
 
     bool allowsLinkPreview() const { return boolTestRunnerFeatureValue("allowsLinkPreview"); }
     bool dumpJSConsoleLogInStdErr() const { return boolTestRunnerFeatureValue("dumpJSConsoleLogInStdErr"); }
@@ -54,15 +55,17 @@ public:
     bool enableInAppBrowserPrivacy() const { return boolTestRunnerFeatureValue("enableInAppBrowserPrivacy"); }
     bool enableProcessSwapOnNavigation() const { return boolTestRunnerFeatureValue("enableProcessSwapOnNavigation"); }
     bool enableProcessSwapOnWindowOpen() const { return boolTestRunnerFeatureValue("enableProcessSwapOnWindowOpen"); }
+    bool appHighlightsEnabled() const { return boolTestRunnerFeatureValue("appHighlightsEnabled"); }
     bool ignoreSynchronousMessagingTimeouts() const { return boolTestRunnerFeatureValue("ignoreSynchronousMessagingTimeouts"); }
     bool ignoresViewportScaleLimits() const { return boolTestRunnerFeatureValue("ignoresViewportScaleLimits"); }
     bool isAppBoundWebView() const { return boolTestRunnerFeatureValue("isAppBoundWebView"); }
+    bool isAppInitiated() const { return boolTestRunnerFeatureValue("isAppInitiated"); }
     bool runSingly() const { return boolTestRunnerFeatureValue("runSingly"); }
     bool shouldHandleRunOpenPanel() const { return boolTestRunnerFeatureValue("shouldHandleRunOpenPanel"); }
     bool shouldPresentPopovers() const { return boolTestRunnerFeatureValue("shouldPresentPopovers"); }
     bool shouldShowSpellCheckingDots() const { return boolTestRunnerFeatureValue("spellCheckingDots"); }
     bool shouldShowTouches() const { return boolTestRunnerFeatureValue("shouldShowTouches"); }
-    bool shouldShowWebView() const { return boolTestRunnerFeatureValue("shouldShowWebView"); }
+    bool shouldShowWindow() const { return boolTestRunnerFeatureValue("shouldShowWindow"); }
     bool textInteractionEnabled() const { return boolTestRunnerFeatureValue("textInteractionEnabled"); }
     bool useCharacterSelectionGranularity() const { return boolTestRunnerFeatureValue("useCharacterSelectionGranularity"); }
     bool useDataDetection() const { return boolTestRunnerFeatureValue("useDataDetection"); }
@@ -71,6 +74,7 @@ public:
     bool useRemoteLayerTree() const { return boolTestRunnerFeatureValue("useRemoteLayerTree"); }
     bool useThreadedScrolling() const { return boolTestRunnerFeatureValue("useThreadedScrolling"); }
     double contentInsetTop() const { return doubleTestRunnerFeatureValue("contentInset.top"); }
+    double horizontalSystemMinimumLayoutMargin() const { return doubleTestRunnerFeatureValue("horizontalSystemMinimumLayoutMargin"); }
     double deviceScaleFactor() const { return doubleTestRunnerFeatureValue("deviceScaleFactor"); }
     double viewHeight() const { return doubleTestRunnerFeatureValue("viewHeight"); }
     double viewWidth() const { return doubleTestRunnerFeatureValue("viewWidth"); }
@@ -78,6 +82,7 @@ public:
     std::string applicationBundleIdentifier() const { return stringTestRunnerFeatureValue("applicationBundleIdentifier"); }
     std::string applicationManifest() const { return stringTestRunnerFeatureValue("applicationManifest"); }
     std::string contentMode() const { return stringTestRunnerFeatureValue("contentMode"); }
+    std::string dragInteractionPolicy() const { return stringTestRunnerFeatureValue("dragInteractionPolicy"); }
     std::string jscOptions() const { return stringTestRunnerFeatureValue("jscOptions"); }
     std::string standaloneWebApplicationURL() const { return stringTestRunnerFeatureValue("standaloneWebApplicationURL"); }
     std::vector<std::string> overrideLanguages() const { return stringVectorTestRunnerFeatureValue("language"); }

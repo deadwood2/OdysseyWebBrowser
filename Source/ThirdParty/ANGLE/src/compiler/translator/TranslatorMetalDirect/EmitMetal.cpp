@@ -11,6 +11,7 @@
 #include "compiler/translator/SymbolTable.h"
 #include "compiler/translator/TranslatorMetalDirect.h"
 #include "compiler/translator/TranslatorMetalDirect/AstHelpers.h"
+#include "compiler/translator/TranslatorMetalDirect/ConstantNames.h"
 #include "compiler/translator/TranslatorMetalDirect/Debug.h"
 #include "compiler/translator/TranslatorMetalDirect/DebugSink.h"
 #include "compiler/translator/TranslatorMetalDirect/EmitMetal.h"
@@ -83,7 +84,6 @@ class GenMetalTraverser : public TIntermTraverser
                       Sink &out,
                       IdGen &idGen,
                       const PipelineStructs &pipelineStructs,
-                      const Invariants &invariants,
                       SymbolEnv &symbolEnv);
 
     void visitSymbol(TIntermSymbol *) override;
@@ -118,6 +118,7 @@ class GenMetalTraverser : public TIntermTraverser
         bool emitPostQualifier          = false;
         bool isPacked                   = false;
         bool disableStructSpecifier     = false;
+        bool isUBO                      = false;
         const AddressSpace *isPointer   = nullptr;
         const AddressSpace *isReference = nullptr;
     };
@@ -128,6 +129,8 @@ class GenMetalTraverser : public TIntermTraverser
     };
 
     void emitIndentation();
+    void emitOpeningPointerParen();
+    void emitClosingPointerParen();
     void emitFunctionSignature(const TFunction &func);
     void emitFunctionReturn(const TFunction &func);
     void emitFunctionParameter(const TFunction &func, const TVariable &param);
@@ -152,6 +155,7 @@ class GenMetalTraverser : public TIntermTraverser
                               const TStructure &parent,
                               FieldAnnotationIndices &annotationIndices);
     void emitAttributeDeclaration(const TField &field, FieldAnnotationIndices &annotationIndices);
+    void emitUniformBufferDeclaration(const TField &field, FieldAnnotationIndices &annotationIndices);
     void emitStructDeclaration(const TType &type);
     void emitOrdinaryVariableDeclaration(const VarDecl &decl,
                                          const EmitVariableDeclarationConfig &evdConfig);
@@ -178,12 +182,14 @@ class GenMetalTraverser : public TIntermTraverser
     Sink &mOut;
     const TCompiler &mCompiler;
     const PipelineStructs &mPipelineStructs;
-    const Invariants &mInvariants;
     SymbolEnv &mSymbolEnv;
     IdGen &mIdGen;
-    int mIndentLevel        = -1;
-    int mLastIndentationPos = -1;
+    int mIndentLevel           = -1;
+    int mLastIndentationPos    = -1;
+    int mOpenPointerParenCount = 0;
     bool mParentIsSwitch    = false;
+    bool isTraversingVertexMain  = false;
+    bool mTemporarilyDisableSemicolon = false;
     std::unordered_map<const TSymbol *, Name> mRenamedSymbols;
     const FuncToName mFuncToName   = BuildFuncToName();
     size_t mMainTextureIndex       = 0;
@@ -197,19 +203,18 @@ GenMetalTraverser::~GenMetalTraverser()
 {
     ASSERT(mIndentLevel == -1);
     ASSERT(!mParentIsSwitch);
+    ASSERT(mOpenPointerParenCount == 0);
 }
 
 GenMetalTraverser::GenMetalTraverser(const TCompiler &compiler,
                                      Sink &out,
                                      IdGen &idGen,
                                      const PipelineStructs &pipelineStructs,
-                                     const Invariants &invariants,
                                      SymbolEnv &symbolEnv)
     : TIntermTraverser(true, false, false),
       mOut(out),
       mCompiler(compiler),
       mPipelineStructs(pipelineStructs),
-      mInvariants(invariants),
       mSymbolEnv(symbolEnv),
       mIdGen(idGen)
 {}
@@ -231,10 +236,26 @@ void GenMetalTraverser::emitIndentation()
     mLastIndentationPos = mOut.size();
 }
 
+void GenMetalTraverser::emitOpeningPointerParen()
+{
+    mOut << "(*";
+    mOpenPointerParenCount++;
+}
+
+void GenMetalTraverser::emitClosingPointerParen()
+{
+    if (mOpenPointerParenCount > 0)
+    {
+        mOut << ")";
+        mOpenPointerParenCount--;
+    }
+}
+
 static const char *GetOperatorString(TOperator op,
                                      const TType &resultType,
                                      const TType *argType0,
-                                     const TType *argType1 = nullptr)
+                                     const TType *argType1 = nullptr,
+                                     const TType *argType2 = nullptr)
 {
     switch (op)
     {
@@ -353,6 +374,12 @@ static const char *GetOperatorString(TOperator op,
             return "!=";
 
         case TOperator::EOpEqual:
+            if((argType0->getStruct() && argType1->getStruct()) &&
+               (argType0->isArray() && argType1->isArray()))
+            {
+                return "ANGLE_equalStructArray";
+            }
+           
             if ((argType0->isVector() && argType1->isVector()) ||
                 (argType0->getStruct() && argType1->getStruct()) ||
                 (argType0->isArray() && argType1->isArray()) ||
@@ -365,8 +392,14 @@ static const char *GetOperatorString(TOperator op,
             return "==";
 
         case TOperator::EOpNotEqual:
+            if((argType0->getStruct() && argType1->getStruct()) &&
+               (argType0->isArray() && argType1->isArray()))
+            {
+                return "ANGLE_notEqualStructArray";
+            }
+           
             if ((argType0->isVector() && argType1->isVector()) ||
-                (argType0->isArray() && argType1->isArray())||
+                (argType0->isArray() && argType1->isArray()) ||
                 (argType0->isMatrix() && argType1->isMatrix()))
             {
                 return "ANGLE_notEqual";
@@ -477,6 +510,8 @@ static const char *GetOperatorString(TOperator op,
         case TOperator::EOpClamp:
             return "metal::clamp";  // TODO fast vs precise namespace
         case TOperator::EOpMix:
+            if(argType2 && argType2->getBasicType() == EbtBool)
+                return "ANGLE_mix_bool";
             return "metal::mix";
         case TOperator::EOpStep:
             return "metal::step";
@@ -898,9 +933,12 @@ void GenMetalTraverser::emitPostQualifier(const EmitVariableDeclarationConfig &e
                                           const VarDecl &decl,
                                           const TQualifier qualifier)
 {
+    bool isInvariant = false;
     switch (qualifier)
     {
         case TQualifier::EvqPosition:
+            isInvariant = decl.type().isInvariant();
+            // Fallthrough.
         case TQualifier::EvqFragCoord:
             mOut << " [[position]]";
             break;
@@ -934,12 +972,12 @@ void GenMetalTraverser::emitPostQualifier(const EmitVariableDeclarationConfig &e
             break;
     }
 
-    const bool isInvariant =
-        (decl.isField() ? mInvariants.contains(decl.field()) : mInvariants.contains(decl.variable())) && (qualifier == TQualifier::EvqPosition || qualifier == TQualifier::EvqFragCoord);
-
     if (isInvariant)
     {
         mOut << " [[invariant]]";
+        TranslatorMetalReflection *reflection =
+            ((sh::TranslatorMetalDirect *)&mCompiler)->getTranslatorMetalReflection();
+        reflection->hasInvariance = true;
     }
 }
 
@@ -1037,9 +1075,17 @@ void GenMetalTraverser::emitBareTypeName(const TType &type, const EmitTypeConfig
 
 void GenMetalTraverser::emitType(const TType &type, const EmitTypeConfig &etConfig)
 {
+    const bool isUBO = etConfig.evdConfig ? etConfig.evdConfig->isUBO : false;
     if (etConfig.evdConfig)
     {
         const auto &evdConfig = *etConfig.evdConfig;
+        if (isUBO)
+        {
+            if (type.isArray())
+            {
+                mOut << "ANGLE_tensor<";
+            }
+        }
         if (evdConfig.isPointer)
         {
             mOut << toString(*evdConfig.isPointer);
@@ -1052,9 +1098,12 @@ void GenMetalTraverser::emitType(const TType &type, const EmitTypeConfig &etConf
         }
     }
 
-    if (type.isArray())
+    if (!isUBO)
     {
-        mOut << "ANGLE_tensor<";
+        if (type.isArray())
+        {
+            mOut << "ANGLE_tensor<";
+        }
     }
 
     if (type.isVector() || type.isMatrix())
@@ -1078,13 +1127,16 @@ void GenMetalTraverser::emitType(const TType &type, const EmitTypeConfig &etConf
         mOut << type.getCols() << "x" << type.getRows();
     }
 
-    if (type.isArray())
+    if (!isUBO)
     {
-        for (auto size : type.getArraySizes())
+        if (type.isArray())
         {
-            mOut << ", " << size;
+            for (auto size : type.getArraySizes())
+            {
+                mOut << ", " << size;
+            }
+            mOut << ">";
         }
-        mOut << ">";
     }
 
     if (etConfig.evdConfig)
@@ -1097,6 +1149,17 @@ void GenMetalTraverser::emitType(const TType &type, const EmitTypeConfig &etConf
         else if (evdConfig.isReference)
         {
             mOut << " &";
+        }
+        if (isUBO)
+        {
+            if (type.isArray())
+            {
+                for (auto size : type.getArraySizes())
+                {
+                    mOut << ", " << size;
+                }
+                mOut << ">";
+            }
         }
     }
 }
@@ -1112,6 +1175,7 @@ void GenMetalTraverser::emitFieldDeclaration(const TField &field,
     evdConfig.emitPostQualifier      = true;
     evdConfig.disableStructSpecifier = true;
     evdConfig.isPacked               = mSymbolEnv.isPacked(field);
+    evdConfig.isUBO                  = mSymbolEnv.isUBO(field);
     evdConfig.isPointer              = mSymbolEnv.isPointer(field);
     evdConfig.isReference            = mSymbolEnv.isReference(field);
     emitVariableDeclaration(VarDecl(field), evdConfig);
@@ -1123,6 +1187,9 @@ void GenMetalTraverser::emitFieldDeclaration(const TField &field,
             if (mPipelineStructs.fragmentIn.external == &parent)
             {
                 mOut << " [[flat]]";
+                TranslatorMetalReflection *reflection =
+                    ((sh::TranslatorMetalDirect *)&mCompiler)->getTranslatorMetalReflection();
+                reflection->hasFlatInput = true;
             }
             break;
 
@@ -1148,6 +1215,10 @@ void GenMetalTraverser::emitFieldDeclaration(const TField &field,
 
         case TQualifier::EvqFragDepth:
             mOut << " [[depth(any)]]";
+            break;
+
+        case TQualifier::EvqSampleMask:
+            mOut << " [[sample_mask, function_constant(" << sh::TranslatorMetalDirect::GetCoverageMaskEnabledConstName() << ")]]";
             break;
 
         default:
@@ -1187,7 +1258,8 @@ static std::map<Name, size_t> BuildExternalAttributeIndexMap(
         const TField &internalField = *internalFields[internalIndex];
         const Name internalName     = Name(internalField);
         const TType &internalType   = *internalField.type();
-        while (internalName.rawName() != shaderVars[shaderVarIndex].name)
+        while (internalName.rawName() != shaderVars[shaderVarIndex].name &&
+               internalName.rawName() != shaderVars[shaderVarIndex].mappedName)
         {
             // This case represents an inactive field.
 
@@ -1228,7 +1300,31 @@ void GenMetalTraverser::emitAttributeDeclaration(const TField &field,
     EmitVariableDeclarationConfig evdConfig;
     evdConfig.disableStructSpecifier = true;
     emitVariableDeclaration(VarDecl(field), evdConfig);
-    mOut << rx::mtl::kUnassignedAttributeString;
+    mOut << sh::kUnassignedAttributeString;
+}
+
+void GenMetalTraverser::emitUniformBufferDeclaration(const TField &field,
+                                                 FieldAnnotationIndices &annotationIndices)
+{
+    EmitVariableDeclarationConfig evdConfig;
+    evdConfig.disableStructSpecifier = true;
+    evdConfig.isUBO                  = mSymbolEnv.isUBO(field);
+    evdConfig.isPointer              = mSymbolEnv.isPointer(field);
+    emitVariableDeclaration(VarDecl(field), evdConfig);
+    mOut << "[[id(" << annotationIndices.attribute << ")]]";
+
+    const TType &type = *field.type();
+    const int arraySize = type.isArray() ? type.getArraySizeProduct() : 1;
+
+    TranslatorMetalReflection *reflection =
+        ((sh::TranslatorMetalDirect *)&mCompiler)->getTranslatorMetalReflection();
+    ASSERT(type.getBasicType() == TBasicType::EbtStruct);
+    const TStructure *structure = type.getStruct();
+    const std::string originalName =
+        reflection->getOriginalName(structure->uniqueId().get());
+    reflection->addUniformBufferBinding(originalName, {.bindIndex = annotationIndices.attribute, .arraySize = static_cast<size_t>(arraySize)});
+
+    annotationIndices.attribute += arraySize;
 }
 
 void GenMetalTraverser::emitStructDeclaration(const TType &type)
@@ -1245,6 +1341,7 @@ void GenMetalTraverser::emitStructDeclaration(const TType &type)
     const TStructure &structure = *type.getStruct();
     std::map<Name, size_t> fieldToAttributeIndex;
     const bool hasAttributeIndices           = mPipelineStructs.vertexIn.external == &structure;
+    const bool hasUniformBufferIndicies      = mPipelineStructs.uniformBuffers.external == &structure;
     const bool reclaimUnusedAttributeIndices = mCompiler.getShaderVersion() < 300;
 
     if (hasAttributeIndices)
@@ -1280,6 +1377,10 @@ void GenMetalTraverser::emitStructDeclaration(const TType &type)
                 emitAttributeDeclaration(*field, annotationIndices);
             }
         }
+        else if(hasUniformBufferIndicies)
+        {
+            emitUniformBufferDeclaration(*field, annotationIndices);
+        }
         else
         {
             emitFieldDeclaration(*field, structure, annotationIndices);
@@ -1292,7 +1393,7 @@ void GenMetalTraverser::emitStructDeclaration(const TType &type)
         MetalLayoutOfConfig layoutConfig;
         layoutConfig.treatSamplersAsTextureEnv = true;
         Layout layout                          = MetalLayoutOf(type, layoutConfig);
-        size_t pad                             = layout.sizeOf % 16;
+        size_t pad                             = (kDefaultStructAlignmentSize - layout.sizeOf) % kDefaultStructAlignmentSize;
         if (pad != 0)
         {
             emitIndentation();
@@ -1314,7 +1415,6 @@ void GenMetalTraverser::emitOrdinaryVariableDeclaration(
 
     const TType &type = decl.type();
     emitType(type, etConfig);
-
     if (decl.symbolType() != SymbolType::Empty)
     {
         mOut << " ";
@@ -1367,7 +1467,6 @@ void GenMetalTraverser::visitSymbol(TIntermSymbol *symbolNode)
 {
     const TVariable &var = symbolNode->variable();
     const TType &type    = var.getType();
-
     ASSERT(var.symbolType() != SymbolType::Empty);
 
     if (type.getBasicType() == TBasicType::EbtVoid)
@@ -1394,7 +1493,25 @@ void GenMetalTraverser::emitSingleConstant(const TConstantUnion *const constUnio
 
         case TBasicType::EbtFloat:
         {
-            mOut << constUnion->getFConst() << "f";
+            if (ANGLE_UNLIKELY(isnan(constUnion->getFConst())))
+            {
+                mOut << "NAN";
+            }
+            else if (ANGLE_UNLIKELY(isinf(constUnion->getFConst())))
+            {
+                if(constUnion->getFConst() < 0)
+                {
+                    mOut << "-INFINITY";
+                }
+                else
+                {
+                    mOut << "INFINITY";
+                }
+            }
+            else
+            {
+                mOut << constUnion->getFConst() << "f";
+            }
         }
         break;
 
@@ -1540,9 +1657,17 @@ bool GenMetalTraverser::visitBinary(Visit, TIntermBinary *binaryNode)
         case TOperator::EOpIndexDirectStruct:
         case TOperator::EOpIndexDirectInterfaceBlock:
         {
+            const TField &field = getDirectField(leftNode, rightNode);
+            if (mSymbolEnv.isPointer(field) && mSymbolEnv.isUBO(field)) {
+                emitOpeningPointerParen();
+            }
             groupedTraverse(leftNode);
+            if (!mSymbolEnv.isPointer(field))
+            {
+                emitClosingPointerParen();
+            }
             mOut << ".";
-            emitNameOf(getDirectField(leftNode, rightNode));
+            emitNameOf(field);
         }
         break;
 
@@ -1575,7 +1700,6 @@ bool GenMetalTraverser::visitBinary(Visit, TIntermBinary *binaryNode)
                     mOut << maxSize;
                 }
                 mOut << ")";
-
             }
             mOut << "]";
         }
@@ -1594,11 +1718,16 @@ bool GenMetalTraverser::visitBinary(Visit, TIntermBinary *binaryNode)
                 {
                     mOut << " ";
                 }
+                else
+                {
+                    emitClosingPointerParen();
+                }
                 mOut << GetOperatorString(op, resultType, &leftType, &rightType) << " ";
                 groupedTraverse(rightNode);
             }
             else
             {
+                emitClosingPointerParen();
                 mOut << GetOperatorString(op, resultType, &leftType, &rightType) << "(";
                 leftNode.traverse(this);
                 mOut << ", ";
@@ -1766,6 +1895,10 @@ void GenMetalTraverser::emitFunctionSignature(const TFunction &func)
         const TVariable &param = *func.getParam(i);
         emitFunctionParameter(func, param);
     }
+    if(isTraversingVertexMain)
+    {
+        mOut << " @@XFB-Bindings@@ ";
+    }
 
     mOut << ")";
 }
@@ -1773,7 +1906,7 @@ void GenMetalTraverser::emitFunctionSignature(const TFunction &func)
 void GenMetalTraverser::emitFunctionReturn(const TFunction &func)
 {
     const bool isMain = func.isMain();
-
+    bool isVertexMain = false;
     const TType &returnType = func.getReturnType();
     if (isMain)
     {
@@ -1785,7 +1918,8 @@ void GenMetalTraverser::emitFunctionReturn(const TFunction &func)
         }
         else if (mPipelineStructs.vertexOut.matches(*structure))
         {
-            mOut << "vertex ";
+            mOut << "vertex __VERTEX_OUT(";
+            isVertexMain = true;
         }
         else
         {
@@ -1793,6 +1927,8 @@ void GenMetalTraverser::emitFunctionReturn(const TFunction &func)
         }
     }
     emitType(returnType, EmitTypeConfig());
+    if(isVertexMain)
+        mOut << ") ";
 }
 
 void GenMetalTraverser::emitFunctionParameter(const TFunction &func, const TVariable &param)
@@ -1806,6 +1942,7 @@ void GenMetalTraverser::emitFunctionParameter(const TFunction &func, const TVari
     evdConfig.isParameter       = true;
     evdConfig.isMainParameter   = isMain;
     evdConfig.emitPostQualifier = isMain;
+    evdConfig.isUBO             = mSymbolEnv.isUBO(param);
     evdConfig.isPointer         = mSymbolEnv.isPointer(param);
     evdConfig.isReference       = mSymbolEnv.isReference(param);
     emitVariableDeclaration(VarDecl(param), evdConfig);
@@ -1825,10 +1962,15 @@ void GenMetalTraverser::emitFunctionParameter(const TFunction &func, const TVari
             {
                 mOut << " [[buffer(" << rx::mtl::kDriverUniformsBindingIndex << ")]]";
             }
+            else if (mPipelineStructs.uniformBuffers.matches(*structure))
+            {
+                mOut << " [[buffer(" << rx::mtl::kUBOArgumentBufferBindingIndex << ")]]";
+                reflection->hasUBOs = true;
+            }
             else if (mPipelineStructs.userUniforms.matches(*structure))
             {
                 mOut << " [[buffer(" << mMainUniformBufferIndex << ")]]";
-                reflection->addUniformBufferBinding(param.name().data(), mMainUniformBufferIndex);
+                reflection->addUserUniformBufferBinding(param.name().data(), mMainUniformBufferIndex);
                 mMainUniformBufferIndex += type.getArraySizeProduct();
             }
             else if (structure->name() == "metal::sampler")
@@ -1867,12 +2009,20 @@ bool GenMetalTraverser::visitFunctionDefinition(Visit, TIntermFunctionDefinition
 {
     const TFunction &func = *funcDefNode->getFunction();
     TIntermBlock &body    = *funcDefNode->getBody();
-
+    if(func.isMain())
+    {
+        const TType &returnType = func.getReturnType();
+        const TStructure *structure = returnType.getStruct();
+        isTraversingVertexMain = (mPipelineStructs.vertexOut.matches(*structure));
+    }
     emitIndentation();
     emitFunctionSignature(func);
     mOut << "\n";
     body.traverse(this);
-
+    if(isTraversingVertexMain)
+    {
+        isTraversingVertexMain = false;
+    }
     return false;
 }
 
@@ -1932,6 +2082,7 @@ bool GenMetalTraverser::visitAggregate(Visit, TIntermAggregate *aggregateNode)
         {
             if (emitComma)
             {
+                emitClosingPointerParen();
                 mOut << ", ";
             }
             emitComma = true;
@@ -1984,6 +2135,12 @@ bool GenMetalTraverser::visitAggregate(Visit, TIntermAggregate *aggregateNode)
     else
     {
         const TOperator op = aggregateNode->getOp();
+        if(op == EOpAtan)
+        {
+            TranslatorMetalReflection *reflection =
+                ((sh::TranslatorMetalDirect *)&mCompiler)->getTranslatorMetalReflection();
+            reflection->hasAtan = true;
+        }
         switch (op)
         {
             case TOperator::EOpCallFunctionInAST:
@@ -1991,7 +2148,15 @@ bool GenMetalTraverser::visitAggregate(Visit, TIntermAggregate *aggregateNode)
             {
                 const TFunction &func = *aggregateNode->getFunction();
                 emitNameOf(func);
-                emitArgList("(", ")");
+                //'@' symbol in name specifices a macro substitution marker.
+                if(!func.name().contains("@"))
+                {
+                    emitArgList("(", ")");
+                }
+                else
+                {
+                    mTemporarilyDisableSemicolon = true; //Disable semicolon for macro substitution.
+                }
                 return false;
             }
 
@@ -2020,9 +2185,10 @@ bool GenMetalTraverser::visitAggregate(Visit, TIntermAggregate *aggregateNode)
                 ASSERT(!args.empty());
                 const TType *argType0 = getArgType(0);
                 const TType *argType1 = getArgType(1);
+                const TType *argType2 = getArgType(2);
                 ASSERT(argType0);
 
-                const char *opName = GetOperatorString(op, retType, argType0, argType1);
+                const char *opName = GetOperatorString(op, retType, argType0, argType1, argType2);
 
                 if (IsSymbolicOperator(op, retType, argType0, argType1))
                 {
@@ -2117,6 +2283,7 @@ static bool RequiresSemicolonTerminator(TIntermNode &node)
     {
         return false;
     }
+
     return true;
 }
 
@@ -2176,10 +2343,11 @@ bool GenMetalTraverser::visitBlock(Visit, TIntermBlock *blockNode)
         emitIndentation();
         mIndentLevel += isCase;
         stmtNode.traverse(this);
-        if (RequiresSemicolonTerminator(stmtNode))
+        if (RequiresSemicolonTerminator(stmtNode) && !mTemporarilyDisableSemicolon)
         {
             mOut << ";";
         }
+        mTemporarilyDisableSemicolon = false;
         mOut << "\n";
 
         prevStmtNode = &stmtNode;
@@ -2206,7 +2374,6 @@ bool GenMetalTraverser::visitBlock(Visit, TIntermBlock *blockNode)
 
 bool GenMetalTraverser::visitGlobalQualifierDeclaration(Visit, TIntermGlobalQualifierDeclaration *)
 {
-    LOGIC_ERROR();  // RewriteGlobalQualifierDecls should have been called before this.
     return false;
 }
 
@@ -2377,11 +2544,28 @@ bool GenMetalTraverser::visitBranch(Visit, TIntermBranch *branchNode)
 
         case TOperator::EOpReturn:
         {
+            if(isTraversingVertexMain)
+            {
+                mOut << "#if TRANSFORM_FEEDBACK_ENABLED\n";
+                emitIndentation();
+                mOut << "return;\n";
+                emitIndentation();
+                mOut << "#else\n";
+                emitIndentation();
+            }
             mOut << "return";
             if (exprNode)
             {
                 mOut << " ";
                 exprNode->traverse(this);
+                mOut << ";";
+            }
+            if(isTraversingVertexMain)
+            {
+                mOut << "\n";
+                emitIndentation();
+                mOut << "#endif\n";
+                mTemporarilyDisableSemicolon = true;
             }
         }
         break;
@@ -2415,7 +2599,6 @@ bool sh::EmitMetal(TCompiler &compiler,
                    TIntermBlock &root,
                    IdGen &idGen,
                    const PipelineStructs &pipelineStructs,
-                   const Invariants &invariants,
                    SymbolEnv &symbolEnv,
                    const ProgramPreludeConfig &ppc)
 {
@@ -2474,7 +2657,7 @@ bool sh::EmitMetal(TCompiler &compiler,
 #else
         TInfoSinkBase &outWrapper = out;
 #endif
-        GenMetalTraverser gen(compiler, outWrapper, idGen, pipelineStructs, invariants, symbolEnv);
+        GenMetalTraverser gen(compiler, outWrapper, idGen, pipelineStructs, symbolEnv);
         root.traverse(&gen);
     }
 

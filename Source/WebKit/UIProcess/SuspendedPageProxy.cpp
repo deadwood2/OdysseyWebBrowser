@@ -54,7 +54,7 @@ RefPtr<WebProcessProxy> SuspendedPageProxy::findReusableSuspendedPageProcess(Web
 {
     for (auto* suspendedPage : allSuspendedPages()) {
         auto& process = suspendedPage->process();
-        if (&process.processPool() == &processPool && process.registrableDomain() == registrableDomain && &process.websiteDataStore() == &dataStore)
+        if (&process.processPool() == &processPool && process.registrableDomain() == registrableDomain && &process.websiteDataStore() == &dataStore && process.crossOriginMode() != CrossOriginMode::Isolated)
             return &process;
     }
     return nullptr;
@@ -105,7 +105,10 @@ SuspendedPageProxy::SuspendedPageProxy(WebPageProxy& page, Ref<WebProcessProxy>&
     , m_suspensionActivity(m_process->throttler().backgroundActivity("Page suspension for back/forward cache"_s).moveToUniquePtr())
 #endif
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
-    , m_contextIDForVisibilityPropagation(page.contextIDForVisibilityPropagation())
+    , m_contextIDForVisibilityPropagationInWebProcess(page.contextIDForVisibilityPropagationInWebProcess())
+#if ENABLE(GPU_PROCESS)
+    , m_contextIDForVisibilityPropagationInGPUProcess(page.contextIDForVisibilityPropagationInGPUProcess())
+#endif
 #endif
 {
     allSuspendedPages().add(this);
@@ -259,8 +262,9 @@ void SuspendedPageProxy::didReceiveMessage(IPC::Connection&, IPC::Decoder& decod
 #endif
 }
 
-void SuspendedPageProxy::didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&)
+bool SuspendedPageProxy::didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&)
 {
+    return false;
 }
 
 IPC::Connection* SuspendedPageProxy::messageSenderConnection() const
@@ -273,7 +277,7 @@ uint64_t SuspendedPageProxy::messageSenderDestinationID() const
     return m_webPageID.toUInt64();
 }
 
-bool SuspendedPageProxy::sendMessage(std::unique_ptr<IPC::Encoder> encoder, OptionSet<IPC::SendOption> sendOptions, Optional<std::pair<CompletionHandler<void(IPC::Decoder*)>, uint64_t>>&& asyncReplyInfo)
+bool SuspendedPageProxy::sendMessage(UniqueRef<IPC::Encoder>&& encoder, OptionSet<IPC::SendOption> sendOptions, std::optional<std::pair<CompletionHandler<void(IPC::Decoder*)>, uint64_t>>&& asyncReplyInfo)
 {
     // Send messages via the WebProcessProxy instead of the IPC::Connection since AuxiliaryProcessProxy implements queueing of messages
     // while the process is still launching.

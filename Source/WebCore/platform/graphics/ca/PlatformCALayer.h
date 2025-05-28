@@ -48,7 +48,7 @@ class PlatformCALayerClient;
 
 typedef Vector<RefPtr<PlatformCALayer>> PlatformCALayerList;
 
-class WEBCORE_EXPORT PlatformCALayer : public ThreadSafeRefCounted<PlatformCALayer> {
+class WEBCORE_EXPORT PlatformCALayer : public ThreadSafeRefCounted<PlatformCALayer, WTF::DestructionThread::Main> {
 #if PLATFORM(COCOA)
     friend class PlatformCALayerCocoa;
 #elif PLATFORM(WIN)
@@ -76,6 +76,9 @@ public:
         LayerTypeLightSystemBackdropLayer,
         LayerTypeDarkSystemBackdropLayer,
         LayerTypeScrollContainerLayer,
+#if ENABLE(MODEL_ELEMENT)
+        LayerTypeModelLayer,
+#endif
         LayerTypeCustom,
     };
     enum FilterType { Linear, Nearest, Trilinear };
@@ -118,6 +121,7 @@ public:
     virtual PlatformCALayer* superlayer() const = 0;
     virtual void removeFromSuperlayer() = 0;
     virtual void setSublayers(const PlatformCALayerList&) = 0;
+    virtual PlatformCALayerList sublayersForLogging() const = 0;
     virtual void removeAllSublayers() = 0;
     virtual void appendSublayer(PlatformCALayer&) = 0;
     virtual void insertSublayer(PlatformCALayer&, size_t index) = 0;
@@ -248,7 +252,15 @@ public:
 
 #if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
     virtual bool isSeparated() const = 0;
-    virtual void setSeparated(bool) = 0;
+    virtual void setIsSeparated(bool) = 0;
+    
+#if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
+    virtual bool isSeparatedPortal() const = 0;
+    virtual void setIsSeparatedPortal(bool) = 0;
+
+    virtual bool isDescendentOfSeparatedPortal() const = 0;
+    virtual void setIsDescendentOfSeparatedPortal(bool) = 0;
+#endif
 #endif
 
     virtual TiledBacking* tiledBacking() = 0;
@@ -296,6 +308,8 @@ public:
     static CGRect frameForLayer(const PlatformLayer*);
 
     void moveToLayerPool();
+    
+    virtual void dumpAdditionalProperties(TextStream&, OptionSet<PlatformLayerTreeAsTextFlags>);
 
 protected:
     PlatformCALayer(LayerType, PlatformCALayerClient* owner);
@@ -347,6 +361,9 @@ template<> struct EnumTraits<WebCore::PlatformCALayer::LayerType> {
         WebCore::PlatformCALayer::LayerType::LayerTypeLightSystemBackdropLayer,
         WebCore::PlatformCALayer::LayerType::LayerTypeDarkSystemBackdropLayer,
         WebCore::PlatformCALayer::LayerType::LayerTypeScrollContainerLayer,
+#if ENABLE(MODEL_ELEMENT)
+        WebCore::PlatformCALayer::LayerType::LayerTypeModelLayer,
+#endif
         WebCore::PlatformCALayer::LayerType::LayerTypeCustom
     >;
 };

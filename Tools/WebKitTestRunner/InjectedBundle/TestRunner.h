@@ -128,6 +128,8 @@ public:
     void repaintSweepHorizontally() { m_testRepaintSweepHorizontally = true; }
     void display();
     void displayAndTrackRepaints();
+    void displayOnLoadFinish() { m_displayOnLoadFinish = true; }
+    bool shouldDisplayOnLoadFinish() { return m_displayOnLoadFinish; }
 
     // UserContent testing.
     void addUserScript(JSStringRef source, bool runAtStart, bool allFrames);
@@ -255,6 +257,11 @@ public:
     void addChromeInputField(JSValueRef);
     void removeChromeInputField(JSValueRef);
     void focusWebView(JSValueRef);
+
+    void setTextInChromeInputField(JSStringRef text, JSValueRef callback);
+    void selectChromeInputField(JSValueRef callback);
+    void getSelectedTextInChromeInputField(JSValueRef callback);
+
     void setBackingScaleFactor(double, JSValueRef);
 
     void setWindowIsKey(bool);
@@ -265,6 +272,10 @@ public:
     void callRemoveChromeInputFieldCallback();
     void callFocusWebViewCallback();
     void callSetBackingScaleFactorCallback();
+
+    void callSetTextInChromeInputFieldCallback();
+    void callSelectChromeInputFieldCallback();
+    void callGetSelectedTextInChromeInputFieldCallback(JSStringRef);
 
     static void overridePreference(JSStringRef preference, JSStringRef value);
 
@@ -288,7 +299,7 @@ public:
 
     // Geolocation.
     void setGeolocationPermission(bool);
-    void setMockGeolocationPosition(double latitude, double longitude, double accuracy, Optional<double> altitude, Optional<double> altitudeAccuracy, Optional<double> heading, Optional<double> speed, Optional<double> floorLevel);
+    void setMockGeolocationPosition(double latitude, double longitude, double accuracy, std::optional<double> altitude, std::optional<double> altitudeAccuracy, std::optional<double> heading, std::optional<double> speed, std::optional<double> floorLevel);
     void setMockGeolocationPositionUnavailableError(JSStringRef message);
     bool isGeolocationProviderActive();
 
@@ -386,7 +397,7 @@ public:
     void statisticsCallDidSetLastSeenCallback();
     void setStatisticsMergeStatistic(JSStringRef hostName, JSStringRef topFrameDomain1, JSStringRef topFrameDomain2, double lastSeen, bool hadUserInteraction, double mostRecentUserInteraction, bool isGrandfathered, bool isPrevalent, bool isVeryPrevalent, unsigned dataRecordsRemoved, JSValueRef completionHandler);
     void statisticsCallDidSetMergeStatisticCallback();
-    void setStatisticsExpiredStatistic(JSStringRef hostName, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, JSValueRef completionHandler);
+    void setStatisticsExpiredStatistic(JSStringRef hostName, unsigned numberOfOperatingDaysPassed, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, JSValueRef completionHandler);
     void statisticsCallDidSetExpiredStatisticCallback();
     void setStatisticsPrevalentResource(JSStringRef hostName, bool value, JSValueRef completionHandler);
     void statisticsCallDidSetPrevalentResourceCallback();
@@ -493,6 +504,9 @@ public:
     void setAppBoundDomains(JSValueRef originArray, JSValueRef callback);
     void didSetAppBoundDomainsCallback();
 
+    bool didLoadAppInitiatedRequest();
+    bool didLoadNonAppInitiatedRequest();
+
     size_t userScriptInjectedCount() const;
     void injectUserScript(JSStringRef);
 
@@ -514,10 +528,11 @@ public:
     void setPrivateClickMeasurementOverrideTimerForTesting(bool value);
     void setPrivateClickMeasurementTokenPublicKeyURLForTesting(JSStringRef);
     void setPrivateClickMeasurementTokenSignatureURLForTesting(JSStringRef);
-    void setPrivateClickMeasurementAttributionReportURLForTesting(JSStringRef);
+    void setPrivateClickMeasurementAttributionReportURLsForTesting(JSStringRef sourceURL, JSStringRef destinationURL);
     void markPrivateClickMeasurementsAsExpiredForTesting();
     void markAttributedPrivateClickMeasurementsAsExpiredForTesting();
-    void setFraudPreventionValuesForTesting(JSStringRef secretToken, JSStringRef unlinkableToken, JSStringRef signature, JSStringRef keyID);
+    void setPrivateClickMeasurementEphemeralMeasurementForTesting(bool value);
+    void setPrivateClickMeasurementFraudPreventionValuesForTesting(JSStringRef unlinkableToken, JSStringRef secretToken, JSStringRef signature, JSStringRef keyID);
     void simulateResourceLoadStatisticsSessionRestart();
 
     void setIsSpeechRecognitionPermissionGranted(bool);
@@ -570,6 +585,7 @@ private:
     bool m_disallowIncreaseForApplicationCacheQuota { false };
     bool m_testRepaint { false };
     bool m_testRepaintSweepHorizontally { false };
+    bool m_displayOnLoadFinish { false };
     bool m_isPrinting { false };
     bool m_willSendRequestReturnsNull { false };
     bool m_willSendRequestReturnsNullOnRedirect { false };

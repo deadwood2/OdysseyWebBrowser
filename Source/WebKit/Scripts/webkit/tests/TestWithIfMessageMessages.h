@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,7 +47,7 @@ public:
     using Arguments = std::tuple<const String&>;
 
     static IPC::MessageName name() { return IPC::MessageName::TestWithIfMessage_LoadURL; }
-    static const bool isSync = false;
+    static constexpr bool isSync = false;
 
     explicit LoadURL(const String& url)
         : m_arguments(url)
@@ -70,7 +70,7 @@ public:
     using Arguments = std::tuple<const String&, int64_t>;
 
     static IPC::MessageName name() { return IPC::MessageName::TestWithIfMessage_LoadURL; }
-    static const bool isSync = false;
+    static constexpr bool isSync = false;
 
     LoadURL(const String& url, int64_t value)
         : m_arguments(url, value)

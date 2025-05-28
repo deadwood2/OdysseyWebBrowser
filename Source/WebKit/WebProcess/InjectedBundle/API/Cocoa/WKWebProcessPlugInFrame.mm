@@ -41,6 +41,7 @@
 #import <WebCore/IntPoint.h>
 #import <WebCore/LinkIconCollector.h>
 #import <WebCore/LinkIconType.h>
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
 @implementation WKWebProcessPlugInFrame {
@@ -59,6 +60,8 @@
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKWebProcessPlugInFrame.class, self))
+        return;
     _frame->~WebFrame();
     [super dealloc];
 }
@@ -71,6 +74,14 @@
 - (WKWebProcessPlugInHitTestResult *)hitTest:(CGPoint)point
 {
     return wrapper(_frame->hitTest(WebCore::IntPoint(point)));
+}
+
+- (WKWebProcessPlugInHitTestResult *)hitTest:(CGPoint)point options:(WKHitTestOptions)options
+{
+    auto types = WebKit::WebFrame::defaultHitTestRequestTypes();
+    if (options & WKHitTestOptionAllowUserAgentShadowRootContent)
+        types.remove(WebCore::HitTestRequest::Type::DisallowUserAgentShadowContent);
+    return wrapper(_frame->hitTest(WebCore::IntPoint(point), types));
 }
 
 - (JSValue *)jsNodeForNodeHandle:(WKWebProcessPlugInNodeHandle *)nodeHandle inWorld:(WKWebProcessPlugInScriptWorld *)world

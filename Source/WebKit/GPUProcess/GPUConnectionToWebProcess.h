@@ -37,6 +37,7 @@
 #include "ScopedActiveMessageReceiveQueue.h"
 #include <WebCore/LibWebRTCEnumTraits.h>
 #include <WebCore/NowPlayingManager.h>
+#include <WebCore/PageIdentifier.h>
 #include <WebCore/ProcessIdentifier.h>
 #include <pal/SessionID.h>
 #include <wtf/Logger.h>
@@ -48,13 +49,24 @@
 #include <WebCore/GraphicsContextGLAttributes.h>
 #endif
 
+#if PLATFORM(MAC)
+#include <CoreGraphics/CGDisplayConfiguration.h>
+#endif
+
+namespace WebCore {
+class SecurityOrigin;
+struct SecurityOriginData;
+}
+
 namespace WebKit {
 
 class GPUProcess;
+class LayerHostingContext;
 class LibWebRTCCodecsProxy;
+class LocalAudioSessionRoutingArbitrator;
 class RemoteAudioDestinationManager;
 class RemoteAudioHardwareListenerProxy;
-class RemoteAudioMediaStreamTrackRendererManager;
+class RemoteAudioMediaStreamTrackRendererInternalUnitManager;
 class RemoteAudioSessionProxy;
 class RemoteAudioSessionProxyManager;
 class RemoteCDMFactoryProxy;
@@ -73,6 +85,7 @@ class UserMediaCaptureManagerProxy;
 struct GPUProcessConnectionParameters;
 struct MediaOverridesForTesting;
 struct RemoteAudioSessionConfiguration;
+struct RemoteRenderingBackendCreationParameters;
 
 class GPUConnectionToWebProcess
     : public ThreadSafeRefCounted<GPUConnectionToWebProcess, WTF::DestructionThread::Main>
@@ -92,8 +105,9 @@ public:
 
     RemoteMediaResourceManager& remoteMediaResourceManager();
 
+    PAL::SessionID sessionID() const { return m_sessionID; }
+
     Logger& logger();
-    bool isAlwaysOnLoggingAllowed() const;
 
     const String& mediaCacheDirectory() const;
 #if ENABLE(LEGACY_ENCRYPTED_MEDIA)
@@ -103,9 +117,17 @@ public:
 #if ENABLE(MEDIA_STREAM)
     void setOrientationForMediaCapture(uint64_t orientation);
     void updateCaptureAccess(bool allowAudioCapture, bool allowVideoCapture, bool allowDisplayCapture);
+    void updateCaptureOrigin(const WebCore::SecurityOriginData&);
+    bool setCaptureAttributionString();
     bool allowsAudioCapture() const { return m_allowsAudioCapture; }
     bool allowsVideoCapture() const { return m_allowsVideoCapture; }
     bool allowsDisplayCapture() const { return m_allowsDisplayCapture; }
+#endif
+#if PLATFORM(MAC)
+    void displayConfigurationChanged(CGDirectDisplayID, CGDisplayChangeSummaryFlags);
+#endif
+#if PLATFORM(MAC) && ENABLE(WEBGL)
+    void dispatchDisplayWasReconfiguredForTesting() { dispatchDisplayWasReconfigured(); };
 #endif
 
 #if HAVE(TASK_IDENTITY_TOKEN)
@@ -120,7 +142,7 @@ public:
 #endif
 
     RemoteMediaEngineConfigurationFactoryProxy& mediaEngineConfigurationFactoryProxy();
-    RemoteMediaPlayerManagerProxy& remoteMediaPlayerManagerProxy() { return *m_remoteMediaPlayerManagerProxy; }
+    RemoteMediaPlayerManagerProxy& remoteMediaPlayerManagerProxy() { return m_remoteMediaPlayerManagerProxy.get(); }
 
 #if USE(AUDIO_SESSION)
     RemoteAudioSessionProxyManager& audioSessionManager();
@@ -130,7 +152,17 @@ public:
     RemoteImageDecoderAVFProxy& imageDecoderAVFProxy();
 #endif
 
+    void updateSupportedRemoteCommands();
+
+    bool allowsExitUnderMemoryPressure() const;
+
     void terminateWebProcess();
+#if ENABLE(WEBGL)
+    void releaseGraphicsContextGLForTesting(GraphicsContextGLIdentifier);
+#endif
+
+    using RemoteRenderingBackendMap = HashMap<RenderingBackendIdentifier, IPC::ScopedActiveMessageReceiveQueue<RemoteRenderingBackend>>;
+    const RemoteRenderingBackendMap& remoteRenderingBackendMap() const { return m_remoteRenderingBackendMap; }
 
 private:
     GPUConnectionToWebProcess(GPUProcess&, WebCore::ProcessIdentifier, IPC::Connection::Identifier, PAL::SessionID, GPUProcessConnectionParameters&&);
@@ -140,12 +172,13 @@ private:
 #endif
 #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
     UserMediaCaptureManagerProxy& userMediaCaptureManagerProxy();
-#if HAVE(AVASSETWRITERDELEGATE)
+    RemoteAudioMediaStreamTrackRendererInternalUnitManager& audioMediaStreamTrackRendererInternalUnitManager();
+#endif
+#if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
     RemoteMediaRecorderManager& mediaRecorderManager();
 #endif
-#endif
 
-    void createRenderingBackend(RenderingBackendIdentifier, IPC::Semaphore&& resumeDisplayListSemaphore);
+    void createRenderingBackend(RemoteRenderingBackendCreationParameters&&);
     void releaseRenderingBackend(RenderingBackendIdentifier);
 
 #if ENABLE(WEBGL)
@@ -154,10 +187,15 @@ private:
 #endif
 
     void clearNowPlayingInfo();
-    void setNowPlayingInfo(bool setAsNowPlayingApplication, WebCore::NowPlayingInfo&&);
+    void setNowPlayingInfo(WebCore::NowPlayingInfo&&);
 
 #if ENABLE(VP9)
     void enableVP9Decoders(bool shouldEnableVP8Decoder, bool shouldEnableVP9Decoder, bool shouldEnableVP9SWDecoder);
+#endif
+
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+    void createVisibilityPropagationContextForPage(WebPageProxyIdentifier, WebCore::PageIdentifier, bool canShowWhileLocked);
+    void destroyVisibilityPropagationContextForPage(WebPageProxyIdentifier, WebCore::PageIdentifier);
 #endif
 
 #if USE(AUDIO_SESSION)
@@ -176,18 +214,24 @@ private:
     void createRemoteCommandListener(RemoteRemoteCommandListenerIdentifier);
     void releaseRemoteCommandListener(RemoteRemoteCommandListenerIdentifier);
     void setMediaOverridesForTesting(MediaOverridesForTesting);
+    void setUserPreferredLanguages(const Vector<String>&);
+    void configureLoggingChannel(const String&, WTFLogChannelState, WTFLogLevel);
 
     // IPC::Connection::Client
     void didClose(IPC::Connection&) final;
     void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName) final;
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&) final;
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) final;
 
     bool dispatchMessage(IPC::Connection&, IPC::Decoder&);
-    bool dispatchSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
+    bool dispatchSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&);
 
     // NowPlayingManager::Client
     void didReceiveRemoteControlCommand(WebCore::PlatformMediaSession::RemoteControlCommandType, const WebCore::PlatformMediaSession::RemoteCommandArgument&) final;
+
+#if PLATFORM(MAC) && ENABLE(WEBGL)
+    void dispatchDisplayWasReconfigured();
+#endif
 
     RefPtr<Logger> m_logger;
 
@@ -202,26 +246,26 @@ private:
     std::unique_ptr<RemoteAudioDestinationManager> m_remoteAudioDestinationManager;
 #endif
     std::unique_ptr<RemoteMediaResourceManager> m_remoteMediaResourceManager;
-    std::unique_ptr<RemoteMediaPlayerManagerProxy> m_remoteMediaPlayerManagerProxy;
+    UniqueRef<RemoteMediaPlayerManagerProxy> m_remoteMediaPlayerManagerProxy;
     PAL::SessionID m_sessionID;
 #if PLATFORM(COCOA) && USE(LIBWEBRTC)
     Ref<LibWebRTCCodecsProxy> m_libWebRTCCodecsProxy;
 #endif
 #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
     std::unique_ptr<UserMediaCaptureManagerProxy> m_userMediaCaptureManagerProxy;
-    Ref<RemoteAudioMediaStreamTrackRendererManager> m_audioTrackRendererManager;
+    std::unique_ptr<RemoteAudioMediaStreamTrackRendererInternalUnitManager> m_audioMediaStreamTrackRendererInternalUnitManager;
     Ref<RemoteSampleBufferDisplayLayerManager> m_sampleBufferDisplayLayerManager;
-#if HAVE(AVASSETWRITERDELEGATE)
+#endif
+#if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
     std::unique_ptr<RemoteMediaRecorderManager> m_remoteMediaRecorderManager;
 #endif
-#endif
 #if ENABLE(MEDIA_STREAM)
+    Ref<WebCore::SecurityOrigin> m_captureOrigin;
     bool m_allowsAudioCapture { false };
     bool m_allowsVideoCapture { false };
     bool m_allowsDisplayCapture { false };
 #endif
 
-    using RemoteRenderingBackendMap = HashMap<RenderingBackendIdentifier, IPC::ScopedActiveMessageReceiveQueue<RemoteRenderingBackend>>;
     RemoteRenderingBackendMap m_remoteRenderingBackendMap;
 #if ENABLE(WEBGL)
     using RemoteGraphicsContextGLMap = HashMap<GraphicsContextGLIdentifier, IPC::ScopedActiveMessageReceiveQueue<RemoteGraphicsContextGL>>;
@@ -245,10 +289,19 @@ private:
 
     std::unique_ptr<RemoteMediaEngineConfigurationFactoryProxy> m_mediaEngineConfigurationFactoryProxy;
 
+#if HAVE(VISIBILITY_PROPAGATION_VIEW)
+    HashMap<std::pair<WebPageProxyIdentifier, WebCore::PageIdentifier>, std::unique_ptr<LayerHostingContext>> m_visibilityPropagationContexts;
+#endif
+
     using RemoteAudioHardwareListenerMap = HashMap<RemoteAudioHardwareListenerIdentifier, std::unique_ptr<RemoteAudioHardwareListenerProxy>>;
     RemoteAudioHardwareListenerMap m_remoteAudioHardwareListenerMap;
-    using RemoteRemoteCommandListenerMap = HashMap<RemoteRemoteCommandListenerIdentifier, std::unique_ptr<RemoteRemoteCommandListenerProxy>>;
-    RemoteRemoteCommandListenerMap m_remoteRemoteCommandListenerMap;
+
+    RefPtr<RemoteRemoteCommandListenerProxy> m_remoteRemoteCommandListener;
+    bool m_isActiveNowPlayingProcess { false };
+
+#if ENABLE(ROUTING_ARBITRATION) && HAVE(AVAUDIO_ROUTING_ARBITER)
+    UniqueRef<LocalAudioSessionRoutingArbitrator> m_routingArbitrator;
+#endif
 };
 
 } // namespace WebKit

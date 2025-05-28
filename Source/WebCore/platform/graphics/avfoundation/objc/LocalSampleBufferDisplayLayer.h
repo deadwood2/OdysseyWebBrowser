@@ -60,8 +60,12 @@ public:
 
     enum class ShouldUpdateRootLayer { No, Yes };
     void updateRootLayerBoundsAndPosition(CGRect, MediaSample::VideoRotation, ShouldUpdateRootLayer);
+    void updateRootLayerAffineTransform(CGAffineTransform);
 
     void initialize(bool hideRootLayer, IntSize, CompletionHandler<void(bool didSucceed)>&&) final;
+#if !RELEASE_LOG_DISABLED
+    void setLogIdentifier(String&& logIdentifier) final { m_logIdentifier = WTFMove(logIdentifier); }
+#endif
     bool didFail() const final;
 
     void updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer) final;
@@ -104,6 +108,7 @@ private:
     bool m_paused { false };
 
 #if !RELEASE_LOG_DISABLED
+    String m_logIdentifier;
     FrameRateMonitor m_frameRateMonitor;
 #endif
 };

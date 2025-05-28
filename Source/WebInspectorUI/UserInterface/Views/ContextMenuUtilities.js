@@ -212,7 +212,7 @@ WI.appendContextMenuItemsForURL = function(contextMenu, url, options = {})
     }
 
     if (!url.startsWith("javascript:") && !url.startsWith("data:")) {
-        contextMenu.appendItem(WI.UIString("Open in New Tab"), () => {
+        contextMenu.appendItem(WI.UIString("Open in New Window", "Open in New Window @ Context Menu Item", "Context menu item for opening the target item in a new window."), () => {
             const frame = null;
             WI.openURL(url, frame, {alwaysOpenExternally: true});
         });
@@ -383,28 +383,6 @@ WI.appendContextMenuItemsForDOMNode = function(contextMenu, domNode, options = {
             contextMenu.appendItem(WI.UIString("Scroll into View", "Scroll selected DOM node into view on the inspected web page"), () => {
                 domNode.scrollIntoView();
             });
-        }
-
-        contextMenu.appendSeparator();
-
-        // FIXME: <https://webkit.org/b/221246> remove these engineering-only menu items when removing the feature flag.
-        if (WI.isEngineeringBuild && WI.settings.experimentalEnableLayoutPanel.value) {
-            if (InspectorBackend.hasCommand("DOM.showGridOverlay") && attached) {
-                contextMenu.appendItem(WI.unlocalizedString("Add Grid Overlay with Random Color"), () => {
-                    let randomComponent = () => Math.floor(Math.random() * 255);
-                    let color = new WI.Color(WI.Color.Format.RGB, [randomComponent(), randomComponent(), randomComponent()]);
-                    domNode.showGridOverlay(color).catch(console.error);
-                });
-
-                contextMenu.appendItem(WI.unlocalizedString("Remove Grid Overlay for this Node"), () => {
-                    domNode.hideGridOverlay();
-                });
-
-                contextMenu.appendItem(WI.unlocalizedString("Remove All Grid Overlays"), () => {
-                    let target = WI.assumingMainTarget();
-                    target.DOMAgent.hideGridOverlay();
-                });
-            }
         }
 
         contextMenu.appendSeparator();

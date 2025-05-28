@@ -83,6 +83,7 @@ public:
     JSRetainPtr<JSStringRef> domIdentifier() const;
 
     RefPtr<AccessibilityUIElement> elementAtPoint(int x, int y);
+    JSValueRef children() const;
     RefPtr<AccessibilityUIElement> childAtIndex(unsigned);
     unsigned indexOfChild(AccessibilityUIElement*);
     int childrenCount();
@@ -151,6 +152,8 @@ public:
     double y();
     double width();
     double height();
+    JSRetainPtr<JSStringRef> lineRectsAndText() const;
+
     double intValue() const;
     double minValue();
     double maxValue();
@@ -196,7 +199,8 @@ public:
     JSRetainPtr<JSStringRef> url();
     JSRetainPtr<JSStringRef> classList() const;
     JSRetainPtr<JSStringRef> embeddedImageDescription() const;
-    
+    JSValueRef imageOverlayElements() const;
+
     // CSS3-speech properties.
     JSRetainPtr<JSStringRef> speakAs();
     
@@ -225,6 +229,7 @@ public:
     RefPtr<AccessibilityUIElement> disclosedRowAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> rowAtIndex(unsigned);
 
+    JSValueRef detailsElements() const;
     JSValueRef errorMessageElements() const;
     // ARIA specific
     RefPtr<AccessibilityUIElement> ariaOwnsElementAtIndex(unsigned);
@@ -300,6 +305,7 @@ public:
     
     // Text markers.
     RefPtr<AccessibilityTextMarkerRange> lineTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
+    int lineIndexForTextMarker(AccessibilityTextMarker*) const;
     RefPtr<AccessibilityTextMarkerRange> misspellingTextMarkerRange(AccessibilityTextMarkerRange* start, bool forward);
     RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForElement(AccessibilityUIElement*);
     RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForMarkers(AccessibilityTextMarker* startMarker, AccessibilityTextMarker* endMarker);
@@ -317,6 +323,7 @@ public:
     RefPtr<AccessibilityTextMarker> nextTextMarker(AccessibilityTextMarker*);
     RefPtr<AccessibilityUIElement> accessibilityElementForTextMarker(AccessibilityTextMarker*);
     JSRetainPtr<JSStringRef> stringForTextMarkerRange(AccessibilityTextMarkerRange*);
+    JSRetainPtr<JSStringRef> rectsForTextMarkerRange(AccessibilityTextMarkerRange*, JSStringRef);
     JSRetainPtr<JSStringRef> attributedStringForTextMarkerRange(AccessibilityTextMarkerRange*);
     JSRetainPtr<JSStringRef> attributedStringForTextMarkerRangeWithOptions(AccessibilityTextMarkerRange*, bool);
     int textMarkerRangeLength(AccessibilityTextMarkerRange*);
@@ -326,7 +333,7 @@ public:
     RefPtr<AccessibilityTextMarker> textMarkerForIndex(int);
     RefPtr<AccessibilityTextMarker> startTextMarker();
     RefPtr<AccessibilityTextMarker> endTextMarker();
-    bool setSelectedVisibleTextRange(AccessibilityTextMarkerRange*);
+    bool setSelectedTextMarkerRange(AccessibilityTextMarkerRange*);
     RefPtr<AccessibilityTextMarkerRange> leftWordTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
     RefPtr<AccessibilityTextMarkerRange> rightWordTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
     RefPtr<AccessibilityTextMarker> previousWordStartTextMarkerForTextMarker(AccessibilityTextMarker*);
@@ -409,9 +416,11 @@ private:
 #endif
 #endif
 };
-    
+
 #ifdef __OBJC__
-inline Optional<RefPtr<AccessibilityUIElement>> makeVectorElement(const RefPtr<AccessibilityUIElement>*, id element) { return { { AccessibilityUIElement::create(element) } }; }
+inline std::optional<RefPtr<AccessibilityUIElement>> makeVectorElement(const RefPtr<AccessibilityUIElement>*, id element) { return { { AccessibilityUIElement::create(element) } }; }
+
+JSObjectRef makeJSArray(NSArray *);
 #endif
 
 template<typename T>

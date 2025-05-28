@@ -24,6 +24,7 @@ list(APPEND WTF_SOURCES
     win/DbgHelperWin.cpp
     win/FileSystemWin.cpp
     win/LanguageWin.cpp
+    win/LoggingWin.cpp
     win/MainThreadWin.cpp
     win/MemoryFootprintWin.cpp
     win/MemoryPressureHandlerWin.cpp
@@ -37,8 +38,10 @@ list(APPEND WTF_SOURCES
 if (USE_CF)
     list(APPEND WTF_PUBLIC_HEADERS
         cf/CFURLExtras.h
+        cf/SpanCF.h
         cf/TypeCastsCF.h
 
+        text/cf/StringConcatenateCF.h
         text/cf/TextBreakIteratorCF.h
     )
     list(APPEND WTF_SOURCES

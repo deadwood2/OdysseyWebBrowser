@@ -1,4 +1,4 @@
-# Copyright (C) 2019 Apple Inc. All rights reserved.
+# Copyright (C) 2019-2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,10 +31,11 @@ import urllib.parse
 from cassandra.cqlengine import columns
 from datetime import datetime
 from fakeredis import FakeStrictRedis
-from resultsdbpy.controller.commit import Commit
 from resultsdbpy.model.commit_context import CommitContext
 from resultsdbpy.model.configuration_context import ClusteredByConfiguration
 from resultsdbpy.model.upload_context import UploadCallbackContext
+
+from webkitscmpy import Commit
 
 
 class CIContext(UploadCallbackContext):
@@ -135,7 +136,7 @@ class CIContext(UploadCallbackContext):
                     del details[key]
 
             uuid = self.commit_context.uuid_for_commits(commits)
-            ttl = int((uuid / Commit.TIMESTAMP_TO_UUID_MULTIPLIER) + self.ttl_seconds - time.time()) if self.ttl_seconds else None
+            ttl = int((uuid / Commit.UUID_MULTIPLIER) + self.ttl_seconds - time.time()) if self.ttl_seconds else None
 
             with self, self.cassandra.batch_query_context():
                 for branch in self.commit_context.branch_keys_for_commits(commits):
@@ -206,23 +207,6 @@ class CIContext(UploadCallbackContext):
 
     def find_urls_by_start_time(self, *args, **kwargs):
         return self._find_urls(self.URLsByStartTime, *args, **kwargs)
-
-
-class BuildbotEightURLFactory(object):
-    SCHEME = 'https://'
-
-    def __init__(self, master):
-        self.master = master
-
-    def url(self, builder_name=None, build_number=None, worker_name=None, should_fetch=False):
-        if builder_name:
-            if build_number:
-                return self.SCHEME + urllib.parse.quote(f'{self.master}/builders/{builder_name}/builds/{build_number}')
-            return self.SCHEME + urllib.parse.quote(f'{self.master}/builders/{builder_name}')
-        elif worker_name:
-            return f'{self.SCHEME}{self.master}/buildslaves/{worker_name}'
-
-        return None
 
 
 class BuildbotURLFactory(object):

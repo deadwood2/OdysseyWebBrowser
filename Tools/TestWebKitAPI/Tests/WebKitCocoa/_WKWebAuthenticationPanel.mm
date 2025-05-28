@@ -33,6 +33,7 @@
 #import "TestWKWebView.h"
 #import "WKWebViewConfigurationExtras.h"
 #import <LocalAuthentication/LocalAuthentication.h>
+#import <WebCore/AuthenticatorAttachment.h>
 #import <WebCore/PublicKeyCredentialCreationOptions.h>
 #import <WebCore/PublicKeyCredentialRequestOptions.h>
 #import <WebKit/WKPreferencesPrivate.h>
@@ -431,6 +432,7 @@ TEST(WebAuthenticationPanel, NoPanelNfcSucceed)
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Succeeded!"];
@@ -445,6 +447,7 @@ TEST(WebAuthenticationPanel, NoPanelHidSuccess)
     [[configuration preferences] _setEnabled:YES forExperimentalFeature:webAuthenticationExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Succeeded!"];
@@ -462,6 +465,7 @@ TEST(WebAuthenticationPanel, PanelHidSuccess1)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -484,6 +488,7 @@ TEST(WebAuthenticationPanel, PanelHidSuccess2)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -491,6 +496,7 @@ TEST(WebAuthenticationPanel, PanelHidSuccess2)
 
     // A bit of extra checks.
     checkPanel([delegate panel], @"", @[adoptNS([[NSNumber alloc] initWithInt:_WKWebAuthenticationTransportUSB]).get()], _WKWebAuthenticationTypeCreate);
+    EXPECT_WK_STREQ([delegate panel].userName, "John Appleseed");
 }
 
 #if HAVE(NEAR_FIELD)
@@ -511,6 +517,7 @@ TEST(WebAuthenticationPanel, PanelRacy1)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsRacy:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -535,6 +542,7 @@ TEST(WebAuthenticationPanel, PanelRacy2)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsRacy:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -558,6 +566,7 @@ TEST(WebAuthenticationPanel, PanelTwice)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -581,6 +590,7 @@ TEST(WebAuthenticationPanel, ReloadHidCancel)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -601,6 +611,7 @@ TEST(WebAuthenticationPanel, LocationChangeHidCancel)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -621,6 +632,7 @@ TEST(WebAuthenticationPanel, NewLoadHidCancel)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -640,6 +652,7 @@ TEST(WebAuthenticationPanel, CloseHidCancel)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -678,6 +691,7 @@ TEST(WebAuthenticationPanel, SubFrameChangeLocationHidCancel)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     auto port = static_cast<unsigned>(server.port());
     auto url = makeString("http://localhost:", port);
@@ -722,6 +736,7 @@ TEST(WebAuthenticationPanel, SubFrameDestructionHidCancel)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:(id)makeString("http://localhost:", server.port())]]];
     Util::run(&webAuthenticationPanelRan);
@@ -741,6 +756,7 @@ TEST(WebAuthenticationPanel, PanelHidCancel)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -761,6 +777,7 @@ TEST(WebAuthenticationPanel, PanelHidCtapNoCredentialsFound)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -779,6 +796,7 @@ TEST(WebAuthenticationPanel, PanelU2fCtapNoCredentialsFound)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -798,6 +816,7 @@ TEST(WebAuthenticationPanel, FakePanelHidSuccess)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsFake:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -817,6 +836,7 @@ TEST(WebAuthenticationPanel, FakePanelHidCtapNoCredentialsFound)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsFake:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -836,6 +856,7 @@ TEST(WebAuthenticationPanel, NullPanelHidSuccess)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsNull:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -855,6 +876,7 @@ TEST(WebAuthenticationPanel, NullPanelHidCtapNoCredentialsFound)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsNull:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -874,6 +896,7 @@ TEST(WebAuthenticationPanel, PanelMultipleNFCTagsPresent)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -893,6 +916,7 @@ TEST(WebAuthenticationPanel, PanelHidCancelReloadNoCrash)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelRan);
@@ -913,6 +937,7 @@ TEST(WebAuthenticationPanel, PanelHidSuccessCancelNoCrash)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
     webAuthenticationPanelCancelImmediately = true;
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -931,6 +956,7 @@ TEST(WebAuthenticationPanel, PanelHidCtapNoCredentialsFoundCancelNoCrash)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
     webAuthenticationPanelCancelImmediately = true;
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -947,6 +973,7 @@ TEST(WebAuthenticationPanel, PinGetRetriesError)
     [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
+    [webView focus];
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Unknown internal error. Error code: 2"];
 }
@@ -961,6 +988,7 @@ TEST(WebAuthenticationPanel, PinGetKeyAgreementError)
     [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
+    [webView focus];
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Unknown internal error. Error code: 2"];
 }
@@ -975,6 +1003,7 @@ TEST(WebAuthenticationPanel, PinRequestPinErrorNoDelegate)
     [[configuration preferences] _setEnabled:NO forExperimentalFeature:webAuthenticationModernExperimentalFeature()];
 
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
+    [webView focus];
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Pin is null."];
 }
@@ -992,6 +1021,7 @@ TEST(WebAuthenticationPanel, PinRequestPinErrorNullDelegate)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsNull:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Pin is null."];
@@ -1009,6 +1039,7 @@ TEST(WebAuthenticationPanel, PinRequestPinError)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "123";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1029,6 +1060,7 @@ TEST(WebAuthenticationPanel, PinGetPinTokenPinBlockedError)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1049,6 +1081,7 @@ TEST(WebAuthenticationPanel, PinGetPinTokenPinAuthBlockedError)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1069,6 +1102,7 @@ TEST(WebAuthenticationPanel, PinGetPinTokenPinInvalidErrorAndRetry)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1088,6 +1122,7 @@ TEST(WebAuthenticationPanel, PinGetPinTokenPinAuthInvalidErrorAndRetry)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1107,6 +1142,7 @@ TEST(WebAuthenticationPanel, MakeCredentialPin)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1125,6 +1161,7 @@ TEST(WebAuthenticationPanel, MakeCredentialPinAuthBlockedError)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1145,6 +1182,7 @@ TEST(WebAuthenticationPanel, MakeCredentialPinInvalidErrorAndRetry)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1164,6 +1202,7 @@ TEST(WebAuthenticationPanel, GetAssertionPin)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1182,6 +1221,7 @@ TEST(WebAuthenticationPanel, GetAssertionPinAuthBlockedError)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1202,6 +1242,7 @@ TEST(WebAuthenticationPanel, GetAssertionPinInvalidErrorAndRetry)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1222,6 +1263,7 @@ TEST(WebAuthenticationPanel, NfcPinCachedDisconnect)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     webAuthenticationPanelPin = "1234";
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1242,6 +1284,7 @@ TEST(WebAuthenticationPanel, MultipleAccountsNullDelegate)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsNull:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Operation timed out."];
@@ -1259,6 +1302,7 @@ TEST(WebAuthenticationPanel, MultipleAccounts)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Succeeded!"];
@@ -1281,6 +1325,7 @@ TEST(WebAuthenticationPanel, LAError)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelUpdateLAError);
@@ -1298,6 +1343,7 @@ TEST(WebAuthenticationPanel, LADuplicateCredential)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     ASSERT_TRUE(addKeyToKeychain(testES256PrivateKeyBase64, "", testUserEntityBundleBase64));
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1317,6 +1363,7 @@ TEST(WebAuthenticationPanel, LANoCredential)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     Util::run(&webAuthenticationPanelUpdateLANoCredential);
@@ -1335,6 +1382,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialNullDelegate)
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [delegate setIsNull:true];
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Disallow local authenticator."];
@@ -1352,6 +1400,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialDisallowLocalAuthenticator)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"Disallow local authenticator."];
@@ -1369,6 +1418,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialAllowLocalAuthenticator)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     localAuthenticatorPolicy = _WKLocalAuthenticatorPolicyAllow;
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1389,6 +1439,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialNoMockNoUserGesture)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"This request has been cancelled by the user."];
@@ -1406,6 +1457,7 @@ TEST(WebAuthenticationPanel, LAMakeCredentialRollBackCredential)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     localAuthenticatorPolicy = _WKLocalAuthenticatorPolicyAllow;
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1425,7 +1477,6 @@ TEST(WebAuthenticationPanel, LAMakeCredentialRollBackCredential)
     EXPECT_EQ(status, errSecItemNotFound);
 }
 
-// Skip the test because of <rdar://problem/59635486>.
 #if PLATFORM(MAC)
 
 TEST(WebAuthenticationPanel, LAGetAssertion)
@@ -1440,6 +1491,7 @@ TEST(WebAuthenticationPanel, LAGetAssertion)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     ASSERT_TRUE(addKeyToKeychain(testES256PrivateKeyBase64, "", testUserEntityBundleBase64));
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
@@ -1460,6 +1512,7 @@ TEST(WebAuthenticationPanel, LAGetAssertionNoMockNoUserGesture)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     [webView loadRequest:[NSURLRequest requestWithURL:testURL.get()]];
     [webView waitForMessage:@"This request has been cancelled by the user."];
@@ -1477,6 +1530,7 @@ TEST(WebAuthenticationPanel, LAGetAssertionMultipleOrder)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
     auto delegate = adoptNS([[TestWebAuthenticationPanelUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
+    [webView focus];
 
     ASSERT_TRUE(addKeyToKeychain(testES256PrivateKeyBase64, "", testUserEntityBundleBase64));
     ASSERT_TRUE(addKeyToKeychain("BBRoi2JbR0IXTeJmvXUp1YIuM4sph/Lu3eGf75F7n+HojHKG70a4R0rB2PQce5/SJle6T7OO5Cqet/LJZVM6NQ8yDDxWvayf71GTDp2yUtuIbqJLFVbpWymlj9WRizgX3A==", "", "omJpZEoAAQIDBAUGBwgJZG5hbWVkSmFuZQ=="/* { "id": h'00010203040506070809', "name": "Jane" } */));
@@ -1523,9 +1577,9 @@ TEST(WebAuthenticationPanel, PublicKeyCredentialCreationOptionsMinimun)
     EXPECT_EQ(result.pubKeyCredParams[0].type, WebCore::PublicKeyCredentialType::PublicKey);
     EXPECT_EQ(result.pubKeyCredParams[0].alg, -7);
 
-    EXPECT_EQ(result.timeout, WTF::nullopt);
+    EXPECT_EQ(result.timeout, std::nullopt);
     EXPECT_EQ(result.excludeCredentials.size(), 0lu);
-    EXPECT_EQ(result.authenticatorSelection, WTF::nullopt);
+    EXPECT_EQ(result.authenticatorSelection, std::nullopt);
     EXPECT_EQ(result.attestation, AttestationConveyancePreference::None);
     EXPECT_TRUE(result.extensions->appid.isNull());
     EXPECT_EQ(result.extensions->googleLegacyAppidSupport, false);
@@ -1576,7 +1630,7 @@ TEST(WebAuthenticationPanel, PublicKeyCredentialCreationOptionsMaximumDefault)
     EXPECT_EQ(result.excludeCredentials[0].idVector.size(), sizeof(identifier));
     EXPECT_EQ(memcmp(result.excludeCredentials[0].idVector.data(), identifier, sizeof(identifier)), 0);
 
-    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, WTF::nullopt);
+    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, std::nullopt);
     EXPECT_EQ(result.authenticatorSelection->requireResidentKey, false);
     EXPECT_EQ(result.authenticatorSelection->userVerification, UserVerificationRequirement::Preferred);
 
@@ -1647,7 +1701,7 @@ TEST(WebAuthenticationPanel, PublicKeyCredentialCreationOptionsMaximum1)
     EXPECT_EQ(result.excludeCredentials[0].transports[1], AuthenticatorTransport::Nfc);
     EXPECT_EQ(result.excludeCredentials[0].transports[2], AuthenticatorTransport::Internal);
 
-    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, PublicKeyCredentialCreationOptions::AuthenticatorAttachment::Platform);
+    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, AuthenticatorAttachment::Platform);
     EXPECT_EQ(result.authenticatorSelection->requireResidentKey, true);
     EXPECT_EQ(result.authenticatorSelection->userVerification, UserVerificationRequirement::Required);
 
@@ -1717,7 +1771,7 @@ TEST(WebAuthenticationPanel, PublicKeyCredentialCreationOptionsMaximum2)
     EXPECT_EQ(result.excludeCredentials[0].transports[1], AuthenticatorTransport::Nfc);
     EXPECT_EQ(result.excludeCredentials[0].transports[2], AuthenticatorTransport::Internal);
 
-    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, PublicKeyCredentialCreationOptions::AuthenticatorAttachment::CrossPlatform);
+    EXPECT_EQ(result.authenticatorSelection->authenticatorAttachment, AuthenticatorAttachment::CrossPlatform);
     EXPECT_EQ(result.authenticatorSelection->requireResidentKey, true);
     EXPECT_EQ(result.authenticatorSelection->userVerification, UserVerificationRequirement::Discouraged);
 
@@ -1775,7 +1829,7 @@ TEST(WebAuthenticationPanel, MakeCredentialLA)
     auto delegate = adoptNS([[TestWebAuthenticationPanelDelegate alloc] init]);
     [panel setDelegate:delegate.get()];
 
-    [panel makeCredentialWithChallenge:nsHash.get() origin:@"example.com" options:options.get() completionHandler:^(_WKAuthenticatorAttestationResponse *response, NSError *error) {
+    [panel makeCredentialWithChallenge:nsHash.get() origin:@"https://example.com" options:options.get() completionHandler:^(_WKAuthenticatorAttestationResponse *response, NSError *error) {
         webAuthenticationPanelRan = true;
         cleanUpKeychain("example.com");
 
@@ -1783,7 +1837,7 @@ TEST(WebAuthenticationPanel, MakeCredentialLA)
         EXPECT_NULL(error);
 
         EXPECT_NOT_NULL(response);
-        EXPECT_WK_STREQ([response.clientDataJSON base64EncodedStringWithOptions:0], "eyJjaGFsbGVuZ2UiOiJBUUlEQkFFQ0F3UUJBZ01FQVFJREJBRUNBd1FCQWdNRUFRSURCQUVDQXdRIiwib3JpZ2luIjoiZXhhbXBsZS5jb20iLCJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIn0=");
+        EXPECT_WK_STREQ([[NSString alloc] initWithData:response.clientDataJSON encoding:NSUTF8StringEncoding], "{\"challenge\":\"AQIDBAECAwQBAgMEAQIDBAECAwQBAgMEAQIDBAECAwQ\",\"origin\":\"https://example.com\",\"type\":\"webauthn.create\"}");
         EXPECT_WK_STREQ([response.rawId base64EncodedStringWithOptions:0], "SMSXHngF7hEOsElA73C3RY+8bR4=");
         EXPECT_NULL(response.extensions);
         EXPECT_WK_STREQ([response.attestationObject base64EncodedStringWithOptions:0], "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YViYo3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUdFAAAAAAAAAAAAAAAAAAAAAAAAAAAAFEjElx54Be4RDrBJQO9wt0WPvG0epQECAyYgASFYIDj/zxSkzKgaBuS3cdWDF558of8AaIpgFpsjF/Qm1749IlggVBJPgqUIwfhWHJ91nb7UPH76c0+WFOzZKslPyyFse4g=");
@@ -1797,7 +1851,7 @@ TEST(WebAuthenticationPanel, PublicKeyCredentialRequestOptionsMinimun)
     auto options = adoptNS([[_WKPublicKeyCredentialRequestOptions alloc] init]);
     auto result = [_WKWebAuthenticationPanel convertToCoreRequestOptionsWithOptions:options.get()];
 
-    EXPECT_EQ(result.timeout, WTF::nullopt);
+    EXPECT_EQ(result.timeout, std::nullopt);
     EXPECT_TRUE(result.rpId.isNull());
     EXPECT_EQ(result.allowCredentials.size(), 0lu);
     EXPECT_EQ(result.userVerification, UserVerificationRequirement::Preferred);
@@ -1896,6 +1950,55 @@ TEST(WebAuthenticationPanel, GetAssertionLA)
 {
     reset();
 
+    ASSERT_TRUE(addKeyToKeychain(testES256PrivateKeyBase64, "example.com", testUserEntityBundleBase64));
+
+    uint8_t hash[] = { 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04 };
+    NSData *nsHash = [NSData dataWithBytes:hash length:sizeof(hash)];
+
+    auto options = adoptNS([[_WKPublicKeyCredentialRequestOptions alloc] init]);
+    [options setRelyingPartyIdentifier:@"example.com"];
+
+    auto panel = adoptNS([[_WKWebAuthenticationPanel alloc] init]);
+    [panel setMockConfiguration:@{ }];
+    auto delegate = adoptNS([[TestWebAuthenticationPanelDelegate alloc] init]);
+    [panel setDelegate:delegate.get()];
+
+    [panel getAssertionWithChallenge:nsHash origin:@"https://example.com" options:options.get() completionHandler:^(_WKAuthenticatorAssertionResponse *response, NSError *error) {
+        webAuthenticationPanelRan = true;
+        cleanUpKeychain("example.com");
+
+        EXPECT_NULL(error);
+
+        EXPECT_NOT_NULL(response);
+        EXPECT_WK_STREQ([[NSString alloc] initWithData:response.clientDataJSON encoding:NSUTF8StringEncoding], "{\"challenge\":\"AQIDBAECAwQBAgMEAQIDBAECAwQBAgMEAQIDBAECAwQ\",\"origin\":\"https://example.com\",\"type\":\"webauthn.get\"}");
+        EXPECT_WK_STREQ([response.rawId base64EncodedStringWithOptions:0], "SMSXHngF7hEOsElA73C3RY+8bR4=");
+        EXPECT_NULL(response.extensions);
+
+        // echo -n "example.com" | shasum -a 256 | xxd -r -p | base64
+        NSString *base64RPIDHash = @"o3mm9u6vuaVeN4wRgDTidR5oL6ufLTCrE9ISVYbOGUc=";
+        constexpr uint8_t additionalAuthenticatorData[] = {
+            0x05, // 'flags': UV=1, UP=1
+
+            // 32-bit 'signCount'
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        };
+        NSMutableData *expectedAuthenticatorData = [[NSMutableData alloc] initWithBase64EncodedString:base64RPIDHash options:0];
+        [expectedAuthenticatorData appendBytes:additionalAuthenticatorData length:sizeof(additionalAuthenticatorData)];
+
+        EXPECT_WK_STREQ([response.authenticatorData base64EncodedStringWithOptions:0], [expectedAuthenticatorData base64EncodedStringWithOptions:0]);
+        EXPECT_NOT_NULL(response.signature);
+        EXPECT_WK_STREQ([response.userHandle base64EncodedStringWithOptions:0], "AAECAwQFBgcICQ==");
+    }];
+    Util::run(&webAuthenticationPanelRan);
+}
+
+TEST(WebAuthenticationPanel, GetAssertionCrossPlatform)
+{
+    reset();
+
     ASSERT_TRUE(addKeyToKeychain(testES256PrivateKeyBase64, "", testUserEntityBundleBase64));
 
     uint8_t hash[] = { 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04 };
@@ -1903,6 +2006,8 @@ TEST(WebAuthenticationPanel, GetAssertionLA)
 
     auto options = adoptNS([[_WKPublicKeyCredentialRequestOptions alloc] init]);
     [options setRelyingPartyIdentifier:@""];
+    [options setAuthenticatorAttachment:_WKAuthenticatorAttachmentCrossPlatform];
+    [options setTimeout:@120];
 
     auto panel = adoptNS([[_WKWebAuthenticationPanel alloc] init]);
     [panel setMockConfiguration:@{ }];
@@ -1913,15 +2018,9 @@ TEST(WebAuthenticationPanel, GetAssertionLA)
         webAuthenticationPanelRan = true;
         cleanUpKeychain("");
 
-        EXPECT_NULL(error);
-
-        EXPECT_NOT_NULL(response);
-        EXPECT_WK_STREQ([response.clientDataJSON base64EncodedStringWithOptions:0], "eyJjaGFsbGVuZ2UiOiJBUUlEQkFFQ0F3UUJBZ01FQVFJREJBRUNBd1FCQWdNRUFRSURCQUVDQXdRIiwib3JpZ2luIjoiIiwidHlwZSI6IndlYmF1dGhuLmNyZWF0ZSJ9");
-        EXPECT_WK_STREQ([response.rawId base64EncodedStringWithOptions:0], "SMSXHngF7hEOsElA73C3RY+8bR4=");
-        EXPECT_NULL(response.extensions);
-        EXPECT_WK_STREQ([response.authenticatorData base64EncodedStringWithOptions:0], "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFUFAAAAAA==");
-        EXPECT_NOT_NULL(response.signature);
-        EXPECT_WK_STREQ([response.userHandle base64EncodedStringWithOptions:0], "AAECAwQFBgcICQ==");
+        EXPECT_NULL(response);
+        EXPECT_EQ(error.domain, WKErrorDomain);
+        EXPECT_EQ(error.code, WKErrorUnknown);
     }];
     Util::run(&webAuthenticationPanelRan);
 }
@@ -1956,7 +2055,7 @@ TEST(WebAuthenticationPanel, DeleteOneCredential)
     EXPECT_NOT_NULL(credentials);
     EXPECT_EQ([credentials count], 0lu);
 }
-#endif
+#endif // USE(APPLE_INTERNAL_SDK) || PLATFORM(IOS)
 
 } // namespace TestWebKitAPI
 

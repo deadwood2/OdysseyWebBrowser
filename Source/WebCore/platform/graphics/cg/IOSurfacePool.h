@@ -39,6 +39,8 @@
 
 namespace WebCore {
 
+class DestinatationColorSpace;
+
 class IOSurfacePool {
     WTF_MAKE_NONCOPYABLE(IOSurfacePool);
     WTF_MAKE_FAST_ALLOCATED;
@@ -47,7 +49,7 @@ class IOSurfacePool {
 public:
     WEBCORE_EXPORT static IOSurfacePool& sharedPool();
 
-    std::unique_ptr<IOSurface> takeSurface(IntSize, CGColorSpaceRef, IOSurface::Format);
+    std::unique_ptr<IOSurface> takeSurface(IntSize, const DestinationColorSpace&, IOSurface::Format);
     WEBCORE_EXPORT void addSurface(std::unique_ptr<IOSurface>);
 
     void discardAllSurfaces();
@@ -78,39 +80,39 @@ private:
     // they can't be immediately returned when requested (but will be freed up in the future).
     static constexpr size_t maximumInUseBytes = defaultMaximumBytesCached / 2;
     
-    bool shouldCacheSurface(const IOSurface&) const;
+    bool shouldCacheSurface(const IOSurface&) const WTF_REQUIRES_LOCK(m_lock);
 
-    void willAddSurface(IOSurface&, bool inUse);
-    void didRemoveSurface(IOSurface&, bool inUse);
-    void didUseSurfaceOfSize(IntSize);
+    void willAddSurface(IOSurface&, bool inUse) WTF_REQUIRES_LOCK(m_lock);
+    void didRemoveSurface(IOSurface&, bool inUse) WTF_REQUIRES_LOCK(m_lock);
+    void didUseSurfaceOfSize(IntSize) WTF_REQUIRES_LOCK(m_lock);
 
-    void insertSurfaceIntoPool(std::unique_ptr<IOSurface>);
+    void insertSurfaceIntoPool(std::unique_ptr<IOSurface>) WTF_REQUIRES_LOCK(m_lock);
 
-    void evict(size_t additionalSize);
-    void tryEvictInUseSurface();
-    void tryEvictOldestCachedSurface();
+    void evict(size_t additionalSize) WTF_REQUIRES_LOCK(m_lock);
+    void tryEvictInUseSurface() WTF_REQUIRES_LOCK(m_lock);
+    void tryEvictOldestCachedSurface() WTF_REQUIRES_LOCK(m_lock);
 
-    void scheduleCollectionTimer();
+    void scheduleCollectionTimer() WTF_REQUIRES_LOCK(m_lock);
     void collectionTimerFired();
-    void collectInUseSurfaces();
-    bool markOlderSurfacesPurgeable();
+    void collectInUseSurfaces() WTF_REQUIRES_LOCK(m_lock);
+    bool markOlderSurfacesPurgeable() WTF_REQUIRES_LOCK(m_lock);
 
     void platformGarbageCollectNow();
 
-    void discardAllSurfacesInternal();
+    void discardAllSurfacesInternal() WTF_REQUIRES_LOCK(m_lock);
 
     void showPoolStatistics(const char*);
 
-    RunLoop::Timer<IOSurfacePool> m_collectionTimer;
     Lock m_lock;
-    CachedSurfaceMap m_cachedSurfaces;
-    CachedSurfaceQueue m_inUseSurfaces;
-    CachedSurfaceDetailsMap m_surfaceDetails;
-    Vector<IntSize> m_sizesInPruneOrder;
+    RunLoop::Timer<IOSurfacePool> m_collectionTimer WTF_GUARDED_BY_LOCK(m_lock);
+    CachedSurfaceMap m_cachedSurfaces WTF_GUARDED_BY_LOCK(m_lock);
+    CachedSurfaceQueue m_inUseSurfaces WTF_GUARDED_BY_LOCK(m_lock);
+    CachedSurfaceDetailsMap m_surfaceDetails WTF_GUARDED_BY_LOCK(m_lock);
+    Vector<IntSize> m_sizesInPruneOrder WTF_GUARDED_BY_LOCK(m_lock);
 
-    size_t m_bytesCached { 0 };
-    size_t m_inUseBytesCached { 0 };
-    size_t m_maximumBytesCached { defaultMaximumBytesCached };
+    size_t m_bytesCached WTF_GUARDED_BY_LOCK(m_lock) { 0 };
+    size_t m_inUseBytesCached WTF_GUARDED_BY_LOCK(m_lock) { 0 };
+    size_t m_maximumBytesCached WTF_GUARDED_BY_LOCK(m_lock) { defaultMaximumBytesCached };
 };
 
 }

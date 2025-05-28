@@ -28,12 +28,12 @@
 
 #if ENABLE(WEBM_FORMAT_READER)
 
+#include "Logging.h"
 #include "MediaTrackReader.h"
 #include <WebCore/AudioTrackPrivate.h>
 #include <WebCore/ContentType.h>
 #include <WebCore/Document.h>
 #include <WebCore/InbandTextTrackPrivate.h>
-#include <WebCore/Logging.h>
 #include <WebCore/MediaSample.h>
 #include <WebCore/SourceBufferParserWebM.h>
 #include <WebCore/VideoTrackPrivate.h>
@@ -47,7 +47,6 @@ WTF_DECLARE_CF_TYPE_TRAIT(MTPluginFormatReader);
 
 namespace WebKit {
 
-using namespace PAL;
 using namespace WebCore;
 
 static const void* nextLogIdentifier()
@@ -56,8 +55,42 @@ static const void* nextLogIdentifier()
     return reinterpret_cast<const void*>(++logIdentifier);
 }
 
-static WTFLogChannel& logChannel() { return WebCore::LogMedia; }
+static WTFLogChannel& logChannel()
+{
+    return JOIN_LOG_CHANNEL_WITH_PREFIX(LOG_CHANNEL_PREFIX, Media);
+}
+
 static const char* logClassName() { return "MediaFormatReader"; }
+
+class AbortAction {
+public:
+    AbortAction(Condition& condition)
+        : m_condition(condition)
+    {
+        if (noErr != PAL::FigThreadRegisterAbortAction(action, this, &m_token))
+            m_token = nullptr;
+    }
+
+    ~AbortAction()
+    {
+        if (m_token)
+            PAL::FigThreadUnregisterAbortAction(m_token);
+    }
+
+    bool aborted() const { return m_aborted; }
+
+private:
+    static void action(void* refcon)
+    {
+        auto thisPtr = static_cast<AbortAction*>(refcon);
+        thisPtr->m_aborted = true;
+        thisPtr->m_condition.notifyAll();
+    }
+
+    Condition& m_condition;
+    FigThreadAbortActionToken m_token { nullptr };
+    bool m_aborted { false };
+};
 
 CMBaseClassID MediaFormatReader::wrapperClassID()
 {
@@ -82,12 +115,7 @@ MediaFormatReader::MediaFormatReader(Allocator&& allocator)
 
 void MediaFormatReader::startOnMainThread(MTPluginByteSourceRef byteSource)
 {
-    if (isMainThread()) {
-        parseByteSource(WTFMove(byteSource));
-        return;
-    }
-
-    callOnMainThread([this, protectedThis = makeRef(*this), byteSource = retainPtr(byteSource)]() mutable {
+    ensureOnMainRunLoop([this, protectedThis = makeRef(*this), byteSource = retainPtr(byteSource)]() mutable {
         parseByteSource(WTFMove(byteSource));
     });
 }
@@ -100,11 +128,12 @@ static WorkQueue& readerQueue()
 
 void MediaFormatReader::parseByteSource(RetainPtr<MTPluginByteSourceRef>&& byteSource)
 {
-    ASSERT(isMainThread());
+    ASSERT(isMainRunLoop());
 
     static NeverDestroyed<ContentType> contentType("video/webm"_s);
     auto parser = SourceBufferParserWebM::create(contentType);
     if (!parser) {
+        Locker locker { m_parseTracksLock };
         m_parseTracksStatus = kMTPluginFormatReaderError_AllocationFailure;
         return;
     }
@@ -114,7 +143,7 @@ void MediaFormatReader::parseByteSource(RetainPtr<MTPluginByteSourceRef>&& byteS
         m_logIdentifier = nextLogIdentifier();
     }
 
-    ALWAYS_LOG(LOGIDENTIFIER);
+    ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER);
     parser->setLogger(*m_logger, m_logIdentifier);
 
     // Set a minimum audio sample duration of 0 so the parser creates indivisible samples with byte source ranges.
@@ -136,9 +165,9 @@ void MediaFormatReader::parseByteSource(RetainPtr<MTPluginByteSourceRef>&& byteS
         didProvideMediaData(WTFMove(mediaSample), trackID, mediaType);
     });
 
-    auto locker = holdLock(m_parseTracksLock);
+    Locker locker { m_parseTracksLock };
     m_byteSource = WTFMove(byteSource);
-    m_parseTracksStatus = WTF::nullopt;
+    m_parseTracksStatus = std::nullopt;
     m_duration = MediaTime::invalidTime();
     m_trackReaders.clear();
 
@@ -152,16 +181,16 @@ void MediaFormatReader::parseByteSource(RetainPtr<MTPluginByteSourceRef>&& byteS
 
 void MediaFormatReader::didParseTracks(SourceBufferPrivateClient::InitializationSegment&& segment, uint64_t errorCode)
 {
-    ASSERT(!isMainThread());
+    ASSERT(!isMainRunLoop());
 
-    auto locker = holdLock(m_parseTracksLock);
+    Locker locker { m_parseTracksLock };
     ASSERT(!m_parseTracksStatus);
     ASSERT(m_duration.isInvalid());
     ASSERT(m_trackReaders.isEmpty());
 
-    ALWAYS_LOG(LOGIDENTIFIER);
+    ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER);
     if (errorCode)
-        ERROR_LOG(LOGIDENTIFIER, errorCode);
+        ERROR_LOG_IF_POSSIBLE(LOGIDENTIFIER, errorCode);
 
     m_parseTracksStatus = errorCode ? kMTPluginFormatReaderError_ParsingFailure : noErr;
     m_duration = WTFMove(segment.duration);
@@ -195,9 +224,9 @@ void MediaFormatReader::didParseTracks(SourceBufferPrivateClient::Initialization
 
 void MediaFormatReader::didProvideMediaData(Ref<MediaSample>&& mediaSample, uint64_t trackID, const String&)
 {
-    ASSERT(!isMainThread());
+    ASSERT(!isMainRunLoop());
 
-    auto locker = holdLock(m_parseTracksLock);
+    Locker locker { m_parseTracksLock };
     auto trackIndex = m_trackReaders.findMatching([&](auto& track) {
         return track->trackID() == trackID;
     });
@@ -208,11 +237,11 @@ void MediaFormatReader::didProvideMediaData(Ref<MediaSample>&& mediaSample, uint
 
 void MediaFormatReader::finishParsing(Ref<SourceBufferParser>&& parser)
 {
-    ASSERT(!isMainThread());
-    ALWAYS_LOG(LOGIDENTIFIER);
+    ASSERT(!isMainRunLoop());
+    ALWAYS_LOG_IF_POSSIBLE(LOGIDENTIFIER);
 
-    auto locker = holdLock(m_parseTracksLock);
-    ASSERT(m_parseTracksStatus.hasValue());
+    Locker locker { m_parseTracksLock };
+    ASSERT(m_parseTracksStatus.has_value());
 
     for (auto& trackReader : m_trackReaders)
         trackReader->finishParsing();
@@ -235,36 +264,45 @@ void MediaFormatReader::finishParsing(Ref<SourceBufferParser>&& parser)
 
 OSStatus MediaFormatReader::copyProperty(CFStringRef key, CFAllocatorRef allocator, void* valueCopy)
 {
-    auto locker = holdLock(m_parseTracksLock);
-    m_parseTracksCondition.wait(m_parseTracksLock, [&] {
-        return m_parseTracksStatus.hasValue();
-    });
-
-    if (CFEqual(key, PAL::get_MediaToolbox_kMTPluginFormatReaderProperty_Duration())) {
-        if (m_duration.isIndefinite())
-            return kCMBaseObjectError_ValueNotAvailable;
-
-        if (auto leakedDuration = adoptCF(CMTimeCopyAsDictionary(PAL::toCMTime(m_duration), allocator)).leakRef()) {
-            *reinterpret_cast<CFDictionaryRef*>(valueCopy) = leakedDuration;
-            return noErr;
-        }
+    if (!CFEqual(key, PAL::get_MediaToolbox_kMTPluginFormatReaderProperty_Duration())) {
+        ERROR_LOG_IF_POSSIBLE(LOGIDENTIFIER, "asked for unsupported property ", String(key));
+        return kCMBaseObjectError_ValueNotAvailable;
     }
 
-    ERROR_LOG(LOGIDENTIFIER, "asked for unsupported property ", String(key));
+    AbortAction action { m_parseTracksCondition };
+
+    Locker locker { m_parseTracksLock };
+    m_parseTracksCondition.wait(m_parseTracksLock, [&] {
+        assertIsHeld(m_parseTracksLock);
+        return m_parseTracksStatus.has_value() || action.aborted();
+    });
+
+    if (m_duration.isIndefinite())
+        return kCMBaseObjectError_ValueNotAvailable;
+
+    if (auto leakedDuration = adoptCF(PAL::CMTimeCopyAsDictionary(PAL::toCMTime(m_duration), allocator)).leakRef()) {
+        *reinterpret_cast<CFDictionaryRef*>(valueCopy) = leakedDuration;
+        return noErr;
+    }
+
+    ERROR_LOG_IF_POSSIBLE(LOGIDENTIFIER, "Could not retrieve value for property ", String(key));
     return kCMBaseObjectError_ValueNotAvailable;
 }
 
 OSStatus MediaFormatReader::copyTrackArray(CFArrayRef* trackArrayCopy)
 {
-    auto locker = holdLock(m_parseTracksLock);
+    AbortAction action { m_parseTracksCondition };
+
+    Locker locker { m_parseTracksLock };
     m_parseTracksCondition.wait(m_parseTracksLock, [&] {
-        return m_parseTracksStatus.hasValue();
+        assertIsHeld(m_parseTracksLock);
+        return m_parseTracksStatus.has_value() || action.aborted();
     });
 
     if (*m_parseTracksStatus != noErr)
         return *m_parseTracksStatus;
 
-    auto mutableArray = adoptCF(CFArrayCreateMutable(allocator(), Checked<CFIndex>(m_trackReaders.size()).unsafeGet(), &kCFTypeArrayCallBacks));
+    auto mutableArray = adoptCF(CFArrayCreateMutable(allocator(), Checked<CFIndex>(m_trackReaders.size()), &kCFTypeArrayCallBacks));
     for (auto& trackReader : m_trackReaders)
         CFArrayAppendValue(mutableArray.get(), trackReader->wrapper());
 

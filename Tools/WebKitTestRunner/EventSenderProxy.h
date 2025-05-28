@@ -62,6 +62,9 @@ public:
     void mouseMoveTo(double x, double y, WKStringRef pointerType = nullptr);
     void mouseScrollBy(int x, int y);
     void mouseScrollByWithWheelAndMomentumPhases(int x, int y, int phase, int momentum);
+#if PLATFORM(GTK)
+    void setWheelHasPreciseDeltas(bool);
+#endif
     void continuousMouseScrollBy(int x, int y, bool paged);
 
     void leapForward(int milliseconds);
@@ -85,6 +88,13 @@ public:
     void clearTouchPoints();
     void releaseTouchPoint(int index);
     void cancelTouchPoint(int index);
+#endif
+
+#if ENABLE(MAC_GESTURE_EVENTS)
+    // Gesture events.
+    void scaleGestureStart(double scale);
+    void scaleGestureChange(double scale);
+    void scaleGestureEnd(double scale);
 #endif
 
 private:
@@ -121,7 +131,10 @@ private:
     WKEventMouseButton m_clickButton { kWKEventMouseButtonNoButton };
     unsigned m_mouseButtonsCurrentlyDown { 0 };
 #if PLATFORM(COCOA)
-    int eventNumber { 0 };
+    int m_eventNumber { 0 };
+#endif
+#if PLATFORM(GTK)
+    bool m_hasPreciseDeltas { false };
 #endif
 #if PLATFORM(WPE)
     uint32_t m_buttonState { 0 };

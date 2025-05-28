@@ -59,19 +59,19 @@ public:
 
 private:
     // WebCore::PaymentCoordinatorClient.
-    Optional<String> validatedPaymentNetwork(const String&) override;
+    std::optional<String> validatedPaymentNetwork(const String&) override;
     bool canMakePayments() override;
     void canMakePaymentsWithActiveCard(const String& merchantIdentifier, const String& domainName, CompletionHandler<void(bool)>&&) override;
     void openPaymentSetup(const String& merchantIdentifier, const String& domainName, CompletionHandler<void(bool)>&&) override;
     bool showPaymentUI(const URL& originatingURL, const Vector<URL>& linkIconURLs, const WebCore::ApplePaySessionPaymentRequest&) override;
     void completeMerchantValidation(const WebCore::PaymentMerchantSession&) override;
-    void completeShippingMethodSelection(Optional<WebCore::ApplePayShippingMethodUpdate>&&) override;
-    void completeShippingContactSelection(Optional<WebCore::ApplePayShippingContactUpdate>&&) override;
-    void completePaymentMethodSelection(Optional<WebCore::ApplePayPaymentMethodUpdate>&&) override;
-#if ENABLE(APPLE_PAY_PAYMENT_METHOD_MODE)
-    void completePaymentMethodModeChange(Optional<WebCore::ApplePayPaymentMethodModeUpdate>&&) override;
-#endif // ENABLE(APPLE_PAY_PAYMENT_METHOD_MODE)
-    void completePaymentSession(Optional<WebCore::PaymentAuthorizationResult>&&) override;
+    void completeShippingMethodSelection(std::optional<WebCore::ApplePayShippingMethodUpdate>&&) override;
+    void completeShippingContactSelection(std::optional<WebCore::ApplePayShippingContactUpdate>&&) override;
+    void completePaymentMethodSelection(std::optional<WebCore::ApplePayPaymentMethodUpdate>&&) override;
+#if ENABLE(APPLE_PAY_COUPON_CODE)
+    void completeCouponCodeChange(std::optional<WebCore::ApplePayCouponCodeUpdate>&&) override;
+#endif
+    void completePaymentSession(std::optional<WebCore::PaymentAuthorizationResult>&&) override;
 
     void abortPaymentSession() override;
     void cancelPaymentSession() override;
@@ -80,7 +80,6 @@ private:
 
     bool isWebPaymentCoordinator() const override { return true; }
 
-    bool isAlwaysOnLoggingAllowed() const override;
     bool supportsUnrestrictedApplePay() const override;
 
     String userAgentScriptsBlockedErrorMessage() const final;
@@ -102,9 +101,9 @@ private:
     void didSelectShippingMethod(const WebCore::ApplePayShippingMethod&);
     void didSelectShippingContact(const WebCore::PaymentContact&);
     void didSelectPaymentMethod(const WebCore::PaymentMethod&);
-#if ENABLE(APPLE_PAY_PAYMENT_METHOD_MODE)
-    void didChangePaymentMethodMode(String&& paymentMethodMode);
-#endif // ENABLE(APPLE_PAY_PAYMENT_METHOD_MODE)
+#if ENABLE(APPLE_PAY_COUPON_CODE)
+    void didChangeCouponCode(String&& couponCode);
+#endif
     void didCancelPaymentSession(WebCore::PaymentSessionError&&);
 
     WebCore::PaymentCoordinator& paymentCoordinator();
@@ -118,7 +117,7 @@ private:
 
     WebPage& m_webPage;
 
-    Optional<AvailablePaymentNetworksSet> m_availablePaymentNetworks;
+    std::optional<AvailablePaymentNetworksSet> m_availablePaymentNetworks;
 };
 
 } // namespace WebKit

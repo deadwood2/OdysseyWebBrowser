@@ -28,7 +28,6 @@
 #if ENABLE(PDFKIT_PLUGIN)
 
 #include "DataReference.h"
-#include "PDFKitImports.h"
 #include "PDFPluginIdentifier.h"
 #include "Plugin.h"
 #include "WebEvent.h"
@@ -177,11 +176,11 @@ private:
     void didEvaluateJavaScript(uint64_t requestID, const String& result) final;
     void streamWillSendRequest(uint64_t streamID, const URL& requestURL, const URL& responseURL, int responseStatus) final { }
     void streamDidReceiveResponse(uint64_t streamID, const URL& responseURL, uint32_t streamLength, uint32_t lastModifiedTime, const String& mimeType, const String& headers, const String& suggestedFileName) final;
-    void streamDidReceiveData(uint64_t streamID, const char* bytes, int length) final;
+    void streamDidReceiveData(uint64_t streamID, const uint8_t* bytes, int length) final;
     void streamDidFinishLoading(uint64_t streamID) final;
     void streamDidFail(uint64_t streamID, bool wasCancelled) final;
     void manualStreamDidReceiveResponse(const URL& responseURL, uint32_t streamLength, uint32_t lastModifiedTime, const WTF::String& mimeType, const WTF::String& headers, const String& suggestedFileName) final;
-    void manualStreamDidReceiveData(const char* bytes, int length) final;
+    void manualStreamDidReceiveData(const uint8_t* bytes, int length) final;
     void manualStreamDidFinishLoading() final;
     void manualStreamDidFail(bool wasCancelled) final;
     bool handleMouseEvent(const WebMouseEvent&) final;
@@ -257,7 +256,7 @@ private:
     WebCore::IntPoint convertFromScrollbarToContainingView(const WebCore::Scrollbar&, const WebCore::IntPoint& scrollbarPoint) const final;
     WebCore::IntPoint convertFromContainingViewToScrollbar(const WebCore::Scrollbar&, const WebCore::IntPoint& parentPoint) const final;
     bool forceUpdateScrollbarsOnMainThreadForPerformanceTesting() const final;
-    bool shouldPlaceBlockDirectionScrollbarOnLeft() const final { return false; }
+    bool shouldPlaceVerticalScrollbarOnLeft() const final { return false; }
     String debugDescription() const final;
 
     // PDFPlugin functions.
@@ -367,7 +366,7 @@ private:
 
         void willSendRequest(WebCore::NetscapePlugInStreamLoader*, WebCore::ResourceRequest&&, const WebCore::ResourceResponse& redirectResponse, CompletionHandler<void(WebCore::ResourceRequest&&)>&&) final;
         void didReceiveResponse(WebCore::NetscapePlugInStreamLoader*, const WebCore::ResourceResponse&) final;
-        void didReceiveData(WebCore::NetscapePlugInStreamLoader*, const char*, int) final;
+        void didReceiveData(WebCore::NetscapePlugInStreamLoader*, const uint8_t*, int) final;
         void didFail(WebCore::NetscapePlugInStreamLoader*, const WebCore::ResourceError&) final;
         void didFinishLoading(WebCore::NetscapePlugInStreamLoader*) final;
 

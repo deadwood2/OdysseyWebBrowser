@@ -70,8 +70,7 @@ MediaTime RemoteMediaSourceProxy::duration() const
 
 std::unique_ptr<PlatformTimeRanges> RemoteMediaSourceProxy::buffered() const
 {
-    ASSERT_NOT_REACHED();
-    return makeUnique<PlatformTimeRanges>();
+    return makeUnique<PlatformTimeRanges>(m_buffered);
 }
 
 void RemoteMediaSourceProxy::seekToTime(const MediaTime& time)
@@ -109,7 +108,7 @@ void RemoteMediaSourceProxy::addSourceBuffer(const WebCore::ContentType& content
     RefPtr<SourceBufferPrivate> sourceBufferPrivate;
     MediaSourcePrivate::AddStatus status = m_private->addSourceBuffer(contentType, m_webMParserEnabled, sourceBufferPrivate);
 
-    Optional<RemoteSourceBufferIdentifier> remoteSourceIdentifier;
+    std::optional<RemoteSourceBufferIdentifier> remoteSourceIdentifier;
     if (status == MediaSourcePrivate::AddStatus::Ok) {
         auto identifier = RemoteSourceBufferIdentifier::generate();
         auto remoteSourceBufferProxy = RemoteSourceBufferProxy::create(*m_connectionToWebProcess, identifier, sourceBufferPrivate.releaseNonNull(), *m_remoteMediaPlayerProxy);
@@ -128,6 +127,11 @@ void RemoteMediaSourceProxy::durationChanged(const MediaTime& duration)
     m_duration = duration;
     if (m_private)
         m_private->durationChanged(duration);
+}
+
+void RemoteMediaSourceProxy::bufferedChanged(const WebCore::PlatformTimeRanges& buffered)
+{
+    m_buffered = buffered;
 }
 
 void RemoteMediaSourceProxy::setReadyState(WebCore::MediaPlayerEnums::ReadyState readyState)

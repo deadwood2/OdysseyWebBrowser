@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,22 +29,25 @@
 #if PLATFORM(MAC)
 
 #import "APINavigation.h"
-#import "WKFrameInfo.h"
+#import <WebKit/WKFrameInfo.h>
+#import "WKInspectorResourceURLSchemeHandler.h"
 #import "WKInspectorWKWebView.h"
-#import "WKNavigationAction.h"
-#import "WKNavigationDelegate.h"
+#import <WebKit/WKNavigationAction.h>
+#import <WebKit/WKNavigationDelegate.h>
 #import "WKOpenPanelParameters.h"
-#import "WKPreferencesPrivate.h"
+#import <WebKit/WKPreferencesPrivate.h>
 #import "WKProcessPoolInternal.h"
-#import "WKUIDelegatePrivate.h"
-#import "WKWebViewConfigurationPrivate.h"
-#import "WKWebViewPrivate.h"
-#import "WebInspectorProxy.h"
+#import <WebKit/WKUIDelegatePrivate.h>
+#import <WebKit/WKWebViewConfigurationPrivate.h>
+#import <WebKit/WKWebViewPrivate.h>
+#import "WebInspectorUIProxy.h"
 #import "WebInspectorUtilities.h"
 #import "WebPageProxy.h"
 #import "_WKInspectorConfigurationInternal.h"
 #import <WebCore/VersionChecks.h>
 #import <wtf/WeakObjCPtr.h>
+
+static NSString * const WKInspectorResourceScheme = @"inspector-resource";
 
 @interface WKInspectorViewController () <WKUIDelegate, WKNavigationDelegate, WKInspectorWKWebViewDelegate>
 @end
@@ -53,7 +56,7 @@
     NakedPtr<WebKit::WebPageProxy> _inspectedPage;
     RetainPtr<WKInspectorWKWebView> _webView;
     WeakObjCPtr<id <WKInspectorViewControllerDelegate>> _delegate;
-    _WKInspectorConfiguration *_configuration;
+    RetainPtr<_WKInspectorConfiguration> _configuration;
 }
 
 - (instancetype)initWithConfiguration:(_WKInspectorConfiguration *)configuration inspectedPage:(NakedPtr<WebKit::WebPageProxy>)inspectedPage
@@ -61,7 +64,7 @@
     if (!(self = [super init]))
         return nil;
 
-    _configuration = [configuration copy];
+    _configuration = adoptNS([configuration copy]);
 
     // The (local) inspected page is nil if the controller is hosting a Remote Web Inspector view.
     _inspectedPage = inspectedPage;
@@ -90,7 +93,7 @@
 {
     // Construct lazily so the client can set the delegate before the WebView is created.
     if (!_webView) {
-        NSRect initialFrame = NSMakeRect(0, 0, WebKit::WebInspectorProxy::initialWindowWidth, WebKit::WebInspectorProxy::initialWindowHeight);
+        NSRect initialFrame = NSMakeRect(0, 0, WebKit::WebInspectorUIProxy::initialWindowWidth, WebKit::WebInspectorUIProxy::initialWindowHeight);
         _webView = adoptNS([[WKInspectorWKWebView alloc] initWithFrame:initialFrame configuration:self.webViewConfiguration]);
         [_webView setUIDelegate:self];
         [_webView setNavigationDelegate:self];
@@ -110,7 +113,14 @@
 
 - (WKWebViewConfiguration *)webViewConfiguration
 {
-    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    RetainPtr<WKInspectorResourceURLSchemeHandler> inspectorSchemeHandler = adoptNS([WKInspectorResourceURLSchemeHandler new]);
+    RetainPtr<NSMutableSet<NSString *>> allowedURLSchemes = adoptNS([[NSMutableSet alloc] initWithObjects:WKInspectorResourceScheme, nil]);
+    for (auto& pair : _configuration->_configuration->urlSchemeHandlers())
+        [allowedURLSchemes addObject:pair.second];
+
+    [inspectorSchemeHandler setAllowedURLSchemesForCSP:allowedURLSchemes.get()];
+    [configuration setURLSchemeHandler:inspectorSchemeHandler.get() forURLScheme:WKInspectorResourceScheme];
 
     WKPreferences *preferences = configuration.get().preferences;
     preferences._allowFileAccessFromFileURLs = YES;
@@ -158,6 +168,11 @@
 + (BOOL)viewIsInspectorWebView:(NSView *)view
 {
     return [view isKindOfClass:[WKInspectorWKWebView class]];
+}
+
++ (NSURL *)URLForInspectorResource:(NSString *)resource
+{
+    return [NSURL URLWithString:[NSString stringWithFormat:@"%@:///%@", WKInspectorResourceScheme, resource]].URLByStandardizingPath;
 }
 
 // MARK: WKUIDelegate methods
@@ -239,7 +254,7 @@
     }
 
     // Allow loading of the main inspector file.
-    if (WebKit::WebInspectorProxy::isMainOrTestInspectorPage(navigationAction.request.URL)) {
+    if ([navigationAction.request.URL.scheme isEqualToString:WKInspectorResourceScheme]) {
         decisionHandler(WKNavigationActionPolicyAllow);
         return;
     }

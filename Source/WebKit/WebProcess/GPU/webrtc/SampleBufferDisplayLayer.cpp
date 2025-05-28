@@ -30,6 +30,7 @@
 
 #include "GPUProcessConnection.h"
 #include "LayerHostingContext.h"
+#include "Logging.h"
 #include "RemoteSampleBufferDisplayLayerManagerMessages.h"
 #include "RemoteSampleBufferDisplayLayerManagerMessagesReplies.h"
 #include "RemoteSampleBufferDisplayLayerMessages.h"
@@ -41,18 +42,19 @@
 namespace WebKit {
 using namespace WebCore;
 
-std::unique_ptr<SampleBufferDisplayLayer> SampleBufferDisplayLayer::create(SampleBufferDisplayLayerManager& manager, Client& client)
+std::unique_ptr<SampleBufferDisplayLayer> SampleBufferDisplayLayer::create(SampleBufferDisplayLayerManager& manager, WebCore::SampleBufferDisplayLayer::Client& client)
 {
     return std::unique_ptr<SampleBufferDisplayLayer>(new SampleBufferDisplayLayer(manager, client));
 }
 
-SampleBufferDisplayLayer::SampleBufferDisplayLayer(SampleBufferDisplayLayerManager& manager, Client& client)
+SampleBufferDisplayLayer::SampleBufferDisplayLayer(SampleBufferDisplayLayerManager& manager, WebCore::SampleBufferDisplayLayer::Client& client)
     : WebCore::SampleBufferDisplayLayer(client)
     , m_manager(makeWeakPtr(manager))
     , m_connection(WebProcess::singleton().ensureGPUProcessConnection().connection())
     , m_identifier(SampleBufferDisplayLayerIdentifier::generate())
 {
     manager.addLayer(*this);
+    WebProcess::singleton().ensureGPUProcessConnection().addClient(*this);
 }
 
 void SampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size, CompletionHandler<void(bool)>&& callback)
@@ -66,8 +68,17 @@ void SampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size, Comp
     });
 }
 
+#if !RELEASE_LOG_DISABLED
+void SampleBufferDisplayLayer::setLogIdentifier(String&& logIdentifier)
+{
+    ASSERT(m_videoLayer);
+    m_connection->send(Messages::RemoteSampleBufferDisplayLayer::SetLogIdentifier { logIdentifier }, m_identifier);
+}
+#endif
+
 SampleBufferDisplayLayer::~SampleBufferDisplayLayer()
 {
+    WebProcess::singleton().ensureGPUProcessConnection().removeClient(*this);
     m_connection->send(Messages::RemoteSampleBufferDisplayLayerManager::ReleaseLayer { m_identifier }, 0);
     if (m_manager)
         m_manager->removeLayer(*this);
@@ -105,16 +116,20 @@ void SampleBufferDisplayLayer::flushAndRemoveImage()
 
 void SampleBufferDisplayLayer::play()
 {
+    m_paused = false;
     m_connection->send(Messages::RemoteSampleBufferDisplayLayer::Play { }, m_identifier);
 }
 
 void SampleBufferDisplayLayer::pause()
 {
+    m_paused = true;
     m_connection->send(Messages::RemoteSampleBufferDisplayLayer::Pause { }, m_identifier);
 }
 
 void SampleBufferDisplayLayer::enqueueSample(MediaSample& sample)
 {
+    if (m_paused)
+        return;
     if (auto remoteSample = RemoteVideoSample::create(sample))
         m_connection->send(Messages::RemoteSampleBufferDisplayLayer::EnqueueSample { *remoteSample }, m_identifier);
 }
@@ -132,6 +147,13 @@ PlatformLayer* SampleBufferDisplayLayer::rootLayer()
 void SampleBufferDisplayLayer::setDidFail(bool value)
 {
     m_didFail = value;
+}
+
+void SampleBufferDisplayLayer::gpuProcessConnectionDidClose(GPUProcessConnection&)
+{
+    m_didFail = true;
+    if (m_client)
+        m_client->sampleBufferDisplayLayerStatusDidFail();
 }
 
 }

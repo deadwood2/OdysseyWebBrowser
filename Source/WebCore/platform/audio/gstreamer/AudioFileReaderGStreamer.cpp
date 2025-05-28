@@ -54,7 +54,6 @@ class AudioFileReader : public CanMakeWeakPtr<AudioFileReader> {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(AudioFileReader);
 public:
-    AudioFileReader(const char* filePath);
     AudioFileReader(const void* data, size_t dataSize);
     ~AudioFileReader();
 
@@ -75,7 +74,6 @@ private:
     RunLoop& m_runLoop;
     const void* m_data { nullptr };
     size_t m_dataSize { 0 };
-    const char* m_filePath { nullptr };
     float m_sampleRate { 0 };
     int m_channels { 0 };
     HashMap<int, GRefPtr<GstBufferList>> m_buffers;
@@ -112,12 +110,6 @@ void AudioFileReader::deinterleaveReadyCallback(AudioFileReader* reader)
 void AudioFileReader::decodebinPadAddedCallback(AudioFileReader* reader, GstPad* pad)
 {
     reader->plugDeinterleave(pad);
-}
-
-AudioFileReader::AudioFileReader(const char* filePath)
-    : m_runLoop(RunLoop::current())
-    , m_filePath(filePath)
-{
 }
 
 AudioFileReader::AudioFileReader(const void* data, size_t dataSize)
@@ -255,7 +247,7 @@ void AudioFileReader::handleNewDeinterleavePad(GstPad* pad)
     // in an appsink so we can pull the data from each
     // channel. Pipeline looks like:
     // ... deinterleave ! appsink.
-    GstElement* sink = gst_element_factory_make("appsink", nullptr);
+    GstElement* sink = makeGStreamerElement("appsink", nullptr);
 
     m_channels++;
 
@@ -266,6 +258,10 @@ void AudioFileReader::handleNewDeinterleavePad(GstPad* pad)
         [](GstAppSink* sink, gpointer userData) -> GstFlowReturn {
             return static_cast<AudioFileReader*>(userData)->handleSample(sink);
         },
+#if GST_CHECK_VERSION(1, 20, 0)
+        // new_event
+        nullptr,
+#endif
         { nullptr }
     };
     gst_app_sink_set_callbacks(GST_APP_SINK(sink), &callbacks, this, nullptr);
@@ -300,10 +296,10 @@ void AudioFileReader::plugDeinterleave(GstPad* pad)
     // A decodebin pad was added, plug in a deinterleave element to
     // separate each planar channel. Sub pipeline looks like
     // ... decodebin2 ! audioconvert ! audioresample ! capsfilter ! deinterleave.
-    GstElement* audioConvert  = gst_element_factory_make("audioconvert", nullptr);
-    GstElement* audioResample = gst_element_factory_make("audioresample", nullptr);
+    GstElement* audioConvert  = makeGStreamerElement("audioconvert", nullptr);
+    GstElement* audioResample = makeGStreamerElement("audioresample", nullptr);
     GstElement* capsFilter = gst_element_factory_make("capsfilter", nullptr);
-    m_deInterleave = gst_element_factory_make("deinterleave", "deinterleave");
+    m_deInterleave = makeGStreamerElement("deinterleave", "deinterleave");
 
     g_object_set(m_deInterleave.get(), "keep-positions", TRUE, nullptr);
     g_signal_connect_swapped(m_deInterleave.get(), "pad-added", G_CALLBACK(deinterleavePadAddedCallback), this);
@@ -332,7 +328,7 @@ void AudioFileReader::decodeAudioForBusCreation()
 {
     ASSERT(&m_runLoop == &RunLoop::current());
 
-    // Build the pipeline (giostreamsrc | filesrc) ! decodebin
+    // Build the pipeline giostreamsrc ! decodebin
     // A deinterleave element is added once a src pad becomes available in decodebin.
     static Atomic<uint32_t> pipelineId;
     m_pipeline = gst_pipeline_new(makeString("audio-file-reader-", pipelineId.exchangeAdd(1)).ascii().data());
@@ -355,18 +351,13 @@ void AudioFileReader::decodeAudioForBusCreation()
         return GST_BUS_DROP;
     }, this, nullptr);
 
-    GstElement* source;
-    if (m_data) {
-        ASSERT(m_dataSize);
-        source = gst_element_factory_make("giostreamsrc", nullptr);
-        GRefPtr<GInputStream> memoryStream = adoptGRef(g_memory_input_stream_new_from_data(m_data, m_dataSize, nullptr));
-        g_object_set(source, "stream", memoryStream.get(), nullptr);
-    } else {
-        source = gst_element_factory_make("filesrc", nullptr);
-        g_object_set(source, "location", m_filePath, nullptr);
-    }
+    ASSERT(m_data);
+    ASSERT(m_dataSize);
+    auto* source = makeGStreamerElement("giostreamsrc", nullptr);
+    auto memoryStream = adoptGRef(g_memory_input_stream_new_from_data(m_data, m_dataSize, nullptr));
+    g_object_set(source, "stream", memoryStream.get(), nullptr);
 
-    m_decodebin = gst_element_factory_make("decodebin", "decodebin");
+    m_decodebin = makeGStreamerElement("decodebin", "decodebin");
     g_signal_connect_swapped(m_decodebin.get(), "pad-added", G_CALLBACK(decodebinPadAddedCallback), this);
 
     gst_bin_add_many(GST_BIN(m_pipeline.get()), source, m_decodebin.get(), nullptr);
@@ -411,18 +402,6 @@ RefPtr<AudioBus> AudioFileReader::createBus(float sampleRate, bool mixToMono)
     if (mixToMono)
         return AudioBus::createByMixingToMono(audioBus.get());
     return audioBus;
-}
-
-RefPtr<AudioBus> createBusFromAudioFile(const char* filePath, bool mixToMono, float sampleRate)
-{
-    initializeDebugCategory();
-    GST_DEBUG("Creating bus from file %s", filePath);
-    RefPtr<AudioBus> bus;
-    auto thread = Thread::create("AudioFileReader", [&bus, filePath, mixToMono, sampleRate] {
-        bus = AudioFileReader(filePath).createBus(sampleRate, mixToMono);
-    });
-    thread->waitForCompletion();
-    return bus;
 }
 
 RefPtr<AudioBus> createBusFromInMemoryAudioFile(const void* data, size_t dataSize, bool mixToMono, float sampleRate)

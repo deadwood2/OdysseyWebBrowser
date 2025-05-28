@@ -79,11 +79,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 @class WKSelectPopover;
 
-#if USE(UIKIT_KEYBOARD_ADDITIONS)
 @interface WKSelectTableViewController : UITableViewController
-#else
-@interface WKSelectTableViewController : UITableViewController <UIKeyInput>
-#endif
 {
     NSUInteger _singleSelectionIndex;
     NSUInteger _singleSelectionSection;
@@ -316,8 +312,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
         // To trigger onchange events programmatically we need to go through this
         // SPI which mimics a user action on the <select>. Normally programmatic
         // changes do not trigger "change" events on such selects.
-    
-        [_contentView page]->setFocusedElementSelectedIndex(itemIndex, true);
+        [_contentView updateFocusedElementSelectedIndex:itemIndex allowsMultipleSelection:true];
         OptionItem& item = [_contentView focusedSelectElementOptions][itemIndex];
         item.isSelected = newStateIsSelected;
     } else {
@@ -349,8 +344,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
             
             _singleSelectionIndex = indexPath.row;
             _singleSelectionSection = indexPath.section;
- 
-            [_contentView page]->setFocusedElementSelectedIndex(itemIndex);
+
+            [_contentView updateFocusedElementSelectedIndex:itemIndex allowsMultipleSelection:false];
             OptionItem& newItem = [_contentView focusedSelectElementOptions][itemIndex];
             newItem.isSelected = true;
         }
@@ -369,24 +364,6 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 {
     return _contentView._shouldUseLegacySelectPopoverDismissalBehavior;
 }
-
-#if !USE(UIKIT_KEYBOARD_ADDITIONS)
-#pragma mark UIKeyInput delegate methods
-
-- (BOOL)hasText
-{
-    return NO;
-}
-
-- (void)insertText:(NSString *)text
-{
-}
-
-- (void)deleteBackward
-{
-}
-
-#endif
 
 @end
 
@@ -416,10 +393,6 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     self.popoverController = adoptNS([[UIPopoverController alloc] initWithContentViewController:popoverViewController.get()]).get();
     ALLOW_DEPRECATED_DECLARATIONS_END
 
-#if !USE(UIKIT_KEYBOARD_ADDITIONS)
-    [[UIKeyboardImpl sharedInstance] setDelegate:_tableViewController.get()];
-#endif
-    
     return self;
 }
 

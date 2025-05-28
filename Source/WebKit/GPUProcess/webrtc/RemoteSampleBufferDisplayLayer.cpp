@@ -62,6 +62,13 @@ void RemoteSampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size
     });
 }
 
+#if !RELEASE_LOG_DISABLED
+void RemoteSampleBufferDisplayLayer::setLogIdentifier(String&& identifier)
+{
+    m_sampleBufferDisplayLayer->setLogIdentifier(WTFMove(identifier));
+}
+#endif
+
 RemoteSampleBufferDisplayLayer::~RemoteSampleBufferDisplayLayer()
 {
 }
@@ -78,7 +85,7 @@ void RemoteSampleBufferDisplayLayer::updateDisplayMode(bool hideDisplayLayer, bo
 
 void RemoteSampleBufferDisplayLayer::updateAffineTransform(CGAffineTransform transform)
 {
-    m_sampleBufferDisplayLayer->updateAffineTransform(transform);
+    m_sampleBufferDisplayLayer->updateRootLayerAffineTransform(transform);
 }
 
 void RemoteSampleBufferDisplayLayer::updateBoundsAndPosition(CGRect bounds, WebCore::MediaSample::VideoRotation rotation)
@@ -135,7 +142,7 @@ IPC::Connection* RemoteSampleBufferDisplayLayer::messageSenderConnection() const
     return m_connection.ptr();
 }
 
-void RemoteSampleBufferDisplayLayer::sampleBufferDisplayLayerStatusDidChange(WebCore::SampleBufferDisplayLayer&)
+void RemoteSampleBufferDisplayLayer::sampleBufferDisplayLayerStatusDidFail()
 {
     send(Messages::SampleBufferDisplayLayer::SetDidFail { m_sampleBufferDisplayLayer->didFail() });
 }

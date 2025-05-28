@@ -65,8 +65,12 @@ void WebAudioSourceProviderCocoa::setClient(AudioSourceProviderClient* client)
 
 void WebAudioSourceProviderCocoa::provideInput(AudioBus* bus, size_t framesToProcess)
 {
-    auto locker = tryHoldLock(m_lock);
-    if (!locker || !m_dataSource || !m_audioBufferList) {
+    if (!m_lock.tryLock()) {
+        bus->zero();
+        return;
+    }
+    Locker locker { AdoptLock, m_lock };
+    if (!m_dataSource || !m_audioBufferList) {
         bus->zero();
         return;
     }
@@ -100,7 +104,9 @@ void WebAudioSourceProviderCocoa::provideInput(AudioBus* bus, size_t framesToPro
 
 void WebAudioSourceProviderCocoa::prepare(const AudioStreamBasicDescription& format)
 {
-    auto locker = holdLock(m_lock);
+    DisableMallocRestrictionsForCurrentThreadScope scope;
+
+    Locker locker { m_lock };
 
     LOG(Media, "WebAudioSourceProviderCocoa::prepare(%p)", this);
 
@@ -120,7 +126,7 @@ void WebAudioSourceProviderCocoa::prepare(const AudioStreamBasicDescription& for
     m_audioBufferList = makeUnique<WebAudioBufferList>(m_outputDescription.value());
 
     if (!m_dataSource)
-        m_dataSource = AudioSampleDataSource::create(kRingBufferDuration * sampleRate, loggerHelper());
+        m_dataSource = AudioSampleDataSource::create(kRingBufferDuration * sampleRate, loggerHelper(), m_pollSamplesCount);
     m_dataSource->setInputFormat(m_inputDescription.value());
     m_dataSource->setOutputFormat(m_outputDescription.value());
 

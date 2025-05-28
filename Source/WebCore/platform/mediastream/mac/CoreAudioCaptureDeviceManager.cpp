@@ -55,14 +55,14 @@ const Vector<CaptureDevice>& CoreAudioCaptureDeviceManager::captureDevices()
     return m_captureDevices;
 }
 
-Optional<CaptureDevice> CoreAudioCaptureDeviceManager::captureDeviceWithPersistentID(CaptureDevice::DeviceType type, const String& deviceID)
+std::optional<CaptureDevice> CoreAudioCaptureDeviceManager::captureDeviceWithPersistentID(CaptureDevice::DeviceType type, const String& deviceID)
 {
     ASSERT_UNUSED(type, type == CaptureDevice::DeviceType::Microphone);
     for (auto& device : captureDevices()) {
         if (device.persistentId() == deviceID)
             return device;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 static bool deviceHasStreams(AudioObjectID deviceID, const AudioObjectPropertyAddress& address)
@@ -81,20 +81,50 @@ static bool deviceHasStreams(AudioObjectID deviceID, const AudioObjectPropertyAd
 
 static bool deviceHasInputStreams(AudioObjectID deviceID)
 {
-    AudioObjectPropertyAddress address = { kAudioDevicePropertyStreamConfiguration, kAudioDevicePropertyScopeInput, kAudioObjectPropertyElementMaster };
+    AudioObjectPropertyAddress address = {
+        kAudioDevicePropertyStreamConfiguration,
+        kAudioDevicePropertyScopeInput,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+    };
     return deviceHasStreams(deviceID, address);
 }
 
 static bool deviceHasOutputStreams(AudioObjectID deviceID)
 {
-    AudioObjectPropertyAddress address = { kAudioDevicePropertyStreamConfiguration, kAudioDevicePropertyScopeOutput, kAudioObjectPropertyElementMaster };
+    AudioObjectPropertyAddress address = {
+        kAudioDevicePropertyStreamConfiguration,
+        kAudioDevicePropertyScopeOutput,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+    };
     return deviceHasStreams(deviceID, address);
 }
 
 static bool isValidCaptureDevice(const CoreAudioCaptureDevice& device)
 {
     // Ignore output devices that have input only for echo cancellation.
-    AudioObjectPropertyAddress address = { kAudioDevicePropertyTapEnabled, kAudioDevicePropertyScopeOutput, kAudioObjectPropertyElementMaster };
+    AudioObjectPropertyAddress address = {
+        kAudioDevicePropertyTapEnabled,
+        kAudioDevicePropertyScopeOutput,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+    };
     if (AudioObjectHasProperty(device.deviceID(), &address)) {
         RELEASE_LOG(WebRTC, "Ignoring output device that have input only for echo cancellation");
         return false;
@@ -102,7 +132,17 @@ static bool isValidCaptureDevice(const CoreAudioCaptureDevice& device)
 
     // Ignore non-aggregable devices.
     UInt32 dataSize = 0;
-    address = { kAudioObjectPropertyCreator, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
+    address = {
+        kAudioObjectPropertyCreator,
+        kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+    };
     CFStringRef name = nullptr;
     dataSize = sizeof(name);
     AudioObjectGetPropertyData(device.deviceID(), &address, 0, nullptr, &dataSize, &name);
@@ -135,11 +175,13 @@ static bool isValidCaptureDevice(const CoreAudioCaptureDevice& device)
 
 void CoreAudioCaptureDeviceManager::scheduleUpdateCaptureDevices()
 {
-    if (m_updateDeviceStateQueue.hasPendingTasks())
+    if (m_wasRefreshAudioCaptureDevicesScheduled)
         return;
 
-    m_updateDeviceStateQueue.enqueueTask([this] {
+    m_wasRefreshAudioCaptureDevicesScheduled = true;
+    callOnMainThread([this] {
         refreshAudioCaptureDevices(NotifyIfDevicesHaveChanged::Notify);
+        m_wasRefreshAudioCaptureDevicesScheduled = false;
     });
 }
 
@@ -159,17 +201,47 @@ Vector<CoreAudioCaptureDevice>& CoreAudioCaptureDeviceManager::coreAudioCaptureD
                 CoreAudioCaptureDeviceManager::singleton().scheduleUpdateCaptureDevices();
         };
 
-        AudioObjectPropertyAddress address = { kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
+        AudioObjectPropertyAddress address = {
+            kAudioHardwarePropertyDevices,
+            kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+            kAudioObjectPropertyElementMain
+#else
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+            kAudioObjectPropertyElementMaster
+            ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+        };
         auto err = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject, &address, dispatch_get_main_queue(), listener);
         if (err)
             LOG_ERROR("CoreAudioCaptureDeviceManager::devices(%p) AudioObjectAddPropertyListener for kAudioHardwarePropertyDevices returned error %d (%.4s)", this, (int)err, (char*)&err);
 
-        address = { kAudioHardwarePropertyDefaultInputDevice, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
+        address = {
+            kAudioHardwarePropertyDefaultInputDevice,
+            kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+            kAudioObjectPropertyElementMain
+#else
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+            kAudioObjectPropertyElementMaster
+            ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+        };
         err = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject, &address, dispatch_get_main_queue(), listener);
         if (err)
             LOG_ERROR("CoreAudioCaptureDeviceManager::devices(%p) AudioObjectAddPropertyListener for kAudioHardwarePropertyDefaultInputDevice returned error %d (%.4s)", this, (int)err, (char*)&err);
 
-        address = { kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
+        address = {
+            kAudioHardwarePropertyDefaultOutputDevice,
+            kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+            kAudioObjectPropertyElementMain
+#else
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+            kAudioObjectPropertyElementMaster
+            ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+        };
         err = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject, &address, dispatch_get_main_queue(), listener);
         if (err)
             LOG_ERROR("CoreAudioCaptureDeviceManager::devices(%p) AudioObjectAddPropertyListener for kAudioHardwarePropertyDefaultOutputDevice returned error %d (%.4s)", this, (int)err, (char*)&err);
@@ -178,13 +250,13 @@ Vector<CoreAudioCaptureDevice>& CoreAudioCaptureDeviceManager::coreAudioCaptureD
     return m_coreAudioCaptureDevices;
 }
 
-Optional<CoreAudioCaptureDevice> CoreAudioCaptureDeviceManager::coreAudioDeviceWithUID(const String& deviceID)
+std::optional<CoreAudioCaptureDevice> CoreAudioCaptureDeviceManager::coreAudioDeviceWithUID(const String& deviceID)
 {
     for (auto& device : coreAudioCaptureDevices()) {
         if (device.persistentId() == deviceID && device.enabled())
             return device;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 static inline bool hasDevice(const Vector<CoreAudioCaptureDevice>& devices, uint32_t deviceID, CaptureDevice::DeviceType deviceType)
@@ -196,7 +268,17 @@ static inline bool hasDevice(const Vector<CoreAudioCaptureDevice>& devices, uint
 
 static inline Vector<CoreAudioCaptureDevice> computeAudioDeviceList()
 {
-    AudioObjectPropertyAddress address = { kAudioHardwarePropertyDevices, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMaster };
+    AudioObjectPropertyAddress address = {
+        kAudioHardwarePropertyDevices,
+        kAudioObjectPropertyScopeGlobal,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+        kAudioObjectPropertyElementMain
+#else
+        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+        kAudioObjectPropertyElementMaster
+        ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+    };
     UInt32 dataSize = 0;
     auto err = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &address, 0, nullptr, &dataSize);
     if (err) {

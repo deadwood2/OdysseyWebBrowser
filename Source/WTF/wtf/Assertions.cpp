@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2003-2019 Apple Inc.  All rights reserved.
+ * Copyright (C) 2003-2021 Apple Inc.  All rights reserved.
  * Copyright (C) 2007-2009 Torch Mobile, Inc.
  * Copyright (C) 2011 University of Szeged. All rights reserved.
  *
@@ -37,6 +37,7 @@
 #include <wtf/LoggingAccumulator.h>
 #include <wtf/PrintStream.h>
 #include <wtf/StackTrace.h>
+#include <wtf/WTFConfig.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
@@ -64,6 +65,10 @@
 
 #if PLATFORM(COCOA)
 #import <wtf/spi/cocoa/OSLogSPI.h>
+#endif
+
+#if OS(MORPHOS)
+extern "C" { void vdprintf(const char *, va_list); }
 #endif
 
 namespace WTF {
@@ -114,7 +119,14 @@ WTF_ATTRIBUTE_PRINTF(1, 0) static String createWithFormatAndArguments(const char
     return StringImpl::create(reinterpret_cast<const LChar*>(buffer.data()), length);
 }
 
+#if PLATFORM(COCOA)
+void disableForwardingVPrintfStdErrToOSLog()
+{
+    g_wtfConfig.disableForwardingVPrintfStdErrToOSLog = true;
 }
+#endif
+
+} // namespace WTF
 
 extern "C" {
 
@@ -147,10 +159,12 @@ static void vprintf_stderr_common(const char* format, va_list args)
     }
 
 #if PLATFORM(COCOA)
-    va_list copyOfArgs;
-    va_copy(copyOfArgs, args);
-    os_log_with_args(OS_LOG_DEFAULT, OS_LOG_TYPE_DEFAULT, format, copyOfArgs, __builtin_return_address(0));
-    va_end(copyOfArgs);
+    if (!g_wtfConfig.disableForwardingVPrintfStdErrToOSLog) {
+        va_list copyOfArgs;
+        va_copy(copyOfArgs, args);
+        os_log_with_args(OS_LOG_DEFAULT, OS_LOG_TYPE_DEFAULT, format, copyOfArgs, __builtin_return_address(0));
+        va_end(copyOfArgs);
+    }
 #endif
 
     // Fall through to write to stderr in the same manner as other platforms.
@@ -168,6 +182,10 @@ static void vprintf_stderr_common(const char* format, va_list args)
             size *= 2;
         } while (size > 1024);
     }
+#endif
+#if OS(MORPHOS)
+	vdprintf(format, args);
+	return;
 #endif
     vfprintf(stderr, format, args);
 }
@@ -267,6 +285,17 @@ public:
     }
 };
 
+void WTFReportBacktraceWithPrefix(const char* prefix)
+{
+    static constexpr int framesToShow = 31;
+    static constexpr int framesToSkip = 2;
+    void* samples[framesToShow + framesToSkip];
+    int frames = framesToShow + framesToSkip;
+
+    WTFGetBacktrace(samples, &frames);
+    WTFPrintBacktraceWithPrefix(samples + framesToSkip, frames - framesToSkip, prefix);
+}
+
 void WTFReportBacktrace()
 {
     static constexpr int framesToShow = 31;
@@ -278,11 +307,16 @@ void WTFReportBacktrace()
     WTFPrintBacktrace(samples + framesToSkip, frames - framesToSkip);
 }
 
-void WTFPrintBacktrace(void** stack, int size)
+void WTFPrintBacktraceWithPrefix(void** stack, int size, const char* prefix)
 {
     CrashLogPrintStream out;
-    StackTrace stackTrace(stack, size);
+    StackTrace stackTrace(stack, size, prefix);
     out.print(stackTrace);
+}
+
+void WTFPrintBacktrace(void** stack, int size)
+{
+    WTFPrintBacktraceWithPrefix(stack, size, "");
 }
 
 #if !defined(NDEBUG) || !(OS(DARWIN) || PLATFORM(PLAYSTATION))
@@ -359,24 +393,24 @@ public:
 
 private:
     Lock accumulatorLock;
-    StringBuilder loggingAccumulator;
+    StringBuilder loggingAccumulator WTF_GUARDED_BY_LOCK(accumulatorLock);
 };
 
 void WTFLoggingAccumulator::accumulate(const String& log)
 {
-    Locker<Lock> locker(accumulatorLock);
+    Locker locker { accumulatorLock };
     loggingAccumulator.append(log);
 }
 
 void WTFLoggingAccumulator::resetAccumulatedLogs()
 {
-    Locker<Lock> locker(accumulatorLock);
+    Locker locker { accumulatorLock };
     loggingAccumulator.clear();
 }
 
 String WTFLoggingAccumulator::getAndResetAccumulatedLogs()
 {
-    Locker<Lock> locker(accumulatorLock);
+    Locker locker { accumulatorLock };
     String result = loggingAccumulator.toString();
     loggingAccumulator.clear();
     return result;
@@ -592,7 +626,7 @@ void WTFReleaseLogStackTrace(WTFLogChannel* channel)
 
 } // extern "C"
 
-#if OS(DARWIN) && (CPU(X86_64) || CPU(ARM64))
+#if (OS(DARWIN) || PLATFORM(PLAYSTATION)) && (CPU(X86_64) || CPU(ARM64))
 #if CPU(X86_64)
 
 #define CRASH_INST "int3"
@@ -703,7 +737,7 @@ void WTFCrashWithInfoImpl(int, const char*, const char*, int, uint64_t, uint64_t
 void WTFCrashWithInfoImpl(int, const char*, const char*, int, uint64_t, uint64_t) { CRASH(); }
 void WTFCrashWithInfoImpl(int, const char*, const char*, int, uint64_t) { CRASH(); }
 
-#endif // OS(DARWIN) && (CPU(X64_64) || CPU(ARM64))
+#endif // (OS(DARWIN) || PLATFORM(PLAYSTATION)) && (CPU(X64_64) || CPU(ARM64))
 
 namespace WTF {
 

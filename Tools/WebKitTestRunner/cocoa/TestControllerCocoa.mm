@@ -169,6 +169,8 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
         [copiedConfiguration setSelectionGranularity:WKSelectionGranularityCharacter];
     if (options.isAppBoundWebView())
         [copiedConfiguration setLimitsNavigationsToAppBoundDomains:YES];
+
+    [copiedConfiguration _setAppInitiatedOverrideValueForTesting:options.isAppInitiated() ? _WKAttributionOverrideTestingAppInitiated : _WKAttributionOverrideTestingUserInitiated];
 #endif
 
     if (options.enableAttachmentElement())
@@ -176,6 +178,7 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
 
     [copiedConfiguration setWebsiteDataStore:(WKWebsiteDataStore *)websiteDataStore()];
     [copiedConfiguration _setAllowTopNavigationToDataURLs:options.allowTopNavigationToDataURLs()];
+    [copiedConfiguration _setAppHighlightsEnabled:options.appHighlightsEnabled()];
 
     configureContentMode(copiedConfiguration.get(), options);
 
@@ -214,7 +217,7 @@ PlatformWebView* TestController::platformCreateOtherPage(PlatformWebView* parent
 void TestController::finishCreatingPlatformWebView(PlatformWebView* view, const TestOptions& options)
 {
 #if PLATFORM(MAC)
-    if (options.shouldShowWebView())
+    if (options.shouldShowWindow())
         [view->platformWindow() orderFront:nil];
     else
         [view->platformWindow() orderBack:nil];
@@ -383,6 +386,51 @@ void TestController::clearLoadedSubresourceDomains()
     [[globalWebViewConfiguration() websiteDataStore] _clearLoadedSubresourceDomainsFor:parentView->platformView()];
 }
 
+bool TestController::didLoadAppInitiatedRequest()
+{
+    auto* parentView = mainWebView();
+    if (!parentView)
+        return false;
+
+    __block bool isDone = false;
+    __block bool didLoadResult = false;
+    [m_mainWebView->platformView() _didLoadAppInitiatedRequest:^(BOOL result) {
+        didLoadResult = result;
+        isDone = true;
+    }];
+    platformRunUntil(isDone, noTimeout);
+    return didLoadResult;
+}
+
+bool TestController::didLoadNonAppInitiatedRequest()
+{
+    auto* parentView = mainWebView();
+    if (!parentView)
+        return false;
+
+    __block bool isDone = false;
+    __block bool didLoadResult = false;
+    [m_mainWebView->platformView() _didLoadNonAppInitiatedRequest:^(BOOL result) {
+        didLoadResult = result;
+        isDone = true;
+    }];
+    platformRunUntil(isDone, noTimeout);
+    return didLoadResult;
+}
+
+void TestController::clearAppPrivacyReportTestingData()
+{
+    auto* parentView = mainWebView();
+    if (!parentView)
+        return;
+
+    __block bool doneClearing = false;
+    [m_mainWebView->platformView() _clearAppPrivacyReportTestingData:^{
+        doneClearing = true;
+    }];
+    platformRunUntil(doneClearing, noTimeout);
+}
+
 void TestController::injectUserScript(WKStringRef script)
 {
     auto userScript = adoptNS([[WKUserScript alloc] initWithSource: toWTFString(script) injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:NO]);
@@ -494,7 +542,7 @@ void TestController::setAllowedMenuActions(const Vector<String>& actions)
 
 bool TestController::isDoingMediaCapture() const
 {
-    return m_mainWebView->platformView()._mediaCaptureState != _WKMediaCaptureStateNone;
+    return m_mainWebView->platformView()._mediaCaptureState != _WKMediaCaptureStateDeprecatedNone;
 }
 
 #if PLATFORM(IOS_FAMILY)

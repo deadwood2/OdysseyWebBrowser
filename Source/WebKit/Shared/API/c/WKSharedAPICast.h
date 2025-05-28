@@ -509,12 +509,10 @@ inline WKContextMenuItemTag toAPI(WebCore::ContextMenuAction action)
         return kWKContextMenuItemTagMediaPlayPause;
     case WebCore::ContextMenuItemTagMediaMute:
         return kWKContextMenuItemTagMediaMute;
-#if ENABLE(APP_HIGHLIGHTS)
-    case WebCore::ContextMenuItemTagAddHighlightToCurrentGroup:
-        return kWKContextMenuItemTagAddHighlightToCurrentGroup;
-    case WebCore::ContextMenuItemTagAddHighlightToNewGroup:
-        return kWKContextMenuItemTagAddHighlightToNewGroup;
-#endif
+    case WebCore::ContextMenuItemTagAddHighlightToCurrentQuickNote:
+        return kWKContextMenuItemTagAddHighlightToCurrentQuickNote;
+    case WebCore::ContextMenuItemTagAddHighlightToNewQuickNote:
+        return kWKContextMenuItemTagAddHighlightToNewQuickNote;
 #if PLATFORM(COCOA)
     case WebCore::ContextMenuItemTagCorrectSpellingAutomatically:
         return kWKContextMenuItemTagCorrectSpellingAutomatically;
@@ -545,8 +543,10 @@ inline WKContextMenuItemTag toAPI(WebCore::ContextMenuAction action)
 #endif
     case WebCore::ContextMenuItemTagShareMenu:
         return kWKContextMenuItemTagShareMenu;
-    case WebCore::ContextMenuItemTagRevealImage:
+    case WebCore::ContextMenuItemTagQuickLookImage:
         return kWKContextMenuItemTagRevealImage;
+    case WebCore::ContextMenuItemTagTranslate:
+        return kWKContextMenuItemTagTranslate;
     default:
         if (action < WebCore::ContextMenuItemBaseApplicationTag && !(action >= WebCore::ContextMenuItemBaseCustomTag && action <= WebCore::ContextMenuItemLastCustomTag))
             LOG_ERROR("ContextMenuAction %i is an unknown tag but is below the allowable custom tag value of %i", action, WebCore::ContextMenuItemBaseApplicationTag);
@@ -711,12 +711,10 @@ inline WebCore::ContextMenuAction toImpl(WKContextMenuItemTag tag)
         return WebCore::ContextMenuItemTagMediaPlayPause;
     case kWKContextMenuItemTagMediaMute:
         return WebCore::ContextMenuItemTagMediaMute;
-#if ENABLE(APP_HIGHLIGHT)
-    case kWKContextMenuItemTagAddHighlightToCurrentGroup:
-        return WebCore::ContextMenuItemTagAddHighlightToCurrentGroup;
-    case kWKContextMenuItemTagAddHighlightToNewGroup:
-        return WebCore::ContextMenuItemTagAddHighlightToNewGroup;
-#endif
+    case kWKContextMenuItemTagAddHighlightToCurrentQuickNote:
+        return WebCore::ContextMenuItemTagAddHighlightToCurrentQuickNote;
+    case kWKContextMenuItemTagAddHighlightToNewQuickNote:
+        return WebCore::ContextMenuItemTagAddHighlightToNewQuickNote;
 #if PLATFORM(COCOA)
     case kWKContextMenuItemTagCorrectSpellingAutomatically:
         return WebCore::ContextMenuItemTagCorrectSpellingAutomatically;
@@ -748,7 +746,9 @@ inline WebCore::ContextMenuAction toImpl(WKContextMenuItemTag tag)
         return WebCore::ContextMenuItemTagShareMenu;
 #endif
     case kWKContextMenuItemTagRevealImage:
-        return WebCore::ContextMenuItemTagRevealImage;
+        return WebCore::ContextMenuItemTagQuickLookImage;
+    case kWKContextMenuItemTagTranslate:
+        return WebCore::ContextMenuItemTagTranslate;
     case kWKContextMenuItemTagOpenLinkInThisWindow:
     default:
         if (tag < kWKContextMenuItemBaseApplicationTag && !(tag >= WebCore::ContextMenuItemBaseCustomTag && tag <= WebCore::ContextMenuItemLastCustomTag))

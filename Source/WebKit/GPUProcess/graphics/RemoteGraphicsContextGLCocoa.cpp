@@ -46,7 +46,10 @@ public:
     void platformWorkQueueInitialize(WebCore::GraphicsContextGLAttributes&&) final;
     void prepareForDisplay(CompletionHandler<void(WTF::MachSendRight&&)>&&) final;
 private:
-    WebCore::GraphicsContextGLIOSurfaceSwapChain m_swapChain;
+    WebCore::GraphicsContextGLIOSurfaceSwapChain m_swapChain WTF_GUARDED_BY_LOCK(m_streamThread);
+#if HAVE(IOSURFACE_SET_OWNERSHIP_IDENTITY)
+    task_id_token_t m_webProcessIdentityToken;
+#endif
 };
 
 }
@@ -60,20 +63,31 @@ Ref<RemoteGraphicsContextGL> RemoteGraphicsContextGL::create(GPUConnectionToWebP
 
 RemoteGraphicsContextGLCocoa::RemoteGraphicsContextGLCocoa(GPUConnectionToWebProcess& gpuConnectionToWebProcess, GraphicsContextGLIdentifier graphicsContextGLIdentifier, RemoteRenderingBackend& renderingBackend, IPC::StreamConnectionBuffer&& stream)
     : RemoteGraphicsContextGL(gpuConnectionToWebProcess, graphicsContextGLIdentifier, renderingBackend, WTFMove(stream))
+#if HAVE(IOSURFACE_SET_OWNERSHIP_IDENTITY)
+    , m_webProcessIdentityToken(gpuConnectionToWebProcess.webProcessIdentityToken())
+#endif
 {
+
 }
 
 void RemoteGraphicsContextGLCocoa::platformWorkQueueInitialize(WebCore::GraphicsContextGLAttributes&& attributes)
 {
+    assertIsCurrent(m_streamThread);
     m_context = GraphicsContextGLOpenGL::createForGPUProcess(WTFMove(attributes), &m_swapChain);
 }
 
 void RemoteGraphicsContextGLCocoa::prepareForDisplay(CompletionHandler<void(WTF::MachSendRight&&)>&& completionHandler)
 {
+    assertIsCurrent(m_streamThread);
     m_context->prepareForDisplay();
     MachSendRight sendRight;
-    if (auto* surface = m_swapChain.displayBuffer().surface.get())
+    if (auto* surface = m_swapChain.displayBuffer().surface.get()) {
+#if HAVE(IOSURFACE_SET_OWNERSHIP_IDENTITY)
+        // Mark the IOSurface as being owned by the WebProcess even though it was constructed by the GPUProcess so that Jetsam knows which process to kill.
+        surface->setOwnershipIdentity(m_webProcessIdentityToken);
+#endif
         sendRight = surface->createSendRight();
+    }
     completionHandler(WTFMove(sendRight));
 }
 

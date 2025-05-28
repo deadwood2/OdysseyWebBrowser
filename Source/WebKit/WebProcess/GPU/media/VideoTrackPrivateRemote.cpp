@@ -29,14 +29,14 @@
 
 #if ENABLE(GPU_PROCESS)
 
-#include "Connection.h"
+#include "GPUProcessConnection.h"
 #include "MediaPlayerPrivateRemote.h"
 #include "RemoteMediaPlayerProxyMessages.h"
 
 namespace WebKit {
 
-VideoTrackPrivateRemote::VideoTrackPrivateRemote(IPC::Connection& connection, WebCore::MediaPlayerIdentifier playerIdentifier, TrackPrivateRemoteIdentifier idendifier, TrackPrivateRemoteConfiguration&& configuration)
-    : m_connection(connection)
+VideoTrackPrivateRemote::VideoTrackPrivateRemote(GPUProcessConnection& gpuProcessConnection, WebCore::MediaPlayerIdentifier playerIdentifier, TrackPrivateRemoteIdentifier idendifier, TrackPrivateRemoteConfiguration&& configuration)
+    : m_gpuProcessConnection(makeWeakPtr(gpuProcessConnection))
     , m_playerIdentifier(playerIdentifier)
     , m_idendifier(idendifier)
 {
@@ -45,8 +45,11 @@ VideoTrackPrivateRemote::VideoTrackPrivateRemote(IPC::Connection& connection, We
 
 void VideoTrackPrivateRemote::setSelected(bool selected)
 {
+    if (!m_gpuProcessConnection)
+        return;
+
     if (selected != this->selected())
-        m_connection.send(Messages::RemoteMediaPlayerProxy::VideoTrackSetSelected(m_idendifier, selected), m_playerIdentifier);
+        m_gpuProcessConnection->connection().send(Messages::RemoteMediaPlayerProxy::VideoTrackSetSelected(m_idendifier, selected), m_playerIdentifier);
 
     VideoTrackPrivate::setSelected(selected);
 }
@@ -77,7 +80,7 @@ void VideoTrackPrivateRemote::updateConfiguration(TrackPrivateRemoteConfiguratio
     m_trackIndex = configuration.trackIndex;
     m_startTimeVariance = configuration.startTimeVariance;
     m_kind = configuration.videoKind;
-    setSelected(configuration.selected);
+    VideoTrackPrivate::setSelected(configuration.selected);
 }
 
 } // namespace WebKit

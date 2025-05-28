@@ -84,9 +84,23 @@
     || defined(_M_PPC)         \
     || defined(__PPC))         \
     && !CPU(PPC64)             \
-    && CPU(BIG_ENDIAN)
+    && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 #define WTF_CPU_PPC 1
 #define WTF_CPU_KNOWN 1
+#endif
+
+#ifdef __MORPHOS__
+#ifdef __cplusplus
+namespace WTF {
+class HasAltivec {
+public:
+	static bool hasAltivec();
+private:
+	HasAltivec();
+	static bool m_hasAltivec;
+};
+}
+#endif
 #endif
 
 /* CPU(X86) - i386 / x86 32-bit */
@@ -276,6 +290,14 @@
 #endif
 
 #endif /* ARM */
+
+/* CPU(RISCV64) - RISC-V 64-bit */
+#if    defined(__riscv) \
+    && defined(__riscv_xlen) \
+    && (__riscv_xlen == 64)
+#define WTF_CPU_RISCV64 1
+#define WTF_CPU_KNOWN 1
+#endif
 
 #if !CPU(KNOWN)
 #define WTF_CPU_UNKNOWN 1

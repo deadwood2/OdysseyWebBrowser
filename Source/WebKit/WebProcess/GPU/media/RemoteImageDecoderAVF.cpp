@@ -33,7 +33,7 @@
 #include "SharedBufferDataReference.h"
 #include "WebProcess.h"
 #include <WebCore/AVAssetMIMETypeCache.h>
-#include <WebCore/ColorSpaceCG.h>
+#include <WebCore/DestinationColorSpace.h>
 #include <WebCore/IOSurface.h>
 #include <WebCore/ImageTypes.h>
 #include <WebCore/MIMETypeRegistry.h>
@@ -47,6 +47,7 @@ using namespace WebCore;
 
 RemoteImageDecoderAVF::RemoteImageDecoderAVF(RemoteImageDecoderAVFManager& manager, const WebCore::ImageDecoderIdentifier& identifier, const String& mimeType)
     : ImageDecoder()
+    , m_gpuProcessConnection(makeWeakPtr(manager.ensureGPUProcessConnection()))
     , m_manager(manager)
     , m_identifier(identifier)
     , m_mimeType(mimeType)
@@ -57,11 +58,6 @@ RemoteImageDecoderAVF::RemoteImageDecoderAVF(RemoteImageDecoderAVFManager& manag
 RemoteImageDecoderAVF::~RemoteImageDecoderAVF()
 {
     m_manager.deleteRemoteImageDecoder(m_identifier);
-}
-
-GPUProcessConnection& RemoteImageDecoderAVF::gpuProcessConnection() const
-{
-    return m_manager.gpuProcessConnection();
 }
 
 bool RemoteImageDecoderAVF::canDecodeType(const String& mimeType)
@@ -158,7 +154,7 @@ bool RemoteImageDecoderAVF::frameAllowSubsamplingAtIndex(size_t index) const
 
 unsigned RemoteImageDecoderAVF::frameBytesAtIndex(size_t, SubsamplingLevel) const
 {
-    return (size().area() * 4).unsafeGet();
+    return size().area() * 4;
 }
 
 PlatformImagePtr RemoteImageDecoderAVF::createFrameImageAtIndex(size_t index, SubsamplingLevel, const DecodingOptions&)
@@ -166,25 +162,27 @@ PlatformImagePtr RemoteImageDecoderAVF::createFrameImageAtIndex(size_t index, Su
     if (m_frameImages.contains(index))
         return m_frameImages.get(index);
 
-    // This function might be called in the main thread to run the decoder synchronously
-    if (isMainThread())
-        return nullptr;
-
-    callOnMainThreadAndWait([this, protectedThis = makeRef(*this), index] {
-        Optional<MachSendRight> sendRight;
-        if (!gpuProcessConnection().connection().sendSync(Messages::RemoteImageDecoderAVFProxy::CreateFrameImageAtIndex(m_identifier, index), Messages::RemoteImageDecoderAVFProxy::CreateFrameImageAtIndex::Reply(sendRight), 0))
+    auto createFrameImage = [&] {
+        if (!m_gpuProcessConnection)
             return;
 
-        if (!sendRight)
+        std::optional<MachSendRight> sendRight;
+        std::optional<DestinationColorSpace> colorSpace;
+        if (!m_gpuProcessConnection->connection().sendSync(Messages::RemoteImageDecoderAVFProxy::CreateFrameImageAtIndex(m_identifier, index), Messages::RemoteImageDecoderAVFProxy::CreateFrameImageAtIndex::Reply(sendRight, colorSpace), 0))
             return;
 
-        auto surface = WebCore::IOSurface::createFromSendRight(WTFMove(*sendRight), sRGBColorSpaceRef());
+        if (!sendRight || !colorSpace)
+            return;
+
+        auto surface = WebCore::IOSurface::createFromSendRight(WTFMove(*sendRight), WTFMove(*colorSpace));
         if (!surface)
             return;
 
         if (auto image = IOSurface::sinkIntoImage(WTFMove(surface)))
             m_frameImages.add(index, image);
-    });
+    };
+
+    callOnMainRunLoopAndWait(WTFMove(createFrameImage));
 
     if (m_frameImages.contains(index))
         return m_frameImages.get(index);
@@ -194,20 +192,26 @@ PlatformImagePtr RemoteImageDecoderAVF::createFrameImageAtIndex(size_t index, Su
 
 void RemoteImageDecoderAVF::setExpectedContentSize(long long expectedContentSize)
 {
-    gpuProcessConnection().connection().send(Messages::RemoteImageDecoderAVFProxy::SetExpectedContentSize(m_identifier, expectedContentSize), 0);
+    if (!m_gpuProcessConnection)
+        return;
+
+    m_gpuProcessConnection->connection().send(Messages::RemoteImageDecoderAVFProxy::SetExpectedContentSize(m_identifier, expectedContentSize), 0);
 }
 
 // If allDataReceived is true, the caller expects encodedDataStatus() to be >= EncodedDataStatus::SizeAvailable
 // after this function returns (in the same run loop).
 void RemoteImageDecoderAVF::setData(SharedBuffer& data, bool allDataReceived)
 {
+    if (!m_gpuProcessConnection)
+        return;
+
     IPC::SharedBufferDataReference dataReference { data };
 
-    uint32_t frameCount;
+    size_t frameCount;
     IntSize size;
     bool hasTrack;
-    Optional<Vector<ImageDecoder::FrameInfo>> frameInfos;
-    if (!gpuProcessConnection().connection().sendSync(Messages::RemoteImageDecoderAVFProxy::SetData(m_identifier, dataReference, allDataReceived), Messages::RemoteImageDecoderAVFProxy::SetData::Reply(frameCount, size, hasTrack, frameInfos), 0))
+    std::optional<Vector<ImageDecoder::FrameInfo>> frameInfos;
+    if (!m_gpuProcessConnection->connection().sendSync(Messages::RemoteImageDecoderAVFProxy::SetData(m_identifier, dataReference, allDataReceived), Messages::RemoteImageDecoderAVFProxy::SetData::Reply(frameCount, size, hasTrack, frameInfos), 0))
         return;
 
     m_isAllDataReceived = allDataReceived;
@@ -220,9 +224,13 @@ void RemoteImageDecoderAVF::setData(SharedBuffer& data, bool allDataReceived)
         m_frameInfos.swap(*frameInfos);
 }
 
-void RemoteImageDecoderAVF::clearFrameBufferCache(size_t)
+void RemoteImageDecoderAVF::clearFrameBufferCache(size_t index)
 {
-    m_frameImages.clear();
+    for (size_t i = 0; i < std::min(index + 1, m_frameCount); ++i)
+        m_frameImages.remove(i);
+
+    if (m_gpuProcessConnection)
+        m_gpuProcessConnection->connection().send(Messages::RemoteImageDecoderAVFProxy::ClearFrameBufferCache(m_identifier, index), 0);
 }
 
 void RemoteImageDecoderAVF::encodedDataStatusChanged(size_t frameCount, const WebCore::IntSize& size, bool hasTrack)

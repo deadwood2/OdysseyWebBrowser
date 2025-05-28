@@ -110,6 +110,7 @@
     readonly attribute DOMString ariaDropEffects;
     readonly attribute DOMString classList;
     readonly attribute DOMString embeddedImageDescription;
+    readonly attribute object imageOverlayElements;
 
     readonly attribute long x;
     readonly attribute long y;
@@ -117,7 +118,9 @@
     readonly attribute long height;
     readonly attribute long clickPointX;
     readonly attribute long clickPointY;
+    readonly attribute DOMString lineRectsAndText;
 
+    readonly attribute object children;
     readonly attribute long childrenCount;
     readonly attribute long selectedChildrenCount;
     readonly attribute long rowCount;
@@ -169,6 +172,7 @@
     object columnHeaders();
     object rowHeaders();
 
+    object detailsElements();
     object errorMessageElements();
     AccessibilityUIElement ariaOwnsElementAtIndex(unsigned long index);
     AccessibilityUIElement ariaOwnsReferencingElementAtIndex(unsigned long index);
@@ -217,6 +221,7 @@
 
     // Text markers.
     AccessibilityTextMarkerRange lineTextMarkerRangeForTextMarker(AccessibilityTextMarker textMarker);
+    long lineIndexForTextMarker(AccessibilityTextMarker textMarker);
     AccessibilityTextMarkerRange misspellingTextMarkerRange(AccessibilityTextMarkerRange start, boolean forward);
     AccessibilityTextMarkerRange textMarkerRangeForElement(AccessibilityUIElement element);
     AccessibilityTextMarkerRange textMarkerRangeForMarkers(AccessibilityTextMarker startMarker, AccessibilityTextMarker endMarker);
@@ -234,6 +239,7 @@
     AccessibilityTextMarker nextTextMarker(AccessibilityTextMarker marker);
     AccessibilityUIElement accessibilityElementForTextMarker(AccessibilityTextMarker marker);
     DOMString stringForTextMarkerRange(AccessibilityTextMarkerRange range);
+    DOMString rectsForTextMarkerRange(AccessibilityTextMarkerRange range, DOMString searchText);
     DOMString attributedStringForTextMarkerRange(AccessibilityTextMarkerRange range);
     DOMString attributedStringForTextMarkerRangeWithOptions(AccessibilityTextMarkerRange range, boolean includeSpellCheck);
     long textMarkerRangeLength(AccessibilityTextMarkerRange range);
@@ -243,7 +249,7 @@
     AccessibilityTextMarker textMarkerForIndex(long textIndex);
     readonly attribute AccessibilityTextMarker startTextMarker;
     readonly attribute AccessibilityTextMarker endTextMarker;
-    boolean setSelectedVisibleTextRange(AccessibilityTextMarkerRange range);
+    boolean setSelectedTextMarkerRange(AccessibilityTextMarkerRange range);
     AccessibilityTextMarkerRange leftWordTextMarkerRangeForTextMarker(AccessibilityTextMarker textMarker);
     AccessibilityTextMarkerRange rightWordTextMarkerRangeForTextMarker(AccessibilityTextMarker textMarker);
     AccessibilityTextMarker previousWordStartTextMarkerForTextMarker(AccessibilityTextMarker textMarker);

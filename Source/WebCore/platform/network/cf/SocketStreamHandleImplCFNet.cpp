@@ -249,12 +249,9 @@ void SocketStreamHandleImpl::chooseProxyFromArray(CFArrayRef proxyArray)
 
     // PAC is always the first entry, if present.
     if (proxyArrayCount) {
-        CFDictionaryRef proxyInfo = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(proxyArray, 0));
-        CFTypeRef proxyType = CFDictionaryGetValue(proxyInfo, kCFProxyTypeKey);
-        if (proxyType && CFGetTypeID(proxyType) == CFStringGetTypeID()) {
-            if (CFEqual(proxyType, kCFProxyTypeAutoConfigurationURL)) {
-                CFTypeRef pacFileURL = CFDictionaryGetValue(proxyInfo, kCFProxyAutoConfigurationURLKey);
-                if (pacFileURL && CFGetTypeID(pacFileURL) == CFURLGetTypeID()) {
+        if (auto proxyInfo = dynamic_cf_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(proxyArray, 0))) {
+            if (auto proxyType = dynamic_cf_cast<CFStringRef>(CFDictionaryGetValue(proxyInfo, kCFProxyTypeKey)); proxyType && CFEqual(proxyType, kCFProxyTypeAutoConfigurationURL)) {
+                if (auto pacFileURL = dynamic_cf_cast<CFURLRef>(CFDictionaryGetValue(proxyInfo, kCFProxyAutoConfigurationURLKey))) {
                     executePACFileURL(static_cast<CFURLRef>(pacFileURL));
                     return;
                 }
@@ -262,20 +259,20 @@ void SocketStreamHandleImpl::chooseProxyFromArray(CFArrayRef proxyArray)
         }
     }
 
-    CFDictionaryRef chosenProxy = 0;
+    CFDictionaryRef chosenProxy = nullptr;
     for (CFIndex i = 0; i < proxyArrayCount; ++i) {
-        CFDictionaryRef proxyInfo = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(proxyArray, i));
-        CFTypeRef proxyType = CFDictionaryGetValue(proxyInfo, kCFProxyTypeKey);
-        if (proxyType && CFGetTypeID(proxyType) == CFStringGetTypeID()) {
-            if (CFEqual(proxyType, kCFProxyTypeSOCKS)) {
-                m_connectionType = SOCKSProxy;
-                chosenProxy = proxyInfo;
-                break;
-            }
-            if (CFEqual(proxyType, kCFProxyTypeHTTPS)) {
-                m_connectionType = CONNECTProxy;
-                chosenProxy = proxyInfo;
-                // Keep looking for proxies, as a SOCKS one is preferable.
+        if (auto proxyInfo = dynamic_cf_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(proxyArray, i))) {
+            if (auto proxyType = dynamic_cf_cast<CFStringRef>(CFDictionaryGetValue(proxyInfo, kCFProxyTypeKey))) {
+                if (CFEqual(proxyType, kCFProxyTypeSOCKS)) {
+                    m_connectionType = SOCKSProxy;
+                    chosenProxy = proxyInfo;
+                    break;
+                }
+                if (CFEqual(proxyType, kCFProxyTypeHTTPS)) {
+                    m_connectionType = CONNECTProxy;
+                    chosenProxy = proxyInfo;
+                    // Keep looking for proxies, as a SOCKS one is preferable.
+                }
             }
         }
     }
@@ -284,12 +281,12 @@ void SocketStreamHandleImpl::chooseProxyFromArray(CFArrayRef proxyArray)
         ASSERT(m_connectionType != Unknown);
         ASSERT(m_connectionType != Direct);
 
-        CFTypeRef proxyHost = CFDictionaryGetValue(chosenProxy, kCFProxyHostNameKey);
-        CFTypeRef proxyPort = CFDictionaryGetValue(chosenProxy, kCFProxyPortNumberKey);
+        auto proxyHost = dynamic_cf_cast<CFStringRef>(CFDictionaryGetValue(chosenProxy, kCFProxyHostNameKey));
+        auto proxyPort = dynamic_cf_cast<CFNumberRef>(CFDictionaryGetValue(chosenProxy, kCFProxyPortNumberKey));
 
-        if (proxyHost && CFGetTypeID(proxyHost) == CFStringGetTypeID() && proxyPort && CFGetTypeID(proxyPort) == CFNumberGetTypeID()) {
-            m_proxyHost = static_cast<CFStringRef>(proxyHost);
-            m_proxyPort = static_cast<CFNumberRef>(proxyPort);
+        if (proxyHost && proxyPort) {
+            m_proxyHost = proxyHost;
+            m_proxyPort = proxyPort;
             return;
         }
     }
@@ -606,7 +603,7 @@ void SocketStreamHandleImpl::readStreamCallback(CFStreamEventType type)
         if (length == -1)
             m_client.didFailToReceiveSocketStreamData(*this);
         else
-            m_client.didReceiveSocketStreamData(*this, reinterpret_cast<const char*>(ptr), length);
+            m_client.didReceiveSocketStreamData(*this, ptr, length);
 
         return;
     }
@@ -714,7 +711,7 @@ SocketStreamHandleImpl::~SocketStreamHandleImpl()
     ASSERT(!m_pacRunLoopSource);
 }
 
-Optional<size_t> SocketStreamHandleImpl::platformSendInternal(const uint8_t* data, size_t length)
+std::optional<size_t> SocketStreamHandleImpl::platformSendInternal(const uint8_t* data, size_t length)
 {
     if (!m_writeStream)
         return 0;
@@ -722,9 +719,9 @@ Optional<size_t> SocketStreamHandleImpl::platformSendInternal(const uint8_t* dat
     if (!CFWriteStreamCanAcceptBytes(m_writeStream.get()))
         return 0;
 
-    CFIndex result = CFWriteStreamWrite(m_writeStream.get(), reinterpret_cast<const UInt8*>(data), length);
+    CFIndex result = CFWriteStreamWrite(m_writeStream.get(), data, length);
     if (result == -1)
-        return WTF::nullopt;
+        return std::nullopt;
 
     ASSERT(result >= 0);
     return static_cast<size_t>(result);

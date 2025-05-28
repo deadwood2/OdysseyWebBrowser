@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(INDEXED_DATABASE)
-
 #include "MessageSender.h"
 #include "SandboxExtension.h"
 #include <WebCore/IDBConnectionToServer.h>
@@ -57,7 +55,7 @@ private:
     void deleteDatabase(const WebCore::IDBRequestData&) final;
     void openDatabase(const WebCore::IDBRequestData&) final;
     void abortTransaction(const WebCore::IDBResourceIdentifier&) final;
-    void commitTransaction(const WebCore::IDBResourceIdentifier&) final;
+    void commitTransaction(const WebCore::IDBResourceIdentifier&, uint64_t pendingRequestCount) final;
     void didFinishHandlingVersionChangeTransaction(uint64_t databaseConnectionIdentifier, const WebCore::IDBResourceIdentifier&) final;
     void createObjectStore(const WebCore::IDBRequestData&, const WebCore::IDBObjectStoreInfo&) final;
     void deleteObjectStore(const WebCore::IDBRequestData&, const String& objectStoreName) final;
@@ -111,5 +109,3 @@ private:
 };
 
 } // namespace WebKit
-
-#endif // ENABLE(INDEXED_DATABASE)

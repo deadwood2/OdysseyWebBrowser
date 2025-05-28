@@ -1,0 +1,274 @@
+Early beta of a new WebKit port. Technically, this is a port of WebKit2 into WebKit_Legacy ;)
+Will not work or will crash unless you're on a very recent 3.14 installation.
+
+Rough changelist:
+
+- 23.10.2020:
+	- Reduced the # of SQL writes (mostly syncs on quit now, beware)
+	- Separate interpolation setting for standalone image views
+
+- 21.10.2020:
+	- Enabled intersection observer in WebCore
+	- Tweaked release asserts in WebKit to be properly debug-noisy
+
+- 20.10.2020:
+	- Fixed a crash in favicons
+
+- 16.10.2020:
+	- Fixed the blob registry (blob: support)
+	- Fixed a crash on exit due to WebCore not terminating one of its worker threads (at all)
+
+- 15.10.2020:
+	- Switched to cairo scaling for favicons
+
+- 13.10.2020:
+	- Disabled another use of FFT
+	- Corrected download file cookies and output file name
+
+- 07.10.2020:
+	- Fixed loading data from cache (resulted in missing mime type due to incorrect
+	  order of loading events)
+	- Shift + space does reverse scroll
+	- CSS file path fix
+	- Fixed an issue with sticky scrollers
+
+- 02.10.2020:
+	- Disabled OscillatorNode support since it seems to be trashing memory
+	  on pages like Yahoo's login and possibly Google Drive
+
+- 28.09.2020:
+	- Fixed not to select items/text on rmb
+	- Fixed rmb handling on Google Maps, etc
+	- Streamlined Curl cache setup to avoid scanning the cache files twice
+	- Optimized Curl caches scan by about 10%
+
+- 27.09.2020:
+	- Tweaked various WebKit settings to be more in-line with Safari
+	- Fixed CSS animations
+	- Fixed requestAnimationFrame support
+	- Fixed throttling handling
+	- Enabled ResizeObserver support
+	(All of the above fix Twitter, Bing Maps and (partially) Google Maps)
+
+- 24.09.2020
+	- Fixed a crash related to media playback attempts
+	- Minor fixes for potential issues in Curl backend
+	- Disabled SQLite WAL mode
+
+(23.09.2020) Changes were backed out for now
+
+- 19.09.2020
+	- Exposed time-to-next-event from the RunLoop so that the outer MorphOS runloop can
+	  provide better performance to timer-driven webapps
+	- Fixed a memory trash on exit
+
+- 18.09.2020
+	- Context menu handling in-line with Safari's behaviour now
+	- Fixed scrolling of sub-frames using wheel and keys
+
+- 17.09.2020
+	- Fixed CurlCacheManager to load/save its index in the right spots
+	- Made it possible to disable the CurlCacheManager by setting a 0 max size
+	- Fixed 32bit overflows in CurlCacheManager - it won't handle 4GB files, but
+	  it won't mess up when the total size count goes over
+	- Fixed a crash related to a stub FFTFrame implementation
+
+- 17.09.2020
+	- Context menu handling tweaks, popup back to rmb press
+	- Custom CSS loading fixed
+
+- 16.09.2020
+	- Caching and disk caching settings
+	- Re-implemented RMB handling to fix JS context menu events support
+	- Added a default morphos.css to fix missing checkmarks/radios on some pages
+	- CSS settings
+	- Search in page functionality
+
+- 10.09.2020
+	- Updated easylist.dat
+	- Implemented caching model settings and flushing of remaining memory
+	  caches on memory pressure events
+	- Setup the default fixed font family&size
+
+- 9.09.2020
+	- Fixed a display issue after closing file selector asl
+
+- 8.09.2020
+	- Route ftp and mailto to OpenURL
+
+- 5.09.2020
+	- Added an API to pre-layout invisible browsers
+	- Enabled legacy HTTP0.9 support
+
+- 4.09.2020
+	- Screenshot offset fixes
+	- Implemented hovered URL interface
+
+- 3.09.2020
+	- Tweaked compilation options to save about 8MB in binary size
+
+- 2.09.2020
+	- Implemented WTF/MemoryPressureHandler
+	- Fixes in ImageDecoder/JPEG for out-of-memory crashes
+	- Fixes in cairo surface for out-of-memory crashes
+	- Implemented screenshots
+
+- 31.08.2020
+	- Implemented throttling w/ settings
+
+- 27.08.2020
+	- Fixed the MimeTypeRegistry in WebCore to allow jpg/tiff/bmp/ico files to be displayed in the
+	  browser
+	- Implemented WebCore/formatLocalizedString, fixes displaying image dimmensions when opening img urls
+
+- 26.08.2020
+	- Fixed keyboard focus going back to MUI from the webview
+
+- 25.08.2020
+	- Finished the WkHistory implementation
+
+- 24.08.2020
+	- Tweaked the way load requests are sent WebCore's way, fixes local file loading bailing out
+	  due to security polcies not being correctly updated in the Document
+	- Re-written WebCore/MIMETypeRegistryMorphOS, previously based on a non-working Sony implementation;
+	  fixes identifying a locally loaded html file as text/html
+	- Refactored internal global settings
+	- Fixed mouse click counts
+
+- 23.08.2020
+	- Rewritten display routines: they now repaint damage in 64x64 tiles
+	- Implemented a fast path for vertical scrolling of webpages
+
+- 20.08.2020
+	- Refactored WebCore/CurlDownload to download files if the original url ends in a redirect
+	- Refactored WebCore/CurlDownload and related parts of WebKitty to ensure cookies are properly
+	  set for downloads, fixes downloading files from sites that require a log-in
+
+- 18.08.2020
+	- Fixed setting the downloads path
+
+- 11.08.2020
+	- Keyboard handling improvements
+
+- 10.08.2020
+	- Improved file download speed
+	- Fail downloads if writing to file fails
+	- Reworked to clean up tmp download files on quit
+	- Mark assets that can be downloaded while holding ALT key + MMB by changing mouse pointer while holding ALT key
+	- Added space/pageup-down/home/end
+
+- 09.08.2020
+	- Implemented http auth support in CurlDownload
+	- Corrected mouse offset in mmb hittest
+	- Fixed mouse cursor over links
+
+- 05.08.2020
+	- Handle copy/paste/etc MUIKEY actions
+
+- 04.08.2020
+	- Fixed ThreadingPOSIX's waitForCompletion() to retry pthread_join should it
+	  return EINTR. Fixes the StorageThread crash on exit
+
+- 31.07.2020
+	- Implemented mouse cursor support
+
+- 30.07.2020
+	- Improved password autofill code
+
+- 28.07.2020
+	- Exposed page/text zoom & added ctrl+wheel up/down zoom
+
+- 27.07.2020
+	- Download resuming support
+	- MMB click handling
+	- Fixed a crash when quitting LocalStorage thread
+
+- 24.07.2020
+	- Link with latest sqlite, fixes some IndexedDB issues
+	- Fixed a crash on aliexpress.com
+
+- 23.07.2020
+	- Faster quit, ensure cookie.jar database gets closed on quit
+	- Fixed an SQL issue where some files would remain locked after quit
+	- Implemented login form autofill interfaces
+
+- 18.07.2020
+	- Fixed session setup (fixes various sites reporting cookies being disabled)
+
+- 17.07.2020
+	- Fixed input selection via popmenus, fixed the open offset of the popmenus
+
+- 15.07.2020
+	- Curl certificate handling improvements
+	- Fixed the ICU files check/requester on init
+
+- 14.07.2020
+	- Internal MIME type handling
+	- Download delegation of non-displayable MIME types
+
+- 12.07.2020
+	- JS Alerts and file selection
+
+- 09.07.2020
+	- Fixed the crash on quit (Piru)
+
+- 08.07.2020
+	- Video/Audio element stubs
+
+- 06.07.2020
+	- Improvements in resize, wheel handling
+	- Tmp download files are now being created in the dest download path
+
+- 24.06.2020
+	- Switched WebCore to -Os to save ~18MB of binary size
+
+- 21.06.2020
+	- Rebased to webkitgtk 2.28.2
+
+- 19.06.2020
+	- Very basic download support - only working from the context menu for now
+
+- 02.06.2020
+	- Improved loading / error event handling
+
+- 01.06.2020
+	- Basic error handling
+	- Very basic certificate viewer and the ability to trust a website with self-signed cert
+
+- 12.05.2020
+	- Implemented standard WebCore context menus (no, Download is not supported)
+	- Clipboard support mostly works now, including copyimg images (asynchronously!) and text
+	  selection
+
+- 09.05.2020
+	- Fixed Gif/APNG animations
+
+- 06.05.2020
+	- Fixed a deep-rooted race condition inside WebCore's image decoding
+	- Minimal history support
+	- Minimal clipboard support, still no clue why I cannot mark text with a mouse :)
+	- AdBlocker/JS settings
+
+- 04.05.2020
+	- Fixed more issues on quit/window close
+	- AdBlock based on easylist
+
+- 02.05.2020
+	- Fixed memory corruption on quit
+	- Enabled WebP
+	- Lots of work on internal interfaces to make a full proper browser possible
+
+- 30.04.2020
+	- Fixed crashes related to popup input elements, added some lame and simple popup menu
+	- Integrated typed arrays little endian patches by internetzel - makes web.whatsapp.com work
+	- Fixed a lot of issues on exit/when closing windows, some still remain
+	- Checks for the ICU files on startup
+	- Implemented support for Resources images
+
+Known issues:
+	- IndexedDB support seems shaky at best, seems to be the culpti in web Skype login failure
+	- Sites like bing/google maps require GL, will not work for now, same with photopea.com
+	  or Twitter
+	- Twitter mostly works with UserAgent=WebKitty (legacy mode)
+	- Telegram works but needs a lot of time (multiple tries?) to load initially. Once logged in,
+	  it seems to work OK

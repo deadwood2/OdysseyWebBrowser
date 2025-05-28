@@ -26,6 +26,7 @@
 #pragma once
 
 #include "ColorSpace.h"
+#include <optional>
 
 typedef struct CGColorSpace *CGColorSpaceRef;
 
@@ -64,6 +65,8 @@ WEBCORE_EXPORT CGColorSpaceRef ROMMRGBColorSpaceRef();
 #if HAVE(CORE_GRAPHICS_XYZ_COLOR_SPACE)
 WEBCORE_EXPORT CGColorSpaceRef xyzColorSpaceRef();
 #endif
+
+std::optional<ColorSpace> colorSpaceForCGColorSpace(CGColorSpaceRef);
 
 static inline CGColorSpaceRef cachedNullableCGColorSpace(ColorSpace colorSpace)
 {
@@ -117,25 +120,6 @@ static inline CGColorSpaceRef cachedNullableCGColorSpace(ColorSpace colorSpace)
     }
     ASSERT_NOT_REACHED();
     return nullptr;
-}
-
-// NOTE: Since this function is for *destination* color spaces whose callers always expect a non-null color space, this function is guaranteed to return non-null, unlike cachedNullableCGColorSpace().
-static inline CGColorSpaceRef cachedCGColorSpace(DestinationColorSpace colorSpace)
-{
-    switch (colorSpace) {
-    case DestinationColorSpace::LinearSRGB: {
-#if HAVE(CORE_GRAPHICS_LINEAR_SRGB_COLOR_SPACE)
-        return linearSRGBColorSpaceRef();
-#else
-        // FIXME: Windows should be able to use linear sRGB, this is tracked by http://webkit.org/b/80000.
-        return sRGBColorSpaceRef();
-#endif
-    }
-    case DestinationColorSpace::SRGB:
-        return sRGBColorSpaceRef();
-    }
-    ASSERT_NOT_REACHED();
-    return sRGBColorSpaceRef();
 }
 
 }

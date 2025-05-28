@@ -32,7 +32,6 @@
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
 #include <wtf/OptionSet.h>
-#include <wtf/Optional.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
@@ -59,6 +58,11 @@ struct WebsiteDataRecord {
     void addResourceLoadStatisticsRegistrableDomain(const WebCore::RegistrableDomain&);
 #endif
 
+    bool matches(const WebCore::RegistrableDomain&) const;
+    String topPrivatelyControlledDomain();
+
+    WebsiteDataRecord isolatedCopy() const;
+
     String displayName;
     OptionSet<WebsiteDataType> types;
 
@@ -66,7 +70,7 @@ struct WebsiteDataRecord {
         uint64_t totalSize;
         HashMap<unsigned, uint64_t> typeSizes;
     };
-    Optional<Size> size;
+    std::optional<Size> size;
 
     HashSet<WebCore::SecurityOriginData> origins;
     HashSet<String> cookieHostNames;
@@ -78,9 +82,6 @@ struct WebsiteDataRecord {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
     HashSet<WebCore::RegistrableDomain> resourceLoadStatisticsRegistrableDomains;
 #endif
-
-    bool matches(const WebCore::RegistrableDomain&) const;
-    String topPrivatelyControlledDomain();
 };
 
 }

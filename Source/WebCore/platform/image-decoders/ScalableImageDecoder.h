@@ -72,12 +72,15 @@ public:
 
     void setData(SharedBuffer& data, bool allDataReceived) override
     {
-        LockHolder lockHolder(m_mutex);
+        Locker locker { m_lock };
         if (m_encodedDataStatus == EncodedDataStatus::Error)
             return;
 
         if (data.data()) {
             // SharedBuffer::data() combines all segments into one in case there's more than one.
+#if OS(MORPHOS)
+            auto locker = Locker(data.readLock());
+#endif
             m_data = data.begin()->segment.copyRef();
         }
         if (m_encodedDataStatus == EncodedDataStatus::TypeAvailable) {
@@ -192,16 +195,16 @@ public:
 
     // If the image has a cursor hot-spot, stores it in the argument
     // and returns true. Otherwise returns false.
-    Optional<IntPoint> hotSpot() const override { return WTF::nullopt; }
+    std::optional<IntPoint> hotSpot() const override { return std::nullopt; }
 
 protected:
     RefPtr<SharedBuffer::DataSegment> m_data;
-    Vector<ScalableImageDecoderFrame, 1> m_frameBufferCache;
-    mutable Lock m_mutex;
+    Vector<ScalableImageDecoderFrame, 1> m_frameBufferCache WTF_GUARDED_BY_LOCK(m_lock);
+    mutable Lock m_lock;
     bool m_premultiplyAlpha;
     bool m_ignoreGammaAndColorProfile;
     ImageOrientation m_orientation;
-    Optional<IntSize> m_densityCorrectedSize;
+    std::optional<IntSize> m_densityCorrectedSize;
 
 private:
     virtual void tryDecodeSize(bool) = 0;

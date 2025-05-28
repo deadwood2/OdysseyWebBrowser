@@ -148,13 +148,32 @@
     color: var(--text-color-secondary);
 }
 
-.computed-style-section .property-trace-item .property .name,
-.computed-style-section .property-trace-item .property .colon,
-.computed-style-section .property-trace-item .property .semicolon {
+.computed-style-section .property-trace-item .property :is(.name, .colon, .semicolon, .css-documentation-button) {
     display: none;
 }
 
 .computed-style-properties.details-section > .content,
 .computed-style-properties.details-section > .content > .group {
     display: block;
+}
+
+.sidebar > .panel.details.css-style > .content > .computed .computed-property-item > .property .go-to-arrow {
+    vertical-align: bottom;
+    width: var(--disclosure-button-size);
+    height: var(--disclosure-button-size);
+}
+
+.sidebar > .panel.details.css-style > .content > .computed .computed-property-item:not(:hover) > .property .go-to-arrow {
+    display: none;
+}
+
+.sidebar > .panel.details.css-style > .content > .computed .computed-property-item > .property > .content > .css-documentation-button {
+    vertical-align: bottom;
+    width: var(--disclosure-button-size);
+    height: var(--disclosure-button-size);
+    margin-left: 1px;
+}
+
+.sidebar > .panel.details.css-style > .content > .computed .computed-property-item:not(:hover) > .property > .content > .css-documentation-button {
+    display: none;
 }

@@ -1,3 +1,1345 @@
+2021-08-31  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [Cocoa] Drawing system fallback fonts to canvas causes a crash
+        https://bugs.webkit.org/show_bug.cgi?id=229633
+        <rdar://problem/81889036>
+
+        Reviewed by Wenson Hsieh.
+
+        * pal/spi/cf/CoreTextSPI.h:
+
+2021-08-26  Darin Adler  <darin@apple.com>
+
+        Cut down on use of CFGetTypeID, using dynamic_cf_cast instead; related streamlining
+        https://bugs.webkit.org/show_bug.cgi?id=229414
+
+        Reviewed by Tim Horton.
+
+        * pal/system/mac/DefaultSearchProvider.cpp:
+        (PAL::defaultSearchProviderDisplayName): Use dynamic_cf_cast and removed an unneeded call to
+        CFStringCreateCopy, since the callers don't need an isolated copy.
+
+2021-08-25  Kate Cheney  <katherine_cheney@apple.com>
+
+        WebCrypto uses deprecated CCKeyDerivationHMac
+        https://bugs.webkit.org/show_bug.cgi?id=229443
+        <rdar://problem/48896021>
+
+        Reviewed by Brent Fulgham.
+
+        * pal/spi/cocoa/CommonCryptoSPI.h:
+
+2021-08-10  Tim Horton  <timothy_horton@apple.com>
+
+        Unreviewed build fix.
+
+        * pal/spi/ios/CelestialSPI.h:
+        Ignore unconventional deprecation warnings until they can be fixed properly.
+
+2021-08-10  Cameron McCormack  <heycam@apple.com>
+
+        Remove unused ColorSync SPI
+        https://bugs.webkit.org/show_bug.cgi?id=228306
+        <rdar://problem/81136866>
+
+        Reviewed by Darin Adler.
+
+        We now use -[NSScreen canRepresentDisplayGamut:displayGamut] and
+        kMGQHasExtendedColorDisplay.
+
+        * pal/spi/cg/CoreGraphicsSPI.h:
+
+2021-08-09  Said Abou-Hallawa  <said@apple.com>
+
+        Ease sandboxing restrictions for Mail to allow HEIF image decoding
+        https://bugs.webkit.org/show_bug.cgi?id=228812
+        <rdar://80967782>
+
+        Reviewed by Per Arne Vollan.
+
+        Delete unneeded SPIs and their soft-linking.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cf/VideoToolboxSoftLink.cpp:
+        * pal/cf/VideoToolboxSoftLink.h:
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h:
+        * pal/spi/cg/ImageIOSPI.h:
+        * pal/spi/cocoa/VideoToolboxSPI.h: Removed.
+
+2021-08-03  Devin Rousso  <drousso@apple.com>
+
+        [Live Text] [iOS] Provide a presenting `UIViewController` for machine readable code actions so that they are related to the same view
+        https://bugs.webkit.org/show_bug.cgi?id=228722
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/VisionKitCoreSPI.h:
+
+2021-08-02  Devin Rousso  <drousso@apple.com>
+
+        [Live Text] SPI for machine readable codes is only available on iOS
+        https://bugs.webkit.org/show_bug.cgi?id=228711
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/VisionKitCoreSPI.h:
+
+2021-07-29  Devin Rousso  <drousso@apple.com>
+
+        [Payment Request] `additionalShippingMethods` are not used if a `paymentMethodType` is provided
+        https://bugs.webkit.org/show_bug.cgi?id=228599
+        <rdar://problem/81190366>
+
+        Reviewed by Andy Estes.
+
+        r275169 made it so that `paymentMethodType` is no longer `required` so that `additionalShippingMethods`
+        can be specified without having to limit it to a specific payment method type. While this
+        works in theory, WebKit doesn't know about the user's selected payment method type until the
+        user actually selects a payment method, meaning that until then the `additionalShippingMethods`
+        are not used. Unfortunately (until now) `PKPaymentRequestPaymentMethodUpdate` did not
+        support providing a `NSArray<PKShippingMethod *> *`, so there was no way to update the list
+        of shipping methods when the user changed their selected payment method, meaning that WebKit
+        would have to wait/rely on the user to change their shipping address _after_ selecting a
+        payment method in order for `additionalShippingMethods` to take effect.
+
+        This also fixes an issue with WebKit's implementation of the W3C Payment Request API by
+        allowing any generic (i.e. things not specific to Apple Pay) `shippingOptions` provided in
+        `PaymentDetailsUpdate` to actually be used and update the Apple Pay sheet accordingly.
+
+        * pal/spi/cocoa/PassKitSPI.h:
+         - add the new `shippingMethods` property on `PKPaymentRequestUpdate`
+         - add the existing `errors` property on `PKPaymentRequestPaymentMethodUpdate`
+
+2021-07-29  Kate Cheney  <katherine_cheney@apple.com>
+
+        GetIdentifierStringForPreferredVoiceInListWithLocale() is deprecated in Monterey
+        <https://webkit.org/b/228066>
+        <rdar://problem/80577312>
+
+        Patch by David Kilzer.
+
+        Reviewed by David Kilzer.
+
+        * pal/spi/mac/SpeechSynthesisSPI.h:
+        * pal/spi/mac/SpeechSynthesisSPI.h:
+        (CopyIdentifierStringForPreferredVoiceInListWithLocale): Add.
+        - Define replacement function for
+          GetIdentifierStringForPreferredVoiceInListWithLocale()
+          in Monterey.
+
+2021-07-28  Jean-Yves Avenard  <jya@apple.com>
+
+        [WebAudio] Add webm/opus container support
+        https://bugs.webkit.org/show_bug.cgi?id=227110
+        <rdar://problem/79437067>
+
+        Reviewed by Jer Noble.
+
+        Add various AVFoundation (AVAudioConverter) related methods and
+        CoreMedia to access required CMSampleBuffer related methods.
+
+        * pal/cf/CoreMediaSoftLink.cpp:
+        * pal/cf/CoreMediaSoftLink.h:
+        * pal/cocoa/AVFoundationSoftLink.h:
+        * pal/cocoa/AVFoundationSoftLink.mm:
+
+2021-07-28  Alex Christensen  <achristensen@webkit.org>
+
+        Fix build with SDKs containing new CFNetwork SPI declaration
+        https://bugs.webkit.org/show_bug.cgi?id=228553
+        <rdar://81202574>
+
+        Reviewed by Brady Eidson.
+
+        CFNSURLConnection.h also has "@interface NSURLSessionConfiguration ()"
+        ObjC doesn't like it if you have the exact same thing in the parentheses and a duplicate declaration.
+        I reproduced the build failure with a modified SDK and verified this fixes it.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2021-07-26  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [macOS Monterey] Pressing Fn+E should present the emoji picker when editing
+        https://bugs.webkit.org/show_bug.cgi?id=228300
+        rdar://77558672
+
+        Reviewed by Tim Horton.
+
+        Add a new SPI declaration on NSMenu. See WebKit and WebKitLegacy changes for more information.
+
+        * pal/spi/mac/NSMenuSPI.h:
+
+2021-07-21  Chris Dumez  <cdumez@apple.com>
+
+        Unreviewed, reverting r280129.
+
+        Broke the internal Monterey build bots
+
+        Reverted changeset:
+
+        "GetIdentifierStringForPreferredVoiceInListWithLocale() is
+        deprecated in Monterey"
+        https://bugs.webkit.org/show_bug.cgi?id=228066
+        https://commits.webkit.org/r280129
+
+2021-07-21  David Kilzer  <ddkilzer@apple.com>
+
+        GetIdentifierStringForPreferredVoiceInListWithLocale() is deprecated in Monterey
+        <https://webkit.org/b/228066>
+        <rdar://problem/80577312>
+
+        Reviewed by Alexey Proskuryakov.
+
+        * pal/spi/mac/SpeechSynthesisSPI.h:
+        (CopyIdentifierStringForPreferredVoiceInListWithLocale): Add.
+        - Define replacement function for
+          GetIdentifierStringForPreferredVoiceInListWithLocale()
+          in Monterey.
+
+2021-07-16  Alex Christensen  <achristensen@webkit.org>
+
+        Prevent HSTS tracking mitigation for top level navigation requests
+        https://bugs.webkit.org/show_bug.cgi?id=227936
+
+        Reviewed by Brady Eidson.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2021-07-14  Jer Noble  <jer.noble@apple.com>
+
+        Unreviewed build fix after r279912 (239661@main); Adopt HAVE(SYSTEM_STATUS) macro.
+
+        * pal/ios/SystemStatusSoftLink.h:
+        * pal/ios/SystemStatusSoftLink.mm:
+
+2021-07-14  Eric Carlson  <eric.carlson@apple.com>
+
+        [iOS] Dynamically set capture attribution
+        https://bugs.webkit.org/show_bug.cgi?id=227871
+        rdar://70241665
+
+        Reviewed by Jer Noble.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/ios/SystemStatusSoftLink.h: Added.
+        * pal/ios/SystemStatusSoftLink.mm: Added.
+
+2021-07-09  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Make Coordinator playback commands more precise
+        https://bugs.webkit.org/show_bug.cgi?id=227756
+
+        Reviewed by Eric Carlson.
+
+        Add SoftLink macros for CMClockMakeHostTimeFromSystemUnits.
+
+        * pal/cf/CoreMediaSoftLink.cpp:
+        * pal/cf/CoreMediaSoftLink.h:
+
+2021-07-07  Tim Horton  <timothy_horton@apple.com>
+
+        Add WKHoverPlatter and some knobs to tweak its appearance
+        https://bugs.webkit.org/show_bug.cgi?id=227735
+        <rdar://problem/79198262>
+
+        Reviewed by Sam Weinig.
+
+        * pal/spi/cocoa/QuartzCoreSPI.h:
+
+2021-07-06  Youenn Fablet  <youenn@apple.com>
+
+        Set kVTCompressionPropertyKey_MaxKeyFrameInterval in VideoSampleBufferCompressor
+        https://bugs.webkit.org/show_bug.cgi?id=227680
+        <rdar://78027782>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cf/VideoToolboxSoftLink.cpp:
+        * pal/cf/VideoToolboxSoftLink.h:
+
+2021-07-01  John Wilander  <wilander@apple.com>
+
+        PCM: Change import from CryptoKitCBridging to CryptoKitPrivate
+        https://bugs.webkit.org/show_bug.cgi?id=227556
+        <rdar://79992592>
+
+        Reviewed by Alex Christensen.
+
+        Patch by Frederic Jacobs.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/cocoa/CryptoKitPrivateSoftLink.h: Renamed from Source/WebCore/PAL/pal/cocoa/CryptoKitCBridgingSoftLink.h.
+        * pal/cocoa/CryptoKitPrivateSoftLink.mm: Renamed from Source/WebCore/PAL/pal/cocoa/CryptoKitCBridgingSoftLink.mm.
+        * pal/spi/cocoa/CryptoKitPrivateSPI.h: Renamed from Source/WebCore/PAL/pal/spi/cocoa/CryptoKitCBridgingSPI.h.
+
+2021-07-01  Amir Mark Jr  <amir_mark@apple.com>
+
+        Unreviewed, reverting r279452.
+
+        Broke MacOS build
+
+        Reverted changeset:
+
+        "PCM: Change import from CryptoKitCBridging to
+        CryptoKitPrivate"
+        https://bugs.webkit.org/show_bug.cgi?id=227556
+        https://commits.webkit.org/r279452
+
+2021-06-30  John Wilander  <wilander@apple.com>
+
+        PCM: Change import from CryptoKitCBridging to CryptoKitPrivate
+        https://bugs.webkit.org/show_bug.cgi?id=227556
+        <rdar://79992592>
+
+        Reviewed by Alex Christensen.
+
+        Patch by Frederic Jacobs.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/cocoa/CryptoKitPrivateSoftLink.h: Renamed from Source/WebCore/PAL/pal/cocoa/CryptoKitCBridgingSoftLink.h.
+        * pal/cocoa/CryptoKitPrivateSoftLink.mm: Renamed from Source/WebCore/PAL/pal/cocoa/CryptoKitCBridgingSoftLink.mm.
+        * pal/spi/cocoa/CryptoKitPrivateSPI.h: Renamed from Source/WebCore/PAL/pal/spi/cocoa/CryptoKitCBridgingSPI.h.
+
+2021-06-30  Antoine Quint  <graouts@webkit.org>
+
+        [Model] [macOS] Add support for rendering model resources
+        https://bugs.webkit.org/show_bug.cgi?id=227530
+        <rdar://problem/79968206>
+
+        Reviewed by Dean Jackson.
+
+        Declare the ASVInlinePreview class for macOS.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/mac/SystemPreviewSPI.h: Added.
+
+2021-06-30  Antoine Quint  <graouts@webkit.org>
+
+        [Model] [iOS] Add support for displaying <model> in fullscreen
+        https://bugs.webkit.org/show_bug.cgi?id=227443
+        <rdar://problem/79859937>
+
+        Reviewed by Sam Weinig.
+
+        Declare additional ASVInlinePreview methods required for fullscreen support.
+
+        * pal/spi/ios/SystemPreviewSPI.h:
+
+2021-06-28  Antoine Quint  <graouts@webkit.org>
+
+        [Model] [iOS] Add support for manipulating <model> inline
+        https://bugs.webkit.org/show_bug.cgi?id=227448
+        <rdar://problem/79863579>
+
+        Reviewed by Tim Horton.
+
+        Declare additional ASVInlinePreview methods.
+
+        * pal/spi/ios/SystemPreviewSPI.h:
+
+2021-06-29  Antoine Quint  <graouts@webkit.org>
+
+        WebKit_iosmac build failure: SystemPreviewSPI.h:29:9: fatal error: 'AssetViewer/ARQuickLookWebKitItem.h' file not found
+        https://bugs.webkit.org/show_bug.cgi?id=227507
+        <rdar://problem/79902043>
+
+        Reviewed by Dean Jackson.
+
+        When we added new SPIs in Source/WebCore/PAL/pal/spi/ios/SystemPreviewSPI.h as part of r279312 we also included this file
+        from a new file that is compiled on Catalyst. This revealed an issue where existing SPIs included in that file weren't
+        actually available on Catalyst. We now make sure we compile those out on Catalyst.
+
+        * pal/spi/ios/SystemPreviewSPI.h:
+
+2021-06-24  Jer Noble  <jer.noble@apple.com>
+
+        Loading WebM hangs if server sends only small amount of data
+        https://bugs.webkit.org/show_bug.cgi?id=226217
+        <rdar://problem/78709010>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cf/CoreMediaSoftLink.cpp:
+        * pal/cf/CoreMediaSoftLink.h:
+        * pal/spi/cf/CoreMediaSPI.h:
+
+2021-06-28  Jean-Yves Avenard  <jya@apple.com>
+
+        Not all uses of AudioToolbox framework use soft linking
+        https://bugs.webkit.org/show_bug.cgi?id=227250
+        <rdar://problem/79606090>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cf/AudioToolboxSoftLink.cpp:
+        * pal/cf/AudioToolboxSoftLink.h: Add methods whose definitions were scattered across
+        the code.
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h: Same as above.
+        * pal/cf/AudioToolboxSoftLink.cpp:
+        * pal/cf/AudioToolboxSoftLink.h: Add missing methods
+        * pal/cf/CoreMediaSoftLink.cpp:
+        * pal/cf/CoreMediaSoftLink.h: Add missing methods; Reshuffled definitions as many didn't
+        exist on Windows, yet could potentially be loaded and error.
+        * pal/cf/VideoToolboxSoftLink.cpp:
+        * pal/cf/VideoToolboxSoftLink.h: Add missing methods and fix some spelling in define names
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h: Add missing methods
+
+2021-06-27  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, reverting r279322.
+        https://bugs.webkit.org/show_bug.cgi?id=227434
+
+
+        Reverted changeset:
+
+        "Not all uses of AudioToolbox framework use soft linking"
+        https://bugs.webkit.org/show_bug.cgi?id=227250
+        https://commits.webkit.org/r279322
+
+2021-06-27  Jean-Yves Avenard  <jya@apple.com>
+
+        Not all uses of AudioToolbox framework use soft linking
+        https://bugs.webkit.org/show_bug.cgi?id=227250
+        <rdar://problem/79606090>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cf/AudioToolboxSoftLink.cpp:
+        * pal/cf/AudioToolboxSoftLink.h: Add methods whose definitions were scattered across
+        the code.
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h: Same as above.
+        * pal/cf/AudioToolboxSoftLink.cpp:
+        * pal/cf/AudioToolboxSoftLink.h: Add missing methods
+        * pal/cf/CoreMediaSoftLink.cpp:
+        * pal/cf/CoreMediaSoftLink.h: Add missing methods; Reshuffled definitions as many didn't
+        exist on Windows, yet could potentially be loaded and error.
+        * pal/cf/VideoToolboxSoftLink.cpp:
+        * pal/cf/VideoToolboxSoftLink.h: Add missing methods and fix some spelling in define names
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h: Add missing methods
+
+2021-06-27  Antoine Quint  <graouts@webkit.org>
+
+        [Model] [iOS] Add support for rendering model resources
+        https://bugs.webkit.org/show_bug.cgi?id=227392
+        <rdar://problem/79770136>
+
+        Reviewed by Tim Horton.
+
+        Declare the ASVInlinePreview class.
+
+        * pal/spi/ios/SystemPreviewSPI.h:
+
+2021-06-22  Dean Jackson  <dino@apple.com>
+
+        Add support for MTLSharedTextures in WebXR
+        https://bugs.webkit.org/show_bug.cgi?id=227245
+        <rdar://problem/79591620>
+
+        Reviewed by Tim Horton.
+
+        Define MTLSharedTextureHandle's initWithIOSurface.
+
+        * pal/spi/cocoa/MetalSPI.h:
+
+2021-06-25  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        Unreviewed, fix the macOS Monterey build
+
+        Some internal builders are still attempting to build WebKit for macOS Monterey using an SDK without the fix for
+        rdar://74299451. Restore the forward staging declaration for `-initWithDataProvider:contentType:previewTitle:`
+        in the meantime.
+
+        * pal/spi/mac/QuickLookMacSPI.h:
+
+2021-06-25  Ryan Haddad  <ryanhaddad@apple.com>
+
+        Unreviewed, reverting r279208.
+        https://bugs.webkit.org/show_bug.cgi?id=227381
+
+        Broke the Apple Windows build.
+
+        Reverted changeset:
+
+        "Not all uses of AudioToolbox framework use soft linking"
+        https://bugs.webkit.org/show_bug.cgi?id=227250
+        https://trac.webkit.org/changeset/279208
+
+2021-06-23  Jean-Yves Avenard  <jya@apple.com>
+
+        Not all uses of AudioToolbox framework use soft linking
+        https://bugs.webkit.org/show_bug.cgi?id=227250
+        <rdar://problem/79606090>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cf/AudioToolboxSoftLink.cpp:
+        * pal/cf/AudioToolboxSoftLink.h: Add methods whose definitions were scattered across
+        the code.
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h: Same as above.
+        * pal/cf/AudioToolboxSoftLink.cpp:
+        * pal/cf/AudioToolboxSoftLink.h: Add missing methods
+        * pal/cf/CoreMediaSoftLink.cpp:
+        * pal/cf/CoreMediaSoftLink.h: Add missing methods
+        * pal/cf/VideoToolboxSoftLink.cpp:
+        * pal/cf/VideoToolboxSoftLink.h: Add missing methods and fix some spelling in define names
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h: Add missing methods
+
+2021-06-23  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Make the hostTime parameter to playSession a Monotonic time
+        https://bugs.webkit.org/show_bug.cgi?id=226515
+
+        Reviewed by Youenn Fablet.
+
+        SoftLink CMClockConvertHostTimeToSystemUnits.
+
+        * pal/cf/CoreMediaSoftLink.cpp:
+        * pal/cf/CoreMediaSoftLink.h:
+
+2021-06-22  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] iOS device steals BT headphones from other devices during silent playback
+        https://bugs.webkit.org/show_bug.cgi?id=227227
+        <rdar://78792479>
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/cocoa/AVFoundationSPI.h:
+
+2021-06-20  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [macOS] Rename WKVisualSearchPreviewController to WKQuickLookPreviewController
+        https://bugs.webkit.org/show_bug.cgi?id=227193
+
+        Reviewed by Sam Weinig.
+
+        Fix up some compiler flags in this SPI header. Instead of using `HAVE(VK_IMAGE_ANALYSIS)` to guard SPI
+        declarations, use the new `HAVE(QUICKLOOK_PREVIEW_ITEM_DATA_PROVIDER)`, `HAVE(QUICKLOOK_ITEM_PREVIEW_OPTIONS)`
+        and `HAVE(QUICKLOOK_PREVIEW_ACTIVITY)` flags.
+
+        * pal/spi/mac/QuickLookMacSPI.h:
+
+2021-06-17  Said Abou-Hallawa  <said@apple.com>
+
+        [Cocoa] Disable hardware decoding in the WebProcess
+        https://bugs.webkit.org/show_bug.cgi?id=226869
+        <rdar://77548905>
+
+        Reviewed by Per Arne Vollan and Simon Fraser.
+
+        SoftLink
+        1. VTRestrictVideoDecoders from VideoToolbox
+        2. FigPhotoSupportsHEVCHWDecode from MediaToobox
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cf/VideoToolboxSoftLink.cpp:
+        * pal/cf/VideoToolboxSoftLink.h:
+        * pal/cocoa/MediaToolboxSoftLink.cpp:
+        * pal/cocoa/MediaToolboxSoftLink.h:
+        * pal/spi/cg/ImageIOSPI.h:
+        * pal/spi/cocoa/VideoToolboxSPI.h: Added.
+
+2021-06-16  Said Abou-Hallawa  <said@apple.com>
+
+        takeSnapshotWithConfiguration() should wait for the next flush before it does callSnapshotRect()
+        https://bugs.webkit.org/show_bug.cgi?id=226257
+        <rdar://76411685>
+
+        Reviewed by Simon Fraser and Tim Horton.
+
+        * pal/spi/cocoa/QuartzCoreSPI.h:
+
+2021-06-15  Jonathan Bedard  <jbedard@apple.com>
+
+        [iOS 15] Support building WebKit
+        https://bugs.webkit.org/show_bug.cgi?id=227002
+        <rdar://problem/79316598>
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/ios/QuickLookSPI.h:
+
+2021-06-14  Jonathan Bedard  <jbedard@apple.com>
+
+        [Monterey] Support building WebKit (Part 2)
+        https://bugs.webkit.org/show_bug.cgi?id=226846
+        <rdar://problem/79095148>
+
+        Reviewed by Chris Dumez.
+
+        * pal/spi/cf/CFNetworkSPI.h: Add nw_connection_privacy_stance_t.
+        * pal/spi/cocoa/PassKitSPI.h: Add PKPaymentCoupon.
+
+2021-06-11  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [Cocoa] Clean up some VisionKitCore soft linking code in WebKit
+        https://bugs.webkit.org/show_bug.cgi?id=226941
+
+        Reviewed by Tim Horton.
+
+        Move softlinking code out of implementation files in WebKit (see WebKit/ChangeLog for details), and into
+        dedicated VisionKitCore SPI and soft-linking headers in PAL.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/cocoa/VisionKitCoreSoftLink.h: Copied from Source/WebKit/Platform/cocoa/TextRecognitionUtilities.h.
+        * pal/cocoa/VisionKitCoreSoftLink.mm: Copied from Source/WebKit/Platform/cocoa/TextRecognitionUtilities.h.
+        * pal/spi/cocoa/VisionKitCoreSPI.h: Renamed from Source/WebKit/Platform/spi/Cocoa/VisionKitSPI.h.
+
+2021-06-11  Jonathan Bedard  <jbedard@apple.com>
+
+        [Monterey] Support building WebKit (Follow-up fix)
+        https://bugs.webkit.org/show_bug.cgi?id=226846
+        <rdar://problem/79095148>
+
+        Unreviewed build fix.
+
+        * pal/spi/mac/QuickLookMacSPI.h:
+
+2021-06-11  Jonathan Bedard  <jbedard@apple.com>
+
+        [Monterey] Support building WebKit
+        https://bugs.webkit.org/show_bug.cgi?id=226846
+        <rdar://problem/79095148>
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/cocoa/CryptoKitCBridgingSPI.h: Add RSA BSSA declarations.
+        * pal/spi/mac/QuickLookMacSPI.h: Add Image Analysis declarations.
+
+2021-06-08  Alex Christensen  <achristensen@webkit.org>
+
+        Move PrivacyStance code from WebKitAdditions
+        https://bugs.webkit.org/show_bug.cgi?id=226774
+
+        Reviewed by Jer Noble.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2021-06-08  Devin Rousso  <drousso@apple.com>
+
+        [Payment Request] upstream new features
+        https://bugs.webkit.org/show_bug.cgi?id=226740
+        <rdar://problem/78963132>
+
+        Reviewed by Andy Estes.
+
+         - recurring line items (`HAVE_PASSKIT_RECURRING_SUMMARY_ITEM` and `ENABLE_APPLE_PAY_RECURRING_LINE_ITEM`)
+         - deferred line items (`HAVE_PASSKIT_DEFERRED_SUMMARY_ITEM` and `ENABLE_APPLE_PAY_DEFERRED_LINE_ITEM`)
+         - estimated shipping dates (`HAVE_PASSKIT_SHIPPING_METHOD_DATE_COMPONENTS_RANGE` and `ENABLE_APPLE_PAY_SHIPPING_METHOD_DATE_COMPONENTS_RANGE`)
+         - coupon code entry (`HAVE_PASSKIT_COUPON_CODE` and `ENABLE_APPLE_PAY_COUPON_CODE`)
+         - shipped vs in-store pickup (`HAVE_PASSKIT_SHIPPING_CONTACT_EDITING_MODE` and `ENABLE_APPLE_PAY_SHIPPING_CONTACT_EDITING_MODE`)
+
+        * pal/cocoa/PassKitSoftLink.h:
+        * pal/cocoa/PassKitSoftLink.mm:
+        * pal/spi/cocoa/PassKitSPI.h:
+
+2021-06-06  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, reverting r277464.
+        https://bugs.webkit.org/show_bug.cgi?id=226709
+
+        No longer necessary
+
+        Reverted changeset:
+
+        "Work around WebCore failing to build due to NDEBUG getting
+        undefined in release"
+        https://bugs.webkit.org/show_bug.cgi?id=225782
+        https://trac.webkit.org/changeset/277464
+
+2021-06-05  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [macOS] Move DataDetectors softlinking in DataDetectorsSPI.h out into a separate PAL header
+        https://bugs.webkit.org/show_bug.cgi?id=226669
+
+        Reviewed by Sam Weinig.
+
+        Add the new softlinking headers. See WebCore/ChangeLog for more details.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/cocoa/DataDetectorsCoreSoftLink.h:
+        * pal/cocoa/DataDetectorsCoreSoftLink.mm:
+
+        Move the `DDBinderPhoneNumberKey` soft link into `DataDetectorsCoreSoftLink` instead, since this symbol comes
+        from DataDetectorsCore rather than the DataDetectors framework.
+
+        * pal/mac/DataDetectorsSoftLink.h: Added.
+        * pal/mac/DataDetectorsSoftLink.mm: Added.
+        * pal/mac/QuickLookUISoftLink.h:
+        * pal/spi/mac/DataDetectorsSPI.h:
+
+2021-06-01  Darin Adler  <darin@apple.com>
+
+        Remove <wtf/Optional.h>
+        https://bugs.webkit.org/show_bug.cgi?id=226437
+
+        Reviewed by Chris Dumez.
+
+        * pal/SessionID.h: Include <optional>.
+        * pal/crypto/gcrypt/Utilities.h: Ditto.
+        * pal/crypto/tasn1/Utilities.cpp: Removed include of <wtf/Optional.h>.
+
+2021-06-01  Dana Estra  <destra@apple.com>
+
+        Adopt Reveal for phone numbers
+        https://bugs.webkit.org/show_bug.cgi?id=226383
+        rdar://78482517
+        
+        Reviewed by Tim Horton.
+        
+        Add declaration for RVItem method initWithURL.
+
+        * pal/spi/cocoa/RevealSPI.h:
+
+2021-05-30  Darin Adler  <darin@apple.com>
+
+        Remove WTF::Optional synonym for std::optional, using that class template directly instead
+        https://bugs.webkit.org/show_bug.cgi?id=226433
+
+        Reviewed by Chris Dumez.
+
+        * <many files>: Let the do-webcore-rename script rename Optional<> to std::optional<>.
+
+2021-05-27  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [macOS] Show context menu when clicking on data detection results in image overlays
+        https://bugs.webkit.org/show_bug.cgi?id=226274
+        rdar://75504956
+
+        Reviewed by Tim Horton and Aditya Keerthi.
+
+        Add declarations for some SPI on RVItem and RVPresenter. See WebKit for more information about where these are
+        used.
+
+        * pal/spi/cocoa/RevealSPI.h:
+
+2021-05-27  Darin Adler  <darin@apple.com>
+
+        Next step toward using std::optional directly instead of through WTF::Optional typedef
+        https://bugs.webkit.org/show_bug.cgi?id=226280
+
+        Reviewed by Chris Dumez.
+
+        * <many files>: Accept the renaming done by do-webcore-rename.
+
+2021-05-26  Cameron McCormack  <heycam@apple.com>
+
+        Prevent sbix glyphs from being rendered in the GPU process
+        https://bugs.webkit.org/show_bug.cgi?id=226159
+        <rdar://77231959>
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cf/CoreTextSPI.h: Add declaration for an SPI that lets us
+        infer whether a glyph has an sbix image.
+
+2021-05-26  Chris Dumez  <cdumez@apple.com>
+
+        Leverage the new Vector(const T*, size_t) constructor
+        https://bugs.webkit.org/show_bug.cgi?id=226304
+
+        Reviewed by Darin Adler.
+
+        Leverage the new Vector(const T*, size_t) constructor in existing code.
+
+        * pal/crypto/gcrypt/CryptoDigestGCrypt.cpp:
+        (PAL::CryptoDigest::computeHash):
+
+2021-05-26  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        Add a PAL softlinking header for the Reveal framework
+        https://bugs.webkit.org/show_bug.cgi?id=226292
+
+        Reviewed by Tim Horton.
+
+        Add the new header and source file.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/cocoa/RevealSoftLink.h: Added.
+        * pal/cocoa/RevealSoftLink.mm: Added.
+
+2021-05-24  Sam Weinig  <weinig@apple.com>
+
+        Convert DestinationColorSpace from an enum to class wrapping a platform color space (CGColorSpaceRef for CG ports, etc.)
+        https://bugs.webkit.org/show_bug.cgi?id=226143
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cg/CoreGraphicsSPI.h:
+        Add addional SPI for working with CGColorSpaceRefs.
+
+2021-05-24  Chris Fleizach  <cfleizach@apple.com>
+
+        AX: Settings: Increase contrast isn't detected in browser until an additional setting is applied
+        https://bugs.webkit.org/show_bug.cgi?id=225909
+
+        Reviewed by Per Arne Vollan.
+
+        * pal/spi/mac/HIServicesSPI.h:
+
+2021-05-24  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, reverting r277940.
+        https://bugs.webkit.org/show_bug.cgi?id=226182
+
+        Caused Safari crash under IPC::typeFromCFTypeRef
+
+        Reverted changeset:
+
+        "Convert DestinationColorSpace from an enum to class wrapping
+        a platform color space (CGColorSpaceRef for CG ports, etc.)"
+        https://bugs.webkit.org/show_bug.cgi?id=226143
+        https://trac.webkit.org/changeset/277940
+
+2021-05-23  Sam Weinig  <weinig@apple.com>
+
+        Convert DestinationColorSpace from an enum to class wrapping a platform color space (CGColorSpaceRef for CG ports, etc.)
+        https://bugs.webkit.org/show_bug.cgi?id=226143
+
+        Reviewed by Darin Adler.
+
+        * pal/spi/cg/CoreGraphicsSPI.h:
+        Add addional SPI for working with CGColorSpaceRefs.
+
+2021-05-21  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [macOS] Adopt QLItem in WKImageExtractionPreviewController
+        https://bugs.webkit.org/show_bug.cgi?id=226114
+        rdar://76657718
+
+        Reviewed by Tim Horton.
+
+        Add a PAL softlinking header for QuickLookUI on macOS.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/mac/QuickLookUISoftLink.h: Added.
+        * pal/mac/QuickLookUISoftLink.mm: Added.
+        * pal/spi/mac/QuickLookMacSPI.h:
+
+        Add staging declarations for some new QuickLook SPI; these method declarations should be moved into the non-
+        internal-SDK section in the (near) future, once it is safe to do so.
+
+2021-05-13  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [Cocoa] Plumb data detector results through some platform objects
+        https://bugs.webkit.org/show_bug.cgi?id=225775
+        Work towards rdar://75504956
+
+        Reviewed by Tim Horton and Devin Rousso.
+
+        Move `DataDetectorsCoreSoftLink.{h|mm}` into PAL, so that it can be used in WebKit as well.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+
+        Add the header and source file to the CMake build.
+
+        * pal/cocoa/DataDetectorsCoreSoftLink.h: Added.
+        * pal/cocoa/DataDetectorsCoreSoftLink.mm: Added.
+        * pal/spi/cocoa/DataDetectorsCoreSPI.h:
+
+        Explicitly import Foundation headers here, so that the forward declarations don't cause compilation failures in
+        non-internal SDKs.
+
+2021-05-13  Tim Horton  <timothy_horton@apple.com>
+
+        Work around WebCore failing to build due to NDEBUG getting undefined in release
+        https://bugs.webkit.org/show_bug.cgi?id=225782
+        <rdar://problem/77982432>
+
+        Reviewed by Simon Fraser.
+
+        * pal/spi/cg/CoreGraphicsSPI.h:
+        * pal/spi/ios/GraphicsServicesSPI.h:
+        Apply a temporary workaround to preserve NDEBUG through these includes.
+        There are a few ways to get to CoreGraphicsPrivate.h, so we fix all of them.
+
+2021-05-13  Aditya Keerthi  <akeerthi@apple.com>
+
+        REGRESSION (r276945): [iOS] Focus rings are too large
+        https://bugs.webkit.org/show_bug.cgi?id=225778
+        <rdar://problem/77858341>
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/ios/UIKitSPI.h:
+
+2021-05-12  Jean-Yves Avenard  <jya@apple.com>
+
+        Adopt CoreMedia SPI to identify audio-only playback for MSE clients
+        https://bugs.webkit.org/show_bug.cgi?id=225647
+        rdar://76138365
+
+        Reviewed by Youenn Fablet.
+
+        * pal/spi/cocoa/AVFoundationSPI.h: Add forward declaration for new methods
+          while this isn't in SDK yet.
+
+2021-05-11  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, reverting r277322.
+        https://bugs.webkit.org/show_bug.cgi?id=225657
+
+        Causing build failure
+
+        Reverted changeset:
+
+        "Adopt CoreMedia SPI to identify audio-only playback for MSE
+        clients"
+        https://bugs.webkit.org/show_bug.cgi?id=225647
+        https://trac.webkit.org/changeset/277322
+
+2021-05-11  Jean-Yves Avenard  <jya@apple.com>
+
+        Adopt CoreMedia SPI to identify audio-only playback for MSE clients
+        https://bugs.webkit.org/show_bug.cgi?id=225647
+        rdar://76138365
+
+        Reviewed by Youenn Fablet.
+
+        * pal/spi/cocoa/AVFoundationSPI.h: Add forward declaration for new methods
+          while this isn't in SDK yet.
+
+2021-05-10  Wenson Hsieh  <wenson_hsieh@apple.com>
+
+        [macOS] Allow immediate action gestures to begin when force clicking text inside image overlays
+        https://bugs.webkit.org/show_bug.cgi?id=225600
+        <rdar://problem/77792365>
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/mac/NSImmediateActionGestureRecognizerSPI.h:
+
+2021-04-29  Jean-Yves Avenard  <jya@apple.com>
+
+        Adopt AVSampleBufferAudioRendererWasFlushedAutomaticallyNotification
+        https://bugs.webkit.org/show_bug.cgi?id=225170
+
+        Reviewed by Eric Carlson.
+
+        * pal/cocoa/AVFoundationSoftLink.h: Add AVSampleBufferAudioRendererWasFlushedAutomaticallyNotification and its related key
+        * pal/cocoa/AVFoundationSoftLink.mm:
+
+2021-04-26  Alex Christensen  <achristensen@webkit.org>
+
+        Add missing SPI declarations
+        https://bugs.webkit.org/show_bug.cgi?id=225061
+
+        Reviewed by Alexey Proskuryakov.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/cocoa/CryptoKitCBridgingSoftLink.h:
+        * pal/spi/cocoa/CryptoKitCBridgingSPI.h: Added.
+        * pal/spi/mac/DataDetectorsSPI.h:
+
+2021-04-26  Alex Christensen  <achristensen@webkit.org>
+
+        Update Mac-specific CMake files
+        https://bugs.webkit.org/show_bug.cgi?id=225064
+
+        Rubber-stamped by Tim Horton.
+
+        * pal/PlatformMac.cmake:
+
+2021-04-25  Devin Rousso  <drousso@apple.com>
+
+        Add `ALWAYS_LOG_WITH_STREAM` macro for easier development/debugging
+        https://bugs.webkit.org/show_bug.cgi?id=224959
+
+        Reviewed by Darin Adler.
+
+        It's often very helpful to use existing `operator<<` defined on objects, but annoying to
+        have to copypaste the boilerplate code that creates a `WTF::TextStream` and uses it in a
+        `WTFLogAlways` or wait for a debug build to enable existing `LOG_WITH_STREAM`.
+
+        * pal/LogMacros.h: Removed.
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/CMakeLists.txt:
+        Move contents of `pal/LogMacros.h` to `wtf/Assertions.h`.
+
+2021-04-23  Chris Dumez  <cdumez@apple.com>
+
+        Improve our constructDeletedValue() template specializations
+        https://bugs.webkit.org/show_bug.cgi?id=224889
+
+        Reviewed by Darin Adler.
+
+        * pal/SessionID.h:
+        (WTF::HashTraits<PAL::SessionID>::constructDeletedValue):
+
+2021-04-20  Brent Fulgham  <bfulgham@apple.com>
+
+        [Cocoa] Prevent GPU and WebContent processes from attempting to connect to the AppSSO service 
+        https://bugs.webkit.org/show_bug.cgi?id=224834
+        <rdar://problem/72157514>
+
+        Reviewed by Jiewen Tan.
+
+        * pal/spi/cf/CFNetworkSPI.h: Add declaration for 'skipAppSSO' version of NSURLProtocol method.
+
+2021-04-19  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        Enable -Wthread-safety, add attributes to custom lock classes, and provide macros to declare guards
+        https://bugs.webkit.org/show_bug.cgi?id=221614
+        <rdar://problem/74396781>
+
+        Reviewed by David Kilzer.
+
+        Add -Wthread-safety to compile flags.
+
+        * Configurations/Base.xcconfig:
+
+2021-04-09  Jer Noble  <jer.noble@apple.com>
+
+        WTF SoftLinking macros can cause collisions with their target functions
+        https://bugs.webkit.org/show_bug.cgi?id=224379
+        <rdar://76434202>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cf/CoreMediaSoftLink.h:
+        * pal/cocoa/MediaToolboxSoftLink.h:
+        * pal/cocoa/OpenGLSoftLinkCocoa.h:
+        * pal/cocoa/PassKitSoftLink.h:
+        * pal/ios/UIKitSoftLink.h:
+        * pal/spi/cocoa/AccessibilitySupportSoftLink.cpp:
+        * pal/spi/cocoa/AccessibilitySupportSoftLink.h:
+
+2021-04-08  Kate Cheney  <katherine_cheney@apple.com>
+
+        Fix incorrect compile-time macro for CFNETWORK_NSURLSESSION_ATTRIBUTED_BUNDLE_IDENTIFIER
+        https://bugs.webkit.org/show_bug.cgi?id=224347
+        <rdar://problem/76353792>
+
+        Reviewed by Brent Fulgham.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2021-04-07  Jer Noble  <jer.noble@apple.com>
+
+        Unreviewed build fix after r275614; add soft linked class.
+
+        * pal/cocoa/AVFoundationSoftLink.h:
+        * pal/cocoa/AVFoundationSoftLink.mm:
+
+2021-04-05  Alex Christensen  <achristensen@webkit.org>
+
+        Resurrect Mac CMake build
+        https://bugs.webkit.org/show_bug.cgi?id=224084
+
+        Reviewed by Tim Horton.
+
+        * pal/PlatformMac.cmake:
+
+2021-04-01  Kimmo Kinnunen  <kkinnunen@apple.com>
+
+        RemoteRenderingBackend should clean up CG resources after last Canvas is destroyed in Gpu process
+        https://bugs.webkit.org/show_bug.cgi?id=223885
+        <rdar://problem/75637356>
+
+        Reviewed by Simon Fraser.
+
+        Add SPI interface _MTLDevice for its _purgeDevice method.
+
+        * pal/spi/cocoa/MetalSPI.h:
+
+2021-04-01  Jean-Yves Avenard  <jya@apple.com>
+
+        Previous artwork isn't cleared when NowPlaying info doesn't contain an artwork
+        https://bugs.webkit.org/show_bug.cgi?id=224031
+        <rdar://76044544>
+
+        Reviewed by Youenn Fablet.
+
+        * pal/spi/mac/MediaRemoteSPI.h: Add MRMediaRemoteMergePolicy enum definitions.
+
+2021-04-01  Jean-Yves Avenard  <jya@apple.com>
+
+        Now Playing artwork doesn't update when changed.
+        https://bugs.webkit.org/show_bug.cgi?id=223731
+        <rdar://problem/75823923>
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/mac/MediaRemoteSPI.h:
+
+2021-03-31  Youenn Fablet  <youenn@apple.com>
+
+        Make use of NSURLSessionWebSocket.sendCloseCode if available
+        https://bugs.webkit.org/show_bug.cgi?id=223999
+
+        Reviewed by Alex Christensen.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2021-03-29  Per Arne  <pvollan@apple.com>
+
+        The header file NotifySPI.h should not be private
+        https://bugs.webkit.org/show_bug.cgi?id=223893
+        <rdar://75942308>
+
+        Unreviewed build fix.
+
+        * PAL.xcodeproj/project.pbxproj:
+
+2021-03-26  Per Arne  <pvollan@apple.com>
+
+        Enforce notifyd message filtering
+        https://bugs.webkit.org/show_bug.cgi?id=223601
+        <rdar://75098580>
+
+        Reviewed by Brent Fulgham.
+
+        Add Notify SPI file.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/NotifySPI.h: Added.
+
+2021-03-26  Devin Rousso  <drousso@apple.com>
+
+        Adopt AVKit SPI for hiding touch bar seeking controls
+        https://bugs.webkit.org/show_bug.cgi?id=223773
+        <rdar://problem/68937617>
+
+        Reviewed by Jer Noble.
+
+        * pal/spi/cocoa/AVKitSPI.h:
+
+2021-03-26  Jessie Berlin  <jberlin@webkit.org>
+
+        Update the BEFORE/SINCE, SYSTEM_VERSION_PREFIX, and MACOSX_DEPLOYMENT_TARGET flags
+        https://bugs.webkit.org/show_bug.cgi?id=223779
+
+        Reviewed by Tim Horton.
+
+        * Configurations/DebugRelease.xcconfig:
+        * Configurations/Version.xcconfig:
+        * Configurations/WebKitTargetConditionals.xcconfig:
+
+2021-03-25  Jessie Berlin  <jberlin@webkit.org>
+
+        Remove 10.13 DEPLOYMENT_TARGETs and SYSTEM_VERSION_PREFIXs
+        https://bugs.webkit.org/show_bug.cgi?id=223765
+
+        Reviewed by Tim Horton.
+
+        * Configurations/Base.xcconfig:
+        * Configurations/DebugRelease.xcconfig:
+        * Configurations/Version.xcconfig:
+
+2021-03-25  Commit Queue  <commit-queue@webkit.org>
+
+        Unreviewed, reverting r275057.
+        https://bugs.webkit.org/show_bug.cgi?id=223768
+
+        Caused build failure
+
+        Reverted changeset:
+
+        "Enforce notifyd message filtering"
+        https://bugs.webkit.org/show_bug.cgi?id=223601
+        https://trac.webkit.org/changeset/275057
+
+2021-03-25  Per Arne  <pvollan@apple.com>
+
+        Enforce notifyd message filtering
+        https://bugs.webkit.org/show_bug.cgi?id=223601
+        <rdar://75098580>
+
+        Reviewed by Brent Fulgham.
+
+        Add Notify SPI file.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/NotifySPI.h: Added.
+
+2021-03-19  Jer Noble  <jer.noble@apple.com>
+
+        Many media/media-fragments/ tests are crashing due to other tests that run before them.
+        https://bugs.webkit.org/show_bug.cgi?id=223277
+        <rdar://problem/75492360>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cocoa/AVFoundationSoftLink.h:
+        * pal/cocoa/AVFoundationSoftLink.mm:
+
+2021-03-17  Aditya Keerthi  <akeerthi@apple.com>
+
+        [iOS][FCR] Use system colors for the new appearance
+        https://bugs.webkit.org/show_bug.cgi?id=223303
+        <rdar://problem/75508598>
+
+        Reviewed by Tim Horton.
+
+        * pal/spi/ios/UIKitSPI.h:
+
+        Add additional system colors declarations for watchOS and tvOS.
+
+2021-03-17  Brent Fulgham  <bfulgham@apple.com>
+
+        [Cocoa] Populate NSURLSession with attributed bundle ID
+        https://bugs.webkit.org/show_bug.cgi?id=223382
+        <rdar://problem/75498230>
+
+        Reviewed by Alex Christensen.
+
+        Add forward declarations for attributed bundle ID.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2021-03-15  Jer Noble  <jer.noble@apple.com>
+
+        [Cocoa] Adopt AudioComponentApplyServerRegistrations()
+        https://bugs.webkit.org/show_bug.cgi?id=223188
+        <rdar://75433850>
+
+        Reviewed by Eric Carlson.
+
+        * pal/cf/AudioToolboxSoftLink.cpp:
+        * pal/cf/AudioToolboxSoftLink.h:
+
+2021-03-13  Tim Horton  <timothy_horton@apple.com>
+
+        Adopt DDMacAction instead of DDAction on macOS
+        https://bugs.webkit.org/show_bug.cgi?id=223145
+        <rdar://problem/70127512>
+
+        Reviewed by Megan Gardner.
+
+        * pal/spi/mac/DataDetectorsSPI.h:
+
+2021-03-12  Myles C. Maxfield  <mmaxfield@apple.com>
+
+        [macOS] MobileAsset fonts are broken in Reader mode in Safari
+        https://bugs.webkit.org/show_bug.cgi?id=223062
+
+        Reviewed by Simon Fraser.
+
+        * pal/spi/cf/CoreTextSPI.h:
+
+2021-03-10  Devin Rousso  <drousso@apple.com>
+
+        Add plumbing for `defaultPlaybackRate` to AVKit
+        https://bugs.webkit.org/show_bug.cgi?id=222991
+        <rdar://problem/75012417>
+
+        Reviewed by Eric Carlson.
+
+        * pal/spi/cocoa/AVKitSPI.h:
+
+2021-03-09  Ben Nham  <nham@apple.com>
+
+        Adopt new NSURLSessionConfiguration SPI for connection cache configuration
+        https://bugs.webkit.org/show_bug.cgi?id=222934
+
+        Reviewed by Geoffrey Garen.
+
+        Declare NSURLSessionConfiguration connection cache limit SPI when building using the public SDK.
+
+        * pal/spi/cf/CFNetworkSPI.h:
+
+2021-03-05  Per Arne Vollan  <pvollan@apple.com>
+
+        [Win] Fix compile error
+        https://bugs.webkit.org/show_bug.cgi?id=222802
+        <rdar://problem/75052309>
+
+        Reviewed by Dean Jackson.
+
+        Declare CTFontTransformOptions if associated header file has not been included.
+
+        * pal/spi/win/CoreTextSPIWin.h:
+
+2021-03-05  Alex Christensen  <achristensen@webkit.org>
+
+        Fix my iOS Simulator build.
+        https://bugs.webkit.org/show_bug.cgi?id=222041
+
+        * pal/spi/cocoa/AVStreamDataParserSPI.h:
+        My build couldn't find what CMSampleBufferRef was supposed to mean, so I include CoreMedia.h.
+        I have no idea why all the bots build successfully.
+
+2021-03-04  Chris Dumez  <cdumez@apple.com>
+
+        Set ownership of IOSurfaces from the GPUProcess instead of the WebProcess
+        https://bugs.webkit.org/show_bug.cgi?id=222391
+        <rdar://74748353>
+
+        Reviewed by Simon Fraser.
+
+        Add declaration for new IOSurfaceSetOwnershipIdentity() SPI, for the open source
+        SDK.
+
+        * pal/spi/cocoa/IOSurfaceSPI.h:
+
+2021-03-04  Peng Liu  <peng.liu6@apple.com>
+
+        [GPUProcess] MediaController is using a ClockCM
+        https://bugs.webkit.org/show_bug.cgi?id=222094
+
+        Reviewed by Eric Carlson.
+
+        Remove `ClockCM` and use `ClockGeneric` instead because `ClockCM::currentTime()`
+        always returns NaN when "Media in GPU Process" is enabled.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/PlatformMac.cmake:
+        * pal/system/mac/ClockCM.h: Removed.
+        * pal/system/mac/ClockCM.mm: Removed.
+
+2021-03-02  Youenn Fablet  <youenn@apple.com>
+
+        Enable MEDIA_SOURCE in IOS Simulator
+        https://bugs.webkit.org/show_bug.cgi?id=222041
+
+        Reviewed by Eric Carlson.
+
+        Add missing header declarations in AVStreamDataParserSPI.h and use it for simulator.
+
+        * PAL.xcodeproj/project.pbxproj:
+        * pal/spi/cocoa/AVFoundationSPI.h:
+        * pal/spi/cocoa/AVStreamDataParserSPI.h: Added.
+
+2021-03-01  Truitt Savell  <tsavell@apple.com>
+
+        Unreviewed, reverting r273655.
+
+        Broke internal Mac
+
+        Reverted changeset:
+
+        "Set ownership of IOSurfaces from the GPUProcess instead of
+        the WebProcess"
+        https://bugs.webkit.org/show_bug.cgi?id=222391
+        https://commits.webkit.org/r273655
+
+2021-03-01  Chris Dumez  <cdumez@apple.com>
+
+        Set ownership of IOSurfaces from the GPUProcess instead of the WebProcess
+        https://bugs.webkit.org/show_bug.cgi?id=222391
+        <rdar://74748353>
+
+        Reviewed by Simon Fraser.
+
+        Add declaration for new IOSurfaceSetOwnershipIdentity() SPI, for the open source
+        SDK.
+
+        * pal/spi/cocoa/IOSurfaceSPI.h:
+
 2021-02-22  Per Arne  <pvollan@apple.com>
 
         [macOS] Disabling relaunch on login for the WebContent process is racy

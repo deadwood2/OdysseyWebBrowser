@@ -53,12 +53,14 @@ public:
     RemoteAudioDestinationManager(GPUConnectionToWebProcess&);
     ~RemoteAudioDestinationManager();
 
-    void didReceiveSyncMessageFromWebProcess(IPC::Connection& connection, IPC::Decoder& decoder, std::unique_ptr<IPC::Encoder>& encoder) { didReceiveSyncMessage(connection, decoder, encoder); }
+    bool didReceiveSyncMessageFromWebProcess(IPC::Connection& connection, IPC::Decoder& decoder, UniqueRef<IPC::Encoder>& encoder) { return didReceiveSyncMessage(connection, decoder, encoder); }
     void didReceiveMessageFromWebProcess(IPC::Connection& connection, IPC::Decoder& decoder) { didReceiveMessage(connection, decoder); }
+
+    bool allowsExitUnderMemoryPressure() const;
 
 private:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
-    void didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, std::unique_ptr<IPC::Encoder>&);
+    bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&);
 
     void createAudioDestination(const String& inputDeviceId, uint32_t numberOfInputChannels, uint32_t numberOfOutputChannels, float sampleRate, float hardwareSampleRate, IPC::Semaphore&& renderSemaphore, CompletionHandler<void(const WebKit::RemoteAudioDestinationIdentifier)>&&);
 
@@ -69,7 +71,7 @@ private:
     void audioSamplesStorageChanged(RemoteAudioDestinationIdentifier, const SharedMemory::IPCHandle&, const WebCore::CAAudioStreamDescription&, uint64_t numberOfFrames);
 #endif
 
-    HashMap<RemoteAudioDestinationIdentifier, Ref<RemoteAudioDestination>> m_audioDestinations;
+    HashMap<RemoteAudioDestinationIdentifier, UniqueRef<RemoteAudioDestination>> m_audioDestinations;
     GPUConnectionToWebProcess& m_gpuConnectionToWebProcess;
 };
 

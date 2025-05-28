@@ -29,6 +29,7 @@
 #import "APIString.h"
 #import "AuthenticationChallengeDispositionCocoa.h"
 #import "CompletionHandlerCallChecker.h"
+#import "NetworkProcessProxy.h"
 #import "ShouldGrandfatherStatistics.h"
 #import "WKHTTPCookieStoreInternal.h"
 #import "WKNSArray.h"
@@ -44,6 +45,7 @@
 #import <WebCore/Credential.h>
 #import <WebCore/RegistrationDatabase.h>
 #import <WebCore/VersionChecks.h>
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/URL.h>
 #import <wtf/WeakObjCPtr.h>
@@ -58,7 +60,7 @@ public:
     }
 
 private:
-    void requestStorageSpace(const WebCore::SecurityOriginData& topOrigin, const WebCore::SecurityOriginData& frameOrigin, uint64_t quota, uint64_t currentSize, uint64_t spaceRequired, CompletionHandler<void(Optional<uint64_t>)>&& completionHandler) final
+    void requestStorageSpace(const WebCore::SecurityOriginData& topOrigin, const WebCore::SecurityOriginData& frameOrigin, uint64_t quota, uint64_t currentSize, uint64_t spaceRequired, CompletionHandler<void(std::optional<uint64_t>)>&& completionHandler) final
     {
         if (!m_hasRequestStorageSpaceSelector || !m_delegate) {
             completionHandler({ });
@@ -131,6 +133,9 @@ private:
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKWebsiteDataStore.class, self))
+        return;
+
     _websiteDataStore->WebKit::WebsiteDataStore::~WebsiteDataStore();
 
     [super dealloc];
@@ -231,7 +236,7 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
 + (NSSet<NSString *> *)_allWebsiteDataTypesIncludingPrivate
 {
     static dispatch_once_t onceToken;
-    static NSSet *allWebsiteDataTypes;
+    static NeverDestroyed<RetainPtr<NSSet>> allWebsiteDataTypes;
     dispatch_once(&onceToken, ^ {
         auto *privateTypes = @[
             _WKWebsiteDataTypeHSTSCache,
@@ -247,10 +252,10 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
 #endif
         ];
 
-        allWebsiteDataTypes = [[[self allWebsiteDataTypes] setByAddingObjectsFromArray:privateTypes] retain];
+        allWebsiteDataTypes.get() = [[self allWebsiteDataTypes] setByAddingObjectsFromArray:privateTypes];
     });
 
-    return allWebsiteDataTypes;
+    return allWebsiteDataTypes.get().get();
 }
 
 + (BOOL)_defaultDataStoreExists
@@ -539,6 +544,17 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
 #endif
 }
 
+- (void)_isRelationshipOnlyInDatabaseOnce:(NSURL *)firstPartyURL thirdParty:(NSURL *)thirdPartyURL completionHandler:(void (^)(BOOL))completionHandler
+{
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    _websiteDataStore->isRelationshipOnlyInDatabaseOnce(thirdPartyURL, firstPartyURL, [completionHandler = makeBlockPtr(completionHandler)] (bool result) {
+        completionHandler(result);
+    });
+#else
+    completionHandler(NO);
+#endif
+}
+
 - (void)_isRegisteredAsSubresourceUnderFirstParty:(NSURL *)firstPartyURL thirdParty:(NSURL *)thirdPartyURL completionHandler:(void (^)(BOOL))completionHandler
 {
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
@@ -558,6 +574,21 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     });
 #else
     completionHandler(NO);
+#endif
+}
+
+- (void)_statisticsDatabaseColumnsForTable:(NSString *)table completionHandler:(void (^)(NSArray<NSString *> *))completionHandler
+{
+#if ENABLE(RESOURCE_LOAD_STATISTICS)
+    _websiteDataStore->statisticsDatabaseColumnsForTable(table, [completionHandler = makeBlockPtr(completionHandler)](auto&& columns) {
+        Vector<RefPtr<API::Object>> apiColumns;
+        apiColumns.reserveInitialCapacity(columns.size());
+        for (auto& column : columns)
+            apiColumns.uncheckedAppend(API::String::create(column));
+        completionHandler(wrapper(API::Array::create(WTFMove(apiColumns))));
+    });
+#else
+    completionHandler(nil);
 #endif
 }
 
@@ -700,9 +731,26 @@ static Vector<WebKit::WebsiteDataRecord> toWebsiteDataRecords(NSArray *dataRecor
     WebKit::WebsiteDataStore::makeNextNetworkProcessLaunchFailForTesting();
 }
 
++ (void)_setNetworkProcessSuspensionAllowedForTesting:(BOOL)allowed
+{
+    WebKit::NetworkProcessProxy::setSuspensionAllowedForTesting(allowed);
+}
+
 - (BOOL)_networkProcessExists
 {
     return !!_websiteDataStore->networkProcessIfExists();
+}
+
++ (BOOL)_defaultNetworkProcessExists
+{
+    return !!WebKit::NetworkProcessProxy::defaultNetworkProcess();
+}
+
+- (void)_countNonDefaultSessionSets:(void(^)(size_t))completionHandler
+{
+    _websiteDataStore->countNonDefaultSessionSets([completionHandler = makeBlockPtr(completionHandler)] (size_t count) {
+        completionHandler(count);
+    });
 }
 
 @end

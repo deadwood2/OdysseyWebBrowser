@@ -28,6 +28,7 @@
 #include "APIObject.h"
 #include "CacheModel.h"
 #include "WebsiteDataStore.h"
+#include <wtf/MemoryPressureHandler.h>
 #include <wtf/ProcessID.h>
 #include <wtf/Ref.h>
 #include <wtf/Vector.h>
@@ -56,7 +57,7 @@ public:
 
     bool isAutomaticProcessWarmingEnabled() const
     {
-        return m_isAutomaticProcessWarmingEnabledByClient.valueOr(m_clientWouldBenefitFromAutomaticProcessPrewarming);
+        return m_isAutomaticProcessWarmingEnabledByClient.value_or(m_clientWouldBenefitFromAutomaticProcessPrewarming);
     }
 
     bool wasAutomaticProcessWarmingSetByClient() const { return !!m_isAutomaticProcessWarmingEnabledByClient; }
@@ -94,6 +95,9 @@ public:
 
     bool attrStyleEnabled() const { return m_attrStyleEnabled; }
     void setAttrStyleEnabled(bool enabled) { m_attrStyleEnabled = enabled; }
+    
+    bool shouldThrowExceptionForGlobalConstantRedeclaration() const { return m_shouldThrowExceptionForGlobalConstantRedeclaration; }
+    void setShouldThrowExceptionForGlobalConstantRedeclaration(bool shouldThrow) { m_shouldThrowExceptionForGlobalConstantRedeclaration = shouldThrow; }
 
     const Vector<WTF::String>& overrideLanguages() const { return m_overrideLanguages; }
     void setOverrideLanguages(Vector<WTF::String>&& languages) { m_overrideLanguages = WTFMove(languages); }
@@ -117,13 +121,16 @@ public:
 
     bool processSwapsOnNavigation() const
     {
-        return m_processSwapsOnNavigationFromClient.valueOr(m_processSwapsOnNavigationFromExperimentalFeatures);
+        return m_processSwapsOnNavigationFromClient.value_or(m_processSwapsOnNavigationFromExperimentalFeatures);
     }
     void setProcessSwapsOnNavigation(bool swaps) { m_processSwapsOnNavigationFromClient = swaps; }
     void setProcessSwapsOnNavigationFromExperimentalFeatures(bool swaps) { m_processSwapsOnNavigationFromExperimentalFeatures = swaps; }
 
     bool alwaysKeepAndReuseSwappedProcesses() const { return m_alwaysKeepAndReuseSwappedProcesses; }
     void setAlwaysKeepAndReuseSwappedProcesses(bool keepAndReuse) { m_alwaysKeepAndReuseSwappedProcesses = keepAndReuse; }
+
+    bool processSwapsOnNavigationWithinSameNonHTTPFamilyProtocol() const { return m_processSwapsOnNavigationWithinSameNonHTTPFamilyProtocol; }
+    void setProcessSwapsOnNavigationWithinSameNonHTTPFamilyProtocol(bool swaps) { m_processSwapsOnNavigationWithinSameNonHTTPFamilyProtocol = swaps; }
 
     bool processSwapsOnWindowOpenWithOpener() const { return m_processSwapsOnWindowOpenWithOpener; }
     void setProcessSwapsOnWindowOpenWithOpener(bool swaps) { m_processSwapsOnWindowOpenWithOpener = swaps; }
@@ -147,6 +154,11 @@ public:
     void setUserId(const int32_t userId) { m_userId = userId; }
 #endif
 
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    void setMemoryPressureHandlerConfiguration(const MemoryPressureHandler::Configuration& configuration) { m_memoryPressureHandlerConfiguration = configuration; }
+    const std::optional<MemoryPressureHandler::Configuration>& memoryPressureHandlerConfiguration() const { return m_memoryPressureHandlerConfiguration; }
+#endif
+
 private:
     WTF::String m_injectedBundlePath;
     Vector<WTF::String> m_customClassesForParameterCoder;
@@ -156,16 +168,18 @@ private:
     bool m_fullySynchronousModeIsAllowedForTesting { false };
     bool m_ignoreSynchronousMessagingTimeoutsForTesting { false };
     bool m_attrStyleEnabled { false };
+    bool m_shouldThrowExceptionForGlobalConstantRedeclaration { true };
     Vector<WTF::String> m_overrideLanguages;
     bool m_alwaysRunsAtBackgroundPriority { false };
     bool m_shouldTakeUIBackgroundAssertion { true };
     bool m_shouldCaptureDisplayInUIProcess { DEFAULT_CAPTURE_DISPLAY_IN_UI_PROCESS };
     ProcessID m_presentingApplicationPID { getCurrentProcessID() };
-    Optional<bool> m_processSwapsOnNavigationFromClient;
+    std::optional<bool> m_processSwapsOnNavigationFromClient;
     bool m_processSwapsOnNavigationFromExperimentalFeatures { false };
     bool m_alwaysKeepAndReuseSwappedProcesses { false };
     bool m_processSwapsOnWindowOpenWithOpener { false };
-    Optional<bool> m_isAutomaticProcessWarmingEnabledByClient;
+    bool m_processSwapsOnNavigationWithinSameNonHTTPFamilyProtocol { false };
+    std::optional<bool> m_isAutomaticProcessWarmingEnabledByClient;
     bool m_usesWebProcessCache { false };
     bool m_usesBackForwardCache { true };
     bool m_clientWouldBenefitFromAutomaticProcessPrewarming { false };
@@ -180,6 +194,9 @@ private:
     WTF::String m_webProcessPath;
     WTF::String m_networkProcessPath;
     int32_t m_userId { -1 };
+#endif
+#if PLATFORM(GTK) || PLATFORM(WPE)
+    std::optional<MemoryPressureHandler::Configuration> m_memoryPressureHandlerConfiguration;
 #endif
 };
 

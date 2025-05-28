@@ -25,10 +25,9 @@
 
 #import "PDFPluginIdentifier.h"
 #import "SameDocumentNavigationType.h"
-#import "WKBlankOverlayView.h"
-#import "WKShareSheet.h"
-#import "WKWebViewConfiguration.h"
-#import "WKWebViewPrivate.h"
+#import <WebKit/WKShareSheet.h>
+#import <WebKit/WKWebViewConfiguration.h>
+#import <WebKit/WKWebViewPrivate.h>
 #import "_WKAttachmentInternal.h"
 #import "_WKWebViewPrintFormatterInternal.h"
 #import <wtf/CompletionHandler.h>
@@ -127,13 +126,11 @@ class ViewGestureController;
 
     RetainPtr<WKSafeBrowsingWarning> _safeBrowsingWarning;
 
-    Optional<BOOL> _resolutionForShareSheetImmediateCompletionForTesting;
+    std::optional<BOOL> _resolutionForShareSheetImmediateCompletionForTesting;
 
     _WKSelectionAttributes _selectionAttributes;
     _WKRenderingProgressEvents _observedRenderingProgressEvents;
     BOOL _usePlatformFindUI;
-
-    RetainPtr<WKBlankOverlayView> _blankOverlayView;
 
 #if PLATFORM(MAC)
     std::unique_ptr<WebKit::WebViewImpl> _impl;
@@ -156,11 +153,11 @@ class ViewGestureController;
 
     RetainPtr<_WKRemoteObjectRegistry> _remoteObjectRegistry;
 
-    Optional<CGSize> _viewLayoutSizeOverride;
-    Optional<WebCore::FloatSize> _lastSentViewLayoutSize;
-    Optional<CGSize> _maximumUnobscuredSizeOverride;
-    Optional<WebCore::FloatSize> _lastSentMaximumUnobscuredSize;
-    CGRect _inputViewBounds;
+    std::optional<CGSize> _viewLayoutSizeOverride;
+    std::optional<WebCore::FloatSize> _lastSentViewLayoutSize;
+    std::optional<CGSize> _maximumUnobscuredSizeOverride;
+    std::optional<WebCore::FloatSize> _lastSentMaximumUnobscuredSize;
+    CGRect _inputViewBoundsInWindow;
 
     CGFloat _viewportMetaTagWidth;
     BOOL _viewportMetaTagWidthWasExplicit;
@@ -181,7 +178,7 @@ class ViewGestureController;
 
     UIInterfaceOrientation _interfaceOrientationOverride;
     BOOL _overridesInterfaceOrientation;
-    Optional<int32_t> _lastSentDeviceOrientation;
+    std::optional<int32_t> _lastSentDeviceOrientation;
 
     BOOL _allowsViewportShrinkToFit;
 
@@ -193,17 +190,21 @@ class ViewGestureController;
     WebKit::DynamicViewportSizeUpdateID _currentDynamicViewportSizeUpdateID;
     CATransform3D _resizeAnimationTransformAdjustments;
     CGFloat _animatedResizeOriginalContentWidth;
+    CGRect _animatedResizeOldBounds;
+    CGFloat _animatedResizeOldMinimumEffectiveDeviceWidth;
+    int32_t _animatedResizeOldOrientation;
+    UIEdgeInsets _animatedResizeOldObscuredInsets;
     RetainPtr<UIView> _resizeAnimationView;
     CGFloat _lastAdjustmentForScroller;
-    Optional<CGRect> _frozenVisibleContentRect;
-    Optional<CGRect> _frozenUnobscuredContentRect;
+    std::optional<CGRect> _frozenVisibleContentRect;
+    std::optional<CGRect> _frozenUnobscuredContentRect;
 
     BOOL _commitDidRestoreScrollPosition;
-    Optional<WebCore::FloatPoint> _scrollOffsetToRestore;
+    std::optional<WebCore::FloatPoint> _scrollOffsetToRestore;
     WebCore::FloatBoxExtent _obscuredInsetsWhenSaved;
 
-    Optional<WebCore::FloatPoint> _unobscuredCenterToRestore;
-    Optional<WebKit::TransactionID> _firstTransactionIDAfterPageRestore;
+    std::optional<WebCore::FloatPoint> _unobscuredCenterToRestore;
+    std::optional<WebKit::TransactionID> _firstTransactionIDAfterPageRestore;
     double _scaleToRestore;
 
     BOOL _allowsBackForwardNavigationGestures;
@@ -240,7 +241,7 @@ class ViewGestureController;
     BOOL _hasScheduledVisibleRectUpdate;
     OptionSet<WebKit::ViewStabilityFlag> _viewStabilityWhenVisibleContentRectUpdateScheduled;
 
-    Optional<WebCore::WheelScrollGestureState> _currentScrollGestureState;
+    std::optional<WebCore::WheelScrollGestureState> _currentScrollGestureState;
     uint64_t _wheelEventCountInCurrentScrollGesture;
 
     _WKDragInteractionPolicy _dragInteractionPolicy;
@@ -249,7 +250,7 @@ class ViewGestureController;
     MonotonicTime _timeOfRequestForVisibleContentRectUpdate;
     MonotonicTime _timeOfLastVisibleContentRectUpdate;
 
-    Optional<MonotonicTime> _timeOfFirstVisibleContentRectUpdateWithPendingCommit;
+    std::optional<MonotonicTime> _timeOfFirstVisibleContentRectUpdateWithPendingCommit;
 
     NSUInteger _focusPreservationCount;
     NSUInteger _activeFocusedStateRetainCount;
@@ -275,14 +276,13 @@ class ViewGestureController;
 - (void)_clearSafeBrowsingWarning;
 - (void)_clearSafeBrowsingWarningIfForMainFrameNavigation;
 
-- (Optional<BOOL>)_resolutionForShareSheetImmediateCompletionForTesting;
+- (std::optional<BOOL>)_resolutionForShareSheetImmediateCompletionForTesting;
 
 - (WKPageRef)_pageForTesting;
 - (NakedPtr<WebKit::WebPageProxy>)_page;
 
 @end
 
-WKWebView* fromWebPageProxy(WebKit::WebPageProxy&);
 RetainPtr<NSError> nsErrorFromExceptionDetails(const WebCore::ExceptionDetails&);
 
 #if ENABLE(FULLSCREEN_API) && PLATFORM(IOS_FAMILY)

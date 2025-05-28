@@ -25,8 +25,8 @@
 
 #pragma once
 
+#include "NetworkLoadParameters.h"
 #include "NetworkProcess.h"
-#include "NetworkResourceLoadParameters.h"
 #include <WebCore/PrivateClickMeasurement.h>
 #include <WebCore/RegistrableDomain.h>
 #include <WebCore/ResourceError.h>
@@ -34,7 +34,7 @@
 #include <WebCore/Timer.h>
 #include <pal/SessionID.h>
 #include <wtf/CompletionHandler.h>
-#include <wtf/HashMap.h>
+#include <wtf/JSONValues.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -46,59 +46,68 @@ class PrivateClickMeasurementManager : public CanMakeWeakPtr<PrivateClickMeasure
     WTF_MAKE_FAST_ALLOCATED;
 public:
 
-    using RegistrableDomain = WebCore::RegistrableDomain;
-    using PrivateClickMeasurement = WebCore::PrivateClickMeasurement;
-    using SourceSite = WebCore::PrivateClickMeasurement::SourceSite;
-    using AttributeOnSite = WebCore::PrivateClickMeasurement::AttributeOnSite;
+    using AttributionDestinationSite = WebCore::PrivateClickMeasurement::AttributionDestinationSite;
     using AttributionTriggerData = WebCore::PrivateClickMeasurement::AttributionTriggerData;
-
-    explicit PrivateClickMeasurementManager(NetworkSession&, NetworkProcess&, PAL::SessionID);
+    using NetworkLoadCallback = CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&, const RefPtr<JSON::Object>&)>;
+    using PrivateClickMeasurement = WebCore::PrivateClickMeasurement;
+    using RegistrableDomain = WebCore::RegistrableDomain;
+    using SourceSite = WebCore::PrivateClickMeasurement::SourceSite;
+    explicit PrivateClickMeasurementManager(NetworkSession&, NetworkProcess&, PAL::SessionID, Function<void(NetworkLoadParameters&&, NetworkLoadCallback&&)>&&);
 
     void storeUnattributed(PrivateClickMeasurement&&);
     void handleAttribution(AttributionTriggerData&&, const URL& requestURL, const WebCore::ResourceRequest& redirectRequest);
-    void clear();
-    void clearForRegistrableDomain(const RegistrableDomain&);
-    void toString(CompletionHandler<void(String)>&&) const;
-    void setPingLoadFunction(Function<void(NetworkResourceLoadParameters&&, CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&&)>&& pingLoadFunction) { m_pingLoadFunction = WTFMove(pingLoadFunction); }
+    void clear(CompletionHandler<void()>&&);
+    void clearForRegistrableDomain(const RegistrableDomain&, CompletionHandler<void()>&&);
+    void toStringForTesting(CompletionHandler<void(String)>&&) const;
     void setOverrideTimerForTesting(bool value) { m_isRunningTest = value; }
     void setTokenPublicKeyURLForTesting(URL&&);
     void setTokenSignatureURLForTesting(URL&&);
-    void setAttributionReportURLForTesting(URL&&);
+    void setAttributionReportURLsForTesting(URL&& sourceURL, URL&& destinationURL);
     void markAllUnattributedAsExpiredForTesting();
     void markAttributedPrivateClickMeasurementsAsExpiredForTesting(CompletionHandler<void()>&&);
-    void setFraudPreventionValuesForTesting(String&& secretToken, String&& unlinkableToken, String&& signature, String&& keyID);
+    void setEphemeralMeasurementForTesting(bool value) { m_isRunningEphemeralMeasurementTest = value; }
+    void setPCMFraudPreventionValuesForTesting(String&& unlinkableToken, String&& secretToken, String&& signature, String&& keyID);
     void startTimer(Seconds);
 
 private:
-    void getTokenPublicKey(PrivateClickMeasurement&&, Function<void(PrivateClickMeasurement&& attribution, const String& publicKeyBase64URL)>&&);
-    void getSignedSecretToken(PrivateClickMeasurement&&);
-    void clearSentAttribution(PrivateClickMeasurement&&);
-    void attribute(const SourceSite&, const AttributeOnSite&, AttributionTriggerData&&);
-    void fireConversionRequest(const PrivateClickMeasurement&);
-    void fireConversionRequestImpl(const PrivateClickMeasurement&);
+    void getTokenPublicKey(PrivateClickMeasurement&&, PrivateClickMeasurement::AttributionReportEndpoint, PrivateClickMeasurement::PcmDataCarried, Function<void(PrivateClickMeasurement&& attribution, const String& publicKeyBase64URL)>&&);
+    void getSignedUnlinkableToken(PrivateClickMeasurement&&);
+    void insertPrivateClickMeasurement(PrivateClickMeasurement&&, PrivateClickMeasurementAttributionType);
+    void clearSentAttribution(PrivateClickMeasurement&&, PrivateClickMeasurement::AttributionReportEndpoint);
+    void attribute(const SourceSite&, const AttributionDestinationSite&, AttributionTriggerData&&);
+    void fireConversionRequest(const PrivateClickMeasurement&, PrivateClickMeasurement::AttributionReportEndpoint);
+    void fireConversionRequestImpl(const PrivateClickMeasurement&, PrivateClickMeasurement::AttributionReportEndpoint);
     void firePendingAttributionRequests();
     void clearExpired();
     bool featureEnabled() const;
     bool debugModeEnabled() const;
 
+    std::optional<PrivateClickMeasurement> m_ephemeralMeasurement;
     WebCore::Timer m_firePendingAttributionRequestsTimer;
     bool m_isRunningTest { false };
-    Optional<URL> m_tokenPublicKeyURLForTesting;
-    Optional<URL> m_tokenSignatureURLForTesting;
-    Optional<URL> m_attributionReportBaseURLForTesting;
+    bool m_isRunningEphemeralMeasurementTest { false };
+    std::optional<URL> m_tokenPublicKeyURLForTesting;
+    std::optional<URL> m_tokenSignatureURLForTesting;
     WeakPtr<NetworkSession> m_networkSession;
     Ref<NetworkProcess> m_networkProcess;
     PAL::SessionID m_sessionID;
-    Function<void(NetworkResourceLoadParameters&&, CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&&)> m_pingLoadFunction;
+    Function<void(NetworkLoadParameters&&, NetworkLoadCallback&&)> m_networkLoadFunction;
+
+    struct AttributionReportTestConfig {
+        URL attributionReportSourceURL;
+        URL attributionReportAttributeOnURL;
+    };
+
+    std::optional<AttributionReportTestConfig> m_attributionReportTestConfig;
 
     struct TestingFraudPreventionValues {
-        String secretToken;
         String unlinkableToken;
+        String secretToken;
         String signature;
         String keyID;
     };
 
-    Optional<TestingFraudPreventionValues> m_fraudPreventionValuesForTesting;
+    std::optional<TestingFraudPreventionValues> m_fraudPreventionValuesForTesting;
 };
     
 } // namespace WebKit

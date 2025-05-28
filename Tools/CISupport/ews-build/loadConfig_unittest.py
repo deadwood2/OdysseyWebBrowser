@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (C) 2018-2020 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -33,7 +33,8 @@ import loadConfig
 class ConfigDotJSONTest(unittest.TestCase):
     def get_config(self):
         cwd = os.path.dirname(os.path.abspath(__file__))
-        return json.load(open(os.path.join(cwd, 'config.json')))
+        with open(os.path.join(cwd, 'config.json'), 'r') as config:
+            return json.load(config)
 
     def get_builder_from_config(self, config, builder_name):
         for builder in config['builders']:
@@ -43,6 +44,11 @@ class ConfigDotJSONTest(unittest.TestCase):
     def test_configuration(self):
         cwd = os.path.dirname(os.path.abspath(__file__))
         loadConfig.loadBuilderConfig({}, is_test_mode_enabled=True, master_prefix_path=cwd)
+
+    def test_tab_character(self):
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(cwd, 'config.json'), 'r') as config:
+            self.assertTrue('\t' not in config.read(), 'Tab character found in config.json, please use spaces instead of tabs.')
 
     def test_builder_keys(self):
         config = self.get_config()
@@ -224,7 +230,7 @@ class TestcheckWorkersAndBuildersForConsistency(unittest.TestCase):
     def test_checkWorkersAndBuildersForConsistency1(self):
         with self.assertRaises(Exception) as context:
             loadConfig.checkWorkersAndBuildersForConsistency({}, [self.ews101, self.ews102], [self.WK2Builder])
-        self.assertEqual(context.exception.args, ('Builder macOS-High-Sierra-WK2-EWS is for platform mac-sierra, but has worker ews102 for platform ios-11!',))
+        self.assertEqual(context.exception.args, ('Builder "macOS-High-Sierra-WK2-EWS" is for platform "mac-sierra", but has worker "ews102" for platform "ios-11"!',))
 
     def test_duplicate_worker(self):
         with self.assertRaises(Exception) as context:

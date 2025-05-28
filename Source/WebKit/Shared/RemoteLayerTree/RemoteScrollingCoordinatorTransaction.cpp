@@ -41,7 +41,6 @@
 #include <WebCore/ScrollingStatePositionedNode.h>
 #include <WebCore/ScrollingStateStickyNode.h>
 #include <WebCore/ScrollingStateTree.h>
-#include <wtf/HashMap.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/TextStream.h>
 
@@ -98,9 +97,9 @@ template<> struct ArgumentCoder<RequestedScrollData> {
     static WARN_UNUSED_RETURN bool decode(Decoder&, RequestedScrollData&);
 };
 
-template<> struct ArgumentCoder<ScrollSnapOffsetsInfo<float>> {
-    static void encode(Encoder&, const ScrollSnapOffsetsInfo<float>&);
-    static WARN_UNUSED_RETURN bool decode(Decoder&, ScrollSnapOffsetsInfo<float>&);
+template<> struct ArgumentCoder<FloatScrollSnapOffsetsInfo> {
+    static void encode(Encoder&, const FloatScrollSnapOffsetsInfo&);
+    static WARN_UNUSED_RETURN bool decode(Decoder&, FloatScrollSnapOffsetsInfo&);
 };
 
 template<> struct ArgumentCoder<SnapOffset<float>> {
@@ -213,11 +212,9 @@ void ArgumentCoder<ScrollingStateScrollingNode>::encode(Encoder& encoder, const 
     SCROLLING_NODE_ENCODE(ScrollingStateNode::Property::ReachableContentsSize, reachableContentsSize)
     SCROLLING_NODE_ENCODE(ScrollingStateNode::Property::ScrollPosition, scrollPosition)
     SCROLLING_NODE_ENCODE(ScrollingStateNode::Property::ScrollOrigin, scrollOrigin)
-#if ENABLE(CSS_SCROLL_SNAP)
     SCROLLING_NODE_ENCODE(ScrollingStateNode::Property::SnapOffsetsInfo, snapOffsetsInfo)
     SCROLLING_NODE_ENCODE(ScrollingStateNode::Property::CurrentHorizontalSnapOffsetIndex, currentHorizontalSnapPointIndex)
     SCROLLING_NODE_ENCODE(ScrollingStateNode::Property::CurrentVerticalSnapOffsetIndex, currentVerticalSnapPointIndex)
-#endif
     SCROLLING_NODE_ENCODE(ScrollingStateNode::Property::ScrollableAreaParams, scrollableAreaParameters)
     // UI-side compositing can't do synchronous scrolling so don't encode synchronousScrollingReasons.
     SCROLLING_NODE_ENCODE(ScrollingStateNode::Property::RequestedScrollPosition, requestedScrollData)
@@ -310,11 +307,9 @@ bool ArgumentCoder<ScrollingStateScrollingNode>::decode(Decoder& decoder, Scroll
     SCROLLING_NODE_DECODE(ScrollingStateNode::Property::ReachableContentsSize, FloatSize, setReachableContentsSize);
     SCROLLING_NODE_DECODE(ScrollingStateNode::Property::ScrollPosition, FloatPoint, setScrollPosition);
     SCROLLING_NODE_DECODE(ScrollingStateNode::Property::ScrollOrigin, IntPoint, setScrollOrigin);
-#if ENABLE(CSS_SCROLL_SNAP)
-    SCROLLING_NODE_DECODE(ScrollingStateNode::Property::SnapOffsetsInfo, ScrollSnapOffsetsInfo<float>, setSnapOffsetsInfo);
-    SCROLLING_NODE_DECODE(ScrollingStateNode::Property::CurrentHorizontalSnapOffsetIndex, unsigned, setCurrentHorizontalSnapPointIndex);
-    SCROLLING_NODE_DECODE(ScrollingStateNode::Property::CurrentVerticalSnapOffsetIndex, unsigned, setCurrentVerticalSnapPointIndex);
-#endif
+    SCROLLING_NODE_DECODE(ScrollingStateNode::Property::SnapOffsetsInfo, FloatScrollSnapOffsetsInfo, setSnapOffsetsInfo);
+    SCROLLING_NODE_DECODE(ScrollingStateNode::Property::CurrentHorizontalSnapOffsetIndex, std::optional<unsigned>, setCurrentHorizontalSnapPointIndex);
+    SCROLLING_NODE_DECODE(ScrollingStateNode::Property::CurrentVerticalSnapOffsetIndex, std::optional<unsigned>, setCurrentVerticalSnapPointIndex);
     SCROLLING_NODE_DECODE(ScrollingStateNode::Property::ScrollableAreaParams, ScrollableAreaParameters, setScrollableAreaParameters);
     SCROLLING_NODE_DECODE(ScrollingStateNode::Property::RequestedScrollPosition, RequestedScrollData, setRequestedScrollData);
 
@@ -369,7 +364,7 @@ bool ArgumentCoder<ScrollingStateFrameScrollingNode>::decode(Decoder& decoder, S
     SCROLLING_NODE_DECODE(ScrollingStateNode::Property::LayoutViewport, FloatRect, setLayoutViewport)
     SCROLLING_NODE_DECODE(ScrollingStateNode::Property::MinLayoutViewportOrigin, FloatPoint, setMinLayoutViewportOrigin)
     SCROLLING_NODE_DECODE(ScrollingStateNode::Property::MaxLayoutViewportOrigin, FloatPoint, setMaxLayoutViewportOrigin)
-    SCROLLING_NODE_DECODE(ScrollingStateNode::Property::OverrideVisualViewportSize, Optional<FloatSize>, setOverrideVisualViewportSize)
+    SCROLLING_NODE_DECODE(ScrollingStateNode::Property::OverrideVisualViewportSize, std::optional<FloatSize>, setOverrideVisualViewportSize)
 
     if (node.hasChangedProperty(ScrollingStateNode::Property::CounterScrollingLayer)) {
         GraphicsLayer::PlatformLayerID layerID;
@@ -532,6 +527,8 @@ void ArgumentCoder<SnapOffset<float>>::encode(Encoder& encoder, const SnapOffset
 {
     encoder << offset.offset;
     encoder << offset.stop;
+    encoder << offset.hasSnapAreaLargerThanViewport;
+    encoder << offset.snapAreaIndices;
 }
 
 bool ArgumentCoder<SnapOffset<float>>::decode(Decoder& decoder, SnapOffset<float>& offset)
@@ -540,27 +537,31 @@ bool ArgumentCoder<SnapOffset<float>>::decode(Decoder& decoder, SnapOffset<float
         return false;
     if (!decoder.decode(offset.stop))
         return false;
+    if (!decoder.decode(offset.hasSnapAreaLargerThanViewport))
+        return false;
+    if (!decoder.decode(offset.snapAreaIndices))
+        return false;
     return true;
 }
 
 
-void ArgumentCoder<ScrollSnapOffsetsInfo<float>>::encode(Encoder& encoder, const ScrollSnapOffsetsInfo<float>& info)
+void ArgumentCoder<FloatScrollSnapOffsetsInfo>::encode(Encoder& encoder, const FloatScrollSnapOffsetsInfo& info)
 {
     encoder << info.horizontalSnapOffsets;
     encoder << info.verticalSnapOffsets;
-    encoder << info.horizontalSnapOffsetRanges;
-    encoder << info.verticalSnapOffsetRanges;
+    encoder << info.strictness;
+    encoder << info.snapAreas;
 }
 
-bool ArgumentCoder<ScrollSnapOffsetsInfo<float>>::decode(Decoder& decoder, ScrollSnapOffsetsInfo<float>& info)
+bool ArgumentCoder<FloatScrollSnapOffsetsInfo>::decode(Decoder& decoder, FloatScrollSnapOffsetsInfo& info)
 {
     if (!decoder.decode(info.horizontalSnapOffsets))
         return false;
     if (!decoder.decode(info.verticalSnapOffsets))
         return false;
-    if (!decoder.decode(info.horizontalSnapOffsetRanges))
+    if (!decoder.decode(info.strictness))
         return false;
-    if (!decoder.decode(info.verticalSnapOffsetRanges))
+    if (!decoder.decode(info.snapAreas))
         return false;
     return true;
 }
@@ -734,14 +735,12 @@ static void dump(TextStream& ts, const ScrollingStateScrollingNode& node, bool c
     if (!changedPropertiesOnly || node.hasChangedProperty(ScrollingStateNode::Property::ScrolledContentsLayer))
         ts.dumpProperty("scrolled-contents-layer", static_cast<GraphicsLayer::PlatformLayerID>(node.scrolledContentsLayer()));
 
-#if ENABLE(CSS_SCROLL_SNAP)
     if (!changedPropertiesOnly || node.hasChangedProperty(ScrollingStateNode::Property::SnapOffsetsInfo)) {
         ts.dumpProperty("horizontal snap offsets", node.snapOffsetsInfo().horizontalSnapOffsets);
         ts.dumpProperty("vertical snap offsets", node.snapOffsetsInfo().verticalSnapOffsets);
         ts.dumpProperty("current horizontal snap point index", node.currentHorizontalSnapPointIndex());
         ts.dumpProperty("current vertical snap point index", node.currentVerticalSnapPointIndex());
     }
-#endif
 }
 
 static void dump(TextStream& ts, const ScrollingStateFrameHostingNode& node, bool changedPropertiesOnly)

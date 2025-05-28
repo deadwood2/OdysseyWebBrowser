@@ -29,10 +29,11 @@ import zipfile
 from cassandra.cqlengine import columns
 from collections import defaultdict
 from datetime import datetime
-from resultsdbpy.controller.commit import Commit
 from resultsdbpy.controller.configuration import Configuration
 from resultsdbpy.model.commit_context import CommitContext
 from resultsdbpy.model.configuration_context import ClusteredByConfiguration
+
+from webkitscmpy import Commit
 
 
 class UploadContext(object):
@@ -229,7 +230,7 @@ class UploadContext(object):
                 json.dumps(dict(
                     configuration=Configuration.Encoder().default(configuration),
                     suite=suite,
-                    commits=Commit.Encoder().default(commits),
+                    commits=[commit.Encoder().default(commit) for commit in commits],
                     timestamp=timestamp,
                     test_results=test_results,
                 )),
@@ -260,15 +261,15 @@ class UploadContext(object):
 
                 self.configuration_context.insert_row_with_configuration(
                     self.SuitesByConfiguration.__table_name__, configuration, suite=suite, branch=branch,
-                    ttl=int((uuid // Commit.TIMESTAMP_TO_UUID_MULTIPLIER) + self.ttl_seconds - time.time()) if self.ttl_seconds else None,
+                    ttl=int((uuid // Commit.UUID_MULTIPLIER) + self.ttl_seconds - time.time()) if self.ttl_seconds else None,
                 )
                 self.configuration_context.insert_row_with_configuration(
                     self.UploadsByConfiguration.__table_name__, configuration=configuration,
                     suite=suite, branch=branch, uuid=uuid, sdk=configuration.sdk or '?', time_uploaded=timestamp,
-                    commits=self.to_zip(json.dumps(commits, cls=Commit.Encoder)),
+                    commits=self.to_zip(json.dumps(commits, cls=commits[0].Encoder)),
                     test_results=self.to_zip(json.dumps(test_results)),
                     upload_version=version,
-                    ttl=int((uuid // Commit.TIMESTAMP_TO_UUID_MULTIPLIER) + self.ttl_seconds - time.time()) if self.ttl_seconds else None,
+                    ttl=int((uuid // Commit.UUID_MULTIPLIER) + self.ttl_seconds - time.time()) if self.ttl_seconds else None,
                 )
 
     def find_test_results(self, configurations, suite, branch=None, begin=None, end=None, recent=True, limit=100):

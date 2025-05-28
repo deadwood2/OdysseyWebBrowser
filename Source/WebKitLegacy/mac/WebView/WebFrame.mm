@@ -81,7 +81,7 @@
 #import <WebCore/FrameLoaderStateMachine.h>
 #import <WebCore/FrameSelection.h>
 #import <WebCore/FrameTree.h>
-#import <WebCore/GraphicsContext.h>
+#import <WebCore/GraphicsContextCG.h>
 #import <WebCore/HTMLFrameOwnerElement.h>
 #import <WebCore/HTMLNames.h>
 #import <WebCore/HistoryItem.h>
@@ -95,6 +95,7 @@
 #import <WebCore/PrintContext.h>
 #import <WebCore/Range.h>
 #import <WebCore/RenderLayer.h>
+#import <WebCore/RenderLayerCompositor.h>
 #import <WebCore/RenderLayerScrollableArea.h>
 #import <WebCore/RenderView.h>
 #import <WebCore/RenderWidget.h>
@@ -442,7 +443,7 @@ static NSURL *createUniqueWebDataURL();
             WebCore::Color color = WebCore::colorFromNSColor([backgroundColor colorUsingColorSpaceName:NSDeviceRGBColorSpace]);
             ALLOW_DEPRECATED_DECLARATIONS_END
 #else
-            WebCore::Color color = WebCore::Color(backgroundColor);
+            WebCore::Color color(WebCore::roundAndClampToSRGBALossy(backgroundColor));
 #endif
             view->setBaseBackgroundColor(color);
             view->setShouldUpdateWhileOffscreen([webView shouldUpdateWhileOffscreen]);
@@ -571,7 +572,7 @@ static NSURL *createUniqueWebDataURL();
 {
     if (!range)
         return @"";
-    return plainText(makeSimpleRange(*core(range)), WebCore::TextIteratorDefaultBehavior, true);
+    return plainText(makeSimpleRange(*core(range)), { }, true);
 }
 
 - (OptionSet<WebCore::PaintBehavior>)_paintBehaviorForDestinationContext:(CGContextRef)context
@@ -612,7 +613,7 @@ static NSURL *createUniqueWebDataURL();
 #else
     CGContextRef ctx = WKGetCurrentGraphicsContext();
 #endif
-    WebCore::GraphicsContext context(ctx);
+    WebCore::GraphicsContextCG context(ctx);
 
 #if PLATFORM(IOS_FAMILY)
     WebCore::Frame *frame = core(self);
@@ -803,15 +804,15 @@ static NSURL *createUniqueWebDataURL();
     return characterRange(makeBoundaryPointBeforeNodeContents(*element), range);
 }
 
-- (Optional<WebCore::SimpleRange>)_convertToDOMRange:(NSRange)nsrange
+- (std::optional<WebCore::SimpleRange>)_convertToDOMRange:(NSRange)nsrange
 {
     return [self _convertToDOMRange:nsrange rangeIsRelativeTo:WebRangeIsRelativeTo::EditableRoot];
 }
 
-- (Optional<WebCore::SimpleRange>)_convertToDOMRange:(NSRange)range rangeIsRelativeTo:(WebRangeIsRelativeTo)rangeIsRelativeTo
+- (std::optional<WebCore::SimpleRange>)_convertToDOMRange:(NSRange)range rangeIsRelativeTo:(WebRangeIsRelativeTo)rangeIsRelativeTo
 {
     if (range.location == NSNotFound)
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (rangeIsRelativeTo == WebRangeIsRelativeTo::EditableRoot) {
         // Our critical assumption is that this code path is only called by input methods that
@@ -822,7 +823,7 @@ static NSURL *createUniqueWebDataURL();
         // That fits with AppKit's idea of an input context.
         auto* element = _private->coreFrame->selection().rootEditableElementOrDocumentElement();
         if (!element)
-            return WTF::nullopt;
+            return std::nullopt;
         return resolveCharacterRange(makeRangeSelectingNodeContents(*element), range);
     }
 
@@ -830,7 +831,7 @@ static NSURL *createUniqueWebDataURL();
 
     auto paragraphStart = makeBoundaryPoint(startOfParagraph(_private->coreFrame->selection().selection().visibleStart()));
     if (!paragraphStart)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto scopeEnd = makeBoundaryPointAfterNodeContents(paragraphStart->container->treeScope().rootNode());
     return WebCore::resolveCharacterRange({ WTFMove(*paragraphStart), WTFMove(scopeEnd) }, range);
@@ -981,7 +982,7 @@ static NSURL *createUniqueWebDataURL();
     auto* document = _private->coreFrame->document();
     document->setShouldCreateRenderers(_private->shouldCreateRenderers);
 
-    _private->coreFrame->loader().documentLoader()->commitData((const char *)[data bytes], [data length]);
+    _private->coreFrame->loader().documentLoader()->commitData((const uint8_t*)[data bytes], [data length]);
 }
 
 @end
@@ -1161,11 +1162,6 @@ static WebFrameLoadType toWebFrameLoadType(WebCore::FrameLoadType frameLoadType)
 #endif
 
 #if PLATFORM(IOS_FAMILY)
-
-- (unsigned)formElementsCharacterCount
-{
-    return core(self)->formElementsCharacterCount();
-}
 
 - (void)setTimeoutsPaused:(BOOL)flag
 {
@@ -1392,7 +1388,7 @@ static WebFrameLoadType toWebFrameLoadType(WebCore::FrameLoadType frameLoadType)
 
 - (void)setCaretColor:(CGColorRef)color
 {
-    WebCore::Color qColor = color ? WebCore::Color(color) : WebCore::Color::black;
+    WebCore::Color qColor = color ? WebCore::Color(WebCore::roundAndClampToSRGBALossy(color)) : WebCore::Color::black;
     WebCore::Frame *frame = core(self);
     frame->selection().setCaretColor(qColor);
 }
@@ -1824,9 +1820,8 @@ static WebFrameLoadType toWebFrameLoadType(WebCore::FrameLoadType frameLoadType)
     bool multipleFonts = false;
     CTFontRef font = nil;
     if (_private->coreFrame) {
-        const WebCore::Font* fd = _private->coreFrame->editor().fontForSelection(multipleFonts);
-        if (fd)
-            font = fd->getCTFont();
+        if (auto coreFont = _private->coreFrame->editor().fontForSelection(multipleFonts))
+            font = coreFont->getCTFont();
     }
     
     if (hasMultipleFonts)
@@ -1837,7 +1832,7 @@ static WebFrameLoadType toWebFrameLoadType(WebCore::FrameLoadType frameLoadType)
 - (void)sendScrollEvent
 {
     ASSERT(WebThreadIsLockedOrDisabled());
-    _private->coreFrame->eventHandler().sendScrollEvent();
+    _private->coreFrame->eventHandler().scheduleScrollEvent();
 }
 
 - (void)_userScrolled
@@ -2175,7 +2170,7 @@ static WebFrameLoadType toWebFrameLoadType(WebCore::FrameLoadType frameLoadType)
     if (!coreFrame)
         return @"";
 
-    return coreFrame->layerTreeAsText();
+    return coreFrame->contentRenderer()->compositor().layerTreeAsText();
 }
 
 - (id)accessibilityRoot
@@ -2332,7 +2327,7 @@ static WebFrameLoadType toWebFrameLoadType(WebCore::FrameLoadType frameLoadType)
     auto coreFrame = _private->coreFrame;
     if (!coreFrame)
         return nil;
-    constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::IgnoreClipping, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
+    constexpr OptionSet<HitTestRequest::Type> hitType { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::Active, HitTestRequest::Type::IgnoreClipping, HitTestRequest::Type::DisallowUserAgentShadowContent, HitTestRequest::Type::AllowChildFrameContent };
     return adoptNS([[WebElementDictionary alloc] initWithHitTestResult:coreFrame->eventHandler().hitTestResultAtPoint(WebCore::IntPoint(point), hitType)]).autorelease();
 }
 
@@ -2461,12 +2456,9 @@ static bool needsMicrosoftMessengerDOMDocumentWorkaround()
 
 static NSURL *createUniqueWebDataURL()
 {
-    CFUUIDRef UUIDRef = CFUUIDCreate(kCFAllocatorDefault);
-    NSString *UUIDString = (NSString *)CFUUIDCreateString(kCFAllocatorDefault, UUIDRef);
-    CFRelease(UUIDRef);
-    NSURL *URL = [NSURL URLWithString:[NSString stringWithFormat:@"applewebdata://%@", UUIDString]];
-    CFRelease(UUIDString);
-    return URL;
+    auto UUIDRef = adoptCF(CFUUIDCreate(kCFAllocatorDefault));
+    auto UUIDString = adoptCF(CFUUIDCreateString(kCFAllocatorDefault, UUIDRef.get()));
+    return [NSURL URLWithString:[NSString stringWithFormat:@"applewebdata://%@", (__bridge NSString *)UUIDString.get()]];
 }
 
 - (void)_loadData:(NSData *)data MIMEType:(NSString *)MIMEType textEncodingName:(NSString *)encodingName baseURL:(NSURL *)baseURL unreachableURL:(NSURL *)unreachableURL

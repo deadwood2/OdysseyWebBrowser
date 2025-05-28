@@ -26,7 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
 #import "WebPluginController.h"
 
 #import "DOMNodeInternal.h"
@@ -115,7 +114,7 @@ static void initializeAudioSession()
     if (!WebCore::IOSApplication::isMobileSafari())
         return;
 
-    WebCore::AudioSession::sharedSession().setCategory(WebCore::AudioSession::MediaPlayback, WebCore::RouteSharingPolicy::Default);
+    WebCore::AudioSession::sharedSession().setCategory(WebCore::AudioSession::CategoryType::MediaPlayback, WebCore::RouteSharingPolicy::Default);
 }
 #endif
 

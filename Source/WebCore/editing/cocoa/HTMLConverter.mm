@@ -67,6 +67,7 @@
 #import <pal/spi/cocoa/NSAttributedStringSPI.h>
 #import <wtf/ASCIICType.h>
 #import <wtf/text/StringBuilder.h>
+#import <wtf/text/StringToIntegerConversion.h>
 
 #if ENABLE(DATA_DETECTION)
 #import "DataDetection.h"
@@ -261,7 +262,7 @@ public:
 
 private:
     HashMap<Element*, std::unique_ptr<ComputedStyleExtractor>> m_computedStyles;
-    HashSet<Node*> m_ancestorsUnderCommonAncestor;
+    HashSet<Ref<Node>> m_ancestorsUnderCommonAncestor;
 };
 
 @interface NSTextList (WebCoreNSTextListDetails)
@@ -415,16 +416,13 @@ AttributedString HTMLConverter::convert()
 // Returns the font to be used if the NSFontAttributeName doesn't exist
 static NSFont *WebDefaultFont()
 {
-    static NSFont *defaultFont = nil;
-    if (defaultFont)
-        return defaultFont;
-
-    NSFont *font = [NSFont fontWithName:@"Helvetica" size:12];
-    if (!font)
-        font = [NSFont systemFontOfSize:12];
-
-    defaultFont = [font retain];
-    return defaultFont;
+    static auto defaultFont = makeNeverDestroyed([] {
+        NSFont *font = [NSFont fontWithName:@"Helvetica" size:12];
+        if (!font)
+            font = [NSFont systemFontOfSize:12];
+        return retainPtr(font);
+    }());
+    return defaultFont.get().get();
 }
 #endif
 
@@ -520,13 +518,13 @@ static PlatformFont *_fontForNameAndSize(NSString *fontName, CGFloat size, NSMut
 
 static NSParagraphStyle *defaultParagraphStyle()
 {
-    static NSMutableParagraphStyle *defaultParagraphStyle = nil;
-    if (!defaultParagraphStyle) {
-        defaultParagraphStyle = [[PlatformNSParagraphStyle defaultParagraphStyle] mutableCopy];
+    static auto defaultParagraphStyle = makeNeverDestroyed([] {
+        auto defaultParagraphStyle = adoptNS([[PlatformNSParagraphStyle defaultParagraphStyle] mutableCopy]);
         [defaultParagraphStyle setDefaultTabInterval:36];
         [defaultParagraphStyle setTabStops:@[]];
-    }
-    return defaultParagraphStyle;
+        return defaultParagraphStyle;
+    }());
+    return defaultParagraphStyle.get().get();
 }
 
 RefPtr<CSSValue> HTMLConverterCaches::computedStylePropertyForElement(Element& element, CSSPropertyID propertyId)
@@ -838,7 +836,7 @@ bool HTMLConverterCaches::elementHasOwnBackgroundColor(Element& element)
 
 Element* HTMLConverter::_blockLevelElementForNode(Node* node)
 {
-    Element* element = node->parentElement();
+    Element* element = is<Element>(node) ? downcast<Element>(node) : node->parentElement();
     if (element && !_caches->isBlockElement(*element))
         element = _blockLevelElementForNode(element->parentInComposedTree());
     return element;
@@ -926,8 +924,6 @@ static PlatformFont *_font(Element& element)
     return (__bridge PlatformFont *)renderer->style().fontCascade().primaryFont().getCTFont();
 }
 
-#define UIFloatIsZero(number) (fabs(number - 0) < FLT_EPSILON)
-
 NSDictionary *HTMLConverter::computedAttributesForElement(Element& element)
 {
     NSMutableDictionary *attrs = [NSMutableDictionary dictionary];
@@ -981,7 +977,7 @@ NSDictionary *HTMLConverter::computedAttributesForElement(Element& element)
         }
 
         String fontWeight = _caches->propertyValueForNode(element, CSSPropertyFontStyle);
-        if (fontWeight.startsWith("bold") || fontWeight.toInt() >= 700) {
+        if (fontWeight.startsWith("bold") || parseIntegerAllowingTrailingJunk<int>(fontWeight).value_or(0) >= 700) {
             // ??? handle weight properly using NSFontManager
             PlatformFont *originalFont = font;
 #if PLATFORM(IOS_FAMILY)
@@ -1024,7 +1020,7 @@ NSDictionary *HTMLConverter::computedAttributesForElement(Element& element)
             [attrs setObject:@0.0 forKey:NSKernAttributeName];
         else {
             double kernVal = letterSpacing.length() ? letterSpacing.toDouble() : 0.0;
-            if (UIFloatIsZero(kernVal))
+            if (fabs(kernVal - 0) < FLT_EPSILON)
                 [attrs setObject:@0.0 forKey:NSKernAttributeName]; // auto and normal, the other possible values, are both "kerning enabled"
             else
                 [attrs setObject:@(kernVal) forKey:NSKernAttributeName];
@@ -1132,7 +1128,7 @@ NSDictionary *HTMLConverter::computedAttributesForElement(Element& element)
             if (_caches->floatPropertyValueForNode(coreBlockElement, CSSPropertyMarginRight, marginRight) && marginRight > 0.0)
                 [paragraphStyle setTailIndent:-marginRight];
             float marginBottom = 0.0;
-            if (_caches->floatPropertyValueForNode(coreBlockElement, CSSPropertyMarginRight, marginBottom) && marginBottom > 0.0)
+            if (_caches->floatPropertyValueForNode(coreBlockElement, CSSPropertyMarginBottom, marginBottom) && marginBottom > 0.0)
                 [paragraphStyle setParagraphSpacing:marginBottom];
         }
         if ([_textLists count] > 0)
@@ -1274,16 +1270,13 @@ BOOL HTMLConverter::_addAttachmentForElement(Element& element, NSURL *url, BOOL 
             fileWrapper = adoptNS([[NSFileWrapper alloc] initWithURL:url options:0 error:NULL]);
     }
     if (!fileWrapper && dataSource) {
-        RefPtr<ArchiveResource> resource = dataSource->subresource(url);
-        if (!resource)
-            resource = dataSource->subresource(url);
-
-        const String& mimeType = resource->mimeType();
-        if (usePlaceholder && resource && mimeType == "text/html")
-            notFound = YES;
-        if (resource && !notFound) {
-            fileWrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:resource->data().createNSData().get()]);
-            [fileWrapper setPreferredFilename:suggestedFilenameWithMIMEType(url, mimeType)];
+        if (auto resource = dataSource->subresource(url)) {
+            auto& mimeType = resource->mimeType();
+            if (!usePlaceholder || mimeType != "text/html") {
+                fileWrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:resource->data().createNSData().get()]);
+                [fileWrapper setPreferredFilename:suggestedFilenameWithMIMEType(url, mimeType)];
+            } else
+                notFound = YES;
         }
     }
 #if !PLATFORM(IOS_FAMILY)
@@ -2093,7 +2086,6 @@ void HTMLConverter::_processText(CharacterData& characterData)
     unichar lastChar = (textLength > 0) ? [[_attrStr string] characterAtIndex:textLength - 1] : '\n';
     BOOL suppressLeadingSpace = ((_flags.isSoft && lastChar == ' ') || lastChar == '\n' || lastChar == '\r' || lastChar == '\t' || lastChar == NSParagraphSeparatorCharacter || lastChar == NSLineSeparatorCharacter || lastChar == NSFormFeedCharacter || lastChar == WebNextLineCharacter);
     NSRange rangeToReplace = NSMakeRange(textLength, 0);
-    CFMutableStringRef mutstr = NULL;
 
     String originalString = characterData.data();
     unsigned startOffset = 0;
@@ -2163,8 +2155,6 @@ void HTMLConverter::_processText(CharacterData& characterData)
             [_attrStr setAttributes:aggregatedAttributesForAncestors(characterData) range:rangeToReplace];
         _flags.isSoft = wasSpace;
     }
-    if (mutstr)
-        CFRelease(mutstr);
 }
 
 void HTMLConverter::_traverseNode(Node& node, unsigned depth, bool embedded)
@@ -2224,7 +2214,7 @@ void HTMLConverter::_traverseNode(Node& node, unsigned depth, bool embedded)
                         child = nextSiblingInComposedTreeIgnoringUserAgentShadow(*child);
                     }
                 }
-                _exitElement(element, depth, startIndex);
+                _exitElement(element, depth, std::min(startIndex, [_attrStr length]));
             }
         }
     } else if (node.nodeType() == Node::TEXT_NODE)
@@ -2292,7 +2282,7 @@ Node* HTMLConverterCaches::cacheAncestorsOfStartToBeConverted(const Position& st
     Node* ancestor = start.containerNode();
 
     while (ancestor) {
-        m_ancestorsUnderCommonAncestor.add(ancestor);
+        m_ancestorsUnderCommonAncestor.add(*ancestor);
         if (ancestor == commonAncestor)
             break;
         ancestor = ancestor->parentInComposedTree();

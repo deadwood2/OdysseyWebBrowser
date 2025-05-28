@@ -109,7 +109,7 @@ static NSArray<NSString *> *controlArray()
     [self setFrame:frame];
 
     WeakObjCPtr<WKPDFHUDView> weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(initialHideTimeInterval * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    WorkQueue::main().dispatchAfter(Seconds { initialHideTimeInterval }, [weakSelf] {
         [weakSelf _hideTimerFired];
     });
     return self;
@@ -163,11 +163,8 @@ static NSArray<NSString *> *controlArray()
 
 - (NSView *)hitTest:(NSPoint)point
 {
-    if (_page)
-        return fromWebPageProxy(*_page);
-
-    ASSERT_NOT_REACHED();
-    return self;
+    ASSERT(_page);
+    return _page ? _page->cocoaView().autorelease() : self;
 }
 
 - (void)mouseMoved:(NSEvent *)event
@@ -216,7 +213,7 @@ static NSArray<NSString *> *controlArray()
     _activeControl = nil;
 }
 
-- (Optional<NSUInteger>)_controlIndexForEvent:(NSEvent *)event
+- (std::optional<NSUInteger>)_controlIndexForEvent:(NSEvent *)event
 {
     CGPoint initialPoint = NSPointToCGPoint(event.locationInWindow);
     initialPoint.x -= [_layer frame].origin.x;
@@ -227,7 +224,7 @@ static NSArray<NSString *> *controlArray()
         if (CGRectContainsPoint(windowSpaceRect, initialPoint))
             return index;
     }
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 - (NSString *)_controlForEvent:(NSEvent *)event

@@ -24,7 +24,7 @@
 import {ArchiveRouter} from '/assets/js/archiveRouter.js';
 import {CommitBank} from '/assets/js/commit.js';
 import {Configuration} from '/assets/js/configuration.js';
-import {deepCompare, ErrorDisplay, escapeHTML, paramsToQuery, queryToParams} from '/assets/js/common.js';
+import {deepCompare, ErrorDisplay, escapeHTML, paramsToQuery, queryToParams, linkify} from '/assets/js/common.js';
 import {Expectations} from '/assets/js/expectations.js';
 import {InvestigateDrawer} from '/assets/js/investigate.js';
 import {ToolTip} from '/assets/js/tooltip.js';
@@ -170,7 +170,7 @@ function xAxisFromScale(scale, repository, updatesArray, isTop=false, viewport=n
     }
 
     function onScaleClick(node) {
-        if (!node.label.id)
+        if (!node.label.label())
             return;
         let params = {
             branch: node.label.branch ? [node.label.branch] : queryToParams(document.URL.split('?')[1]).branch,
@@ -190,9 +190,10 @@ function xAxisFromScale(scale, repository, updatesArray, isTop=false, viewport=n
             const scrollDelta = document.documentElement.scrollTop || document.body.scrollTop;
             ToolTip.set(
                 `<div class="content">
-                    Time: ${new Date(node.label.timestamp * 1000).toLocaleString()}<br>
-                    Committer: ${node.label.committer}
-                    ${node.label.message ? `<br><div>${escapeHTML(node.label.message.split('\n')[0])}</div>` : ''}
+                    Time: ${new Date(node.label.timestamp * 1000).toLocaleString()}
+                    ${node.label.author ? `<br>Author: ${escapeHTML(node.label.author.name)}
+                            &#60<a href="mailto:${escapeHTML(node.label.author.emails[0])}">${escapeHTML(node.label.author.emails[0])}</a>&#62` : ''}
+                    ${node.label.message ? `<br><div>${linkify(escapeHTML(node.label.message.split('\n')[0]))}</div>` : ''}
                 </div>`,
                 node.tipPoints.map((point) => {
                     return {x: canvas.x + point.x, y: canvas.y + scrollDelta + point.y};
@@ -203,11 +204,10 @@ function xAxisFromScale(scale, repository, updatesArray, isTop=false, viewport=n
         },
         onScaleLeave: (event, canvas) => {
             const scrollDelta = document.documentElement.scrollTop || document.body.scrollTop;
-            if (!ToolTip.isIn({x: event.x, y: event.y - scrollDelta}))
+            if (!ToolTip.isIn({x: event.pageX, y: event.pageY - scrollDelta}))
                 ToolTip.unset();
         },
-        // Per the birthday paradox, 10% change of collision with 7.7 million commits with 12 character commits
-        getLabelFunc: (commit) => {return commit ? commit.id.substring(0,12) : '?';},
+        getLabelFunc: (commit) => {return commit && commit.label ? commit.label() : '?';},
         getScaleFunc: (commit) => commit.uuid,
         exporter: (updateFunction) => {
             updatesArray.push((scale) => {updateFunction(scaleForRepository(scale));});
@@ -653,7 +653,7 @@ class TimelineFromEndpoint {
                             if (!params.branch)
                                 delete params.branch;
                             const query = paramsToQuery(params);
-                            return `<a href="/commit/info?${query}" target="_blank">${commit.id.substring(0,12)}</a>`;
+                            return `<a href="/commit/info?${query}" target="_blank">${commit.label()}</a>`;
                         }).join(', ')}
                         <br>
                         ${partialConfiguration}
@@ -856,7 +856,7 @@ function Legend(callback=null, plural=false, defaultWillFilterExpected=false) {
             unexpected: plural ? 'Some tests crashed' : 'Test crashed',
         },
     };
-    let result = `<div class="lengend horizontal">
+    let result = `<div class="legend horizontal">
             ${Object.keys(legendDetails).map((key) => {
                 const dot = REF.createRef({
                     onElementMount: (element) => {

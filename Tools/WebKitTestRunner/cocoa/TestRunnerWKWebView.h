@@ -35,12 +35,11 @@
 
 @property (nonatomic, copy) void (^didStartFormControlInteractionCallback)(void);
 @property (nonatomic, copy) void (^didEndFormControlInteractionCallback)(void);
-@property (nonatomic, copy) void (^didShowContextMenuCallback)(void);
-@property (nonatomic, copy) void (^didDismissContextMenuCallback)(void);
 @property (nonatomic, copy) void (^willBeginZoomingCallback)(void);
 @property (nonatomic, copy) void (^didEndZoomingCallback)(void);
 @property (nonatomic, copy) void (^didShowKeyboardCallback)(void);
 @property (nonatomic, copy) void (^didHideKeyboardCallback)(void);
+@property (nonatomic, copy) void (^willStartInputSessionCallback)(void);
 @property (nonatomic, copy) void (^willPresentPopoverCallback)(void);
 @property (nonatomic, copy) void (^didDismissPopoverCallback)(void);
 @property (nonatomic, copy) void (^didEndScrollingCallback)(void);
@@ -65,12 +64,14 @@
 @property (nonatomic, readonly, getter=isShowingKeyboard) BOOL showingKeyboard;
 @property (nonatomic, readonly, getter=isDismissingMenu) BOOL dismissingMenu;
 @property (nonatomic, readonly, getter=isShowingPopover) BOOL showingPopover;
-@property (nonatomic, readonly, getter=isShowingContextMenu) BOOL showingContextMenu;
 @property (nonatomic, assign) BOOL usesSafariLikeRotation;
 @property (nonatomic, readonly, getter=isInteractingWithFormControl) BOOL interactingWithFormControl;
 
 #endif
 
+@property (nonatomic, readonly, getter=isShowingContextMenu) BOOL showingContextMenu;
+@property (nonatomic, copy) void (^didShowContextMenuCallback)(void);
+@property (nonatomic, copy) void (^didDismissContextMenuCallback)(void);
 @property (nonatomic, readonly, getter=isShowingMenu) BOOL showingMenu;
 @property (nonatomic, copy) void (^didShowMenuCallback)(void);
 @property (nonatomic, copy) void (^didHideMenuCallback)(void);
@@ -82,5 +83,7 @@
 
 - (void)dismissActiveMenu;
 - (void)resetInteractionCallbacks;
+- (void)_didLoadAppInitiatedRequest:(void (^)(BOOL result))completionHandler;
+- (void)_didLoadNonAppInitiatedRequest:(void (^)(BOOL result))completionHandler;
 
 @end

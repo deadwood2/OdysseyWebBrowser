@@ -42,12 +42,6 @@
 #import <wtf/MachSendRight.h>
 #import <wtf/cf/TypeCastsCF.h>
 
-#if ENABLE(WIRELESS_PLAYBACK_TARGET)
-#import <WebCore/MediaPlaybackTargetContext.h>
-#import <objc/runtime.h>
-#import <pal/cocoa/AVFoundationSoftLink.h>
-#endif
-
 namespace IPC {
 
 void ArgumentCoder<WebCore::CertificateInfo>::encode(Encoder& encoder, const WebCore::CertificateInfo& certificateInfo)
@@ -57,11 +51,11 @@ void ArgumentCoder<WebCore::CertificateInfo>::encode(Encoder& encoder, const Web
     switch (certificateInfo.type()) {
 #if HAVE(SEC_TRUST_SERIALIZATION)
     case WebCore::CertificateInfo::Type::Trust:
-        IPC::encode(encoder, certificateInfo.trust());
+        encoder << certificateInfo.trust();
         break;
 #endif
     case WebCore::CertificateInfo::Type::CertificateChain:
-        IPC::encode(encoder, certificateInfo.certificateChain());
+        encoder << certificateInfo.certificateChain();
         break;
     case WebCore::CertificateInfo::Type::None:
         // Do nothing.
@@ -79,7 +73,7 @@ bool ArgumentCoder<WebCore::CertificateInfo>::decode(Decoder& decoder, WebCore::
 #if HAVE(SEC_TRUST_SERIALIZATION)
     case WebCore::CertificateInfo::Type::Trust: {
         RetainPtr<SecTrustRef> trust;
-        if (!IPC::decode(decoder, trust) || !trust)
+        if (!decoder.decode(trust) || !trust)
             return false;
 
         certificateInfo = WebCore::CertificateInfo(WTFMove(trust));
@@ -88,7 +82,7 @@ bool ArgumentCoder<WebCore::CertificateInfo>::decode(Decoder& decoder, WebCore::
 #endif
     case WebCore::CertificateInfo::Type::CertificateChain: {
         RetainPtr<CFArrayRef> certificateChain;
-        if (!IPC::decode(decoder, certificateChain) || !certificateChain)
+        if (!decoder.decode(certificateChain) || !certificateChain)
             return false;
 
         certificateInfo = WebCore::CertificateInfo(WTFMove(certificateChain));
@@ -154,10 +148,14 @@ static void encodeNSError(Encoder& encoder, NSError *nsError)
     id peerCertificateChain = [userInfo objectForKey:@"NSErrorPeerCertificateChainKey"];
     if (!peerCertificateChain) {
         if (SecTrustRef peerTrust = (__bridge SecTrustRef)[userInfo objectForKey:NSURLErrorFailingURLPeerTrustErrorKey]) {
+#if HAVE(SEC_TRUST_COPY_CERTIFICATE_CHAIN)
+            peerCertificateChain = (__bridge NSArray *)adoptCF(SecTrustCopyCertificateChain(peerTrust)).autorelease();
+#else
             CFIndex count = SecTrustGetCertificateCount(peerTrust);
             peerCertificateChain = [NSMutableArray arrayWithCapacity:count];
             for (CFIndex i = 0; i < count; ++i)
                 [peerCertificateChain addObject:(__bridge id)SecTrustGetCertificateAtIndex(peerTrust, i)];
+#endif
         }
     }
     ASSERT(!peerCertificateChain || [peerCertificateChain isKindOfClass:[NSArray class]]);
@@ -169,7 +167,7 @@ static void encodeNSError(Encoder& encoder, NSError *nsError)
         CFDictionarySetValue(filteredUserInfo.get(), (__bridge CFStringRef)NSURLErrorFailingURLPeerTrustErrorKey, peerTrust);
 #endif
 
-    IPC::encode(encoder, filteredUserInfo.get());
+    encoder << static_cast<CFDictionaryRef>(filteredUserInfo.get());
 
     if (id underlyingError = [userInfo objectForKey:NSUnderlyingErrorKey]) {
         ASSERT([underlyingError isKindOfClass:[NSError class]]);
@@ -195,7 +193,7 @@ static RetainPtr<NSError> decodeNSError(Decoder& decoder)
         return nil;
 
     RetainPtr<CFDictionaryRef> userInfo;
-    if (!IPC::decode(decoder, userInfo) || !userInfo)
+    if (!decoder.decode(userInfo) || !userInfo)
         return nil;
 
     bool hasUnderlyingError = false;
@@ -283,17 +281,17 @@ void ArgumentCoder<WebCore::KeypressCommand>::encode(Encoder& encoder, const Web
     encoder << keypressCommand.commandName << keypressCommand.text;
 }
     
-Optional<WebCore::KeypressCommand> ArgumentCoder<WebCore::KeypressCommand>::decode(Decoder& decoder)
+std::optional<WebCore::KeypressCommand> ArgumentCoder<WebCore::KeypressCommand>::decode(Decoder& decoder)
 {
-    Optional<String> commandName;
+    std::optional<String> commandName;
     decoder >> commandName;
     if (!commandName)
-        return WTF::nullopt;
+        return std::nullopt;
     
-    Optional<String> text;
+    std::optional<String> text;
     decoder >> text;
     if (!text)
-        return WTF::nullopt;
+        return std::nullopt;
     
     WebCore::KeypressCommand command;
     command.commandName = WTFMove(*commandName);
@@ -306,14 +304,14 @@ void ArgumentCoder<CGRect>::encode(Encoder& encoder, CGRect rect)
     encoder << rect.origin << rect.size;
 }
 
-Optional<CGRect> ArgumentCoder<CGRect>::decode(Decoder& decoder)
+std::optional<CGRect> ArgumentCoder<CGRect>::decode(Decoder& decoder)
 {
-    Optional<CGPoint> origin;
+    std::optional<CGPoint> origin;
     decoder >> origin;
     if (!origin)
         return { };
 
-    Optional<CGSize> size;
+    std::optional<CGSize> size;
     decoder >> size;
     if (!size)
         return { };
@@ -326,7 +324,7 @@ void ArgumentCoder<CGSize>::encode(Encoder& encoder, CGSize size)
     encoder << size.width << size.height;
 }
 
-Optional<CGSize> ArgumentCoder<CGSize>::decode(Decoder& decoder)
+std::optional<CGSize> ArgumentCoder<CGSize>::decode(Decoder& decoder)
 {
     CGSize size;
     if (!decoder.decode(size.width))
@@ -341,7 +339,7 @@ void ArgumentCoder<CGPoint>::encode(Encoder& encoder, CGPoint point)
     encoder << point.x << point.y;
 }
 
-Optional<CGPoint> ArgumentCoder<CGPoint>::decode(Decoder& decoder)
+std::optional<CGPoint> ArgumentCoder<CGPoint>::decode(Decoder& decoder)
 {
     CGPoint point;
     if (!decoder.decode(point.x))
@@ -356,7 +354,7 @@ void ArgumentCoder<CGAffineTransform>::encode(Encoder& encoder, CGAffineTransfor
     encoder << transform.a << transform.b << transform.c << transform.d << transform.tx << transform.ty;
 }
 
-Optional<CGAffineTransform> ArgumentCoder<CGAffineTransform>::decode(Decoder& decoder)
+std::optional<CGAffineTransform> ArgumentCoder<CGAffineTransform>::decode(Decoder& decoder)
 {
     CGAffineTransform transform;
     if (!decoder.decode(transform.a))
@@ -380,13 +378,13 @@ void ArgumentCoder<WebCore::ContentFilterUnblockHandler>::encode(Encoder& encode
 {
     auto archiver = adoptNS([[NSKeyedArchiver alloc] initRequiringSecureCoding:YES]);
     contentFilterUnblockHandler.encode(archiver.get());
-    IPC::encode(encoder, (__bridge CFDataRef)archiver.get().encodedData);
+    encoder << (__bridge CFDataRef)archiver.get().encodedData;
 }
 
 bool ArgumentCoder<WebCore::ContentFilterUnblockHandler>::decode(Decoder& decoder, WebCore::ContentFilterUnblockHandler& contentFilterUnblockHandler)
 {
     RetainPtr<CFDataRef> data;
-    if (!IPC::decode(decoder, data) || !data)
+    if (!decoder.decode(data) || !data)
         return false;
 
     auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:(__bridge NSData *)data.get() error:nullptr]);
@@ -400,29 +398,6 @@ bool ArgumentCoder<WebCore::ContentFilterUnblockHandler>::decode(Decoder& decode
 
 #endif
 
-#if ENABLE(WIRELESS_PLAYBACK_TARGET)
-
-void ArgumentCoder<WebCore::MediaPlaybackTargetContext>::encodePlatformData(Encoder& encoder, const WebCore::MediaPlaybackTargetContext& target)
-{
-    if ([PAL::getAVOutputContextClass() conformsToProtocol:@protocol(NSSecureCoding)])
-        encoder << target.avOutputContext();
-}
-
-bool ArgumentCoder<WebCore::MediaPlaybackTargetContext>::decodePlatformData(Decoder& decoder, WebCore::MediaPlaybackTargetContext& target)
-{
-    if (![PAL::getAVOutputContextClass() conformsToProtocol:@protocol(NSSecureCoding)])
-        return false;
-
-    auto context = IPC::decode<AVOutputContext>(decoder, PAL::getAVOutputContextClass());
-    if (!context)
-        return false;
-
-    target = WebCore::MediaPlaybackTargetContext { context->get() };
-    return true;
-}
-
-#endif
-
 #if ENABLE(VIDEO)
 void ArgumentCoder<WebCore::SerializedPlatformDataCueValue>::encodePlatformData(Encoder& encoder, const WebCore::SerializedPlatformDataCueValue& value)
 {
@@ -431,16 +406,16 @@ void ArgumentCoder<WebCore::SerializedPlatformDataCueValue>::encodePlatformData(
         encodeObject(encoder, value.nativeValue().get());
 }
 
-Optional<WebCore::SerializedPlatformDataCueValue>  ArgumentCoder<WebCore::SerializedPlatformDataCueValue>::decodePlatformData(Decoder& decoder, WebCore::SerializedPlatformDataCueValue::PlatformType platformType)
+std::optional<WebCore::SerializedPlatformDataCueValue>  ArgumentCoder<WebCore::SerializedPlatformDataCueValue>::decodePlatformData(Decoder& decoder, WebCore::SerializedPlatformDataCueValue::PlatformType platformType)
 {
     ASSERT(platformType == WebCore::SerializedPlatformDataCueValue::PlatformType::ObjC);
 
     if (platformType != WebCore::SerializedPlatformDataCueValue::PlatformType::ObjC)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto object = decodeObject(decoder, WebCore::SerializedPlatformDataCueMac::allowedClassesForNativeValues());
     if (!object)
-        return WTF::nullopt;
+        return std::nullopt;
 
     return WebCore::SerializedPlatformDataCueValue { platformType, object.value().get() };
 }

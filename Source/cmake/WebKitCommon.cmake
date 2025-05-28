@@ -41,12 +41,17 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
         PlayStation
         WPE
         WinCairo
+        MorphOS
     )
     set(PORT "NOPORT" CACHE STRING "choose which WebKit port to build (one of ${ALL_PORTS})")
 
     list(FIND ALL_PORTS ${PORT} RET)
     if (${RET} EQUAL -1)
-        message(FATAL_ERROR "Please choose which WebKit port to build (one of ${ALL_PORTS})")
+        if (APPLE)
+            set(PORT "Mac")
+        else ()
+            message(FATAL_ERROR "Please choose which WebKit port to build (one of ${ALL_PORTS})")
+        endif ()
     endif ()
 
     string(TOLOWER ${PORT} WEBKIT_PORT_DIR)
@@ -108,6 +113,8 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
         set(WTF_CPU_PPC64 1)
     elseif (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64le")
         set(WTF_CPU_PPC64LE 1)
+    elseif (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64")
+        set(WTF_CPU_RISCV64 1)
     else ()
         set(WTF_CPU_UNKNOWN 1)
     endif ()
@@ -127,6 +134,8 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
         set(WTF_OS_WINDOWS 1)
     elseif (CMAKE_SYSTEM_NAME MATCHES "Fuchsia")
         set(WTF_OS_FUCHSIA 1)
+    elseif (CMAKE_SYSTEM_NAME MATCHES "Generic")
+        set(WTF_OS_LINUX 1)
     else ()
         message(FATAL_ERROR "Unknown OS '${CMAKE_SYSTEM_NAME}'")
     endif ()
@@ -171,8 +180,10 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
     find_package(Perl 5.10.0 REQUIRED)
     find_package(PerlModules COMPONENTS JSON::PP REQUIRED)
 
-    set(Python_ADDITIONAL_VERSIONS 3)
-    find_package(PythonInterp 2.7.0 REQUIRED)
+    # This module looks preferably for version 3 of Python. If not found, version 2 is searched.
+    find_package(Python COMPONENTS Interpreter REQUIRED)
+    # Set the variable with uppercase name to keep compatibility with code and users expecting it.
+    set(PYTHON_EXECUTABLE ${Python_EXECUTABLE} CACHE FILEPATH "Path to the Python interpreter")
 
     # We cannot check for RUBY_FOUND because it is set only when the full package is installed and
     # the only thing we need is the interpreter. Unlike Python, cmake does not provide a macro
@@ -232,20 +243,24 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
     # Create derived sources directories
     # -----------------------------------------------------------------------------
 
+    file(MAKE_DIRECTORY ${WTF_DERIVED_SOURCES_DIR})
+    file(MAKE_DIRECTORY ${JavaScriptCore_DERIVED_SOURCES_DIR})
+
     if (ENABLE_WEBCORE)
-        file(MAKE_DIRECTORY ${DERIVED_SOURCES_WEBCORE_DIR})
+        file(MAKE_DIRECTORY ${PAL_DERIVED_SOURCES_DIR})
+        file(MAKE_DIRECTORY ${WebCore_DERIVED_SOURCES_DIR})
     endif ()
 
     if (ENABLE_WEBKIT)
-        file(MAKE_DIRECTORY ${DERIVED_SOURCES_WEBKIT_DIR})
+        file(MAKE_DIRECTORY ${WebKit_DERIVED_SOURCES_DIR})
     endif ()
 
     if (ENABLE_WEBKIT_LEGACY)
-        file(MAKE_DIRECTORY ${DERIVED_SOURCES_WEBKITLEGACY_DIR})
+        file(MAKE_DIRECTORY ${WebKitLegacy_DERIVED_SOURCES_DIR})
     endif ()
 
     if (ENABLE_WEBDRIVER)
-        file(MAKE_DIRECTORY ${DERIVED_SOURCES_WEBDRIVER_DIR})
+        file(MAKE_DIRECTORY ${WebDriver_DERIVED_SOURCES_DIR})
     endif ()
 
     # -----------------------------------------------------------------------------

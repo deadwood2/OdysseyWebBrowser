@@ -769,7 +769,7 @@ static void testWebViewPageVisibility(WebViewTest* test, gconstpointer)
 
     // Show the page. The visibility should be updated to 'visible'.
     test->showInWindow();
-    test->waitUntilTitleChanged();
+    test->waitUntilTitleChangedTo("visible");
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("document.visibilityState;", &error.outPtr());
     g_assert_nonnull(javascriptResult);
@@ -784,7 +784,7 @@ static void testWebViewPageVisibility(WebViewTest* test, gconstpointer)
 
     // Hide the page. The visibility should be updated to 'hidden'.
     test->hideView();
-    test->waitUntilTitleChanged();
+    test->waitUntilTitleChangedTo("hidden");
 
     javascriptResult = test->runJavaScriptAndWaitUntilFinished("document.visibilityState;", &error.outPtr());
     g_assert_nonnull(javascriptResult);
@@ -796,6 +796,42 @@ static void testWebViewPageVisibility(WebViewTest* test, gconstpointer)
     g_assert_nonnull(javascriptResult);
     g_assert_no_error(error.get());
     g_assert_true(WebViewTest::javascriptResultToBoolean(javascriptResult));
+}
+
+static void testWebViewDocumentFocus(WebViewTest* test, gconstpointer)
+{
+    if (!g_strcmp0(g_getenv("UNDER_XVFB"), "yes")) {
+        g_test_skip("This tests doesn't work under Xvfb");
+        return;
+    }
+
+    test->showInWindow();
+    test->loadHtml("<html><title></title>"
+        "<body onload='document.getElementById(\"editable\").focus()'>"
+        "<input id='editable'></input>"
+        "<script>"
+        "document.addEventListener(\"visibilitychange\", onVisibilityChange, false);"
+        "function onVisibilityChange() {"
+        "    document.title = document.visibilityState;"
+        "}"
+        "</script>"
+        "</body></html>",
+        nullptr);
+    test->waitUntilLoadFinished();
+
+    GUniqueOutPtr<GError> error;
+    WebKitJavascriptResult* javascriptResult = test->runJavaScriptAndWaitUntilFinished("document.hasFocus();", &error.outPtr());
+    g_assert_nonnull(javascriptResult);
+    g_assert_no_error(error.get());
+    g_assert_true(WebViewTest::javascriptResultToBoolean(javascriptResult));
+
+    // Hide the view to make it lose the focus, the window is still the active one though.
+    test->hideView();
+    test->waitUntilTitleChangedTo("hidden");
+    javascriptResult = test->runJavaScriptAndWaitUntilFinished("document.hasFocus();", &error.outPtr());
+    g_assert_nonnull(javascriptResult);
+    g_assert_no_error(error.get());
+    g_assert_false(WebViewTest::javascriptResultToBoolean(javascriptResult));
 }
 
 #if PLATFORM(GTK)
@@ -1177,6 +1213,39 @@ static void testWebViewAutoplayPolicy(WebViewTest* test, gconstpointer)
     g_assert_cmpint(webkit_website_policies_get_autoplay_policy(policies), ==, WEBKIT_AUTOPLAY_ALLOW_WITHOUT_SOUND);
 }
 
+static void testWebViewIsWebProcessResponsive(WebViewTest* test, gconstpointer)
+{
+    static const char* hangHTML =
+        "<html>"
+        " <body>"
+        "  <script>"
+        "   setTimeout(function() {"
+        "    var start = new Date().getTime();"
+        "    var end = start;"
+        "     while(end < start + 4000) {"
+        "      end = new Date().getTime();"
+        "     }"
+        "    }, 500);"
+        "  </script>"
+        " </body>"
+        "</html>";
+
+    g_assert_true(webkit_web_view_get_is_web_process_responsive(test->m_webView));
+    test->loadHtml(hangHTML, nullptr);
+    test->waitUntilLoadFinished();
+    // Wait 1 second, so the js while loop kicks in and blocks the web process. Then try to load a new
+    // page. As the web process is busy this won't work, and after 3 seconds the web process will be marked
+    // as unresponsive.
+    test->wait(1);
+    test->loadHtml("<html></html>", nullptr);
+    test->waitUntilIsWebProcessResponsiveChanged();
+    g_assert_false(webkit_web_view_get_is_web_process_responsive(test->m_webView));
+    // 500ms after the web process is marked as unresponsive, the js while loop will finish and the process
+    // will be responsive again, finishing the pending load.
+    test->waitUntilLoadFinished();
+    g_assert_true(webkit_web_view_get_is_web_process_responsive(test->m_webView));
+}
+
 static void testWebViewBackgroundColor(WebViewTest* test, gconstpointer)
 {
 #if PLATFORM(GTK)
@@ -1404,7 +1473,7 @@ public:
     void handleStart(uint32_t id, int32_t channels, const char* layout, int32_t sampleRate)
     {
         g_assert(m_state == RenderingState::Unknown);
-        g_assert_false(m_streamId.hasValue());
+        g_assert_false(m_streamId.has_value());
         g_assert_cmpuint(id, ==, 0);
         m_streamId = id;
         m_state = RenderingState::Started;
@@ -1480,7 +1549,7 @@ public:
 private:
     static const struct wpe_audio_receiver m_audioReceiver;
     RenderingState m_state { RenderingState::Unknown };
-    Optional<uint32_t> m_streamId;
+    std::optional<uint32_t> m_streamId;
 };
 
 const struct wpe_audio_receiver AudioRenderingWebViewTest::m_audioReceiver = {
@@ -1510,6 +1579,123 @@ static void testWebViewExternalAudioRendering(AudioRenderingWebViewTest* test, g
     g_assert(test->state() == RenderingState::Stopped);
 }
 #endif
+
+class WebViewTerminateWebProcessTest: public WebViewTest {
+public:
+    MAKE_GLIB_TEST_FIXTURE(WebViewTerminateWebProcessTest);
+
+    static void webProcessTerminatedCallback(WebKitWebView* webView, WebKitWebProcessTerminationReason reason, WebViewTerminateWebProcessTest* test)
+    {
+        test->m_terminationReason = reason;
+    }
+
+    WebViewTerminateWebProcessTest()
+    {
+        g_signal_connect_after(m_webView, "web-process-terminated", G_CALLBACK(WebViewTerminateWebProcessTest::webProcessTerminatedCallback), this);
+    }
+
+    ~WebViewTerminateWebProcessTest()
+    {
+        g_signal_handlers_disconnect_by_data(m_webView, this);
+    }
+
+    WebKitWebProcessTerminationReason m_terminationReason { WEBKIT_WEB_PROCESS_CRASHED };
+};
+
+static void testWebViewTerminateWebProcess(WebViewTerminateWebProcessTest* test, gconstpointer)
+{
+    test->loadHtml("<html></html>", nullptr);
+    test->waitUntilLoadFinished();
+    test->m_expectedWebProcessCrash = true;
+    webkit_web_view_terminate_web_process(test->m_webView);
+    g_assert_cmpuint(test->m_terminationReason, ==, WEBKIT_WEB_PROCESS_TERMINATED_BY_API);
+    g_assert_true(webkit_web_view_get_is_web_process_responsive(test->m_webView));
+}
+
+static void testWebViewTerminateUnresponsiveWebProcess(WebViewTerminateWebProcessTest* test, gconstpointer)
+{
+    static const char* hangHTML =
+        "<html>"
+        " <body>"
+        "  <script>"
+        "   setTimeout(function() {"
+        "     while(true) { }"
+        "    }, 500);"
+        "  </script>"
+        " </body>"
+        "</html>";
+
+    test->loadHtml(hangHTML, nullptr);
+    test->waitUntilLoadFinished();
+    g_assert_true(webkit_web_view_get_is_web_process_responsive(test->m_webView));
+    // Wait 1 second, so the js while loop kicks in and blocks the web process, and try to load a new page.
+    // As the web process is busy this won't work, and after 3 seconds the web process will be marked
+    // as unresponsive.
+    test->wait(1);
+    test->loadHtml("<html></html>", nullptr);
+    test->waitUntilIsWebProcessResponsiveChanged();
+    g_assert_false(webkit_web_view_get_is_web_process_responsive(test->m_webView));
+
+    // Now that the process is unresponsive, terminate it.
+    test->m_expectedWebProcessCrash = true;
+    test->m_terminationReason = WEBKIT_WEB_PROCESS_CRASHED;
+    webkit_web_view_terminate_web_process(test->m_webView);
+    g_assert_cmpuint(test->m_terminationReason, ==, WEBKIT_WEB_PROCESS_TERMINATED_BY_API);
+    g_assert_true(webkit_web_view_get_is_web_process_responsive(test->m_webView));
+}
+
+static void testWebViewCORSAllowlist(WebViewTest* test, gconstpointer)
+{
+    webkit_web_context_register_uri_scheme(test->m_webContext.get(), "foo",
+        [](WebKitURISchemeRequest* request, gpointer userData) {
+            GRefPtr<GInputStream> inputStream = adoptGRef(g_memory_input_stream_new());
+            const char* data = "<p>foobar!</p>";
+            g_memory_input_stream_add_data(G_MEMORY_INPUT_STREAM(inputStream.get()), data, strlen(data), nullptr);
+            webkit_uri_scheme_request_finish(request, inputStream.get(), strlen(data), "text/html");
+        }, nullptr, nullptr);
+
+    char html[] = "<html><script>let foo = 0; fetch('foo://bar/baz').then(response => { foo = response.status; }).catch(err => { foo = -1; });</script></html>";
+
+    auto waitForFooChanged = [&test]() {
+        GUniqueOutPtr<GError> error;
+        WebKitJavascriptResult* result;
+        JSCValue* jscvalue;
+        int value;
+        do {
+            result = test->runJavaScriptAndWaitUntilFinished("foo;", &error.outPtr());
+            g_assert_no_error(error.get());
+            jscvalue = webkit_javascript_result_get_js_value(result);
+            value = jsc_value_to_int32(jscvalue);
+            webkit_javascript_result_unref(result);
+        } while (!value);
+        return value;
+    };
+
+    // Request is not allowed, foo should be 0.
+    webkit_web_view_load_html(test->m_webView, html, "http://example.com");
+    test->waitUntilLoadFinished();
+    g_assert_cmpint(waitForFooChanged(), ==, -1);
+
+    // Allowlisting host alone does not work. Path is also required. foo should remain 0.
+    GUniquePtr<char*> allowlist(g_new(char*, 2));
+    allowlist.get()[0] = g_strdup("foo://*");
+    allowlist.get()[1] = nullptr;
+    webkit_web_view_set_cors_allowlist(test->m_webView, allowlist.get());
+
+    webkit_web_view_load_html(test->m_webView, html, "http://example.com");
+    test->waitUntilLoadFinished();
+    g_assert_cmpint(waitForFooChanged(), ==, -1);
+
+    // Finally let's properly allow our scheme. foo should now change to 42 when the request succeeds.
+    allowlist.reset(g_new(char*, 2));
+    allowlist.get()[0] = g_strdup("foo://*/*");
+    allowlist.get()[1] = nullptr;
+    webkit_web_view_set_cors_allowlist(test->m_webView, allowlist.get());
+
+    webkit_web_view_load_html(test->m_webView, html, "http://example.com");
+    test->waitUntilLoadFinished();
+    g_assert_cmpint(waitForFooChanged(), ==, 200);
+}
 
 #if USE(SOUP2)
 static void serverCallback(SoupServer* server, SoupMessage* message, const char* path, GHashTable*, SoupClientContext*, gpointer)
@@ -1559,6 +1745,7 @@ void beforeAll()
     SnapshotWebViewTest::add("WebKitWebView", "snapshot", testWebViewSnapshot);
 #endif
     WebViewTest::add("WebKitWebView", "page-visibility", testWebViewPageVisibility);
+    WebViewTest::add("WebKitWebView", "document-focus", testWebViewDocumentFocus);
 #if ENABLE(NOTIFICATIONS)
     NotificationWebViewTest::add("WebKitWebView", "notification", testWebViewNotification);
     NotificationWebViewTest::add("WebKitWebView", "notification-initial-permission-allowed", testWebViewNotificationInitialPermissionAllowed);
@@ -1578,6 +1765,10 @@ void beforeAll()
 #if PLATFORM(WPE) && USE(WPEBACKEND_FDO_AUDIO_EXTENSION)
     AudioRenderingWebViewTest::add("WebKitWebView", "external-audio-rendering", testWebViewExternalAudioRendering);
 #endif
+    WebViewTest::add("WebKitWebView", "is-web-process-responsive", testWebViewIsWebProcessResponsive);
+    WebViewTerminateWebProcessTest::add("WebKitWebView", "terminate-web-process", testWebViewTerminateWebProcess);
+    WebViewTerminateWebProcessTest::add("WebKitWebView", "terminate-unresponsive-web-process", testWebViewTerminateUnresponsiveWebProcess);
+    WebViewTest::add("WebKitWebView", "cors-allowlist", testWebViewCORSAllowlist);
 }
 
 void afterAll()

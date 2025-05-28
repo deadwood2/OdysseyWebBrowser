@@ -176,13 +176,10 @@ RetainPtr<SecIdentityRef> testIdentity2()
     "JAH2nxKGuqtAK2hWbACu61RT5gAqAv/hB9JYnc2OiQ2VmjYkOk2GEdIjn0xSgX7W"
     "mI/hHbxKMG3Rkv9q1Cx+WB/v1t8=");
 
-    Vector<uint8_t> privateKeyBytes;
-    base64Decode(pemEncodedPrivateKey, privateKeyBytes, WTF::Base64DecodeOptions::Base64Default);
+    auto privateKeyBytes = base64Decode(pemEncodedPrivateKey);
+    auto certificateBytes = base64Decode(pemEncodedCertificate);
 
-    Vector<uint8_t> certificateBytes;
-    base64Decode(pemEncodedCertificate, certificateBytes, WTF::Base64DecodeOptions::Base64Default);
-
-    return createTestIdentity(privateKeyBytes, certificateBytes);
+    return createTestIdentity(WTFMove(*privateKeyBytes), WTFMove(*certificateBytes));
 }
 
 static RetainPtr<NSURLCredential> credentialWithIdentity()
@@ -427,7 +424,12 @@ static void verifyCertificateAndPublicKey(SecTrustRef trust)
     });
     
     EXPECT_EQ(1, SecTrustGetCertificateCount(trust));
+
+#if HAVE(SEC_TRUST_COPY_CERTIFICATE_CHAIN)
+    auto certificate = adoptCF((CFDataRef)CFArrayGetValueAtIndex(adoptCF(SecTrustCopyCertificateChain(trust)).get(), 0));
+#else
     auto certificate = adoptCF(SecCertificateCopyData(SecTrustGetCertificateAtIndex(trust, 0)));
+#endif
     compareData(certificate, {
         0x30, 0x82, 0x02, 0x58, 0x30, 0x82, 0x01, 0xc1, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x09, 0x00,
         0xfb, 0xb0, 0x4c, 0x2e, 0xab, 0x10, 0x9b, 0x0c, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86,
@@ -551,7 +553,7 @@ TEST(WebKit, FastServerTrust)
 #else
     TCPServer server(TCPServer::Protocol::HTTPS, [](SSL* ssl) {
         EXPECT_FALSE(ssl);
-    }, WTF::nullopt, 2);
+    }, std::nullopt, 2);
 #endif
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     auto dataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
@@ -592,119 +594,6 @@ TEST(WebKit, ErrorSecureCoding)
     EXPECT_WK_STREQ(decodedError.domain, NSURLErrorDomain);
     EXPECT_WK_STREQ(NSStringFromClass([decodedError.userInfo[_WKRecoveryAttempterErrorKey] class]), @"WKReloadFrameErrorRecoveryAttempter");
 }
-
-// FIXME: Find out why these tests time out on Mojave.
-#if !PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
-
-static HTTPServer clientCertServer()
-{
-    Vector<LChar> chars(50000, 'a');
-    String longString(chars.data(), chars.size());
-    return HTTPServer({
-        { "/", { "<html><img src='1.png'/><img src='2.png'/><img src='3.png'/><img src='4.png'/><img src='5.png'/><img src='6.png'/></html>" } },
-        { "/1.png", { longString } },
-        { "/2.png", { longString } },
-        { "/3.png", { longString } },
-        { "/4.png", { longString } },
-        { "/5.png", { longString } },
-        { "/6.png", { longString } },
-        { "/redirectToError", { 301, {{ "Location", "/error" }} } },
-        { "/error", { HTTPResponse::TerminateConnection::Yes } },
-    }, HTTPServer::Protocol::Https, [] (auto, auto, auto certificateAllowed) {
-        certificateAllowed(true);
-    });
-}
-
-static BlockPtr<void(WKWebView *, NSURLAuthenticationChallenge *, void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))> challengeHandler(Vector<RetainPtr<NSString>>& vector)
-{
-    return makeBlockPtr([&] (WKWebView *webView, NSURLAuthenticationChallenge *challenge, void (^completionHandler)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)) {
-        NSString *method = challenge.protectionSpace.authenticationMethod;
-        vector.append(method);
-        if ([method isEqualToString:NSURLAuthenticationMethodClientCertificate])
-            return completionHandler(NSURLSessionAuthChallengeUseCredential, credentialWithIdentity().get());
-        if ([method isEqualToString:NSURLAuthenticationMethodServerTrust])
-            return completionHandler(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
-        ASSERT_NOT_REACHED();
-    }).get();
-}
-
-static size_t countClientCertChallenges(Vector<RetainPtr<NSString>>& vector)
-{
-    vector.removeAllMatching([](auto& method) {
-        return ![method isEqualToString:NSURLAuthenticationMethodClientCertificate];
-    });
-    return vector.size();
-};
-
-TEST(MultipleClientCertificateConnections, Basic)
-{
-    auto server = clientCertServer();
-
-    Vector<RetainPtr<NSString>> methods;
-    auto delegate = adoptNS([TestNavigationDelegate new]);
-    delegate.get().didReceiveAuthenticationChallenge = challengeHandler(methods).get();
-
-    auto webView = adoptNS([WKWebView new]);
-    [webView setNavigationDelegate:delegate.get()];
-    [webView loadRequest:server.request()];
-    [delegate waitForDidFinishNavigation];
-    EXPECT_EQ(countClientCertChallenges(methods), 1u);
-}
-
-TEST(MultipleClientCertificateConnections, Redirect)
-{
-    auto server = clientCertServer();
-
-    Vector<RetainPtr<NSString>> methods;
-    auto delegate = adoptNS([TestNavigationDelegate new]);
-    delegate.get().didReceiveAuthenticationChallenge = challengeHandler(methods).get();
-
-    auto webView = adoptNS([WKWebView new]);
-    [webView setNavigationDelegate:delegate.get()];
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/redirectToError", server.port()]]]];
-    [delegate waitForDidFailProvisionalNavigation];
-    EXPECT_EQ(countClientCertChallenges(methods), 1u);
-    [webView loadRequest:server.request()];
-    [delegate waitForDidFinishNavigation];
-    EXPECT_EQ(countClientCertChallenges(methods), 1u);
-}
-
-TEST(MultipleClientCertificateConnections, Failure)
-{
-    auto server = clientCertServer();
-
-    Vector<RetainPtr<NSString>> methods;
-    auto delegate = adoptNS([TestNavigationDelegate new]);
-    delegate.get().didReceiveAuthenticationChallenge = challengeHandler(methods).get();
-
-    auto webView = adoptNS([WKWebView new]);
-    [webView setNavigationDelegate:delegate.get()];
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/error", server.port()]]]];
-    [delegate waitForDidFailProvisionalNavigation];
-    size_t certChallengesAfterInitialFailure = countClientCertChallenges(methods);
-    [webView loadRequest:server.request()];
-    [delegate waitForDidFinishNavigation];
-    EXPECT_EQ(countClientCertChallenges(methods), certChallengesAfterInitialFailure);
-}
-
-TEST(MultipleClientCertificateConnections, NonPersistentDataStore)
-{
-    auto server = clientCertServer();
-
-    Vector<RetainPtr<NSString>> methods;
-    auto delegate = adoptNS([TestNavigationDelegate new]);
-    delegate.get().didReceiveAuthenticationChallenge = challengeHandler(methods).get();
-
-    auto configuration = adoptNS([WKWebViewConfiguration new]);
-    [configuration setWebsiteDataStore:[WKWebsiteDataStore nonPersistentDataStore]];
-    auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]);
-    [webView setNavigationDelegate:delegate.get()];
-    [webView loadRequest:server.request()];
-    [delegate waitForDidFinishNavigation];
-    EXPECT_EQ(countClientCertChallenges(methods), 1u);
-}
-
-#endif // !PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
 
 } // namespace TestWebKitAPI
 

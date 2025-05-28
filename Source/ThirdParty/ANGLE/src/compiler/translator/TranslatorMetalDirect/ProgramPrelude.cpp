@@ -40,8 +40,27 @@ class ProgramPrelude : public TIntermTraverser
             equalMatrix();
         }
 
+        switch (ppc.shaderType)
+        {
+            case MetalShaderType::None:
+                ASSERT(0 && "ppc.shaderType should not be ShaderTypeNone");
+                break;
+            case MetalShaderType::Vertex:
+                transform_feedback_guard();
+                break;
+            case MetalShaderType::Fragment:
+                writeSampleMask();
+                break;
+            case MetalShaderType::Compute:
+                ASSERT(0 && "compute shaders not currently supported");
+                break;
+            default:
+                break;
+        }
+
 #if 1
         mOut << "#define ANGLE_tensor metal::array\n";
+        mOut << "#pragma clang diagnostic ignored \"-Wunused-value\"\n";
 #else
         tensor();
 #endif
@@ -63,7 +82,8 @@ class ProgramPrelude : public TIntermTraverser
     void visitOperator(TOperator op,
                        const TFunction *func,
                        const TType *argType0,
-                       const TType *argType1 = nullptr);
+                       const TType *argType1 = nullptr,
+                       const TType *argType2 = nullptr);
     void visitVariable(const Name &name, const TType &type);
     void visitVariable(const TVariable &var);
     void visitStructure(const TStructure &s);
@@ -86,6 +106,8 @@ class ProgramPrelude : public TIntermTraverser
     void include_metal_pack();
     void include_metal_relational();
 
+    void transform_feedback_guard();
+
     void enable_if();
     void scalar_of();
     void is_scalar();
@@ -102,6 +124,7 @@ class ProgramPrelude : public TIntermTraverser
     void degrees();
     void radians();
     void mod();
+    void mixBool();
     void postIncrementMatrix();
     void preIncrementMatrix();
     void postDecrementMatrix();
@@ -130,8 +153,10 @@ class ProgramPrelude : public TIntermTraverser
     void equalMatrix();
     void notEqualVector();
     void notEqualStruct();
+    void notEqualStructArray();
     void notEqualMatrix();
     void equalArray();
+    void equalStructArray();
     void notEqualArray();
     void sign();
     void pack_half_2x16();
@@ -145,6 +170,7 @@ class ProgramPrelude : public TIntermTraverser
     void castMatrix();
     void functionConstants();
     void gradient();
+    void writeSampleMask();
     void textureEnv();
     void texelFetch();
     void texelFetchOffset();
@@ -265,7 +291,14 @@ PROGRAM_PRELUDE_INCLUDE(metal_matrix)
 PROGRAM_PRELUDE_INCLUDE(metal_pack)
 PROGRAM_PRELUDE_INCLUDE(metal_relational)
 
-////////////////////////////////////////////////////////////////////////////////
+PROGRAM_PRELUDE_DECLARE(transform_feedback_guard, R"(
+#if TRANSFORM_FEEDBACK_ENABLED
+    #define __VERTEX_OUT(args) void
+#else
+    #define __VERTEX_OUT(args) args
+#endif
+)")
+
 
 PROGRAM_PRELUDE_DECLARE(ALWAYS_INLINE, R"(
 #define ANGLE_ALWAYS_INLINE __attribute__((always_inline))
@@ -693,6 +726,18 @@ ANGLE_ALWAYS_INLINE X ANGLE_mod(X x, Y y)
 )",
                         include_metal_math())
 
+PROGRAM_PRELUDE_DECLARE(mixBool,
+                        R"(
+                        
+template <typename T, int N>
+ANGLE_ALWAYS_INLINE metal::vec<T,N> ANGLE_mix_bool(metal::vec<T, N> a, metal::vec<T, N> b, metal::vec<bool, N> c)
+{
+    return metal::mix(a, b, static_cast<metal::vec<T,N>>(c));
+}
+)",
+                        include_metal_common())
+
+
 PROGRAM_PRELUDE_DECLARE(pack_half_2x16,
                         R"(
 ANGLE_ALWAYS_INLINE uint ANGLE_pack_half_2x16(float2 v)
@@ -710,8 +755,8 @@ ANGLE_ALWAYS_INLINE float2 ANGLE_unpack_half_2x16(uint x)
 )", )
 
 PROGRAM_PRELUDE_DECLARE(matmulAssign, R"(
-template <typename T, int N>
-ANGLE_ALWAYS_INLINE thread metal::matrix<T, N, N> &operator*=(thread metal::matrix<T, N, N> &a, metal::matrix<T, N, N> b)
+template <typename T, int Cols, int Rows>
+ANGLE_ALWAYS_INLINE thread metal::matrix<T, Cols, Rows> &operator*=(thread metal::matrix<T, Cols, Rows> &a, metal::matrix<T, Cols, Cols> b)
 {
     a = a * b;
     return a;
@@ -1029,6 +1074,22 @@ ANGLE_ALWAYS_INLINE bool ANGLE_equal(metal::array<T, N> u, metal::array<T, N> v)
 }
 )")
 
+PROGRAM_PRELUDE_DECLARE(equalStructArray,
+                        R"(
+template <typename T, size_t N>
+ANGLE_ALWAYS_INLINE bool ANGLE_equalStructArray(metal::array<T, N> u, metal::array<T, N> v)
+{
+    for(size_t i = 0; i < N; i++)
+    {
+        if (ANGLE_equal(u[i], v[i]) == false) 
+            return false;
+    }
+    return true;
+}
+)")
+
+
+
 PROGRAM_PRELUDE_DECLARE(notEqualArray,
                         R"(
 template <typename T, size_t N>
@@ -1066,6 +1127,15 @@ ANGLE_ALWAYS_INLINE bool ANGLE_equal(metal::matrix<T, C, R> a, metal::matrix<T, 
 )",
                         equalVector())
 
+PROGRAM_PRELUDE_DECLARE(notEqualMatrix,
+                        R"(
+template <typename T, int C, int R>
+ANGLE_ALWAYS_INLINE bool ANGLE_notEqual(metal::matrix<T, C, R> u, metal::matrix<T, C, R> v)
+{
+    return !ANGLE_equal(u, v);
+}
+)",
+                        equalMatrix())
 
 PROGRAM_PRELUDE_DECLARE(notEqualVector,
                         R"(
@@ -1077,17 +1147,6 @@ ANGLE_ALWAYS_INLINE bool ANGLE_notEqual(metal::vec<T, N> u, metal::vec<T, N> v)
 )",
                         equalVector())
 
-PROGRAM_PRELUDE_DECLARE(notEqualMatrix,
-                        R"(
-template <typename T, int C, int R>
-ANGLE_ALWAYS_INLINE bool ANGLE_notEqual(metal::matrix<T, C, R> u, metal::matrix<T, C, R> v)
-{
-    return !ANGLE_equal(u, v);
-}
-)",
-                        equalMatrix())
-
-
 PROGRAM_PRELUDE_DECLARE(notEqualStruct,
                         R"(
 template <typename T>
@@ -1098,6 +1157,21 @@ ANGLE_ALWAYS_INLINE bool ANGLE_notEqualStruct(thread const T &a, thread const T 
 )",
                         equalVector(),
                         equalMatrix())
+
+PROGRAM_PRELUDE_DECLARE(notEqualStructArray,
+                        R"(
+template <typename T, size_t N>
+ANGLE_ALWAYS_INLINE bool ANGLE_notEqualStructArray(metal::array<T, N> u, metal::array<T, N> v)
+{
+    for(size_t i = 0; i < N; i++)
+    {
+        if (ANGLE_notEqualStruct(u[i], v[i]))
+            return true;
+    }
+    return false;
+}
+)",
+                        notEqualStruct())
 
 PROGRAM_PRELUDE_DECLARE(vectorElemRef, R"(
 template <typename T, int N>
@@ -1135,7 +1209,7 @@ struct ANGLE_SwizzleRef
             mVec[j] = mRef[i];
         }
     }
-    ANGLE_SwizzleRef(thread metal::vec<T, N> &vec, thread const int *indices)
+    ANGLE_SwizzleRef(thread metal::vec<T, VN> &vec, thread const int *indices)
         : mVec(vec)
     {
         for (int i = 0; i < SN; ++i)
@@ -1150,7 +1224,8 @@ struct ANGLE_SwizzleRef
 template <typename T, int N>
 ANGLE_ALWAYS_INLINE ANGLE_VectorElemRef<T, N> ANGLE_swizzle_ref(thread metal::vec<T, N> &vec, int i0)
 {
-    return ANGLE_VectorElemRef<T, N>(vec, index);
+    const int is[] = { i0 };
+    return ANGLE_VectorElemRef<T, N>(vec, is);
 }
 template <typename T, int N>
 ANGLE_ALWAYS_INLINE ANGLE_SwizzleRef<T, N, 2> ANGLE_swizzle_ref(thread metal::vec<T, N> &vec, int i0, int i1)
@@ -1181,7 +1256,7 @@ struct ANGLE_Out
     thread T &mDest;
     ~ANGLE_Out() { mDest = mTemp; }
     ANGLE_Out(thread T &dest)
-        : mDest(dest)
+        : mTemp(dest), mDest(dest)
     {}
     operator thread T &() { return mTemp; }
 };
@@ -1241,7 +1316,7 @@ struct ANGLE_castVector {};
 template <typename T, int N>
 struct ANGLE_castVector<T, N, N>
 {
-    static ANGLE_ALWAYS_INLINE metal::vec<T, N> exec(thread metal::vec<T, N> const &v)
+    static ANGLE_ALWAYS_INLINE metal::vec<T, N> exec(metal::vec<T, N> const v)
     {
         return v;
     }
@@ -1249,7 +1324,7 @@ struct ANGLE_castVector<T, N, N>
 template <typename T>
 struct ANGLE_castVector<T, 2, 3>
 {
-    static ANGLE_ALWAYS_INLINE metal::vec<T, 2> exec(thread metal::vec<T, 3> const &v)
+    static ANGLE_ALWAYS_INLINE metal::vec<T, 2> exec(metal::vec<T, 3> const v)
     {
         return v.xy;
     }
@@ -1257,7 +1332,7 @@ struct ANGLE_castVector<T, 2, 3>
 template <typename T>
 struct ANGLE_castVector<T, 2, 4>
 {
-    static ANGLE_ALWAYS_INLINE metal::vec<T, 2> exec(thread metal::vec<T, 4> const &v)
+    static ANGLE_ALWAYS_INLINE metal::vec<T, 2> exec(metal::vec<T, 4> const v)
     {
         return v.xy;
     }
@@ -1265,13 +1340,13 @@ struct ANGLE_castVector<T, 2, 4>
 template <typename T>
 struct ANGLE_castVector<T, 3, 4>
 {
-    static ANGLE_ALWAYS_INLINE metal::vec<T, 3> exec(thread metal::vec<T, 4> const &v)
+    static ANGLE_ALWAYS_INLINE metal::vec<T, 3> exec(metal::vec<T, 4> const v)
     {
         return as_type<metal::vec<T, 3>>(v);
     }
 };
 template <int N1, int N2, typename T>
-ANGLE_ALWAYS_INLINE metal::vec<T, N1> ANGLE_cast(thread metal::vec<T, N2> const &v)
+ANGLE_ALWAYS_INLINE metal::vec<T, N1> ANGLE_cast(metal::vec<T, N2> const v)
 {
     return ANGLE_castVector<T, N1, N2>::exec(v);
 }
@@ -1282,7 +1357,7 @@ PROGRAM_PRELUDE_DECLARE(castMatrix,
 template <typename T, int C1, int R1, int C2, int R2, typename Enable = void>
 struct ANGLE_castMatrix
 {
-    static ANGLE_ALWAYS_INLINE metal::matrix<T, C1, R1> exec(thread metal::matrix<T, C2, R2> const &m2)
+    static ANGLE_ALWAYS_INLINE metal::matrix<T, C1, R1> exec(metal::matrix<T, C2, R2> const m2)
     {
         metal::matrix<T, C1, R1> m1;
         const int MinC = C1 <= C2 ? C1 : C2;
@@ -1311,7 +1386,7 @@ struct ANGLE_castMatrix
 template <typename T, int C1, int R1, int C2, int R2>
 struct ANGLE_castMatrix<T, C1, R1, C2, R2, ANGLE_enable_if_t<(C1 <= C2 && R1 <= R2)>>
 {
-    static ANGLE_ALWAYS_INLINE metal::matrix<T, C1, R1> exec(thread metal::matrix<T, C2, R2> const &m2)
+    static ANGLE_ALWAYS_INLINE metal::matrix<T, C1, R1> exec(metal::matrix<T, C2, R2> const m2)
     {
         metal::matrix<T, C1, R1> m1;
         for (size_t c = 0; c < C1; ++c)
@@ -1322,7 +1397,7 @@ struct ANGLE_castMatrix<T, C1, R1, C2, R2, ANGLE_enable_if_t<(C1 <= C2 && R1 <= 
     }
 };
 template <int C1, int R1, int C2, int R2, typename T>
-ANGLE_ALWAYS_INLINE metal::matrix<T, C1, R1> ANGLE_cast(thread metal::matrix<T, C2, R2> const &m)
+ANGLE_ALWAYS_INLINE metal::matrix<T, C1, R1> ANGLE_cast(metal::matrix<T, C2, R2> const m)
 {
     return ANGLE_castMatrix<T, C1, R1, C2, R2>::exec(m);
 };
@@ -1379,6 +1454,19 @@ template <int N>
 using ANGLE_gradient = typename ANGLE_gradient_traits<N>::type;
 )")
 
+PROGRAM_PRELUDE_DECLARE(writeSampleMask,
+                        R"(
+ANGLE_ALWAYS_INLINE void ANGLE_writeSampleMask(const uint mask,
+                                               thread uint& gl_SampleMask)
+{
+    if (ANGLE_CoverageMaskEnabled)
+    {
+        gl_SampleMask = as_type<int>(mask);
+    }
+}
+)",
+                        functionConstants())
+
 PROGRAM_PRELUDE_DECLARE(textureEnv,
                         R"(
 template <typename T>
@@ -1394,10 +1482,12 @@ PROGRAM_PRELUDE_DECLARE(functionConstants,
 #define ANGLE_SAMPLE_COMPARE_GRADIENT_INDEX 0
 #define ANGLE_SAMPLE_COMPARE_LOD_INDEX      1
 #define ANGLE_RASTERIZATION_DISCARD_INDEX   2
+#define ANGLE_COVERAGE_MASK_ENABLED_INDEX   3
 
 constant bool ANGLE_UseSampleCompareGradient [[function_constant(ANGLE_SAMPLE_COMPARE_GRADIENT_INDEX)]];
 constant bool ANGLE_UseSampleCompareLod      [[function_constant(ANGLE_SAMPLE_COMPARE_LOD_INDEX)]];
 constant bool ANGLE_RasterizationDiscard     [[function_constant(ANGLE_RASTERIZATION_DISCARD_INDEX)]];
+constant bool ANGLE_CoverageMaskEnabled      [[function_constant(ANGLE_COVERAGE_MASK_ENABLED_INDEX)]];
 )")
 
 PROGRAM_PRELUDE_DECLARE(texelFetch,
@@ -1407,7 +1497,7 @@ PROGRAM_PRELUDE_DECLARE(texelFetch,
 template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texelFetch_impl(
     thread Texture &texture,
-    thread metal::int2 const &coord,
+    metal::int2 const coord,
     uint level)
 {
     return texture.read(uint2(coord), level);
@@ -1416,7 +1506,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_texelFetch_impl(
 template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texelFetch_impl(
     thread Texture &texture,
-    thread metal::int3 const &coord,
+    metal::int3 const coord,
     uint level)
 {
     return texture.read(uint3(coord), level);
@@ -1425,7 +1515,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_texelFetch_impl(
 template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texelFetch_impl(
     thread metal::texture2d_array<T> &texture,
-    thread metal::int3 const &coord,
+    metal::int3 const coord,
     uint level)
 {
     return texture.read(uint2(coord.xy), uint(coord.z), level);
@@ -1440,9 +1530,9 @@ PROGRAM_PRELUDE_DECLARE(texelFetchOffset,
 template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texelFetchOffset_impl(
     thread Texture &texture,
-    thread metal::int2 const &coord,
+    metal::int2 const coord,
     uint level,
-    thread metal::int2 const &offset)
+    metal::int2 const offset)
 {
     return texture.read(uint2(coord + offset), level);
 }
@@ -1450,9 +1540,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_texelFetchOffset_impl(
 template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texelFetchOffset_impl(
     thread Texture &texture,
-    thread metal::int3 const &coord,
+    metal::int3 const coord,
     uint level,
-    thread metal::int3 const &offset)
+    metal::int3 const offset)
 {
     return texture.read(uint3(coord + offset), level);
 }
@@ -1460,9 +1550,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_texelFetchOffset_impl(
 template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texelFetchOffset_impl(
     thread metal::texture2d_array<T> &texture,
-    thread metal::int3 const &coord,
+    metal::int3 const coord,
     uint level,
-    thread metal::int2 const &offset)
+    metal::int2 const offset)
 {
     return texture.read(uint2(coord.xy + offset), uint(coord.z), level);
 }
@@ -1481,7 +1571,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord)
+    metal::float2 const coord)
 {
     return texture.sample(sampler, coord);
 }
@@ -1494,7 +1584,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord,
+    metal::float2 const coord,
     float bias)
 {
     return texture.sample(sampler, coord, metal::bias(bias));
@@ -1508,7 +1598,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord)
+    metal::float3 const coord)
 {
     return texture.sample(sampler, coord);
 }
@@ -1521,7 +1611,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float bias)
 {
     return texture.sample(sampler, coord, metal::bias(bias));
@@ -1535,9 +1625,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord)
+    metal::float3 const coord)
 {
-    return texture.sample(sampler, coord.xy);
+    return texture.sample_compare(sampler, coord.xy, coord.z);
 }
 )",
                         texture())
@@ -1548,10 +1638,10 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float bias)
 {
-    return texture.sample(sampler, coord.xy, metal::bias(bias));
+    return texture.sample_compare(sampler, coord.xy, coord.z, metal::bias(bias));
 }
 )",
                         texture())
@@ -1562,7 +1652,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::depth2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord)
+    metal::float4 const coord)
 {
     return texture.sample_compare(sampler, coord.xy, uint(metal::round(coord.z)), coord.w);
 }
@@ -1575,7 +1665,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::depth2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float compare)
 {
     return texture.sample_compare(sampler, coord.xyz, uint(metal::round(coord.w)), compare);
@@ -1589,9 +1679,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::depthcube<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord)
+    metal::float4 const coord)
 {
-    return texture.sample(sampler, coord.xyz);
+    return texture.sample_compare(sampler, coord.xyz, coord.w);
 }
 )",
                         texture())
@@ -1602,10 +1692,10 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::depthcube<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float bias)
 {
-    return texture.sample(sampler, coord.xyz, metal::bias(bias));
+    return texture.sample_compare(sampler, coord.xyz, coord.w, metal::bias(bias));
 }
 )",
                         texture())
@@ -1616,7 +1706,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::texture2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord)
+    metal::float3 const coord)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)));
 }
@@ -1629,7 +1719,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::texture2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float bias)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), metal::bias(bias));
@@ -1643,7 +1733,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::texture2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord)
+    metal::float4 const coord)
 {
     return texture.sample(sampler, coord.xyz, uint(metal::round(coord.w)));
 }
@@ -1656,7 +1746,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture_impl(
     thread metal::texture2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float bias)
 {
     return texture.sample(sampler, coord.xyz, uint(metal::round(coord.w)), metal::bias(bias));
@@ -1672,7 +1762,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture1DLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread float const &coord,
+    float const coord,
     float level)
 {
     return texture.sample(sampler, coord, metal::level(level));
@@ -1688,7 +1778,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture1DProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord,
+    metal::float2 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.x/coord.y, metal::bias(bias));
@@ -1698,7 +1788,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture1DProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.x/coord.w, metal::bias(bias));
@@ -1714,7 +1804,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture1DProjLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord,
+    metal::float2 const coord,
     float level)
 {
     return texture.sample(sampler, coord.x/coord.y, metal::level(level));
@@ -1724,7 +1814,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture1DProjLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level)
 {
     return texture.sample(sampler, coord.x/coord.w, metal::level(level));
@@ -1740,7 +1830,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2D_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord)
+    metal::float2 const coord)
 {
     return texture.sample(sampler, coord);
 }
@@ -1749,7 +1839,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2D_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord,
+    metal::float2 const coord,
     float bias)
 {
     return texture.sample(sampler, coord, metal::bias(bias));
@@ -1759,7 +1849,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2D_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord)
+    metal::float3 const coord)
 {
     return texture.sample(sampler, coord);
 }
@@ -1768,7 +1858,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2D_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float bias)
 {
     return texture.sample(sampler, coord, metal::bias(bias));
@@ -1779,12 +1869,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_texture2D_impl(
 PROGRAM_PRELUDE_DECLARE(texture2DRect,
                         R"(
 #define ANGLE_texture2DRect(env, ...) ANGLE_texture2DRect_impl(*env.texture, *env.sampler, __VA_ARGS__)
-
 template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2DRect_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord)
+    metal::float2 const coord)
 {
     return texture.sample(sampler, coord);
 }
@@ -1800,7 +1889,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2DLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord,
+    metal::float2 const coord,
     float level)
 {
     return texture.sample(sampler, coord, metal::level(level));
@@ -1816,7 +1905,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2DProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xy/coord.z, metal::bias(bias));
@@ -1826,7 +1915,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2DProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xy/coord.w, metal::bias(bias));
@@ -1842,16 +1931,15 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2DRectProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord)
+    metal::float3 const coord)
 {
     return texture.sample(sampler, coord.xy/coord.z);
 }
-
 template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2DRectProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord)
+    metal::float4 const coord)
 {
     return texture.sample(sampler, coord.xy/coord.w);
 }
@@ -1866,7 +1954,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2DProjLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xy/coord.z, metal::level(level));
@@ -1876,14 +1964,13 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture2DProjLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xy/coord.w, metal::level(level));
 }
 )",
                         textureEnv())
-
 
 PROGRAM_PRELUDE_DECLARE(texture3DLod,
                         R"(
@@ -1893,7 +1980,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture3DLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level)
 {
     return texture.sample(sampler, coord, metal::level(level));
@@ -1909,7 +1996,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture3DProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::bias(bias));
@@ -1925,7 +2012,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_texture3DProjLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::level(level));
@@ -1941,7 +2028,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureCube_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord)
+    metal::float3 const coord)
 {
     return texture.sample(sampler, coord);
 }
@@ -1950,7 +2037,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureCube_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float bias)
 {
     return texture.sample(sampler, coord, metal::bias(bias));
@@ -1966,7 +2053,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureCubeLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level)
 {
     return texture.sample(sampler, coord, metal::level(level));
@@ -1982,7 +2069,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureCubeProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::bias(bias));
@@ -1998,7 +2085,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureCubeProjLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::level(level));
@@ -2018,9 +2105,9 @@ template <typename Texture, int N>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::vec<float, N> const &coord,
-    thread metal::vec<float, N> const &dPdx,
-    thread metal::vec<float, N> const &dPdy)
+    metal::vec<float, N> const coord,
+    metal::vec<float, N> const dPdx,
+    metal::vec<float, N> const dPdy)
 {
     return texture.sample(sampler, coord, ANGLE_gradient<N>(dPdx, dPdy));
 }
@@ -2034,9 +2121,9 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy)
+    metal::float3 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), metal::gradient2d(dPdx, dPdy));
 }
@@ -2049,9 +2136,9 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy)
+    metal::float4 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), metal::gradient2d(dPdx, dPdy));
 }
@@ -2064,9 +2151,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy)
+    metal::float3 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy)
 {
     if (ANGLE_UseSampleCompareGradient)
     {
@@ -2087,9 +2174,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad_impl(
     thread metal::depth2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy)
+    metal::float4 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy)
 {
     if (ANGLE_UseSampleCompareGradient)
     {
@@ -2110,9 +2197,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad_impl(
     thread metal::depthcube<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float3 const &dPdx,
-    thread metal::float3 const &dPdy)
+    metal::float4 const coord,
+    metal::float3 const dPdx,
+    metal::float3 const dPdy)
 {
     if (ANGLE_UseSampleCompareGradient)
     {
@@ -2133,9 +2220,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad_impl(
     thread metal::texturecube<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread metal::float3 const &dPdx,
-    thread metal::float3 const &dPdy)
+    metal::float3 const coord,
+    metal::float3 const dPdx,
+    metal::float3 const dPdy)
 {
     return texture.sample(sampler, coord, metal::gradientcube(dPdx, dPdy));
 }
@@ -2154,10 +2241,10 @@ template <typename Texture, int N>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::vec<float, N> const &coord,
-    thread metal::vec<float, N> const &dPdx,
-    thread metal::vec<float, N> const &dPdy,
-    thread metal::vec<int, N> const &offset)
+    metal::vec<float, N> const coord,
+    metal::vec<float, N> const dPdx,
+    metal::vec<float, N> const dPdy,
+    metal::vec<int, N> const offset)
 {
     return texture.sample(sampler, coord, ANGLE_gradient<N>(dPdx, dPdy), offset);
 }
@@ -2171,10 +2258,10 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy,
-    thread metal::int2 const &offset)
+    metal::float3 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy,
+    metal::int2 const offset)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), metal::gradient2d(dPdx, dPdy), offset);
 }
@@ -2187,10 +2274,10 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy,
-    thread metal::int2 const &offset)
+    metal::float4 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy,
+    metal::int2 const offset)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), metal::gradient2d(dPdx, dPdy), offset);
 }
@@ -2203,10 +2290,10 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy,
-    thread metal::int2 const &offset)
+    metal::float3 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy,
+    metal::int2 const offset)
 {
     if (ANGLE_UseSampleCompareGradient)
     {
@@ -2227,10 +2314,10 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset_impl(
     thread metal::depth2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy,
-    thread metal::int2 const &offset)
+    metal::float4 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy,
+    metal::int2 const offset)
 {
     if (ANGLE_UseSampleCompareGradient)
     {
@@ -2251,12 +2338,12 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset_impl(
     thread metal::depthcube<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float3 const &dPdx,
-    thread metal::float3 const &dPdy,
-    thread metal::int3 const &offset)
+    metal::float4 const coord,
+    metal::float3 const dPdx,
+    metal::float3 const dPdy,
+    metal::int3 const offset)
 {
-    return texture.sample(sampler, coord.xyz, metal::gradientcube(dPdx, dPdy), offset);
+    return texture.sample_compare(sampler, coord.xyz, coord.w, metal::gradientcube(dPdx, dPdy), offset);
 }
 )",
                         textureGradOffset())
@@ -2267,10 +2354,10 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset_impl(
     thread metal::texturecube<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread metal::float3 const &dPdx,
-    thread metal::float3 const &dPdy,
-    thread metal::int3 const &offset)
+    metal::float3 const coord,
+    metal::float3 const dPdx,
+    metal::float3 const dPdy,
+    metal::int3 const offset)
 {
     return texture.sample(sampler, coord, metal::gradientcube(dPdx, dPdy), offset);
 }
@@ -2289,7 +2376,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord,
+    metal::float2 const coord,
     float level)
 {
     return texture.sample(sampler, coord, metal::level(level));
@@ -2303,7 +2390,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level)
 {
     return texture.sample(sampler, coord, metal::level(level));
@@ -2317,7 +2404,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLod_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level)
 {
     if (ANGLE_UseSampleCompareLod)
@@ -2339,7 +2426,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLod_impl(
     thread metal::texture2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), metal::level(level));
@@ -2353,7 +2440,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLod_impl(
     thread metal::texture2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xyz, uint(metal::round(coord.w)), metal::level(level));
@@ -2369,9 +2456,9 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLodOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float2 const &coord,
+    metal::float2 const coord,
     float level,
-    thread int2 const &offset)
+    metal::int2 const offset)
 {
     return texture.sample(sampler, coord, metal::level(level), offset);
 }
@@ -2380,9 +2467,9 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLodOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level,
-    thread int3 const &offset)
+    metal::int3 const offset)
 {
     return texture.sample(sampler, coord, metal::level(level), offset);
 }
@@ -2391,9 +2478,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLodOffset_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level,
-    thread int2 const &offset)
+    int2 const offset)
 {
     if (ANGLE_UseSampleCompareLod)
     {
@@ -2409,9 +2496,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLodOffset_impl(
     thread metal::texture2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level,
-    thread int2 const &offset)
+    metal::int2 const offset)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), metal::level(level), offset);
 }
@@ -2420,9 +2507,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureLodOffset_impl(
     thread metal::texture2d_array<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level,
-    thread int3 const &offset)
+    metal::int3 const offset)
 {
     return texture.sample(sampler, coord.xyz, uint(metal::round(coord.w)), metal::level(level), offset);
 }
@@ -2438,8 +2525,8 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread float2 const &coord,
-    thread int2 const &offset)
+    metal::float2 const coord,
+    metal::int2 const offset)
 {
     return texture.sample(sampler, coord, offset);
 }
@@ -2448,8 +2535,8 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread float2 const &coord,
-    thread int2 const &offset,
+    metal::float2 const coord,
+    metal::int2 const offset,
     float bias)
 {
     return texture.sample(sampler, coord, metal::bias(bias), offset);
@@ -2459,8 +2546,8 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread float3 const &coord,
-    thread int2 const &offset)
+    metal::float3 const coord,
+    metal::int2 const offset)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), offset);
 }
@@ -2469,8 +2556,8 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread float3 const &coord,
-    thread int2 const &offset,
+    metal::float3 const coord,
+    metal::int2 const offset,
     float bias)
 {
     return texture.sample(sampler, coord.xy, uint(metal::round(coord.z)), metal::bias(bias), offset);
@@ -2480,8 +2567,8 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread float3 const &coord,
-    thread int3 const &offset)
+    metal::float3 const coord,
+    metal::int3 const offset)
 {
     return texture.sample(sampler, coord, offset);
 }
@@ -2490,8 +2577,8 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread float3 const &coord,
-    thread int3 const &offset,
+    metal::float3 const coord,
+    metal::int3 const offset,
     float bias)
 {
     return texture.sample(sampler, coord, metal::bias(bias), offset);
@@ -2501,21 +2588,21 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread float3 const &coord,
-    thread int2 const &offset)
+    metal::float3 const coord,
+    metal::int2 const offset)
 {
-    return texture.sample(sampler, coord.xy, offset);
+    return texture.sample_compare(sampler, coord.xy, coord.z, offset);
 }
 
 template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread float3 const &coord,
-    thread int2 const &offset,
+    metal::float3 const coord,
+    metal::int2 const offset,
     float bias)
 {
-    return texture.sample(sampler, coord.xy, metal::bias(bias), offset);
+    return texture.sample_compare(sampler, coord.xy, coord.z, metal::bias(bias), offset);
 }
 )",
                         textureEnv())
@@ -2528,7 +2615,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xy/coord.z, metal::bias(bias));
@@ -2538,7 +2625,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProj_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xy/coord.w, metal::bias(bias));
@@ -2548,7 +2635,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProj_impl(
     thread metal::texture3d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::bias(bias));
@@ -2568,9 +2655,9 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGrad_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy)
+    metal::float3 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy)
 {
     return texture.sample(sampler, coord.xy/coord.z, metal::gradient2d(dPdx, dPdy));
 }
@@ -2583,9 +2670,9 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGrad_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy)
+    metal::float4 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy)
 {
     return texture.sample(sampler, coord.xy/coord.w, metal::gradient2d(dPdx, dPdy));
 }
@@ -2598,9 +2685,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGrad_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy)
+    metal::float4 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy)
 {
     if (ANGLE_UseSampleCompareGradient)
     {
@@ -2621,9 +2708,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGrad_impl(
     thread metal::texture3d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float3 const &dPdx,
-    thread metal::float3 const &dPdy)
+    metal::float4 const coord,
+    metal::float3 const dPdx,
+    metal::float3 const dPdy)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::gradient3d(dPdx, dPdy));
 }
@@ -2642,10 +2729,10 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGradOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy,
-    thread int2 const &offset)
+    metal::float3 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy,
+    int2 const offset)
 {
     return texture.sample(sampler, coord.xy/coord.z, metal::gradient2d(dPdx, dPdy), offset);
 }
@@ -2658,10 +2745,10 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGradOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy,
-    thread int2 const &offset)
+    metal::float4 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy,
+    int2 const offset)
 {
     return texture.sample(sampler, coord.xy/coord.w, metal::gradient2d(dPdx, dPdy), offset);
 }
@@ -2674,10 +2761,10 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGradOffset_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float2 const &dPdx,
-    thread metal::float2 const &dPdy,
-    thread int2 const &offset)
+    metal::float4 const coord,
+    metal::float2 const dPdx,
+    metal::float2 const dPdy,
+    int2 const offset)
 {
     if (ANGLE_UseSampleCompareGradient)
     {
@@ -2698,10 +2785,10 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGradOffset_impl(
     thread metal::texture3d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread metal::float3 const &dPdx,
-    thread metal::float3 const &dPdy,
-    thread int3 const &offset)
+    metal::float4 const coord,
+    metal::float3 const dPdx,
+    metal::float3 const dPdy,
+    int3 const offset)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::gradient3d(dPdx, dPdy), offset);
 }
@@ -2720,7 +2807,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xy/coord.z, metal::level(level));
@@ -2734,7 +2821,7 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLod_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xy/coord.w, metal::level(level));
@@ -2748,7 +2835,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLod_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level)
 {
     if (ANGLE_UseSampleCompareLod)
@@ -2770,7 +2857,7 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLod_impl(
     thread metal::texture3d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::level(level));
@@ -2786,9 +2873,9 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLodOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
+    metal::float3 const coord,
     float level,
-    thread int2 const &offset)
+    int2 const offset)
 {
     return texture.sample(sampler, coord.xy/coord.z, metal::level(level), offset);
 }
@@ -2797,9 +2884,9 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLodOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level,
-    thread int2 const &offset)
+    int2 const offset)
 {
     return texture.sample(sampler, coord.xy/coord.w, metal::level(level), offset);
 }
@@ -2808,9 +2895,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLodOffset_impl(
     thread metal::depth2d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level,
-    thread int2 const &offset)
+    int2 const offset)
 {
     if (ANGLE_UseSampleCompareLod)
     {
@@ -2826,9 +2913,9 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLodOffset_impl(
     thread metal::texture3d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
+    metal::float4 const coord,
     float level,
-    thread int3 const &offset)
+    int3 const offset)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::level(level), offset);
 }
@@ -2844,8 +2931,8 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float3 const &coord,
-    thread int2 const &offset,
+    metal::float3 const coord,
+    int2 const offset,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xy/coord.z, metal::bias(bias), offset);
@@ -2855,8 +2942,8 @@ template <typename Texture>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjOffset_impl(
     thread Texture &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread int2 const &offset,
+    metal::float4 const coord,
+    int2 const offset,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xy/coord.w, metal::bias(bias), offset);
@@ -2866,8 +2953,8 @@ template <typename T>
 ANGLE_ALWAYS_INLINE auto ANGLE_textureProjOffset_impl(
     thread metal::texture3d<T> &texture,
     thread metal::sampler const &sampler,
-    thread metal::float4 const &coord,
-    thread int3 const &offset,
+    metal::float4 const coord,
+    int3 const offset,
     float bias = 0)
 {
     return texture.sample(sampler, coord.xyz/coord.w, metal::bias(bias), offset);
@@ -3312,7 +3399,8 @@ ProgramPrelude::FuncToEmitter ProgramPrelude::BuildFuncToEmitter()
 void ProgramPrelude::visitOperator(TOperator op,
                                    const TFunction *func,
                                    const TType *argType0,
-                                   const TType *argType1)
+                                   const TType *argType1,
+                                   const TType *argType2)
 {
     switch (op)
     {
@@ -3392,6 +3480,10 @@ void ProgramPrelude::visitOperator(TOperator op,
             {
                 equalArray();
             }
+            if(argType0->getStruct() && argType1->getStruct() && argType0->isArray() && argType1->isArray())
+            {
+                equalStructArray();
+            }
             if(argType0->isMatrix() && argType1->isMatrix())
             {
                 equalMatrix();
@@ -3412,6 +3504,10 @@ void ProgramPrelude::visitOperator(TOperator op,
             {
                 notEqualArray();
             }
+            if(argType0->getStruct() && argType1->getStruct() && argType0->isArray() && argType1->isArray())
+            {
+                notEqualStructArray();
+            }
             if(argType0->isMatrix() && argType1->isMatrix())
             {
                 notEqualMatrix();
@@ -3429,10 +3525,16 @@ void ProgramPrelude::visitOperator(TOperator op,
         case TOperator::EOpClamp:
         case TOperator::EOpMin:
         case TOperator::EOpMax:
-        case TOperator::EOpMix:
         case TOperator::EOpStep:
         case TOperator::EOpSmoothstep:
             include_metal_common();
+            break;
+        case TOperator::EOpMix:
+            include_metal_common();
+            if(argType2->getBasicType() == TBasicType::EbtBool)
+            {
+                mixBool();
+            }
             break;
 
         case TOperator::EOpAll:
@@ -3460,10 +3562,24 @@ void ProgramPrelude::visitOperator(TOperator op,
             }
             break;
 
+        case TOperator::EOpAddAssign:
+            if (argType0->isMatrix() && argType1->isScalar())
+            {
+                addMatrixScalarAssign();
+            }
+            break;
+
         case TOperator::EOpSub:
             if (argType0->isMatrix() && argType1->isScalar())
             {
                 subMatrixScalar();
+            }
+            break;
+            
+        case TOperator::EOpSubAssign:
+            if(argType0->isMatrix() && argType1->isScalar())
+            {
+                subMatrixScalarAssign();
             }
             break;
 
@@ -3560,8 +3676,6 @@ void ProgramPrelude::visitOperator(TOperator op,
         case TOperator::EOpComma:
         case TOperator::EOpAssign:
         case TOperator::EOpInitialize:
-        case TOperator::EOpAddAssign:
-        case TOperator::EOpSubAssign:
         case TOperator::EOpMulAssign:
         case TOperator::EOpIModAssign:
         case TOperator::EOpBitShiftLeftAssign:
@@ -3791,6 +3905,15 @@ bool ProgramPrelude::visitAggregate(Visit visit, TIntermAggregate *node)
             const TType &argType0 = getArgType(0);
             const TType &argType1 = getArgType(1);
             visitOperator(node->getOp(), func, &argType0, &argType1);
+        }
+        break;
+            
+        case 3:
+        {
+            const TType &argType0 = getArgType(0);
+            const TType &argType1 = getArgType(1);
+            const TType &argType2 = getArgType(2);
+            visitOperator(node->getOp(), func, &argType0, &argType1, &argType2);
         }
         break;
 

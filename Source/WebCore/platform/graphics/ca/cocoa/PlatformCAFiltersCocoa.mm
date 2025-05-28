@@ -71,7 +71,7 @@ void PlatformCAFilters::setFiltersOnLayer(PlatformLayer* layer, const FilterOper
 
     unsigned i = 0;
     auto array = createNSArray(filters.operations(), [&] (auto& operationPtr) -> id {
-        String filterName = makeString("filter_", i++);
+        auto filterName = makeString("filter_", i++);
         auto& filterOperation = *operationPtr;
         switch (filterOperation.type()) {
         case FilterOperation::DEFAULT:
@@ -463,18 +463,19 @@ RetainPtr<NSValue> PlatformCAFilters::colorMatrixValueForFilter(FilterOperation:
     case FilterOperation::SEPIA: {
         double t = filterOperation ? downcast<BasicColorMatrixFilterOperation>(*filterOperation).amount() : 0;
         t = std::min(std::max(0.0, t), 1.0);
+        BlendingContext context { t };
         CAColorMatrix colorMatrix = {
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[0][0], sepiaFullConstants[0][0], t)),
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[0][1], sepiaFullConstants[0][1], t)),
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[0][2], sepiaFullConstants[0][2], t)), 0, 0,
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[0][0], sepiaFullConstants[0][0], context)),
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[0][1], sepiaFullConstants[0][1], context)),
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[0][2], sepiaFullConstants[0][2], context)), 0, 0,
             
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[1][0], sepiaFullConstants[1][0], t)),
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[1][1], sepiaFullConstants[1][1], t)),
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[1][2], sepiaFullConstants[1][2], t)), 0, 0,
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[1][0], sepiaFullConstants[1][0], context)),
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[1][1], sepiaFullConstants[1][1], context)),
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[1][2], sepiaFullConstants[1][2], context)), 0, 0,
             
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[2][0], sepiaFullConstants[2][0], t)),
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[2][1], sepiaFullConstants[2][1], t)),
-            static_cast<float>(WebCore::blend(sepiaNoneConstants[2][2], sepiaFullConstants[2][2], t)), 0, 0,
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[2][0], sepiaFullConstants[2][0], context)),
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[2][1], sepiaFullConstants[2][1], context)),
+            static_cast<float>(WebCore::blend(sepiaNoneConstants[2][2], sepiaFullConstants[2][2], context)), 0, 0,
             0, 0, 0, 1, 0
         };
         return [NSValue valueWithCAColorMatrix:colorMatrix];

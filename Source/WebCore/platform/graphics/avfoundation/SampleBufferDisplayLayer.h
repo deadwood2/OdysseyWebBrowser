@@ -43,7 +43,7 @@ public:
     class Client : public CanMakeWeakPtr<Client> {
     public:
         virtual ~Client() = default;
-        virtual void sampleBufferDisplayLayerStatusDidChange(SampleBufferDisplayLayer&) = 0;
+        virtual void sampleBufferDisplayLayerStatusDidFail() = 0;
     };
 
     WEBCORE_EXPORT static std::unique_ptr<SampleBufferDisplayLayer> create(Client&);
@@ -53,6 +53,9 @@ public:
     virtual ~SampleBufferDisplayLayer() = default;
 
     virtual void initialize(bool hideRootLayer, IntSize, CompletionHandler<void(bool didSucceed)>&&) = 0;
+#if !RELEASE_LOG_DISABLED
+    virtual void setLogIdentifier(String&&) = 0;
+#endif
     virtual bool didFail() const = 0;
 
     virtual void updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer) = 0;

@@ -31,6 +31,7 @@
 #import "TestURLSchemeHandler.h"
 #import "TestWKWebView.h"
 #import "WKWebViewConfigurationExtras.h"
+#import <Foundation/NSURLRequest.h>
 #import <WebCore/RegistrableDomain.h>
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebKit/WKHTTPCookieStorePrivate.h>
@@ -43,10 +44,6 @@
 #import <WebKit/_WKUserStyleSheet.h>
 #import <wtf/RunLoop.h>
 #import <wtf/text/WTFString.h>
-
-#if USE(APPLE_INTERNAL_SDK)
-#import <WebKitAdditions/InAppBrowserPrivacyAdditions.h>
-#endif
 
 #if ENABLE(APP_BOUND_DOMAINS)
 
@@ -274,7 +271,7 @@ TEST(InAppBrowserPrivacy, AppBoundDomains)
     initializeInAppBrowserPrivacyTestSettings();
     isDone = false;
     [[WKWebsiteDataStore defaultDataStore] _appBoundDomains:^(NSArray<NSString *> *domains) {
-        NSArray *domainsToCompare = @[@"127.0.0.1", @"apple.com", @"bar.com", @"example.com", @"foo.com", @"localhost", @"testdomain1",  @"webkit.org"];
+        NSArray *domainsToCompare = @[@"apple.com", @"bar.com", @"example.com", @"foo.com", @"longboardshop.biz", @"searchforlongboards.biz", @"testdomain1",  @"webkit.org"];
 
         NSArray *sortedDomains = [domains sortedArrayUsingSelector:@selector(caseInsensitiveCompare:)];
 
@@ -354,6 +351,58 @@ TEST(InAppBrowserPrivacy, AboutProtocolIsAppBound)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]);
     [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
     [webView _test_waitForDidFinishNavigation];
+
+    isDone = false;
+    [webView _isForcedIntoAppBoundMode:^(BOOL isForcedIntoAppBoundMode) {
+        EXPECT_TRUE(isForcedIntoAppBoundMode);
+        cleanUpInAppBrowserPrivacyTestSettings();
+        isDone = true;
+    }];
+    TestWebKitAPI::Util::run(&isDone);
+}
+
+TEST(InAppBrowserPrivacy, LocalHostIsAppBound)
+{
+    initializeInAppBrowserPrivacyTestSettings();
+    isDone = false;
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto schemeHandler = adoptNS([[InAppBrowserSchemeHandler alloc] init]);
+    [configuration setURLSchemeHandler:schemeHandler.get() forURLScheme:@"in-app-browser"];
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    auto delegate = adoptNS([AppBoundDomainDelegate new]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"in-app-browser://localhost/app-bound-domain-load"]];
+    [webView loadRequest:request];
+    [delegate waitForDidFinishNavigation];
+
+    isDone = false;
+    [webView _isForcedIntoAppBoundMode:^(BOOL isForcedIntoAppBoundMode) {
+        EXPECT_TRUE(isForcedIntoAppBoundMode);
+        cleanUpInAppBrowserPrivacyTestSettings();
+        isDone = true;
+    }];
+    TestWebKitAPI::Util::run(&isDone);
+}
+
+TEST(InAppBrowserPrivacy, LoopbackIPAddressIsAppBound)
+{
+    initializeInAppBrowserPrivacyTestSettings();
+    isDone = false;
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto schemeHandler = adoptNS([[InAppBrowserSchemeHandler alloc] init]);
+    [configuration setURLSchemeHandler:schemeHandler.get() forURLScheme:@"in-app-browser"];
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+    auto delegate = adoptNS([AppBoundDomainDelegate new]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:@"in-app-browser://127.0.0.1/app-bound-domain-load"]];
+    [webView loadRequest:request];
+    [delegate waitForDidFinishNavigation];
 
     isDone = false;
     [webView _isForcedIntoAppBoundMode:^(BOOL isForcedIntoAppBoundMode) {
@@ -763,13 +812,15 @@ TEST(InAppBrowserPrivacy, GetCookieForURLFails)
     TestWebKitAPI::Util::run(&done);
 }
 
+static String expectedMessage;
+
 @interface SWInAppBrowserPrivacyMessageHandler : NSObject <WKScriptMessageHandler>
 @end
 
 @implementation SWInAppBrowserPrivacyMessageHandler
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message
 {
-    EXPECT_WK_STREQ(@"Message from worker: ServiceWorker received: Hello from an app-bound domain", [message body]);
+    EXPECT_WK_STREQ(message.body, expectedMessage);
     isDone = true;
 }
 @end
@@ -801,6 +852,31 @@ navigator.serviceWorker.register('/sw.js').then(function(reg) {
 </script>
 )SWRESOURCE";
 
+static const char* mainUnregisterBytes = R"SWRESOURCE(
+<script>
+
+function log(msg)
+{
+    window.webkit.messageHandlers.sw.postMessage(msg);
+}
+
+try {
+
+navigator.serviceWorker.register('/sw.js').then(function(reg) {
+    reg.unregister()
+    .then(() => log("Unregistration success"))
+    .catch(error => log("Unregistration failed " + error));
+
+}).catch(function(error) {
+    log("Registration failed with: " + error);
+});
+} catch(e) {
+    log("Exception: " + e);
+}
+
+</script>
+)SWRESOURCE";
+
 static const char* scriptBytes = R"SWRESOURCE(
 
 self.addEventListener("message", (event) => {
@@ -809,7 +885,7 @@ self.addEventListener("message", (event) => {
 
 )SWRESOURCE";
 
-TEST(InAppBrowserPrivacy, AppBoundDomainAllowsServiceWorkers)
+TEST(InAppBrowserPrivacy, DISABLED_AppBoundDomainAllowsServiceWorkers)
 {
     initializeInAppBrowserPrivacyTestSettings();
     isDone = false;
@@ -837,6 +913,7 @@ TEST(InAppBrowserPrivacy, AppBoundDomainAllowsServiceWorkers)
     isDone = false;
     
     // Expect the service worker load to complete successfully.
+    expectedMessage = "Message from worker: ServiceWorker received: Hello from an app-bound domain";
     [webView loadRequest:server1.requestWithLocalhost()];
     TestWebKitAPI::Util::run(&isDone);
     isDone = false;
@@ -853,6 +930,66 @@ TEST(InAppBrowserPrivacy, AppBoundDomainAllowsServiceWorkers)
     // Reset service worker entitlement.
     [webView _clearServiceWorkerEntitlementOverride:^(void) {
         cleanUpInAppBrowserPrivacyTestSettings();
+        isDone = true;
+    }];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+        isDone = true;
+    }];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+}
+
+TEST(InAppBrowserPrivacy, UnregisterServiceWorker)
+{
+    initializeInAppBrowserPrivacyTestSettings();
+    isDone = false;
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto messageHandler = adoptNS([[SWInAppBrowserPrivacyMessageHandler alloc] init]);
+    [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"sw"];
+    [configuration preferences]._serviceWorkerEntitlementDisabledForTesting = YES;
+    [configuration setLimitsNavigationsToAppBoundDomains:YES];
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
+
+    ServiceWorkerTCPServer server({
+        { "text/html", mainUnregisterBytes },
+        { "application/javascript", scriptBytes},
+    });
+
+    [WKWebsiteDataStore _allowWebsiteDataRecordsForAllOrigins];
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+        isDone = true;
+    }];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+
+    expectedMessage = "Unregistration success";
+    [webView loadRequest:server.requestWithLocalhost()];
+    TestWebKitAPI::Util::run(&isDone);
+
+    isDone = false;
+
+    [[WKWebsiteDataStore defaultDataStore] fetchDataRecordsOfTypes:[NSSet setWithObject:WKWebsiteDataTypeServiceWorkerRegistrations] completionHandler:^(NSArray<WKWebsiteDataRecord *> *websiteDataRecords) {
+        EXPECT_EQ(0u, [websiteDataRecords count]);
+        isDone = true;
+    }];
+
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+
+    // Reset service worker entitlement.
+    [webView _clearServiceWorkerEntitlementOverride:^(void) {
+        cleanUpInAppBrowserPrivacyTestSettings();
+        isDone = true;
+    }];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+    
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
         isDone = true;
     }];
     TestWebKitAPI::Util::run(&isDone);
@@ -1416,144 +1553,4 @@ TEST(InAppBrowserPrivacy, AboutBlankSubFrameMatchesTopFrameNonAppBound)
     TestWebKitAPI::Util::run(&isDone);
 }
 
-#endif // PLATFORM(IOS_FAMILY)
-
-#if USE(APPLE_INTERNAL_SDK)
-TEST(InAppBrowserPrivacy, AppBoundRequest)
-{
-    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]);
-    NSString *url = @"https://webkit.org";
-
-    __block bool isDone = false;
-    NSMutableURLRequest *nonAppBoundRequest = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
-    APP_BOUND_REQUEST_ADDITIONS
-
-    [webView loadRequest:nonAppBoundRequest];
-    [webView _test_waitForDidFinishNavigation];
-
-    [webView _lastNavigationWasAppBound:^(BOOL isAppBound) {
-        EXPECT_FALSE(isAppBound);
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-    
-    isDone = false;
-    [webView _appBoundNavigationData:^(struct WKAppBoundNavigationTestingData data) {
-        EXPECT_FALSE(data.hasLoadedAppBoundRequestTesting);
-        EXPECT_TRUE(data.hasLoadedNonAppBoundRequestTesting);
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-}
-
-TEST(InAppBrowserPrivacy, AppBoundRequestWithNavigation)
-{
-    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectZero configuration:configuration.get()]);
-    NSString *startingURL = @"https://www.webkit.org";
-    NSString *nonAppBoundURL = @"https://www.apple.com";
-
-    NSMutableURLRequest *startingRequest = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:startingURL]];
-
-    [webView loadRequest:startingRequest];
-    [webView _test_waitForDidFinishNavigation];
-
-    __block bool isDone = false;
-    [webView _lastNavigationWasAppBound:^(BOOL isAppBound) {
-        EXPECT_TRUE(isAppBound);
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-    
-    isDone = false;
-    [webView _appBoundNavigationData:^(struct WKAppBoundNavigationTestingData data) {
-        EXPECT_TRUE(data.hasLoadedAppBoundRequestTesting);
-        EXPECT_FALSE(data.hasLoadedNonAppBoundRequestTesting);
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-    
-    isDone = false;
-    NSMutableURLRequest *nonAppBoundRequest = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:nonAppBoundURL]];
-    APP_BOUND_REQUEST_ADDITIONS
-    
-    isDone = false;
-    [webView _clearAppBoundNavigationData:^{
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-
-    [webView loadRequest:nonAppBoundRequest];
-    [webView _test_waitForDidFinishNavigation];
-
-    [webView _lastNavigationWasAppBound:^(BOOL isAppBound) {
-        EXPECT_FALSE(isAppBound);
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-    
-    isDone = false;
-    [webView _appBoundNavigationData:^(struct WKAppBoundNavigationTestingData data) {
-        EXPECT_FALSE(data.hasLoadedAppBoundRequestTesting);
-        EXPECT_TRUE(data.hasLoadedNonAppBoundRequestTesting);
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-}
-
-TEST(InAppBrowserPrivacy, AppBoundRequestWithSubFrame)
-{
-    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-    [configuration _setOverrideContentSecurityPolicy:@"script-src 'nonce-b'"];
-
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
-    [webView loadTestPageNamed:@"page-with-csp"];
-
-    [webView waitForMessage:@"MainFrame: B"];
-    [webView waitForMessage:@"Subframe: B"];
-
-    __block bool isDone = false;
-    [webView _appBoundNavigationData:^(struct WKAppBoundNavigationTestingData data) {
-        EXPECT_TRUE(data.hasLoadedAppBoundRequestTesting);
-        EXPECT_FALSE(data.hasLoadedNonAppBoundRequestTesting);
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-};
-
-TEST(InAppBrowserPrivacy, NonAppBoundRequestWithSubFrame)
-{
-    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-    [configuration _setOverrideContentSecurityPolicy:@"script-src 'nonce-b'"];
-
-    __block bool isDone = false;
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
-    NSMutableURLRequest *nonAppBoundRequest = [NSMutableURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"page-with-csp" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
-    APP_BOUND_REQUEST_ADDITIONS
-
-    [webView loadRequest:nonAppBoundRequest];
-
-    [webView waitForMessage:@"MainFrame: B"];
-    [webView waitForMessage:@"Subframe: B"];
-
-    [webView _appBoundNavigationData: ^(struct WKAppBoundNavigationTestingData data) {
-        EXPECT_FALSE(data.hasLoadedAppBoundRequestTesting);
-        EXPECT_TRUE(data.hasLoadedNonAppBoundRequestTesting);
-        isDone = true;
-    }];
-
-    TestWebKitAPI::Util::run(&isDone);
-};
-
-#endif
+#endif // ENABLE(APP_BOUND_DOMAINS)

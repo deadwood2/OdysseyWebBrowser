@@ -19,6 +19,11 @@
  */
 
 #include "config.h"
+
+#if OS(MORPHOS)
+#define _GNU_SOURCE
+#endif
+
 #include <wtf/StackBounds.h>
 
 #if OS(DARWIN)
@@ -71,7 +76,7 @@ StackBounds StackBounds::currentThreadStackBoundsInternal()
     return newThreadStackBounds(pthread_self());
 }
 
-#elif OS(UNIX)
+#elif OS(UNIX) || OS(MORPHOS)
 
 #if OS(OPENBSD)
 

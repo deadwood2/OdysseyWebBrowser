@@ -22,6 +22,7 @@
 #include "FontCustomPlatformData.h"
 
 #include "FontDescription.h"
+#include "FontMemoryResource.h"
 #include "FontPlatformData.h"
 #include "OpenTypeUtilities.h"
 #include "SharedBuffer.h"
@@ -40,18 +41,18 @@
 
 namespace WebCore {
 
-FontCustomPlatformData::~FontCustomPlatformData()
+FontCustomPlatformData::FontCustomPlatformData(const String& name, FontPlatformData::CreationData&& creationData)
+    : name(name)
+    , creationData(WTFMove(creationData))
 {
-    if (fontReference)
-        RemoveFontMemResourceEx(fontReference);
 }
+
+FontCustomPlatformData::~FontCustomPlatformData() = default;
 
 FontPlatformData FontCustomPlatformData::fontPlatformData(const FontDescription& fontDescription, bool bold, bool italic, const FontFeatureSettings&, FontSelectionSpecifiedCapabilities)
 {
     int size = fontDescription.computedPixelSize();
     FontRenderingMode renderingMode = fontDescription.renderingMode();
-
-    ASSERT(fontReference);
 
     auto faceName = name.charactersWithNullTermination();
     if (faceName.size() > LF_FACESIZE) {
@@ -99,19 +100,19 @@ static String createUniqueFontName()
     GUID fontUuid;
     CoCreateGuid(&fontUuid);
 
-    String fontName = base64Encode(reinterpret_cast<char*>(&fontUuid), sizeof(fontUuid));
+    auto fontName = base64EncodeToString(reinterpret_cast<char*>(&fontUuid), sizeof(fontUuid));
     ASSERT(fontName.length() < LF_FACESIZE);
     return fontName;
 }
 
-std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String&)
+std::unique_ptr<FontCustomPlatformData> createFontCustomPlatformData(SharedBuffer& buffer, const String& itemInCollection)
 {
     String fontName = createUniqueFontName();
-    HANDLE fontReference;
-    fontReference = renameAndActivateFont(buffer, fontName);
-    if (!fontReference)
+    auto fontResource = renameAndActivateFont(buffer, fontName);
+    if (!fontResource)
         return nullptr;
-    auto result = makeUnique<FontCustomPlatformData>(fontReference, fontName);
+    FontPlatformData::CreationData creationData = { buffer, itemInCollection, fontResource.releaseNonNull() };
+    auto result = makeUnique<FontCustomPlatformData>(fontName, WTFMove(creationData));
 #if USE(CORE_TEXT)
     result->fontDescriptor = adoptCF(CTFontManagerCreateFontDescriptorFromData(buffer.createCFData().get()));
 #endif

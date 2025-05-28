@@ -8,10 +8,12 @@ partial interface TestGlobalObject {
     attribute TestDefaultToJSONIndirectInheritanceConstructor TestDefaultToJSONIndirectInheritance;
     attribute TestDefaultToJSONInheritConstructor TestDefaultToJSONInherit;
     attribute TestDefaultToJSONInheritFinalConstructor TestDefaultToJSONInheritFinal;
+    attribute TestDelegateToSharedSyntheticAttributeConstructor TestDelegateToSharedSyntheticAttribute;
     attribute TestDomainSecurityConstructor TestDomainSecurity;
     attribute TestEventConstructorConstructor TestEventConstructor;
     attribute TestEventTargetConstructor TestEventTarget;
     attribute TestExceptionConstructor TestException;
+    attribute TestGenerateAddOpaqueRootConstructor TestGenerateAddOpaqueRoot;
     attribute TestGenerateIsReachableConstructor TestGenerateIsReachable;
     attribute TestGlobalObjectConstructor TestGlobalObject;
     attribute TestIndexedSetterNoIdentifierConstructor TestIndexedSetterNoIdentifier;
@@ -43,6 +45,7 @@ partial interface TestGlobalObject {
     attribute TestNamedSetterWithLegacyOverrideBuiltInsConstructor TestNamedSetterWithLegacyOverrideBuiltIns;
     attribute TestNamedSetterWithLegacyUnforgeablePropertiesConstructor TestNamedSetterWithLegacyUnforgeableProperties;
     attribute TestNamedSetterWithLegacyUnforgeablePropertiesAndLegacyOverrideBuiltInsConstructor TestNamedSetterWithLegacyUnforgeablePropertiesAndLegacyOverrideBuiltIns;
+    attribute TestNamespaceObjectConstructor TestInterfaceName;
     [Conditional=ConditionDerived] attribute TestOperationConditionalConstructor TestOperationConditional;
     attribute TestOverloadedConstructorsWithSequenceConstructor TestOverloadedConstructorsWithSequence;
     attribute TestPluginInterfaceConstructor TestPluginInterface;

@@ -31,6 +31,7 @@
 #include "MessageReceiver.h"
 #include "WebPage.h"
 #include <WebCore/ActivityState.h>
+#include <WebCore/DisplayRefreshMonitorFactory.h>
 #include <WebCore/FloatRect.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/LayoutMilestone.h>
@@ -49,6 +50,7 @@ class Decoder;
 }
 
 namespace WebCore {
+class DestinationColorSpace;
 class DisplayRefreshMonitor;
 class Frame;
 class FrameView;
@@ -59,12 +61,11 @@ struct ViewportAttributes;
 
 namespace WebKit {
 
-struct ColorSpaceData;
 class LayerTreeHost;
 struct WebPageCreationParameters;
 struct WebPreferencesStore;
 
-class DrawingArea : public IPC::MessageReceiver {
+class DrawingArea : public IPC::MessageReceiver, public WebCore::DisplayRefreshMonitorFactory {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(DrawingArea);
 
@@ -94,8 +95,8 @@ public:
     virtual void mainFrameContentSizeChanged(const WebCore::IntSize&) { }
 
 #if PLATFORM(COCOA)
-    virtual void setViewExposedRect(Optional<WebCore::FloatRect>) = 0;
-    virtual Optional<WebCore::FloatRect> viewExposedRect() const = 0;
+    virtual void setViewExposedRect(std::optional<WebCore::FloatRect>) = 0;
+    virtual std::optional<WebCore::FloatRect> viewExposedRect() const = 0;
 
     virtual void acceleratedAnimationDidStart(uint64_t /*layerID*/, const String& /*key*/, MonotonicTime /*startTime*/) { }
     virtual void acceleratedAnimationDidEnd(uint64_t /*layerID*/, const String& /*key*/) { }
@@ -117,8 +118,6 @@ public:
     virtual void setRootCompositingLayer(WebCore::GraphicsLayer*) = 0;
     virtual void triggerRenderingUpdate() = 0;
 
-    virtual RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID);
-
     virtual void dispatchAfterEnsuringUpdatedScrollPosition(WTF::Function<void ()>&&);
 
     virtual void activityStateDidChange(OptionSet<WebCore::ActivityState::Flag>, ActivityStateChangeID, CompletionHandler<void()>&& completionHandler) { completionHandler(); };
@@ -137,7 +136,7 @@ public:
     virtual void updateGeometry(const WebCore::IntSize& viewSize, bool flushSynchronously, const WTF::MachSendRight& fencePort) { }
 #endif
 
-#if USE(COORDINATED_GRAPHICS)
+#if USE(COORDINATED_GRAPHICS) || USE(GRAPHICS_LAYER_TEXTURE_MAPPER)
     virtual void layerHostDidFlushLayers() { }
 #endif
 
@@ -175,15 +174,20 @@ private:
 #endif
     virtual void didUpdate() { }
 
+    // DisplayRefreshMonitorFactory.
+    RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID) override;
+
 #if PLATFORM(COCOA)
     // Used by TiledCoreAnimationDrawingArea.
     virtual void setDeviceScaleFactor(float) { }
-    virtual void setColorSpace(const ColorSpaceData&) { }
-
-    virtual void adjustTransientZoom(double scale, WebCore::FloatPoint origin) { }
-    virtual void commitTransientZoom(double scale, WebCore::FloatPoint origin) { }
+    virtual void setColorSpace(std::optional<WebCore::DestinationColorSpace>) { }
 
     virtual void addTransactionCallbackID(WebKit::CallbackID) { ASSERT_NOT_REACHED(); }
+#endif
+
+#if PLATFORM(COCOA) || PLATFORM(GTK)
+    virtual void adjustTransientZoom(double scale, WebCore::FloatPoint origin) { }
+    virtual void commitTransientZoom(double scale, WebCore::FloatPoint origin) { }
 #endif
 
     bool m_hasRemovedMessageReceiver { false };

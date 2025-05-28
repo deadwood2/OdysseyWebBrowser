@@ -48,6 +48,7 @@
 #import <pal/avfoundation/MediaTimeAVFoundation.h>
 #import <pal/spi/cocoa/AVFoundationSPI.h>
 #import <wtf/BlockObjCExceptions.h>
+#import <wtf/cf/TypeCastsCF.h>
 
 #import <pal/cf/CoreMediaSoftLink.h>
 #import <pal/cocoa/AVFoundationSoftLink.h>
@@ -169,14 +170,13 @@ private:
         if (description) {
             m_originalCodec = PAL::softLink_CoreMedia_CMFormatDescriptionGetMediaSubType(description);
             CFStringRef originalFormatKey = PAL::canLoad_CoreMedia_kCMFormatDescriptionExtension_ProtectedContentOriginalFormat() ? PAL::get_CoreMedia_kCMFormatDescriptionExtension_ProtectedContentOriginalFormat() : CFSTR("CommonEncryptionOriginalFormat");
-            CFTypeRef originalFormat = CMFormatDescriptionGetExtension(description, originalFormatKey);
-            if (originalFormat && CFGetTypeID(originalFormat) == CFNumberGetTypeID())
-                CFNumberGetValue((CFNumberRef)originalFormat, kCFNumberSInt32Type, &m_originalCodec);
+            if (auto originalFormat = dynamic_cf_cast<CFNumberRef>(CMFormatDescriptionGetExtension(description, originalFormatKey)))
+                CFNumberGetValue(originalFormat, kCFNumberSInt32Type, &m_originalCodec);
         }
     }
 
     FourCharCode m_originalCodec;
-    mutable Optional<AtomString> m_codec;
+    mutable std::optional<AtomString> m_codec;
     bool m_isVideo;
     bool m_isAudio;
     bool m_isText;
@@ -228,7 +228,9 @@ void SourceBufferParserAVFObjC::flushPendingMediaData()
 
 void SourceBufferParserAVFObjC::setShouldProvideMediaDataForTrackID(bool should, uint64_t trackID)
 {
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_parser setShouldProvideMediaData:should forTrackID:trackID];
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
 bool SourceBufferParserAVFObjC::shouldProvideMediadataForTrackID(uint64_t trackID)
@@ -239,7 +241,6 @@ bool SourceBufferParserAVFObjC::shouldProvideMediadataForTrackID(uint64_t trackI
 void SourceBufferParserAVFObjC::resetParserState()
 {
     m_parserStateWasReset = true;
-    m_discardSamplesUntilNextInitializationSegment = true;
 }
 
 void SourceBufferParserAVFObjC::invalidate()
@@ -259,9 +260,7 @@ void SourceBufferParserAVFObjC::setLogger(const Logger& logger, const void* logI
 
 void SourceBufferParserAVFObjC::didParseStreamDataAsAsset(AVAsset* asset)
 {
-    callOnMainThread([this, strongThis = makeRef(*this), asset = retainPtr(asset)] {
-        m_discardSamplesUntilNextInitializationSegment = false;
-
+    m_callOnClientThreadCallback([this, strongThis = makeRef(*this), asset = retainPtr(asset)] {
         if (!m_didParseInitializationDataCallback)
             return;
 
@@ -302,7 +301,7 @@ void SourceBufferParserAVFObjC::didParseStreamDataAsAsset(AVAsset* asset)
 
 void SourceBufferParserAVFObjC::didFailToParseStreamDataWithError(NSError* error)
 {
-    callOnMainThread([this, strongThis = makeRef(*this), error = retainPtr(error)] {
+    m_callOnClientThreadCallback([this, strongThis = makeRef(*this), error = retainPtr(error)] {
         if (m_didEncounterErrorDuringParsingCallback)
             m_didEncounterErrorDuringParsingCallback(error.get().code);
     });
@@ -311,11 +310,8 @@ void SourceBufferParserAVFObjC::didFailToParseStreamDataWithError(NSError* error
 void SourceBufferParserAVFObjC::didProvideMediaDataForTrackID(uint64_t trackID, CMSampleBufferRef sampleBuffer, const String& mediaType, unsigned flags)
 {
     UNUSED_PARAM(flags);
-    callOnMainThread([this, strongThis = makeRef(*this), sampleBuffer = retainPtr(sampleBuffer), trackID, mediaType = mediaType] {
+    m_callOnClientThreadCallback([this, strongThis = makeRef(*this), sampleBuffer = retainPtr(sampleBuffer), trackID, mediaType = mediaType] {
         if (!m_didProvideMediaDataCallback)
-            return;
-
-        if (m_discardSamplesUntilNextInitializationSegment)
             return;
 
         auto mediaSample = MediaSampleAVFObjC::create(sampleBuffer.get(), trackID);

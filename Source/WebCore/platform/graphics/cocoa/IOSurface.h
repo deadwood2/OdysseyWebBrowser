@@ -27,9 +27,10 @@
 
 #if HAVE(IOSURFACE)
 
+#include "DestinationColorSpace.h"
+#include "IntSize.h"
 #include <objc/objc.h>
 #include <pal/spi/cocoa/IOSurfaceSPI.h>
-#include "IntSize.h"
 
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST) && !PLATFORM(IOS_FAMILY_SIMULATOR)
 #define HAVE_IOSURFACE_RGB10 1
@@ -44,13 +45,12 @@ namespace WebCore {
 
 class GraphicsContext;
 class HostWindow;
-    
-#if USE(IOSURFACE_CANVAS_BACKING_STORE)
 class ImageBuffer;
-#endif
 
 enum class PixelFormat : uint8_t;
 enum class VolatilityState : uint8_t;
+
+using IOSurfaceSeed = uint32_t;
 
 class IOSurface final {
     WTF_MAKE_FAST_ALLOCATED;
@@ -99,10 +99,10 @@ public:
         uint32_t m_flags;
     };
 
-    WEBCORE_EXPORT static std::unique_ptr<IOSurface> create(IntSize, CGColorSpaceRef, Format = Format::BGRA);
-    WEBCORE_EXPORT static std::unique_ptr<IOSurface> create(IntSize, IntSize contextSize, CGColorSpaceRef, Format = Format::BGRA);
-    WEBCORE_EXPORT static std::unique_ptr<IOSurface> createFromSendRight(const WTF::MachSendRight&&, CGColorSpaceRef);
-    static std::unique_ptr<IOSurface> createFromSurface(IOSurfaceRef, CGColorSpaceRef);
+    WEBCORE_EXPORT static std::unique_ptr<IOSurface> create(IntSize, const DestinationColorSpace&, Format = Format::BGRA);
+    WEBCORE_EXPORT static std::unique_ptr<IOSurface> create(IntSize, IntSize contextSize, const DestinationColorSpace&, Format = Format::BGRA);
+    WEBCORE_EXPORT static std::unique_ptr<IOSurface> createFromSendRight(const WTF::MachSendRight&&, const DestinationColorSpace&);
+    WEBCORE_EXPORT static std::unique_ptr<IOSurface> createFromSurface(IOSurfaceRef, const DestinationColorSpace&);
     WEBCORE_EXPORT static std::unique_ptr<IOSurface> createFromImage(CGImageRef);
     
 #if USE(IOSURFACE_CANVAS_BACKING_STORE)
@@ -141,10 +141,12 @@ public:
     IntSize size() const { return m_size; }
     size_t totalBytes() const { return m_totalBytes; }
 
-    CGColorSpaceRef colorSpace() const { return m_colorSpace.get(); }
+    const DestinationColorSpace& colorSpace() const { return m_colorSpace; }
     WEBCORE_EXPORT Format format() const;
     WEBCORE_EXPORT IOSurfaceID surfaceID() const;
     size_t bytesPerRow() const;
+
+    IOSurfaceSeed seed() const;
 
     WEBCORE_EXPORT bool isInUse() const;
 
@@ -157,19 +159,21 @@ public:
     WEBCORE_EXPORT static void convertToFormat(std::unique_ptr<WebCore::IOSurface>&& inSurface, Format, WTF::Function<void(std::unique_ptr<WebCore::IOSurface>)>&&);
 #endif // HAVE(IOSURFACE_ACCELERATOR)
 
-    WEBCORE_EXPORT void setOwnership(task_t newOwner);
+#if HAVE(IOSURFACE_SET_OWNERSHIP_IDENTITY)
+    WEBCORE_EXPORT void setOwnershipIdentity(task_id_token_t newOwner);
+#endif
 
     void migrateColorSpaceToProperties();
 
 private:
-    IOSurface(IntSize, IntSize contextSize, CGColorSpaceRef, Format, bool& success);
-    IOSurface(IOSurfaceRef, CGColorSpaceRef);
+    IOSurface(IntSize, IntSize contextSize, const DestinationColorSpace&, Format, bool& success);
+    IOSurface(IOSurfaceRef, const DestinationColorSpace&);
 
-    static std::unique_ptr<IOSurface> surfaceFromPool(IntSize, IntSize contextSize, CGColorSpaceRef, Format);
+    static std::unique_ptr<IOSurface> surfaceFromPool(IntSize, IntSize contextSize, const DestinationColorSpace&, Format);
     IntSize contextSize() const { return m_contextSize; }
     void setContextSize(IntSize);
 
-    RetainPtr<CGColorSpaceRef> m_colorSpace;
+    DestinationColorSpace m_colorSpace;
     IntSize m_size;
     IntSize m_contextSize;
     size_t m_totalBytes;
@@ -179,7 +183,7 @@ private:
 
     RetainPtr<IOSurfaceRef> m_surface;
 
-    static WTF::Optional<IntSize> s_maximumSize;
+    static std::optional<IntSize> s_maximumSize;
 };
 
 WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, const WebCore::IOSurface&);

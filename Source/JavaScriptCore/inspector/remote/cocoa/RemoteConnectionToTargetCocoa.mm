@@ -33,7 +33,6 @@
 #import "RemoteInspectionTarget.h"
 #import "RemoteInspector.h"
 #import <dispatch/dispatch.h>
-#import <wtf/Optional.h>
 #import <wtf/RunLoop.h>
 
 #if USE(WEB_THREAD)
@@ -54,7 +53,7 @@ static void RemoteTargetHandleRunSourceGlobal(void*)
 
     RemoteTargetQueue queueCopy;
     {
-        LockHolder lock(rwiQueueMutex);
+        Locker locker { rwiQueueMutex };
         std::swap(queueCopy, *rwiQueue);
     }
 
@@ -68,7 +67,7 @@ static void RemoteTargetQueueTaskOnGlobalQueue(Function<void ()>&& function)
     ASSERT(rwiQueue);
 
     {
-        LockHolder lock(rwiQueueMutex);
+        Locker locker { rwiQueueMutex };
         rwiQueue->append(WTFMove(function));
     }
 
@@ -99,7 +98,7 @@ static void RemoteTargetHandleRunSourceWithInfo(void* info)
 
     RemoteTargetQueue queueCopy;
     {
-        LockHolder lock(connectionToTarget->queueMutex());
+        Locker locker { connectionToTarget->queueMutex() };
         queueCopy = connectionToTarget->takeQueue();
     }
 
@@ -121,9 +120,9 @@ RemoteConnectionToTarget::~RemoteConnectionToTarget()
     teardownRunLoop();
 }
 
-Optional<TargetID> RemoteConnectionToTarget::targetIdentifier() const
+std::optional<TargetID> RemoteConnectionToTarget::targetIdentifier() const
 {
-    return m_target ? Optional<TargetID>(m_target->targetIdentifier()) : WTF::nullopt;
+    return m_target ? std::optional<TargetID>(m_target->targetIdentifier()) : std::nullopt;
 }
 
 NSString *RemoteConnectionToTarget::connectionIdentifier() const
@@ -145,7 +144,10 @@ void RemoteConnectionToTarget::dispatchAsyncOnTarget(Function<void ()>&& callbac
 
 #if USE(WEB_THREAD)
     if (WebCoreWebThreadIsEnabled && WebCoreWebThreadIsEnabled()) {
-        WebCoreWebThreadRun(^ { callback(); });
+        __block auto blockCallback(WTFMove(callback));
+        WebCoreWebThreadRun(^{
+            blockCallback();
+        });
         return;
     }
 #endif
@@ -155,15 +157,15 @@ void RemoteConnectionToTarget::dispatchAsyncOnTarget(Function<void ()>&& callbac
 
 bool RemoteConnectionToTarget::setup(bool isAutomaticInspection, bool automaticallyPause)
 {
-    LockHolder lock(m_targetMutex);
+    Locker locker { m_targetMutex };
 
     if (!m_target)
         return false;
 
-    auto targetIdentifier = this->targetIdentifier().valueOr(0);
+    auto targetIdentifier = this->targetIdentifier().value_or(0);
 
-    dispatchAsyncOnTarget([&, strongThis = makeRef(*this)]() {
-        LockHolder lock(m_targetMutex);
+    dispatchAsyncOnTarget([this, targetIdentifier, isAutomaticInspection, automaticallyPause, strongThis = makeRef(*this)]() {
+        Locker locker { m_targetMutex };
 
         if (!m_target || !m_target->remoteControlAllowed()) {
             RemoteInspector::singleton().setupFailed(targetIdentifier);
@@ -188,7 +190,7 @@ bool RemoteConnectionToTarget::setup(bool isAutomaticInspection, bool automatica
 
 void RemoteConnectionToTarget::targetClosed()
 {
-    LockHolder lock(m_targetMutex);
+    Locker locker { m_targetMutex };
 
     m_target = nullptr;
 }
@@ -197,8 +199,8 @@ void RemoteConnectionToTarget::close()
 {
     auto targetIdentifier = m_target ? m_target->targetIdentifier() : 0;
     
-    dispatchAsyncOnTarget([&, strongThis = makeRef(*this)]() {
-        LockHolder lock(m_targetMutex);
+    dispatchAsyncOnTarget([this, targetIdentifier, strongThis = makeRef(*this)]() {
+        Locker locker { m_targetMutex };
         if (m_target) {
             if (m_connected)
                 m_target->disconnect(*this);
@@ -215,7 +217,7 @@ void RemoteConnectionToTarget::sendMessageToTarget(NSString *message)
     dispatchAsyncOnTarget([this, strongMessage = retainPtr(message), strongThis = makeRef(*this)]() {
         RemoteControllableTarget* target = nullptr;
         {
-            LockHolder lock(m_targetMutex);
+            Locker locker { m_targetMutex };
             if (!m_target)
                 return;
             target = m_target;
@@ -271,7 +273,7 @@ void RemoteConnectionToTarget::queueTaskOnPrivateRunLoop(Function<void ()>&& fun
     ASSERT(m_runLoop);
 
     {
-        LockHolder lock(m_queueMutex);
+        Locker lock { m_queueMutex };
         m_queue.append(WTFMove(function));
     }
 

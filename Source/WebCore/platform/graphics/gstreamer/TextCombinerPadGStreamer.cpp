@@ -36,13 +36,17 @@
 struct _WebKitTextCombinerPadPrivate {
     GRefPtr<GstTagList> tags;
     GRefPtr<GstPad> innerCombinerPad;
+    bool shouldProcessStickyEvents { true };
 };
 
 enum {
     PROP_PAD_0,
     PROP_PAD_TAGS,
     PROP_INNER_COMBINER_PAD,
+    N_PROPERTIES,
 };
+
+static GParamSpec* sObjProperties[N_PROPERTIES] = { nullptr, };
 
 #define webkit_text_combiner_pad_parent_class parent_class
 WEBKIT_DEFINE_TYPE(WebKitTextCombinerPad, webkit_text_combiner_pad, GST_TYPE_GHOST_PAD);
@@ -50,23 +54,21 @@ WEBKIT_DEFINE_TYPE(WebKitTextCombinerPad, webkit_text_combiner_pad, GST_TYPE_GHO
 static gboolean webkitTextCombinerPadEvent(GstPad* pad, GstObject* parent, GstEvent* event)
 {
     switch (GST_EVENT_TYPE(event)) {
-    case GST_EVENT_CAPS:
-        webKitTextCombinerHandleCapsEvent(WEBKIT_TEXT_COMBINER(parent), pad, event);
-        break;
     case GST_EVENT_TAG: {
         auto* combinerPad = WEBKIT_TEXT_COMBINER_PAD(pad);
         GstTagList* tags;
         gst_event_parse_tag(event, &tags);
         ASSERT(tags);
 
-        GST_OBJECT_LOCK(pad);
-        if (!combinerPad->priv->tags)
-            combinerPad->priv->tags = adoptGRef(gst_tag_list_copy(tags));
-        else
-            gst_tag_list_insert(combinerPad->priv->tags.get(), tags, GST_TAG_MERGE_REPLACE);
-        GST_OBJECT_UNLOCK(pad);
+        {
+            auto locker = GstObjectLocker(pad);
+            if (!combinerPad->priv->tags)
+                combinerPad->priv->tags = adoptGRef(gst_tag_list_copy(tags));
+            else
+                gst_tag_list_insert(combinerPad->priv->tags.get(), tags, GST_TAG_MERGE_REPLACE);
+        }
 
-        g_object_notify(G_OBJECT(pad), "tags");
+        g_object_notify_by_pspec(G_OBJECT(pad), sObjProperties[PROP_PAD_TAGS]);
         break;
     }
     default:
@@ -75,21 +77,43 @@ static gboolean webkitTextCombinerPadEvent(GstPad* pad, GstObject* parent, GstEv
     return gst_pad_event_default(pad, parent, event);
 }
 
+static GstFlowReturn webkitTextCombinerPadChain(GstPad* pad, GstObject* parent, GstBuffer* buffer)
+{
+    auto* combinerPad = WEBKIT_TEXT_COMBINER_PAD(pad);
+
+    if (combinerPad->priv->shouldProcessStickyEvents) {
+        gst_pad_sticky_events_foreach(pad, [](GstPad* pad, GstEvent** event, gpointer) -> gboolean {
+            if (GST_EVENT_TYPE(*event) != GST_EVENT_CAPS)
+                return TRUE;
+
+            auto* combinerPad = WEBKIT_TEXT_COMBINER_PAD(pad);
+            auto parent = adoptGRef(gst_pad_get_parent(pad));
+            GstCaps* caps;
+            gst_event_parse_caps(*event, &caps);
+            combinerPad->priv->shouldProcessStickyEvents = false;
+            webKitTextCombinerHandleCaps(WEBKIT_TEXT_COMBINER(parent.get()), pad, caps);
+            return FALSE;
+        }, nullptr);
+    }
+
+    return gst_proxy_pad_chain_default(pad, parent, buffer);
+}
+
 static void webkitTextCombinerPadGetProperty(GObject* object, unsigned propertyId, GValue* value, GParamSpec* pspec)
 {
     auto* pad = WEBKIT_TEXT_COMBINER_PAD(object);
     switch (propertyId) {
-    case PROP_PAD_TAGS:
-        GST_OBJECT_LOCK(object);
+    case PROP_PAD_TAGS: {
+        auto locker = GstObjectLocker(object);
         if (pad->priv->tags)
             g_value_take_boxed(value, gst_tag_list_copy(pad->priv->tags.get()));
-        GST_OBJECT_UNLOCK(object);
         break;
-    case PROP_INNER_COMBINER_PAD:
-        GST_OBJECT_LOCK(object);
+    }
+    case PROP_INNER_COMBINER_PAD: {
+        auto locker = GstObjectLocker(object);
         g_value_set_object(value, pad->priv->innerCombinerPad.get());
-        GST_OBJECT_UNLOCK(object);
         break;
+    }
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propertyId, pspec);
         break;
@@ -100,11 +124,11 @@ static void webkitTextCombinerPadSetProperty(GObject* object, guint propertyId, 
 {
     auto* pad = WEBKIT_TEXT_COMBINER_PAD(object);
     switch (propertyId) {
-    case PROP_INNER_COMBINER_PAD:
-        GST_OBJECT_LOCK(object);
+    case PROP_INNER_COMBINER_PAD: {
+        auto locker = GstObjectLocker(object);
         pad->priv->innerCombinerPad = adoptGRef(GST_PAD_CAST(g_value_get_object(value)));
-        GST_OBJECT_UNLOCK(object);
         break;
+    }
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, propertyId, pspec);
         break;
@@ -116,6 +140,7 @@ static void webkitTextCombinerPadConstructed(GObject* object)
     GST_CALL_PARENT(G_OBJECT_CLASS, constructed, (object));
     gst_ghost_pad_construct(GST_GHOST_PAD(object));
     gst_pad_set_event_function(GST_PAD_CAST(object), webkitTextCombinerPadEvent);
+    gst_pad_set_chain_function(GST_PAD_CAST(object), webkitTextCombinerPadChain);
 }
 
 static void webkit_text_combiner_pad_class_init(WebKitTextCombinerPadClass* klass)
@@ -126,13 +151,15 @@ static void webkit_text_combiner_pad_class_init(WebKitTextCombinerPadClass* klas
     gobjectClass->get_property = GST_DEBUG_FUNCPTR(webkitTextCombinerPadGetProperty);
     gobjectClass->set_property = GST_DEBUG_FUNCPTR(webkitTextCombinerPadSetProperty);
 
-    g_object_class_install_property(gobjectClass, PROP_PAD_TAGS,
+    sObjProperties[PROP_PAD_TAGS] =
         g_param_spec_boxed("tags", "Tags", "The currently active tags on the pad", GST_TYPE_TAG_LIST,
-            static_cast<GParamFlags>(G_PARAM_READABLE | G_PARAM_STATIC_STRINGS)));
+            static_cast<GParamFlags>(G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
 
-    g_object_class_install_property(gobjectClass, PROP_INNER_COMBINER_PAD,
+    sObjProperties[PROP_INNER_COMBINER_PAD] =
         g_param_spec_object("inner-combiner-pad", "Internal Combiner Pad", "The internal funnel (or concat) pad associated with this pad", GST_TYPE_PAD,
-            static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+            static_cast<GParamFlags>(G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+    g_object_class_install_properties(gobjectClass, N_PROPERTIES, sObjProperties);
 }
 
 GstPad* webKitTextCombinerPadLeakInternalPadRef(WebKitTextCombinerPad* pad)

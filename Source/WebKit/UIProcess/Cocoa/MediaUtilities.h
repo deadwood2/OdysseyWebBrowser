@@ -27,12 +27,12 @@
 
 #import "WKFoundation.h"
 
-#import "WKWebViewPrivate.h"
 #import <WebCore/MediaProducer.h>
+#import <WebKit/WKWebViewPrivate.h>
 
 namespace WebKit {
 
-_WKMediaCaptureState toWKMediaCaptureState(WebCore::MediaProducer::MediaStateFlags);
+_WKMediaCaptureStateDeprecated toWKMediaCaptureStateDeprecated(WebCore::MediaProducer::MediaStateFlags);
 _WKMediaMutedState toWKMediaMutedState(WebCore::MediaProducer::MutedStateFlags);
 
 } // namespace WebKit

@@ -57,6 +57,8 @@ void LoadParameters::encode(IPC::Encoder& encoder) const
     encoder << lockBackForwardList;
     encoder << clientRedirectSourceForHistory;
     encoder << isNavigatingToAppBoundDomain;
+    encoder << existingNetworkResourceLoadIdentifierToResume;
+    encoder << sessionHistoryVisibility;
 
     platformEncode(encoder);
 }
@@ -75,7 +77,7 @@ bool LoadParameters::decode(IPC::Decoder& decoder, LoadParameters& data)
 
     if (hasHTTPBody) {
         // FormDataReference encoder / decoder takes care of passing and consuming the needed sandbox extensions.
-        Optional<IPC::FormDataReference> formDataReference;
+        std::optional<IPC::FormDataReference> formDataReference;
         decoder >> formDataReference;
         if (!formDataReference)
             return false;
@@ -83,7 +85,7 @@ bool LoadParameters::decode(IPC::Decoder& decoder, LoadParameters& data)
         data.request.setHTTPBody(formDataReference->takeData());
     }
 
-    Optional<SandboxExtension::Handle> sandboxExtensionHandle;
+    std::optional<SandboxExtension::Handle> sandboxExtensionHandle;
     decoder >> sandboxExtensionHandle;
     if (!sandboxExtensionHandle)
         return false;
@@ -107,7 +109,7 @@ bool LoadParameters::decode(IPC::Decoder& decoder, LoadParameters& data)
     if (!decoder.decode(data.provisionalLoadErrorURLString))
         return false;
 
-    Optional<Optional<WebsitePoliciesData>> websitePolicies;
+    std::optional<std::optional<WebsitePoliciesData>> websitePolicies;
     decoder >> websitePolicies;
     if (!websitePolicies)
         return false;
@@ -128,13 +130,19 @@ bool LoadParameters::decode(IPC::Decoder& decoder, LoadParameters& data)
     if (!decoder.decode(data.lockBackForwardList))
         return false;
 
-    Optional<String> clientRedirectSourceForHistory;
+    std::optional<String> clientRedirectSourceForHistory;
     decoder >> clientRedirectSourceForHistory;
     if (!clientRedirectSourceForHistory)
         return false;
     data.clientRedirectSourceForHistory = WTFMove(*clientRedirectSourceForHistory);
     
     if (!decoder.decode(data.isNavigatingToAppBoundDomain))
+        return false;
+
+    if (!decoder.decode(data.existingNetworkResourceLoadIdentifierToResume))
+        return false;
+    
+    if (!decoder.decode(data.sessionHistoryVisibility))
         return false;
     
     if (!platformDecode(decoder, data))

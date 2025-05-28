@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2021 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,19 +31,42 @@
 #include "GraphicsContext.h"
 #include "GraphicsContextCG.h"
 #include "ImageBufferUtilitiesCG.h"
-#include "ImageData.h"
 #include "IntRect.h"
+#include "PixelBuffer.h"
 #include <wtf/IsoMallocInlines.h>
 
 namespace WebCore {
 
 WTF_MAKE_ISO_ALLOCATED_IMPL(ImageBufferCGBitmapBackend);
 
-std::unique_ptr<ImageBufferCGBitmapBackend> ImageBufferCGBitmapBackend::create(const Parameters& parameters, CGColorSpaceRef cgColorSpace, const HostWindow*)
+IntSize ImageBufferCGBitmapBackend::calculateSafeBackendSize(const Parameters& parameters)
+{
+    IntSize backendSize = calculateBackendSize(parameters);
+    if (backendSize.isEmpty())
+        return backendSize;
+    
+    auto bytesPerRow = 4 * CheckedUint32(backendSize.width());
+    if (bytesPerRow.hasOverflowed())
+        return { };
+
+    CheckedSize numBytes = CheckedUint32(backendSize.height()) * bytesPerRow;
+    if (numBytes.hasOverflowed())
+        return { };
+
+    return backendSize;
+}
+
+size_t ImageBufferCGBitmapBackend::calculateMemoryCost(const Parameters& parameters)
+{
+    IntSize backendSize = calculateBackendSize(parameters);
+    return ImageBufferBackend::calculateMemoryCost(backendSize, calculateBytesPerRow(backendSize));
+}
+
+std::unique_ptr<ImageBufferCGBitmapBackend> ImageBufferCGBitmapBackend::create(const Parameters& parameters, const HostWindow*)
 {
     ASSERT(parameters.pixelFormat == PixelFormat::BGRA8);
 
-    IntSize backendSize = calculateBackendSize(parameters.logicalSize, parameters.resolutionScale);
+    IntSize backendSize = calculateSafeBackendSize(parameters);
     if (backendSize.isEmpty())
         return nullptr;
 
@@ -58,32 +81,29 @@ std::unique_ptr<ImageBufferCGBitmapBackend> ImageBufferCGBitmapBackend::create(c
     size_t numBytes = backendSize.height() * bytesPerRow;
     verifyImageBufferIsBigEnough(data, numBytes);
 
-    auto cgContext = adoptCF(CGBitmapContextCreate(data, backendSize.width(), backendSize.height(), 8, bytesPerRow, cgColorSpace, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host));
+    auto cgContext = adoptCF(CGBitmapContextCreate(data, backendSize.width(), backendSize.height(), 8, bytesPerRow, parameters.colorSpace.platformColorSpace(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host));
     if (!cgContext)
         return nullptr;
 
-    auto context = makeUnique<GraphicsContext>(cgContext.get());
+    auto context = makeUnique<GraphicsContextCG>(cgContext.get());
 
-    const auto releaseImageData = [] (void*, const void* data, size_t) {
+    auto dataProvider = adoptCF(CGDataProviderCreateWithData(nullptr, data, numBytes, [] (void*, const void* data, size_t) {
         fastFree(const_cast<void*>(data));
-    };
-
-    auto dataProvider = adoptCF(CGDataProviderCreateWithData(0, data, numBytes, releaseImageData));
+    }));
 
     return std::unique_ptr<ImageBufferCGBitmapBackend>(new ImageBufferCGBitmapBackend(parameters, data, WTFMove(dataProvider), WTFMove(context)));
 }
 
 std::unique_ptr<ImageBufferCGBitmapBackend> ImageBufferCGBitmapBackend::create(const Parameters& parameters, const GraphicsContext& context)
 {
-    if (auto cgColorSpace = context.hasPlatformContext() ? contextColorSpace(context) : nullptr)
-        return ImageBufferCGBitmapBackend::create(parameters, cgColorSpace.get(), nullptr);
+    if (auto cgColorSpace = context.hasPlatformContext() ? contextColorSpace(context) : nullptr) {
+        auto overrideParameters = parameters;
+        overrideParameters.colorSpace = DestinationColorSpace { cgColorSpace };
+
+        return ImageBufferCGBitmapBackend::create(overrideParameters, nullptr);
+    }
 
     return ImageBufferCGBitmapBackend::create(parameters, nullptr);
-}
-
-std::unique_ptr<ImageBufferCGBitmapBackend> ImageBufferCGBitmapBackend::create(const Parameters& parameters, const HostWindow* hostWindow)
-{
-    return ImageBufferCGBitmapBackend::create(parameters, cachedCGColorSpace(parameters.colorSpace), hostWindow);
 }
 
 ImageBufferCGBitmapBackend::ImageBufferCGBitmapBackend(const Parameters& parameters, void* data, RetainPtr<CGDataProviderRef>&& dataProvider, std::unique_ptr<GraphicsContext>&& context)
@@ -109,6 +129,12 @@ IntSize ImageBufferCGBitmapBackend::backendSize() const
     return { static_cast<int>(CGBitmapContextGetWidth(cgContext)), static_cast<int>(CGBitmapContextGetHeight(cgContext)) };
 }
 
+unsigned ImageBufferCGBitmapBackend::bytesPerRow() const
+{
+    IntSize backendSize = calculateBackendSize(m_parameters);
+    return calculateBytesPerRow(backendSize);
+}
+
 RefPtr<NativeImage> ImageBufferCGBitmapBackend::copyNativeImage(BackingStoreCopy copyBehavior) const
 {
     switch (copyBehavior) {
@@ -119,7 +145,7 @@ RefPtr<NativeImage> ImageBufferCGBitmapBackend::copyNativeImage(BackingStoreCopy
         auto backendSize = this->backendSize();
         return NativeImage::create(adoptCF(CGImageCreate(
             backendSize.width(), backendSize.height(), 8, 32, bytesPerRow(),
-            cachedCGColorSpace(colorSpace()), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host, m_dataProvider.get(),
+            colorSpace().platformColorSpace(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host, m_dataProvider.get(),
             0, true, kCGRenderingIntentDefault)));
     }
 
@@ -127,19 +153,14 @@ RefPtr<NativeImage> ImageBufferCGBitmapBackend::copyNativeImage(BackingStoreCopy
     return nullptr;
 }
 
-Vector<uint8_t> ImageBufferCGBitmapBackend::toBGRAData() const
+std::optional<PixelBuffer> ImageBufferCGBitmapBackend::getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect& srcRect) const
 {
-    return ImageBufferBackend::toBGRAData(m_data);
+    return ImageBufferBackend::getPixelBuffer(outputFormat, srcRect, m_data);
 }
 
-RefPtr<ImageData> ImageBufferCGBitmapBackend::getImageData(AlphaPremultiplication outputFormat, const IntRect& srcRect) const
+void ImageBufferCGBitmapBackend::putPixelBuffer(const PixelBuffer& pixelBuffer, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
 {
-    return ImageBufferBackend::getImageData(outputFormat, srcRect, m_data);
-}
-
-void ImageBufferCGBitmapBackend::putImageData(AlphaPremultiplication inputFormat, const ImageData& imageData, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat)
-{
-    ImageBufferBackend::putImageData(inputFormat, imageData, srcRect, destPoint, destFormat, m_data);
+    ImageBufferBackend::putPixelBuffer(pixelBuffer, srcRect, destPoint, destFormat, m_data);
 }
 
 } // namespace WebCore

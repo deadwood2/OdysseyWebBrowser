@@ -28,7 +28,6 @@
 #include "WebBackForwardListCounts.h"
 #include <WebCore/BackForwardClient.h>
 #include <WebCore/PageIdentifier.h>
-#include <wtf/HashSet.h>
 
 namespace WebCore {
 struct BackForwardItemIdentifier;
@@ -69,7 +68,7 @@ private:
     void close() override;
 
     WebPage* m_page;
-    mutable Optional<WebBackForwardListCounts> m_cachedBackForwardListCounts;
+    mutable std::optional<WebBackForwardListCounts> m_cachedBackForwardListCounts;
 };
 
 } // namespace WebKit

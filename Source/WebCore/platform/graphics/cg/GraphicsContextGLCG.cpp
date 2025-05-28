@@ -34,7 +34,7 @@
 #include "GraphicsContextGLOpenGL.h"
 #include "Image.h"
 #include "ImageBufferUtilitiesCG.h"
-#include "ImageData.h"
+#include "PixelBuffer.h"
 
 #if HAVE(ARM_NEON_INTRINSICS)
 #include "GraphicsContextGLNEON.h"
@@ -489,7 +489,7 @@ bool GraphicsContextGLImageExtractor::extractImage(bool premultiplyAlpha, bool i
     // but it would premultiply the alpha channel as a side effect.
     // Prefer to mannually Convert 16bit per-component formats to RGBA8 formats instead.
     if (bitsPerComponent == 16) {
-        m_formalizedRGBA8Data = makeUniqueArray<uint8_t>((Checked<size_t>(m_imageWidth) * m_imageHeight * 4U).unsafeGet());
+        m_formalizedRGBA8Data = makeUniqueArray<uint8_t>(Checked<size_t>(m_imageWidth) * m_imageHeight * 4U);
         const uint16_t* source = reinterpret_cast<const uint16_t*>(m_imagePixelData);
         uint8_t* destination = m_formalizedRGBA8Data.get();
         const ptrdiff_t srcStrideInElements = bytesPerRow / sizeof(uint16_t);
@@ -506,14 +506,9 @@ bool GraphicsContextGLImageExtractor::extractImage(bool premultiplyAlpha, bool i
     return true;
 }
 
-static void releaseImageData(void* imageData, const void*, size_t)
+void GraphicsContextGLOpenGL::paintToCanvas(const GraphicsContextGLAttributes& sourceContextAttributes, PixelBuffer&& pixelBuffer, const IntSize& canvasSize, GraphicsContext& context)
 {
-    reinterpret_cast<ImageData*>(imageData)->deref();
-}
-
-void GraphicsContextGLOpenGL::paintToCanvas(const GraphicsContextGLAttributes& sourceContextAttributes, Ref<ImageData>&& imageData, const IntSize& canvasSize, GraphicsContext& context)
-{
-    ASSERT(!imageData->size().isEmpty());
+    ASSERT(!pixelBuffer.size().isEmpty());
     if (canvasSize.isEmpty())
         return;
     // Input is GL_RGBA == kCGBitmapByteOrder32Big | kCGImageAlpha*Last.
@@ -526,15 +521,18 @@ void GraphicsContextGLOpenGL::paintToCanvas(const GraphicsContextGLAttributes& s
     else
         bitmapInfo |= kCGImageAlphaLast;
 
-    auto imageSize = imageData->size();
-    int rowBytes = imageSize.width() * 4;
-        size_t dataSize = rowBytes * imageSize.height();
-    uint8_t* imagePixels = imageData->data()->data();
-        verifyImageBufferIsBigEnough(imagePixels, dataSize);
-    RetainPtr<CGDataProviderRef> dataProvider = adoptCF(CGDataProviderCreateWithData(&imageData.leakRef(), imagePixels, dataSize, releaseImageData));
+    auto pixelArray = makeRef(pixelBuffer.data());
+    auto dataSize = pixelArray->byteLength();
+    auto data = pixelArray->data();
 
-    auto image = NativeImage::create(adoptCF(CGImageCreate(imageSize.width(), imageSize.height(), 8, 32, rowBytes, sRGBColorSpaceRef(), bitmapInfo,
-        dataProvider.get(), 0, false, kCGRenderingIntentDefault)));
+    verifyImageBufferIsBigEnough(data, dataSize);
+
+    auto dataProvider = adoptCF(CGDataProviderCreateWithData(&pixelArray.leakRef(), data, dataSize, [] (void* context, const void*, size_t) {
+        static_cast<JSC::Uint8ClampedArray*>(context)->deref();
+    }));
+
+    auto imageSize = pixelBuffer.size();
+    auto image = NativeImage::create(adoptCF(CGImageCreate(imageSize.width(), imageSize.height(), 8, 32, 4 * imageSize.width(), pixelBuffer.format().colorSpace.platformColorSpace(), bitmapInfo, dataProvider.get(), 0, false, kCGRenderingIntentDefault)));
 
     // CSS styling may cause the canvas's content to be resized on
     // the page. Go back to the Canvas to figure out the correct

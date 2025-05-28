@@ -26,7 +26,14 @@
 
 #if USE(HARFBUZZ)
 
+#if OS(MORPHOS)
+#define _NO_PPCINLINE
+#include <proto/harfbuzz.h>
+#include <libraries/harfbuzz.h>
+#undef _NO_PPCINLINE
+#else
 #include <hb.h>
+#endif
 
 namespace WebCore {
 

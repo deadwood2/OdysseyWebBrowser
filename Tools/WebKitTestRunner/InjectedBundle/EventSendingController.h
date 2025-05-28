@@ -58,6 +58,7 @@ public:
     void mouseForceChanged(double force);
     void mouseScrollBy(int x, int y);
     void mouseScrollByWithWheelAndMomentumPhases(int x, int y, JSStringRef phase, JSStringRef momentum);
+    void setWheelHasPreciseDeltas(bool);
     void continuousMouseScrollBy(int x, int y, bool paged);
     JSValueRef contextClick();
     void leapForward(int milliseconds);
@@ -87,6 +88,12 @@ public:
     void clearTouchPoints();
     void releaseTouchPoint(int index);
     void cancelTouchPoint(int index);
+#endif
+
+#if ENABLE(MAC_GESTURE_EVENTS)
+    void scaleGestureStart(double scale);
+    void scaleGestureChange(double scale);
+    void scaleGestureEnd(double scale);
 #endif
 
 private:

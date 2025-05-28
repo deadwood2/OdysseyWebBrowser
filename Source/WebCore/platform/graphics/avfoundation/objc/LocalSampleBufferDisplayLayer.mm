@@ -40,7 +40,6 @@
 #import <wtf/MainThread.h>
 #import <wtf/MonotonicTime.h>
 #import <wtf/cf/TypeCastsCF.h>
-#import <wtf/threads/BinarySemaphore.h>
 
 #import <pal/cocoa/AVFoundationSoftLink.h>
 
@@ -157,6 +156,7 @@ LocalSampleBufferDisplayLayer::LocalSampleBufferDisplayLayer(RetainPtr<AVSampleB
     , m_frameRateMonitor([this](auto info) { onIrregularFrameRateNotification(info.frameTime, info.lastFrameTime); })
 #endif
 {
+    ASSERT(isMainThread());
 }
 
 void LocalSampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size, CompletionHandler<void(bool didSucceed)>&& callback)
@@ -187,11 +187,9 @@ void LocalSampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size,
 
 LocalSampleBufferDisplayLayer::~LocalSampleBufferDisplayLayer()
 {
-    BinarySemaphore semaphore;
-    m_processingQueue->dispatch([&semaphore] {
-        semaphore.signal();
-    });
-    semaphore.wait();
+    ASSERT(isMainThread());
+
+    m_processingQueue->dispatchSync([] { });
 
     m_processingQueue = nullptr;
 
@@ -209,11 +207,8 @@ LocalSampleBufferDisplayLayer::~LocalSampleBufferDisplayLayer()
 void LocalSampleBufferDisplayLayer::layerStatusDidChange()
 {
     ASSERT(isMainThread());
-    if (m_sampleBufferDisplayLayer.get().status != AVQueuedSampleBufferRenderingStatusRendering)
-        return;
-    if (!m_client)
-        return;
-    m_client->sampleBufferDisplayLayerStatusDidChange(*this);
+    if (m_client && m_sampleBufferDisplayLayer.get().status == AVQueuedSampleBufferRenderingStatusFailed)
+        m_client->sampleBufferDisplayLayerStatusDidFail();
 }
 
 void LocalSampleBufferDisplayLayer::layerErrorDidChange()
@@ -251,6 +246,13 @@ void LocalSampleBufferDisplayLayer::updateDisplayMode(bool hideDisplayLayer, boo
 CGRect LocalSampleBufferDisplayLayer::bounds() const
 {
     return m_rootLayer.get().bounds;
+}
+
+void LocalSampleBufferDisplayLayer::updateRootLayerAffineTransform(CGAffineTransform transform)
+{
+    runWithoutAnimations([&] {
+        m_rootLayer.get().affineTransform = transform;
+    });
 }
 
 void LocalSampleBufferDisplayLayer::updateAffineTransform(CGAffineTransform transform)
@@ -310,7 +312,7 @@ void LocalSampleBufferDisplayLayer::enqueueSample(MediaSample& sample)
 
     m_processingQueue->dispatch([this, sample = makeRef(sample)] {
         if (![m_sampleBufferDisplayLayer isReadyForMoreMediaData]) {
-            WTFLogAlways("LocalSampleBufferDisplayLayer::enqueueSample not ready for more media data");
+            RELEASE_LOG(WebRTC, "LocalSampleBufferDisplayLayer::enqueueSample (%{public}s) not ready for more media data", m_logIdentifier.utf8().data());
             addSampleToPendingQueue(sample);
             requestNotificationWhenReadyForVideoData();
             return;
@@ -344,8 +346,10 @@ void LocalSampleBufferDisplayLayer::enqueueSampleBuffer(MediaSample& sample)
 #if !RELEASE_LOG_DISABLED
 void LocalSampleBufferDisplayLayer::onIrregularFrameRateNotification(MonotonicTime frameTime, MonotonicTime lastFrameTime)
 {
-    callOnMainThread([frameTime = frameTime.secondsSinceEpoch().value(), lastFrameTime = lastFrameTime.secondsSinceEpoch().value(), observedFrameRate = m_frameRateMonitor.observedFrameRate(), frameCount = m_frameRateMonitor.frameCount()] {
-        WTFLogAlways("LocalSampleBufferDisplayLayer::enqueueSampleBuffer at %f, previous frame was at %f, observed frame rate is %f, delay since last frame is %f ms, frame count is %lu", frameTime, lastFrameTime, observedFrameRate, (frameTime - lastFrameTime) * 1000, frameCount);
+    callOnMainThread([frameTime = frameTime.secondsSinceEpoch().value(), lastFrameTime = lastFrameTime.secondsSinceEpoch().value(), observedFrameRate = m_frameRateMonitor.observedFrameRate(), frameCount = m_frameRateMonitor.frameCount(), weakThis = makeWeakPtr(this)] {
+        if (!weakThis)
+            return;
+        RELEASE_LOG(WebRTC, "LocalSampleBufferDisplayLayer::enqueueSampleBuffer (%{public}s) at %f, previous frame was at %f, observed frame rate is %f, delay since last frame is %f ms, frame count is %lu", weakThis->m_logIdentifier.utf8().data(), frameTime, lastFrameTime, observedFrameRate, (frameTime - lastFrameTime) * 1000, frameCount);
     });
 }
 #endif
@@ -389,20 +393,22 @@ void LocalSampleBufferDisplayLayer::clearEnqueuedSamples()
 void LocalSampleBufferDisplayLayer::requestNotificationWhenReadyForVideoData()
 {
     auto weakThis = makeWeakPtr(*this);
-    [m_sampleBufferDisplayLayer requestMediaDataWhenReadyOnQueue:m_processingQueue->dispatchQueue() usingBlock:^{
+    [m_sampleBufferDisplayLayer requestMediaDataWhenReadyOnQueue:dispatch_get_main_queue() usingBlock:^{
         if (!weakThis)
             return;
 
-        [m_sampleBufferDisplayLayer stopRequestingMediaData];
+        m_processingQueue->dispatch([this] {
+            [m_sampleBufferDisplayLayer stopRequestingMediaData];
 
-        while (!m_pendingVideoSampleQueue.isEmpty()) {
-            if (![m_sampleBufferDisplayLayer isReadyForMoreMediaData]) {
-                requestNotificationWhenReadyForVideoData();
-                return;
+            while (!m_pendingVideoSampleQueue.isEmpty()) {
+                if (![m_sampleBufferDisplayLayer isReadyForMoreMediaData]) {
+                    requestNotificationWhenReadyForVideoData();
+                    return;
+                }
+                auto sample = m_pendingVideoSampleQueue.takeFirst();
+                enqueueSampleBuffer(sample);
             }
-            auto sample = m_pendingVideoSampleQueue.takeFirst();
-            enqueueSampleBuffer(sample);
-        }
+        });
     }];
 }
 

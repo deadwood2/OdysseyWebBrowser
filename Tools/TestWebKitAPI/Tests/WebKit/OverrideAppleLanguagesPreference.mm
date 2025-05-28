@@ -29,6 +29,10 @@
 
 #import "PlatformUtilities.h"
 #import "TestWKWebView.h"
+#import <WebKit/PreferenceObserver.h>
+#import <wtf/ObjCRuntimeExtras.h>
+#import <wtf/cocoa/VectorCocoa.h>
+#import <wtf/text/StringBuilder.h>
 
 TEST(WebKit, OverrideAppleLanguagesPreference)
 {
@@ -47,7 +51,136 @@ TEST(WebKit, OverrideAppleLanguagesPreference)
         return [webView stringByEvaluatingJavaScript:@"window.internals.userPreferredLanguages()[0]"];
     };
 
-    ASSERT_TRUE([preferredLanguage() isEqual:@"en-gb"]);
+    ASSERT_TRUE([preferredLanguage() isEqual:@"en-GB"]);
 }
 
 #endif // WK_HAVE_C_SPI
+
+// On older macOSes, CFPREFS_DIRECT_MODE is disabled and the WebProcess does not see the updated AppleLanguages
+// after the AppleLanguagePreferencesChangedNotification notification.
+#if PLATFORM(MAC) && ENABLE(CFPREFS_DIRECT_MODE)
+class AppleLanguagesTest : public testing::Test {
+public:
+    AppleLanguagesTest()
+    {
+        // Save current system language to restore it later.
+        auto task = adoptNS([[NSTask alloc] init]);
+        [task setLaunchPath:@"/usr/bin/defaults"];
+        [task setArguments:@[@"read", @"NSGlobalDomain", @"AppleLanguages"]];
+        auto pipe = adoptNS([[NSPipe alloc] init]);
+        [task setStandardOutput:pipe.get()];
+        auto fileHandle = [pipe fileHandleForReading];
+        [task launch];
+        NSData *data = [fileHandle readDataToEndOfFile];
+        m_savedAppleLanguages = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        m_savedAppleLanguages.replace("\n", "");
+        m_savedAppleLanguages.replace(" ", "");
+    }
+
+    ~AppleLanguagesTest()
+    {
+        // Restore previous system language.
+        system([NSString stringWithFormat:@"defaults write NSGlobalDomain AppleLanguages '%@'", (NSString *)m_savedAppleLanguages].UTF8String);
+    }
+
+private:
+    String m_savedAppleLanguages;
+};
+
+static IMP sharedInstanceMethodOriginal = nil;
+static IMP preferenceDidChangeMethodOriginal = nil;
+static bool preferenceObserverSharedInstanceCalled = false;
+static bool preferenceObserverPreferenceDidChangeCalled = false;
+
+static WKPreferenceObserver *sharedInstanceMethodOverride(id self, SEL selector)
+{
+    WKPreferenceObserver *observer = wtfCallIMP<WKPreferenceObserver *>(sharedInstanceMethodOriginal, self, selector);
+    preferenceObserverSharedInstanceCalled = true;
+    return observer;
+}
+
+static WKPreferenceObserver *preferenceDidChangeMethodOverride(id self, SEL selector, NSString *domain, NSString *key, NSString *encodedValue)
+{
+    NSLog(@"preferenceDidChangeMethodOverride: domain=%@, key=%@, encodedValue=%@", domain, key, encodedValue);
+    if ([key isEqualToString:@"AppleLanguages"])
+        preferenceObserverPreferenceDidChangeCalled = true;
+    WKPreferenceObserver *observer = wtfCallIMP<WKPreferenceObserver *>(preferenceDidChangeMethodOriginal, self, selector, domain, key, encodedValue);
+    return observer;
+}
+
+// FIXME: This test times out on Apple Silicon (webkit.org/b/222619) and is a flaky failure on Intel (webkit.org/b/228309)
+TEST_F(AppleLanguagesTest, DISABLED_UpdateAppleLanguages)
+{
+    preferenceObserverSharedInstanceCalled = false;
+    Method sharedInstanceMethod = class_getClassMethod(objc_getClass("WKPreferenceObserver"), @selector(sharedInstance));
+    ASSERT(sharedInstanceMethod);
+    sharedInstanceMethodOriginal = method_setImplementation(sharedInstanceMethod, (IMP)sharedInstanceMethodOverride);
+    ASSERT(sharedInstanceMethodOriginal);
+    Method preferenceDidChangeMethod = class_getInstanceMethod(objc_getClass("WKPreferenceObserver"), @selector(preferenceDidChange:key:encodedValue:));
+    ASSERT(preferenceDidChangeMethod);
+    preferenceDidChangeMethodOriginal = method_setImplementation(preferenceDidChangeMethod, (IMP)preferenceDidChangeMethodOverride);
+    ASSERT(preferenceDidChangeMethodOriginal);
+
+    // Tests uses "en-GB" language initially.
+    system([NSString stringWithFormat:@"defaults write NSGlobalDomain AppleLanguages '(\"en-GB\")'"].UTF8String);
+
+    auto getLanguageFromNSUserDefaults = [] {
+        auto languages = makeVector<String>([[NSUserDefaults standardUserDefaults] valueForKey:@"AppleLanguages"]);
+        return languages.isEmpty() ? emptyString() : languages[0];
+    };
+    unsigned timeout = 0;
+    while (getLanguageFromNSUserDefaults() != "en-GB" && ++timeout < 100)
+        TestWebKitAPI::Util::sleep(0.1);
+    EXPECT_WK_STREQ(@"en-GB", getLanguageFromNSUserDefaults());
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 300, 300) configuration:configuration.get() addToWindow:YES]);
+    [webView synchronouslyLoadTestPageNamed:@"simple"];
+
+    // We only listen for preference changes when the application is active.
+    [[NSNotificationCenter defaultCenter] postNotificationName:NSApplicationDidBecomeActiveNotification object:NSApp userInfo:nil];
+    timeout = 0;
+    while (!preferenceObserverSharedInstanceCalled && ++timeout < 100)
+        TestWebKitAPI::Util::sleep(0.1);
+    EXPECT_TRUE(preferenceObserverSharedInstanceCalled);
+    if (!preferenceObserverSharedInstanceCalled)
+        return;
+
+    auto preferredLanguage = [&] {
+        return [webView stringByEvaluatingJavaScript:@"navigator.language"];
+    };
+    EXPECT_WK_STREQ(@"en-GB", preferredLanguage());
+
+    __block bool done = false;
+    __block bool didChangeLanguage = false;
+    [webView performAfterReceivingAnyMessage:^(NSString *newLanguage) {
+        EXPECT_WK_STREQ(@"en-US", newLanguage);
+        didChangeLanguage = true;
+        done = true;
+    }];
+
+    [webView evaluateJavaScript:@"onlanguagechange = () => { webkit.messageHandlers.testHandler.postMessage(navigator.language); }; true;" completionHandler:^(id value, NSError *error) {
+        EXPECT_TRUE(!error);
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+    done = false;
+
+    // Switch system language from "en-GB" to "en-US". Make sure that we fire a languagechange event at the Window and that navigator.language
+    // now reports "en-GB".
+    system([NSString stringWithFormat:@"defaults write NSGlobalDomain AppleLanguages '(\"en-US\")'"].UTF8String);
+
+    // Implement our own timeout because we would fail to reset the language if we let the test actually time out.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        done = true;
+    });
+
+    TestWebKitAPI::Util::run(&done);
+    EXPECT_TRUE(didChangeLanguage);
+    EXPECT_TRUE(preferenceObserverPreferenceDidChangeCalled);
+    EXPECT_WK_STREQ(@"en-US", preferredLanguage());
+    EXPECT_WK_STREQ(@"en-US", getLanguageFromNSUserDefaults());
+
+    method_setImplementation(sharedInstanceMethod, (IMP)sharedInstanceMethodOriginal);
+}
+#endif

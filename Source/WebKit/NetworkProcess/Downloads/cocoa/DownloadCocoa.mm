@@ -51,15 +51,15 @@ void Download::resume(const IPC::DataReference& resumeData, const String& path, 
 
     // FIXME: This is a temporary workaround for <rdar://problem/34745171>. Fixed in iOS 13 and macOS 10.15, but we still need to support macOS 10.14 for now.
 #if USE(LEGACY_CFNETWORK_DOWNLOADS)
-    static NSSet<Class> *plistClasses = nil;
+    static NeverDestroyed<RetainPtr<NSSet<Class>>> plistClasses;
     static dispatch_once_t onceToken;
 
     dispatch_once(&onceToken, ^{
-        plistClasses = [[NSSet setWithObjects:[NSDictionary class], [NSArray class], [NSString class], [NSNumber class], [NSData class], [NSURL class], [NSURLRequest class], nil] retain];
+        plistClasses.get() = [NSSet setWithObjects:[NSDictionary class], [NSArray class], [NSString class], [NSNumber class], [NSData class], [NSURL class], [NSURLRequest class], nil];
     });
     auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:nsData.get() error:nil]);
     [unarchiver setDecodingFailurePolicy:NSDecodingFailurePolicyRaiseException];
-    auto dictionary = adoptNS(static_cast<NSMutableDictionary *>([[unarchiver decodeObjectOfClasses:plistClasses forKey:@"NSKeyedArchiveRootObjectKey"] mutableCopy]));
+    auto dictionary = adoptNS(static_cast<NSMutableDictionary *>([[unarchiver decodeObjectOfClasses:plistClasses.get().get() forKey:@"NSKeyedArchiveRootObjectKey"] mutableCopy]));
     [unarchiver finishDecoding];
     [dictionary setObject:static_cast<NSString*>(path) forKey:@"NSURLSessionResumeInfoLocalPath"];
     auto encoder = adoptNS([[NSKeyedArchiver alloc] initRequiringSecureCoding:YES]);
@@ -73,10 +73,10 @@ void Download::resume(const IPC::DataReference& resumeData, const String& path, 
 
     // FIXME: Use nsData instead of updatedData once we've migrated from _WKDownload to WKDownload
     // because there's no reason to set the local path we got from the data back into the data.
-    m_downloadTask = [cocoaSession.sessionWrapperForDownloads().session downloadTaskWithResumeData:updatedData];
+    m_downloadTask = [cocoaSession.sessionWrapperForDownloadResume().session downloadTaskWithResumeData:updatedData];
     auto taskIdentifier = [m_downloadTask taskIdentifier];
-    ASSERT(!cocoaSession.sessionWrapperForDownloads().downloadMap.contains(taskIdentifier));
-    cocoaSession.sessionWrapperForDownloads().downloadMap.add(taskIdentifier, m_downloadID);
+    ASSERT(!cocoaSession.sessionWrapperForDownloadResume().downloadMap.contains(taskIdentifier));
+    cocoaSession.sessionWrapperForDownloadResume().downloadMap.add(taskIdentifier, m_downloadID);
     m_downloadTask.get()._pathToDownloadTaskFile = path;
 
     [m_downloadTask resume];

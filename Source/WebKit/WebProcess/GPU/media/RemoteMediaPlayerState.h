@@ -32,11 +32,11 @@
 #include <WebCore/PlatformTimeRanges.h>
 #include <WebCore/VideoPlaybackQualityMetrics.h>
 #include <wtf/MediaTime.h>
+#include <wtf/MonotonicTime.h>
 
 namespace WebKit {
 
 struct RemoteMediaPlayerState {
-    MediaTime currentTime;
     MediaTime duration;
     MediaTime minTimeSeekable;
     MediaTime maxTimeSeekable;
@@ -55,10 +55,9 @@ struct RemoteMediaPlayerState {
     double seekableTimeRangesLastModifiedTime { 0 };
     double liveUpdateInterval { 0 };
     uint64_t totalBytes { 0 };
-    Optional<WebCore::VideoPlaybackQualityMetrics> videoMetrics;
-    Optional<bool> wouldTaintDocumentSecurityOrigin { true };
+    std::optional<WebCore::VideoPlaybackQualityMetrics> videoMetrics;
+    std::optional<bool> wouldTaintDocumentSecurityOrigin { true };
     bool paused { true };
-    bool loadingProgressed { false };
     bool canSaveMediaData { false };
     bool hasAudio { false };
     bool hasVideo { false };
@@ -71,7 +70,6 @@ struct RemoteMediaPlayerState {
     template<class Encoder>
     void encode(Encoder& encoder) const
     {
-        encoder << currentTime;
         encoder << duration;
         encoder << minTimeSeekable;
         encoder << maxTimeSeekable;
@@ -93,7 +91,6 @@ struct RemoteMediaPlayerState {
         encoder << videoMetrics;
         encoder << wouldTaintDocumentSecurityOrigin;
         encoder << paused;
-        encoder << loadingProgressed;
         encoder << canSaveMediaData;
         encoder << hasAudio;
         encoder << hasVideo;
@@ -105,161 +102,150 @@ struct RemoteMediaPlayerState {
     }
 
     template <class Decoder>
-    static Optional<RemoteMediaPlayerState> decode(Decoder& decoder)
+    static std::optional<RemoteMediaPlayerState> decode(Decoder& decoder)
     {
-        Optional<MediaTime> currentTime;
-        decoder >> currentTime;
-        if (!currentTime)
-            return WTF::nullopt;
-
-        Optional<MediaTime> duration;
+        std::optional<MediaTime> duration;
         decoder >> duration;
         if (!duration)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<MediaTime> minTimeSeekable;
+        std::optional<MediaTime> minTimeSeekable;
         decoder >> minTimeSeekable;
         if (!minTimeSeekable)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<MediaTime> maxTimeSeekable;
+        std::optional<MediaTime> maxTimeSeekable;
         decoder >> maxTimeSeekable;
         if (!maxTimeSeekable)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<MediaTime> startDate;
+        std::optional<MediaTime> startDate;
         decoder >> startDate;
         if (!startDate)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<MediaTime> startTime;
+        std::optional<MediaTime> startTime;
         decoder >> startTime;
         if (!startTime)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<String> languageOfPrimaryAudioTrack;
+        std::optional<String> languageOfPrimaryAudioTrack;
         decoder >> languageOfPrimaryAudioTrack;
         if (!languageOfPrimaryAudioTrack)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<String> wirelessPlaybackTargetName;
+        std::optional<String> wirelessPlaybackTargetName;
         decoder >> wirelessPlaybackTargetName;
         if (!wirelessPlaybackTargetName)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<WebCore::PlatformTimeRanges> bufferedRanges;
+        std::optional<WebCore::PlatformTimeRanges> bufferedRanges;
         decoder >> bufferedRanges;
         if (!bufferedRanges)
-            return WTF::nullopt;
+            return std::nullopt;
 
         WebCore::MediaPlayerEnums::NetworkState networkState;
         if (!decoder.decode(networkState))
-            return WTF::nullopt;
+            return std::nullopt;
 
         WebCore::MediaPlayerEnums::ReadyState readyState;
         if (!decoder.decode(readyState))
-            return WTF::nullopt;
+            return std::nullopt;
 
         WebCore::MediaPlayerEnums::MovieLoadType movieLoadType;
         if (!decoder.decode(movieLoadType))
-            return WTF::nullopt;
+            return std::nullopt;
 
         WebCore::MediaPlayerEnums::WirelessPlaybackTargetType wirelessPlaybackTargetType;
         if (!decoder.decode(wirelessPlaybackTargetType))
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<WebCore::FloatSize> naturalSize;
+        std::optional<WebCore::FloatSize> naturalSize;
         decoder >> naturalSize;
         if (!naturalSize)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<double> maxFastForwardRate;
+        std::optional<double> maxFastForwardRate;
         decoder >> maxFastForwardRate;
         if (!maxFastForwardRate)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<double> minFastReverseRate;
+        std::optional<double> minFastReverseRate;
         decoder >> minFastReverseRate;
         if (!minFastReverseRate)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<double> seekableTimeRangesLastModifiedTime;
+        std::optional<double> seekableTimeRangesLastModifiedTime;
         decoder >> seekableTimeRangesLastModifiedTime;
         if (!seekableTimeRangesLastModifiedTime)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<double> liveUpdateInterval;
+        std::optional<double> liveUpdateInterval;
         decoder >> liveUpdateInterval;
         if (!liveUpdateInterval)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<uint64_t> totalBytes;
+        std::optional<uint64_t> totalBytes;
         decoder >> totalBytes;
         if (!totalBytes)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<Optional<WebCore::VideoPlaybackQualityMetrics>> videoMetrics;
+        std::optional<std::optional<WebCore::VideoPlaybackQualityMetrics>> videoMetrics;
         decoder >> videoMetrics;
         if (!videoMetrics)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<Optional<bool>> wouldTaintDocumentSecurityOrigin;
+        std::optional<std::optional<bool>> wouldTaintDocumentSecurityOrigin;
         decoder >> wouldTaintDocumentSecurityOrigin;
         if (!wouldTaintDocumentSecurityOrigin)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> paused;
+        std::optional<bool> paused;
         decoder >> paused;
         if (!paused)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> loadingProgressed;
-        decoder >> loadingProgressed;
-        if (!loadingProgressed)
-            return WTF::nullopt;
-
-        Optional<bool> canSaveMediaData;
+        std::optional<bool> canSaveMediaData;
         decoder >> canSaveMediaData;
         if (!canSaveMediaData)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> hasAudio;
+        std::optional<bool> hasAudio;
         decoder >> hasAudio;
         if (!hasAudio)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> hasVideo;
+        std::optional<bool> hasVideo;
         decoder >> hasVideo;
         if (!hasVideo)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> hasClosedCaptions;
+        std::optional<bool> hasClosedCaptions;
         decoder >> hasClosedCaptions;
         if (!hasClosedCaptions)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> hasAvailableVideoFrame;
+        std::optional<bool> hasAvailableVideoFrame;
         decoder >> hasAvailableVideoFrame;
         if (!hasAvailableVideoFrame)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> wirelessVideoPlaybackDisabled;
+        std::optional<bool> wirelessVideoPlaybackDisabled;
         decoder >> wirelessVideoPlaybackDisabled;
         if (!wirelessVideoPlaybackDisabled)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> hasSingleSecurityOrigin;
+        std::optional<bool> hasSingleSecurityOrigin;
         decoder >> hasSingleSecurityOrigin;
         if (!hasSingleSecurityOrigin)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> didPassCORSAccessCheck;
+        std::optional<bool> didPassCORSAccessCheck;
         decoder >> didPassCORSAccessCheck;
         if (!didPassCORSAccessCheck)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return {{
-            WTFMove(*currentTime),
             WTFMove(*duration),
             WTFMove(*minTimeSeekable),
             WTFMove(*maxTimeSeekable),
@@ -281,7 +267,6 @@ struct RemoteMediaPlayerState {
             WTFMove(*videoMetrics),
             WTFMove(*wouldTaintDocumentSecurityOrigin),
             *paused,
-            *loadingProgressed,
             *canSaveMediaData,
             *hasAudio,
             *hasVideo,

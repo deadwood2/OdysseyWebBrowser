@@ -38,6 +38,7 @@
 #include "Logging.h"
 #include "PlatformLayer.h"
 #include "PlatformTimeRanges.h"
+#include "ScriptDisallowedScope.h"
 #include "Settings.h"
 #include <CoreMedia/CoreMedia.h>
 #include <JavaScriptCore/DataView.h>
@@ -55,8 +56,6 @@ namespace WebCore {
 
 MediaPlayerPrivateAVFoundation::MediaPlayerPrivateAVFoundation(MediaPlayer* player)
     : m_player(player)
-    , m_queuedNotifications()
-    , m_queueMutex()
     , m_networkState(MediaPlayer::NetworkState::Empty)
     , m_readyState(MediaPlayer::ReadyState::HaveNothing)
     , m_preload(MediaPlayer::Preload::Auto)
@@ -106,7 +105,7 @@ MediaPlayerPrivateAVFoundation::MediaRenderingMode MediaPlayerPrivateAVFoundatio
 
 MediaPlayerPrivateAVFoundation::MediaRenderingMode MediaPlayerPrivateAVFoundation::preferredRenderingMode() const
 {
-    if (!m_visible || assetStatus() == MediaPlayerAVAssetStatusUnknown)
+    if (assetStatus() == MediaPlayerAVAssetStatusUnknown)
         return MediaRenderingNone;
 
     if (supportsAcceleratedRendering() && m_player->renderingCanBeAccelerated())
@@ -123,18 +122,16 @@ void MediaPlayerPrivateAVFoundation::setUpVideoRendering()
     MediaRenderingMode currentMode = currentRenderingMode();
     MediaRenderingMode preferredMode = preferredRenderingMode();
 
-    if (preferredMode == MediaRenderingNone)
-        preferredMode = MediaRenderingToContext;
-
     if (currentMode == preferredMode && currentMode != MediaRenderingNone)
         return;
 
-    if (currentMode != MediaRenderingNone)
-        tearDownVideoRendering();
-
     switch (preferredMode) {
     case MediaRenderingNone:
+        tearDownVideoRendering();
+        break;
+
     case MediaRenderingToContext:
+        destroyVideoLayer();
         createContextVideoRenderer();
         break;
 
@@ -145,7 +142,26 @@ void MediaPlayerPrivateAVFoundation::setUpVideoRendering()
 
     // If using a movie layer, inform the client so the compositing tree is updated.
     if (currentMode == MediaRenderingToLayer || preferredMode == MediaRenderingToLayer)
-        m_player->renderingModeChanged();
+        setNeedsRenderingModeChanged();
+}
+
+void MediaPlayerPrivateAVFoundation::setNeedsRenderingModeChanged()
+{
+    if (m_needsRenderingModeChanged)
+        return;
+    m_needsRenderingModeChanged = true;
+
+    queueTaskOnEventLoop([weakThis = makeWeakPtr(*this)] {
+        if (weakThis)
+            weakThis->renderingModeChanged();
+    });
+}
+
+void MediaPlayerPrivateAVFoundation::renderingModeChanged()
+{
+    ASSERT(m_needsRenderingModeChanged);
+    m_needsRenderingModeChanged = false;
+    m_player->renderingModeChanged();
 }
 
 void MediaPlayerPrivateAVFoundation::tearDownVideoRendering()
@@ -446,19 +462,15 @@ void MediaPlayerPrivateAVFoundation::prepareForRendering()
     setUpVideoRendering();
 
     if (currentRenderingMode() == MediaRenderingToLayer || preferredRenderingMode() == MediaRenderingToLayer)
-        m_player->renderingModeChanged();
+        setNeedsRenderingModeChanged();
 }
 
 bool MediaPlayerPrivateAVFoundation::supportsFullscreen() const
 {
-#if ENABLE(FULLSCREEN_API)
+    // FIXME: WebVideoFullscreenController assumes a QTKit/QuickTime media engine
+#if ENABLE(FULLSCREEN_API) || (PLATFORM(IOS_FAMILY) && HAVE(AVKIT))
     return true;
 #else
-    // FIXME: WebVideoFullscreenController assumes a QTKit/QuickTime media engine
-#if PLATFORM(IOS_FAMILY)
-    if (DeprecatedGlobalSettings::avKitEnabled())
-        return true;
-#endif
     return false;
 #endif
 }
@@ -480,6 +492,8 @@ void MediaPlayerPrivateAVFoundation::updateStates()
 {
     if (m_ignoreLoadStateChanges)
         return;
+
+    ScriptDisallowedScope::InMainThread scriptDisallowedScope;
 
     MediaPlayer::NetworkState newNetworkState = m_networkState;
     MediaPlayer::ReadyState newReadyState = m_readyState;
@@ -566,7 +580,7 @@ void MediaPlayerPrivateAVFoundation::updateStates()
     setReadyState(newReadyState);
 }
 
-void MediaPlayerPrivateAVFoundation::setVisible(bool visible)
+void MediaPlayerPrivateAVFoundation::setPageIsVisible(bool visible)
 {
     if (m_visible == visible)
         return;
@@ -669,12 +683,11 @@ void MediaPlayerPrivateAVFoundation::invalidateCachedDuration()
     // so report duration changed when the estimate is upated.
     MediaTime duration = this->durationMediaTime();
     if (duration != m_reportedDuration) {
-        INFO_LOG(LOGIDENTIFIER, "- ", m_cachedDuration);
+        INFO_LOG(LOGIDENTIFIER, duration);
         if (m_reportedDuration.isValid())
             m_player->durationChanged();
         m_reportedDuration = duration;
     }
-    
 }
 
 MediaPlayer::MovieLoadType MediaPlayerPrivateAVFoundation::movieLoadType() const
@@ -712,7 +725,7 @@ void MediaPlayerPrivateAVFoundation::setPreload(MediaPlayer::Preload preload)
 
 void MediaPlayerPrivateAVFoundation::setDelayCallbacks(bool delay) const
 {
-    LockHolder lock(m_queueMutex);
+    Locker locker { m_queuedNotificationsLock };
     if (delay)
         ++m_delayCallbacks;
     else {
@@ -729,7 +742,7 @@ void MediaPlayerPrivateAVFoundation::mainThreadCallback()
 
 void MediaPlayerPrivateAVFoundation::clearMainThreadPendingFlag()
 {
-    LockHolder lock(m_queueMutex);
+    Locker locker { m_queuedNotificationsLock };
     m_mainThreadCallPending = false;
 }
 
@@ -745,32 +758,32 @@ void MediaPlayerPrivateAVFoundation::scheduleMainThreadNotification(Notification
 
 void MediaPlayerPrivateAVFoundation::scheduleMainThreadNotification(Notification&& notification)
 {
-    m_queueMutex.lock();
+    {
+        Locker locker { m_queuedNotificationsLock };
 
-    // It is important to always process the properties in the order that we are notified,
-    // so always go through the queue because notifications happen on different threads.
-    m_queuedNotifications.append(WTFMove(notification));
+        // It is important to always process the properties in the order that we are notified,
+        // so always go through the queue because notifications happen on different threads.
+        m_queuedNotifications.append(WTFMove(notification));
 
 #if OS(WINDOWS)
-    bool delayDispatch = true;
+        bool delayDispatch = true;
 #else
-    bool delayDispatch = m_delayCallbacks || !isMainThread();
+        bool delayDispatch = m_delayCallbacks || !isMainThread();
 #endif
-    if (delayDispatch && !m_mainThreadCallPending) {
-        m_mainThreadCallPending = true;
+        if (delayDispatch && !m_mainThreadCallPending) {
+            m_mainThreadCallPending = true;
 
-        callOnMainThread([weakThis = makeWeakPtr(*this)] {
-            if (!weakThis)
-                return;
+            callOnMainThread([weakThis = makeWeakPtr(*this)] {
+                if (!weakThis)
+                    return;
 
-            weakThis->mainThreadCallback();
-        });
+                weakThis->mainThreadCallback();
+            });
+        }
+
+        if (delayDispatch)
+            return;
     }
-
-    m_queueMutex.unlock();
-
-    if (delayDispatch)
-        return;
 
     dispatchNotification();
 }
@@ -781,7 +794,7 @@ void MediaPlayerPrivateAVFoundation::dispatchNotification()
 
     Notification notification;
     {
-        LockHolder lock(m_queueMutex);
+        Locker locker { m_queuedNotificationsLock };
         
         if (m_queuedNotifications.isEmpty())
             return;
@@ -1056,6 +1069,13 @@ bool MediaPlayerPrivateAVFoundation::isUnsupportedMIMEType(const String& type)
     return false;
 }
 
+void MediaPlayerPrivateAVFoundation::queueTaskOnEventLoop(Function<void()>&& task)
+{
+    ASSERT(isMainThread());
+    if (m_player)
+        m_player->queueTaskOnEventLoop(WTFMove(task));
+}
+
 #if !RELEASE_LOG_DISABLED
 WTFLogChannel& MediaPlayerPrivateAVFoundation::logChannel() const
 {
@@ -1066,37 +1086,37 @@ WTFLogChannel& MediaPlayerPrivateAVFoundation::logChannel() const
 const HashSet<String, ASCIICaseInsensitiveHash>& MediaPlayerPrivateAVFoundation::staticMIMETypeList()
 {
     static const auto cache = makeNeverDestroyed(HashSet<String, ASCIICaseInsensitiveHash> {
-        "application/vnd.apple.mpegurl",
-        "application/x-mpegurl",
-        "audio/3gpp",
-        "audio/aac",
-        "audio/aacp",
-        "audio/aiff",
-        "audio/basic",
-        "audio/mp3",
-        "audio/mp4",
-        "audio/mpeg",
-        "audio/mpeg3",
-        "audio/mpegurl",
-        "audio/mpg",
-        "audio/vnd.wave",
-        "audio/wav",
-        "audio/wave",
-        "audio/x-aac",
-        "audio/x-aiff",
-        "audio/x-m4a",
-        "audio/x-mpegurl",
-        "audio/x-wav",
-        "video/3gpp",
-        "video/3gpp2",
-        "video/mp4",
-        "video/mpeg",
-        "video/mpeg2",
-        "video/mpg",
-        "video/quicktime",
-        "video/x-m4v",
-        "video/x-mpeg",
-        "video/x-mpg",
+        "application/vnd.apple.mpegurl"_s,
+        "application/x-mpegurl"_s,
+        "audio/3gpp"_s,
+        "audio/aac"_s,
+        "audio/aacp"_s,
+        "audio/aiff"_s,
+        "audio/basic"_s,
+        "audio/mp3"_s,
+        "audio/mp4"_s,
+        "audio/mpeg"_s,
+        "audio/mpeg3"_s,
+        "audio/mpegurl"_s,
+        "audio/mpg"_s,
+        "audio/vnd.wave"_s,
+        "audio/wav"_s,
+        "audio/wave"_s,
+        "audio/x-aac"_s,
+        "audio/x-aiff"_s,
+        "audio/x-m4a"_s,
+        "audio/x-mpegurl"_s,
+        "audio/x-wav"_s,
+        "video/3gpp"_s,
+        "video/3gpp2"_s,
+        "video/mp4"_s,
+        "video/mpeg"_s,
+        "video/mpeg2"_s,
+        "video/mpg"_s,
+        "video/quicktime"_s,
+        "video/x-m4v"_s,
+        "video/x-mpeg"_s,
+        "video/x-mpg"_s,
     });
     return cache;
 }

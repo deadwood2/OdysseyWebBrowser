@@ -33,7 +33,6 @@
 #import <WebCore/CDMFactory.h>
 #import <WebCore/Color.h>
 #import <WebCore/Frame.h>
-#import <WebCore/MediaSessionManagerCocoa.h>
 #import <WebCore/MediaStrategy.h>
 #import <WebCore/NetworkStorageSession.h>
 #import <WebCore/PasteboardItemInfo.h>
@@ -75,15 +74,6 @@ private:
         return AudioDestination::create(callback, inputDeviceId, numberOfInputChannels, numberOfOutputChannels, sampleRate);
     }
 #endif
-    void clearNowPlayingInfo() final
-    {
-        MediaSessionManagerCocoa::clearNowPlayingInfo();
-    }
-
-    void setNowPlayingInfo(bool setAsNowPlayingApplication, const NowPlayingInfo& nowPlayingInfo) final
-    {
-        MediaSessionManagerCocoa::setNowPlayingInfo(setAsNowPlayingApplication, nowPlayingInfo);
-    }
 };
 
 MediaStrategy* WebPlatformStrategies::createMediaStrategy()
@@ -95,12 +85,14 @@ class WebBlobRegistry final : public BlobRegistry {
 private:
     void registerFileBlobURL(const URL& url, Ref<BlobDataFileReference>&& reference, const String&, const String& contentType) final { m_blobRegistry.registerFileBlobURL(url, WTFMove(reference), contentType); }
     void registerBlobURL(const URL& url, Vector<BlobPart>&& parts, const String& contentType) final { m_blobRegistry.registerBlobURL(url, WTFMove(parts), contentType); }
-    void registerBlobURL(const URL& url, const URL& srcURL) final { m_blobRegistry.registerBlobURL(url, srcURL); }
-    void registerBlobURLOptionallyFileBacked(const URL& url, const URL& srcURL, RefPtr<BlobDataFileReference>&& reference, const String& contentType) final { m_blobRegistry.registerBlobURLOptionallyFileBacked(url, srcURL, WTFMove(reference), contentType); }
-    void registerBlobURLForSlice(const URL& url, const URL& srcURL, long long start, long long end) final { m_blobRegistry.registerBlobURLForSlice(url, srcURL, start, end); }
+    void registerBlobURL(const URL& url, const URL& srcURL, const PolicyContainer& policyContainer) final { m_blobRegistry.registerBlobURL(url, srcURL, policyContainer); }
+    void registerBlobURLOptionallyFileBacked(const URL& url, const URL& srcURL, RefPtr<BlobDataFileReference>&& reference, const String& contentType) final { m_blobRegistry.registerBlobURLOptionallyFileBacked(url, srcURL, WTFMove(reference), contentType, { }); }
+    void registerBlobURLForSlice(const URL& url, const URL& srcURL, long long start, long long end, const String& contentType) final { m_blobRegistry.registerBlobURLForSlice(url, srcURL, start, end, contentType); }
     void unregisterBlobURL(const URL& url) final { m_blobRegistry.unregisterBlobURL(url); }
     unsigned long long blobSize(const URL& url) final { return m_blobRegistry.blobSize(url); }
     void writeBlobsToTemporaryFiles(const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&& completionHandler) final { m_blobRegistry.writeBlobsToTemporaryFiles(blobURLs, WTFMove(completionHandler)); }
+    void registerBlobURLHandle(const URL& url) final { m_blobRegistry.registerBlobURLHandle(url); }
+    void unregisterBlobURLHandle(const URL& url) final { m_blobRegistry.unregisterBlobURLHandle(url); }
 
     BlobRegistryImpl* blobRegistryImpl() final { return &m_blobRegistry; }
 
@@ -202,12 +194,12 @@ bool WebPlatformStrategies::containsStringSafeForDOMToReadForType(const String& 
     return PlatformPasteboard(pasteboardName).containsStringSafeForDOMToReadForType(type);
 }
 
-Optional<WebCore::PasteboardItemInfo> WebPlatformStrategies::informationForItemAtIndex(size_t index, const String& pasteboardName, int64_t changeCount, const PasteboardContext*)
+std::optional<WebCore::PasteboardItemInfo> WebPlatformStrategies::informationForItemAtIndex(size_t index, const String& pasteboardName, int64_t changeCount, const PasteboardContext*)
 {
     return PlatformPasteboard(pasteboardName).informationForItemAtIndex(index, changeCount);
 }
 
-Optional<Vector<WebCore::PasteboardItemInfo>> WebPlatformStrategies::allPasteboardItemInfo(const String& pasteboardName, int64_t changeCount, const PasteboardContext*)
+std::optional<Vector<WebCore::PasteboardItemInfo>> WebPlatformStrategies::allPasteboardItemInfo(const String& pasteboardName, int64_t changeCount, const PasteboardContext*)
 {
     return PlatformPasteboard(pasteboardName).allPasteboardItemInfo(changeCount);
 }

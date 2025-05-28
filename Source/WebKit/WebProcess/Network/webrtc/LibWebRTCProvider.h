@@ -52,7 +52,7 @@ public:
     explicit LibWebRTCProvider(WebPage&);
 
 private:
-    std::unique_ptr<SuspendableSocketFactory> createSocketFactory(String&& /* userAgent */) final;
+    std::unique_ptr<SuspendableSocketFactory> createSocketFactory(String&& /* userAgent */, bool /* isFirstParty */, WebCore::RegistrableDomain&&) final;
 
     rtc::scoped_refptr<webrtc::PeerConnectionInterface> createPeerConnection(webrtc::PeerConnectionObserver&, rtc::PacketSocketFactory*, webrtc::PeerConnectionInterface::RTCConfiguration&&) final;
 
@@ -60,17 +60,17 @@ private:
     void registerMDNSName(WebCore::DocumentIdentifier, const String& ipAddress, CompletionHandler<void(MDNSNameOrError&&)>&&) final;
     void disableNonLocalhostConnections() final;
     void startedNetworkThread() final;
+    RefPtr<WebCore::RTCDataChannelRemoteHandlerConnection> createRTCDataChannelRemoteHandlerConnection() final;
+    void setLoggingLevel(WTFLogLevel) final;
 
-#if ENABLE(GPU_PROCESS) && PLATFORM(COCOA) && !PLATFORM(MACCATALYST)
     WebPage& m_webPage;
+#if ENABLE(GPU_PROCESS) && PLATFORM(COCOA) && !PLATFORM(MACCATALYST)
     bool m_didInitializeCallback { false };
 #endif
 };
 
 inline LibWebRTCProvider::LibWebRTCProvider(WebPage& webPage)
-#if ENABLE(GPU_PROCESS) && PLATFORM(COCOA) && !PLATFORM(MACCATALYST)
     : m_webPage(webPage)
-#endif
 {
     m_useNetworkThreadWithSocketServer = false;
 }

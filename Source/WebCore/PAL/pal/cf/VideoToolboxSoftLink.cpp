@@ -26,21 +26,27 @@
 
 #if USE(AVFOUNDATION)
 
-#import <VideoToolbox/VTCompressionSession.h>
-
+#include <VideoToolbox/VTCompressionSession.h>
 #include <wtf/SoftLinking.h>
 
 SOFT_LINK_FRAMEWORK_FOR_SOURCE(PAL, VideoToolbox)
 
 SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTCompressionPropertyKey_ExpectedFrameRate, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTCompressionPropertyKey_MaxKeyFrameInterval, CFStringRef)
 SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, CFStringRef)
 SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTCompressionPropertyKey_RealTime, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTCompressionPropertyKey_AverageBitRate, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTCompressionPropertyKey_ProfileLevel, CFStringRef)
 
 SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTProfileLevel_H264_Baseline_AutoLevel, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTProfileLevel_H264_High_AutoLevel, CFStringRef)
+SOFT_LINK_CONSTANT_FOR_SOURCE(PAL, VideoToolbox, kVTProfileLevel_H264_Main_AutoLevel, CFStringRef)
 
 SOFT_LINK_FUNCTION_FOR_SOURCE(PAL, VideoToolbox, VTCompressionSessionCreate, OSStatus, (CFAllocatorRef allocator, int32_t width, int32_t height, CMVideoCodecType codecType, CFDictionaryRef encoderSpecification, CFDictionaryRef sourceImageBufferAttributes, CFAllocatorRef compressedDataAllocator, VTCompressionOutputCallback outputCallback, void* outputCallbackRefCon, VTCompressionSessionRef* compressionSessionOut), (allocator, width, height, codecType, encoderSpecification, sourceImageBufferAttributes, compressedDataAllocator, outputCallback, outputCallbackRefCon, compressionSessionOut))
 SOFT_LINK_FUNCTION_FOR_SOURCE(PAL, VideoToolbox, VTCompressionSessionCompleteFrames, OSStatus, (VTCompressionSessionRef session, CMTime completeUntilPresentationTimeStamp), (session, completeUntilPresentationTimeStamp))
 SOFT_LINK_FUNCTION_FOR_SOURCE(PAL, VideoToolbox, VTCompressionSessionEncodeFrame, OSStatus, (VTCompressionSessionRef session, CVImageBufferRef imageBuffer, CMTime presentationTimeStamp, CMTime duration, CFDictionaryRef frameProperties, void* sourceFrameRefcon, VTEncodeInfoFlags* infoFlagsOut), (session, imageBuffer, presentationTimeStamp, duration, frameProperties, sourceFrameRefcon, infoFlagsOut))
 SOFT_LINK_FUNCTION_FOR_SOURCE(PAL, VideoToolbox, VTCompressionSessionPrepareToEncodeFrames, OSStatus, (VTCompressionSessionRef session), (session))
+SOFT_LINK_FUNCTION_FOR_SOURCE(PAL, VideoToolbox, VTCompressionSessionInvalidate, void, (VTCompressionSessionRef session), (session))
 
 #endif // USE(AVFOUNDATION)

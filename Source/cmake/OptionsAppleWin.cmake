@@ -25,13 +25,14 @@ set(WTF_PLATFORM_APPLE_WIN ON)
 include(OptionsWin)
 
 set(ENABLE_WEBCORE ON)
+set(ENABLE_WEBINSPECTORUI OFF)
 
 SET_AND_EXPOSE_TO_BUILD(USE_CF ON)
 SET_AND_EXPOSE_TO_BUILD(USE_CFURLCONNECTION ON)
 
 set(SQLite3_NAMES SQLite3${DEBUG_SUFFIX})
 
-find_package(ICU 60.2 REQUIRED COMPONENTS data i18n uc)
+find_package(ICU 61.2 REQUIRED COMPONENTS data i18n uc)
 find_package(LibXml2 REQUIRED)
 find_package(LibXslt REQUIRED)
 find_package(SQLite3 REQUIRED)
@@ -95,6 +96,36 @@ endif ()
 
 # Warnings as errors (ignore narrowing conversions)
 add_compile_options(/WX /Wv:18)
+
+# Support AppleWin internal build by using deprecated directory structure
+set(DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources")
+set(WTF_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WTF")
+set(JavaScriptCore_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/JavaScriptCore")
+set(PAL_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/PAL")
+set(WebCore_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebCore")
+set(WebDriver_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebDriver")
+set(WebKitLegacy_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebKitLegacy")
+set(WebKit_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebKit")
+set(WebInspectorUI_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebInspectorUI")
+set(MiniBrowser_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/MiniBrowser")
+set(TestRunnerShared_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/TestRunnerShared")
+set(DumpRenderTree_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/DumpRenderTree")
+set(WebKitTestRunner_DERIVED_SOURCES_DIR "${CMAKE_BINARY_DIR}/DerivedSources/WebKitTestRunner")
+
+set(FORWARDING_HEADERS_DIR "${DERIVED_SOURCES_DIR}/ForwardingHeaders")
+set(bmalloc_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(ANGLE_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(WTF_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(JavaScriptCore_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(JavaScriptCore_PRIVATE_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(PAL_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(WebCore_PRIVATE_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(WebKitLegacy_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(WebKit_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+set(WebKit_PRIVATE_FRAMEWORK_HEADERS_DIR ${FORWARDING_HEADERS_DIR})
+
+set(WTF_SCRIPTS_DIR "${FORWARDING_HEADERS_DIR}/wtf/Scripts")
+set(JavaScriptCore_SCRIPTS_DIR "${FORWARDING_HEADERS_DIR}/JavaScriptCore/Scripts")
 
 if (INTERNAL_BUILD)
     set(WTF_SCRIPTS_DIR "${CMAKE_BINARY_DIR}/../include/private/WTF/Scripts")

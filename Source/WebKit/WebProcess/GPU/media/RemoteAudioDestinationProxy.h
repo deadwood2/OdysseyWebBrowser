@@ -39,7 +39,6 @@
 #if PLATFORM(COCOA)
 #include "SharedRingBufferStorage.h"
 #include <WebCore/AudioDestinationCocoa.h>
-#include <wtf/Optional.h>
 #else
 #include <WebCore/AudioDestinationGStreamer.h>
 #endif
@@ -79,7 +78,8 @@ private:
     void stopRenderingThread();
     void renderQuantum();
 
-    void connectToGPUProcess();
+    IPC::Connection* connection();
+    IPC::Connection* existingConnection();
 
     // GPUProcessConnection::Client.
     void gpuProcessConnectionDidClose(GPUProcessConnection&) final;
@@ -95,8 +95,9 @@ private:
     void storageChanged(SharedMemory*, const WebCore::CAAudioStreamDescription& format, size_t frameCount);
 #endif
 
-    RemoteAudioDestinationIdentifier m_destinationID;
+    RemoteAudioDestinationIdentifier m_destinationID; // Call destinationID() getter to make sure the destinationID is valid.
 
+    WeakPtr<GPUProcessConnection> m_gpuProcessConnection;
 #if PLATFORM(COCOA)
     uint64_t m_numberOfFrames { 0 };
     std::unique_ptr<WebCore::CARingBuffer> m_ringBuffer;

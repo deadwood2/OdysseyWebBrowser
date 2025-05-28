@@ -24,7 +24,7 @@
  */
 
 #import "config.h"
-#import "WKWebpagePreferences.h"
+#import <WebKit/WKWebpagePreferences.h>
 
 #import "APICustomHeaderFields.h"
 #import "WKUserContentControllerInternal.h"
@@ -32,8 +32,8 @@
 #import "WKWebsiteDataStoreInternal.h"
 #import "WebContentMode.h"
 #import "_WKCustomHeaderFieldsInternal.h"
-#import "_WKWebsitePoliciesInternal.h"
 #import <WebCore/DocumentLoader.h>
+#import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/RetainPtr.h>
 
 namespace WebKit {
@@ -109,6 +109,9 @@ static WebCore::MouseEventPolicy coreMouseEventPolicy(_WKWebsiteMouseEventPolicy
 
 - (void)dealloc
 {
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKWebpagePreferences.class, self))
+        return;
+
     _websitePolicies->API::WebsitePolicies::~WebsitePolicies();
 
     [super dealloc];

@@ -45,6 +45,7 @@
 #include <wtf/JSONValues.h>
 #include <wtf/LoggerHelper.h>
 #include <wtf/NeverDestroyed.h>
+#include <wtf/RobinHoodHashSet.h>
 #include <wtf/text/Base64.h>
 
 #if HAVE(AVCONTENTKEYSESSION)
@@ -112,11 +113,11 @@ static Vector<Ref<SharedBuffer>> extractSinfData(const SharedBuffer& buffer)
         if (!keyID)
             continue;
 
-        Vector<char> sinfData;
-        if (!WTF::base64Decode(keyID, { sinfData }, WTF::Base64IgnoreSpacesAndNewLines))
+        auto sinfData = base64Decode(keyID, Base64DecodeOptions::IgnoreSpacesAndNewLines);
+        if (!sinfData)
             continue;
 
-        sinfs.uncheckedAppend(SharedBuffer::create(WTFMove(sinfData)));
+        sinfs.uncheckedAppend(SharedBuffer::create(WTFMove(*sinfData)));
     }
 
     return sinfs;
@@ -132,8 +133,8 @@ static SchemeAndKeyResult extractSchemeAndKeyIdFromSinf(const SharedBuffer& buff
     SchemeAndKeyResult result;
     for (auto& buffer : buffers) {
         unsigned offset = 0;
-        Optional<FourCC> scheme;
-        Optional<Vector<uint8_t>> keyID;
+        std::optional<FourCC> scheme;
+        std::optional<Vector<uint8_t>> keyID;
 
         auto view = JSC::DataView::create(buffer->tryCreateArrayBuffer(), offset, buffer->size());
         while (auto optionalBoxType = ISOBox::peekBox(view, offset)) {
@@ -169,14 +170,14 @@ static SchemeAndKeyResult extractSchemeAndKeyIdFromSinf(const SharedBuffer& buff
     return result;
 }
 
-Optional<Vector<Ref<SharedBuffer>>> CDMPrivateFairPlayStreaming::extractKeyIDsSinf(const SharedBuffer& buffer)
+std::optional<Vector<Ref<SharedBuffer>>> CDMPrivateFairPlayStreaming::extractKeyIDsSinf(const SharedBuffer& buffer)
 {
     Vector<Ref<SharedBuffer>> keyIDs;
     auto results = extractSchemeAndKeyIdFromSinf(buffer);
 
     for (auto& result : results) {
         if (validFairPlayStreamingSchemes().contains(result.first))
-            keyIDs.append(SharedBuffer::create(result.second.data(), result.second.size()));
+            keyIDs.append(SharedBuffer::create(WTFMove(result.second)));
     }
 
     return keyIDs;
@@ -197,7 +198,7 @@ RefPtr<SharedBuffer> CDMPrivateFairPlayStreaming::sanitizeSkd(const SharedBuffer
     return buffer.copy();
 }
 
-Optional<Vector<Ref<SharedBuffer>>> CDMPrivateFairPlayStreaming::extractKeyIDsSkd(const SharedBuffer& buffer)
+std::optional<Vector<Ref<SharedBuffer>>> CDMPrivateFairPlayStreaming::extractKeyIDsSkd(const SharedBuffer& buffer)
 {
     // In the 'skd' scheme, the init data is the key ID.
     Vector<Ref<SharedBuffer>> keyIDs;
@@ -205,9 +206,9 @@ Optional<Vector<Ref<SharedBuffer>>> CDMPrivateFairPlayStreaming::extractKeyIDsSk
     return keyIDs;
 }
 
-static const HashSet<AtomString>& validInitDataTypes()
+static const MemoryCompactLookupOnlyRobinHoodHashSet<AtomString>& validInitDataTypes()
 {
-    static NeverDestroyed<HashSet<AtomString>> validTypes = HashSet<AtomString>({
+    static NeverDestroyed<MemoryCompactLookupOnlyRobinHoodHashSet<AtomString>> validTypes(std::initializer_list<AtomString> {
         CDMPrivateFairPlayStreaming::sinfName(),
         CDMPrivateFairPlayStreaming::skdName(),
 #if HAVE(FAIRPLAYSTREAMING_CENC_INITDATA)
@@ -427,7 +428,7 @@ RefPtr<SharedBuffer> CDMPrivateFairPlayStreaming::sanitizeResponse(const SharedB
     return response.copy();
 }
 
-Optional<String> CDMPrivateFairPlayStreaming::sanitizeSessionId(const String& sessionId) const
+std::optional<String> CDMPrivateFairPlayStreaming::sanitizeSessionId(const String& sessionId) const
 {
     return sessionId;
 }

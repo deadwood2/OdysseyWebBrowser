@@ -107,7 +107,7 @@ void AudioDestinationCocoa::start(Function<void(Function<void()>&&)>&& dispatchT
     ASSERT(isMainThread());
     LOG(Media, "AudioDestinationCocoa::start");
     {
-        auto locker = holdLock(m_dispatchToRenderThreadLock);
+        Locker locker { m_dispatchToRenderThreadLock };
         m_dispatchToRenderThread = WTFMove(dispatchToRenderThread);
     }
     startRendering(WTFMove(completionHandler));
@@ -131,7 +131,7 @@ void AudioDestinationCocoa::stop(CompletionHandler<void(bool)>&& completionHandl
     LOG(Media, "AudioDestinationCocoa::stop");
     stopRendering(WTFMove(completionHandler));
     {
-        auto locker = holdLock(m_dispatchToRenderThreadLock);
+        Locker locker { m_dispatchToRenderThreadLock };
         m_dispatchToRenderThread = nullptr;
     }
 }
@@ -151,16 +151,14 @@ void AudioDestinationCocoa::stopRendering(CompletionHandler<void(bool)>&& comple
 void AudioDestinationCocoa::setIsPlaying(bool isPlaying)
 {
     ASSERT(isMainThread());
-    {
-        auto locker = holdLock(m_isPlayingLock);
-        if (m_isPlaying == isPlaying)
-            return;
 
-        m_isPlaying = isPlaying;
-    }
+    if (m_isPlaying == isPlaying)
+        return;
+
+    m_isPlaying = isPlaying;
 
     {
-        auto locker = holdLock(m_callbackLock);
+        Locker locker { m_callbackLock };
         if (m_callback)
             m_callback->isPlayingDidChange();
     }
@@ -192,7 +190,7 @@ static void assignAudioBuffersToBus(AudioBuffer* buffers, AudioBus& bus, UInt32 
 
 bool AudioDestinationCocoa::hasEnoughFrames(UInt32 numberOfFrames) const
 {
-    return m_fifo->length() >= numberOfFrames;
+    return fifoSize >= numberOfFrames;
 }
 
 // Pulls on our provider to get rendered audio stream.
@@ -216,22 +214,30 @@ OSStatus AudioDestinationCocoa::render(double sampleTime, uint64_t hostTime, UIn
     size_t framesToRender;
 
     {
-        auto locker = holdLock(m_fifoLock);
+        Locker locker { m_fifoLock };
         framesToRender = m_fifo->pull(m_outputBus.ptr(), numberOfFrames);
     }
 
     // When there is a AudioWorklet, we do rendering on the AudioWorkletThread.
-    auto locker = tryHoldLock(m_dispatchToRenderThreadLock);
-    if (!locker || !m_dispatchToRenderThread)
+    if (!m_dispatchToRenderThreadLock.tryLock())
         return -1;
 
-    m_dispatchToRenderThread([this, protectedThis = makeRef(*this), framesToRender]() mutable {
-        auto locker = tryHoldLock(m_isPlayingLock);
-        if (locker && m_isPlaying)
-            renderOnRenderingThead(framesToRender);
-    });
+    Locker locker { AdoptLock, m_dispatchToRenderThreadLock };
+    if (!m_dispatchToRenderThread)
+        renderOnRenderingTheadIfPlaying(framesToRender);
+    else {
+        m_dispatchToRenderThread([protectedThis = makeRef(*this), framesToRender]() mutable {
+            protectedThis->renderOnRenderingTheadIfPlaying(framesToRender);
+        });
+    }
 
     return noErr;
+}
+
+void AudioDestinationCocoa::renderOnRenderingTheadIfPlaying(size_t framesToRender)
+{
+    if (m_isPlaying)
+        renderOnRenderingThead(framesToRender);
 }
 
 // This runs on the AudioWorkletThread when AudioWorklet is enabled, on the audio device's rendering thread otherwise.
@@ -243,7 +249,7 @@ void AudioDestinationCocoa::renderOnRenderingThead(size_t framesToRender)
         else
             callRenderCallback(nullptr, m_renderBus.ptr(), AudioUtilities::renderQuantumSize, m_outputTimestamp);
 
-        auto locker = holdLock(m_fifoLock);
+        Locker locker { m_fifoLock };
         m_fifo->push(m_renderBus.ptr());
     }
 }

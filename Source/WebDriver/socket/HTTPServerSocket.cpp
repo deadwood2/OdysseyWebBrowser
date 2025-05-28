@@ -29,7 +29,7 @@
 
 namespace WebDriver {
 
-bool HTTPServer::listen(const Optional<String>& host, unsigned port)
+bool HTTPServer::listen(const std::optional<String>& host, unsigned port)
 {
     auto& endpoint = RemoteInspectorSocketEndpoint::singleton();
 
@@ -46,20 +46,20 @@ void HTTPServer::disconnect()
     endpoint.disconnect(m_server.value());
 }
 
-Optional<ConnectionID> HTTPServer::doAccept(RemoteInspectorSocketEndpoint& endpoint, PlatformSocketType socket)
+std::optional<ConnectionID> HTTPServer::doAccept(RemoteInspectorSocketEndpoint& endpoint, PlatformSocketType socket)
 {
     if (auto id = endpoint.createClient(socket, m_requestHandler)) {
         m_requestHandler.connect(id.value());
         return id;
     }
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 void HTTPServer::didChangeStatus(RemoteInspectorSocketEndpoint&, ConnectionID, RemoteInspectorSocketEndpoint::Listener::Status status)
 {
     if (status == Status::Closed)
-        m_server = WTF::nullopt;
+        m_server = std::nullopt;
 }
 
 void HTTPRequestHandler::connect(ConnectionID id)
@@ -117,23 +117,12 @@ String HTTPRequestHandler::packHTTPMessage(HTTPRequestHandler::Response&& respon
     StringBuilder builder;
     const char* EOL = "\r\n";
 
-    builder.append("HTTP/1.0 ");
-    builder.appendNumber(response.statusCode);
-    builder.append(" ");
-    builder.append(response.statusCode == 200 ? "OK" : "ERROR");
-    builder.append(EOL);
+    builder.append("HTTP/1.0 ", response.statusCode, ' ', response.statusCode == 200 ? "OK" : "ERROR", EOL);
 
     if (!response.data.isNull()) {
-        builder.append("Content-Type: ");
-        builder.append(response.contentType);
-        builder.append(EOL);
-
-        builder.append("Content-Length: ");
-        builder.appendNumber(response.data.length());
-        builder.append(EOL);
-
-        builder.append("Cache-Control: no-cache");
-        builder.append(EOL);
+        builder.append("Content-Type: ", response.contentType, EOL,
+            "Content-Length: ", response.data.length(), EOL,
+            "Cache-Control: no-cache", EOL);
     }
 
     builder.append(EOL);
@@ -146,7 +135,7 @@ String HTTPRequestHandler::packHTTPMessage(HTTPRequestHandler::Response&& respon
 
 void HTTPRequestHandler::didClose(RemoteInspectorSocketEndpoint&, ConnectionID)
 {
-    m_client = WTF::nullopt;
+    m_client = std::nullopt;
     reset();
 }
 

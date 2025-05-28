@@ -26,11 +26,10 @@
 #pragma once
 
 #include "APIObject.h"
+#include "IdentifierTypes.h"
 #include "WebPageGroupData.h"
 #include "WebProcessProxy.h"
 #include <WebCore/UserStyleSheetTypes.h>
-#include <wtf/Forward.h>
-#include <wtf/HashSet.h>
 #include <wtf/WeakHashSet.h>
 #include <wtf/text/WTFString.h>
 
@@ -45,14 +44,15 @@ public:
     explicit WebPageGroup(const String& identifier = { });
     static Ref<WebPageGroup> create(const String& identifier = { });
 
-    static WebPageGroup* get(uint64_t pageGroupID);
+    static WebPageGroup* get(PageGroupIdentifier);
+    static void forEach(Function<void(WebPageGroup&)>&&);
 
     virtual ~WebPageGroup();
 
     void addPage(WebPageProxy&);
     void removePage(WebPageProxy&);
 
-    uint64_t pageGroupID() const { return m_data.pageGroupID; }
+    PageGroupIdentifier pageGroupID() const { return m_data.pageGroupID; }
 
     const WebPageGroupData& data() const { return m_data; }
 

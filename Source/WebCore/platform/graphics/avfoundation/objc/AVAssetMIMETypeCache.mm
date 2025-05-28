@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,12 +30,10 @@
 
 #import "ContentType.h"
 #import "SourceBufferParserWebM.h"
+#import <wtf/SortedArrayMap.h>
+
 #import <pal/cf/CoreMediaSoftLink.h>
 #import <pal/cocoa/AVFoundationSoftLink.h>
-
-#if !PLATFORM(MACCATALYST)
-SOFT_LINK_FRAMEWORK_OPTIONAL_PREFLIGHT(AVFoundation)
-#endif
 
 namespace WebCore {
 
@@ -48,13 +46,7 @@ AVAssetMIMETypeCache& AVAssetMIMETypeCache::singleton()
 bool AVAssetMIMETypeCache::isAvailable() const
 {
 #if ENABLE(VIDEO) && USE(AVFOUNDATION)
-#if PLATFORM(MACCATALYST)
-    // FIXME: This should be using AVFoundationLibraryIsAvailable() instead, but doing so causes soft-linking
-    // to subsequently fail on certain symbols. See <rdar://problem/42224780> for more details.
     return PAL::isAVFoundationFrameworkAvailable();
-#else
-    return AVFoundationLibraryIsAvailable();
-#endif
 #else
     return false;
 #endif
@@ -102,9 +94,9 @@ bool AVAssetMIMETypeCache::isUnsupportedContainerType(const String& type)
     return false;
 }
 
-const HashSet<String, ASCIICaseInsensitiveHash>& AVAssetMIMETypeCache::staticContainerTypeList()
+bool AVAssetMIMETypeCache::isStaticContainerType(StringView type)
 {
-    static const auto cache = makeNeverDestroyed(HashSet<String, ASCIICaseInsensitiveHash> {
+    static constexpr ComparableLettersLiteral staticContainerTypesArray[] = {
         "application/vnd.apple.mpegurl",
         "application/x-mpegurl",
         "audio/3gpp",
@@ -136,8 +128,9 @@ const HashSet<String, ASCIICaseInsensitiveHash>& AVAssetMIMETypeCache::staticCon
         "video/x-m4v",
         "video/x-mpeg",
         "video/x-mpg",
-    });
-    return cache;
+    };
+    static constexpr SortedArraySet staticContainerTypesSet { staticContainerTypesArray };
+    return staticContainerTypesSet.contains(type);
 }
 
 void AVAssetMIMETypeCache::addSupportedTypes(const Vector<String>& types)
@@ -153,7 +146,7 @@ void AVAssetMIMETypeCache::initializeCache(HashSet<String, ASCIICaseInsensitiveH
     if (!isAvailable())
         return;
 
-    for (NSString* type in [PAL::getAVURLAssetClass() audiovisualMIMETypes])
+    for (NSString *type in [PAL::getAVURLAssetClass() audiovisualMIMETypes])
         cache.add(type);
 
 #if ENABLE(WEBM_FORMAT_READER)

@@ -83,7 +83,6 @@ typedef void (*AXPostedNotificationCallback)(id element, NSString* notification,
 - (BOOL)isIsolatedObject;
 - (BOOL)accessibilityReplaceRange:(NSRange)range withText:(NSString *)string;
 - (BOOL)accessibilityInsertText:(NSString *)text;
-- (id)textMarkerRangeForNSRange:(const NSRange&)nsRange;
 - (NSArray *)accessibilityArrayAttributeValues:(NSString *)attribute index:(NSUInteger)index maxCount:(NSUInteger)maxCount;
 - (NSUInteger)accessibilityIndexOfChild:(id)child;
 - (NSUInteger)accessibilityArrayAttributeCount:(NSString *)attribute;
@@ -350,6 +349,15 @@ void AccessibilityUIElement::getUIElementsWithAttribute(JSStringRef attribute, V
         elements = makeVector<RefPtr<AccessibilityUIElement>>(value);
 }
 
+JSValueRef AccessibilityUIElement::children() const
+{
+    BEGIN_AX_OBJC_EXCEPTIONS
+    return makeJSArray(makeVector<RefPtr<AccessibilityUIElement>>(attributeValue(m_element.get(), NSAccessibilityChildrenAttribute)));
+    END_AX_OBJC_EXCEPTIONS
+
+    return nullptr;
+}
+
 void AccessibilityUIElement::getChildren(Vector<RefPtr<AccessibilityUIElement> >& elementVector)
 {
     elementVector = makeVector<RefPtr<AccessibilityUIElement>>(attributeValue(m_element.get(), NSAccessibilityChildrenAttribute));
@@ -444,6 +452,17 @@ RefPtr<AccessibilityUIElement> AccessibilityUIElement::elementForAttributeAtInde
 RefPtr<AccessibilityUIElement> AccessibilityUIElement::linkedUIElementAtIndex(unsigned index)
 {
     return elementForAttributeAtIndex(NSAccessibilityLinkedUIElementsAttribute, index);
+}
+
+JSValueRef AccessibilityUIElement::detailsElements() const
+{
+    BEGIN_AX_OBJC_EXCEPTIONS
+    NSArray *elements = attributeValue(m_element.get(), @"AXDetailsElements");
+    if ([elements isKindOfClass:NSArray.class])
+        return makeJSArray(makeVector<RefPtr<AccessibilityUIElement>>(elements));
+    END_AX_OBJC_EXCEPTIONS
+
+    return { };
 }
 
 JSValueRef AccessibilityUIElement::errorMessageElements() const
@@ -823,6 +842,18 @@ double AccessibilityUIElement::clickPointY()
     END_AX_OBJC_EXCEPTIONS
     
     return 0.0f;
+}
+
+JSRetainPtr<JSStringRef> AccessibilityUIElement::lineRectsAndText() const
+{
+    BEGIN_AX_OBJC_EXCEPTIONS
+    id lineRectsAndText = [m_element accessibilityAttributeValue:@"AXLineRectsAndText"];
+    if (![lineRectsAndText isKindOfClass:NSArray.class])
+        return { };
+    return [[lineRectsAndText componentsJoinedByString:@"|"] createJSStringRef];
+    END_AX_OBJC_EXCEPTIONS
+
+    return { };
 }
 
 double AccessibilityUIElement::intValue() const
@@ -1441,7 +1472,7 @@ void AccessibilityUIElement::dismiss()
     END_AX_OBJC_EXCEPTIONS
 }
 
-bool AccessibilityUIElement::setSelectedVisibleTextRange(AccessibilityTextMarkerRange* markerRange)
+bool AccessibilityUIElement::setSelectedTextMarkerRange(AccessibilityTextMarkerRange* markerRange)
 {
     if (!markerRange)
         return false;
@@ -1664,6 +1695,15 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::embeddedImageDescription() cons
     return nullptr;
 }
 
+JSValueRef AccessibilityUIElement::imageOverlayElements() const
+{
+    BEGIN_AX_OBJC_EXCEPTIONS
+    return makeJSArray(makeVector<RefPtr<AccessibilityUIElement>>(attributeValue(m_element.get(), @"AXImageOverlayElements")));
+    END_AX_OBJC_EXCEPTIONS
+
+    return nullptr;
+}
+
 bool AccessibilityUIElement::isIgnored() const
 {
     BOOL result = NO;
@@ -1734,6 +1774,18 @@ RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::lineTextMarkerRange
     END_AX_OBJC_EXCEPTIONS
     
     return nullptr;
+}
+
+int AccessibilityUIElement::lineIndexForTextMarker(AccessibilityTextMarker* marker) const
+{
+    if (!marker)
+        return -1;
+
+    BEGIN_AX_OBJC_EXCEPTIONS
+    return [[m_element accessibilityAttributeValue:@"AXLineForTextMarker" forParameter:marker->platformTextMarker()] intValue];
+    END_AX_OBJC_EXCEPTIONS
+
+    return -1;
 }
 
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::misspellingTextMarkerRange(AccessibilityTextMarkerRange* start, bool forward)
@@ -1809,6 +1861,12 @@ JSRetainPtr<JSStringRef> AccessibilityUIElement::stringForTextMarkerRange(Access
     return nullptr;
 }
 
+JSRetainPtr<JSStringRef> AccessibilityUIElement::rectsForTextMarkerRange(AccessibilityTextMarkerRange*, JSStringRef)
+{
+    // Not implemented on macOS
+    return nullptr;
+}
+
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::textMarkerRangeForMarkers(AccessibilityTextMarker* startMarker, AccessibilityTextMarker* endMarker)
 {
     BEGIN_AX_OBJC_EXCEPTIONS
@@ -1828,7 +1886,8 @@ RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::textMarkerRangeForM
 RefPtr<AccessibilityTextMarkerRange> AccessibilityUIElement::textMarkerRangeForRange(unsigned location, unsigned length)
 {
     BEGIN_AX_OBJC_EXCEPTIONS
-    return AccessibilityTextMarkerRange::create([m_element textMarkerRangeForNSRange:NSMakeRange(location, length)]);
+    return AccessibilityTextMarkerRange::create([m_element accessibilityAttributeValue:@"AXTextMarkerRangeForNSRange"
+        forParameter:[NSValue valueWithRange:NSMakeRange(location, length)]]);
     END_AX_OBJC_EXCEPTIONS
 
     return nullptr;

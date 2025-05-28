@@ -45,10 +45,10 @@ StreamConnectionBuffer::StreamConnectionBuffer(size_t memorySize)
     ASSERT(m_dataSize <= maximumSize());
 }
 
-StreamConnectionBuffer::StreamConnectionBuffer(Ref<WebKit::SharedMemory>&& memory, size_t memorySize, Semaphore&& senderWaitSemaphore)
+StreamConnectionBuffer::StreamConnectionBuffer(Ref<WebKit::SharedMemory>&& memory, size_t memorySize, Semaphore&& clientWaitSemaphore)
     : m_dataSize(memorySize - headerSize())
     , m_sharedMemory(WTFMove(memory))
-    , m_senderWaitSemaphore(WTFMove(senderWaitSemaphore))
+    , m_clientWaitSemaphore(WTFMove(clientWaitSemaphore))
 {
     ASSERT(m_dataSize <= maximumSize());
 }
@@ -62,7 +62,7 @@ StreamConnectionBuffer& StreamConnectionBuffer::operator=(StreamConnectionBuffer
     if (this != &other) {
         m_dataSize = other.m_dataSize;
         m_sharedMemory = WTFMove(other.m_sharedMemory);
-        m_senderWaitSemaphore = WTFMove(other.m_senderWaitSemaphore);
+        m_clientWaitSemaphore = WTFMove(other.m_clientWaitSemaphore);
     }
     return *this;
 }
@@ -74,27 +74,27 @@ void StreamConnectionBuffer::encode(Encoder& encoder) const
         CRASH();
     WebKit::SharedMemory::IPCHandle ipcHandle { WTFMove(handle), m_sharedMemory->size() };
     encoder << ipcHandle;
-    encoder << m_senderWaitSemaphore;
+    encoder << m_clientWaitSemaphore;
 }
 
-Optional<StreamConnectionBuffer> StreamConnectionBuffer::decode(Decoder& decoder)
+std::optional<StreamConnectionBuffer> StreamConnectionBuffer::decode(Decoder& decoder)
 {
-    Optional<WebKit::SharedMemory::IPCHandle> ipcHandle;
+    std::optional<WebKit::SharedMemory::IPCHandle> ipcHandle;
     decoder >> ipcHandle;
     if (!ipcHandle)
-        return WTF::nullopt;
-    Optional<Semaphore> semaphore;
+        return std::nullopt;
+    std::optional<Semaphore> semaphore;
     decoder >> semaphore;
     if (!semaphore)
-        return WTF::nullopt;
+        return std::nullopt;
     size_t dataSize = static_cast<size_t>(ipcHandle->dataSize);
     if (dataSize < headerSize())
-        return WTF::nullopt;
+        return std::nullopt;
     if (dataSize > headerSize() + maximumSize())
-        return WTF::nullopt;
+        return std::nullopt;
     auto sharedMemory = WebKit::SharedMemory::map(ipcHandle->handle, WebKit::SharedMemory::Protection::ReadWrite);
     if (sharedMemory->size() < dataSize)
-        return WTF::nullopt;
+        return std::nullopt;
     return StreamConnectionBuffer { sharedMemory.releaseNonNull(), dataSize,  WTFMove(*semaphore) };
 }
 

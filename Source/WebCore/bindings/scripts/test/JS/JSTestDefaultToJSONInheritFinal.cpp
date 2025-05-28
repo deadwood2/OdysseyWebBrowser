@@ -35,6 +35,7 @@
 #include "JSDOMConvertStrings.h"
 #include "JSDOMExceptionHandling.h"
 #include "JSDOMGlobalObject.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMOperation.h"
 #include "JSDOMWrapperCache.h"
 #include "JSTestDefaultToJSONIndirectInheritance.h"
@@ -109,6 +110,8 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestDefaultToJSONInheritFinalPrototype, JS
 
 using JSTestDefaultToJSONInheritFinalDOMConstructor = JSDOMConstructorNotConstructable<JSTestDefaultToJSONInheritFinal>;
 
+template<> const ClassInfo JSTestDefaultToJSONInheritFinalDOMConstructor::s_info = { "TestDefaultToJSONInheritFinal", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestDefaultToJSONInheritFinalDOMConstructor) };
+
 template<> JSValue JSTestDefaultToJSONInheritFinalDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
     return JSTestDefaultToJSONInherit::getConstructor(vm, &globalObject);
@@ -120,8 +123,6 @@ template<> void JSTestDefaultToJSONInheritFinalDOMConstructor::initializePropert
     putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestDefaultToJSONInheritFinal"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
 }
-
-template<> const ClassInfo JSTestDefaultToJSONInheritFinalDOMConstructor::s_info = { "TestDefaultToJSONInheritFinal", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestDefaultToJSONInheritFinalDOMConstructor) };
 
 /* Hash table for prototype */
 
@@ -170,17 +171,7 @@ JSObject* JSTestDefaultToJSONInheritFinal::prototype(VM& vm, JSDOMGlobalObject& 
 
 JSValue JSTestDefaultToJSONInheritFinal::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
-    return getDOMConstructor<JSTestDefaultToJSONInheritFinalDOMConstructor>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
-}
-
-template<> inline JSTestDefaultToJSONInheritFinal* IDLAttribute<JSTestDefaultToJSONInheritFinal>::cast(JSGlobalObject& lexicalGlobalObject, EncodedJSValue thisValue)
-{
-    return jsDynamicCast<JSTestDefaultToJSONInheritFinal*>(JSC::getVM(&lexicalGlobalObject), JSValue::decode(thisValue));
-}
-
-template<> inline JSTestDefaultToJSONInheritFinal* IDLOperation<JSTestDefaultToJSONInheritFinal>::cast(JSGlobalObject& lexicalGlobalObject, CallFrame& callFrame)
-{
-    return jsDynamicCast<JSTestDefaultToJSONInheritFinal*>(JSC::getVM(&lexicalGlobalObject), callFrame.thisValue());
+    return getDOMConstructor<JSTestDefaultToJSONInheritFinalDOMConstructor, DOMConstructorID::TestDefaultToJSONInheritFinal>(vm, *jsCast<const JSDOMGlobalObject*>(globalObject));
 }
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestDefaultToJSONInheritFinalConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
@@ -201,9 +192,9 @@ static inline JSValue jsTestDefaultToJSONInheritFinal_finalLongAttributeFooGette
     RELEASE_AND_RETURN(throwScope, (toJS<IDLLong>(lexicalGlobalObject, throwScope, impl.finalLongAttributeFoo())));
 }
 
-JSC_DEFINE_CUSTOM_GETTER(jsTestDefaultToJSONInheritFinal_finalLongAttributeFoo, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
+JSC_DEFINE_CUSTOM_GETTER(jsTestDefaultToJSONInheritFinal_finalLongAttributeFoo, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestDefaultToJSONInheritFinal>::get<jsTestDefaultToJSONInheritFinal_finalLongAttributeFooGetter, CastedThisErrorBehavior::Assert>(*lexicalGlobalObject, thisValue, "finalLongAttributeFoo");
+    return IDLAttribute<JSTestDefaultToJSONInheritFinal>::get<jsTestDefaultToJSONInheritFinal_finalLongAttributeFooGetter, CastedThisErrorBehavior::Assert>(*lexicalGlobalObject, thisValue, attributeName);
 }
 
 static inline bool setJSTestDefaultToJSONInheritFinal_finalLongAttributeFooSetter(JSGlobalObject& lexicalGlobalObject, JSTestDefaultToJSONInheritFinal& thisObject, JSValue value)
@@ -213,15 +204,15 @@ static inline bool setJSTestDefaultToJSONInheritFinal_finalLongAttributeFooSette
     auto& impl = thisObject.wrapped();
     auto nativeValue = convert<IDLLong>(lexicalGlobalObject, value);
     RETURN_IF_EXCEPTION(throwScope, false);
-    AttributeSetter::call(lexicalGlobalObject, throwScope, [&] {
+    invokeFunctorPropagatingExceptionIfNecessary(lexicalGlobalObject, throwScope, [&] {
         return impl.setFinalLongAttributeFoo(WTFMove(nativeValue));
     });
     return true;
 }
 
-JSC_DEFINE_CUSTOM_SETTER(setJSTestDefaultToJSONInheritFinal_finalLongAttributeFoo, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, EncodedJSValue encodedValue))
+JSC_DEFINE_CUSTOM_SETTER(setJSTestDefaultToJSONInheritFinal_finalLongAttributeFoo, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, EncodedJSValue encodedValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestDefaultToJSONInheritFinal>::set<setJSTestDefaultToJSONInheritFinal_finalLongAttributeFooSetter>(*lexicalGlobalObject, thisValue, encodedValue, "finalLongAttributeFoo");
+    return IDLAttribute<JSTestDefaultToJSONInheritFinal>::set<setJSTestDefaultToJSONInheritFinal_finalLongAttributeFooSetter>(*lexicalGlobalObject, thisValue, encodedValue, attributeName);
 }
 
 static inline JSValue jsTestDefaultToJSONInheritFinal_finalLongAttributeBarGetter(JSGlobalObject& lexicalGlobalObject, JSTestDefaultToJSONInheritFinal& thisObject)
@@ -232,9 +223,9 @@ static inline JSValue jsTestDefaultToJSONInheritFinal_finalLongAttributeBarGette
     RELEASE_AND_RETURN(throwScope, (toJS<IDLLong>(lexicalGlobalObject, throwScope, impl.finalLongAttributeBar())));
 }
 
-JSC_DEFINE_CUSTOM_GETTER(jsTestDefaultToJSONInheritFinal_finalLongAttributeBar, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
+JSC_DEFINE_CUSTOM_GETTER(jsTestDefaultToJSONInheritFinal_finalLongAttributeBar, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestDefaultToJSONInheritFinal>::get<jsTestDefaultToJSONInheritFinal_finalLongAttributeBarGetter, CastedThisErrorBehavior::Assert>(*lexicalGlobalObject, thisValue, "finalLongAttributeBar");
+    return IDLAttribute<JSTestDefaultToJSONInheritFinal>::get<jsTestDefaultToJSONInheritFinal_finalLongAttributeBarGetter, CastedThisErrorBehavior::Assert>(*lexicalGlobalObject, thisValue, attributeName);
 }
 
 static inline bool setJSTestDefaultToJSONInheritFinal_finalLongAttributeBarSetter(JSGlobalObject& lexicalGlobalObject, JSTestDefaultToJSONInheritFinal& thisObject, JSValue value)
@@ -244,15 +235,15 @@ static inline bool setJSTestDefaultToJSONInheritFinal_finalLongAttributeBarSette
     auto& impl = thisObject.wrapped();
     auto nativeValue = convert<IDLLong>(lexicalGlobalObject, value);
     RETURN_IF_EXCEPTION(throwScope, false);
-    AttributeSetter::call(lexicalGlobalObject, throwScope, [&] {
+    invokeFunctorPropagatingExceptionIfNecessary(lexicalGlobalObject, throwScope, [&] {
         return impl.setFinalLongAttributeBar(WTFMove(nativeValue));
     });
     return true;
 }
 
-JSC_DEFINE_CUSTOM_SETTER(setJSTestDefaultToJSONInheritFinal_finalLongAttributeBar, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, EncodedJSValue encodedValue))
+JSC_DEFINE_CUSTOM_SETTER(setJSTestDefaultToJSONInheritFinal_finalLongAttributeBar, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, EncodedJSValue encodedValue, PropertyName attributeName))
 {
-    return IDLAttribute<JSTestDefaultToJSONInheritFinal>::set<setJSTestDefaultToJSONInheritFinal_finalLongAttributeBarSetter>(*lexicalGlobalObject, thisValue, encodedValue, "finalLongAttributeBar");
+    return IDLAttribute<JSTestDefaultToJSONInheritFinal>::set<setJSTestDefaultToJSONInheritFinal_finalLongAttributeBarSetter>(*lexicalGlobalObject, thisValue, encodedValue, attributeName);
 }
 
 static inline EncodedJSValue jsTestDefaultToJSONInheritFinalPrototypeFunction_toJSONBody(JSGlobalObject* lexicalGlobalObject, CallFrame*, JSTestDefaultToJSONInheritFinal* castedThis)
@@ -263,30 +254,66 @@ static inline EncodedJSValue jsTestDefaultToJSONInheritFinalPrototypeFunction_to
     auto& impl = castedThis->wrapped();
     auto* result = constructEmptyObject(lexicalGlobalObject, castedThis->globalObject()->objectPrototype());
     if (RuntimeEnabledFeatures::sharedFeatures().testRuntimeEnabledEnabled()) {
-        result->putDirect(vm, Identifier::fromString(vm, "longAttribute"), toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.longAttribute()));
+        auto longAttributeValue = toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.longAttribute());
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, Identifier::fromString(vm, "longAttribute"), longAttributeValue);
     }
     if (jsCast<JSDOMGlobalObject*>(castedThis->globalObject())->scriptExecutionContext()->settingsValues().testSettingEnabled) {
-        result->putDirect(vm, Identifier::fromString(vm, "enabledBySettingsAttribute"), toJS<IDLUnsignedShort>(*lexicalGlobalObject, throwScope, impl.enabledBySettingsAttribute()));
+        auto enabledBySettingsAttributeValue = toJS<IDLUnsignedShort>(*lexicalGlobalObject, throwScope, impl.enabledBySettingsAttribute());
+        RETURN_IF_EXCEPTION(throwScope, { });
+        result->putDirect(vm, Identifier::fromString(vm, "enabledBySettingsAttribute"), enabledBySettingsAttributeValue);
     }
 #if ENABLE(TEST_CONDITIONAL)
-    result->putDirect(vm, Identifier::fromString(vm, "enabledByConditionalAttribute"), toJS<IDLEnumeration<TestDefaultToJSONEnum>>(*lexicalGlobalObject, throwScope, impl.enabledByConditionalAttribute()));
+    auto enabledByConditionalAttributeValue = toJS<IDLEnumeration<TestDefaultToJSONEnum>>(*lexicalGlobalObject, throwScope, impl.enabledByConditionalAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "enabledByConditionalAttribute"), enabledByConditionalAttributeValue);
 #endif
 
-    result->putDirect(vm, Identifier::fromString(vm, "firstStringAttribute"), toJS<IDLDOMString>(*lexicalGlobalObject, throwScope, impl.firstStringAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "secondLongAttribute"), toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.secondLongAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "fourthUnrestrictedDoubleAttribute"), toJS<IDLUnrestrictedDouble>(*lexicalGlobalObject, throwScope, impl.fourthUnrestrictedDoubleAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "fifthLongClampedAttribute"), toJS<IDLClampAdaptor<IDLLong>>(*lexicalGlobalObject, throwScope, impl.fifthLongClampedAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "sixthTypedefAttribute"), toJS<IDLDouble>(*lexicalGlobalObject, throwScope, impl.sixthTypedefAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "seventhDirectlyToJSONableAttribute"), toJS<IDLInterface<TestDefaultToJSONInheritFinal>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.seventhDirectlyToJSONableAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "eighthIndirectlyAttribute"), toJS<IDLInterface<TestDefaultToJSONIndirectInheritance>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.eighthIndirectlyAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "ninthOptionalDirectlyToJSONableAttribute"), toJS<IDLNullable<IDLInterface<TestDefaultToJSONInheritFinal>>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.ninthOptionalDirectlyToJSONableAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "tenthFrozenArrayAttribute"), toJS<IDLFrozenArray<IDLBoolean>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.tenthFrozenArrayAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "eleventhSequenceAttribute"), toJS<IDLSequence<IDLDOMString>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.eleventhSequenceAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "twelfthInterfaceSequenceAttribute"), toJS<IDLSequence<IDLInterface<TestDefaultToJSONInheritFinal>>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.twelfthInterfaceSequenceAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "thirteenthRecordAttribute"), toJS<IDLRecord<IDLDOMString, IDLUnsignedShort>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.thirteenthRecordAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "inheritLongAttribute"), toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.inheritLongAttribute()));
-    result->putDirect(vm, Identifier::fromString(vm, "finalLongAttributeFoo"), toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.finalLongAttributeFoo()));
-    result->putDirect(vm, Identifier::fromString(vm, "finalLongAttributeBar"), toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.finalLongAttributeBar()));
+    auto firstStringAttributeValue = toJS<IDLDOMString>(*lexicalGlobalObject, throwScope, impl.firstStringAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "firstStringAttribute"), firstStringAttributeValue);
+    auto secondLongAttributeValue = toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.secondLongAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "secondLongAttribute"), secondLongAttributeValue);
+    auto fourthUnrestrictedDoubleAttributeValue = toJS<IDLUnrestrictedDouble>(*lexicalGlobalObject, throwScope, impl.fourthUnrestrictedDoubleAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "fourthUnrestrictedDoubleAttribute"), fourthUnrestrictedDoubleAttributeValue);
+    auto fifthLongClampedAttributeValue = toJS<IDLClampAdaptor<IDLLong>>(*lexicalGlobalObject, throwScope, impl.fifthLongClampedAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "fifthLongClampedAttribute"), fifthLongClampedAttributeValue);
+    auto sixthTypedefAttributeValue = toJS<IDLDouble>(*lexicalGlobalObject, throwScope, impl.sixthTypedefAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "sixthTypedefAttribute"), sixthTypedefAttributeValue);
+    auto seventhDirectlyToJSONableAttributeValue = toJS<IDLInterface<TestDefaultToJSONInheritFinal>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.seventhDirectlyToJSONableAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "seventhDirectlyToJSONableAttribute"), seventhDirectlyToJSONableAttributeValue);
+    auto eighthIndirectlyAttributeValue = toJS<IDLInterface<TestDefaultToJSONIndirectInheritance>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.eighthIndirectlyAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "eighthIndirectlyAttribute"), eighthIndirectlyAttributeValue);
+    auto ninthOptionalDirectlyToJSONableAttributeValue = toJS<IDLNullable<IDLInterface<TestDefaultToJSONInheritFinal>>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.ninthOptionalDirectlyToJSONableAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "ninthOptionalDirectlyToJSONableAttribute"), ninthOptionalDirectlyToJSONableAttributeValue);
+    auto tenthFrozenArrayAttributeValue = toJS<IDLFrozenArray<IDLBoolean>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.tenthFrozenArrayAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "tenthFrozenArrayAttribute"), tenthFrozenArrayAttributeValue);
+    auto eleventhSequenceAttributeValue = toJS<IDLSequence<IDLDOMString>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.eleventhSequenceAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "eleventhSequenceAttribute"), eleventhSequenceAttributeValue);
+    auto twelfthInterfaceSequenceAttributeValue = toJS<IDLSequence<IDLInterface<TestDefaultToJSONInheritFinal>>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.twelfthInterfaceSequenceAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "twelfthInterfaceSequenceAttribute"), twelfthInterfaceSequenceAttributeValue);
+    auto thirteenthRecordAttributeValue = toJS<IDLRecord<IDLDOMString, IDLUnsignedShort>>(*lexicalGlobalObject, *castedThis->globalObject(), throwScope, impl.thirteenthRecordAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "thirteenthRecordAttribute"), thirteenthRecordAttributeValue);
+    auto inheritLongAttributeValue = toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.inheritLongAttribute());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "inheritLongAttribute"), inheritLongAttributeValue);
+    auto finalLongAttributeFooValue = toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.finalLongAttributeFoo());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "finalLongAttributeFoo"), finalLongAttributeFooValue);
+    auto finalLongAttributeBarValue = toJS<IDLLong>(*lexicalGlobalObject, throwScope, impl.finalLongAttributeBar());
+    RETURN_IF_EXCEPTION(throwScope, { });
+    result->putDirect(vm, Identifier::fromString(vm, "finalLongAttributeBar"), finalLongAttributeBarValue);
     return JSValue::encode(result);
 }
 

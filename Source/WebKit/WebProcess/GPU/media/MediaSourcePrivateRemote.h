@@ -63,6 +63,7 @@ public:
     // MediaSourcePrivate overrides
     AddStatus addSourceBuffer(const WebCore::ContentType&, bool webMParserEnabled, RefPtr<WebCore::SourceBufferPrivate>&) final;
     void durationChanged(const MediaTime&) final;
+    void bufferedChanged(const WebCore::PlatformTimeRanges&) final;
     void markEndOfStream(EndOfStreamStatus) final;
     void unmarkEndOfStream() final;
     bool isEnded() const final;
@@ -72,6 +73,8 @@ public:
     void waitForSeekCompleted() final;
     void seekCompleted() final;
     void setTimeFudgeFactor(const MediaTime&) final;
+
+    MediaTime duration() const { return m_client->duration(); }
 
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final { return m_logger.get(); }
@@ -84,14 +87,12 @@ private:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
     void seekToTime(const MediaTime&);
 
-    GPUProcessConnection& m_gpuProcessConnection;
+    WeakPtr<GPUProcessConnection> m_gpuProcessConnection;
     RemoteMediaSourceIdentifier m_identifier;
     RemoteMediaPlayerMIMETypeCache& m_mimeTypeCache;
     WeakPtr<MediaPlayerPrivateRemote> m_mediaPlayerPrivate;
     RefPtr<WebCore::MediaSourcePrivateClient> m_client;
     Vector<RefPtr<SourceBufferPrivateRemote>> m_sourceBuffers;
-
-    MediaTime m_duration;
 
 #if !RELEASE_LOG_DISABLED
     const char* logClassName() const override { return "MediaSourcePrivateRemote"; }

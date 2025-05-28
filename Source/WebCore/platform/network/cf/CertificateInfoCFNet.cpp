@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,14 +38,24 @@ bool certificatesMatch(SecTrustRef trust1, SecTrustRef trust2)
     if (!trust1 || !trust2)
         return false;
 
+#if HAVE(SEC_TRUST_COPY_CERTIFICATE_CHAIN)
+    auto chain1 = adoptCF(SecTrustCopyCertificateChain(trust1));
+    auto chain2 = adoptCF(SecTrustCopyCertificateChain(trust2));
+#endif
+
     CFIndex count1 = SecTrustGetCertificateCount(trust1);
     CFIndex count2 = SecTrustGetCertificateCount(trust2);
     if (count1 != count2)
         return false;
 
     for (CFIndex i = 0; i < count1; i++) {
+#if HAVE(SEC_TRUST_COPY_CERTIFICATE_CHAIN)
+        auto cert1 = CFArrayGetValueAtIndex(chain1.get(), i);
+        auto cert2 = CFArrayGetValueAtIndex(chain2.get(), i);
+#else
         auto cert1 = SecTrustGetCertificateAtIndex(trust1, i);
         auto cert2 = SecTrustGetCertificateAtIndex(trust2, i);
+#endif
         RELEASE_ASSERT(cert1);
         RELEASE_ASSERT(cert2);
         if (!CFEqual(cert1, cert2))
@@ -57,11 +67,15 @@ bool certificatesMatch(SecTrustRef trust1, SecTrustRef trust2)
 
 RetainPtr<CFArrayRef> CertificateInfo::certificateChainFromSecTrust(SecTrustRef trust)
 {
+#if HAVE(SEC_TRUST_COPY_CERTIFICATE_CHAIN)
+    return adoptCF(SecTrustCopyCertificateChain(trust));
+#else
     auto count = SecTrustGetCertificateCount(trust);
-    auto certificateChain = CFArrayCreateMutable(0, count, &kCFTypeArrayCallBacks);
+    auto certificateChain = adoptCF(CFArrayCreateMutable(0, count, &kCFTypeArrayCallBacks));
     for (CFIndex i = 0; i < count; i++)
-        CFArrayAppendValue(certificateChain, SecTrustGetCertificateAtIndex(trust, i));
-    return adoptCF((CFArrayRef)certificateChain);
+        CFArrayAppendValue(certificateChain.get(), SecTrustGetCertificateAtIndex(trust, i));
+    return certificateChain;
+#endif
 }
 #endif
 
@@ -93,16 +107,23 @@ bool CertificateInfo::containsNonRootSHA1SignedCertificate() const
 {
 #if HAVE(SEC_TRUST_SERIALIZATION)
     if (m_trust) {
+#if HAVE(SEC_TRUST_COPY_CERTIFICATE_CHAIN)
+        auto chain = adoptCF(SecTrustCopyCertificateChain(trust()));
+#endif
         // Allow only the root certificate (the last in the chain) to be SHA1.
         for (CFIndex i = 0, size = SecTrustGetCertificateCount(trust()) - 1; i < size; ++i) {
+#if HAVE(SEC_TRUST_COPY_CERTIFICATE_CHAIN)
+            auto certificate = checked_cf_cast<SecCertificateRef>(CFArrayGetValueAtIndex(chain.get(), i));
+#else
             auto certificate = SecTrustGetCertificateAtIndex(trust(), i);
+#endif
             if (SecCertificateGetSignatureHashAlgorithm(certificate) == kSecSignatureHashAlgorithmSHA1)
                 return true;
         }
 
         return false;
     }
-#endif
+#endif // HAVE(SEC_TRUST_SERIALIZATION)
 
 #if PLATFORM(COCOA)
     if (m_certificateChain) {
@@ -119,11 +140,11 @@ bool CertificateInfo::containsNonRootSHA1SignedCertificate() const
     return false;
 }
 
-Optional<CertificateSummary> CertificateInfo::summary() const
+std::optional<CertificateSummary> CertificateInfo::summary() const
 {
     auto chain = certificateChain();
     if (!chain)
-        return WTF::nullopt;
+        return std::nullopt;
 
     CertificateSummary summaryInfo;
 
@@ -189,24 +210,22 @@ static void encodeCFData(Encoder& encoder, CFDataRef data)
     const uint8_t* bytePtr = CFDataGetBytePtr(data);
 
     encoder << length;
-    encoder.encodeFixedLengthData(bytePtr, static_cast<size_t>(length));
+    encoder.encodeFixedLengthData({ bytePtr, static_cast<size_t>(length) });
 }
 
-static Optional<RetainPtr<CFDataRef>> decodeCFData(Decoder& decoder)
+static std::optional<RetainPtr<CFDataRef>> decodeCFData(Decoder& decoder)
 {
-    Optional<uint64_t> size;
+    std::optional<uint64_t> size;
     decoder >> size;
-    if (!size)
-        return WTF::nullopt;
 
     if (UNLIKELY(!isInBounds<size_t>(*size)))
-        return WTF::nullopt;
-    
-    Vector<uint8_t> vector(static_cast<size_t>(*size));
-    if (!decoder.decodeFixedLengthData(vector.data(), vector.size()))
-        return WTF::nullopt;
+        return std::nullopt;
 
-    return adoptCF(CFDataCreate(nullptr, vector.data(), vector.size()));
+    auto pointer = decoder.bufferPointerForDirectRead(static_cast<size_t>(*size));
+    if (!pointer)
+        return std::nullopt;
+
+    return adoptCF(CFDataCreate(nullptr, pointer, *size));
 }
 
 #if HAVE(SEC_TRUST_SERIALIZATION)
@@ -222,23 +241,23 @@ static void encodeSecTrustRef(Encoder& encoder, SecTrustRef trust)
     encodeCFData(encoder, data.get());
 }
 
-static Optional<RetainPtr<SecTrustRef>> decodeSecTrustRef(Decoder& decoder)
+static std::optional<RetainPtr<SecTrustRef>> decodeSecTrustRef(Decoder& decoder)
 {
-    Optional<bool> hasTrust;
+    std::optional<bool> hasTrust;
     decoder >> hasTrust;
     if (!hasTrust)
-        return WTF::nullopt;
+        return std::nullopt;
 
     if (!*hasTrust)
         return { nullptr };
 
     auto trustData = decodeCFData(decoder);
     if (!trustData)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto trust = adoptCF(SecTrustDeserialize(trustData->get(), nullptr));
     if (!trust)
-        return WTF::nullopt;
+        return std::nullopt;
 
     return trust;
 }
@@ -261,19 +280,19 @@ static void encodeCertificateChain(Encoder& encoder, CFArrayRef certificateChain
     }
 }
 
-static Optional<RetainPtr<CFArrayRef>> decodeCertificateChain(Decoder& decoder)
+static std::optional<RetainPtr<CFArrayRef>> decodeCertificateChain(Decoder& decoder)
 {
-    Optional<uint64_t> size;
+    std::optional<uint64_t> size;
     decoder >> size;
     if (!size)
-        return WTF::nullopt;
+        return std::nullopt;
 
     auto array = adoptCF(CFArrayCreateMutable(0, 0, &kCFTypeArrayCallBacks));
 
     for (size_t i = 0; i < *size; ++i) {
         auto data = decodeCFData(decoder);
         if (!data)
-            return WTF::nullopt;
+            return std::nullopt;
 
         auto certificate = adoptCF(SecCertificateCreateWithData(0, data->get()));
         CFArrayAppendValue(array.get(), certificate.get());
@@ -305,19 +324,19 @@ void Coder<WebCore::CertificateInfo>::encode(Encoder& encoder, const WebCore::Ce
     }
 }
 
-Optional<WebCore::CertificateInfo> Coder<WebCore::CertificateInfo>::decode(Decoder& decoder)
+std::optional<WebCore::CertificateInfo> Coder<WebCore::CertificateInfo>::decode(Decoder& decoder)
 {
-    Optional<WebCore::CertificateInfo::Type> certificateInfoType;
+    std::optional<WebCore::CertificateInfo::Type> certificateInfoType;
     decoder >> certificateInfoType;
     if (!certificateInfoType)
-        return WTF::nullopt;
+        return std::nullopt;
 
     switch (*certificateInfoType) {
 #if HAVE(SEC_TRUST_SERIALIZATION)
     case WebCore::CertificateInfo::Type::Trust: {
         auto trust = decodeSecTrustRef(decoder);
         if (!trust)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return WebCore::CertificateInfo(WTFMove(*trust));
     }
@@ -326,7 +345,7 @@ Optional<WebCore::CertificateInfo> Coder<WebCore::CertificateInfo>::decode(Decod
     case WebCore::CertificateInfo::Type::CertificateChain: {
         auto certificateChain = decodeCertificateChain(decoder);
         if (!certificateChain)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return WebCore::CertificateInfo(WTFMove(*certificateChain));
     }
@@ -336,7 +355,7 @@ Optional<WebCore::CertificateInfo> Coder<WebCore::CertificateInfo>::decode(Decod
         return WebCore::CertificateInfo();
     }
 
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 } // namespace Persistence

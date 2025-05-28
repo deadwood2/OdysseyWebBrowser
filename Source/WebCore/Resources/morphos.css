@@ -1,0 +1,85 @@
+input[type=checkbox]{
+	-webkit-appearance: none;
+	background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAOCAYAAABdC15GAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAKJJREFUeNpi/P//P8NgBiwwhkP5RZJdeqBTnxGXHLXMY0HmbGnQiSPWMJ+GK4sIqWHnESfacT+/vMQfgjDAw8n8h5BhX77/ZSHaZkZGwmrwJDOmgUxfO2sIhzDTYHYc3RyI7hgY373l5eAJQZijSHEc3RwIcwypjqNrCMIcRYrj6J5JSHUc1nKQpDKOGEBhVcpCau1ACsBVO5ACGAd7YwEgwAB9tTohRYLDgQAAAABJRU5ErkJggg==);
+	background-repeat: no-repeat;
+	background-position: left center;
+	border: none !important;
+	width: 20px !important;
+	height: 20px !important;
+	vertical-align: middle;
+}
+
+input[type=radio]{
+	-webkit-appearance: none;
+	background-image : url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAOCAYAAABdC15GAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAcRJREFUeNqkls8rRFEUx98wWSk/ksUs/JbyD4ylhcUsSCkLZShLG+RX2FigTMKksFIoK0mSlWSF/8DG2I5EkbLQ1PjcOm96pnnn3ZdTn17v3XO+93u77537IvHZJ6co6mAS+qAdIvAMl7ANWW/yQ6rV0aJrLqPqUZ/V6suK7gekeAnS0ASNsAozkIGkYxmYC9QjJ2lrsB9OYU9WeQCvwgmUwzIc2ZhkYms9zaRrsBYOYQfmlXlTMr4PMcXcH71cRX0HnMOXcAGdXj1qYprBcaiCCYudM6JRmFJyCnoYaeN6LztUKZj38c5j0lfPNWgKph37GJIav/DqrUFNiRyzgI0gPddgC1yHMHgLzcq4V69HyesO0nMN5p3wkbcc+1eea9A0w0QIcwlpOX7h1dN25iZIzzVomuZ6CIPHUuMXXr0FeC+R8wFzQXquwV0RSVuYW4Rv2FJyCnrRn1fTqOPSE42pTzgzzxh7DNKLelYzJoU55Ys2K16BYXjxc8fx9UFfK+hhxOgNanrUvASdJBciMiovrOllDdKQx+SZWe2InARqMKG1Hrm+epESPwvVcrj3QoccUybpCjbhLeTPgqpH/ZtW/yvAACAqorXKTK9gAAAAAElFTkSuQmCC);
+	background-repeat: no-repeat;
+	background-position: left center;
+	border: none !important;
+	width: 20px !important;
+	height: 20px !important;
+	vertical-align: middle;
+}
+
+input[type=checkbox]:checked, input[type=radio]:checked{
+	background-position: right center;
+}
+
+::-webkit-scrollbar {
+	width: 13px !important;
+    height: 13px !important;
+}
+
+::-webkit-scrollbar-resizer{
+	color: rgb(50,50,50);
+}
+
+::-webkit-scrollbar-button:end:vertical:increment {
+	background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAANCAYAAAC3mX7tAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAH1JREFUeNpi/P//PwM9ABMDncDws4gFxnBvfgGLLEYs6sByO2slUOQYGRkbwJL//zega0CXQ/YRI7Kh6JZgcwDMEJih+ByAHnToluHzJVbLcPkSWxwxYrNkV50kA7GWYQtKFhx6GaEWMeKzAN0ykEXYLAEbOJphB71FAAEGAEX1OrVHn1lsAAAAAElFTkSuQmCC);
+	background-repeat: no-repeat;
+	background-position: left center;
+}
+ 
+::-webkit-scrollbar-button:start:vertical:decrement {
+	background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAANCAYAAAC3mX7tAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAHNJREFUeNpi/P//PwM9ABMDncDws4gFxnBvfoEuB4o8xl11kggBAvHJyMjYAFTTQIqPYCb+d2t6zgDChADIEmSaGItgljAi8/FZBjMc5htsljERsIQRTZygJbgsY8JjCQMhy9AtQYpLDMsYRzPsoLcIIMAA6JkzqFsufGcAAAAASUVORK5CYII=);
+	background-repeat: no-repeat;
+	background-position: left center;
+}
+
+::-webkit-scrollbar-button:end:horizontal:increment {
+    background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAANCAYAAAC3mX7tAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAHJJREFUeNpi/P//PwM9ABMDnQALuoB78wuQFxmRxXbWSuA1hJGRsQEYMg3k+Ijk8ARZRqpFjKRaBvMNPstw+YjqluFLDFS1DJ9F/9EsJDqesCUMQomBcVedJMWW4LKIqj4hKjEQ6xtCloANHHZFEECAAQBsfzO3SGNJ/gAAAABJRU5ErkJggg==);
+	background-repeat: no-repeat;
+	background-position: left center;
+}
+ 
+::-webkit-scrollbar-button:start:horizontal:decrement {
+	background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAANCAYAAAC3mX7tAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAHFJREFUeNpi/P//PwM9ABMDnQALuoB78wt0of87ayUYSTGUkZGxARhSDaT4iORwBVlCatDBLGEk1RJ03+CziKqW4LKI6pbgsoiR1PiBWYArfrBatKtOkiaW4UsMVLUMq0VQX5EUT+iWYbh62BVBAAEGABQXM7e1riUiAAAAAElFTkSuQmCC);
+	background-repeat: no-repeat;
+	background-position: left center;
+}
+
+::-webkit-scrollbar-button:end:increment:active {
+ 	background-position: right center;
+}
+
+::-webkit-scrollbar-button:start:decrement:active {
+ 	background-position: right center;
+}
+
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner, ::-webkit-scrollbar-button{
+	background: rgb(247,247,247);
+}
+ 
+::-webkit-scrollbar-thumb {
+  border: 2px solid rgb(245,245,245);
+  border-radius: 3px;
+  -webkit-box-shadow: inset 0px 0px 1px rgba(0,0,0,0.3);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:horizontal {
+  background: linear-gradient(to top, rgb(220,220,220) 0%,rgb(237,237,237) 90%);
+}
+
+::-webkit-scrollbar-thumb:vertical {
+  background: linear-gradient(to left, rgb(220,220,220) 0%,rgb(237,237,237) 90%);
+}

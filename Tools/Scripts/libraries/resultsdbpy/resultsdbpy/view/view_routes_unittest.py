@@ -1,4 +1,4 @@
-# Copyright (C) 2019 Apple Inc. All rights reserved.
+# Copyright (C) 2019-2021 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -20,19 +20,17 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import mock
-import os
-import requests
 import time
 
-from controller.api_routes import APIRoutes
 from fakeredis import FakeStrictRedis
 from redis import StrictRedis
+from resultsdbpy.controller.api_routes import APIRoutes
 from resultsdbpy.flask_support.flask_testcase import FlaskTestCase
 from resultsdbpy.model.cassandra_context import CassandraContext
 from resultsdbpy.model.mock_cassandra_context import MockCassandraContext
+from resultsdbpy.model.mock_model_factory import MockModelFactory
 from resultsdbpy.model.model import Model
-from resultsdbpy.model.mock_repository import MockStashRepository, MockSVNRepository
+from resultsdbpy.model.repository import StashRepository, WebKitRepository
 from resultsdbpy.model.wait_for_docker_test_case import WaitForDockerTestCase
 from resultsdbpy.view.view_routes import ViewRoutes
 
@@ -56,44 +54,26 @@ class WebSiteTestCase(FlaskTestCase, WaitForDockerTestCase):
 
     @classmethod
     def setup_webserver(cls, app, redis=StrictRedis, cassandra=CassandraContext):
-        cassandra.drop_keyspace(keyspace=cls.KEYSPACE)
-        redis_instance = redis()
+        with MockModelFactory.safari(), MockModelFactory.webkit():
+            cassandra.drop_keyspace(keyspace=cls.KEYSPACE)
+            redis_instance = redis()
 
-        model = Model(
-            redis=redis_instance, cassandra=cassandra(keyspace=cls.KEYSPACE, create_keyspace=True),
-            repositories=[MockSVNRepository.webkit(redis=redis_instance), MockStashRepository.safari(redis=redis_instance)],
-        )
-        api_routes = APIRoutes(model=model, import_name=__name__)
-        view_routes = ViewRoutes(model=model, controller=api_routes, import_name=__name__)
+            model = Model(
+                redis=redis_instance, cassandra=cassandra(keyspace=cls.KEYSPACE, create_keyspace=True),
+                repositories=[
+                    WebKitRepository(),
+                    StashRepository('https://bitbucket.example.com/projects/SAFARI/repos/safari'),
+                ],
+            )
+            api_routes = APIRoutes(model=model, import_name=__name__)
+            view_routes = ViewRoutes(model=model, controller=api_routes, import_name=__name__)
 
-        app.register_blueprint(api_routes)
-        app.register_blueprint(view_routes)
+            app.register_blueprint(api_routes)
+            app.register_blueprint(view_routes)
 
     @classmethod
     def decorator(cls):
-        class MockRequest(object):
-            def __init__(self, text='', status_code=200, headers={'content-type': 'text/html'}):
-                self.text = text
-                self.status_code = status_code
-                self.headers = headers
-
-        original_get = requests.get
-
-        def mock_get(url, original_get=original_get, **kwargs):
-            # FIXME: Long term, the results database might actually be the better place for Ref.js and webkit.css to live
-            base_path = os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))), 'Internal', 'Tools', 'BuildAutomation', 'build-safari', 'public_html', 'dashboard')
-            if url == 'https://build.webkit.org/dashboard/devices/Scripts/Ref.js':
-                with open(os.path.join(base_path, 'devices', 'Scripts', 'Ref.js'), 'r') as f:
-                    return MockRequest(f.read(), headers={'content-type': 'text/javascript'})
-            elif url == 'https://build.webkit.org/dashboard/Styles/webkit.css':
-                with open(os.path.join(base_path, 'Styles', 'webkit.css'), 'r') as f:
-                    return MockRequest(f.read(), headers={'content-type': 'text/css'})
-            return original_get(url, **kwargs)
-
-        return FlaskTestCase.combine(
-            mock.patch('requests.get', new=mock_get),
-            FlaskTestCase.run_with_selenium(),
-        )
+        return FlaskTestCase.run_with_selenium()
 
 
 class WebSiteUnittest(WebSiteTestCase):

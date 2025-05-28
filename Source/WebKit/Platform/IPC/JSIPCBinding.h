@@ -29,6 +29,7 @@
 
 #include "Decoder.h"
 #include "HandleMessage.h"
+#include "SharedMemory.h"
 #include <JavaScriptCore/JSArray.h>
 #include <JavaScriptCore/JSArrayBuffer.h>
 #include <JavaScriptCore/JSGlobalObject.h>
@@ -53,15 +54,20 @@ class RegistrableDomain;
 
 namespace IPC {
 
+class Semaphore;
+
 template<typename T, std::enable_if_t<!std::is_arithmetic<T>::value && !std::is_enum<T>::value>* = nullptr>
-JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, const T&)
+JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, T&&)
 {
     return JSC::jsUndefined();
 }
 
-template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, const String&);
-template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, const URL&);
-template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, const WebCore::RegistrableDomain&);
+template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, String&&);
+template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, URL&&);
+template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, WebCore::RegistrableDomain&&);
+
+template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, IPC::Semaphore&&);
+template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, WebKit::SharedMemory::IPCHandle&&);
 
 template<typename T, std::enable_if_t<std::is_arithmetic<T>::value>* = nullptr>
 JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, T)
@@ -89,16 +95,16 @@ template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, uin
 template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, size_t);
 
 template<typename U>
-JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject* globalObject, const ObjectIdentifier<U>& value)
+JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject* globalObject, ObjectIdentifier<U>&& value)
 {
     return jsValueForDecodedArgumentValue(globalObject, value.toUInt64());
 }
 
-template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, const WebCore::IntRect&);
-template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, const WebCore::FloatRect&);
+template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, WebCore::IntRect&&);
+template<> JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject*, WebCore::FloatRect&&);
 
 template<typename U>
-JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject* globalObject, const OptionSet<U>& value)
+JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject* globalObject, OptionSet<U>&& value)
 {    
     auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -112,24 +118,24 @@ JSC::JSValue jsValueForDecodedArgumentValue(JSC::JSGlobalObject* globalObject, c
 bool putJSValueForDecodedArgumentAtIndexOrArrayBufferIfUndefined(JSC::JSGlobalObject*, JSC::JSArray*, unsigned index, JSC::JSValue, const uint8_t* buffer, size_t length);
 
 template<typename... Elements>
-Optional<JSC::JSValue> putJSValueForDecodeArgumentInArray(JSC::JSGlobalObject*, IPC::Decoder&, JSC::JSArray*, size_t currentIndex, std::tuple<Elements...>*);
+std::optional<JSC::JSValue> putJSValueForDecodeArgumentInArray(JSC::JSGlobalObject*, IPC::Decoder&, JSC::JSArray*, size_t currentIndex, std::tuple<Elements...>*);
 
 template<>
-inline Optional<JSC::JSValue> putJSValueForDecodeArgumentInArray(JSC::JSGlobalObject* globalObject, IPC::Decoder& decoder, JSC::JSArray* array, size_t currentIndex, std::tuple<>*)
+inline std::optional<JSC::JSValue> putJSValueForDecodeArgumentInArray(JSC::JSGlobalObject* globalObject, IPC::Decoder& decoder, JSC::JSArray* array, size_t currentIndex, std::tuple<>*)
 {
     return JSC::JSValue { array };
 }
 
 template<typename T, typename... Elements>
-Optional<JSC::JSValue> putJSValueForDecodeArgumentInArray(JSC::JSGlobalObject* globalObject, IPC::Decoder& decoder, JSC::JSArray* array, size_t currentIndex, std::tuple<T, Elements...>*)
+std::optional<JSC::JSValue> putJSValueForDecodeArgumentInArray(JSC::JSGlobalObject* globalObject, IPC::Decoder& decoder, JSC::JSArray* array, size_t currentIndex, std::tuple<T, Elements...>*)
 {
     auto startingBufferPosition = decoder.currentBufferPosition();
-    Optional<T> value;
+    std::optional<T> value;
     decoder >> value;
     if (!value)
-        return WTF::nullopt;
+        return std::nullopt;
 
-    auto jsValue = jsValueForDecodedArgumentValue(globalObject, *value);
+    auto jsValue = jsValueForDecodedArgumentValue(globalObject, WTFMove(*value));
     if (jsValue.isEmpty())
         return jsValue;
 
@@ -141,7 +147,7 @@ Optional<JSC::JSValue> putJSValueForDecodeArgumentInArray(JSC::JSGlobalObject* g
 }
 
 template<typename T>
-static Optional<JSC::JSValue> jsValueForDecodedArguments(JSC::JSGlobalObject* globalObject, IPC::Decoder& decoder)
+static std::optional<JSC::JSValue> jsValueForDecodedArguments(JSC::JSGlobalObject* globalObject, IPC::Decoder& decoder)
 {
     auto scope = DECLARE_THROW_SCOPE(globalObject->vm());
     auto* array = JSC::constructEmptyArray(globalObject, nullptr);

@@ -1,5 +1,5 @@
- /*
- * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
+/*
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,22 +27,30 @@
 #import "RemoteLayerBackingStore.h"
 
 #import "ArgumentCoders.h"
+#import "CGDisplayListImageBufferBackend.h"
 #import "MachPort.h"
 #import "PlatformCALayerRemote.h"
 #import "PlatformRemoteImageBufferProxy.h"
 #import "RemoteLayerBackingStoreCollection.h"
 #import "RemoteLayerTreeContext.h"
+#import "RemoteLayerTreeLayers.h"
 #import "ShareableBitmap.h"
 #import "WebCoreArgumentCoders.h"
 #import "WebProcess.h"
 #import <QuartzCore/QuartzCore.h>
+#import <WebCore/BifurcatedGraphicsContext.h>
 #import <WebCore/GraphicsContextCG.h>
 #import <WebCore/IOSurface.h>
 #import <WebCore/ImageBuffer.h>
+#import <WebCore/Model.h>
 #import <WebCore/PlatformCALayerClient.h>
 #import <WebCore/WebLayer.h>
 #import <mach/mach_port.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
+
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+#import <WebKitAdditions/CGDisplayListImageBufferAdditions.h>
+#endif
 
 namespace WebKit {
 
@@ -68,16 +76,17 @@ RemoteLayerBackingStore::~RemoteLayerBackingStore()
         context->backingStoreWillBeDestroyed(*this);
 }
 
-void RemoteLayerBackingStore::ensureBackingStore(WebCore::FloatSize size, float scale, bool acceleratesDrawing, bool deepColor, bool isOpaque)
+void RemoteLayerBackingStore::ensureBackingStore(Type type, WebCore::FloatSize size, float scale, bool deepColor, bool isOpaque, IncludeDisplayList includeDisplayList)
 {
-    if (m_size == size && m_scale == scale && m_deepColor == deepColor && m_acceleratesDrawing == acceleratesDrawing && m_isOpaque == isOpaque)
+    if (m_type == type && m_size == size && m_scale == scale && m_deepColor == deepColor && m_isOpaque == isOpaque && m_includeDisplayList == includeDisplayList)
         return;
 
+    m_type = type;
     m_size = size;
     m_scale = scale;
-    m_acceleratesDrawing = acceleratesDrawing;
     m_deepColor = deepColor;
     m_isOpaque = isOpaque;
+    m_includeDisplayList = includeDisplayList;
 
     if (m_frontBuffer) {
         // If we have a valid backing store, we need to ensure that it gets completely
@@ -97,40 +106,62 @@ void RemoteLayerBackingStore::clearBackingStore()
 
 void RemoteLayerBackingStore::encode(IPC::Encoder& encoder) const
 {
+    encoder << m_type;
     encoder << m_size;
     encoder << m_scale;
-    encoder << m_acceleratesDrawing;
     encoder << m_isOpaque;
+    encoder << m_includeDisplayList;
 
-    Optional<ImageBufferBackendHandle> handle;
+    std::optional<ImageBufferBackendHandle> handle;
     if (m_frontBuffer.imageBuffer) {
-        if (m_frontBuffer.imageBuffer->renderingMode() == WebCore::RenderingMode::Unaccelerated)
+        switch (m_type) {
+        case Type::IOSurface:
+            if (m_frontBuffer.imageBuffer->canMapBackingStore())
+                handle = static_cast<AcceleratedImageBufferShareableMappedBackend&>(*m_frontBuffer.imageBuffer->ensureBackendCreated()).createImageBufferBackendHandle();
+            else
+                handle = static_cast<AcceleratedImageBufferShareableBackend&>(*m_frontBuffer.imageBuffer->ensureBackendCreated()).createImageBufferBackendHandle();
+            break;
+        case Type::Bitmap:
             handle = static_cast<UnacceleratedImageBufferShareableBackend&>(*m_frontBuffer.imageBuffer->ensureBackendCreated()).createImageBufferBackendHandle();
-        else if (m_frontBuffer.imageBuffer->canMapBackingStore())
-            handle = static_cast<AcceleratedImageBufferShareableMappedBackend&>(*m_frontBuffer.imageBuffer->ensureBackendCreated()).createImageBufferBackendHandle();
-        else
-            handle = static_cast<AcceleratedImageBufferShareableBackend&>(*m_frontBuffer.imageBuffer->ensureBackendCreated()).createImageBufferBackendHandle();
+            break;
+        }
     }
 
     encoder << handle;
+
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+    std::optional<ImageBufferBackendHandle> displayListHandle;
+    if (m_frontBuffer.displayListImageBuffer)
+        displayListHandle = static_cast<CGDisplayListImageBufferBackend&>(*m_frontBuffer.displayListImageBuffer->ensureBackendCreated()).createImageBufferBackendHandle();
+
+    encoder << displayListHandle;
+#endif
 }
 
 bool RemoteLayerBackingStore::decode(IPC::Decoder& decoder, RemoteLayerBackingStore& result)
 {
+    if (!decoder.decode(result.m_type))
+        return false;
+
     if (!decoder.decode(result.m_size))
         return false;
 
     if (!decoder.decode(result.m_scale))
         return false;
 
-    if (!decoder.decode(result.m_acceleratesDrawing))
+    if (!decoder.decode(result.m_isOpaque))
         return false;
 
-    if (!decoder.decode(result.m_isOpaque))
+    if (!decoder.decode(result.m_includeDisplayList))
         return false;
 
     if (!decoder.decode(result.m_bufferHandle))
         return false;
+
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+    if (!decoder.decode(result.m_displayListBufferHandle))
+        return false;
+#endif
 
     return true;
 }
@@ -145,17 +176,10 @@ void RemoteLayerBackingStore::setNeedsDisplay()
     setNeedsDisplay(WebCore::IntRect(WebCore::IntPoint(), WebCore::expandedIntSize(m_size)));
 }
 
-WebCore::IntSize RemoteLayerBackingStore::backingStoreSize() const
-{
-    WebCore::FloatSize scaledSize = m_size;
-    scaledSize.scale(m_scale);
-    return roundedIntSize(scaledSize);
-}
-
 WebCore::PixelFormat RemoteLayerBackingStore::pixelFormat() const
 {
 #if HAVE(IOSURFACE_RGB10)
-    if (m_acceleratesDrawing && m_deepColor)
+    if (m_type == Type::IOSurface && m_deepColor)
         return m_isOpaque ? WebCore::PixelFormat::RGB10 : WebCore::PixelFormat::RGB10A8;
 #endif
 
@@ -178,7 +202,7 @@ void RemoteLayerBackingStore::swapToValidFrontBuffer()
     // Sometimes, we can get two swaps ahead of the render server.
     // If we're using shared IOSurfaces, we must wait to modify
     // a surface until it no longer has outstanding clients.
-    if (m_acceleratesDrawing) {
+    if (m_type == Type::IOSurface) {
         if (!m_backBuffer.imageBuffer || m_backBuffer.imageBuffer->isInUse()) {
             std::swap(m_backBuffer, m_secondaryBackBuffer);
 
@@ -192,22 +216,44 @@ void RemoteLayerBackingStore::swapToValidFrontBuffer()
 
     std::swap(m_frontBuffer, m_backBuffer);
 
-    if (m_frontBuffer.imageBuffer)
+    if (m_frontBuffer.imageBuffer) {
+        setBufferVolatility(BufferType::Front, false);
         return;
+    }
 
-    auto renderingMode = m_acceleratesDrawing ? WebCore::RenderingMode::Accelerated : WebCore::RenderingMode::Unaccelerated;
+    bool shouldUseRemoteRendering = WebProcess::singleton().shouldUseRemoteRenderingFor(WebCore::RenderingPurpose::DOM);
 
-    if (WebProcess::singleton().shouldUseRemoteRenderingFor(WebCore::RenderingPurpose::DOM))
-        m_frontBuffer.imageBuffer = m_layer->context()->ensureRemoteRenderingBackendProxy().createImageBuffer(backingStoreSize(), renderingMode, 1, WebCore::DestinationColorSpace::SRGB, pixelFormat());
-    else if (renderingMode == WebCore::RenderingMode::Accelerated)
-        m_frontBuffer.imageBuffer = WebCore::ConcreteImageBuffer<AcceleratedImageBufferShareableMappedBackend>::create(backingStoreSize(), 1, WebCore::DestinationColorSpace::SRGB, pixelFormat(), nullptr);
-    else
-        m_frontBuffer.imageBuffer = WebCore::ConcreteImageBuffer<UnacceleratedImageBufferShareableBackend>::create(backingStoreSize(), 1, WebCore::DestinationColorSpace::SRGB, pixelFormat(), nullptr);
+    switch (m_type) {
+    case Type::IOSurface:
+        if (shouldUseRemoteRendering)
+            m_frontBuffer.imageBuffer = m_layer->context()->ensureRemoteRenderingBackendProxy().createImageBuffer(m_size, WebCore::RenderingMode::Accelerated, m_scale, WebCore::DestinationColorSpace::SRGB(), pixelFormat());
+        else
+            m_frontBuffer.imageBuffer = WebCore::ConcreteImageBuffer<AcceleratedImageBufferShareableMappedBackend>::create(m_size, m_scale, WebCore::DestinationColorSpace::SRGB(), pixelFormat(), nullptr);
+        break;
+    case Type::Bitmap:
+        if (shouldUseRemoteRendering)
+            m_frontBuffer.imageBuffer = m_layer->context()->ensureRemoteRenderingBackendProxy().createImageBuffer(m_size, WebCore::RenderingMode::Unaccelerated, m_scale, WebCore::DestinationColorSpace::SRGB(), pixelFormat());
+        else
+            m_frontBuffer.imageBuffer = WebCore::ConcreteImageBuffer<UnacceleratedImageBufferShareableBackend>::create(m_size, m_scale, WebCore::DestinationColorSpace::SRGB(), pixelFormat(), nullptr);
+        break;
+    }
+
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+    if (m_includeDisplayList == IncludeDisplayList::Yes)
+        m_frontBuffer.displayListImageBuffer = WebCore::ConcreteImageBuffer<CGDisplayListImageBufferBackend>::create(m_size, m_scale, WebCore::DestinationColorSpace::SRGB(), pixelFormat(), nullptr);
+#endif
+}
+
+bool RemoteLayerBackingStore::supportsPartialRepaint()
+{
+    // FIXME: Find a way to support partial repaint for backing store that
+    // includes a display list without allowing unbounded memory growth.
+    return m_includeDisplayList == IncludeDisplayList::No;
 }
 
 bool RemoteLayerBackingStore::display()
 {
-    ASSERT(!m_frontBufferFlusher);
+    ASSERT(!m_frontBufferFlushers.size());
 
     m_lastDisplayTime = MonotonicTime::now();
 
@@ -218,13 +264,11 @@ bool RemoteLayerBackingStore::display()
     // Make the previous front buffer non-volatile early, so that we can dirty the whole layer if it comes back empty.
     setBufferVolatility(BufferType::Front, false);
 
-    WebCore::IntSize expandedScaledSize = backingStoreSize();
-
-    if (m_dirtyRegion.isEmpty() || expandedScaledSize.isEmpty())
+    if (m_dirtyRegion.isEmpty() || m_size.isEmpty())
         return needToEncodeBackingStore;
 
     WebCore::IntRect layerBounds(WebCore::IntPoint(), WebCore::expandedIntSize(m_size));
-    if (!hasFrontBuffer())
+    if (!hasFrontBuffer() || !supportsPartialRepaint())
         m_dirtyRegion.unite(layerBounds);
 
     if (m_layer->owner()->platformCALayerShowRepaintCounter(m_layer)) {
@@ -232,19 +276,57 @@ bool RemoteLayerBackingStore::display()
         m_dirtyRegion.unite(indicatorRect);
     }
 
-    WebCore::IntRect expandedScaledLayerBounds(WebCore::IntPoint(), expandedScaledSize);
-
     swapToValidFrontBuffer();
     if (!m_frontBuffer.imageBuffer)
         return true;
 
-    WebCore::GraphicsContext& context = m_frontBuffer.imageBuffer->context();
 
+    if (m_includeDisplayList == IncludeDisplayList::Yes) {
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+        auto& displayListContext = m_frontBuffer.displayListImageBuffer->context();
+
+        // FIXME: Remove this when <rdar://problem/80487697> is fixed.
+        static std::optional<bool> needsMissingFlipWorkaround;
+        WebCore::GraphicsContextStateSaver workaroundStateSaver(displayListContext, false);
+        if (!needsMissingFlipWorkaround) {
+            id defaultValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"WebKitNeedsWorkaroundFor80487697"];
+            needsMissingFlipWorkaround = defaultValue ? [defaultValue boolValue] : true;
+        }
+        if (needsMissingFlipWorkaround.value()) {
+            workaroundStateSaver.save();
+            displayListContext.scale(WebCore::FloatSize(m_scale, -m_scale));
+            displayListContext.translate(0, -m_size.height());
+        }
+
+        WebCore::BifurcatedGraphicsContext context(m_frontBuffer.imageBuffer->context(), displayListContext);
+#else
+        WebCore::GraphicsContext& context = m_frontBuffer.imageBuffer->context();
+#endif
+        drawInContext(context);
+    } else {
+        WebCore::GraphicsContext& context = m_frontBuffer.imageBuffer->context();
+        drawInContext(context);    
+    }
+
+    m_dirtyRegion = WebCore::Region();
+    m_paintingRects.clear();
+
+    m_layer->owner()->platformCALayerLayerDidDisplay(m_layer);
+
+    m_frontBuffer.imageBuffer->flushDrawingContextAsync();
+
+    m_frontBufferFlushers.append(m_frontBuffer.imageBuffer->createFlusher());
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+    if (m_includeDisplayList == IncludeDisplayList::Yes)
+        m_frontBufferFlushers.append(m_frontBuffer.displayListImageBuffer->createFlusher());
+#endif
+
+    return true;
+}
+
+void RemoteLayerBackingStore::drawInContext(WebCore::GraphicsContext& context)
+{
     WebCore::GraphicsContextStateSaver stateSaver(context);
-
-    WebCore::FloatSize scaledSize = m_size;
-    scaledSize.scale(m_scale);
-    WebCore::IntRect scaledLayerBounds(WebCore::IntPoint(), WebCore::roundedIntSize(scaledSize));
 
     // If we have less than webLayerMaxRectsToPaint rects to paint and they cover less
     // than webLayerWastedSpaceThreshold of the total dirty area, we'll repaint each rect separately.
@@ -266,34 +348,29 @@ bool RemoteLayerBackingStore::display()
         m_paintingRects.append(scaledRect);
     }
 
+    WebCore::IntRect layerBounds(WebCore::IntPoint(), WebCore::expandedIntSize(m_size));
     if (!m_dirtyRegion.contains(layerBounds)) {
         ASSERT(m_backBuffer.imageBuffer);
-        context.drawImageBuffer(*m_backBuffer.imageBuffer, { 0, 0 }, { WebCore::CompositeOperator::Copy });
+        context.drawImageBuffer(*m_backBuffer.imageBuffer, { {0, 0}, m_size }, { {0, 0}, m_size }, { WebCore::CompositeOperator::Copy });
     }
 
-    if (m_paintingRects.size() == 1) {
-        WebCore::FloatRect scaledPaintingRect = m_paintingRects[0];
-        scaledPaintingRect.scale(m_scale);
-        context.clip(scaledPaintingRect);
-    } else {
+    if (m_paintingRects.size() == 1)
+        context.clip(m_paintingRects[0]);
+    else {
         WebCore::Path clipPath;
-        for (auto rect : m_paintingRects) {
-            rect.scale(m_scale);
+        for (auto rect : m_paintingRects)
             clipPath.addRect(rect);
-        }
         context.clipPath(clipPath);
     }
 
     if (!m_isOpaque)
-        context.clearRect(scaledLayerBounds);
+        context.clearRect(layerBounds);
 
 #ifndef NDEBUG
     if (m_isOpaque)
-        context.fillRect(scaledLayerBounds, WebCore::SRGBA<uint8_t> { 255, 47, 146 });
+        context.fillRect(layerBounds, WebCore::SRGBA<uint8_t> { 255, 47, 146 });
 #endif
 
-    context.scale(m_scale);
-    
     // FIXME: Clarify that WebCore::GraphicsLayerPaintSnapshotting is just about image decoding.
     auto flags = m_layer->context() && m_layer->context()->nextRenderingUpdateRequiresSynchronousImageDecoding() ? WebCore::GraphicsLayerPaintSnapshotting : WebCore::GraphicsLayerPaintNormal;
     
@@ -322,21 +399,13 @@ bool RemoteLayerBackingStore::display()
     case WebCore::PlatformCALayer::LayerTypeContentsProvidedLayer:
     case WebCore::PlatformCALayer::LayerTypeShapeLayer:
     case WebCore::PlatformCALayer::LayerTypeScrollContainerLayer:
+#if ENABLE(MODEL_ELEMENT)
+    case WebCore::PlatformCALayer::LayerTypeModelLayer:
+#endif
     case WebCore::PlatformCALayer::LayerTypeCustom:
         ASSERT_NOT_REACHED();
         break;
     };
-
-    m_dirtyRegion = WebCore::Region();
-    m_paintingRects.clear();
-
-    m_layer->owner()->platformCALayerLayerDidDisplay(m_layer);
-
-    m_frontBuffer.imageBuffer->flushDrawingContextAsync();
-
-    m_frontBufferFlusher = m_frontBuffer.imageBuffer->createFlusher();
-
-    return true;
 }
 
 void RemoteLayerBackingStore::enumerateRectsBeingDrawn(WebCore::GraphicsContext& context, void (^block)(WebCore::FloatRect))
@@ -359,33 +428,57 @@ void RemoteLayerBackingStore::applyBackingStoreToLayer(CALayer *layer, LayerCont
     ASSERT(m_bufferHandle);
     layer.contentsOpaque = m_isOpaque;
 
-    if (acceleratesDrawing()) {
-        switch (contentsType) {
-        case LayerContentsType::IOSurface: {
-            auto surface = WebCore::IOSurface::createFromSendRight(WTFMove(WTF::get<MachSendRight>(*m_bufferHandle)), WebCore::sRGBColorSpaceRef());
-            layer.contents = surface ? surface->asLayerContents() : nil;
-            break;
+    RetainPtr<id> contents;
+    WTF::switchOn(*m_bufferHandle,
+        [&] (ShareableBitmap::Handle& handle) {
+            ASSERT(m_type == Type::Bitmap);
+            auto bitmap = ShareableBitmap::create(handle);
+            contents = bitmap->makeCGImageCopy();
+        },
+        [&] (MachSendRight& machSendRight) {
+            ASSERT(m_type == Type::IOSurface);
+            switch (contentsType) {
+            case RemoteLayerBackingStore::LayerContentsType::IOSurface: {
+                auto surface = WebCore::IOSurface::createFromSendRight(WTFMove(machSendRight), WebCore::DestinationColorSpace::SRGB());
+                contents = surface ? surface->asLayerContents() : nil;
+                break;
+            }
+            case RemoteLayerBackingStore::LayerContentsType::CAMachPort:
+                contents = adoptCF(CAMachPortCreate(machSendRight.leakSendRight()));
+                break;
+            }
         }
-        case LayerContentsType::CAMachPort:
-            layer.contents = (__bridge id)adoptCF(CAMachPortCreate(WTF::get<MachSendRight>(*m_bufferHandle).leakSendRight())).get();
-            break;
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+        , [&] (IPC::SharedBufferCopy& buffer) {
+            ASSERT_NOT_REACHED();
         }
+#endif
+    );
+
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+    if (m_displayListBufferHandle) {
+        ASSERT([layer isKindOfClass:[WKCompositingLayer class]]);
+        if (![layer isKindOfClass:[WKCompositingLayer class]])
+            return;
+        [layer setValue:@1 forKeyPath:WKCGDisplayListEnabledKey];
+        [layer setValue:@1 forKeyPath:WKCGDisplayListBifurcationEnabledKey];
+        auto data = WTF::get<IPC::SharedBufferCopy>(*m_displayListBufferHandle).buffer()->createCFData();
+        [(WKCompositingLayer *)layer _setWKContents:contents.get() withDisplayList:data.get()];
         return;
     }
+#endif
 
-    ASSERT(!acceleratesDrawing());
-    auto bitmap = ShareableBitmap::create(WTF::get<ShareableBitmap::Handle>(*m_bufferHandle));
-    layer.contents = (__bridge id)bitmap->makeCGImageCopy().get();
+    layer.contents = contents.get();
 }
 
-std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher> RemoteLayerBackingStore::takePendingFlusher()
+Vector<std::unique_ptr<WebCore::ThreadSafeImageBufferFlusher>> RemoteLayerBackingStore::takePendingFlushers()
 {
-    return std::exchange(m_frontBufferFlusher, nullptr);
+    return std::exchange(m_frontBufferFlushers, { });
 }
 
-bool RemoteLayerBackingStore::setBufferVolatility(BufferType type, bool isVolatile)
+bool RemoteLayerBackingStore::setBufferVolatility(BufferType bufferType, bool isVolatile)
 {
-    if (!acceleratesDrawing())
+    if (m_type != Type::IOSurface)
         return true;
 
     // Return value is true if we succeeded in making volatile.
@@ -415,7 +508,7 @@ bool RemoteLayerBackingStore::setBufferVolatility(BufferType type, bool isVolati
         return previousState == WebCore::VolatilityState::Empty;
     };
 
-    switch (type) {
+    switch (bufferType) {
     case BufferType::Front:
         if (isVolatile)
             return makeVolatile(m_frontBuffer);
@@ -446,6 +539,9 @@ void RemoteLayerBackingStore::Buffer::discard()
     if (imageBuffer)
         imageBuffer->releaseBufferToPool();
     imageBuffer = nullptr;
+#if ENABLE(CG_DISPLAY_LIST_BACKED_IMAGE_BUFFER)
+    displayListImageBuffer = nullptr;
+#endif
 }
 
 } // namespace WebKit

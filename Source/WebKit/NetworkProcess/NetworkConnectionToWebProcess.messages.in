@@ -22,8 +22,8 @@
 
 messages -> NetworkConnectionToWebProcess LegacyReceiver {
 
-    ScheduleResourceLoad(WebKit::NetworkResourceLoadParameters resourceLoadParameters)
-    PerformSynchronousLoad(WebKit::NetworkResourceLoadParameters resourceLoadParameters) -> (WebCore::ResourceError error, WebCore::ResourceResponse response, Vector<char> data) Synchronous
+    ScheduleResourceLoad(WebKit::NetworkResourceLoadParameters resourceLoadParameters, std::optional<WebKit::NetworkResourceLoadIdentifier> existingLoaderToResume)
+    PerformSynchronousLoad(WebKit::NetworkResourceLoadParameters resourceLoadParameters) -> (WebCore::ResourceError error, WebCore::ResourceResponse response, Vector<uint8_t> data) Synchronous
     TestProcessIncomingSyncMessagesWhenWaitingForSyncReply(WebKit::WebPageProxyIdentifier pageID) -> (bool handled) Synchronous
     LoadPing(WebKit::NetworkResourceLoadParameters resourceLoadParameters)
     RemoveLoadIdentifier(uint64_t resourceLoadIdentifier)
@@ -31,16 +31,16 @@ messages -> NetworkConnectionToWebProcess LegacyReceiver {
     BrowsingContextRemoved(WebKit::WebPageProxyIdentifier webPageProxyID, WebCore::PageIdentifier webPageID, WebCore::FrameIdentifier webFrameID)
     PrefetchDNS(String hostname)
     SendH2Ping(WebKit::NetworkResourceLoadParameters parameters) -> (Expected<Seconds, WebCore::ResourceError> result) Async
-    PreconnectTo(Optional<uint64_t> preconnectionIdentifier, WebKit::NetworkResourceLoadParameters loadParameters);
+    PreconnectTo(std::optional<uint64_t> preconnectionIdentifier, WebKit::NetworkResourceLoadParameters loadParameters);
     IsResourceLoadFinished(uint64_t resourceLoadIdentifier) -> (bool isFinished) Async
 
-    StartDownload(WebKit::DownloadID downloadID, WebCore::ResourceRequest request, enum:bool Optional<WebKit::NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain, String suggestedName)
-    ConvertMainResourceLoadToDownload(uint64_t mainResourceLoadIdentifier, WebKit::DownloadID downloadID, WebCore::ResourceRequest request, WebCore::ResourceResponse response, enum:bool Optional<WebKit::NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain)
+    StartDownload(WebKit::DownloadID downloadID, WebCore::ResourceRequest request, enum:bool std::optional<WebKit::NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain, String suggestedName)
+    ConvertMainResourceLoadToDownload(uint64_t mainResourceLoadIdentifier, WebKit::DownloadID downloadID, WebCore::ResourceRequest request, WebCore::ResourceResponse response, enum:bool std::optional<WebKit::NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain)
 
     CookiesForDOM(URL firstParty, struct WebCore::SameSiteInfo sameSiteInfo, URL url, WebCore::FrameIdentifier frameID, WebCore::PageIdentifier pageID, enum:bool WebCore::IncludeSecureCookies includeSecureCookies, enum:bool WebCore::ShouldAskITP shouldAskITP, enum:bool WebCore::ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking) -> (String cookieString, bool didAccessSecureCookies) Synchronous
     SetCookiesFromDOM(URL firstParty, struct WebCore::SameSiteInfo sameSiteInfo, URL url, WebCore::FrameIdentifier frameID, WebCore::PageIdentifier pageID, enum:bool WebCore::ShouldAskITP shouldAskITP, String cookieString, enum:bool WebCore::ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking)
-    CookieRequestHeaderFieldValue(URL firstParty, struct WebCore::SameSiteInfo sameSiteInfo, URL url, Optional<WebCore::FrameIdentifier> frameID, Optional<WebCore::PageIdentifier> pageID, enum:bool WebCore::IncludeSecureCookies includeSecureCookies, enum:bool WebCore::ShouldAskITP shouldAskITP, enum:bool WebCore::ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking) -> (String cookieString, bool didAccessSecureCookies) Synchronous
-    GetRawCookies(URL firstParty, struct WebCore::SameSiteInfo sameSiteInfo, URL url, Optional<WebCore::FrameIdentifier> frameID, Optional<WebCore::PageIdentifier> pageID, enum:bool WebCore::ShouldAskITP shouldAskITP, enum:bool WebCore::ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking) -> (Vector<WebCore::Cookie> cookies) Synchronous
+    CookieRequestHeaderFieldValue(URL firstParty, struct WebCore::SameSiteInfo sameSiteInfo, URL url, std::optional<WebCore::FrameIdentifier> frameID, std::optional<WebCore::PageIdentifier> pageID, enum:bool WebCore::IncludeSecureCookies includeSecureCookies, enum:bool WebCore::ShouldAskITP shouldAskITP, enum:bool WebCore::ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking) -> (String cookieString, bool didAccessSecureCookies) Synchronous
+    GetRawCookies(URL firstParty, struct WebCore::SameSiteInfo sameSiteInfo, URL url, std::optional<WebCore::FrameIdentifier> frameID, std::optional<WebCore::PageIdentifier> pageID, enum:bool WebCore::ShouldAskITP shouldAskITP, enum:bool WebCore::ShouldRelaxThirdPartyCookieBlocking shouldRelaxThirdPartyCookieBlocking) -> (Vector<WebCore::Cookie> cookies) Synchronous
     SetRawCookie(struct WebCore::Cookie cookie)
     DeleteCookie(URL url, String cookieName)
     DomCookiesForHost(String host, bool subscribeToCookieChangeNotifications) -> (Vector<WebCore::Cookie> cookies) Synchronous
@@ -50,17 +50,19 @@ messages -> NetworkConnectionToWebProcess LegacyReceiver {
 
     RegisterFileBlobURL(URL url, String path, String replacementPath, WebKit::SandboxExtension::Handle extensionHandle, String contentType)
     RegisterBlobURL(URL url, Vector<WebCore::BlobPart> blobParts, String contentType)
-    RegisterBlobURLFromURL(URL url, URL srcURL)
+    RegisterBlobURLFromURL(URL url, URL srcURL, struct WebCore::PolicyContainer policyContainer)
     RegisterBlobURLOptionallyFileBacked(URL url, URL srcURL, String fileBackedPath, String contentType)
-    RegisterBlobURLForSlice(URL url, URL srcURL, int64_t start, int64_t end)
+    RegisterBlobURLForSlice(URL url, URL srcURL, int64_t start, int64_t end, String contentType)
     UnregisterBlobURL(URL url)
     BlobSize(URL url) -> (uint64_t resultSize) Synchronous
     WriteBlobsToTemporaryFiles(Vector<String> blobURLs) -> (Vector<String> fileNames) Async
+    RegisterBlobURLHandle(URL url);
+    UnregisterBlobURLHandle(URL url);
 
     SetCaptureExtraNetworkLoadMetricsEnabled(bool enabled)
 
     CreateSocketStream(URL url, String cachePartition, WebCore::WebSocketIdentifier identifier)
-    CreateSocketChannel(WebCore::ResourceRequest request, String protocol, WebCore::WebSocketIdentifier identifier)
+    CreateSocketChannel(WebCore::ResourceRequest request, String protocol, WebCore::WebSocketIdentifier identifier, WebKit::WebPageProxyIdentifier webPageProxyID)
 
     ClearPageSpecificData(WebCore::PageIdentifier pageID);
 
@@ -82,11 +84,14 @@ messages -> NetworkConnectionToWebProcess LegacyReceiver {
     TakeNetworkLoadInformationMetrics(uint64_t resourceLoadIdentifier) -> (WebCore::NetworkLoadMetrics networkMetrics) Synchronous
 
 #if ENABLE(SERVICE_WORKER)
-    EstablishSWContextConnection(WebCore::RegistrableDomain domain) -> () Async
+    EstablishSWContextConnection(WebKit::WebPageProxyIdentifier webPageProxyID, WebCore::RegistrableDomain domain) -> () Async
     CloseSWContextConnection()
 #endif
 
     CreateRTCProvider() -> () Async
+#if ENABLE(WEB_RTC)
+    ConnectToRTCDataChannelRemoteSource(struct WebCore::RTCDataChannelIdentifier source, struct WebCore::RTCDataChannelIdentifier handler) -> (std::optional<bool> result) Async
+#endif
 
     UpdateQuotaBasedOnSpaceUsageForTesting(struct WebCore::ClientOrigin origin)
     CreateNewMessagePortChannel(struct WebCore::MessagePortIdentifier port1, struct WebCore::MessagePortIdentifier port2)

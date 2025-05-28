@@ -26,7 +26,14 @@
 
 #pragma once
 
+#if OS(MORPHOS)
+#define _NO_PPCINLINE
+typedef uint32_t socklen_t;
 #include <gcrypt.h>
+#undef _NO_PPCINLINE
+#else
+#include <gcrypt.h>
+#endif
 
 namespace PAL {
 namespace GCrypt {

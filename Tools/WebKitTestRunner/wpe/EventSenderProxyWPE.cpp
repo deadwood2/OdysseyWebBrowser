@@ -234,6 +234,10 @@ static uint32_t wpeKeySymForKeyRef(WKStringRef keyRef, unsigned location, uint32
         return WPE_KEY_Shift_L;
     if (WKStringIsEqualToUTF8CString(keyRef, "rightShift"))
         return WPE_KEY_Shift_R;
+    if (WKStringIsEqualToUTF8CString(keyRef, "leftMeta"))
+        return WPE_KEY_Meta_L;
+    if (WKStringIsEqualToUTF8CString(keyRef, "rightMeta"))
+        return WPE_KEY_Meta_R;
     if (WKStringIsEqualToUTF8CString(keyRef, "leftAlt"))
         return WPE_KEY_Alt_L;
     if (WKStringIsEqualToUTF8CString(keyRef, "rightAlt"))
@@ -286,6 +290,8 @@ static uint32_t wpeKeySymForKeyRef(WKStringRef keyRef, unsigned location, uint32
         return WPE_KEY_F11;
     if (WKStringIsEqualToUTF8CString(keyRef, "F12"))
         return WPE_KEY_F12;
+    if (WKStringIsEqualToUTF8CString(keyRef, "escape"))
+        return WPE_KEY_Escape;
 
     size_t bufferSize = WKStringGetMaximumUTF8CStringSize(keyRef);
     auto buffer = makeUniqueArray<char>(bufferSize);

@@ -48,6 +48,10 @@
    macros, policy decision macros, and top-level port definitions. */
 #include <wtf/PlatformLegacy.h>
 
+#ifdef __MORPHOS__
+#define WTF_OS_MORPHOS 1
+#endif
+
 /* HAVE() - specific system features (headers, functions or similar) that are present or not */
 #include <wtf/PlatformHave.h>
 
@@ -122,6 +126,10 @@
 #define U_DISABLE_RENAMING 1
 #endif
 
+#if OS(MORPHOS)
+#define USE_PTHREADS 1
+#endif
+
 #if COMPILER(MSVC)
 #undef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -148,7 +156,7 @@
 #endif
 
 /* FIXME: The availability of RSA_PSS should not depend on the policy decision to USE(GCRYPT). */
-#if PLATFORM(MAC) || PLATFORM(IOS) || PLATFORM(MACCATALYST) || USE(GCRYPT)
+#if PLATFORM(MAC) || PLATFORM(IOS) || PLATFORM(MACCATALYST) || USE(GCRYPT) || USE(OPENSSL)
 #define HAVE_RSA_PSS 1
 #endif
 

@@ -29,7 +29,6 @@
 #include <netinet/in.h>
 #include <thread>
 #include <unistd.h>
-#include <wtf/Optional.h>
 #include <wtf/text/Base64.h>
 
 #if HAVE(SSL)
@@ -134,7 +133,7 @@ TCPServer::TCPServer(Function<void(Socket)>&& connectionHandler, size_t connecti
 }
 
 #if HAVE(SSL)
-void TCPServer::startSecureConnection(Socket socket, Function<void(SSL*)>&& secureConnectionHandler, bool requestClientCertificate, Optional<uint16_t> maxTLSVersion)
+void TCPServer::startSecureConnection(Socket socket, Function<void(SSL*)>&& secureConnectionHandler, bool requestClientCertificate, std::optional<uint16_t> maxTLSVersion)
 {
     SSL_library_init();
 
@@ -155,9 +154,8 @@ void TCPServer::startSecureConnection(Socket socket, Function<void(SSL*)>&& secu
     "ldY9avcTGSwbwoiuIqv0jTL1fHFnzy3RHMLDh+Lpvolc5DSrSJHCP5WuK0eeJXhr"
     "T5oQpHL9z/cCDLAKCKRa4uV0fhEdOWBqyR9p8y5jJtye72t6CuFUV5iqcpF4BH4f"
     "j2VNHwsSrJwkD4QUGlUtH7vwnQmyCFxZMmWAJg==");
-    Vector<uint8_t> certDER;
-    base64Decode(certPEM, certDER, WTF::Base64DecodeOptions::Base64Default);
-    ssl::unique_ptr<CRYPTO_BUFFER> cert(CRYPTO_BUFFER_new(certDER.data(), certDER.size(), nullptr));
+    auto certDER = base64Decode(certPEM);
+    ssl::unique_ptr<CRYPTO_BUFFER> cert(CRYPTO_BUFFER_new(certDER->data(), certDER->size(), nullptr));
     ASSERT(cert);
 
     // This is a test key from BoringSSL.
@@ -207,7 +205,7 @@ void TCPServer::startSecureConnection(Socket socket, Function<void(SSL*)>&& secu
     secureConnectionHandler(acceptResult > 0 ? ssl.get() : nullptr);
 };
 
-TCPServer::TCPServer(Protocol protocol, Function<void(SSL*)>&& secureConnectionHandler, Optional<uint16_t> maxTLSVersion, size_t connections)
+TCPServer::TCPServer(Protocol protocol, Function<void(SSL*)>&& secureConnectionHandler, std::optional<uint16_t> maxTLSVersion, size_t connections)
 {
     switch (protocol) {
     case Protocol::HTTPS:
@@ -260,11 +258,11 @@ TCPServer::~TCPServer()
         connectionThreads.join();
 }
 
-auto TCPServer::socketBindListen(size_t connections) -> Optional<Socket>
+auto TCPServer::socketBindListen(size_t connections) -> std::optional<Socket>
 {
     Socket listeningSocket = socket(PF_INET, SOCK_STREAM, 0);
     if (listeningSocket == -1)
-        return WTF::nullopt;
+        return std::nullopt;
     
     // Ports 49152-65535 are unallocated ports. Try until we find one that's free.
     for (Port port = 49152; port; port++) {
@@ -280,7 +278,7 @@ auto TCPServer::socketBindListen(size_t connections) -> Optional<Socket>
         if (listen(listeningSocket, connections) == -1) {
             // Listening failed.
             close(listeningSocket);
-            return WTF::nullopt;
+            return std::nullopt;
         }
         m_port = port;
         return listeningSocket; // Successfully set up listening port.
@@ -288,7 +286,7 @@ auto TCPServer::socketBindListen(size_t connections) -> Optional<Socket>
     
     // Couldn't find an available port.
     close(listeningSocket);
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 template<> Vector<uint8_t> TCPServer::read(Socket socket)
@@ -412,9 +410,8 @@ Vector<uint8_t> TCPServer::testCertificate()
     "G3PFnYbW8urH0NSJG/W+/9DA+Y7Aa0cs4TPpuBGZ0NU1W94OoCMo4lkO6H/y6Leu"
     "3vjZD3y9kZk7mre9XHwkI8MdK5s=");
     
-    Vector<uint8_t> vector;
-    base64Decode(pemEncodedCertificate, vector, WTF::Base64DecodeOptions::Base64Default);
-    return vector;
+    auto decodedCertificate = base64Decode(pemEncodedCertificate);
+    return WTFMove(*decodedCertificate);
 }
 
 Vector<uint8_t> TCPServer::testPrivateKey()
@@ -471,9 +468,8 @@ Vector<uint8_t> TCPServer::testPrivateKey()
     "dEObvcpShP22ItOVjSampRuAuRG26ZemEbGCI3J6Mqx3y6m+6HwultsgtdzDgrFe"
     "qJfU8bbdbu2pi47Y4FdJK0HLffl5Rw==");
 
-    Vector<uint8_t> vector;
-    base64Decode(pemEncodedPrivateKey, vector, WTF::Base64DecodeOptions::Base64Default);
-    return vector;
+    auto decodedPrivateKey = base64Decode(pemEncodedPrivateKey);
+    return WTFMove(*decodedPrivateKey);
 }
     
 } // namespace TestWebKitAPI

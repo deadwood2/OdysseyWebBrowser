@@ -32,6 +32,10 @@
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
 
+#if OS(MORPHOS)
+#define INTPTR_MAX 0x7fffffff
+#endif
+
 namespace Inspector { namespace Protocol  { namespace Runtime {
 class TypeDescription;
 }}}

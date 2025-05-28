@@ -38,6 +38,7 @@ interface EventSendingController {
     undefined mouseForceChanged(double force);
     undefined mouseScrollBy(long x, long y);
     undefined mouseScrollByWithWheelAndMomentumPhases(long x, long y, DOMString phase, DOMString momentum);
+    undefined setWheelHasPreciseDeltas(boolean hasPreciseDeltas);
     undefined continuousMouseScrollBy(long x, long y, optional boolean paged);
     object contextClick();
     undefined scheduleAsynchronousClick();
@@ -70,6 +71,13 @@ interface EventSendingController {
     undefined clearTouchPoints();
     undefined releaseTouchPoint(long index);
     undefined cancelTouchPoint(long index);
+#endif
+
+#if defined(ENABLE_MAC_GESTURE_EVENTS) && ENABLE_MAC_GESTURE_EVENTS
+    // Gesture events.
+    undefined scaleGestureStart(double scale);
+    undefined scaleGestureChange(double scale);
+    undefined scaleGestureEnd(double scale);
 #endif
 };
 

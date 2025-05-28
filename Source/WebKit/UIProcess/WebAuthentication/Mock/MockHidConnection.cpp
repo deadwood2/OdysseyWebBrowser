@@ -195,7 +195,7 @@ void MockHidConnection::parseRequest()
     }
 
     m_currentChannel = m_requestMessage->channelId();
-    m_requestMessage = WTF::nullopt;
+    m_requestMessage = std::nullopt;
     if (m_configuration.hid->fastDataArrival)
         feedReports();
 }
@@ -222,7 +222,7 @@ void MockHidConnection::feedReports()
         return;
     }
 
-    Optional<FidoHidMessage> message;
+    std::optional<FidoHidMessage> message;
     if (m_stage == Mock::HidStage::Info && m_subStage == Mock::HidSubStage::Msg) {
         // FIXME(205839):
         Vector<uint8_t> infoData;
@@ -261,15 +261,13 @@ void MockHidConnection::feedReports()
         if (stagesMatch() && m_configuration.hid->error == Mock::HidError::UnsupportedOptions && (m_requireResidentKey || m_requireUserVerification))
             message = FidoHidMessage::create(m_currentChannel, FidoHidDeviceCommand::kCbor, { static_cast<uint8_t>(CtapDeviceResponseCode::kCtap2ErrUnsupportedOption) });
         else {
-            Vector<uint8_t> payload;
             ASSERT(!m_configuration.hid->payloadBase64.isEmpty());
-            auto status = base64Decode(m_configuration.hid->payloadBase64[0], payload);
+            auto payload = base64Decode(m_configuration.hid->payloadBase64[0]);
             m_configuration.hid->payloadBase64.remove(0);
-            ASSERT_UNUSED(status, status);
             if (!m_configuration.hid->isU2f)
-                message = FidoHidMessage::create(m_currentChannel, FidoHidDeviceCommand::kCbor, payload);
+                message = FidoHidMessage::create(m_currentChannel, FidoHidDeviceCommand::kCbor, WTFMove(*payload));
             else
-                message = FidoHidMessage::create(m_currentChannel, FidoHidDeviceCommand::kMsg, payload);
+                message = FidoHidMessage::create(m_currentChannel, FidoHidDeviceCommand::kMsg, WTFMove(*payload));
         }
     }
 

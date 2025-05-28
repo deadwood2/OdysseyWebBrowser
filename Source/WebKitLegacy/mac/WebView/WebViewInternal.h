@@ -31,7 +31,6 @@
 
 #import "WebPreferences.h"
 #import "WebViewPrivate.h"
-#import "WebTypesInternal.h"
 #import "WebUIDelegate.h"
 
 #ifdef __cplusplus
@@ -65,6 +64,10 @@ class RenderBox;
 class TextIndicator;
 struct DictationAlternative;
 struct DictionaryPopupInfo;
+
+#if HAVE(TRANSLATION_UI_SERVICES) && ENABLE(CONTEXT_MENUS)
+struct TranslationContextMenuInfo;
+#endif
 }
 
 #if PLATFORM(IOS_FAMILY) && ENABLE(DRAG_SUPPORT)
@@ -101,7 +104,7 @@ using CocoaDragOperation = uint64_t;
 
 OptionSet<WebCore::DragOperation> coreDragOperationMask(CocoaDragOperation);
 
-WebDragSourceAction kit(Optional<WebCore::DragSourceAction>);
+WebDragSourceAction kit(std::optional<WebCore::DragSourceAction>);
 #endif // ENABLE(DRAG_SUPPORT)
 
 WebCore::FindOptions coreOptions(WebFindOptions);
@@ -155,6 +158,11 @@ WebLayoutMilestones kitLayoutMilestones(OptionSet<WebCore::LayoutMilestone>);
 
 #if ENABLE(SERVICE_CONTROLS)
 - (WebSelectionServiceController&)_selectionServiceController;
+#endif
+
+#if HAVE(TRANSLATION_UI_SERVICES) && ENABLE(CONTEXT_MENUS)
+@property (class, nonatomic, readonly) BOOL _canHandleContextMenuTranslation;
+- (void)_handleContextMenuTranslation:(const WebCore::TranslationContextMenuInfo&)info;
 #endif
 
 - (void)_windowVisibilityChanged:(NSNotification *)notification;
@@ -310,8 +318,8 @@ WebLayoutMilestones kitLayoutMilestones(OptionSet<WebCore::LayoutMilestone>);
 
 #if PLATFORM(MAC) && defined(__cplusplus)
 - (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator;
-- (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator withLifetime:(WebCore::TextIndicatorWindowLifetime)lifetime;
-- (void)_clearTextIndicatorWithAnimation:(WebCore::TextIndicatorWindowDismissalAnimation)animation;
+- (void)_setTextIndicator:(WebCore::TextIndicator&)textIndicator withLifetime:(WebCore::TextIndicatorLifetime)lifetime;
+- (void)_clearTextIndicatorWithAnimation:(WebCore::TextIndicatorDismissalAnimation)animation;
 - (void)_setTextIndicatorAnimationProgress:(float)progress;
 - (void)_showDictionaryLookupPopup:(const WebCore::DictionaryPopupInfo&)dictionaryPopupInfo;
 - (id)_animationControllerForDictionaryLookupPopupInfo:(const WebCore::DictionaryPopupInfo&)dictionaryPopupInfo;
@@ -327,7 +335,7 @@ WebLayoutMilestones kitLayoutMilestones(OptionSet<WebCore::LayoutMilestone>);
 - (void)_showPlaybackTargetPicker:(WebCore::PlaybackTargetClientContextIdentifier)contextId location:(const WebCore::IntPoint&)location hasVideo:(BOOL)hasVideo;
 - (void)_playbackTargetPickerClientStateDidChange:(WebCore::PlaybackTargetClientContextIdentifier)contextId state:(WebCore::MediaProducer::MediaStateFlags)state;
 - (void)_setMockMediaPlaybackTargetPickerEnabled:(bool)enabled;
-- (void)_setMockMediaPlaybackTargetPickerName:(NSString *)name state:(WebCore::MediaPlaybackTargetContext::State)state;
+- (void)_setMockMediaPlaybackTargetPickerName:(NSString *)name state:(WebCore::MediaPlaybackTargetContext::MockState)state;
 - (void)_mockMediaPlaybackTargetPickerDismissPopup;
 #endif
 

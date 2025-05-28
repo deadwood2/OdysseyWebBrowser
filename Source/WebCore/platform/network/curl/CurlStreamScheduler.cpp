@@ -28,6 +28,14 @@
 
 #if USE(CURL)
 
+#if OS(MORPHOS)
+extern "C" {
+LONG WaitSelect(LONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfds,
+                struct timeval *timeout, ULONG *maskp);
+}
+#include <unistd.h> /* for usleep */
+#endif
+
 namespace WebCore {
 
 CurlStreamScheduler::CurlStreamScheduler()
@@ -86,7 +94,7 @@ void CurlStreamScheduler::callOnWorkerThread(WTF::Function<void()>&& task)
     ASSERT(isMainThread());
 
     {
-        auto locker = holdLock(m_mutex);
+        Locker locker { m_mutex };
         m_taskQueue.append(WTFMove(task));
     }
 
@@ -106,7 +114,7 @@ void CurlStreamScheduler::callClientOnMainThread(CurlStreamID streamID, WTF::Fun
 void CurlStreamScheduler::startThreadIfNeeded()
 {
     {
-        auto locker = holdLock(m_mutex);
+        Locker locker { m_mutex };
         if (m_runThread)
             return;
     }
@@ -128,7 +136,7 @@ void CurlStreamScheduler::stopThreadIfNoMoreJobRunning()
     if (m_streamList.size())
         return;
 
-    auto locker = holdLock(m_mutex);
+    Locker locker { m_mutex };
     if (m_taskQueue.size())
         return;
 
@@ -142,7 +150,7 @@ void CurlStreamScheduler::executeTasks()
     Vector<WTF::Function<void()>> taskQueue;
 
     {
-        auto locker = holdLock(m_mutex);
+        Locker locker { m_mutex };
         taskQueue = WTFMove(m_taskQueue);
     }
 
@@ -153,13 +161,19 @@ void CurlStreamScheduler::executeTasks()
 void CurlStreamScheduler::workerThread()
 {
     ASSERT(!isMainThread());
+#if OS(MORPHOS)
+    static const int selectTimeoutMS = 200;
+#else
     static const int selectTimeoutMS = 20;
+#endif
     struct timeval timeout { 0, selectTimeoutMS * 1000};
 
     while (m_runThread) {
         executeTasks();
 
+#if !OS(MORPHOS)
         int rc = 0;
+#endif
         fd_set readfds;
         fd_set writefds;
         fd_set exceptfds;
@@ -175,8 +189,19 @@ void CurlStreamScheduler::workerThread()
                 stream->appendMonitoringFd(readfds, writefds, exceptfds, maxfd);
 
             if (maxfd >= 0)
+            {
+#if OS(MORPHOS)
+                ULONG maskp = 0;
+                WaitSelect(maxfd + 1, &readfds, &writefds, &exceptfds, &timeout, &maskp);
+#else
                 rc = ::select(maxfd + 1, &readfds, &writefds, &exceptfds, &timeout);
+#endif
+            }
+#if OS(MORPHOS)
+        } while (0);
+#else
         } while (rc == -1 && errno == EINTR);
+#endif
 
         for (auto& stream : m_streamList.values())
             stream->tryToTransfer(readfds, writefds, exceptfds);

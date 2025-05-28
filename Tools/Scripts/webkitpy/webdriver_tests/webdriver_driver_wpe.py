@@ -32,16 +32,26 @@ class WebDriverWPE(WebDriver):
         return self._port._build_path('bin', 'WPEWebDriver')
 
     def browser_name(self):
-        return 'MiniBrowser'
+        return self._port.browser_name()
 
     def browser_path(self):
+        if self._port.browser_name() == "cog":
+            return self._port.cog_path_to('cog')
         return self._port._build_path('bin', 'MiniBrowser')
 
     def browser_args(self):
         args = ['--automation']
-        if self._port._display_server == 'headless':
+        if self.browser_name() == "cog":
+            if self._port._display_server == 'headless':
+                args.append('--platform=headless')
+            else:
+                args.append("--platform=gtk4")
+        elif self._port._display_server == 'headless':
             args.append('--headless')
         return args
+
+    def browser_env(self):
+        return self._port.browser_env()
 
     def capabilities(self):
         return {'wpe:browserOptions': {

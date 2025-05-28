@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,14 +32,37 @@
 #include "WebFrame.h"
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
+#include "WebProcess.h"
 #include "WebURLSchemeHandlerProxy.h"
 #include <WebCore/NetworkLoadMetrics.h>
 #include <WebCore/ResourceError.h>
 #include <WebCore/ResourceLoader.h>
 #include <wtf/CompletionHandler.h>
 
+#define WEBURLSCHEMETASKPROXY_RELEASE_LOG_STANDARD_TEMPLATE "[schemeHandler=%" PRIu64 ", webPageID=%" PRIu64 ", frameID=%" PRIu64 ", taskID=%lu] WebURLSchemeTaskProxy::"
+#define WEBURLSCHEMETASKPROXY_RELEASE_LOG_STANDARD_PARAMETERS m_urlSchemeHandler.identifier(), pageIDFromWebFrame(m_frame), frameIDFromWebFrame(m_frame), m_identifier
+#define WEBURLSCHEMETASKPROXY_RELEASE_LOG(fmt, ...) RELEASE_LOG(Network, WEBURLSCHEMETASKPROXY_RELEASE_LOG_STANDARD_TEMPLATE fmt, WEBURLSCHEMETASKPROXY_RELEASE_LOG_STANDARD_PARAMETERS, ##__VA_ARGS__)
+
 namespace WebKit {
 using namespace WebCore;
+
+#if !RELEASE_LOG_DISABLED
+static uint64_t pageIDFromWebFrame(const RefPtr<WebFrame>& frame)
+{
+    if (frame) {
+        if (auto* page = frame->page())
+            return page->identifier().toUInt64();
+    }
+    return 0;
+}
+
+static uint64_t frameIDFromWebFrame(const RefPtr<WebFrame>& frame)
+{
+    if (frame)
+        return frame->frameID().toUInt64();
+    return 0;
+}
+#endif
 
 WebURLSchemeTaskProxy::WebURLSchemeTaskProxy(WebURLSchemeHandlerProxy& handler, ResourceLoader& loader, WebFrame& frame)
     : m_urlSchemeHandler(handler)
@@ -54,12 +77,14 @@ void WebURLSchemeTaskProxy::startLoading()
 {
     ASSERT(m_coreLoader);
     ASSERT(m_frame);
+    WEBURLSCHEMETASKPROXY_RELEASE_LOG("startLoading");
     m_urlSchemeHandler.page().send(Messages::WebPageProxy::StartURLSchemeTask(URLSchemeTaskParameters { m_urlSchemeHandler.identifier(), m_coreLoader->identifier(), m_request, m_frame->info() }));
 }
 
 void WebURLSchemeTaskProxy::stopLoading()
 {
     ASSERT(m_coreLoader);
+    WEBURLSCHEMETASKPROXY_RELEASE_LOG("stopLoading");
     m_urlSchemeHandler.page().send(Messages::WebPageProxy::StopURLSchemeTask(m_urlSchemeHandler.identifier(), m_coreLoader->identifier()));
     m_coreLoader = nullptr;
     m_frame = nullptr;
@@ -68,37 +93,37 @@ void WebURLSchemeTaskProxy::stopLoading()
     m_urlSchemeHandler.taskDidStopLoading(*this);
 }
     
-void WebURLSchemeTaskProxy::didPerformRedirection(WebCore::ResourceResponse&& redirectResponse, WebCore::ResourceRequest&& request)
+void WebURLSchemeTaskProxy::didPerformRedirection(WebCore::ResourceResponse&& redirectResponse, WebCore::ResourceRequest&& request, CompletionHandler<void(WebCore::ResourceRequest&&)>&& completionHandler)
 {
-    if (!hasLoader())
+    if (!hasLoader()) {
+        completionHandler({ });
         return;
-    
-    auto completionHandler = [this, protectedThis = makeRef(*this), originalRequest = request] (ResourceRequest&& request) {
-        m_waitingForCompletionHandler = false;
-        // We do not inform the UIProcess of WebKit's new request with the given suggested request.
-        // We do want to know if WebKit would have generated a request that differs from the suggested request, though.
-        if (request.url() != originalRequest.url())
-            RELEASE_LOG(Loading, "Redirected scheme task would have been sent to a different URL.");
+    }
 
-        processNextPendingTask();
-    };
-    
     if (m_waitingForCompletionHandler) {
-        RELEASE_LOG(Loading, "Received redirect during previous redirect processing, queuing it.");
-        queueTask([this, protectedThis = makeRef(*this), redirectResponse = WTFMove(redirectResponse), request = WTFMove(request)]() mutable {
-            didPerformRedirection(WTFMove(redirectResponse), WTFMove(request));
+        WEBURLSCHEMETASKPROXY_RELEASE_LOG("didPerformRedirection: Received redirect during previous redirect processing, queuing it.");
+        queueTask([this, protectedThis = makeRef(*this), redirectResponse = WTFMove(redirectResponse), request = WTFMove(request), completionHandler = WTFMove(completionHandler)]() mutable {
+            didPerformRedirection(WTFMove(redirectResponse), WTFMove(request), WTFMove(completionHandler));
         });
         return;
     }
     m_waitingForCompletionHandler = true;
 
-    m_coreLoader->willSendRequest(WTFMove(request), redirectResponse, WTFMove(completionHandler));
+    auto innerCompletionHandler = [this, protectedThis = makeRef(*this), originalRequest = request, completionHandler = WTFMove(completionHandler)] (ResourceRequest&& request) mutable {
+        m_waitingForCompletionHandler = false;
+
+        completionHandler(WTFMove(request));
+
+        processNextPendingTask();
+    };
+
+    m_coreLoader->willSendRequest(WTFMove(request), redirectResponse, WTFMove(innerCompletionHandler));
 }
 
 void WebURLSchemeTaskProxy::didReceiveResponse(const ResourceResponse& response)
 {
     if (m_waitingForCompletionHandler) {
-        RELEASE_LOG(Loading, "Received response during redirect processing, queuing it.");
+        WEBURLSCHEMETASKPROXY_RELEASE_LOG("didReceiveResponse: Received response during redirect processing, queuing it.");
         queueTask([this, protectedThis = makeRef(*this), response] {
             didReceiveResponse(response);
         });
@@ -121,22 +146,21 @@ void WebURLSchemeTaskProxy::didReceiveData(size_t size, const uint8_t* data)
         return;
 
     if (m_waitingForCompletionHandler) {
-        RELEASE_LOG(Loading, "Received data during response processing, queuing it.");
-        Vector<uint8_t> dataVector;
-        dataVector.append(data, size);
-        queueTask([this, protectedThis = makeRef(*this), dataVector = WTFMove(dataVector)] {
+        WEBURLSCHEMETASKPROXY_RELEASE_LOG("didReceiveData: Received data during response processing, queuing it.");
+        queueTask([this, protectedThis = makeRef(*this), dataVector = Vector { data, size }] {
             didReceiveData(dataVector.size(), dataVector.data());
         });
         return;
     }
 
     auto protectedThis = makeRef(*this);
-    m_coreLoader->didReceiveData(reinterpret_cast<const char*>(data), size, 0, DataPayloadType::DataPayloadBytes);
+    m_coreLoader->didReceiveData(data, size, 0, DataPayloadType::DataPayloadBytes);
     processNextPendingTask();
 }
 
 void WebURLSchemeTaskProxy::didComplete(const ResourceError& error)
 {
+    WEBURLSCHEMETASKPROXY_RELEASE_LOG("didComplete");
     if (!hasLoader())
         return;
 
@@ -173,3 +197,7 @@ void WebURLSchemeTaskProxy::processNextPendingTask()
 }
 
 } // namespace WebKit
+
+#undef WEBURLSCHEMETASKPROXY_RELEASE_LOG_STANDARD_TEMPLATE
+#undef WEBURLSCHEMETASKPROXY_RELEASE_LOG_STANDARD_PARAMETERS
+#undef WEBURLSCHEMETASKPROXY_RELEASE_LOG

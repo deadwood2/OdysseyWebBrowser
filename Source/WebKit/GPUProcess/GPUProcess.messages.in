@@ -22,13 +22,10 @@
 
 #if ENABLE(GPU_PROCESS)
 
-messages -> GPUProcess {
+messages -> GPUProcess LegacyReceiver {
     InitializeGPUProcess(struct WebKit::GPUProcessCreationParameters processCreationParameters)
 
-    CreateGPUConnectionToWebProcess(WebCore::ProcessIdentifier processIdentifier, PAL::SessionID sessionID, struct WebKit::GPUProcessConnectionParameters parameters) -> (Optional<IPC::Attachment> connectionIdentifier) Async
-
-    ProcessDidTransitionToForeground()
-    ProcessDidTransitionToBackground()
+    CreateGPUConnectionToWebProcess(WebCore::ProcessIdentifier processIdentifier, PAL::SessionID sessionID, struct WebKit::GPUProcessConnectionParameters parameters) -> (std::optional<IPC::Attachment> connectionIdentifier) Async
 
     PrepareToSuspend(bool isSuspensionImminent) -> () Async
     ProcessDidResume()
@@ -39,11 +36,32 @@ messages -> GPUProcess {
 #if ENABLE(MEDIA_STREAM)
     SetMockCaptureDevicesEnabled(bool isEnabled)
     SetOrientationForMediaCapture(uint64_t orientation);
+    UpdateSandboxAccess(Vector<WebKit::SandboxExtension::Handle> extensions);
     UpdateCaptureAccess(bool allowAudioCapture, bool allowVideoCapture, bool allowDisplayCapture, WebCore::ProcessIdentifier processID) -> () Async
+    UpdateCaptureOrigin(struct WebCore::SecurityOriginData originData, WebCore::ProcessIdentifier processID)
     AddMockMediaDevice(struct WebCore::MockMediaDevice device);
     ClearMockMediaDevices();
     RemoveMockMediaDevice(String persistentId);
     ResetMockMediaDevices();
+#endif
+#if PLATFORM(MAC)
+    DisplayConfigurationChanged(CGDirectDisplayID displayID, CGDisplayChangeSummaryFlags flags)
+#endif
+
+#if ENABLE(MEDIA_SOURCE)
+    SetWebMParserEnabled(bool enabled);
+#endif
+
+#if ENABLE(WEBM_FORMAT_READER)
+    SetWebMFormatReaderEnabled(bool enabled);
+#endif
+
+#if ENABLE(OPUS)
+    SetOpusDecoderEnabled(bool enabled);
+#endif
+
+#if ENABLE(VORBIS)
+    SetVorbisDecoderEnabled(bool enabled);
 #endif
 }
 

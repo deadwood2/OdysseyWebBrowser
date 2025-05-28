@@ -32,7 +32,8 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
             WI.ComputedStyleDetailsSidebarPanel,
         ];
 
-        if (WI.settings.experimentalEnableLayoutPanel.value)
+        // COMPATIBILITY (iOS 14.5): `DOM.showGridOverlay` did not exist yet.
+        if (InspectorBackend.hasCommand("DOM.showGridOverlay"))
             detailsSidebarPanelConstructors.push(WI.LayoutDetailsSidebarPanel);
 
         // COMPATIBILITY (iOS 14.0): `CSS.getFontDataForNode` did not exist yet.
@@ -43,9 +44,6 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
             detailsSidebarPanelConstructors.push(WI.LayerTreeDetailsSidebarPanel);
 
         super(ElementsTabContentView.tabInfo(), {detailsSidebarPanelConstructors, disableBackForward: true});
-
-        WI.networkManager.addEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
-        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
     }
 
     static tabInfo()
@@ -86,8 +84,7 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
 
     showRepresentedObject(representedObject, cookie)
     {
-        if (!this.contentBrowser.currentContentView)
-            this._showDOMTreeContentView();
+        this._showDOMTreeContentViewIfNeeded();
 
         if (!cookie || !cookie.nodeToSelect)
             return;
@@ -106,8 +103,18 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
     {
         super.attached();
 
-        if (!this.contentBrowser.currentContentView)
-            this._showDOMTreeContentView();
+        WI.networkManager.addEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+        WI.Frame.addEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+
+        this._showDOMTreeContentViewIfNeeded();
+    }
+
+    detached()
+    {
+        WI.networkManager.removeEventListener(WI.NetworkManager.Event.MainFrameDidChange, this._mainFrameDidChange, this);
+        WI.Frame.removeEventListener(WI.Frame.Event.MainResourceDidChange, this._mainResourceDidChange, this);
+
+        super.detached();
     }
 
     closed()
@@ -125,18 +132,21 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
 
     // Private
 
-    _showDOMTreeContentView()
+    _showDOMTreeContentViewIfNeeded()
     {
-        this.contentBrowser.contentViewContainer.closeAllContentViews();
+        let mainDOMTree = WI.networkManager.mainFrame?.domTree;
+        if (!mainDOMTree)
+            return;
 
-        var mainFrame = WI.networkManager.mainFrame;
-        if (mainFrame)
-            this.contentBrowser.showContentViewForRepresentedObject(mainFrame.domTree);
+        if (this.contentBrowser.currentContentView?.representedObject === mainDOMTree)
+            return;
+
+        this.contentBrowser.showContentViewForRepresentedObject(mainDOMTree);
     }
 
     _mainFrameDidChange(event)
     {
-        this._showDOMTreeContentView();
+        this._showDOMTreeContentViewIfNeeded();
     }
 
     _mainResourceDidChange(event)
@@ -144,7 +154,7 @@ WI.ElementsTabContentView = class ElementsTabContentView extends WI.ContentBrows
         if (!event.target.isMainFrame())
             return;
 
-        this._showDOMTreeContentView();
+        this._showDOMTreeContentViewIfNeeded();
     }
 };
 

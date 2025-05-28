@@ -44,109 +44,48 @@ using namespace WebCore;
 RemoteMediaSessionHelper::RemoteMediaSessionHelper(WebProcess& process)
     : m_process(process)
 {
-    connectToGPUProcess();
 }
 
-void RemoteMediaSessionHelper::connectToGPUProcess()
+IPC::Connection& RemoteMediaSessionHelper::ensureConnection()
 {
-    auto& gpuProcessConnection = m_process.ensureGPUProcessConnection();
-    gpuProcessConnection.addClient(*this);
-    gpuProcessConnection.messageReceiverMap().addMessageReceiver(Messages::RemoteMediaSessionHelper::messageReceiverName(), *this);
-    gpuProcessConnection.connection().send(Messages::GPUConnectionToWebProcess::EnsureMediaSessionHelper(), { });
-}
-
-IPC::Connection& RemoteMediaSessionHelper::connection()
-{
-    return m_process.ensureGPUProcessConnection().connection();
+    if (!m_gpuProcessConnection) {
+        m_gpuProcessConnection = makeWeakPtr(m_process.ensureGPUProcessConnection());
+        m_gpuProcessConnection->addClient(*this);
+        m_gpuProcessConnection->messageReceiverMap().addMessageReceiver(Messages::RemoteMediaSessionHelper::messageReceiverName(), *this);
+        m_gpuProcessConnection->connection().send(Messages::GPUConnectionToWebProcess::EnsureMediaSessionHelper(), { });
+    }
+    return m_gpuProcessConnection->connection();
 }
 
 void RemoteMediaSessionHelper::gpuProcessConnectionDidClose(GPUProcessConnection& gpuProcessConnection)
 {
     gpuProcessConnection.removeClient(*this);
     gpuProcessConnection.messageReceiverMap().removeMessageReceiver(*this);
-    connectToGPUProcess();
+    m_gpuProcessConnection = nullptr;
 }
 
-void RemoteMediaSessionHelper::startMonitoringWirelessRoutes()
+void RemoteMediaSessionHelper::startMonitoringWirelessRoutesInternal()
 {
-    if (m_monitoringWirelessRoutesCount++)
-        return;
-
-    connection().send(Messages::RemoteMediaSessionHelperProxy::StartMonitoringWirelessRoutes(), { });
+    ensureConnection().send(Messages::RemoteMediaSessionHelperProxy::StartMonitoringWirelessRoutes(), { });
 }
 
-void RemoteMediaSessionHelper::stopMonitoringWirelessRoutes()
+void RemoteMediaSessionHelper::stopMonitoringWirelessRoutesInternal()
 {
-    if (!m_monitoringWirelessRoutesCount) {
-        ASSERT_NOT_REACHED();
-        return;
-    }
-
-    if (--m_monitoringWirelessRoutesCount)
-        return;
-
-    connection().send(Messages::RemoteMediaSessionHelperProxy::StopMonitoringWirelessRoutes(), { });
+    ensureConnection().send(Messages::RemoteMediaSessionHelperProxy::StopMonitoringWirelessRoutes(), { });
 }
 
 void RemoteMediaSessionHelper::providePresentingApplicationPID(int pid)
 {
-    connection().send(Messages::RemoteMediaSessionHelperProxy::ProvidePresentingApplicationPID(pid), { });
-}
-
-void RemoteMediaSessionHelper::applicationWillEnterForeground(SuspendedUnderLock suspendedUnderLock)
-{
-    for (auto& client : m_clients)
-        client.applicationWillEnterForeground(suspendedUnderLock);
-}
-
-void RemoteMediaSessionHelper::applicationDidEnterBackground(SuspendedUnderLock suspendedUnderLock)
-{
-    for (auto& client : m_clients)
-        client.applicationDidEnterBackground(suspendedUnderLock);
-}
-
-void RemoteMediaSessionHelper::applicationWillBecomeInactive()
-{
-    for (auto& client : m_clients)
-        client.applicationWillBecomeInactive();
-}
-
-void RemoteMediaSessionHelper::applicationDidBecomeActive()
-{
-    for (auto& client : m_clients)
-        client.applicationDidBecomeActive();
-}
-
-void RemoteMediaSessionHelper::externalOutputDeviceAvailableDidChange(HasAvailableTargets hasAvailableTargets)
-{
-    for (auto& client : m_clients)
-        client.externalOutputDeviceAvailableDidChange(hasAvailableTargets);
-}
-
-void RemoteMediaSessionHelper::isPlayingToAutomotiveHeadUnitDidChange(PlayingToAutomotiveHeadUnit playingToAutomotiveHeadUnit)
-{
-    for (auto& client : m_clients)
-        client.isPlayingToAutomotiveHeadUnitDidChange(playingToAutomotiveHeadUnit);
-}
-
-void RemoteMediaSessionHelper::activeAudioRouteDidChange(ShouldPause shouldPause)
-{
-    for (auto& client : m_clients)
-        client.activeAudioRouteDidChange(shouldPause);
+    ensureConnection().send(Messages::RemoteMediaSessionHelperProxy::ProvidePresentingApplicationPID(pid), { });
 }
 
 void RemoteMediaSessionHelper::activeVideoRouteDidChange(SupportsAirPlayVideo supportsAirPlayVideo, MediaPlaybackTargetContext&& targetContext)
 {
-    RefPtr<MediaPlaybackTarget> targetObject;
-    if (targetContext.type() == MediaPlaybackTargetContext::AVOutputContextType)
-        m_playbackTarget = WebCore::MediaPlaybackTargetCocoa::create(targetContext.avOutputContext());
-    else {
-        ASSERT_NOT_REACHED();
+    ASSERT(targetContext.type() != MediaPlaybackTargetContext::Type::AVOutputContext);
+    if (targetContext.type() == MediaPlaybackTargetContext::Type::AVOutputContext)
         return;
-    }
 
-    for (auto& client : m_clients)
-        client.activeVideoRouteDidChange(supportsAirPlayVideo, *m_playbackTarget);
+    WebCore::MediaSessionHelper::activeVideoRouteDidChange(supportsAirPlayVideo, WebCore::MediaPlaybackTargetCocoa::create(WTFMove(targetContext)));
 }
 
 }

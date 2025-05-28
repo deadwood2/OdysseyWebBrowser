@@ -95,6 +95,15 @@ static id findAccessibleObjectById(id obj, NSString *idAttribute)
     return nullptr;
 }
 
+void AccessibilityController::injectAccessibilityPreference(JSStringRef domain, JSStringRef key, JSStringRef value)
+{
+    auto page = InjectedBundle::singleton().page()->page();
+    NSNumber *numberValue = @([[NSString stringWithJSStringRef:value] integerValue]);
+    NSData *encodedData = [NSKeyedArchiver archivedDataWithRootObject:numberValue requiringSecureCoding:YES error:nil];
+    NSString *encodedString = [encodedData base64EncodedStringWithOptions:0];
+    WKAccessibilityTestingInjectPreference(page, toWK(domain).get(), toWK(key).get(), toWK(encodedString).get());
+}
+
 RefPtr<AccessibilityUIElement> AccessibilityController::accessibleElementById(JSStringRef idAttribute)
 {
     auto page = InjectedBundle::singleton().page()->page();
@@ -121,7 +130,7 @@ void AXThread::initializeRunLoop()
 {
     // Initialize the run loop.
     {
-        auto locker = holdLock(m_initializeRunLoopMutex);
+        Locker locker { m_initializeRunLoopMutex };
 
         m_threadRunLoop = CFRunLoopGetCurrent();
 

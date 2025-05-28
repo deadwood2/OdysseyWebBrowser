@@ -32,6 +32,7 @@
 #include "StreamConnectionBuffer.h"
 #include "StreamConnectionEncoder.h"
 #include <wtf/Deque.h>
+#include <wtf/Lock.h>
 #include <wtf/Threading.h>
 
 namespace IPC {
@@ -51,8 +52,8 @@ public:
     };
     virtual DispatchResult dispatchStreamMessages(size_t messageLimit) = 0;
 
-    template<typename... Arguments>
-    void sendSyncReply(uint64_t syncRequestID, Arguments&&...);
+    template<typename T, typename... Arguments>
+    void sendSyncReply(Connection::SyncRequestID, Arguments&&...);
 
 protected:
     StreamServerConnectionBase(IPC::Connection&, StreamConnectionBuffer&&, StreamConnectionWorkQueue&);
@@ -67,46 +68,64 @@ protected:
         uint8_t* data;
         size_t size;
     };
-    Optional<Span> tryAquire();
+    std::optional<Span> tryAcquire();
+    Span acquireAll();
 
     void release(size_t readSize);
+    void releaseAll();
     static constexpr size_t minimumMessageSize = StreamConnectionEncoder::minimumMessageSize;
     static constexpr size_t messageAlignment = StreamConnectionEncoder::messageAlignment;
     Span alignedSpan(size_t offset, size_t limit);
     size_t size(size_t offset, size_t limit);
-    size_t clampedLimit(size_t untrustedLimit) const;
     size_t wrapOffset(size_t offset) const { return m_buffer.wrapOffset(offset); }
     size_t alignOffset(size_t offset) const { return m_buffer.alignOffset<messageAlignment>(offset, minimumMessageSize); }
-    Atomic<size_t>& sharedSenderOffset() { return m_buffer.senderOffset(); }
-    Atomic<size_t>& sharedReceiverOffset() { return m_buffer.receiverOffset(); }
+    using ServerLimit = StreamConnectionBuffer::ClientOffset;
+    Atomic<ServerLimit>& sharedServerLimit() { return m_buffer.clientOffset(); }
+    using ServerOffset = StreamConnectionBuffer::ServerOffset;
+    Atomic<ServerOffset>& sharedServerOffset() { return m_buffer.serverOffset(); }
+    size_t clampedLimit(ServerLimit) const;
     uint8_t* data() const { return m_buffer.data(); }
     size_t dataSize() const { return m_buffer.dataSize(); }
 
     Ref<IPC::Connection> m_connection;
     StreamConnectionWorkQueue& m_workQueue;
 
-    size_t m_receiverOffset { 0 };
+    size_t m_serverOffset { 0 };
     StreamConnectionBuffer m_buffer;
 
     Lock m_outOfStreamMessagesLock;
-    Deque<std::unique_ptr<Decoder>> m_outOfStreamMessages;
+    Deque<std::unique_ptr<Decoder>> m_outOfStreamMessages WTF_GUARDED_BY_LOCK(m_outOfStreamMessagesLock);
+
+    bool m_isDispatchingStreamMessage { false };
 
     friend class StreamConnectionWorkQueue;
 };
 
-template<typename... Arguments>
-void StreamServerConnectionBase::sendSyncReply(uint64_t syncRequestID, Arguments&&... arguments)
+template<typename T, typename... Arguments>
+void StreamServerConnectionBase::sendSyncReply(Connection::SyncRequestID syncRequestID, Arguments&&... arguments)
 {
-    // FIXME: implement sending to buffer.
-    auto encoder = makeUnique<IPC::Encoder>(IPC::MessageName::SyncMessageReply, syncRequestID);
-    (*encoder << ... << arguments);
+    if constexpr(T::isReplyStreamEncodable) {
+        if (m_isDispatchingStreamMessage) {
+            auto span = acquireAll();
+            {
+                StreamConnectionEncoder messageEncoder { MessageName::SyncMessageReply, span.data, span.size };
+                if ((messageEncoder << ... << arguments))
+                    return;
+            }
+            StreamConnectionEncoder outOfStreamEncoder { MessageName::ProcessOutOfStreamMessage, span.data, span.size };
+        }
+    }
+    auto encoder = makeUniqueRef<Encoder>(MessageName::SyncMessageReply, syncRequestID.toUInt64());
+
+    (encoder.get() << ... << arguments);
     m_connection->sendSyncReply(WTFMove(encoder));
 }
 
-// StreamServerConnection represents the connection between stream sender and receiver, as used by the receiver.
+// StreamServerConnection represents the connection between stream client and server, as used by the server.
+//
 // StreamServerConnection:
-//  * Holds the messages towards the receiver.
-//  * Sends the replies back to the sender via the stream or normal Connection fallback.
+//  * Holds the messages towards the server.
+//  * Sends the replies back to the client via the stream or normal Connection fallback.
 //
 // Receiver template contract:
 //   void didReceiveStreamMessage(StreamServerConnectionBase&, Decoder&);
@@ -138,9 +157,8 @@ private:
     bool dispatchOutOfStreamMessage(Decoder&&);
     Lock m_receiversLock;
     using ReceiversMap = HashMap<std::pair<uint8_t, uint64_t>, Ref<Receiver>>;
-    ReceiversMap m_receivers;
-
-    uint64_t m_currentDestinationID = 0;
+    ReceiversMap m_receivers WTF_GUARDED_BY_LOCK(m_receiversLock);
+    uint64_t m_currentDestinationID { 0 };
 };
 
 template<typename Receiver>
@@ -148,7 +166,7 @@ void StreamServerConnection<Receiver>::startReceivingMessages(Receiver& receiver
 {
     {
         auto key = std::make_pair(static_cast<uint8_t>(receiverName), destinationID);
-        auto locker = holdLock(m_receiversLock);
+        Locker locker { m_receiversLock };
         ASSERT(!m_receivers.contains(key));
         m_receivers.add(key, makeRef(receiver));
     }
@@ -160,7 +178,7 @@ void StreamServerConnection<Receiver>::stopReceivingMessages(ReceiverName receiv
 {
     StreamServerConnectionBase::stopReceivingMessagesImpl(receiverName, destinationID);
     auto key = std::make_pair(static_cast<uint8_t>(receiverName), destinationID);
-    auto locker = holdLock(m_receiversLock);
+    Locker locker { m_receiversLock };
     ASSERT(m_receivers.contains(key));
     m_receivers.remove(key);
 }
@@ -173,7 +191,7 @@ StreamServerConnectionBase::DispatchResult StreamServerConnection<Receiver>::dis
     uint8_t currentReceiverName = static_cast<uint8_t>(ReceiverName::Invalid);
 
     for (size_t i = 0; i < messageLimit; ++i) {
-        auto span = tryAquire();
+        auto span = tryAcquire();
         if (!span)
             return DispatchResult::HasNoMessages;
         IPC::Decoder decoder { span->data, span->size, m_currentDestinationID };
@@ -201,7 +219,7 @@ StreamServerConnectionBase::DispatchResult StreamServerConnection<Receiver>::dis
                 m_connection->dispatchDidReceiveInvalidMessage(decoder.messageName());
                 return DispatchResult::HasNoMessages;
             }
-            auto locker = holdLock(m_receiversLock);
+            Locker locker { m_receiversLock };
             currentReceiver = m_receivers.get(key);
         }
         if (!currentReceiver) {
@@ -210,7 +228,7 @@ StreamServerConnectionBase::DispatchResult StreamServerConnection<Receiver>::dis
             // This means we must timeout every receiver in the stream connection.
             // Currently we assert that the receivers are empty, as we only have up to one receiver in
             // a stream connection until possibility of skipping is implemented properly.
-            auto locker = holdLock(m_receiversLock);
+            Locker locker { m_receiversLock };
             ASSERT(m_receivers.isEmpty());
             return DispatchResult::HasNoMessages;
         }
@@ -239,12 +257,18 @@ bool StreamServerConnection<Receiver>::processSetStreamDestinationID(Decoder&& d
 template<typename Receiver>
 bool StreamServerConnection<Receiver>::dispatchStreamMessage(Decoder&& decoder, Receiver& receiver)
 {
+    ASSERT(!m_isDispatchingStreamMessage);
+    m_isDispatchingStreamMessage = true;
     receiver.didReceiveStreamMessage(*this, decoder);
+    m_isDispatchingStreamMessage = false;
     if (!decoder.isValid()) {
         m_connection->dispatchDidReceiveInvalidMessage(decoder.messageName());
         return false;
     }
-    release(decoder.currentBufferPosition());
+    if (decoder.isSyncMessage())
+        releaseAll();
+    else
+        release(decoder.currentBufferPosition());
     return true;
 }
 
@@ -253,7 +277,7 @@ bool StreamServerConnection<Receiver>::dispatchOutOfStreamMessage(Decoder&& deco
 {
     std::unique_ptr<Decoder> message;
     {
-        auto locker = holdLock(m_outOfStreamMessagesLock);
+        Locker locker { m_outOfStreamMessagesLock };
         if (m_outOfStreamMessages.isEmpty())
             return false;
         message = m_outOfStreamMessages.takeFirst();
@@ -264,7 +288,7 @@ bool StreamServerConnection<Receiver>::dispatchOutOfStreamMessage(Decoder&& deco
     RefPtr<Receiver> receiver;
     {
         auto key = std::make_pair(static_cast<uint8_t>(message->messageReceiverName()), message->destinationID());
-        auto locker = holdLock(m_receiversLock);
+        Locker locker { m_receiversLock };
         receiver = m_receivers.get(key);
     }
     if (receiver) {

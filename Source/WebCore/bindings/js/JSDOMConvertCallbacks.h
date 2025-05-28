@@ -44,8 +44,8 @@ template<typename T> struct Converter<IDLCallbackFunction<T>> : DefaultConverter
             exceptionThrower(lexicalGlobalObject, scope);
             return nullptr;
         }
-        
-        return T::create(JSC::asObject(value), &globalObject);
+
+        return T::create(JSC::asObject(value), &callerGlobalObject(globalObject, vm.topCallFrame));
     }
 };
 
@@ -79,7 +79,7 @@ template<typename T> struct Converter<IDLCallbackInterface<T>> : DefaultConverte
             return nullptr;
         }
 
-        return T::create(JSC::asObject(value), &globalObject);
+        return T::create(JSC::asObject(value), &callerGlobalObject(globalObject, vm.topCallFrame));
     }
 };
 

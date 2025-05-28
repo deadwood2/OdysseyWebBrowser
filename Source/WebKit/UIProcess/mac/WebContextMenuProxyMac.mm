@@ -30,6 +30,7 @@
 
 #import "APIContextMenuClient.h"
 #import "MenuUtilities.h"
+#import "PageClientImplMac.h"
 #import "ServicesController.h"
 #import "ShareableBitmap.h"
 #import "WKMenuItemIdentifiersPrivate.h"
@@ -37,6 +38,7 @@
 #import "WebContextMenuItem.h"
 #import "WebContextMenuItemData.h"
 #import "WebPageProxy.h"
+#import "WebPreferences.h"
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/IntRect.h>
 #import <WebCore/LocalizedStrings.h>
@@ -143,6 +145,38 @@
     }
 
     _menuProxy->contextMenuItemSelected(item);
+}
+
+@end
+
+@interface WKMenuDelegate : NSObject <NSMenuDelegate> {
+    WebKit::WebContextMenuProxyMac* _menuProxy;
+}
+-(instancetype)initWithMenuProxy:(WebKit::WebContextMenuProxyMac&)menuProxy;
+@end
+
+@implementation WKMenuDelegate
+
+-(instancetype)initWithMenuProxy:(WebKit::WebContextMenuProxyMac&)menuProxy
+{
+    if (!(self = [super init]))
+        return nil;
+
+    _menuProxy = &menuProxy;
+
+    return self;
+}
+
+#pragma mark - NSMenuDelegate
+
+- (void)menuWillOpen:(NSMenu *)menu
+{
+    _menuProxy->page()->didShowContextMenu();
+}
+
+- (void)menuDidClose:(NSMenu *)menu
+{
+    _menuProxy->page()->didDismissContextMenu();
 }
 
 @end
@@ -340,48 +374,6 @@ void WebContextMenuProxyMac::show()
     WebContextMenuProxy::show();
 }
 
-void WebContextMenuProxyMac::getContextMenuFromItems(const Vector<WebContextMenuItemData>& items, CompletionHandler<void(NSMenu *)>&& completionHandler)
-{
-    auto menu = adoptNS([[NSMenu alloc] initWithTitle:@""]);
-    [menu setAutoenablesItems:NO];
-
-    if (items.isEmpty()) {
-        completionHandler(menu.get());
-        return;
-    }
-    
-    auto filteredItems = items;
-    auto webView = m_webView.get();
-    
-    bool isPopover = webView.get().window._childWindowOrderingPriority == NSWindowChildOrderingPriorityPopover;
-    bool isLookupDisabled = [NSUserDefaults.standardUserDefaults boolForKey:@"LULookupDisabled"];
-    
-    if (isLookupDisabled || isPopover) {
-        filteredItems.removeAllMatching([] (auto& item) {
-            return item.action() == WebCore::ContextMenuItemTagLookUpInDictionary;
-        });
-    }
-
-    auto sparseMenuItems = retainPtr([NSPointerArray strongObjectsPointerArray]);
-    auto insertMenuItem = makeBlockPtr([completionHandler = WTFMove(completionHandler), itemsRemaining = filteredItems.size(), menu = WTFMove(menu), sparseMenuItems](NSMenuItem *item, NSUInteger index) mutable {
-        ASSERT(index < [sparseMenuItems count]);
-        ASSERT(![sparseMenuItems pointerAtIndex:index]);
-        [sparseMenuItems replacePointerAtIndex:index withPointer:item];
-        if (--itemsRemaining)
-            return;
-
-        [menu setItemArray:[sparseMenuItems allObjects]];
-        completionHandler(menu.get());
-    });
-
-    for (size_t i = 0; i < filteredItems.size(); ++i) {
-        [sparseMenuItems addPointer:nullptr];
-        getContextMenuItem(filteredItems[i], [insertMenuItem, i](NSMenuItem *menuItem) {
-            insertMenuItem(menuItem, i);
-        });
-    }
-}
-
 static NSString *menuItemIdentifier(const WebCore::ContextMenuAction action)
 {
     switch (action) {
@@ -417,13 +409,13 @@ static NSString *menuItemIdentifier(const WebCore::ContextMenuAction action)
 
     case ContextMenuItemTagLookUpInDictionary:
         return _WKMenuItemIdentifierLookUp;
-#if ENABLE(APP_HIGHLIGHTS)
-    case ContextMenuItemTagAddHighlightToCurrentGroup:
-        return _WKMenuItemIdentifierAddHighlightToCurrentGroup;
+
+    case ContextMenuItemTagAddHighlightToCurrentQuickNote:
+        return _WKMenuItemIdentifierAddHighlightToCurrentQuickNote;
         
-    case ContextMenuItemTagAddHighlightToNewGroup:
-        return _WKMenuItemIdentifierAddHighlightToNewGroup;
-#endif
+    case ContextMenuItemTagAddHighlightToNewQuickNote:
+        return _WKMenuItemIdentifierAddHighlightToNewQuickNote;
+
     case ContextMenuItemTagOpenFrameInNewWindow:
         return _WKMenuItemIdentifierOpenFrameInNewWindow;
 
@@ -445,7 +437,7 @@ static NSString *menuItemIdentifier(const WebCore::ContextMenuAction action)
     case ContextMenuItemTagReload:
         return _WKMenuItemIdentifierReload;
 
-    case ContextMenuItemTagRevealImage:
+    case ContextMenuItemTagQuickLookImage:
         return _WKMenuItemIdentifierRevealImage;
 
     case ContextMenuItemTagSearchWeb:
@@ -460,6 +452,9 @@ static NSString *menuItemIdentifier(const WebCore::ContextMenuAction action)
     case ContextMenuItemTagToggleVideoFullscreen:
         return _WKMenuItemIdentifierToggleFullScreen;
 
+    case ContextMenuItemTagTranslate:
+        return _WKMenuItemIdentifierTranslate;
+
     case ContextMenuItemTagShareMenu:
         return _WKMenuItemIdentifierShareMenu;
 
@@ -470,6 +465,165 @@ static NSString *menuItemIdentifier(const WebCore::ContextMenuAction action)
         return nil;
     }
 }
+
+static RetainPtr<NSMenuItem> createMenuActionItem(const WebContextMenuItemData& item)
+{
+    auto type = item.type();
+    ASSERT_UNUSED(type, type == WebCore::ActionType || type == WebCore::CheckableActionType);
+
+    auto menuItem = adoptNS([[NSMenuItem alloc] initWithTitle:item.title() action:@selector(forwardContextMenuAction:) keyEquivalent:@""]);
+
+    [menuItem setTag:item.action()];
+    [menuItem setEnabled:item.enabled()];
+    [menuItem setState:item.checked() ? NSControlStateValueOn : NSControlStateValueOff];
+    [menuItem setIndentationLevel:item.indentationLevel()];
+    [menuItem setTarget:[WKMenuTarget sharedMenuTarget]];
+    [menuItem setIdentifier:menuItemIdentifier(item.action())];
+
+    if (item.userData())
+        [menuItem setRepresentedObject:adoptNS([[WKUserDataWrapper alloc] initWithUserData:item.userData()]).get()];
+
+    return menuItem;
+}
+
+void WebContextMenuProxyMac::getContextMenuFromItems(const Vector<WebContextMenuItemData>& items, CompletionHandler<void(NSMenu *)>&& completionHandler)
+{
+    auto menu = adoptNS([[NSMenu alloc] initWithTitle:@""]);
+    [menu setAutoenablesItems:NO];
+
+    if (items.isEmpty()) {
+        completionHandler(menu.get());
+        return;
+    }
+
+    auto filteredItems = items;
+    auto webView = m_webView.get();
+
+    bool isPopover = webView.get().window._childWindowOrderingPriority == NSWindowChildOrderingPriorityPopover;
+    bool isLookupDisabled = [NSUserDefaults.standardUserDefaults boolForKey:@"LULookupDisabled"];
+
+    if (isLookupDisabled || isPopover) {
+        filteredItems.removeAllMatching([] (auto& item) {
+            return item.action() == WebCore::ContextMenuItemTagLookUpInDictionary;
+        });
+    }
+
+    bool shouldUpdateQuickLookItemTitle = false;
+    std::optional<WebContextMenuItemData> quickLookItemToInsertIfNeeded;
+
+#if ENABLE(IMAGE_ANALYSIS)
+    auto indexOfQuickLookItem = filteredItems.findMatching([&] (auto& item) {
+        return item.action() == WebCore::ContextMenuItemTagQuickLookImage;
+    });
+
+    if (indexOfQuickLookItem != notFound) {
+        if (auto page = this->page(); page && page->preferences().preferInlineTextSelectionInImages()) {
+            quickLookItemToInsertIfNeeded = filteredItems[indexOfQuickLookItem];
+            filteredItems.remove(indexOfQuickLookItem);
+        } else
+            shouldUpdateQuickLookItemTitle = true;
+    }
+#endif // ENABLE(IMAGE_ANALYSIS)
+
+#if HAVE(TRANSLATION_UI_SERVICES)
+    if (!page()->canHandleContextMenuTranslation() || isPopover) {
+        filteredItems.removeAllMatching([] (auto& item) {
+            return item.action() == ContextMenuItemTagTranslate;
+        });
+    }
+#endif
+
+    auto imageURL = URL { URL { }, m_context.webHitTestResultData().absoluteImageURL };
+    auto imageBitmap = m_context.webHitTestResultData().imageBitmap;
+
+    auto sparseMenuItems = retainPtr([NSPointerArray strongObjectsPointerArray]);
+    auto insertMenuItem = makeBlockPtr([protectedThis = makeRef(*this), weakPage = makeWeakPtr(page()), imageURL = WTFMove(imageURL), imageBitmap = WTFMove(imageBitmap), shouldUpdateQuickLookItemTitle, quickLookItemToInsertIfNeeded = WTFMove(quickLookItemToInsertIfNeeded), completionHandler = WTFMove(completionHandler), itemsRemaining = filteredItems.size(), menu = WTFMove(menu), sparseMenuItems](NSMenuItem *item, NSUInteger index) mutable {
+        ASSERT(index < [sparseMenuItems count]);
+        ASSERT(![sparseMenuItems pointerAtIndex:index]);
+        [sparseMenuItems replacePointerAtIndex:index withPointer:item];
+        if (--itemsRemaining)
+            return;
+
+        [menu setItemArray:[sparseMenuItems allObjects]];
+
+        auto page = makeRefPtr(weakPage.get());
+        if (page && imageBitmap) {
+#if ENABLE(IMAGE_ANALYSIS)
+            protectedThis->insertOrUpdateQuickLookImageItem(imageURL, imageBitmap.releaseNonNull(), WTFMove(quickLookItemToInsertIfNeeded), shouldUpdateQuickLookItemTitle);
+#else
+            UNUSED_PARAM(quickLookItemToInsertIfNeeded);
+            UNUSED_PARAM(shouldUpdateQuickLookItemTitle);
+            UNUSED_PARAM(imageURL);
+#endif
+        }
+
+        completionHandler(menu.get());
+    });
+
+    for (size_t i = 0; i < filteredItems.size(); ++i) {
+        [sparseMenuItems addPointer:nullptr];
+        getContextMenuItem(filteredItems[i], [insertMenuItem, i](NSMenuItem *menuItem) {
+            insertMenuItem(menuItem, i);
+        });
+    }
+}
+
+#if ENABLE(IMAGE_ANALYSIS)
+
+void WebContextMenuProxyMac::insertOrUpdateQuickLookImageItem(const URL& imageURL, Ref<ShareableBitmap>&& imageBitmap, std::optional<WebContextMenuItemData>&& quickLookItemToInsertIfNeeded, bool shouldUpdateQuickLookItemTitle)
+{
+    auto page = makeRef(*this->page());
+    if (quickLookItemToInsertIfNeeded) {
+        page->computeHasImageAnalysisResults(imageURL, imageBitmap.get(), ImageAnalysisType::VisualSearch, [weakThis = makeWeakPtr(*this), quickLookItemToInsertIfNeeded = WTFMove(*quickLookItemToInsertIfNeeded)] (bool hasVisualSearchResults) mutable {
+            if (auto protectedThis = makeRefPtr(weakThis.get()); protectedThis && hasVisualSearchResults) {
+                protectedThis->m_quickLookPreviewActivity = QuickLookPreviewActivity::VisualSearch;
+                [protectedThis->m_menu addItem:NSMenuItem.separatorItem];
+                [protectedThis->m_menu addItem:createMenuActionItem(quickLookItemToInsertIfNeeded).get()];
+            }
+        });
+        return;
+    }
+
+    if (shouldUpdateQuickLookItemTitle) {
+        page->computeHasImageAnalysisResults(imageURL, imageBitmap.get(), ImageAnalysisType::VisualSearch, [weakThis = makeWeakPtr(*this), weakPage = makeWeakPtr(page.get()), imageURL, imageBitmap = WTFMove(imageBitmap)] (bool hasVisualSearchResults) mutable {
+            auto protectedThis = makeRefPtr(weakThis.get());
+            if (!protectedThis)
+                return;
+
+            auto page = makeRefPtr(weakPage.get());
+            if (!page)
+                return;
+
+            if (hasVisualSearchResults) {
+                protectedThis->m_quickLookPreviewActivity = QuickLookPreviewActivity::VisualSearch;
+                protectedThis->updateQuickLookContextMenuItemTitle(contextMenuItemTagQuickLookImageForVisualSearch());
+                return;
+            }
+
+            page->computeHasImageAnalysisResults(imageURL, imageBitmap.get(), ImageAnalysisType::Text, [weakThis = WTFMove(weakThis), weakPage] (bool hasText) mutable {
+                auto protectedThis = makeRefPtr(weakThis.get());
+                if (!protectedThis)
+                    return;
+
+                if (auto page = makeRefPtr(weakPage.get()); page && hasText)
+                    protectedThis->updateQuickLookContextMenuItemTitle(contextMenuItemTagQuickLookImageForTextSelection());
+            });
+        });
+    }
+}
+
+void WebContextMenuProxyMac::updateQuickLookContextMenuItemTitle(const String& newTitle)
+{
+    for (NSInteger itemIndex = 0; itemIndex < [m_menu numberOfItems]; ++itemIndex) {
+        auto item = [m_menu itemAtIndex:itemIndex];
+        if (static_cast<ContextMenuAction>(item.tag) == ContextMenuItemTagQuickLookImage) {
+            item.title = newTitle;
+            break;
+        }
+    }
+}
+
+#endif // ENABLE(IMAGE_ANALYSIS)
 
 void WebContextMenuProxyMac::getContextMenuItem(const WebContextMenuItemData& item, CompletionHandler<void(NSMenuItem *)>&& completionHandler)
 {
@@ -482,32 +636,19 @@ void WebContextMenuProxyMac::getContextMenuItem(const WebContextMenuItemData& it
 
     switch (item.type()) {
     case WebCore::ActionType:
-    case WebCore::CheckableActionType: {
-        auto menuItem = adoptNS([[NSMenuItem alloc] initWithTitle:item.title() action:@selector(forwardContextMenuAction:) keyEquivalent:@""]);
-
-        [menuItem setTag:item.action()];
-        [menuItem setEnabled:item.enabled()];
-        [menuItem setState:item.checked() ? NSControlStateValueOn : NSControlStateValueOff];
-        [menuItem setTarget:[WKMenuTarget sharedMenuTarget]];
-        [menuItem setIdentifier:menuItemIdentifier(item.action())];
-
-        if (item.userData()) {
-            auto wrapper = adoptNS([[WKUserDataWrapper alloc] initWithUserData:item.userData()]);
-            [menuItem setRepresentedObject:wrapper.get()];
-        }
-
-        completionHandler(menuItem.get());
+    case WebCore::CheckableActionType:
+        completionHandler(createMenuActionItem(item).get());
         return;
-    }
 
     case WebCore::SeparatorType:
         completionHandler(NSMenuItem.separatorItem);
         return;
 
     case WebCore::SubmenuType: {
-        getContextMenuFromItems(item.submenu(), [action = item.action(), completionHandler = WTFMove(completionHandler), enabled = item.enabled(), title = item.title()](NSMenu *menu) mutable {
+        getContextMenuFromItems(item.submenu(), [action = item.action(), completionHandler = WTFMove(completionHandler), enabled = item.enabled(), title = item.title(), indentationLevel = item.indentationLevel()](NSMenu *menu) mutable {
             auto menuItem = adoptNS([[NSMenuItem alloc] initWithTitle:title action:nullptr keyEquivalent:@""]);
             [menuItem setEnabled:enabled];
+            [menuItem setIndentationLevel:indentationLevel];
             [menuItem setSubmenu:menu];
             [menuItem setIdentifier:menuItemIdentifier(action)];
             completionHandler(menuItem.get());
@@ -560,16 +701,75 @@ void WebContextMenuProxyMac::useContextMenuItems(Vector<Ref<WebContextMenuItem>>
         }
 
         [[WKMenuTarget sharedMenuTarget] setMenuProxy:this];
-        page()->contextMenuClient().menuFromProposedMenu(*page(), menu, m_context.webHitTestResultData(), m_userData.object(), [this, protectedThis = WTFMove(protectedThis)](RetainPtr<NSMenu>&& menu) {
+
+        auto menuFromProposedMenu = [this, protectedThis = WTFMove(protectedThis)] (RetainPtr<NSMenu>&& menu) {
+            m_menuDelegate = adoptNS([[WKMenuDelegate alloc] initWithMenuProxy:*this]);
+
             m_menu = WTFMove(menu);
+            [m_menu setDelegate:m_menuDelegate.get()];
+
             WebContextMenuProxy::useContextMenuItems({ });
-        });
+        };
+
+        if (m_context.type() != ContextMenuContext::Type::ContextMenu) {
+            menuFromProposedMenu(menu);
+            return;
+        }
+
+        page()->contextMenuClient().menuFromProposedMenu(*page(), menu, m_context.webHitTestResultData(), m_userData.object(), WTFMove(menuFromProposedMenu));
     });
 }
 
 NSWindow *WebContextMenuProxyMac::window() const
 {
     return [m_webView window];
+}
+
+NSMenu *WebContextMenuProxyMac::platformMenu() const
+{
+    return m_menu.get();
+}
+
+static NSDictionary *contentsOfContextMenuItem(NSMenuItem *item)
+{
+    NSMutableDictionary* result = NSMutableDictionary.dictionary;
+
+    if (item.title.length)
+        result[@"title"] = item.title;
+
+    if (item.isSeparatorItem)
+        result[@"separator"] = @YES;
+    else if (!item.enabled)
+        result[@"enabled"] = @NO;
+
+    if (NSInteger indentationLevel = item.indentationLevel)
+        result[@"indentationLevel"] = [NSNumber numberWithInteger:indentationLevel];
+
+    if (item.state == NSControlStateValueOn)
+        result[@"checked"] = @YES;
+
+    if (NSArray<NSMenuItem *> *submenuItems = item.submenu.itemArray) {
+        NSMutableArray *children = [NSMutableArray arrayWithCapacity:submenuItems.count];
+        for (NSMenuItem *submenuItem : submenuItems)
+            [children addObject:contentsOfContextMenuItem(submenuItem)];
+        result[@"children"] = children;
+    }
+
+    return result;
+}
+
+NSArray *WebContextMenuProxyMac::platformData() const
+{
+    NSMutableArray *result = NSMutableArray.array;
+
+    if (NSArray<NSMenuItem *> *submenuItems = [m_menu itemArray]) {
+        NSMutableArray *children = [NSMutableArray arrayWithCapacity:submenuItems.count];
+        for (NSMenuItem *submenuItem : submenuItems)
+            [children addObject:contentsOfContextMenuItem(submenuItem)];
+        [result addObject:@{ @"children": children }];
+    }
+
+    return result;
 }
 
 } // namespace WebKit

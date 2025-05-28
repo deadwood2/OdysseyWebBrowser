@@ -126,7 +126,7 @@ bool WebPage::hoverSupportedByAnyAvailablePointingDevice() const
     return true;
 }
 
-Optional<PointerCharacteristics> WebPage::pointerCharacteristicsOfPrimaryPointingDevice() const
+std::optional<PointerCharacteristics> WebPage::pointerCharacteristicsOfPrimaryPointingDevice() const
 {
     return PointerCharacteristics::Fine;
 }
@@ -263,6 +263,9 @@ bool WebPage::handleEditingKeyboardEvent(WebCore::KeyboardEvent& event)
 
     auto* keyEvent = event.underlyingPlatformEvent();
     if (!keyEvent || keyEvent->isSystemKey()) // Do not treat this as text input if it's a system key event.
+        return false;
+
+    if (event.type() != eventNames().keydownEvent && event.type() != eventNames().keypressEvent)
         return false;
 
     auto command = frame->editor().command(interpretKeyEvent(&event));

@@ -50,9 +50,17 @@
 namespace WebCore {
 
 #if USE(CAIRO) && !PLATFORM(GTK)
+static cairo_antialias_t cairoDefaultFontAntialias = CAIRO_ANTIALIAS_GRAY;
+
+void setDefaultCairoFontAntialias(cairo_antialias_t aa)
+{
+	cairoDefaultFontAntialias = aa;
+}
+
 const cairo_font_options_t* getDefaultCairoFontOptions()
 {
     static NeverDestroyed<cairo_font_options_t*> options = cairo_font_options_create();
+    cairo_font_options_set_antialias(options, cairoDefaultFontAntialias);
     return options;
 }
 #endif

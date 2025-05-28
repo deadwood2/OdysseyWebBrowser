@@ -47,8 +47,8 @@ GStreamerAudioMixer::GStreamerAudioMixer()
     m_pipeline = gst_element_factory_make("pipeline", "webkitaudiomixer");
     connectSimpleBusMessageCallback(m_pipeline.get());
 
-    m_mixer = gst_element_factory_make("audiomixer", nullptr);
-    GstElement* audioSink = gst_element_factory_make("autoaudiosink", nullptr);
+    m_mixer = makeGStreamerElement("audiomixer", nullptr);
+    auto* audioSink = createAutoAudioSink({ });
 
     gst_bin_add_many(GST_BIN_CAST(m_pipeline.get()), m_mixer.get(), audioSink, nullptr);
     gst_element_link(m_mixer.get(), audioSink);
@@ -85,17 +85,17 @@ void GStreamerAudioMixer::ensureState(GstStateChange stateChange)
 
 GRefPtr<GstPad> GStreamerAudioMixer::registerProducer(GstElement* interaudioSink)
 {
-    GstElement* src = gst_element_factory_make("interaudiosrc", nullptr);
+    GstElement* src = makeGStreamerElement("interaudiosrc", nullptr);
     g_object_set(src, "channel", GST_ELEMENT_NAME(interaudioSink), nullptr);
     g_object_set(interaudioSink, "channel", GST_ELEMENT_NAME(interaudioSink), nullptr);
 
-    GstElement* audioResample = gst_element_factory_make("audioresample", nullptr);
+    GstElement* audioResample = makeGStreamerElement("audioresample", nullptr);
     gst_bin_add_many(GST_BIN_CAST(m_pipeline.get()), src, audioResample, nullptr);
     gst_element_link(src, audioResample);
 
     bool shouldStart = !m_mixer->numsinkpads;
 
-    auto mixerPad = adoptGRef(gst_element_get_request_pad(m_mixer.get(), "sink_%u"));
+    auto mixerPad = adoptGRef(gst_element_request_pad_simple(m_mixer.get(), "sink_%u"));
     auto srcPad = adoptGRef(gst_element_get_static_pad(audioResample, "src"));
     gst_pad_link(srcPad.get(), mixerPad.get());
 

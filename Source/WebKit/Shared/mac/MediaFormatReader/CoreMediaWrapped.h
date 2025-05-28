@@ -29,6 +29,8 @@
 
 #include <pal/spi/cocoa/MediaToolboxSPI.h>
 #include <wtf/ForbidHeapAllocation.h>
+#include <wtf/Noncopyable.h>
+#include <wtf/RetainPtr.h>
 #include <wtf/cf/TypeCastsCF.h>
 
 namespace WebKit {
@@ -142,12 +144,33 @@ constexpr CMBaseClass CoreMediaWrapped<Wrapped>::wrapperClass()
 template<typename Wrapped>
 const typename CoreMediaWrapped<Wrapped>::WrapperVTable& CoreMediaWrapped<Wrapped>::vTable()
 {
-    static constexpr CMBaseClass baseClass = wrapperClass<sizeof(Wrapped)>();
+    // CMBaseClass contains 64-bit pointers that aren't 8-byte aligned. To suppress the linker
+    // warning about this, we prepend 4 bytes of padding when building.
+#if CPU(X86_64)
+    constexpr size_t padSize = 4;
+#else
+    constexpr size_t padSize = 0;
+#endif
+
+#pragma pack(push, 4)
+    static constexpr struct { uint8_t pad[padSize]; CMBaseClass baseClass; } baseClass { { }, wrapperClass<sizeof(Wrapped)>() };
+#pragma pack(pop)
     static constexpr WrapperClass derivedClass = Wrapped::wrapperClass();
+
+#if CPU(X86_64)
+    static_assert(sizeof(CMBaseClass::version) != sizeof(void*), "Fig struct fixup is required for CMBaseClass on X86_64");
+    static_assert(sizeof(WrapperClass::version) == sizeof(void*), "Fig struct fixup is not required for WrapperClass on X86_64");
+#else
+    static_assert(sizeof(CMBaseClass::version) == sizeof(void*), "Fig struct fixup only required for CMBaseClass on X86_64");
+    static_assert(sizeof(WrapperClass::version) == sizeof(void*), "Fig struct fixup only required for WrapperClass on X86_64");
+#endif
+    static_assert(alignof(CMBaseClass) == 4, "CMBaseClass must have 4 byte alignment");
+    static_assert(alignof(WrapperClass) == sizeof(void*), "WrapperClass must be natually aligned");
+
 IGNORE_WARNINGS_BEGIN("missing-field-initializers")
     static constexpr WrapperVTable vTable {
-        { nullptr, &baseClass },
-        &derivedClass,
+        { nullptr, &baseClass.baseClass },
+        &derivedClass
     };
 IGNORE_WARNINGS_END
     return vTable;

@@ -799,7 +799,7 @@ static void CALLBACK waitUntilDoneWatchdogFired(HWND, UINT, UINT_PTR, DWORD)
 void TestRunner::setWaitToDump(bool waitUntilDone)
 {
     m_waitToDump = waitUntilDone;
-    if (m_waitToDump && !waitToDumpWatchdog)
+    if (m_waitToDump && !waitToDumpWatchdog && useTimeoutWatchdog)
         waitToDumpWatchdog = SetTimer(0, 0, m_timeout, waitUntilDoneWatchdogFired);
 }
 
@@ -1148,6 +1148,22 @@ void TestRunner::addChromeInputField()
 void TestRunner::removeChromeInputField()
 {
     fprintf(testResult, "ERROR: TestRunner::removeChromeInputField() not implemented\n");
+}
+
+void TestRunner::setTextInChromeInputField(const String&)
+{
+    fprintf(testResult, "ERROR: TestRunner::setTextInChromeInputField() not implemented\n");
+}
+
+void TestRunner::selectChromeInputField()
+{
+    fprintf(testResult, "ERROR: TestRunner::selectChromeInputField() not implemented\n");
+}
+
+String TestRunner::getSelectedTextInChromeInputField()
+{
+    fprintf(testResult, "ERROR: TestRunner::getSelectedTextInChromeInputField() not implemented\n");
+    return { };
 }
 
 void TestRunner::focusWebView()

@@ -55,6 +55,7 @@ class Pipeline
         NonConstantGlobals,
         InvocationVertexGlobals,
         InvocationFragmentGlobals,
+        UniformBuffer,
         Texture,
         InstanceId,
     };
@@ -112,6 +113,7 @@ struct PipelineStructs : angle::NonCopyable
     PipelineScoped<TStructure> nonConstantGlobals;
     PipelineScoped<TStructure> invocationVertexGlobals;
     PipelineScoped<TStructure> invocationFragmentGlobals;
+    PipelineScoped<TStructure> uniformBuffers;
     PipelineScoped<TStructure> texture;
     PipelineScoped<TStructure> instanceId;
 

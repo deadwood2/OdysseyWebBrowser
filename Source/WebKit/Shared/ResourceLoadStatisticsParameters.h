@@ -37,6 +37,8 @@ struct ResourceLoadStatisticsParameters {
 
     String directory;
     SandboxExtension::Handle directoryExtensionHandle;
+    String privateClickMeasurementStorageDirectory;
+    SandboxExtension::Handle privateClickMeasurementStorageDirectoryExtensionHandle;
     bool enabled { false };
     bool isItpStateExplicitlySet { false };
     bool enableLogTestingEvent { false };
@@ -55,6 +57,8 @@ struct ResourceLoadStatisticsParameters {
     {
         encoder << directory;
         encoder << directoryExtensionHandle;
+        encoder << privateClickMeasurementStorageDirectory;
+        encoder << privateClickMeasurementStorageDirectoryExtensionHandle;
         encoder << enabled;
         encoder << isItpStateExplicitlySet;
         encoder << enableLogTestingEvent;
@@ -70,78 +74,90 @@ struct ResourceLoadStatisticsParameters {
         encoder << manualPrevalentResource;
     }
 
-    static Optional<ResourceLoadStatisticsParameters> decode(IPC::Decoder& decoder)
+    static std::optional<ResourceLoadStatisticsParameters> decode(IPC::Decoder& decoder)
     {
-        Optional<String> directory;
+        std::optional<String> directory;
         decoder >> directory;
         if (!directory)
-            return WTF::nullopt;
+            return std::nullopt;
         
-        Optional<SandboxExtension::Handle> directoryExtensionHandle;
+        std::optional<SandboxExtension::Handle> directoryExtensionHandle;
         decoder >> directoryExtensionHandle;
         if (!directoryExtensionHandle)
-            return WTF::nullopt;
+            return std::nullopt;
+
+        std::optional<String> privateClickMeasurementStorageDirectory;
+        decoder >> privateClickMeasurementStorageDirectory;
+        if (!privateClickMeasurementStorageDirectory)
+            return std::nullopt;
         
-        Optional<bool> enabled;
+        std::optional<SandboxExtension::Handle> privateClickMeasurementStorageDirectoryExtensionHandle;
+        decoder >> privateClickMeasurementStorageDirectoryExtensionHandle;
+        if (!privateClickMeasurementStorageDirectoryExtensionHandle)
+            return std::nullopt;
+
+        std::optional<bool> enabled;
         decoder >> enabled;
         if (!enabled)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> isItpStateExplicitlySet;
+        std::optional<bool> isItpStateExplicitlySet;
         decoder >> isItpStateExplicitlySet;
         if (!isItpStateExplicitlySet)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> enableLogTestingEvent;
+        std::optional<bool> enableLogTestingEvent;
         decoder >> enableLogTestingEvent;
         if (!enableLogTestingEvent)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> shouldIncludeLocalhost;
+        std::optional<bool> shouldIncludeLocalhost;
         decoder >> shouldIncludeLocalhost;
         if (!shouldIncludeLocalhost)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<bool> enableDebugMode;
+        std::optional<bool> enableDebugMode;
         decoder >> enableDebugMode;
         if (!enableDebugMode)
-            return WTF::nullopt;
+            return std::nullopt;
 
 #if ENABLE(RESOURCE_LOAD_STATISTICS)
-        Optional<WebCore::ThirdPartyCookieBlockingMode> thirdPartyCookieBlockingMode;
+        std::optional<WebCore::ThirdPartyCookieBlockingMode> thirdPartyCookieBlockingMode;
         decoder >> thirdPartyCookieBlockingMode;
         if (!thirdPartyCookieBlockingMode)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<WebCore::SameSiteStrictEnforcementEnabled> sameSiteStrictEnforcementEnabled;
+        std::optional<WebCore::SameSiteStrictEnforcementEnabled> sameSiteStrictEnforcementEnabled;
         decoder >> sameSiteStrictEnforcementEnabled;
         if (!sameSiteStrictEnforcementEnabled)
-            return WTF::nullopt;
+            return std::nullopt;
 #endif
 
-        Optional<WebCore::FirstPartyWebsiteDataRemovalMode> firstPartyWebsiteDataRemovalMode;
+        std::optional<WebCore::FirstPartyWebsiteDataRemovalMode> firstPartyWebsiteDataRemovalMode;
         decoder >> firstPartyWebsiteDataRemovalMode;
         if (!firstPartyWebsiteDataRemovalMode)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<WebCore::RegistrableDomain> standaloneApplicationDomain;
+        std::optional<WebCore::RegistrableDomain> standaloneApplicationDomain;
         decoder >> standaloneApplicationDomain;
         if (!standaloneApplicationDomain)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<HashSet<WebCore::RegistrableDomain>> appBoundDomains;
+        std::optional<HashSet<WebCore::RegistrableDomain>> appBoundDomains;
         decoder >> appBoundDomains;
         if (!appBoundDomains)
-            return WTF::nullopt;
+            return std::nullopt;
 
-        Optional<WebCore::RegistrableDomain> manualPrevalentResource;
+        std::optional<WebCore::RegistrableDomain> manualPrevalentResource;
         decoder >> manualPrevalentResource;
         if (!manualPrevalentResource)
-            return WTF::nullopt;
+            return std::nullopt;
 
         return {{
             WTFMove(*directory),
             WTFMove(*directoryExtensionHandle),
+            WTFMove(*privateClickMeasurementStorageDirectory),
+            WTFMove(*privateClickMeasurementStorageDirectoryExtensionHandle),
             WTFMove(*enabled),
             WTFMove(*isItpStateExplicitlySet),
             WTFMove(*enableLogTestingEvent),

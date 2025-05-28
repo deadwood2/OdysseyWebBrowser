@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -140,7 +140,7 @@
     if (scope.exception()) {
         JSValueRef exceptionValue = toRef(apiGlobalObject, scope.exception()->value());
         scope.clearException();
-        // FIXME: We should not clearException if it is TerminatedExecutionError.
+        // FIXME: We should not clearException if it is the TerminationException.
         // https://bugs.webkit.org/show_bug.cgi?id=220821
         return [JSValue valueWithNewPromiseRejectedWithReason:[JSValue valueWithJSValueRef:exceptionValue inContext:self] inContext:self];
     }
@@ -242,13 +242,13 @@
     if (!entry->currentArguments) {
         JSContext *context = [JSContext currentContext];
         size_t count = entry->argumentCount;
-        NSMutableArray *arguments = [[NSMutableArray alloc] initWithCapacity:count];
+        auto arguments = adoptNS([[NSMutableArray alloc] initWithCapacity:count]);
         for (size_t i = 0; i < count; ++i)
             [arguments setObject:[JSValue valueWithJSValueRef:entry->arguments[i] inContext:context] atIndexedSubscript:i];
-        entry->currentArguments = arguments;
+        entry->currentArguments = WTFMove(arguments);
     }
 
-    return entry->currentArguments;
+    return entry->currentArguments.get();
 }
 
 - (JSVirtualMachine *)virtualMachine
@@ -262,7 +262,7 @@
     if (!name)
         return nil;
 
-    return CFBridgingRelease(JSStringCopyCFString(kCFAllocatorDefault, name));
+    return adoptCF(JSStringCopyCFString(kCFAllocatorDefault, name)).bridgingAutorelease();
 }
 
 - (void)setName:(NSString *)name
@@ -371,7 +371,7 @@
     Thread& thread = Thread::current();
     [self retain];
     CallbackData *prevStack = (CallbackData *)thread.m_apiData;
-    *callbackData = (CallbackData){ prevStack, self, [self.exception retain], calleeValue, thisValue, argumentCount, arguments, nil };
+    *callbackData = CallbackData { prevStack, self, self.exception, calleeValue, thisValue, argumentCount, arguments, nil };
     thread.m_apiData = callbackData;
     self.exception = nil;
 }
@@ -379,9 +379,7 @@
 - (void)endCallbackWithData:(CallbackData *)callbackData
 {
     Thread& thread = Thread::current();
-    self.exception = callbackData->preservedException;
-    [callbackData->preservedException release];
-    [callbackData->currentArguments release];
+    self.exception = callbackData->preservedException.get();
     thread.m_apiData = callbackData->next;
     [self release];
 }

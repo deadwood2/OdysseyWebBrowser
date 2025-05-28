@@ -26,12 +26,13 @@
 #import "config.h"
 #import "TestRunnerWKWebView.h"
 
+#import "TestController.h"
 #import "WebKitTestRunnerDraggingInfo.h"
 #import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
+#import <WebKit/_WKInputDelegate.h>
 #import <wtf/Assertions.h>
 #import <wtf/BlockPtr.h>
-#import <wtf/Optional.h>
 #import <wtf/RetainPtr.h>
 
 #if PLATFORM(IOS_FAMILY)
@@ -59,7 +60,7 @@ struct CustomMenuActionInfo {
     BlockPtr<void()> callback;
 };
 
-@interface TestRunnerWKWebView () <WKUIDelegatePrivate
+@interface TestRunnerWKWebView () <WKUIDelegatePrivate, _WKInputDelegate
 #if PLATFORM(IOS_FAMILY)
     , UIGestureRecognizerDelegate
 #endif
@@ -67,7 +68,7 @@ struct CustomMenuActionInfo {
     RetainPtr<NSNumber> m_stableStateOverride;
     BOOL _isInteractingWithFormControl;
     BOOL _scrollingUpdatesDisabled;
-    Optional<CustomMenuActionInfo> _customMenuActionInfo;
+    std::optional<CustomMenuActionInfo> _customMenuActionInfo;
     RetainPtr<NSArray<NSString *>> _allowedMenuActions;
 #if PLATFORM(IOS_FAMILY)
     RetainPtr<UITapGestureRecognizer> _windowTapGestureRecognizer;
@@ -116,6 +117,7 @@ IGNORE_WARNINGS_END
         [center addObserver:self selector:@selector(_willPresentPopover) name:@"UIPopoverControllerWillPresentPopoverNotification" object:nil];
         [center addObserver:self selector:@selector(_didDismissPopover) name:@"UIPopoverControllerDidDismissPopoverNotification" object:nil];
         self.UIDelegate = self;
+        self._inputDelegate = self;
 #endif
     }
     return self;
@@ -134,6 +136,26 @@ IGNORE_WARNINGS_END
     self.retrieveSpeakSelectionContentCompletionHandler = nil;
 
     [super dealloc];
+}
+
+- (void)_didShowContextMenu
+{
+    if (self.showingContextMenu)
+        return;
+
+    self.showingContextMenu = YES;
+    if (self.didShowContextMenuCallback)
+        self.didShowContextMenuCallback();
+}
+
+- (void)_didDismissContextMenu
+{
+    if (!self.showingContextMenu)
+        return;
+
+    self.showingContextMenu = NO;
+    if (self.didDismissContextMenuCallback)
+        self.didDismissContextMenuCallback();
 }
 
 - (void)_didShowMenu
@@ -163,6 +185,7 @@ IGNORE_WARNINGS_END
 - (void)dismissActiveMenu
 {
 #if PLATFORM(IOS_FAMILY)
+    [self _dismissAllContextMenuInteractions];
     [self resignFirstResponder];
 #else
     auto menu = retainPtr(self._activeMenu);
@@ -174,6 +197,8 @@ IGNORE_WARNINGS_END
 
 - (void)resetInteractionCallbacks
 {
+    self.didShowContextMenuCallback = nil;
+    self.didDismissContextMenuCallback = nil;
     self.didShowMenuCallback = nil;
     self.didHideMenuCallback = nil;
     self.didShowContactPickerCallback = nil;
@@ -181,12 +206,11 @@ IGNORE_WARNINGS_END
 #if PLATFORM(IOS_FAMILY)
     self.didStartFormControlInteractionCallback = nil;
     self.didEndFormControlInteractionCallback = nil;
-    self.didShowContextMenuCallback = nil;
-    self.didDismissContextMenuCallback = nil;
     self.willBeginZoomingCallback = nil;
     self.didEndZoomingCallback = nil;
     self.didShowKeyboardCallback = nil;
     self.didHideKeyboardCallback = nil;
+    self.willStartInputSessionCallback = nil;
     self.willPresentPopoverCallback = nil;
     self.didDismissPopoverCallback = nil;
     self.didEndScrollingCallback = nil;
@@ -230,32 +254,17 @@ IGNORE_WARNINGS_END
 
     self.showingContextMenu = NO;
 
+    [self _dismissAllContextMenuInteractions];
+}
+
+- (void)_dismissAllContextMenuInteractions
+{
 #if PLATFORM(IOS)
     for (id <UIInteraction> interaction in self.contentView.interactions) {
         if ([interaction isKindOfClass:UIContextMenuInteraction.class])
             [(UIContextMenuInteraction *)interaction dismissMenu];
     }
 #endif
-}
-
-- (void)_didShowContextMenu
-{
-    if (self.showingContextMenu)
-        return;
-
-    self.showingContextMenu = YES;
-    if (self.didShowContextMenuCallback)
-        self.didShowContextMenuCallback();
-}
-
-- (void)_didDismissContextMenu
-{
-    if (!self.showingContextMenu)
-        return;
-
-    self.showingContextMenu = NO;
-    if (self.didDismissContextMenuCallback)
-        self.didDismissContextMenuCallback();
 }
 
 - (BOOL)becomeFirstResponder
@@ -314,7 +323,7 @@ IGNORE_WARNINGS_END
     BOOL isCustomAction = action == @selector(performCustomAction:);
     BOOL canPerformActionByDefault = [super canPerformAction:action withSender:sender];
     if (isCustomAction)
-        canPerformActionByDefault = _customMenuActionInfo.hasValue();
+        canPerformActionByDefault = _customMenuActionInfo.has_value();
 
     if (canPerformActionByDefault && _allowedMenuActions && sender == UIMenuController.sharedMenuController) {
         BOOL isAllowed = NO;
@@ -562,6 +571,14 @@ static bool isQuickboardViewController(UIViewController *viewController)
     [self _invokeHideKeyboardCallbackIfNecessary];
 }
 
+#pragma mark - _WKInputDelegate
+
+- (void)_webView:(WKWebView *)webView willStartInputSession:(id <_WKFormInputSession>)inputSession
+{
+    if (self.willStartInputSessionCallback)
+        self.willStartInputSessionCallback();
+}
+
 #pragma mark - UIGestureRecognizerDelegate
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
@@ -589,6 +606,16 @@ static bool isQuickboardViewController(UIViewController *viewController)
     self.showingContactPicker = NO;
     if (self.didHideContactPickerCallback)
         self.didHideContactPickerCallback();
+}
+
+- (void)_didLoadAppInitiatedRequest:(void (^)(BOOL result))completionHandler
+{
+    [super _didLoadAppInitiatedRequest:completionHandler];
+}
+
+- (void)_didLoadNonAppInitiatedRequest:(void (^)(BOOL result))completionHandler
+{
+    [super _didLoadNonAppInitiatedRequest:completionHandler];
 }
 
 @end

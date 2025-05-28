@@ -26,7 +26,6 @@ messages -> WebProcess LegacyReceiver NotRefCounted {
 
     CreateWebPage(WebCore::PageIdentifier newPageID, struct WebKit::WebPageCreationParameters pageCreationParameters)
 
-    PrewarmGlobally();
     PrewarmWithDomainInformation(struct WebCore::PrewarmInformation prewarmInformation)
 
     # Global preferences.
@@ -51,11 +50,13 @@ messages -> WebProcess LegacyReceiver NotRefCounted {
     UserPreferredLanguagesChanged(Vector<String> languages)
     FullKeyboardAccessModeChanged(bool fullKeyboardAccessEnabled)
 
-#if HAVE(UIKIT_WITH_MOUSE_SUPPORT) && PLATFORM(IOS)
+#if HAVE(MOUSE_DEVICE_OBSERVATION)
     SetHasMouseDevice(bool hasMouseDevice)
 #endif
 
+#if HAVE(STYLUS_DEVICE_OBSERVATION)
     SetHasStylusDevice(bool hasStylusDevice)
+#endif
 
     RefreshPlugins()
 
@@ -78,9 +79,6 @@ messages -> WebProcess LegacyReceiver NotRefCounted {
     DeleteWebsiteDataForOrigins(OptionSet<WebKit::WebsiteDataType> websiteDataTypes, Vector<WebCore::SecurityOriginData> origins) -> () Async
 
     SetHiddenPageDOMTimerThrottlingIncreaseLimit(int milliseconds)
-#if PLATFORM(COCOA)
-    SetQOS(int latencyQOS, int throughputQOS)
-#endif
 
     SetMemoryCacheDisabled(bool disabled);
 
@@ -94,7 +92,6 @@ messages -> WebProcess LegacyReceiver NotRefCounted {
     PrepareToSuspend(bool isSuspensionImminent) -> () Async
     ProcessDidResume()
 
-    MainThreadPing()
     BackgroundResponsivenessPing()
 
 #if ENABLE(GAMEPAD)
@@ -104,7 +101,7 @@ messages -> WebProcess LegacyReceiver NotRefCounted {
 #endif
 
 #if ENABLE(SERVICE_WORKER)
-    EstablishWorkerContextConnectionToNetworkProcess(uint64_t pageGroupID, WebKit::WebPageProxyIdentifier webPageProxyID, WebCore::PageIdentifier pageID, struct WebKit::WebPreferencesStore store, WebCore::RegistrableDomain domain, struct WebKit::ServiceWorkerInitializationData initializationData) -> () Async
+    EstablishWorkerContextConnectionToNetworkProcess(WebKit::PageGroupIdentifier pageGroupID, WebKit::WebPageProxyIdentifier webPageProxyID, WebCore::PageIdentifier pageID, struct WebKit::WebPreferencesStore store, WebCore::RegistrableDomain domain, struct WebKit::ServiceWorkerInitializationData initializationData) -> () Async
 #endif
 
     SetHasSuspendedPageProxy(bool hasSuspendedPageProxy);
@@ -115,13 +112,13 @@ messages -> WebProcess LegacyReceiver NotRefCounted {
 #if PLATFORM(COCOA)
     SetScreenProperties(struct WebCore::ScreenProperties screenProperties)
 #endif
-#if PLATFORM(MAC) && ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
+#if PLATFORM(MAC)
     ScrollerStylePreferenceChanged(bool useOvelayScrollbars)
     DisplayConfigurationChanged(CGDirectDisplayID displayID, CGDisplayChangeSummaryFlags flags)
 #endif
 
 #if PLATFORM(IOS_FAMILY)
-    UserInterfaceIdiomDidChange(bool isPadOrMac)
+    UserInterfaceIdiomDidChange(bool isPhoneOrWatch)
 #endif
 
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
@@ -170,16 +167,15 @@ messages -> WebProcess LegacyReceiver NotRefCounted {
     SendResourceLoadStatisticsDataImmediately() -> () Async
 #endif
 
-#if PLATFORM(IOS)
     GrantAccessToAssetServices(WebKit::SandboxExtension::Handle mobileAssetV2Handle)
     RevokeAccessToAssetServices()
-#endif
+    SwitchFromStaticFontRegistryToUserFontRegistry(WebKit::SandboxExtension::Handle fontMachExtensionHandle)
 
 #if PLATFORM(COCOA)
-    UnblockServicesRequiredByAccessibility(WebKit::SandboxExtension::HandleArray handleArray)
+    UnblockServicesRequiredByAccessibility(Vector<WebKit::SandboxExtension::Handle> handleArray)
 #if ENABLE(CFPREFS_DIRECT_MODE)
-    NotifyPreferencesChanged(String domain, String key, Optional<String> encodedValue)
-    UnblockPreferenceService(WebKit::SandboxExtension::HandleArray handleArray)
+    NotifyPreferencesChanged(String domain, String key, std::optional<String> encodedValue)
+    UnblockPreferenceService(Vector<WebKit::SandboxExtension::Handle> handleArray)
 #endif
     PowerSourceDidChange(bool hasAC)
 #endif
@@ -192,13 +188,22 @@ messages -> WebProcess LegacyReceiver NotRefCounted {
     DidWriteToPasteboardAsynchronously(String pasteboardName);
 #endif
 
-#if ENABLE(WEBPROCESS_WINDOWSERVER_BLOCKING)
-    DisplayWasRefreshed(uint32_t displayID)
+#if HAVE(CVDISPLAYLINK)
+    DisplayWasRefreshed(uint32_t displayID, struct WebCore::DisplayUpdate update)
 #endif
 
 #if PLATFORM(MAC)
     SystemWillPowerOn()
     SystemWillSleep()
     SystemDidWake()
+#endif
+
+#if PLATFORM(COCOA)
+    ConsumeAudioComponentRegistrations(IPC::SharedBufferDataReference registrationData)
+    AccessibilityPreferencesDidChange(struct WebKit::AccessibilityPreferences accessibilityPreferences)
+#endif
+
+#if HAVE(MEDIA_ACCESSIBILITY_FRAMEWORK)
+    SetMediaAccessibilityPreferences(WebCore::CaptionUserPreferences::CaptionDisplayMode displayMode, Vector<String> languages)
 #endif
 }

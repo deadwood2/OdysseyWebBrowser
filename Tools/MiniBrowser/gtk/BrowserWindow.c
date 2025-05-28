@@ -331,6 +331,37 @@ static gboolean navigationButtonPressCallback(GtkButton *button, GdkEvent *event
 }
 #endif
 
+static void browserWindowSaveSession(BrowserWindow *window)
+{
+    if (!window->sessionFile)
+        return;
+
+    GKeyFile *session = g_key_file_new();
+    int tabsCount = gtk_notebook_get_n_pages(GTK_NOTEBOOK(window->notebook));
+    int i;
+    for (i = 0; i < tabsCount; ++i) {
+        BrowserTab *tab = (BrowserTab *)gtk_notebook_get_nth_page(GTK_NOTEBOOK(window->notebook), i);
+        WebKitWebView *webView = browser_tab_get_web_view(tab);
+        WebKitWebViewSessionState *state = webkit_web_view_get_session_state(webView);
+        GBytes *bytes = webkit_web_view_session_state_serialize(state);
+        if (bytes) {
+            gsize dataLength;
+            gconstpointer data;
+            data = g_bytes_get_data(bytes, &dataLength);
+
+            gchar *groupName = g_strdup_printf("Tab-%d", i);
+            gchar *base64 = g_base64_encode(data, dataLength);
+            g_key_file_set_string(session, groupName, "state", base64);
+            g_free(base64);
+            g_free(groupName);
+            g_bytes_unref(bytes);
+        }
+        webkit_web_view_session_state_unref(state);
+    }
+    g_key_file_save_to_file(session, window->sessionFile, NULL);
+    g_key_file_free(session);
+}
+
 static void browserWindowTryCloseCurrentWebView(GSimpleAction *action, GVariant *parameter, gpointer userData)
 {
     BrowserWindow *window = BROWSER_WINDOW(userData);
@@ -342,6 +373,8 @@ static void browserWindowTryCloseCurrentWebView(GSimpleAction *action, GVariant 
 static void browserWindowTryClose(GSimpleAction *action, GVariant *parameter, gpointer userData)
 {
     BrowserWindow *window = BROWSER_WINDOW(userData);
+    browserWindowSaveSession(window);
+
     GSList *webViews = NULL;
     int n = gtk_notebook_get_n_pages(GTK_NOTEBOOK(window->notebook));
     int i;
@@ -616,6 +649,72 @@ static void faviconChanged(WebKitWebView *webView, GParamSpec *paramSpec, Browse
     updateUriEntryIcon(window);
 }
 
+static void webViewMediaCaptureStateChanged(WebKitWebView* webView, GParamSpec* paramSpec, BrowserWindow* window)
+{
+    const gchar* name = g_param_spec_get_name(paramSpec);
+    // FIXME: the URI entry is not great storage in case more than one capture device is in use,
+    // because it can store only one secondary icon.
+    GtkEntry *entry = GTK_ENTRY(window->uriEntry);
+
+    if (g_str_has_prefix(name, "microphone")) {
+        switch (webkit_web_view_get_microphone_capture_state(webView)) {
+        case WEBKIT_MEDIA_CAPTURE_STATE_NONE:
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, NULL);
+            break;
+        case WEBKIT_MEDIA_CAPTURE_STATE_MUTED:
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, "microphone-sensivity-mutes-symbolic");
+            break;
+        case WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE:
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, "audio-input-microphone-symbolic");
+            break;
+        }
+    } else if (g_str_has_prefix(name, "camera")) {
+        switch (webkit_web_view_get_camera_capture_state(webView)) {
+        case WEBKIT_MEDIA_CAPTURE_STATE_NONE:
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, NULL);
+            break;
+        case WEBKIT_MEDIA_CAPTURE_STATE_MUTED:
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, "camera-disabled-symbolic");
+            break;
+        case WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE:
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, "camera-web-symbolic");
+            break;
+        }
+    } else if (g_str_has_prefix(name, "display")) {
+        switch (webkit_web_view_get_display_capture_state(webView)) {
+        case WEBKIT_MEDIA_CAPTURE_STATE_NONE:
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, NULL);
+            break;
+        case WEBKIT_MEDIA_CAPTURE_STATE_MUTED:
+            // FIXME: I found no suitable icon for this.
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, "media-playback-stop-symbolic");
+            break;
+        case WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE:
+            gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, "video-display-symbolic");
+            break;
+        }
+    }
+}
+
+static void webViewUriEntryIconPressed(GtkEntry* entry, GtkEntryIconPosition position, GdkEvent* event, BrowserWindow* window)
+{
+    if (position != GTK_ENTRY_ICON_SECONDARY)
+        return;
+
+    // FIXME: What about audio/video?
+    WebKitWebView *webView = browser_tab_get_web_view(window->activeTab);
+    switch (webkit_web_view_get_display_capture_state(webView)) {
+    case WEBKIT_MEDIA_CAPTURE_STATE_NONE:
+        break;
+    case WEBKIT_MEDIA_CAPTURE_STATE_MUTED:
+        webkit_web_view_set_display_capture_state(webView, WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE);
+        break;
+    case WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE:
+        webkit_web_view_set_display_capture_state(webView, WEBKIT_MEDIA_CAPTURE_STATE_MUTED);
+        break;
+    }
+}
+
 static void webViewIsLoadingChanged(WebKitWebView *webView, GParamSpec *paramSpec, BrowserWindow *window)
 {
     gboolean isLoading = webkit_web_view_is_loading(webView);
@@ -856,20 +955,6 @@ static void typingAttributesChanged(WebKitEditorState *editorState, GParamSpec *
     g_simple_action_set_state(G_SIMPLE_ACTION(action), g_variant_new_boolean(typingAttributes & WEBKIT_EDITOR_TYPING_ATTRIBUTE_STRIKETHROUGH));
 }
 
-static void browserWindowSaveSession(BrowserWindow *window)
-{
-    if (!window->sessionFile)
-        return;
-
-    WebKitWebView *webView = browser_tab_get_web_view(window->activeTab);
-    WebKitWebViewSessionState *state = webkit_web_view_get_session_state(webView);
-    GBytes *bytes = webkit_web_view_session_state_serialize(state);
-    webkit_web_view_session_state_unref(state);
-    g_file_set_contents(window->sessionFile, g_bytes_get_data(bytes, NULL), g_bytes_get_size(bytes), NULL);
-    g_bytes_unref(bytes);
-    g_clear_pointer(&window->sessionFile, g_free);
-}
-
 static void browserWindowFinalize(GObject *gObject)
 {
     BrowserWindow *window = BROWSER_WINDOW(gObject);
@@ -886,6 +971,7 @@ static void browserWindowFinalize(GObject *gObject)
         g_source_remove(window->resetEntryProgressTimeoutId);
 
     g_clear_object(&window->editActionGroup);
+    g_clear_pointer(&window->sessionFile, g_free);
 
     G_OBJECT_CLASS(browser_window_parent_class)->finalize(gObject);
 }
@@ -893,8 +979,6 @@ static void browserWindowFinalize(GObject *gObject)
 static void browserWindowDispose(GObject *gObject)
 {
     BrowserWindow *window = BROWSER_WINDOW(gObject);
-
-    browserWindowSaveSession(window);
 
     if (window->parentWindow) {
         g_object_remove_weak_pointer(G_OBJECT(window->parentWindow), (gpointer *)&window->parentWindow);
@@ -1162,6 +1246,12 @@ static void browserWindowSwitchTab(GtkNotebook *notebook, BrowserTab *tab, guint
 #if !GTK_CHECK_VERSION(3, 98, 0)
     g_signal_connect(webView, "scroll-event", G_CALLBACK(scrollEventCallback), window);
 #endif
+    g_signal_connect_object(webView, "notify::camera-capture-state", G_CALLBACK(webViewMediaCaptureStateChanged), window, 0);
+    g_signal_connect_object(webView, "notify::microphone-capture-state", G_CALLBACK(webViewMediaCaptureStateChanged), window, 0);
+    g_signal_connect_object(webView, "notify::display-capture-state", G_CALLBACK(webViewMediaCaptureStateChanged), window, 0);
+
+    g_object_set(window->uriEntry, "secondary-icon-activatable", TRUE, NULL);
+    g_signal_connect(window->uriEntry, "icon-press", G_CALLBACK(webViewUriEntryIconPressed), window);
 
     WebKitBackForwardList *backForwardlist = webkit_web_view_get_back_forward_list(webView);
     browserWindowUpdateNavigationMenu(window, backForwardlist);
@@ -1439,27 +1529,70 @@ void browser_window_load_session(BrowserWindow *window, const char *sessionFile)
     g_return_if_fail(sessionFile);
 
     WebKitWebView *webView = browser_tab_get_web_view(window->activeTab);
+
     window->sessionFile = g_strdup(sessionFile);
-    gchar *data = NULL;
-    gsize dataLength;
-    if (g_file_get_contents(sessionFile, &data, &dataLength, NULL)) {
-        GBytes *bytes = g_bytes_new_take(data, dataLength);
-        WebKitWebViewSessionState *state = webkit_web_view_session_state_new(bytes);
-        g_bytes_unref(bytes);
+    GKeyFile *session = g_key_file_new();
+    GError *error = NULL;
+    if (!g_key_file_load_from_file(session, sessionFile, G_KEY_FILE_NONE, &error)) {
+        if (!g_error_matches(error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
+            g_warning("Failed to open session file: %s", error->message);
+        g_error_free(error);
+        webkit_web_view_load_uri(webView, BROWSER_DEFAULT_URL);
+        g_key_file_free(session);
+        return;
+    }
+
+    gsize groupCount;
+    gchar **groups = g_key_file_get_groups(session, &groupCount);
+    if (!groupCount) {
+        webkit_web_view_load_uri(webView, BROWSER_DEFAULT_URL);
+        g_strfreev(groups);
+        g_key_file_free(session);
+        return;
+    }
+
+    WebKitWebView *previousWebView = NULL;
+    gsize i;
+    for (i = 0; i < groupCount; ++i) {
+        WebKitWebViewSessionState *state = NULL;
+        gchar *base64 = g_key_file_get_string(session, groups[i], "state", NULL);
+        if (base64) {
+            gsize stateDataLength;
+            guchar *stateData = g_base64_decode(base64, &stateDataLength);
+            GBytes *bytes = g_bytes_new_take(stateData, stateDataLength);
+            state = webkit_web_view_session_state_new(bytes);
+            g_bytes_unref(bytes);
+            g_free(base64);
+        }
+
+        if (!webView) {
+            webView = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+                "web-context", webkit_web_view_get_context(previousWebView),
+                "settings", webkit_web_view_get_settings(previousWebView),
+                "user-content-manager", webkit_web_view_get_user_content_manager(previousWebView),
+                "website-policies", webkit_web_view_get_website_policies(previousWebView),
+                NULL));
+            browser_window_append_view(window, webView);
+        }
 
         if (state) {
             webkit_web_view_restore_session_state(webView, state);
             webkit_web_view_session_state_unref(state);
         }
+
+        WebKitBackForwardList *bfList = webkit_web_view_get_back_forward_list(webView);
+        WebKitBackForwardListItem *item = webkit_back_forward_list_get_current_item(bfList);
+        if (item)
+            webkit_web_view_go_to_back_forward_list_item(webView, item);
+        else
+            webkit_web_view_load_uri(webView, "about:blank");
+
+        previousWebView = webView;
+        webView = NULL;
     }
 
-    WebKitBackForwardList *bfList = webkit_web_view_get_back_forward_list(webView);
-    WebKitBackForwardListItem *item = webkit_back_forward_list_get_current_item(bfList);
-    if (item)
-        webkit_web_view_go_to_back_forward_list_item(webView, item);
-    else
-        webkit_web_view_load_uri(webView, BROWSER_DEFAULT_URL);
-
+    g_strfreev(groups);
+    g_key_file_free(session);
 }
 
 void browser_window_set_background_color(BrowserWindow *window, GdkRGBA *rgba)
