@@ -392,6 +392,13 @@ void CurlCacheManager::didFail(ResourceHandle &job)
     invalidateCacheEntry(url);
 }
 
+void CurlCacheManager::didCancel(ResourceHandle &job)
+{
+    const String& url = job.firstRequest().url().string();
+
+    invalidateCacheEntry(url);
+}
+
 void CurlCacheManager::addCacheEntryClient(const String& url, ResourceHandle* job)
 {
     if (m_disabled)

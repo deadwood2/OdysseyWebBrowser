@@ -481,6 +481,20 @@ void CurlCacheEntry::setIsLoading(bool isLoading)
 uint64_t CurlCacheEntry::entrySize()
 {
     if (!m_entrySize) {
+#if PLATFORM(MUI)
+        long long headerFileSize;
+        long long contentFileSize;
+
+        if (!getFileSize(m_headerFilename, headerFileSize)) {
+            LOG(Network, "Cache Error: Could not get file size of %s\n", m_headerFilename.latin1().data());
+            return m_entrySize;
+        }
+
+        if (!getFileSize(m_contentFilename, contentFileSize)) {
+            LOG(Network, "Cache Error: Could not get file size of %s\n", m_contentFilename.latin1().data());
+            return m_entrySize;
+        }
+#else
         auto headerFileSize = FileSystem::fileSize(m_headerFilename);
         if (!headerFileSize) {
             LOG(Network, "Cache Error: Could not get file size of %s\n", m_headerFilename.latin1().data());
@@ -491,6 +505,7 @@ uint64_t CurlCacheEntry::entrySize()
             LOG(Network, "Cache Error: Could not get file size of %s\n", m_contentFilename.latin1().data());
             return m_entrySize;
         }
+#endif
 
         m_entrySize = *headerFileSize + *contentFileSize;
     }

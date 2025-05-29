@@ -53,6 +53,7 @@ public:
     void didReceiveData(ResourceHandle&, const uint8_t*, size_t); // Save data
     void didFinishLoading(ResourceHandle&);
     void didFail(ResourceHandle&);
+    void didCancel(ResourceHandle&);
 
     void addCacheEntryClient(const String& url, ResourceHandle* job);
     void removeCacheEntryClient(const String& url, ResourceHandle* job);
