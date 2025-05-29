@@ -87,6 +87,9 @@ public:
 
     void dump(PrintStream&) const;
 
+#if PLATFORM(MUI)
+    void shutdown();
+#endif
 private:
     JITWorklist();
 

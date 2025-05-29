@@ -109,7 +109,7 @@ public:
     CurlRequestScheduler& scheduler() { return *m_scheduler; }
     CurlStreamScheduler& streamScheduler();
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	void stopThread();
 #endif
 

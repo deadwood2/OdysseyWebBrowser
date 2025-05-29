@@ -73,6 +73,10 @@ const char* JITWorklistThread::name() const
 
 auto JITWorklistThread::poll(const AbstractLocker& locker) -> PollResult
 {
+#if PLATFORM(MUI)
+    if (m_stop) return PollResult::Stop;
+#endif
+
     for (unsigned i = 0; i < static_cast<unsigned>(JITPlan::Tier::Count); ++i) {
         auto& queue = m_worklist.m_queues[i];
         if (queue.isEmpty())

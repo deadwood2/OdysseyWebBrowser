@@ -51,6 +51,10 @@ public:
     void close();
     void read(void* buffer, int length);
 
+#if PLATFORM(MUI)
+    static void shutdown();
+#endif
+
 private:
     void start();
     void perform(WTF::Function<WTF::Function<void(FileStreamClient&)>(FileStream&)>&&);

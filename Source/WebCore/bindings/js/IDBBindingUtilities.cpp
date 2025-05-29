@@ -571,15 +571,24 @@ private:
     Thread& m_thread;
 };
 
+#if PLATFORM(MUI)
+static NeverDestroyed<MessageQueue<Function<void(JSC::JSGlobalObject&)>>> queue;
+#endif
+
 void callOnIDBSerializationThreadAndWait(Function<void(JSC::JSGlobalObject&)>&& function)
 {
+#if !PLATFORM(MUI)
     static NeverDestroyed<MessageQueue<Function<void(JSC::JSGlobalObject&)>>> queue;
+#endif
     static std::once_flag createThread;
 
     std::call_once(createThread, [] {
         Thread::create("IndexedDB Serialization", [] {
             IDBSerializationContext serializationContext;
             while (auto function = queue->waitForMessage()) {
+#if PLATFORM(MUI)
+                if (!function) break;
+#endif
                 AutodrainedPool pool;
                 (*function)(serializationContext.globalObject());
             }
@@ -594,5 +603,12 @@ void callOnIDBSerializationThreadAndWait(Function<void(JSC::JSGlobalObject&)>&& 
     queue->append(makeUnique<Function<void(JSC::JSGlobalObject&)>>(WTFMove(newFuntion)));
     semaphore.wait();
 }
+
+#if PLATFORM(MUI)
+void shutdownIDBSerializationThread()
+{
+    queue.get().kill();
+}
+#endif
 
 } // namespace WebCore

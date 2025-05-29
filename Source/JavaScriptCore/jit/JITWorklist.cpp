@@ -57,6 +57,24 @@ JITWorklist::~JITWorklist()
     UNREACHABLE_FOR_PLATFORM();
 }
 
+#if PLATFORM(MUI)
+void JITWorklist::shutdown()
+{
+    {
+        LockHolder locker(*m_lock);
+        for (unsigned i = m_threads.size(); i--;)
+            if (!m_threads[i]->tryStop(locker))
+            {
+                m_threads[i]->m_stop = true;
+                m_threads[i]->notify(locker);
+            }
+    }
+
+    for (unsigned i = m_threads.size(); i--;)
+        m_threads[i]->join();
+}
+#endif
+
 static JITWorklist* theGlobalJITWorklist { nullptr };
 
 JITWorklist* JITWorklist::existingGlobalWorklistOrNull()

@@ -219,5 +219,13 @@ std::optional<Result> decode(const URL& url, Mode mode)
     return decodeSynchronously(*task, mode);
 }
 
+#if PLATFORM(MUI)
+void shutdown()
+{
+    /// EVIL!!!!! but triggers completion of detached thread
+    delete &decodeQueue();
+}
+#endif
+
 } // namespace DataURLDecoder
 } // namespace WebCore

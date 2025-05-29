@@ -150,7 +150,7 @@ CurlContext::~CurlContext()
 #endif
 }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 void CurlContext::stopThread()
 {
 	m_scheduler->stopCurlThread();
