@@ -241,7 +241,7 @@ String lastComponentOfPathIgnoringTrailingSlash(const String& path)
 #endif
 
     auto position = path.reverseFind(pathSeparator);
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     if (position == notFound)
         position = path.reverseFind(':');
 #endif
@@ -249,7 +249,7 @@ String lastComponentOfPathIgnoringTrailingSlash(const String& path)
         return path;
 
     size_t endOfSubstring = path.length() - 1;
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     // If ending to a ':' just return an empty string.
     if (position == endOfSubstring && path[position] != ':') {
 #else
@@ -257,7 +257,7 @@ String lastComponentOfPathIgnoringTrailingSlash(const String& path)
 #endif
         --endOfSubstring;
         position = path.reverseFind(pathSeparator, endOfSubstring);
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
         if (position == notFound)
             position = path.reverseFind(':');
 #endif
@@ -405,7 +405,7 @@ bool MappedFileData::mapFileHandle(PlatformFileHandle handle, FileOpenMode openM
     m_fileSize = size;
     return true;
 }
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 
 bool MappedFileData::mapFileHandle(PlatformFileHandle handle, FileOpenMode openMode, MappedFileMode mapMode)
 {
@@ -450,52 +450,6 @@ MappedFileData::~MappedFileData()
     if (!m_fileData)
         return;
     free(m_fileData);
-}
-
-#elif PLATFORM(MUI)
-
-bool MappedFileData::mapFileHandle(PlatformFileHandle handle, FileOpenMode openMode, MappedFileMode mapMode)
-{
-    if (!isHandleValid(handle))
-        return false;
-
-    int fd;
-    fd = handle;
-
-    struct stat fileStat;
-    if (fstat(fd, &fileStat)) {
-        return false;
-    }
-
-    unsigned size;
-    if (!WTF::convertSafely(fileStat.st_size, size)) {
-        return false;
-    }
-
-    if (!size) {
-        return true;
-    }
-	
-    void* data = malloc(size);
-
-	if (nullptr == data) {
-			return false;
-	}
-
-	if (size != read(fd, data, size)) {
-			free(data);
-			return false;
-	}
-
-    m_fileData = data;
-    m_fileSize = size;
-    return true;
-}
-
-bool unmapViewOfFile(void* buffer, size_t size)
-{
-    free(buffer);
-    return true;
 }
 
 #endif
@@ -573,7 +527,7 @@ MappedFileData mapToFile(const String& path, size_t bytesSize, Function<void(con
     DWORD oldProtection;
     VirtualProtect(map, bytesSize, FILE_MAP_READ, &oldProtection);
     FlushViewOfFile(map, bytesSize);
-#elif OS(MORPHOS)
+#elif PLATFORM(MUI)
 #else
     // Drop the write permission.
     mprotect(map, bytesSize, PROT_READ);

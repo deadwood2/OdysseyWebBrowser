@@ -85,8 +85,10 @@ int pthread_setname_np(pthread_t thread, const char *name);
 #include <exec/system.h>
 #include <proto/exec.h>
 }
+#endif
 
 #if OS(AROS)
+#include <proto/exec.h>
 #include <semaphore.h>
 #endif
 
@@ -441,7 +443,7 @@ auto Thread::suspend() -> Expected<void, PlatformSuspendError>
     if (result != KERN_SUCCESS)
         return makeUnexpected(result);
     return { };
-#elif !OS(MORPHOS)
+#elif !PLATFORM(MUI)
     if (!m_suspendCount) {
         targetThread.store(this);
 
@@ -469,7 +471,7 @@ void Thread::resume()
     Locker locker { globalSuspendLock };
 #if OS(DARWIN)
     thread_resume(m_platformThread);
-#elif !OS(MORPHOS)
+#elif !PLATFORM(MUI)
     if (m_suspendCount == 1) {
         // When allowing sigThreadSuspendResume interrupt in the signal handler by sigsuspend and SigThreadSuspendResume is actually issued,
         // the signal handler itself will be called once again.
