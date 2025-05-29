@@ -285,7 +285,7 @@ public:
 
     bool elementIsHidden() const { return m_elementIsHidden; }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     Page* mediaPlayerPage() final;
 #endif
 

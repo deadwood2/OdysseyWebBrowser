@@ -10,7 +10,14 @@
 #include "AcinerellaHLS.h"
 #include "PlatformMediaResourceLoader.h"
 #include <proto/exec.h>
+#if OS(MORPHOS)
 #include <exec/system.h>
+#endif
+#if OS(AROS)
+#include <aros/debug.h>
+#define dprintf bug
+#undef D
+#endif
 
 #define D(x) 
 #define DNP(x)
@@ -208,8 +215,13 @@ void Acinerella::selectStream()
 	HLSStreamInfo selected;
 	auto *hls = static_cast<AcinerellaNetworkBufferHLS*>(m_networkBuffer.get());
 
+#if OS(MORPHOS)
 	UQUAD clock = 0;
 	NewGetSystemAttrsA(&clock, sizeof(clock), SYSTEMINFOTYPE_PPC_CPUCLOCK, NULL);
+#endif
+#if OS(AROS)
+	UQUAD clock = 2000000000;
+#endif
 
 	for (auto info : hls->streams())
 	{

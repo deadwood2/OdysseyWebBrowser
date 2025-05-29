@@ -39,9 +39,11 @@ typedef const struct opaqueCMFormatDescription *CMFormatDescriptionRef;
 
 namespace WebCore {
 
+#if PLATFORM(MUI)
 namespace Acinerella {
     class AcinerellaPackage;
 }
+#endif
 
 class MockSampleBox;
 
@@ -52,14 +54,18 @@ struct PlatformSample {
         CMSampleBufferType,
         GStreamerSampleType,
         ByteRangeSampleType,
+#if PLATFORM(MUI)
         MorphOSSampleType,
+#endif
     } type;
     union {
         MockSampleBox* mockSampleBox;
         CMSampleBufferRef cmSampleBuffer;
         GstSample* gstSample;
         std::pair<MTPluginByteSourceRef, CMFormatDescriptionRef> byteRangeSample;
+#if PLATFORM(MUI)
         Acinerella::AcinerellaPackage* mosSample;
+#endif
     } sample;
 };
 

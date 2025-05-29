@@ -22,11 +22,23 @@
 #include <proto/cybergraphics.h>
 #include <cybergraphx/cybergraphics.h>
 #define __NOLIBBASE__
+#if (CGX_OVERLAY)
 #include <proto/cgxvideo.h>
+#endif
 #undef __NOLIBBASE__
 #include <cybergraphx/cgxvideo.h>
 #include <graphics/rpattr.h>
 #include <proto/graphics.h>
+#if OS(AROS)
+#include <aros/debug.h>
+#undef D
+#define dprintf bug
+extern "C"
+{
+    void getSysTime(struct timeval *tv);
+}
+#define MEASURE 0
+#endif
 
 #define D(x)
 #define DSYNC(x) 
@@ -36,7 +48,9 @@
 // #pragma GCC optimize ("O0")
 // #define FORCEDECODE
 
+#if (CGX_OVERLAY)
 #define CGXVideoBase m_cgxVideo
+#endif
 
 namespace WebCore {
 namespace Acinerella {
@@ -51,10 +65,14 @@ AcinerellaVideoDecoder::AcinerellaVideoDecoder(AcinerellaDecoderClient* client, 
 	D(dprintf("\033[35m[VD]%s: %p fps %f %dx%d\033[0m\n", __func__, this, float(m_fps), m_frameWidth, m_frameHeight));
 	
 	auto decoder = acinerella->decoder(index);
+#if (CGX_OVERLAY)
 	ac_set_output_format(decoder, AC_OUTPUT_YUV420P);
 	
     m_cgxVideo = OpenLibrary("cgxvideo.library", 43);
- 
+#endif
+#if (CAIRO_BLIT)
+	ac_set_output_format(decoder, AC_OUTPUT_RGBA32);
+#endif
 	m_pullThread = Thread::create("Acinerella Video Pump", [this] {
 		pullThreadEntryPoint();
 	});
@@ -64,7 +82,7 @@ AcinerellaVideoDecoder::AcinerellaVideoDecoder(AcinerellaDecoderClient* client, 
 AcinerellaVideoDecoder::~AcinerellaVideoDecoder()
 {
 	D(dprintf("\033[35m[VD]%s: %p\033[0m\n", __func__, this));
-	
+#if (CGX_OVERLAY)
 	if (m_overlayHandle)
 	{
 		DetachVLayer(m_overlayHandle);
@@ -74,7 +92,7 @@ AcinerellaVideoDecoder::~AcinerellaVideoDecoder()
 
     if (m_cgxVideo)
         CloseLibrary(m_cgxVideo);
- 
+#endif
 	if (!!m_pullThread)
 	{
 		m_pullEvent.signal();
@@ -86,7 +104,12 @@ AcinerellaVideoDecoder::~AcinerellaVideoDecoder()
 void AcinerellaVideoDecoder::onDecoderChanged(RefPtr<AcinerellaPointer> acinerella)
 {
 	auto decoder = acinerella->decoder(m_index);
+#if (CGX_OVERLAY)
 	ac_set_output_format(decoder, AC_OUTPUT_YUV420P);
+#endif
+#if (CAIRO_BLIT)
+	ac_set_output_format(decoder, AC_OUTPUT_RGBA32);
+#endif
     ac_decoder_set_loopfilter(decoder, int(m_client->streamSettings().m_loopFilter));
 }
 
@@ -158,12 +181,14 @@ void AcinerellaVideoDecoder::onTerminate()
 	D(dprintf("\033[35m[VD]%s: %p done\033[0m\n", __func__, this));
 
 	auto lock = Locker(m_lock);
+#if (CGX_OVERLAY)
 	if (m_overlayHandle)
 	{
 		DetachVLayer(m_overlayHandle);
 		DeleteVLayerHandle(m_overlayHandle);
 		m_overlayHandle = nullptr;
 	}
+#endif
 }
 
 void AcinerellaVideoDecoder::onFrameDecoded(const AcinerellaDecodedFrame &frame)
@@ -180,7 +205,12 @@ void AcinerellaVideoDecoder::onFrameDecoded(const AcinerellaDecodedFrame &frame)
 	}
 
 	m_pullEvent.signal();
+#if (CGX_OVERLAY)
 	if (!m_didShowFirstFrame && m_overlayHandle)
+#endif
+#if (CAIRO_BLIT)
+	if (!m_didShowFirstFrame)
+#endif
 	{
 	// caled under locks!
 		showFirstFrame(false);
@@ -242,6 +272,7 @@ bool AcinerellaVideoDecoder::getAudioPresentationTime(double &time)
 
 void AcinerellaVideoDecoder::setOverlayWindowCoords(struct ::Window *w, int scrollx, int scrolly, int mleft, int mtop, int mright, int mbottom, int width, int height)
 {
+#if (CGX_OVERLAY)
 	{
 		auto lock = Locker(m_lock);
 		
@@ -312,6 +343,7 @@ void AcinerellaVideoDecoder::setOverlayWindowCoords(struct ::Window *w, int scro
 	{
 		updateOverlayCoords();
 	}
+#endif
 }
 
 void AcinerellaVideoDecoder::showFirstFrame(bool locks)
@@ -353,6 +385,7 @@ void AcinerellaVideoDecoder::onCoolDown()
 
 void AcinerellaVideoDecoder::updateOverlayCoords()
 {
+#if (CGX_OVERLAY)
 	int offsetX = 0;
 	int offsetY = 0;
 
@@ -394,10 +427,12 @@ void AcinerellaVideoDecoder::updateOverlayCoords()
 			m_overlayWindow->Width,
 			m_overlayWindow->Height));
 	}
+#endif
 }
 
 void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 {
+#if (CGX_OVERLAY)
 	WebCore::GraphicsContextCairo *context = gc.platformContext();
 	cairo_t* cr = context->cr();
 	cairo_save(cr);
@@ -490,10 +525,136 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 				
 	}
 #endif
+#endif
+#if (CAIRO_BLIT)
+	auto lock = Locker(m_lock);
+	if (m_decodedFrames.size())
+	{
+		WebCore::GraphicsContextCairo *context = gc.platformContext();
+		cairo_t* cr = context->cr();
+
+#if MEASURE
+static long microSecs1 = 0;
+static long microSecs2 = 0;
+static long iters = 0;
+struct timeval t1;
+struct timeval t2;
+if (iters % 256 == 0) iters = 0;
+iters++;
+getSysTime(&t1);
+#endif
+
+
+		// measurements of 360p video displayed inline 711x400 / 853x480 theather mode
+#if 1
+		// 1.6Ghz -> 1100 us / 1400 us
+		// optimization: ffmpeg is 3x faster when scaling to even width
+		int corrwidth = rect.width(); if (corrwidth & 1) corrwidth++;
+		ac_scale_to_scaled_rgb_decoder_frame(m_decodedFrames.front().frame(), m_decodedFrames.front().pointer()->decoder(m_index), corrwidth, rect.height());
+		AVFrame *avFrame = ac_get_frame_scaled(m_decodedFrames.front().pointer()->decoder(m_index));
+#else
+		// 1.6Ghz ->  200 us /  200 us
+		ac_scale_to_rgb_decoder_frame(m_decodedFrames.front().frame(), m_decodedFrames.front().pointer()->decoder(m_index));
+		AVFrame *avFrame = ac_get_frame(m_decodedFrames.front().pointer()->decoder(m_index));
+#endif
+
+
+#if MEASURE
+getSysTime(&t2);
+long val1 = ((long)(t2.tv_secs - t1.tv_secs) * 1000000L) + (long)t2.tv_micro - (long)t1.tv_micro;
+microSecs1 += val1;
+if (iters % 256 == 0)
+{
+bug ("scale %ld us\n", (microSecs1 / iters));
+microSecs1 = 0;
+}
+getSysTime(&t1);
+#endif
+
+
+#if 1
+		// 1.6Ghz ->  300 us /  450 us
+		{
+			auto surface = cairo_image_surface_create_for_data(avFrame->data[0], CAIRO_FORMAT_RGB24, corrwidth, rect.height(), avFrame->linesize[0]);
+			if (surface)
+			{
+				cairo_save(cr);
+				cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+				// optimizaton: operate on integer coords to allow for plain blit instead of re-scaling (300 us us vs 3000 us)
+				cairo_translate(cr, (int)rect.x(), (int)rect.y());
+				cairo_rectangle(cr, 0, 0, (int)rect.width(), (int)rect.height());
+				// optimization: remove rounded-edge clip, saves ~3500 us, as blit is done to rectangle, not polygon
+				cairo_reset_clip(cr);
+				cairo_set_antialias(cr, CAIRO_ANTIALIAS_NONE);
+				cairo_set_source_surface(cr, surface, 0, 0);
+				cairo_fill(cr);
+				cairo_restore(cr);
+				cairo_surface_destroy(surface);
+			}
+		}
+#else
+		// 1.6Ghz -> 5800 us / 8100 us
+		if (rect.width() == m_frameWidth && rect.height() == m_frameHeight)
+		{
+			auto surface = cairo_image_surface_create_for_data(avFrame->data[0], CAIRO_FORMAT_RGB24, m_frameWidth, m_frameHeight, avFrame->linesize[0]);
+			if (surface)
+			{
+				cairo_save(cr);
+				cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+				cairo_translate(cr, rect.x(), rect.y());
+				cairo_rectangle(cr, 0, 0, rect.width(), rect.height());
+				cairo_clip(cr);
+				cairo_set_source_surface(cr, surface, 0, 0);
+				cairo_paint(cr);
+				cairo_restore(cr);
+				cairo_surface_destroy(surface);
+			}
+		}
+		else
+		{
+			auto surface = cairo_image_surface_create_for_data(avFrame->data[0], CAIRO_FORMAT_RGB24, m_frameWidth, m_frameHeight, avFrame->linesize[0]);
+			if (surface)
+			{
+				cairo_save(cr);
+				cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+				cairo_translate(cr, rect.x(), rect.y());
+				cairo_rectangle(cr, 0, 0, rect.width(), rect.height());
+				cairo_pattern_t *pattern = cairo_pattern_create_for_surface(surface);
+				if (pattern)
+				{
+					cairo_matrix_t matrix;
+					cairo_matrix_init_scale(&matrix, double(m_frameWidth) / rect.width(), double(m_frameHeight) / rect.height());
+					cairo_pattern_set_matrix(pattern, &matrix);
+					cairo_pattern_set_filter(pattern, CAIRO_FILTER_GOOD);
+					cairo_set_source(cr, pattern);
+					cairo_clip(cr);
+					cairo_set_antialias(cr, CAIRO_ANTIALIAS_DEFAULT);
+					cairo_paint(cr);
+					cairo_pattern_destroy(pattern);
+				}
+				cairo_restore(cr);
+				cairo_surface_destroy(surface);
+			}
+		}
+#endif
+
+#if MEASURE
+getSysTime(&t2);
+microSecs2 += ((long)(t2.tv_secs - t1.tv_secs) * 1000000L) + (long)t2.tv_micro - (long)t1.tv_micro;
+if (iters % 256 == 0)
+{
+bug ("paint %ld us\n", (microSecs2 / iters));
+microSecs2 = 0;
+}
+#endif
+
+	}
+#endif
 }
 
 void AcinerellaVideoDecoder::blitFrameLocked()
 {
+#if (CGX_OVERLAY)
 	if (m_overlayHandle && m_decodedFrames.size())
 	{
 		auto *frame = m_decodedFrames.front().frame();
@@ -605,6 +766,8 @@ void AcinerellaVideoDecoder::blitFrameLocked()
 			UnlockVLayer(m_overlayHandle);
 		}
 	}
+#endif
+#warning implement
 }
 
 void AcinerellaVideoDecoder::pullThreadEntryPoint()
@@ -619,7 +782,12 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 #ifdef FORCEDECODE
 		if (m_playing && !m_terminating)
 #else
+#if (CGX_OVERLAY)
 		if ((!m_didShowFirstFrame || m_playing) && !m_terminating && m_overlayHandle)
+#endif
+#if (CAIRO_BLIT)
+		if ((!m_didShowFirstFrame || m_playing) && !m_terminating)
+#endif
 #endif
 		{
 			// D(dprintf("\033[36m[VD]%s: %p nf\033[0m\n", __func__, this));
@@ -659,9 +827,15 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 					{
 						if (m_decodedFrames.size())
 						{
+#if (CGX_OVERLAY)
 							if (m_overlayHandle)
 								SwapVLayerBuffer(m_overlayHandle);
-
+#endif
+#if (CAIRO_BLIT)
+						    dispatch([this] {
+							    m_client->onDecoderWantsToRender(makeRef(*this));
+						    });
+#endif
 							// Store current frame's pts
 							pts = m_decodedFrames.front().pts();
 							m_position = pts;
@@ -689,7 +863,9 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
                     if (changePosition)
                     {
                         onPositionChanged();
+#if (CGX_OVERLAY)
                         HIDInput();
+#endif
                     }
 
 					if (didShowFrame && !m_didShowFirstFrame)

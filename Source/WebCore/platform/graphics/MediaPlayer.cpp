@@ -58,8 +58,8 @@
 #endif
 #endif // USE(GSTREAMER)
 
-#if OS(MORPHOS)
-#include "morphos/MediaPlayerPrivateMorphOS.h"
+#if PLATFORM(MUI)
+#include "MediaPlayerPrivateMorphOS.h"
 #define PlatformMediaEngineClassName MediaPlayerPrivateMorphOS
 #endif
 
@@ -282,7 +282,7 @@ static void buildMediaEnginesVector() WTF_REQUIRES_LOCK(mediaEngineVectorLock)
     MediaPlayerPrivateHolePunch::registerMediaEngine(addMediaEngine);
 #endif
 
-#if ENABLE(VIDEO) && OS(MORPHOS)
+#if ENABLE(VIDEO) && PLATFORM(MUI)
     MediaPlayerPrivateMorphOS::registerMediaEngine(addMediaEngine);
 #endif
 
@@ -1546,7 +1546,7 @@ void MediaPlayer::simulateAudioInterruption()
 }
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 void MediaPlayer::selectHLSStream(const String& url)
 {
 	if (m_private)
@@ -1832,6 +1832,13 @@ String convertEnumerationToString(MediaPlayer::BufferingPolicy enumerationValue)
     ASSERT(static_cast<size_t>(enumerationValue) < WTF_ARRAY_LENGTH(values));
     return values[static_cast<size_t>(enumerationValue)];
 }
+
+#if PLATFORM(MUI)
+void MediaPlayer::setOutputPixelFormat(int pixfmt)
+{
+    m_private->setOutputPixelFormat(pixfmt);
+}
+#endif
 
 }
 

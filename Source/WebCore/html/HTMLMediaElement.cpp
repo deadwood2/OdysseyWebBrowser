@@ -624,7 +624,7 @@ RefPtr<HTMLMediaElement> HTMLMediaElement::bestMediaElementForRemoteControls(Med
     return &strongestSessionCandidate.session->element();
 }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 WebCore::Page* HTMLMediaElement::mediaPlayerPage()
 {
     return document().page();

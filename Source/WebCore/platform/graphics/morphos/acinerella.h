@@ -32,9 +32,15 @@ extern "C" {
 
 #define AC_BUFSIZE (1024 * 4)
 
+#ifndef INT64_MAX
 #define INT64_MAX 9223372036854775807LL
+#endif
+#ifndef INT64_MIN
 #define INT64_MIN (-INT64_MAX-1)
+#endif
+#ifndef UINT64_MAX
 #define UINT64_MAX 18446744073709551615ULL
+#endif
 
 /**
  * Defines the type of an Acinerella media stream. Currently only video and
@@ -548,10 +554,13 @@ EXTERN int CALL_CONVT ac_set_output_format(lp_ac_decoder pDecoder, ac_output_for
 void ac_set_audio_output_format(lp_ac_instance pacInstance, ac_audio_output_format fmt, int rate);
 struct AVFrame;
 EXTERN AVFrame * CALL_CONVT ac_get_frame(lp_ac_decoder decoder);
+EXTERN AVFrame * CALL_CONVT ac_get_frame_scaled(lp_ac_decoder decoder);
 EXTERN AVFrame * CALL_CONVT ac_get_frame_real(lp_ac_decoder_frame pFrame);
 
 EXTERN lp_ac_decoder_frame ac_alloc_decoder_frame(lp_ac_decoder decoder);
 EXTERN void ac_free_decoder_frame(lp_ac_decoder_frame pFrame);
+
+EXTERN void ac_scale_to_scaled_rgb_decoder_frame(lp_ac_decoder_frame pFrame, lp_ac_decoder pDecoder, int dst_width, int dst_height);
 
 EXTERN int CALL_CONVT ac_get_audio_rate(lp_ac_decoder pDecoder);
 
