@@ -40,6 +40,7 @@
 #include <wtf/text/StringConcatenateNumbers.h>
 
 #include <sys/stat.h>
+#include <aros/debug.h>
 
 namespace WebCore {
 
@@ -69,6 +70,8 @@ namespace WebCore {
     "SELECT DISTINCT domain FROM Cookie;"_s
 #define CHECK_EXISTS_COOKIE_SQL \
     "SELECT domain FROM Cookie WHERE ((domain = ?) OR (domain GLOB ?));"_s
+#define SELECT_ALL_DOMAINS_SQL \
+    "SELECT DISTINCT domain FROM Cookie;"_s
 #define CHECK_EXISTS_HTTPONLY_COOKIE_SQL \
     "SELECT name FROM Cookie WHERE (name = ?) AND (domain = ?) AND (path = ?) AND (httponly = 1);"_s
 #define SET_COOKIE_SQL \
@@ -544,7 +547,7 @@ bool CookieJarDB::setCookie(const URL& firstParty, const URL& url, const String&
         return false;
 
     if (cookie->domain.isEmpty())
-        cookie->domain = url.host().convertToASCIILowercase();
+        cookie->domain = "." + url.host().convertToASCIILowercase(); // Original Odyssey logic
 
     if (cookie->path.isEmpty())
         cookie->path = CookieUtil::defaultPathForURL(url);
