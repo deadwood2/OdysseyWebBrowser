@@ -285,6 +285,9 @@ bool Thread::establishHandle(NewThreadContext* context, std::optional<size_t> st
     pthread_t threadHandle;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
+#if OS(AROS)
+    pthread_attr_setstacksize(&attr, 512 * 1024);
+#endif
 #if HAVE(QOS_CLASSES)
     pthread_attr_set_qos_class_np(&attr, dispatchQOSClass(qos), 0);
 #else
@@ -324,6 +327,8 @@ void Thread::initializeCurrentThreadInternal(const char* threadName)
 		pthread_setschedparam(pthread_self(), SCHED_MORPHOS, &param);
 	}
 #endif
+#elif OS(AROS)
+    pthread_setname_np(pthread_self(), threadName);
 #else
     UNUSED_PARAM(threadName);
 #endif
