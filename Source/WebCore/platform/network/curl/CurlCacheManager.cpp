@@ -172,7 +172,7 @@ void CurlCacheManager::loadIndex()
         if (!!cacheEntry)
         {
 #if PLATFORM(MUI)
-            if (cacheEntry->isOnDisk() && cacheEntry->entrySize() < m_storageSizeLimit) {
+            if (cacheEntry->entrySize() && cacheEntry->entrySize() < m_storageSizeLimit) {
 #else
             if (cacheEntry->isValid() && cacheEntry->entrySize() < m_storageSizeLimit) {
 #endif
