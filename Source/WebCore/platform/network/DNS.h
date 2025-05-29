@@ -53,6 +53,27 @@ extern "C" {
 }
 #endif
 
+#if PLATFORM(MUI)
+extern "C" {
+#define AF_INET  2
+#define AF_INET6 10
+
+#if OS(MORPHOS)
+	struct in6_addr {
+	   unsigned char   s6_addr[16];   /* IPv6 address */
+	};
+
+	struct sockaddr_in6 {
+	   uint32_t        sin6_family;   /* AF_INET6 */
+	   uint32_t        sin6_port;     /* port number */
+	   uint32_t        sin6_flowinfo; /* IPv6 flow information */
+	   struct in6_addr sin6_addr;     /* IPv6 address */
+	   uint32_t        sin6_scope_id; /* Scope ID (new in 2.4) */
+	};
+#endif
+}
+#endif
+
 namespace WebCore {
 
 class IPAddress {
