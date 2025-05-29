@@ -44,6 +44,9 @@ static String defaultCookieJarPath()
 	return "PROGDIR:Cache/cookie.jar.db";
 #else
     static const char* defaultFileName = "cookie.jar.db";
+#if PLATFORM(MUI)
+    return "PROGDIR:Conf/" + String(defaultFileName);
+#else
     char* cookieJarPath = getenv("CURL_COOKIE_JAR_PATH");
     if (cookieJarPath)
         return cookieJarPath;
