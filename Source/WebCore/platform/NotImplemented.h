@@ -34,6 +34,10 @@
     #define suppressNotImplementedWarning() false
 #endif
 
+#if PLATFORM(MUI)
+#define balNotImplemented() notImplemented();
+#endif
+
 #if LOG_DISABLED
 	#if OS(MORPHOS)
 	extern "C" { void dprintf(const char *fmt, ...); };

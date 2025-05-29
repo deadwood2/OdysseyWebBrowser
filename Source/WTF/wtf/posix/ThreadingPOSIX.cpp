@@ -85,6 +85,9 @@ int pthread_setname_np(pthread_t thread, const char *name);
 #include <exec/system.h>
 #include <proto/exec.h>
 }
+
+#if OS(AROS)
+#include <semaphore.h>
 #endif
 
 namespace WTF {
@@ -201,7 +204,7 @@ void Thread::initializePlatformThreading()
     }
     g_wtfConfig.isThreadSuspendResumeSignalConfigured = true;
 
-#if !OS(DARWIN)
+#if !OS(DARWIN) && !OS(AROS)
     globalSemaphoreForSuspendResume.construct(0);
 
 #if !OS(MORPHOS)
@@ -244,7 +247,7 @@ ThreadIdentifier Thread::currentID()
 
 void Thread::initializeCurrentThreadEvenIfNonWTFCreated()
 {
-#if !OS(DARWIN) && !OS(MORPHOS)
+#if !OS(DARWIN) && !OS(MORPHOS) && !OS(AROS)
     RELEASE_ASSERT(g_wtfConfig.isThreadSuspendResumeSignalConfigured);
     sigset_t mask;
     sigemptyset(&mask);

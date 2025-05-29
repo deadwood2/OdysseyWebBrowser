@@ -35,6 +35,7 @@
 #elif OS(WINDOWS)
 #include <windows.h>
 #elif OS(MORPHOS)
+#elif OS(AROS)
 #else
 #include <sys/ucontext.h>
 #endif

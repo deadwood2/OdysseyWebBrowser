@@ -391,6 +391,15 @@ String MIMETypeRegistry::mediaMIMETypeForExtension(const String& extension)
     return mimeTypeForExtension(extension);
 }
 
+#if 0
+void MIMETypeRegistry::reinitializeSupportedMediaMIMETypes()
+{
+    if(supportedMediaMIMETypes)
+        delete supportedMediaMIMETypes;
+    initializeSupportedMediaMIMETypes();
+}
+#endif
+
 String MIMETypeRegistry::mimeTypeForPath(const String& path)
 {
     size_t pos = path.reverseFind('.');

@@ -33,9 +33,10 @@
 #include <windows.h>
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <exec/tasks.h>
 #include <proto/exec.h>
+#undef Exception
 #endif
 
 namespace WTF {
@@ -54,6 +55,8 @@ inline ProcessID getCurrentProcessID()
     return GetCurrentProcessId();
 #elif OS(MORPHOS)
 	return FindTask(0)->tc_ETask->UniqueID;
+#elif PLATFORM(MUI)
+    return (int) FindTask(NULL);
 #else
     return getpid();
 #endif

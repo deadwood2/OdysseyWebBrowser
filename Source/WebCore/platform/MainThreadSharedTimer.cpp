@@ -55,6 +55,7 @@ MainThreadSharedTimer::MainThreadSharedTimer()
 #endif
 }
 
+
 void MainThreadSharedTimer::setFireInterval(Seconds interval)
 {
     ASSERT(m_firedFunction);

@@ -30,6 +30,10 @@
 #include "PlatformEvent.h"
 #include <wtf/WindowsExtras.h>
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 namespace WTF {
 class TextStream;
 }
@@ -144,6 +148,11 @@ public:
     bool directionInvertedFromDevice() const { return m_directionInvertedFromDevice; }
 
     const FloatSize& scrollingVelocity() const { return m_scrollingVelocity; }
+
+#if PLATFORM(MUI)
+    PlatformWheelEvent(BalEventScroll*);
+    bool m_useLatchedEventNode;
+#endif
 
     bool hasPreciseScrollingDeltas() const { return m_hasPreciseScrollingDeltas; }
     void setHasPreciseScrollingDeltas(bool hasPreciseScrollingDeltas) { m_hasPreciseScrollingDeltas = hasPreciseScrollingDeltas; }

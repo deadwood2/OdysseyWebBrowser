@@ -42,8 +42,8 @@ class DateTimeChooser : public CanMakeWeakPtr<DateTimeChooser> {
 public:
     virtual ~DateTimeChooser() = default;
 
-    virtual void endChooser() = 0;
-    virtual void showChooser(const DateTimeChooserParameters&) = 0;
+    virtual void endChooser() { };
+    virtual void showChooser(const DateTimeChooserParameters&) { };
 };
 
 } // namespace WebCore

@@ -69,12 +69,17 @@ public:
 #if USE(ACCESSIBILITY_CONTEXT_MENUS)
     void showContextMenuAt(Frame&, const IntPoint& clickPoint);
 #endif
+#if PLATFORM(MUI)
+    void appendItem(ContextMenuItem&, ContextMenu* parentMenu);
+#endif
 
 private:
     std::unique_ptr<ContextMenu> maybeCreateContextMenu(Event&, OptionSet<HitTestRequest::Type> hitType, ContextMenuContext::Type);
     void showContextMenu(Event&);
     
+#if !PLATFORM(MUI)
     void appendItem(ContextMenuItem&, ContextMenu* parentMenu);
+#endif
 
     void createAndAppendFontSubMenu(ContextMenuItem&);
     void createAndAppendSpellingAndGrammarSubMenu(ContextMenuItem&);

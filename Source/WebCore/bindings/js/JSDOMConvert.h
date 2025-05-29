@@ -25,6 +25,7 @@
 
 #pragma once
 
+#undef Exception
 #include "JSDOMConvertAny.h"
 #include "JSDOMConvertBoolean.h"
 #include "JSDOMConvertBufferSource.h"

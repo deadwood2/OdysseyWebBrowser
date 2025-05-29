@@ -39,6 +39,8 @@ typedef HICON HCURSOR;
 #include <wtf/RetainPtr.h>
 #elif PLATFORM(GTK)
 #include "GRefPtrGtk.h"
+#elif PLATFORM(MUI)
+#include "BALBase.h"
 #endif
 
 #if HAVE(NSCURSOR)
@@ -154,6 +156,10 @@ public:
     WEBCORE_EXPORT PlatformCursor platformCursor() const;
 
     WEBCORE_EXPORT void setAsPlatformCursor() const;
+
+#if PLATFORM(MUI)
+    Cursor& operator=(const Cursor& other);
+#endif
 
 private:
     void ensurePlatformCursor() const;

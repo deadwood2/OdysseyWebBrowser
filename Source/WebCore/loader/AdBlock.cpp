@@ -482,7 +482,7 @@ void blockResource(const URL& url, int type, int mode)
 			break;
 		case 2:
 		{
-			String path = url.path();
+			String path = url.path().toString();
 			int lastSlashLocation = path.reverseFind('/');
 			pat = url.protocol().toString();
 			pat.append("://");

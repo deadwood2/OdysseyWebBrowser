@@ -27,6 +27,7 @@
 #include "RemoteDOMWindow.h"
 
 #include "RemoteFrame.h"
+#undef Exception
 #include <JavaScriptCore/JSCJSValue.h>
 #include <JavaScriptCore/JSCJSValueInlines.h>
 #include <wtf/IsoMallocInlines.h>
