@@ -60,6 +60,11 @@
 #include <zircon/syscalls.h>
 #endif
 
+#if PLATFORM(MUI)
+extern long get_DST_offset(void);
+extern long get_GMT_offset(void);
+#endif
+
 #if USE(GLIB)
 #include <glib.h>
 #endif

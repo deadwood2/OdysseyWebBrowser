@@ -543,7 +543,7 @@ set(WTF_PRIVATE_INCLUDE_DIRECTORIES
     "${WTF_DIR}/wtf/unicode"
 )
 
-if (NOT "${PORT}" STREQUAL "MorphOS")
+if (NOT "${PORT}" STREQUAL "MorphOS" AND NOT "${PORT}" STREQUAL "MUI")
     set(WTF_LIBRARIES
          ${CMAKE_DL_LIBS}
     )

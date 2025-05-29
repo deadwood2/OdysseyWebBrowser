@@ -66,7 +66,16 @@ NEVER_INLINE NO_RETURN_DUE_TO_CRASH static void crashUnableToReadFromURandom()
 }
 #endif
 
-#if !OS(DARWIN) && !OS(FUCHSIA) && !OS(WINDOWS) && !OS(MORPHOS)
+#if OS(AROS)
+RandomDevice::RandomDevice()
+{
+}
+RandomDevice::~RandomDevice()
+{
+}
+#endif
+
+#if !OS(DARWIN) && !OS(FUCHSIA) && !OS(WINDOWS) && !OS(MORPHOS) && !OS(AROS)
 RandomDevice::RandomDevice()
 {
     int ret = 0;
@@ -79,7 +88,7 @@ RandomDevice::RandomDevice()
 }
 #endif
 
-#if !OS(DARWIN) && !OS(FUCHSIA) && !OS(WINDOWS) && !OS(MORPHOS)
+#if !OS(DARWIN) && !OS(FUCHSIA) && !OS(WINDOWS) && !OS(MORPHOS) && !OS(AROS)
 RandomDevice::~RandomDevice()
 {
     close(m_fd);
@@ -117,6 +126,7 @@ void RandomDevice::cryptographicallyRandomValues(unsigned char* buffer, size_t l
     if (!CryptGenRandom(hCryptProv, length, buffer))
         CRASH();
     CryptReleaseContext(hCryptProv, 0);
+#elif OS(AROS)
 #else
 #error "This configuration doesn't have a strong source of randomness."
 // WARNING: When adding new sources of OS randomness, the randomness must

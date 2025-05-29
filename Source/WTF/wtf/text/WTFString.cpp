@@ -728,6 +728,13 @@ CString String::native() const
 }
 #endif
 
+#if PLATFORM(MUI)
+CString String::native() const
+{
+    return latin1();
+}
+#endif
+
 Expected<CString, UTF8ConversionError> String::tryGetUtf8(ConversionMode mode) const
 {
     return m_impl ? m_impl->tryGetUtf8(mode) : CString { "", 0 };

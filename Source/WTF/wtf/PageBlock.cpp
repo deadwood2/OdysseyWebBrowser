@@ -65,6 +65,13 @@ inline size_t systemPageSize()
 	return 16;
 }
 
+#elif OS(AROS)
+
+inline size_t systemPageSize()
+{
+    return 4096;
+}
+
 #endif
 
 size_t pageSize()

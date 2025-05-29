@@ -141,7 +141,7 @@ public:
 
     WTF_EXPORT_PRIVATE CString ascii() const;
     WTF_EXPORT_PRIVATE CString latin1() const;
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     CString native() const;
 #endif
 

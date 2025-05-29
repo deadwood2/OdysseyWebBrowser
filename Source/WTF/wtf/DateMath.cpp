@@ -84,6 +84,11 @@
 #include <windows.h>
 #endif
 
+#if PLATFORM(MUI)
+extern long get_DST_offset(void);
+extern long get_GMT_offset(void);
+#endif
+
 namespace WTF {
 
 // FIXME: Should this function go into StringCommon.h or some other header?
@@ -253,6 +258,8 @@ static int32_t calculateUTCOffset()
 
 #if HAVE(TIMEGM)
     time_t utcOffset = timegm(&localt) - mktime(&localt);
+#elif PLATFORM(MUI)
+    time_t utcOffset = - get_GMT_offset();
 #else
     // Using a canned date of 01/01/2019 on platforms with weaker date-handling foo.
     localt.tm_year = 119;
