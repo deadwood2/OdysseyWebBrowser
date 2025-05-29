@@ -135,21 +135,6 @@ void SocketStreamHandleImpl::destructStream()
     m_streamID = invalidCurlStreamID;
 }
 
-void SocketStreamHandleImpl::callOnWorkerThread(Function<void()>&& task)
-{
-    ASSERT(isMainThread());
-    m_taskQueue.append(makeUnique<Function<void()>>(WTFMove(task)));
-}
-
-void SocketStreamHandleImpl::executeTasks()
-{
-    ASSERT(!isMainThread());
-
-    auto tasks = m_taskQueue.takeAllMessages();
-    for (auto& task : tasks)
-        (*task)();
-}
-
 } // namespace WebCore
 
 #endif
