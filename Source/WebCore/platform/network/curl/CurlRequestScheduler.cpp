@@ -32,8 +32,26 @@
 
 #include "CurlRequestSchedulerClient.h"
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <proto/exec.h>
+#include <proto/bsdsocket.h>
+#include <unistd.h>
+#include <bsdsocket/socketbasetags.h>
+#include <aros/debug.h>
+struct Library *SocketBase;
+void init_SocketBase()
+{
+    SocketBase = OpenLibrary("bsdsocket.library", 4L);
+    SocketBaseTags(
+        SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(errno))), (IPTR) &errno,
+        SBTM_SETVAL(SBTC_LOGTAGPTR),       (IPTR) "cURL",
+        TAG_DONE);
+}
+void close_SocketBase()
+{
+    CloseLibrary(SocketBase);
+    SocketBase = NULL;
+}
 #endif
 
 namespace WebCore {
@@ -104,14 +122,18 @@ void CurlRequestScheduler::startOrWakeUpThread()
     }
 
     m_thread = Thread::create("curlThread", [this] {
-#if OS(MORPHOS)
-        // Run curlThread with lower priority vs the main app.
-        // Without this the curlThread would starve the application
-        // since it's rescheduled like mad all the time. - Piru
-        Thread::current().changePriority(-1);
-        SetTaskPri(FindTask(0), -1);
+#if PLATFORM(MUI)
+        init_SocketBase();
+        /* Increase priority so that network data is transported immediatelly */
+        SetTaskPri(FindTask(NULL), 1);
 #endif
         workerThread();
+
+        auto locker = holdLock(m_mutex);
+        m_runThread = false;
+#if PLATFORM(MUI)
+        close_SocketBase();
+#endif
     }, ThreadType::Network);
 }
 
@@ -127,7 +149,8 @@ void CurlRequestScheduler::wakeUpThreadIfPossible()
 void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
 {
     ASSERT(!isMainThread());
-#if !OS(MORPHOS)
+#if !PLATFORM(MUI)
+    /* Keep the original curlThread running until browser quits */
     Locker locker { m_mutex };
     if (m_activeJobs.size() || m_taskQueue.size())
         return;
@@ -199,6 +222,37 @@ void CurlRequestScheduler::workerThread()
         CURLMcode mc = m_curlMultiHandle->poll({ }, selectTimeoutMS);
         if (mc != CURLM_OK)
             break;
+
+        // Retry 'select' if it was interrupted by a process signal.
+        int rc = 0;
+        do {
+            fd_set fdread;
+            fd_set fdwrite;
+            fd_set fdexcep;
+            int maxfd = 0;
+
+            const int selectTimeoutMS = 5;
+
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = selectTimeoutMS * 1000; // select waits microseconds
+
+            m_curlMultiHandle->getFdSet(fdread, fdwrite, fdexcep, maxfd);
+
+            // When the 3 file descriptors are empty, winsock will return -1
+            // and bail out, stopping the file download. So make sure we
+            // have valid file descriptors before calling select.
+            if (maxfd >= 0)
+#if PLATFORM(MUI)
+                rc = WaitSelect(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout, nullptr);
+            else {
+                usleep(100 * 1000);
+            }
+#else
+                rc = ::select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
+#endif
+        } while (rc == -1 && errno == EINTR);
+
         int activeCount = 0;
         mc = m_curlMultiHandle->perform(activeCount);
         if (mc != CURLM_OK)

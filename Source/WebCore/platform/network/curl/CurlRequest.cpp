@@ -280,12 +280,20 @@ CURL* CurlRequest::setupTransfer()
 
     m_curlHandle->setTimeout(timeoutInterval());
 
+#if PLATFORM(MUI)
     if (m_downloadResumeOffset > 0)
         m_curlHandle->setResumeOffset(m_downloadResumeOffset);
 
     // Disable automatic decompression when downloading to a file
     if (m_isEnabledDownloadToFile)
         m_curlHandle->disableAcceptEncoding();
+
+    if (m_disableEncoding)
+        m_curlHandle->disableAcceptEncoding();
+#endif
+
+    if (m_shouldSuspend)
+        setRequestPaused(true);
 
     m_performStartTime = MonotonicTime::now();
 
