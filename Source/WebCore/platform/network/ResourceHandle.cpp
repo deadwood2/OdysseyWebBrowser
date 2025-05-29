@@ -107,6 +107,26 @@ RefPtr<ResourceHandle> ResourceHandle::create(NetworkingContext* context, const 
     return nullptr;
 }
 
+#if PLATFORM(MUI)
+RefPtr<ResourceHandle> ResourceHandle::create2(NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff)
+{
+    if (auto constructor = builtinResourceHandleConstructorMap().get(request.url().protocol().toStringWithoutCopying()))
+        return constructor(request, client);
+
+    auto newHandle = adoptRef(*new ResourceHandle(context, request, client, defersLoading, shouldContentSniff, shouldContentEncodingSniff));
+
+    if (newHandle->d->m_scheduledFailureType != NoFailure)
+        return newHandle;
+
+    newHandle->d->m_startCurlRequestAtStart = false;
+
+    if (newHandle->start())
+        return newHandle;
+
+    return nullptr;
+}
+#endif
+
 void ResourceHandle::scheduleFailure(FailureType type)
 {
     d->m_scheduledFailureType = type;
@@ -170,6 +190,13 @@ void ResourceHandle::didReceiveResponse(ResourceResponse&& response, CompletionH
     }
     client()->didReceiveResponseAsync(this, WTFMove(response), WTFMove(completionHandler));
 }
+
+#if PLATFORM(MUI)
+void ResourceHandle::setClientInternal(ResourceHandleClient* client)
+{
+    d->m_client = client;
+}
+#endif
 
 #if !USE(SOUP) && !USE(CURL)
 void ResourceHandle::platformContinueSynchronousDidReceiveResponse()

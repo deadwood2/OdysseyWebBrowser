@@ -43,6 +43,7 @@
 #include "SynchronousLoaderClient.h"
 #include <wtf/MessageQueue.h>
 #include <wtf/MonotonicTime.h>
+enum { STATUS_CONNECTING, STATUS_WAITING_DATA, STATUS_RECEIVING_DATA, STATUS_SENDING_DATA };
 #endif
 
 #if PLATFORM(COCOA)
@@ -76,6 +77,13 @@ public:
         , m_shouldContentEncodingSniff(shouldContentEncodingSniff)
 #if USE(CFURLCONNECTION)
         , m_currentRequest(request)
+#endif
+#if PLATFORM(MUI)
+        , m_received(0)
+        , m_totalSize(0)
+        , m_state(0)
+        , m_bodySize(0)
+        , m_bodyDataSent(0)
 #endif
         , m_failureTimer(*loader, &ResourceHandle::failureTimerFired)
         , m_sourceOrigin(WTFMove(sourceOrigin))
@@ -138,6 +146,17 @@ public:
     bool m_failsTAOCheck { false };
     bool m_hasCrossOriginRedirect { false };
     bool m_isCrossOrigin { false };
+
+#if PLATFORM(MUI)
+    // for networklistclass, unimplemented sice 2.24
+    long long m_received;
+    long long m_totalSize;
+    unsigned long m_state;
+    unsigned long m_bodySize;
+    unsigned long m_bodyDataSent;
+
+    bool m_startCurlRequestAtStart { true };
+#endif
 
 #if PLATFORM(COCOA)
     // We need to keep a reference to the original challenge to be able to cancel it.
