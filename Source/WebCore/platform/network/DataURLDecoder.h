@@ -54,6 +54,9 @@ struct ScheduleContext {
 enum class Mode { Legacy, ForgivingBase64 };
 void decode(const URL&, const ScheduleContext&, Mode, DecodeCompletionHandler&&);
 WEBCORE_EXPORT std::optional<Result> decode(const URL&, Mode);
+#if PLATFORM(MUI)
+void shutdown();
+#endif
 
 }
 

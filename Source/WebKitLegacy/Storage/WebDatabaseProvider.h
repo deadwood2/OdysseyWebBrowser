@@ -45,6 +45,10 @@ public:
 
     void deleteAllDatabases();
 
+#if PLATFORM(MUI)
+    void shutdownServers();
+#endif
+
 private:
     explicit WebDatabaseProvider();
 
