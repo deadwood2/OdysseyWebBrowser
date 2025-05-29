@@ -32,36 +32,15 @@
 namespace WebCore {
 
 class CurlStreamScheduler {
-    WTF_MAKE_FAST_ALLOCATED;
-    WTF_MAKE_NONCOPYABLE(CurlStreamScheduler);
 public:
-    CurlStreamScheduler();
-    virtual ~CurlStreamScheduler();
+    CurlStreamScheduler() { };
+    virtual ~CurlStreamScheduler() { };
 
-    CurlStreamID createStream(const URL&, CurlStream::Client&);
-    void destroyStream(CurlStreamID);
-    void send(CurlStreamID, UniqueArray<uint8_t>&&, size_t);
+    virtual CurlStreamID createStream(const URL&, CurlStream::Client&) = 0;
+    virtual void destroyStream(CurlStreamID) = 0;
+    virtual void send(CurlStreamID, UniqueArray<uint8_t>&&, size_t) = 0;
 
-    void callOnWorkerThread(WTF::Function<void()>&&);
-    void callClientOnMainThread(CurlStreamID, WTF::Function<void(CurlStream::Client&)>&&);
-
-private:
-    void startThreadIfNeeded();
-    void stopThreadIfNoMoreJobRunning();
-
-    void executeTasks();
-
-    void workerThread();
-
-    Lock m_mutex;
-    RefPtr<Thread> m_thread;
-    bool m_runThread { false };
-
-    CurlStreamID m_currentStreamID = 1;
-
-    Vector<Function<void()>> m_taskQueue;
-    HashMap<CurlStreamID, CurlStream::Client*> m_clientList;
-    HashMap<CurlStreamID, std::unique_ptr<CurlStream>> m_streamList;
+    virtual void callClientOnMainThread(CurlStreamID, WTF::Function<void(CurlStream::Client&)>&&) = 0;
 };
 
 } // namespace WebCore

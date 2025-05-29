@@ -38,6 +38,7 @@
 #include <unistd.h>
 #include <bsdsocket/socketbasetags.h>
 #include <aros/debug.h>
+#undef send
 struct Library *SocketBase;
 void init_SocketBase()
 {
@@ -165,6 +166,57 @@ void CurlRequestScheduler::stopCurlThread()
 	m_stopped = true;
 	stopThread();
 }
+
+CurlStreamID CurlRequestScheduler::createStream(const URL& url, CurlStream::Client& client)
+{
+    ASSERT(isMainThread());
+
+    do {
+        m_currentStreamID = (m_currentStreamID + 1 != invalidCurlStreamID) ? m_currentStreamID + 1 : 1;
+    } while (m_clientList.contains(m_currentStreamID));
+
+    auto streamID = m_currentStreamID;
+    m_clientList.add(streamID, &client);
+
+    callOnWorkerThread([this, streamID, url = url.isolatedCopy()]() mutable {
+        m_streamList.add(streamID, CurlStream::create(*this, streamID, WTFMove(url)));
+    });
+
+    return streamID;
+}
+
+void CurlRequestScheduler::destroyStream(CurlStreamID streamID)
+{
+    ASSERT(isMainThread());
+
+    if (m_clientList.contains(streamID))
+        m_clientList.remove(streamID);
+
+    callOnWorkerThread([this, streamID]() {
+        if (m_streamList.contains(streamID))
+            m_streamList.remove(streamID);
+    });
+}
+
+void CurlRequestScheduler::send(CurlStreamID streamID, UniqueArray<uint8_t>&& data, size_t length)
+{
+    ASSERT(isMainThread());
+
+    callOnWorkerThread([this, streamID, data = WTFMove(data), length]() mutable {
+        if (auto stream = m_streamList.get(streamID))
+            stream->send(WTFMove(data), length);
+    });
+}
+
+void CurlRequestScheduler::callClientOnMainThread(CurlStreamID streamID, WTF::Function<void(CurlStream::Client&)>&& task)
+{
+    ASSERT(!isMainThread());
+
+    callOnMainThread([this, streamID, task = WTFMove(task)]() {
+        if (auto client = m_clientList.get(streamID))
+            task(*client);
+    });
+}
 #endif
 
 void CurlRequestScheduler::stopThread()
@@ -225,10 +277,21 @@ void CurlRequestScheduler::workerThread()
 
         // Retry 'select' if it was interrupted by a process signal.
         int rc = 0;
+#if PLATFORM(MUI)
+        fd_set fdread;
+        fd_set fdwrite;
+        fd_set fdexcep;
+#endif
         do {
+#if PLATFORM(MUI)
+            FD_ZERO(&fdread);
+            FD_ZERO(&fdwrite);
+            FD_ZERO(&fdexcep);
+#else
             fd_set fdread;
             fd_set fdwrite;
             fd_set fdexcep;
+#endif
             int maxfd = 0;
 
             const int selectTimeoutMS = 5;
@@ -238,6 +301,10 @@ void CurlRequestScheduler::workerThread()
             timeout.tv_usec = selectTimeoutMS * 1000; // select waits microseconds
 
             m_curlMultiHandle->getFdSet(fdread, fdwrite, fdexcep, maxfd);
+#if PLATFORM(MUI)
+            for (auto& stream : m_streamList.values())
+                stream->appendMonitoringFd(fdread, fdwrite, fdexcep, maxfd);
+#endif
 
             // When the 3 file descriptors are empty, winsock will return -1
             // and bail out, stopping the file download. So make sure we
@@ -280,6 +347,11 @@ void CurlRequestScheduler::workerThread()
             if (auto client = m_clientMaps.inlineGet(msg->easy_handle))
                 completeTransfer(client, msg->data.result);
         }
+
+#if PLATFORM(MUI)
+        for (auto& stream : m_streamList.values())
+            stream->tryToTransfer(fdread, fdwrite, fdexcep);
+#endif
 
         stopThreadIfNoMoreJobRunning();
     }

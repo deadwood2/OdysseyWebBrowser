@@ -171,8 +171,7 @@ void CurlContext::initShareHandle()
 
 CurlStreamScheduler& CurlContext::streamScheduler()
 {
-    static NeverDestroyed<CurlStreamScheduler> sharedInstance;
-    return sharedInstance;
+    return *m_scheduler;
 }
 
 bool CurlContext::isHttp2Enabled() const
