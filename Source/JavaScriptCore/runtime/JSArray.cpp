@@ -30,7 +30,7 @@
 #include "TypeError.h"
 #include <wtf/Assertions.h>
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 extern "C" { void oomCrash(); }
 #endif
 
@@ -1311,7 +1311,7 @@ inline JSArray* constructArray(ObjectInitializationScope& scope, Structure* arra
     // when making this change we should check that all clients of this
     // function will correctly handle an exception being thrown from here.
     // https://bugs.webkit.org/show_bug.cgi?id=169786
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	if (!array)
 		oomCrash();
 #else

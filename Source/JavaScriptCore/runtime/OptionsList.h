@@ -503,8 +503,8 @@ bool canUseWebAssemblyFastMemory();
     v(Bool, forcePolyProto, false, Normal, "If true, create_this will always create an object with a poly proto structure.") \
     v(Bool, forceMiniVMMode, false, Normal, "If true, it will force mini VM mode on.") \
     v(Bool, useTracePoints, false, Normal, nullptr) \
-    /* v(Bool, traceLLIntExecution, false, Configurable, nullptr) */ \
-    /* v(Bool, traceLLIntSlowPath, false, Configurable, nullptr) */ \
+    v(Bool, traceLLIntExecution, false, Configurable, nullptr) \
+    v(Bool, traceLLIntSlowPath, false, Configurable, nullptr) \
     v(Bool, traceBaselineJITExecution, false, Normal, nullptr) \
     v(Unsigned, thresholdForGlobalLexicalBindingEpoch, UINT_MAX, Normal, "Threshold for global lexical binding epoch. If the epoch reaches to this value, CodeBlock metadata for scope operations will be revised globally. It needs to be greater than 1.") \
     v(OptionString, diskCachePath, nullptr, Restricted, nullptr) \
