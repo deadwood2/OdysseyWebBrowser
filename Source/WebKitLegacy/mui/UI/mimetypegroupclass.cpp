@@ -476,6 +476,8 @@ DEFMMETHOD(Import)
     char *val;
     APTR n, m;
 
+#if 0
+// broken 2.34.6
     const HashSet<String, ASCIICaseInsensitiveHash>* supportedCategories[] =
     {
         &(MIMETypeRegistry::supportedImageMIMETypes()),
@@ -520,6 +522,7 @@ DEFMMETHOD(Import)
 
         supportedCategoriesIterator++;
     }
+#endif
 
     /* Make sure octet-stream and "force-download" is added if user didn't add it */
     mimetype_create("application/octet-stream", NULL, MIMETYPE_ACTION_DOWNLOAD, NULL, NULL, FALSE, NULL);
