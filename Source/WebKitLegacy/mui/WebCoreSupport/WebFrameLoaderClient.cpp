@@ -327,7 +327,7 @@ void WebFrameLoaderClient::dispatchDidReceiveTitle(const WebCore::StringWithDire
         webFrameLoadDelegate->titleChange(m_webFrame, title.string.utf8().data());
 }
 
-void WebFrameLoaderClient::dispatchDidCommitLoad(Optional<HasInsecureContent>, Optional<UsedLegacyTLS>)
+void WebFrameLoaderClient::dispatchDidCommitLoad(std::optional<HasInsecureContent>, std::optional<UsedLegacyTLS>)
 {
     SharedPtr<WebFrameLoadDelegate> webFrameLoadDelegate = m_webFrame->webView()->webFrameLoadDelegate();
     if (webFrameLoadDelegate)
@@ -374,7 +374,7 @@ void WebFrameLoaderClient::setMainDocumentError(DocumentLoader*, const ResourceE
 {
 }
 
-void WebFrameLoaderClient::committedLoad(DocumentLoader* loader, const char* data, int length)
+void WebFrameLoaderClient::committedLoad(DocumentLoader* loader, const uint8_t* data, int length)
 {
     loader->commitData(data, length);
 
@@ -804,7 +804,7 @@ void WebFrameLoaderClient::receivedPolicyDecision(PolicyAction action)
     function(action, m_policyListenerPrivate->m_policyCheckIdentifier);
 }
 
-void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, WebCore::PolicyCheckIdentifier identifier, const String&, FramePolicyFunction&& function)
+void WebFrameLoaderClient::dispatchDecidePolicyForResponse(const ResourceResponse& response, const ResourceRequest& request, WebCore::PolicyCheckIdentifier identifier, const String&, BrowsingContextGroupSwitchDecision, FramePolicyFunction&& function)
 {
     SharedPtr<WebPolicyDelegate> policyDelegate = m_webFrame->webView()->policyDelegate();
     if (!policyDelegate)
@@ -989,14 +989,14 @@ void WebFrameLoaderClient::dispatchDidFailToStartPlugin(const WebCore::PluginVie
 {
 }
 
-Optional<WebCore::PageIdentifier> WebFrameLoaderClient::pageID() const
+std::optional<WebCore::PageIdentifier> WebFrameLoaderClient::pageID() const
 {
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
-Optional<WebCore::FrameIdentifier> WebFrameLoaderClient::frameID() const
+std::optional<WebCore::FrameIdentifier> WebFrameLoaderClient::frameID() const
 {
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 void WebFrameLoaderClient::dispatchDidReachLayoutMilestone(OptionSet<WebCore::LayoutMilestone>)

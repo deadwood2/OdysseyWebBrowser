@@ -63,7 +63,7 @@ const char* WebSecurityOrigin::host()
 
 unsigned short WebSecurityOrigin::port()
 {
-    return m_securityOrigin->port().valueOr(0);
+    return m_securityOrigin->port().value_or(0);
 }
 
 unsigned long long WebSecurityOrigin::usage()

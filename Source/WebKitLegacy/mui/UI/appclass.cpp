@@ -99,6 +99,7 @@
 #include "DataURLDecoder.h"
 #include <WebCore/AsyncFileStream.h>
 #include <WebCore/BlobRegistryImpl.h>
+#include <wtf/text/StringToIntegerConversion.h>
 
 namespace JSC {
 namespace DFG {
@@ -127,6 +128,7 @@ extern void shutdownGlobalFTLWorklist();
 #include <proto/icon.h>
 #include <proto/dos.h>
 #include <proto/asl.h>
+#include <clib/debug_protos.h>
 
 /* Local */
 #include "gui.h"
@@ -882,19 +884,19 @@ void ParseConfigFile(const char* url, AppSettings *settings)
         String key = fileBuffer.substring(delimiter +  1, eol - delimiter).stripWhiteSpace();
 
         if (keyword == "panelweight")
-            settings->panelweight = key.toInt();
+            settings->panelweight = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
 
         if (keyword == "showbookmarkpanel")
-            settings->showbookmarkpanel    = key.toInt();
+            settings->showbookmarkpanel = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
 
         if (keyword == "showhistorypanel")
-            settings->showhistorypanel = key.toInt();
+            settings->showhistorypanel = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
 
         if (keyword == "addbookmarkstomenu")
-            settings->addbookmarkstomenu = key.toInt();
+            settings->addbookmarkstomenu = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
 
         if (keyword == "continuousspellchecking")
-            settings->continuousspellchecking = key.toInt();
+            settings->continuousspellchecking = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
         /*
         if (keyword == "privatebrowsing")
             settings->privatebrowsing = key.toInt(); */
@@ -3432,8 +3434,12 @@ DEFSMETHOD(OWBApp_RestoreSession)
                 {
                     bool found = false;
                     ULONG j;
-                    int id = attributes[0].toInt();
-                    BrowserState browserstate = { attributes[1], IntPoint(attributes[2].toInt(), attributes[3].toInt()) };
+                    int id = parseIntegerAllowingTrailingJunk<int>(attributes[0]).value_or(0);
+                    BrowserState browserstate = 
+                    { 
+                        attributes[1], 
+                        IntPoint(parseIntegerAllowingTrailingJunk<int>(attributes[2]).value_or(0), parseIntegerAllowingTrailingJunk<int>(attributes[3]).value_or(0))
+                    };
 
                     for(j = 0; j < windowstates.size(); j++)
                     {

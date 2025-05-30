@@ -83,21 +83,21 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
 
     /* Prune older entries */
     double minAge = MonotonicTime::now().secondsSinceEpoch().value() - maxAge*24*3600;
-    SQLiteStatement deleteStmt(m_historyDB, String("DELETE FROM history WHERE lastAccessed < ?1;"));
+    auto deleteStmt = m_historyDB.prepareStatement("DELETE FROM history WHERE lastAccessed < ?1;"_s);
 
-    if(deleteStmt.prepare())
+    if(!deleteStmt)
     {
         return false;
     }
 
     // Binds all the values
-    if(deleteStmt.bindDouble(1, minAge))
+    if(deleteStmt->bindDouble(1, minAge))
     {
         LOG_ERROR("Cannot save history");
         //return false;
     }
 
-    if(!deleteStmt.executeCommand()) {
+    if(!deleteStmt->executeCommand()) {
         LOG_ERROR("Cannot save history");
         //return false;
     }
@@ -105,7 +105,7 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
     /* Remove extranumerous entries */
     char deleteStmt2buf[512];
     snprintf(deleteStmt2buf, sizeof(deleteStmt2buf), "DELETE FROM history WHERE lastAccessed < (SELECT lastAccessed FROM history ORDER BY lastAccessed ASC LIMIT 1 OFFSET (SELECT count(*) FROM history) - min(%d, (SELECT count(*) FROM history)));", maxItems);
-    m_historyDB.executeCommand(String(deleteStmt2buf));
+    m_historyDB.executeCommand(ASCIILiteral::fromLiteralUnsafe(deleteStmt2buf));
 
     String request = "SELECT url, title, lastAccessed FROM history";
     String end = ";";
@@ -141,24 +141,24 @@ bool WebHistory::loadHistoryFromDatabase(int sortCriterium, bool desc, std::vect
     request.append(end);
 
     // Problem if the database is not connected
-    SQLiteStatement select(m_historyDB, request);
+    auto select = m_historyDB.prepareStatement(ASCIILiteral::fromLiteralUnsafe(request.latin1().data()));
 
-    if(select.prepare())
+    if(!select)
     {
         LOG_ERROR("Cannot retrieve history in the database");
         return false;
     }
 
-    while(select.step() == SQLITE_ROW)
+    while(select->step() == SQLITE_ROW)
     {
         // There is a row to fetch
         WebHistoryItem *item = WebHistoryItem::createInstance();
 
         if(item)
         {
-            item->initWithURLString(select.getColumnText(0),
-                                    select.getColumnText(1),
-                                    select.getColumnDouble(2));
+            item->initWithURLString(select->columnText(0),
+                                    select->columnText(1),
+                                    select->columnDouble(2));
 
             char *title = (char *) item->title();
             free(title);
@@ -191,41 +191,41 @@ bool WebHistory::insertHistoryItemIntoDatabase(String& url, String& title, doubl
 
     if(!m_historyDB.tableExists(String("history")))
     {
-        m_historyDB.executeCommand(String("CREATE TABLE history (url TEXT, title TEXT, lastAccessed DOUBLE);"));
+        m_historyDB.executeCommand("CREATE TABLE history (url TEXT, title TEXT, lastAccessed DOUBLE);"_s);
     }
 
-    SQLiteStatement deleteStmt(m_historyDB, String("DELETE FROM history WHERE url=?1;"));
+    auto deleteStmt = m_historyDB.prepareStatement("DELETE FROM history WHERE url=?1;"_s);
 
-    if(deleteStmt.prepare())
+    if(!deleteStmt)
     {
         return false;
     }
 
     // Binds all the values
-    if(deleteStmt.bindText(1, url))
+    if(deleteStmt->bindText(1, url))
     {
         LOG_ERROR("Cannot save history");
     }
 
-    if(!deleteStmt.executeCommand()) {
+    if(!deleteStmt->executeCommand()) {
         LOG_ERROR("Cannot save history");
     }
 
-    SQLiteStatement insert(m_historyDB, String("INSERT INTO history (url, title, lastAccessed) VALUES (?1, ?2, ?3);"));
+    auto insert = m_historyDB.prepareStatement("INSERT INTO history (url, title, lastAccessed) VALUES (?1, ?2, ?3);"_s);
 
-    if(insert.prepare())
+    if(!insert)
     {
         return false;
     }
 
     // Binds all the values
-    if(insert.bindText(1, url) || insert.bindText(2, title) || insert.bindDouble(3, lastAccessed))
+    if(insert->bindText(1, url) || insert->bindText(2, title) || insert->bindDouble(3, lastAccessed))
     {
         LOG_ERROR("Cannot save history");
         return false;
     }
 
-    if(!insert.executeCommand()) {
+    if(!insert->executeCommand()) {
         LOG_ERROR("Cannot save history");
         return false;
     }

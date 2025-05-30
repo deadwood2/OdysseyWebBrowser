@@ -104,8 +104,8 @@ public:
     void didStart();
     virtual void willSendRequestAsync(ResourceHandle*, ResourceRequest&&, ResourceResponse&&, CompletionHandler<void(ResourceRequest&&)>&&) override;
     virtual void didReceiveResponseAsync(ResourceHandle*, ResourceResponse&&, CompletionHandler<void()>&&) override;
-    virtual void didReceiveData(ResourceHandle*, const char*, unsigned, int) override;
-    virtual void didFinishLoading(ResourceHandle*) override;
+    virtual void didReceiveData(ResourceHandle*, const uint8_t*, unsigned, int) override;
+    virtual void didFinishLoading(ResourceHandle*, const NetworkLoadMetrics&) override;
     virtual void didFail(ResourceHandle*, const ResourceError&) override;
     virtual void wasBlocked(ResourceHandle*) override;
     virtual void cannotShowURL(ResourceHandle*) override;
@@ -260,7 +260,7 @@ void DownloadClient::didReceiveResponseAsync(ResourceHandle*, WebCore::ResourceR
     completionHandler();
 }
 
-void DownloadClient::didReceiveData(ResourceHandle*, const char* data, unsigned length, int lengthReceived)
+void DownloadClient::didReceiveData(ResourceHandle*, const uint8_t* data, unsigned length, int lengthReceived)
 {
     if (!m_download->downloadDelegate())
         return;
@@ -277,7 +277,7 @@ void DownloadClient::didReceiveData(ResourceHandle*, const char* data, unsigned 
     }
 }
 
-void DownloadClient::didFinishLoading(ResourceHandle*)
+void DownloadClient::didFinishLoading(ResourceHandle*, const NetworkLoadMetrics&)
 {
     if (!m_download->downloadDelegate())
         return;

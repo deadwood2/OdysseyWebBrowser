@@ -30,7 +30,7 @@
 
 #include "WebKitTypes.h"
 #include "DOMCoreClasses.h"
-#include <wtf/Optional.h>
+#include <optional>
 
 namespace WebCore {
     class Range;
@@ -65,7 +65,7 @@ class WEBKIT_OWB_API DOMRange : public DOMObject
 protected:
     friend class WebEditorClient;
     static DOMRange* createInstance(WebCore::Range*);
-    static DOMRange* createInstance(const Optional<WebCore::SimpleRange>&);
+    static DOMRange* createInstance(const std::optional<WebCore::SimpleRange>&);
     WebCore::Range* range() {return m_range;}
 public:
     ~DOMRange();

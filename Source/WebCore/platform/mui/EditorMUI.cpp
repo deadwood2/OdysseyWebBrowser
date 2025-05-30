@@ -70,7 +70,7 @@ static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pas
 
 void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> options)
 {
-    Optional<SimpleRange> range = selectedRange();
+    std::optional<SimpleRange> range = selectedRange();
     if (!range)
         return;
 

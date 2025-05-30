@@ -26,7 +26,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if ENABLE(NOTIFICATIONS) || ENABLE(LEGACY_NOTIFICATIONS)
+#if ENABLE(NOTIFICATIONS)
 
 #include <WebCore/Notification.h>
 #include <WebCore/NotificationClient.h>
@@ -47,10 +47,7 @@ public:
     virtual void cancel(WebCore::Notification* object) override;
     virtual void notificationObjectDestroyed(WebCore::Notification* object) override;
     virtual void notificationControllerDestroyed() override;
-#if ENABLE(NOTIFICATIONS)
-    virtual void requestPermission(WebCore::ScriptExecutionContext*, RefPtr<WebCore::NotificationPermissionCallback>&&) override;
-#endif
-    bool hasPendingPermissionRequests(WebCore::ScriptExecutionContext*) const override;
+    virtual void requestPermission(WebCore::ScriptExecutionContext&, PermissionHandler&&) override;
     virtual void cancelRequestsForPermission(WebCore::ScriptExecutionContext*);
     virtual WebCore::NotificationClient::Permission checkPermission(WebCore::ScriptExecutionContext*) override;
 

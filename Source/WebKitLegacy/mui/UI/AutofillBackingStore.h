@@ -20,6 +20,7 @@
 #define AutofillBackingStore_h
 
 #include <WebCore/SQLiteDatabase.h>
+#include <WebCore/SQLiteStatement.h>
 
 namespace WebCore {
 
@@ -39,10 +40,10 @@ private:
     bool contains(const String& name, const String& value) const;
 
     SQLiteDatabase m_database;
-    SQLiteStatement* m_addStatement;
-    SQLiteStatement* m_updateStatement;
-    SQLiteStatement* m_containsStatement;
-    SQLiteStatement* m_getStatement;
+    std::unique_ptr<SQLiteStatement> m_addStatement;
+    std::unique_ptr<SQLiteStatement> m_updateStatement;
+    std::unique_ptr<SQLiteStatement> m_containsStatement;
+    std::unique_ptr<SQLiteStatement> m_getStatement;
 };
 
 AutofillBackingStore& autofillBackingStore();

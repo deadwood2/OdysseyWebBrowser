@@ -98,6 +98,7 @@
 #include <JavaScriptCore/JSLock.h>
 #include <JavaScriptCore/JSObject.h>
 #include <WebCore/JSDOMWindowBase.h>
+#include <WebCore/RenderLayerCompositor.h>
 
 using namespace WebCore;
 using namespace HTMLNames;
@@ -1182,7 +1183,7 @@ void WebFrame::updateBackground()
     if (!coreFrame || !coreFrame->view())
         return;
 
-    Optional<Color> backgroundColor;
+    std::optional<Color> backgroundColor;
     if (webView()->transparent())
         backgroundColor = Color(Color::transparentBlack);
     else
@@ -1386,7 +1387,7 @@ const char* WebFrame::layerTreeAsText()
     if (!frame)
         return "";
 
-    String text = frame->layerTreeAsText();
+    String text = frame->contentRenderer()->compositor().layerTreeAsText();
     return strdup(text.utf8().data());
 }
 
