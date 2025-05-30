@@ -24,7 +24,7 @@ set(WebKitLegacy_SOURCES
     WebCoreSupport/WebResourceLoadScheduler.cpp
 )
 
-if (NOT "${PORT}" STREQUAL "MorphOS")
+if (NOT "${PORT}" STREQUAL "MorphOS" AND NOT "${PORT}" STREQUAL "MUI")
     set(WebKitLegacy_SOURCES $(WebKitLegacy_SOURCES)
         WebCoreSupport/WebViewGroup.cpp
         )
