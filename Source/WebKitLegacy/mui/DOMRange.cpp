@@ -39,7 +39,7 @@ DOMRange* DOMRange::createInstance(WebCore::Range* range)
     return new DOMRange(range);
 }
 
-DOMRange* DOMRange::createInstance(const Optional<WebCore::SimpleRange>& range)
+DOMRange* DOMRange::createInstance(const std::optional<WebCore::SimpleRange>& range)
 {
     return createInstance(createLiveRange(range).get());
 }

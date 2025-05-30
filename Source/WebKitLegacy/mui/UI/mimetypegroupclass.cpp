@@ -28,9 +28,11 @@
  */
 
 #include <WebCore/GraphicsContext.h>
-#include <wtf/text/CString.h>
 #include <WebCore/MIMETypeRegistry.h>
 #include <WebCore/PluginData.h>
+#include <wtf/FixedVector.h>
+#include <wtf/text/CString.h>
+#include <wtf/text/StringToIntegerConversion.h>
 
 #include <proto/exec.h>
 #include <proto/intuition.h>
@@ -548,10 +550,10 @@ DEFMMETHOD(Import)
                 {
                     mimetype_create((char *) mimetypeAttributes[0].latin1().data(),
                                             (char *) mimetypeAttributes[1].latin1().data(),
-                                            (mimetype_action_t) mimetypeAttributes[2].toInt(),
+                                            (mimetype_action_t) parseIntegerAllowingTrailingJunk<int>(mimetypeAttributes[2]).value_or(0),
                                             (char *) mimetypeAttributes[3].latin1().data(),
                                             (char *) mimetypeAttributes[4].latin1().data(),
-                                            mimetypeAttributes[5].toInt(),
+                                            parseIntegerAllowingTrailingJunk<int>(mimetypeAttributes[5]).value_or(0),
                                             NULL);
                 }
             }

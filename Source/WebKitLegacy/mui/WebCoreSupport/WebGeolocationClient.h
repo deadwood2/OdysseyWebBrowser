@@ -63,7 +63,7 @@ public:
     void startUpdating(const String& authorizationToken) final;
     void stopUpdating() final;
     void setEnableHighAccuracy(bool) final;
-    Optional<WebCore::GeolocationPositionData> lastPosition() final;
+    std::optional<WebCore::GeolocationPositionData> lastPosition() final;
 
     void requestPermission(Geolocation&) final;
     void cancelPermissionRequest(Geolocation&) final;

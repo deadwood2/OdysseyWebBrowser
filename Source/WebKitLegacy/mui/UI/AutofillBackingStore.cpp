@@ -39,24 +39,15 @@ AutofillBackingStore& autofillBackingStore()
 }
 
 AutofillBackingStore::AutofillBackingStore()
-    : m_addStatement(0)
-    , m_updateStatement(0)
-    , m_containsStatement(0)
-    , m_getStatement(0)
+    : m_addStatement(nullptr)
+    , m_updateStatement(nullptr)
+    , m_containsStatement(nullptr)
+    , m_getStatement(nullptr)
 {
 }
 
 AutofillBackingStore::~AutofillBackingStore()
 {
-    delete m_addStatement;
-    m_addStatement = 0;
-    delete m_updateStatement;
-    m_updateStatement = 0;
-    delete m_containsStatement;
-    m_containsStatement = 0;
-    delete m_getStatement;
-    m_getStatement = 0;
-
     if (m_database.isOpen())
         m_database.close();
 }
@@ -69,30 +60,34 @@ bool AutofillBackingStore::open(const String& dbPath)
         "Failed to open database file %s for autofill database", dbPath.utf8().data());
 
     if (!m_database.tableExists("autofill")) {
-        HANDLE_SQL_EXEC_FAILURE(!m_database.executeCommand("CREATE TABLE autofill (id INTEGER PRIMARY KEY, name VARCHAR NOT NULL, value VARCHAR NOT NULL, count INTEGER DEFAULT 1)"),
+        HANDLE_SQL_EXEC_FAILURE(!m_database.executeCommand("CREATE TABLE autofill (id INTEGER PRIMARY KEY, name VARCHAR NOT NULL, value VARCHAR NOT NULL, count INTEGER DEFAULT 1)"_s),
             false, "Failed to create table autofill for autofill database");
 
         // Create index for table autofill.
-        HANDLE_SQL_EXEC_FAILURE(!m_database.executeCommand("CREATE INDEX autofill_name ON autofill (name)"),
+        HANDLE_SQL_EXEC_FAILURE(!m_database.executeCommand("CREATE INDEX autofill_name ON autofill (name)"_s),
             false, "Failed to create autofill_name index for table autofill");
     }
 
     // Prepare the statements.
-    m_addStatement = new SQLiteStatement(m_database, "INSERT INTO autofill (name, value) VALUES (?, ?)");
-    HANDLE_SQL_EXEC_FAILURE(m_addStatement->prepare() != SQLITE_OK,
+    auto s1 = m_database.prepareHeapStatement("INSERT INTO autofill (name, value) VALUES (?, ?)"_s);
+    HANDLE_SQL_EXEC_FAILURE(s1,
         false, "Failed to prepare add statement");
+    m_addStatement = s1.value().moveToUniquePtr();
 
-    m_updateStatement = new SQLiteStatement(m_database, "UPDATE autofill SET count = (SELECT count + 1 from autofill WHERE name = ? AND value = ?) WHERE name = ? AND value = ?");
-    HANDLE_SQL_EXEC_FAILURE(m_updateStatement->prepare() != SQLITE_OK,
+    auto s2 = m_database.prepareHeapStatement("UPDATE autofill SET count = (SELECT count + 1 from autofill WHERE name = ? AND value = ?) WHERE name = ? AND value = ?"_s);
+    HANDLE_SQL_EXEC_FAILURE(s2,
         false, "Failed to prepare update statement");
+    m_updateStatement = s2.value().moveToUniquePtr();
 
-    m_containsStatement = new SQLiteStatement(m_database, "SELECT COUNT(*) FROM autofill WHERE name = ? AND value = ?");
-    HANDLE_SQL_EXEC_FAILURE(m_containsStatement->prepare() != SQLITE_OK,
+    auto s3 = m_database.prepareHeapStatement("SELECT COUNT(*) FROM autofill WHERE name = ? AND value = ?"_s);
+    HANDLE_SQL_EXEC_FAILURE(s3,
         false, "Failed to prepare contains statement");
+    m_containsStatement = s3.value().moveToUniquePtr();
 
-    m_getStatement = new SQLiteStatement(m_database, "SELECT value FROM autofill WHERE name = ? and value like ? ORDER BY count DESC");
-    HANDLE_SQL_EXEC_FAILURE(m_getStatement->prepare() != SQLITE_OK,
+    auto s4 = m_database.prepareHeapStatement("SELECT value FROM autofill WHERE name = ? and value like ? ORDER BY count DESC"_s);
+    HANDLE_SQL_EXEC_FAILURE(s4,
         false, "Failed to prepare get statement");
+    m_getStatement = s4.value().moveToUniquePtr();
 
     return true;
 }
@@ -149,7 +144,7 @@ bool AutofillBackingStore::contains(const String& name, const String& value) con
     m_containsStatement->bindText(2, value);
 
     int result = m_containsStatement->step();
-    int numberOfRows = m_containsStatement->getColumnInt(0);
+    int numberOfRows = m_containsStatement->columnInt(0);
     m_containsStatement->reset();
     HANDLE_SQL_EXEC_FAILURE(result != SQLITE_ROW, false,
         "Failed to execute select autofill item from table autofill in contains - %i", result);
@@ -172,7 +167,7 @@ Vector<String> AutofillBackingStore::get(const String& name, const String& value
 
     int result;
     while ((result = m_getStatement->step()) == SQLITE_ROW)
-        candidates.append(m_getStatement->getColumnText(0));
+        candidates.append(m_getStatement->columnText(0));
     m_getStatement->reset();
     HANDLE_SQL_EXEC_FAILURE(result != SQLITE_DONE, candidates,
         "Failed to execute select autofill item from table autofill in get - %i", result);
@@ -185,7 +180,7 @@ bool AutofillBackingStore::clear()
     ASSERT(m_database.isOpen());
     ASSERT(m_database.tableExists("autofill"));
 
-    HANDLE_SQL_EXEC_FAILURE(!m_database.executeCommand("DELETE FROM autofill"),
+    HANDLE_SQL_EXEC_FAILURE(!m_database.executeCommand("DELETE FROM autofill"_s),
         false, "Failed to clear table autofill");
 
     return true;

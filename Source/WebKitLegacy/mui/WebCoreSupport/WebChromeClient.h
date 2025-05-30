@@ -100,7 +100,7 @@ public:
 
     bool hoverSupportedByPrimaryPointingDevice() const final { return true; }
     bool hoverSupportedByAnyAvailablePointingDevice() const final { return true; }
-    Optional<WebCore::PointerCharacteristics> pointerCharacteristicsOfPrimaryPointingDevice() const final { return WebCore::PointerCharacteristics::Fine; }
+    std::optional<WebCore::PointerCharacteristics> pointerCharacteristicsOfPrimaryPointingDevice() const final { return WebCore::PointerCharacteristics::Fine; }
     OptionSet<WebCore::PointerCharacteristics> pointerCharacteristicsOfAllAvailablePointingDevices() const final { return WebCore::PointerCharacteristics::Fine; }
 
     void invalidateRootView(const WebCore::IntRect&) final;
@@ -147,8 +147,6 @@ public:
     // to do an eager layout before the drawing.
     void triggerRenderingUpdate() final;
 
-    void scrollRectIntoView(const WebCore::IntRect&) const final { }
-
 #if ENABLE(VIDEO)
     bool supportsVideoFullscreen(WebCore::HTMLMediaElementEnums::VideoFullscreenMode) final;
     void enterVideoFullscreenForVideoElement(WebCore::HTMLVideoElement&, WebCore::HTMLMediaElementEnums::VideoFullscreenMode, bool) final;
@@ -167,6 +165,8 @@ public:
 #endif
 
     void wheelEventHandlersChanged(bool) final { }
+
+    void setTextIndicator(const WebCore::TextIndicatorData&) const final { }
 
     WebView* webView() { return m_webView; }
 

@@ -38,6 +38,7 @@
 #include "ObserverServiceData.h"
 
 #include <wtf/HashMap.h>
+#include <wtf/text/StringToIntegerConversion.h>
 #include <map>
 
 #if USE(CURL)
@@ -252,13 +253,13 @@ string WebPreferences::stringValueForKey(const char* key)
 int WebPreferences::integerValueForKey(const char* key)
 {
     String value(m_privatePrefs[key].c_str());
-    return value.toInt();
+    return parseIntegerAllowingTrailingJunk<int>(value).value_or(0);
 }
 
 bool WebPreferences::boolValueForKey(const char* key)
 {
     String value(m_privatePrefs[key].c_str());
-    return (bool)value.toInt();
+    return (bool)parseIntegerAllowingTrailingJunk<int>(value).value_or(0);
 }
 
 float WebPreferences::floatValueForKey(const char* key)
@@ -270,7 +271,7 @@ float WebPreferences::floatValueForKey(const char* key)
 unsigned int WebPreferences::longlongValueForKey(const char* key)
 {
     String value(m_privatePrefs[key].c_str());
-    return value.toUInt();
+    return parseIntegerAllowingTrailingJunk<unsigned int>(value).value_or(0);
 }
 
 void WebPreferences::setStringValue(const char* key, const char* value)

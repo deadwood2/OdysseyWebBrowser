@@ -114,11 +114,9 @@ DEFTMETHOD(PasswordManagerGroup_Load)
         return 0;
     }
 
-    String request = "SELECT host, realm, username, password, usernameField, passwordField, type FROM passwords;";
+    auto select = m_passwordDB.prepareStatement("SELECT host, realm, username, password, usernameField, passwordField, type FROM passwords;"_s);
 
-    SQLiteStatement select(m_passwordDB, request);
-
-    if(select.prepare())
+    if(!select)
     {
         LOG_ERROR("Cannot retrieve passwords in the database");
         return 0;
@@ -127,16 +125,16 @@ DEFTMETHOD(PasswordManagerGroup_Load)
     set(data->lv_credentials, MUIA_List_Quiet, TRUE);
     data->loading = TRUE;
 
-    while(select.step() == SQLITE_ROW)
+    while(select->step() == SQLITE_ROW)
     {
-        String host = select.getColumnText(0);
-        String realm = select.getColumnText(1);
-        String user = select.getColumnText(2);
-        String password = select.getColumnText(3);
-        String userField = select.getColumnText(4);
-        String passwordField = select.getColumnText(5);
-        int type  = select.getColumnInt(6) & CREDENTIAL_TYPE_MASK;
-        int flags = select.getColumnInt(6) & CREDENTIAL_FLAG_MASK;
+        String host = select->columnText(0);
+        String realm = select->columnText(1);
+        String user = select->columnText(2);
+        String password = select->columnText(3);
+        String userField = select->columnText(4);
+        String passwordField = select->columnText(5);
+        int type  = select->columnInt(6) & CREDENTIAL_TYPE_MASK;
+        int flags = select->columnInt(6) & CREDENTIAL_FLAG_MASK;
 
         if(type == CREDENTIAL_TYPE_AUTH)
         {
@@ -178,14 +176,14 @@ DEFTMETHOD(PasswordManagerGroup_Clear)
         return 0;
     }
 
-    SQLiteStatement deleteStmt(m_passwordDB, String("DELETE FROM passwords;"));
+    auto deleteStmt = m_passwordDB.prepareStatement("DELETE FROM passwords;"_s);
 
-    if(deleteStmt.prepare())
+    if(!deleteStmt)
     {
         return 0;
     }
 
-    if(!deleteStmt.executeCommand())
+    if(!deleteStmt->executeCommand())
     {
         LOG_ERROR("Cannot save passwords");
     }
@@ -329,45 +327,45 @@ DEFSMETHOD(PasswordManagerGroup_Insert)
 
             if(!m_passwordDB.tableExists(String("passwords")))
             {
-                m_passwordDB.executeCommand(String("CREATE TABLE passwords (host TEXT, realm TEXT, username TEXT, password TEXT, usernameField TEXT, passwordField TEXT, type INTEGER);"));
+                m_passwordDB.executeCommand("CREATE TABLE passwords (host TEXT, realm TEXT, username TEXT, password TEXT, usernameField TEXT, passwordField TEXT, type INTEGER);"_s);
             }
 
-            SQLiteStatement deleteStmt(m_passwordDB, String("DELETE FROM passwords WHERE host=?1;"));
+            auto deleteStmt = m_passwordDB.prepareStatement("DELETE FROM passwords WHERE host=?1;"_s);
 
-            if(deleteStmt.prepare())
+            if(!deleteStmt)
             {
                 return false;
             }
 
             // Binds all the values
-            if(deleteStmt.bindText(1, *host))
+            if(deleteStmt->bindText(1, *host))
             {
                 LOG_ERROR("Cannot save passwords");
             }
 
-            if(!deleteStmt.executeCommand()) {
+            if(!deleteStmt->executeCommand()) {
                 LOG_ERROR("Cannot save passwords");
             }
 
-            SQLiteStatement insert(m_passwordDB, String("INSERT INTO passwords (host, realm, username, password, usernameField, passwordField, type) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);"));
+            auto insert = m_passwordDB.prepareStatement("INSERT INTO passwords (host, realm, username, password, usernameField, passwordField, type) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);"_s);
 
-            if(insert.prepare())
+            if(!insert)
             {
                 return 0;
             }
 
             // Binds all the values
-            if(insert.bindText(1, *host) || insert.bindText(2, newCredential->realm())
-            || insert.bindText(3, newCredential->user()) || insert.bindText(4, newCredential->password())
-            || insert.bindText(5, newCredential->userFieldName()) || insert.bindText(6, newCredential->passwordFieldName())
-            || insert.bindInt64(7, newCredential->type() | newCredential->flags())
+            if(insert->bindText(1, *host) || insert->bindText(2, newCredential->realm())
+            || insert->bindText(3, newCredential->user()) || insert->bindText(4, newCredential->password())
+            || insert->bindText(5, newCredential->userFieldName()) || insert->bindText(6, newCredential->passwordFieldName())
+            || insert->bindInt64(7, newCredential->type() | newCredential->flags())
             )
             {
                 LOG_ERROR("Cannot save passwords");
                 return 0;
             }
 
-            if(!insert.executeCommand()) {
+            if(!insert->executeCommand()) {
                 LOG_ERROR("Cannot save passwords");
                 return 0;
             }
@@ -425,20 +423,20 @@ DEFSMETHOD(PasswordManagerGroup_Remove)
         return 0;
     }
 
-    SQLiteStatement deleteStmt(m_passwordDB, String("DELETE FROM passwords where host=?1;"));
+    auto deleteStmt = m_passwordDB.prepareStatement("DELETE FROM passwords where host=?1;"_s);
 
-    if(deleteStmt.prepare())
+    if(!deleteStmt)
     {
         return 0;
     }
 
-    if(deleteStmt.bindText(1, host))
+    if(deleteStmt->bindText(1, host))
     {
         LOG_ERROR("Cannot save passwords");
         return 0;
     }
 
-    if(!deleteStmt.executeCommand()) {
+    if(!deleteStmt->executeCommand()) {
         LOG_ERROR("Cannot save passwords");
         return 0;
     }

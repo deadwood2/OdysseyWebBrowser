@@ -30,6 +30,7 @@
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/ContextMenu.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/StringToIntegerConversion.h>
 
 #include <proto/exec.h>
 #include <proto/intuition.h>
@@ -374,9 +375,9 @@ DEFMMETHOD(Import)
                 {
                     struct contextmenunode *cn;
                     cn = contextmenu_create(ContextMenuItemBaseApplicationTag + i,
-                                       menuAttributes[0].toInt(),
+                                       parseIntegerAllowingTrailingJunk<int>(menuAttributes[0]).value_or(0),
                                        (char *) menuAttributes[1].latin1().data(),
-                                       menuAttributes[2].toInt(),
+                                       parseIntegerAllowingTrailingJunk<int>(menuAttributes[2]).value_or(0),
                                        (char *) menuAttributes[3].latin1().data());
 
                     if(cn)

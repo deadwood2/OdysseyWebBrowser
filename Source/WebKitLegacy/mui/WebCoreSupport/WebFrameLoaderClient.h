@@ -51,8 +51,8 @@ public:
 
     void dispatchDidFailToStartPlugin(const WebCore::PluginView&) const;
 
-    Optional<WebCore::PageIdentifier> pageID() const final;
-    Optional<WebCore::FrameIdentifier> frameID() const final;
+    std::optional<WebCore::PageIdentifier> pageID() const final;
+    std::optional<WebCore::FrameIdentifier> frameID() const final;
 
     bool hasWebView() const override;
 
@@ -91,14 +91,14 @@ public:
     void dispatchWillClose() override;
     void dispatchDidStartProvisionalLoad() override;
     void dispatchDidReceiveTitle(const WebCore::StringWithDirection&) override;
-    void dispatchDidCommitLoad(Optional<WebCore::HasInsecureContent>,  Optional<WebCore::UsedLegacyTLS>) override;
+    void dispatchDidCommitLoad(std::optional<WebCore::HasInsecureContent>, std::optional<WebCore::UsedLegacyTLS>) override;
     void dispatchDidFailProvisionalLoad(const WebCore::ResourceError&, WebCore::WillContinueLoading) override;
     void dispatchDidFailLoad(const WebCore::ResourceError&) override;
     void dispatchDidFinishDocumentLoad() override;
     void dispatchDidFinishLoad() override;
     void dispatchDidReachLayoutMilestone(OptionSet<WebCore::LayoutMilestone>) override;
 
-    void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::PolicyCheckIdentifier, const String&, WebCore::FramePolicyFunction&&) override;
+    void dispatchDecidePolicyForResponse(const WebCore::ResourceResponse&, const WebCore::ResourceRequest&, WebCore::PolicyCheckIdentifier, const String&, WebCore::BrowsingContextGroupSwitchDecision, WebCore::FramePolicyFunction&&) override;
     void dispatchDecidePolicyForNewWindowAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, WebCore::FormState*, const WTF::String& frameName, WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&) override;
     void dispatchDecidePolicyForNavigationAction(const WebCore::NavigationAction&, const WebCore::ResourceRequest&, const WebCore::ResourceResponse& redirectResponse, WebCore::FormState*, WebCore::PolicyDecisionMode, WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&) override;
     void cancelPolicyCheck() override;
@@ -119,7 +119,7 @@ public:
 
     void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = String()) override;
 
-    void committedLoad(WebCore::DocumentLoader*, const char*, int) override;
+    void committedLoad(WebCore::DocumentLoader*, const uint8_t*, int) override;
     void finishedLoading(WebCore::DocumentLoader*) override;
 
     void willChangeTitle(WebCore::DocumentLoader*) override;

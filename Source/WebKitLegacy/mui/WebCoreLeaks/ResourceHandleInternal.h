@@ -31,6 +31,7 @@
 #include <WebCore/ResourceHandleClient.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/Timer.h>
+#include <wtf/MonotonicTime.h>
 
 #if USE(CFURLCONNECTION)
 #include "ResourceHandleCFURLConnectionDelegate.h"
@@ -65,7 +66,7 @@ class ResourceHandleInternal {
     WTF_MAKE_NONCOPYABLE(ResourceHandleInternal);
     WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(ResourceHandleInternal);
 public:
-    ResourceHandleInternal(ResourceHandle* loader, NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff)
+    ResourceHandleInternal(ResourceHandle* loader, NetworkingContext* context, const ResourceRequest& request, ResourceHandleClient* client, bool defersLoading, bool shouldContentSniff, bool shouldContentEncodingSniff, RefPtr<SecurityOrigin>&& sourceOrigin, bool isMainFrameNavigation)
         : m_context(context)
         , m_client(client)
         , m_firstRequest(request)
@@ -85,6 +86,8 @@ public:
         , m_bodyDataSent(0)
 #endif
         , m_failureTimer(*loader, &ResourceHandle::failureTimerFired)
+        , m_sourceOrigin(WTFMove(sourceOrigin))
+        , m_isMainFrameNavigation(isMainFrameNavigation)
     {
         const URL& url = m_firstRequest.url();
         m_user = url.user();
@@ -132,13 +135,17 @@ public:
     std::unique_ptr<CurlResourceHandleDelegate> m_delegate;
     
     bool m_cancelled { false };
-    unsigned m_redirectCount { 0 };
     unsigned m_authFailureCount { 0 };
     bool m_addedCacheValidationHeaders { false };
     RefPtr<CurlRequest> m_curlRequest;
     RefPtr<SynchronousLoaderMessageQueue> m_messageQueue;
-    MonotonicTime m_startTime;
 #endif
+    Box<NetworkLoadMetrics> m_networkLoadMetrics;
+    MonotonicTime m_startTime;
+    uint16_t m_redirectCount { 0 };
+    bool m_failsTAOCheck { false };
+    bool m_hasCrossOriginRedirect { false };
+    bool m_isCrossOrigin { false };
 
 #if PLATFORM(MUI)
     // for networklistclass, unimplemented sice 2.24
@@ -160,6 +167,8 @@ public:
     AuthenticationChallenge m_currentWebChallenge;
     ResourceHandle::FailureType m_scheduledFailureType { ResourceHandle::NoFailure };
     Timer m_failureTimer;
+    RefPtr<SecurityOrigin> m_sourceOrigin;
+    bool m_isMainFrameNavigation { false };
 };
 
 } // namespace WebCore

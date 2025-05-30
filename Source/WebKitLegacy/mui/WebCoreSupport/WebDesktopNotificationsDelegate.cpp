@@ -50,8 +50,6 @@ bool WebDesktopNotificationsDelegate::show(Notification* object)
     if (object->scriptExecutionContext()->isWorkerGlobalScope())
     return false;
 
-    object->setPendingActivity(*object);
-    
     kprintf("show [%s]\n%s\n", object->title().latin1().data(), object->body().latin1().data());
 
     return true;
@@ -86,14 +84,13 @@ void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecution
 }
 #endif
 
-void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecutionContext* context, RefPtr<NotificationPermissionCallback>&& callback)
+void WebDesktopNotificationsDelegate::requestPermission(WebCore::ScriptExecutionContext& context, PermissionHandler&& permissionHandler)
 {
   D(kprintf("requestPermission\n"));
 
-    NotificationClient::Permission permission = checkPermission(context);
+    NotificationClient::Permission permission = checkPermission(&context);
     if (permission != NotificationClient::Permission::Default) {
-        if (callback)
-            callback->handleEvent(permission);
+        permissionHandler(permission);
         return;
     }
 }
@@ -114,9 +111,4 @@ NotificationClient::Permission WebDesktopNotificationsDelegate::checkPermission(
     return NotificationClient::Permission::Granted;
 }
 
-bool WebDesktopNotificationsDelegate::hasPendingPermissionRequests(WebCore::ScriptExecutionContext*) const
-{
-    D(kprintf("hasPendingPermissionRequests\n"));
-    return false;
-}
 #endif  // ENABLE(NOTIFICATIONS)
