@@ -43,6 +43,7 @@
 #include <WebCore/FrameLoadRequest.h>
 #include <WebCore/FrameView.h>
 #include <WebCore/GraphicsContext.h>
+#include <WebCore/GraphicsContextCairo.h>
 #include <WebCore/HitTestRequest.h>
 #include <WebCore/HitTestResult.h>
 #include <WebCore/IntRect.h>
@@ -69,7 +70,6 @@
 #include "WebScriptWorld.h"
 #include "WebView.h"
 #include <WebCore/WindowFeatures.h>
-#include "PlatformContextCairo.h"
 #include <WebCore/HTMLTextFormControlElement.h>
 
 #include <WebCore/CommonVM.h>
@@ -777,8 +777,7 @@ BalRectangle WebViewPrivate::onExpose(BalEventExpose event)
     volatile double start = 0, layout = 0, paint = 0, blit = 0, inspector = 0; //
     if(renderBenchmark) start = MonotonicTime::now().secondsSinceEpoch().value(); //
 
-    PlatformGraphicsContext pctx(widget->cr);
-    GraphicsContext ctx(&pctx);
+    GraphicsContextCairo ctx(widget->cr);
     IntRect rect(m_webView->dirtyRegion());
 
     //kprintf("WebViewPrivate::onExpose(%d,%d,%d,%d)\n", rect.x(), rect.y(), rect.width(), rect.height());
@@ -890,8 +889,7 @@ bool WebViewPrivate::screenshot(int &requested_width, int& requested_height, Vec
             {
                 if (frame->contentRenderer())
                 {
-                    PlatformGraphicsContext pctx(cr);
-                    GraphicsContext ctx(&pctx);
+                    GraphicsContextCairo ctx(cr);
 
                     IntRect rect(m_rect);
 
@@ -935,8 +933,7 @@ bool WebViewPrivate::screenshot(String& path)
             {
                 if (frame->contentRenderer())
                 {
-                    PlatformGraphicsContext pctx(cr);
-                    GraphicsContext ctx(&pctx);
+                    GraphicsContextCairo ctx(cr);
 
                     IntRect rect(m_rect);
 

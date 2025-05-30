@@ -43,7 +43,7 @@ String platformDefaultLanguage()
   return String(get_language(clanguage, sizeof(clanguage)));
 }
 
-Vector<String> platformUserPreferredLanguages()
+Vector<String> platformUserPreferredLanguages(ShouldMinimizeLanguages)
 {
     Vector<String> userPreferredLanguages;
     userPreferredLanguages.append(platformDefaultLanguage());
