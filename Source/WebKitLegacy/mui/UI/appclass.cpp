@@ -1214,6 +1214,8 @@ DEFDISP
     MemoryCache::singleton().setDisabled(true);
 
     delete &commonVM(); /* This looks weird, but it stops JSC Heap Collector Thread */
+#if 0
+// broken 2.34.6
 #if ENABLE(JIT)
     if (JSC::JITWorklist::existingGlobalWorklistOrNull())
         JSC::JITWorklist::existingGlobalWorklistOrNull()->shutdown();
@@ -1223,6 +1225,7 @@ DEFDISP
 #endif
 #if ENABLE(FTL_JIT)
     JSC::DFG::shutdownGlobalFTLWorklist();
+#endif
 #endif
 
     return DOSUPER;
