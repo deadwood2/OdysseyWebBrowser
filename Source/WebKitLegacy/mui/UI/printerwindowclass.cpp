@@ -28,11 +28,11 @@
 
 #include <WebCore/Document.h>
 #include <WebCore/FrameView.h>
+#include <WebCore/GraphicsContextCairo.h>
 #include <WebCore/HostWindow.h>
 
 #include "WebFrame.h"
 #include "WebView.h"
-#include "PlatformContextCairo.h"
 
 #include <proto/dos.h>
 #include <cairo/cairo-ps.h>
@@ -409,8 +409,7 @@ DEFTMETHOD(PrinterWindow_Start)
                     {
                         if (data->frame->contentRenderer())
                         {
-                            PlatformGraphicsContext pctx(cr);
-                            GraphicsContext ctx(&pctx);
+                            GraphicsContextCairo ctx(cr);
 
                             for(int i = pj->first - 1; i < pj->last; i++)
                             {
