@@ -113,7 +113,7 @@ RefPtr<ResourceHandle> ResourceHandle::create2(NetworkingContext* context, const
     if (auto constructor = builtinResourceHandleConstructorMap().get(request.url().protocol().toStringWithoutCopying()))
         return constructor(request, client);
 
-    auto newHandle = adoptRef(*new ResourceHandle(context, request, client, defersLoading, shouldContentSniff, shouldContentEncodingSniff));
+    auto newHandle = adoptRef(*new ResourceHandle(context, request, client, defersLoading, shouldContentSniff, shouldContentEncodingSniff, { }, false));
 
     if (newHandle->d->m_scheduledFailureType != NoFailure)
         return newHandle;

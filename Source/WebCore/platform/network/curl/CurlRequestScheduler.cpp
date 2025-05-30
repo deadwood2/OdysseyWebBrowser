@@ -130,7 +130,7 @@ void CurlRequestScheduler::startOrWakeUpThread()
 #endif
         workerThread();
 
-        auto locker = holdLock(m_mutex);
+        Locker locker { m_mutex };
         m_runThread = false;
 #if PLATFORM(MUI)
         close_SocketBase();
@@ -163,7 +163,6 @@ void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
 #if PLATFORM(MUI)
 void CurlRequestScheduler::stopCurlThread()
 {
-	m_stopped = true;
 	stopThread();
 }
 

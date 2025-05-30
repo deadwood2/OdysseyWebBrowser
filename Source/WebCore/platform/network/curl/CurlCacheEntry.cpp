@@ -113,7 +113,7 @@ public:
 
     bool getFileSize(const String& path, long long& result)
     {
-        String filename = FileSystem::pathGetFileName(path);
+        String filename = FileSystem::pathFileName(path);
         auto it = m_sizes.find(filename);
         if (it != m_sizes.end())
         {
@@ -123,7 +123,12 @@ public:
             return true;
         }
 
-        return FileSystem::getFileSize(path, result);
+        auto res = FileSystem::fileSize(path);
+        if (!res)
+            return false;
+        
+        result = *res;
+        return true;
     }
 
 private:
@@ -475,6 +480,8 @@ uint64_t CurlCacheEntry::entrySize()
             LOG(Network, "Cache Error: Could not get file size of %s\n", m_contentFilename.latin1().data());
             return m_entrySize;
         }
+
+        m_entrySize = headerFileSize + contentFileSize;
 #else
         auto headerFileSize = FileSystem::fileSize(m_headerFilename);
         if (!headerFileSize) {
@@ -486,9 +493,10 @@ uint64_t CurlCacheEntry::entrySize()
             LOG(Network, "Cache Error: Could not get file size of %s\n", m_contentFilename.latin1().data());
             return m_entrySize;
         }
-#endif
 
         m_entrySize = *headerFileSize + *contentFileSize;
+#endif
+
     }
 
     return m_entrySize;

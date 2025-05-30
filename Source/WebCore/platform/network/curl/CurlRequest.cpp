@@ -292,9 +292,6 @@ CURL* CurlRequest::setupTransfer()
         m_curlHandle->disableAcceptEncoding();
 #endif
 
-    if (m_shouldSuspend)
-        setRequestPaused(true);
-
     m_performStartTime = MonotonicTime::now();
 
     return m_curlHandle->handle();
