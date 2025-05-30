@@ -200,10 +200,6 @@ private:
     
     WebFrame* m_webFrame;
 
-    // Points to the plugin view that data should be redirected to.
-    WebCore::PluginView* m_pluginView;
-
-    bool m_hasSentResponseToPlugin;
     int m_time;
 
     class WebFramePolicyListenerPrivate;

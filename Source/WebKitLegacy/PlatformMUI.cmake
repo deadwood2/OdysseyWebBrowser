@@ -150,17 +150,6 @@ list(APPEND WebKitLegacy_SOURCES
     mui/WebView.cpp
     mui/WebURLResponse.cpp
 
-    mui/Plugins/npapi.cpp
-    mui/Plugins/PluginDatabase.cpp
-    mui/Plugins/PluginDatabaseMUI.cpp
-    mui/Plugins/PluginDataMorphOS.cpp
-    mui/Plugins/PluginMainThreadScheduler.cpp
-    mui/Plugins/PluginPackage.cpp
-    mui/Plugins/PluginPackageMorphOS.cpp
-    mui/Plugins/PluginStream.cpp
-    mui/Plugins/PluginView.cpp
-    mui/Plugins/PluginViewMorphOS.cpp
-
     mui/WebCoreSupport/WebChromeClient.cpp
     mui/WebCoreSupport/WebContextMenuClient.cpp
     mui/WebCoreSupport/WebDesktopNotificationsDelegate.cpp

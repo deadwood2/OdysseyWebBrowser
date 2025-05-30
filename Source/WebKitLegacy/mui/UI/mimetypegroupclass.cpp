@@ -30,8 +30,6 @@
 #include <WebCore/GraphicsContext.h>
 #include <wtf/text/CString.h>
 #include <WebCore/MIMETypeRegistry.h>
-#include "PluginDatabase.h"
-#include "PluginPackage.h"
 #include <WebCore/PluginData.h>
 
 #include <proto/exec.h>
@@ -533,37 +531,6 @@ DEFMMETHOD(Import)
     mimetype_create("audio/ogg",          "ogg oga", MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
     mimetype_create("video/ogg",          "ogv",     MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
     mimetype_create("video/x-theora+ogg", "ogv",     MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
-
-    /* Loaded Plugins */
-    PluginDatabase *pluginDatabase = PluginDatabase::installedPlugins();
-    for(unsigned i = 0; i < pluginDatabase->plugins().size(); i++)
-    {
-        PluginPackage *package = pluginDatabase->plugins()[i];
-
-        if(package)
-        {
-            const MIMEToDescriptionsMap& mimeToDescriptions = package->mimeToDescriptions();
-            MIMEToDescriptionsMap::const_iterator end = mimeToDescriptions.end();
-            for (MIMEToDescriptionsMap::const_iterator it = mimeToDescriptions.begin(); it != end; ++it)
-            {
-                String mimetype    = it->key;
-                String description = it->value;
-                
-                // build the suffixes
-                String suffixes    = "";
-                Vector<String> extensions = package->mimeToExtensions().get(mimetype);
-
-                for (unsigned j = 0; j < extensions.size(); j++) {
-                    if (j > 0)
-                        suffixes.append(" ");
-
-                    suffixes.append(extensions[j]);
-                }
-
-                mimetype_create((char *) mimetype.latin1().data(), (char *) suffixes.latin1().data(), MIMETYPE_ACTION_PLUGIN, "", "", TRUE, (char *) description.latin1().data());
-            }
-        }
-    }
 
     /* Fill user types */
     if((id=(muiNotifyData(obj)->mnd_ObjectID)))
