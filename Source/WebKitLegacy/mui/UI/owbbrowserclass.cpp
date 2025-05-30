@@ -50,6 +50,7 @@
 #include <WebCore/FrameLoadRequest.h>
 #include <WebCore/FrameView.h>
 #include <WebCore/HostWindow.h>
+#include <WebCore/GraphicsContextCairo.h>
 #include <wtf/MainThread.h>
 #include <WebCore/Page.h>
 #include <WebCore/PlatformMouseEvent.h>
@@ -69,7 +70,6 @@
 #include "WebIconDatabase.h"
 #include "AutofillManager.h"
 #include "TopSitesManager.h"
-#include "PlatformContextCairo.h"
 
 #if ENABLE(VIDEO)
 #include <WebCore/HTMLMediaElement.h>
@@ -3111,8 +3111,7 @@ DEFSMETHOD(OWBBrowser_Print)
             {
                 if (frame->contentRenderer())
                 {
-                    PlatformGraphicsContext pctx(cr);
-                    GraphicsContext ctx(&pctx);
+                    GraphicsContextCairo ctx(cr);
 
                     for(int i = 0; i < printContext.pageCount(); i++)
                     {
