@@ -68,7 +68,6 @@
 #include <WebCore/HTMLInputElement.h>
 #include <WebCore/ContextMenu.h>
 #include <WebCore/ContextMenuController.h>
-#include "PluginDatabase.h"
 #include <wtf/RunLoop.h>
 #if 0
 // broken 2.18
@@ -1140,25 +1139,6 @@ DEFNEW
     return (IPTR)obj;
 }
 
-void FreeWebKitLeakedObjects()
-{
-  static int freed = FALSE;
-
-  if(!freed)
-  {
-    /* Seems webkit leaks all plugins, sigh, let's do it ourselves */
-    PluginDatabase * sharedPluginDatabase = PluginDatabase::installedPlugins();
-    Vector<PluginPackage *> plugins = sharedPluginDatabase->plugins();
-    for(size_t i = 0; i < plugins.size(); i++)
-    {
-        plugins[i]->unload();
-    }
-
-    /* More to come? :) */
-    freed = TRUE;
-  }
-}
-
 DEFDISP
 {
     GETDATA;
@@ -1212,8 +1192,6 @@ DEFDISP
         delete sharedResourceHandleManager;
     }
 #endif
-
-    FreeWebKitLeakedObjects();
 
     removeClipboardMonitor();
 

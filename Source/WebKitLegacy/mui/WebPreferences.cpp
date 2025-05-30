@@ -34,7 +34,6 @@
 #include <wtf/FileSystem.h>
 #include <WebCore/Font.h>
 #include <wtf/text/WTFString.h>
-#include "PluginDatabase.h"
 #include <wtf/text/StringHash.h>
 #include "ObserverServiceData.h"
 
@@ -1122,7 +1121,6 @@ void WebPreferences::setFontSmoothingContrast(float contrast)
 
 void WebPreferences::addExtraPluginDirectory(const char* directory)
 {
-    PluginDatabase::installedPlugins()->addExtraPluginDirectory(directory);
 }
 
 

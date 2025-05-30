@@ -77,9 +77,6 @@
 #include <WebCore/Logging.h>
 #include <WebCore/MIMETypeRegistry.h>
 #include <WebCore/Page.h>
-#include "PluginDatabase.h"
-#include "PluginPackage.h"
-#include "PluginView.h"
 #include <WebCore/ResourceHandle.h>
 #include "ResourceHandleInternal.h"
 #include <WebCore/ResourceLoader.h>
@@ -124,8 +121,6 @@ public:
 
 WebFrameLoaderClient::WebFrameLoaderClient(WebFrame* webFrame)
     : m_webFrame(webFrame)
-    , m_pluginView(0)
-    , m_hasSentResponseToPlugin(false)
     , m_policyListenerPrivate(std::make_unique<WebFramePolicyListenerPrivate>())
 {
     ASSERT_ARG(webFrame, webFrame);
@@ -138,8 +133,6 @@ WebFrameLoaderClient::~WebFrameLoaderClient()
         delete m_webFrame;
         m_webFrame = 0;
     }
-    if (m_pluginView)
-        delete m_pluginView;
     m_policyListenerPrivate = nullptr;
 }
 
@@ -379,55 +372,21 @@ void WebFrameLoaderClient::dispatchShow()
 
 void WebFrameLoaderClient::setMainDocumentError(DocumentLoader*, const ResourceError& error)
 {
-    if (!m_pluginView)
-        return;
-
-    if (m_pluginView->status() == PluginStatusLoadedSuccessfully) //
-        m_pluginView->didFail(error);
-    m_pluginView = 0;
-    m_hasSentResponseToPlugin = false;
 }
 
 void WebFrameLoaderClient::committedLoad(DocumentLoader* loader, const char* data, int length)
 {
-    //      const String& textEncoding = loader->response().textEncodingName();
-
-    if (!m_pluginView)
     loader->commitData(data, length);
 
     // If the document is a stand-alone media document, now is the right time to cancel the WebKit load.
     // FIXME: This code should be shared across all ports. <http://webkit.org/b/48762>.
     Frame* coreFrame = core(m_webFrame);
     if (coreFrame->document()->isMediaDocument())
-    loader->cancelMainResourceLoad(pluginWillHandleLoadError(loader->response()));
-    
-    if (!m_pluginView || m_pluginView->status() != PluginStatusLoadedSuccessfully) //
-        return;
-
-    if (!m_hasSentResponseToPlugin) {
-    m_pluginView->didReceiveResponse(loader->response());
-        // didReceiveResponse sets up a new stream to the plug-in. on a full-page plug-in, a failure in
-        // setting up this stream can cause the main document load to be cancelled, setting m_pluginView
-        // to null
-        if (!m_pluginView)
-            return;
-        m_hasSentResponseToPlugin = true;
-    }
-    m_pluginView->didReceiveData(data, length);
+        loader->cancelMainResourceLoad(pluginWillHandleLoadError(loader->response()));
 }
 
 void WebFrameLoaderClient::finishedLoading(DocumentLoader*)
 {
-    //committedLoad(loader, 0, 0);
-    
-    if (!m_pluginView) {
-        return;
-    }
-
-    if (m_pluginView->status() == PluginStatusLoadedSuccessfully) //
-        m_pluginView->didFinishLoading();
-    m_pluginView = 0;
-    m_hasSentResponseToPlugin = false;
 }
 
 void WebFrameLoaderClient::updateGlobalHistory()
@@ -615,20 +574,11 @@ RefPtr<Frame> WebFrameLoaderClient::createFrame(const String& name, HTMLFrameOwn
 
 RefPtr<Widget> WebFrameLoaderClient::createPlugin(const IntSize& pluginSize, HTMLPlugInElement& element, const URL& url, const Vector<String>& paramNames, const Vector<String>& paramValues, const String& mimeType, bool loadManually)
 {
-    Frame* frame = core(m_webFrame);
-    RefPtr<PluginView> pluginView = PluginView::create(frame, pluginSize, &element, url, paramNames, paramValues, mimeType, loadManually);
-
-    if (pluginView->status() == PluginStatusLoadedSuccessfully)
-        return pluginView;
-
-    return pluginView;
+    return nullptr;
 }
 
 void WebFrameLoaderClient::redirectDataToPlugin(Widget& pluginWidget)
 {
-    // Ideally, this function shouldn't be necessary, see <rdar://problem/4852889>
-
-    m_pluginView = static_cast<PluginView*>(&pluginWidget);
 }
 
 WebHistory* WebFrameLoaderClient::webHistory() const
@@ -712,8 +662,7 @@ bool WebFrameLoaderClient::canShowMIMEType(const String& type) const
     bool show =    ltype.isEmpty() ||
       MIMETypeRegistry::isSupportedImageMIMEType(ltype) || 
       MIMETypeRegistry::isSupportedNonImageMIMEType(ltype) ||
-      MIMETypeRegistry::isSupportedMediaMIMEType(ltype) ||
-      PluginDatabase::installedPlugins()->isMIMETypeRegistered(ltype);
+      MIMETypeRegistry::isSupportedMediaMIMEType(ltype);
 
     //kprintf("WebView::canShowMIMEType(%s): %s\n", ltype.utf8().data(), show ? "yes" : "no");
 
@@ -964,21 +913,11 @@ ObjectContentType WebFrameLoaderClient::objectContentType(const URL& url, const 
 {
     String mimeType = mimeTypeIn;
 
-    if (mimeType.isEmpty()) {
-        String decodedPath = decodeURLEscapeSequences(url.path());
-        mimeType = PluginDatabase::installedPlugins()->MIMETypeForExtension(decodedPath.substring(decodedPath.reverseFind('.') + 1));
-    }
-
     if (mimeType.isEmpty())
         return ObjectContentType::Frame; // Go ahead and hope that we can display the content.
 
-    bool plugInSupportsMIMEType = PluginDatabase::installedPlugins()->isMIMETypeRegistered(mimeType);
-
     if (MIMETypeRegistry::isSupportedImageMIMEType(mimeType))
-        return plugInSupportsMIMEType ? WebCore::ObjectContentType::PlugIn : WebCore::ObjectContentType::Image;
-
-    if (plugInSupportsMIMEType)
-        return WebCore::ObjectContentType::PlugIn;
+        return WebCore::ObjectContentType::Image;
 
     if (MIMETypeRegistry::isSupportedNonImageMIMEType(mimeType))
         return WebCore::ObjectContentType::Frame;
