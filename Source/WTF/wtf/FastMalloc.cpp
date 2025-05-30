@@ -51,7 +51,7 @@
 #include <notify.h>
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <cstdint>
 extern "C" { void dprintf(const char *,... ); }
 #undef CRASH
