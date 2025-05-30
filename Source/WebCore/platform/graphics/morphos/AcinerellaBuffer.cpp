@@ -284,7 +284,7 @@ public:
 			
 			// only set on 1st request (or when we're reading from pos=0)
 			if (0 == m_bufferPositionAbs)
-				m_length = reinterpret_cast<int64_t>(m_response.expectedContentLength());
+				m_length = static_cast<int64_t>(m_response.expectedContentLength());
 
 			if (m_response.shouldRedirect())
 			{

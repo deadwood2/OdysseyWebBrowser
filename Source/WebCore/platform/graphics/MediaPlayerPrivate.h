@@ -268,7 +268,7 @@ public:
     virtual void simulateAudioInterruption() { }
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	virtual void selectHLSStream(const String&) { }
 #endif
 

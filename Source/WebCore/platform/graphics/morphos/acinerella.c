@@ -93,6 +93,10 @@ struct _ac_video_decoder {
 	AVFrame *pFrame;
 	AVFrame *pFrameRGB;
 	struct SwsContext *pSwsCtx;
+	AVFrame *pScaledFrameRGB;
+	struct SwsContext *pScaledSwsCtx;
+	int scaled_frame_width;
+	int scaled_frame_height;
 };
 
 typedef struct _ac_video_decoder ac_video_decoder;
@@ -955,6 +959,54 @@ void ac_free_decoder_frame(lp_ac_decoder_frame pFrame)
 	av_free(frame);
 }
 
+void ac_scale_to_scaled_rgb_decoder_frame(lp_ac_decoder_frame pFrame, lp_ac_decoder pDecoder, int dst_width, int dst_height)
+{
+	struct _ac_decoder_frame_internal *frame = (struct _ac_decoder_frame_internal *)pFrame;
+	lp_ac_video_decoder vDecoder = (lp_ac_video_decoder)pDecoder;
+
+	if (vDecoder->pScaledFrameRGB == NULL || vDecoder->scaled_frame_width != dst_width ||
+		vDecoder->scaled_frame_height != dst_height)
+	{
+		if (vDecoder->pScaledFrameRGB) av_frame_free(&(vDecoder->pScaledFrameRGB));
+
+		vDecoder->pScaledFrameRGB = av_frame_alloc();
+
+		vDecoder->scaled_frame_width = dst_width;
+		vDecoder->scaled_frame_height = dst_height;
+
+		enum AVPixelFormat pix_fmt_out = convert_pix_format(vDecoder->decoder.pacInstance->output_format);
+		size_t buffer_size = av_image_get_buffer_size(pix_fmt_out, dst_width, dst_height, 1);
+		uint8_t *pBuffer = (uint8_t *)av_malloc(buffer_size);
+
+		memset(pBuffer, 0, buffer_size);
+
+		av_image_fill_arrays(vDecoder->pScaledFrameRGB->data, vDecoder->pScaledFrameRGB->linesize,
+									pBuffer, pix_fmt_out,
+									dst_width,
+									dst_height, 1);
+	}
+
+	if (NULL == (vDecoder->pScaledSwsCtx = sws_getCachedContext(
+		vDecoder->pScaledSwsCtx, vDecoder->pCodecCtx->width,
+		vDecoder->pCodecCtx->height, vDecoder->pCodecCtx->pix_fmt,
+		dst_width, dst_height,
+		convert_pix_format(vDecoder->decoder.pacInstance->output_format),
+		/*SWS_BICUBIC*/SWS_FAST_BILINEAR, NULL, NULL, NULL)))
+	{
+		return;
+	}
+
+	if (sws_scale(vDecoder->pScaledSwsCtx,
+		 (const uint8_t *const *)(frame->pFrame->data),
+		 frame->pFrame->linesize,
+		 0,  //?
+		 vDecoder->pCodecCtx->height, vDecoder->pScaledFrameRGB->data,
+		 vDecoder->pScaledFrameRGB->linesize) < 0)
+	{
+		return;
+	}
+}
+
 ac_receive_frame_rc ac_receive_frame(lp_ac_decoder pDecoder, lp_ac_decoder_frame pFrame)
 {
 	if (!pDecoder || !pFrame)
@@ -1244,6 +1296,18 @@ AVFrame * CALL_CONVT ac_get_frame(lp_ac_decoder decoder) {
 
 	lp_ac_video_decoder pDecoder = (lp_ac_video_decoder) decoder;
 	return pDecoder->pFrameRGB;
+
+error:
+	return NULL;
+}
+
+AVFrame * CALL_CONVT ac_get_frame_scaled(lp_ac_decoder decoder) {
+	ERR(decoder);
+
+	ERR(decoder->type == AC_DECODER_TYPE_VIDEO);
+
+	lp_ac_video_decoder pDecoder = (lp_ac_video_decoder) decoder;
+	return pDecoder->pScaledFrameRGB;
 
 error:
 	return NULL;
