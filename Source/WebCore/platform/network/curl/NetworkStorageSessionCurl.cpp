@@ -58,6 +58,7 @@ static String defaultCookieJarPath()
     return defaultFileName;
 #endif
 #endif
+#endif
 }
 
 static String cookiesForSession(const NetworkStorageSession& session, const URL& firstParty, const URL& url, bool forHTTPHeader)

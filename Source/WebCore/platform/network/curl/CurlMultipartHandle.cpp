@@ -38,6 +38,10 @@
 #include "SharedBuffer.h"
 #include <wtf/StringExtras.h>
 
+extern "C" {
+    void *memmem(const void *h0, size_t k, const void *n0, size_t l);
+}
+
 namespace WebCore {
 
 std::unique_ptr<CurlMultipartHandle> CurlMultipartHandle::createIfNeeded(CurlMultipartHandleClient& client, const CurlResponse& response)
