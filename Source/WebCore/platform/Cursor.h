@@ -158,6 +158,7 @@ public:
     WEBCORE_EXPORT void setAsPlatformCursor() const;
 
 #if PLATFORM(MUI)
+    Cursor(const Cursor&) = default;
     Cursor& operator=(const Cursor& other);
 #endif
 
