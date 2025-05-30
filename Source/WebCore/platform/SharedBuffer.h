@@ -211,7 +211,7 @@ public:
     bool operator==(const SharedBuffer&) const;
     bool operator!=(const SharedBuffer& other) const { return !operator==(other); }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     ReadWriteLock::ReadLock& readLock() { return m_rwLock.read(); };
     ReadWriteLock::WriteLock& writeLock() { return m_rwLock.write(); };
 #endif
@@ -248,7 +248,7 @@ private:
     bool internallyConsistent() const;
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	mutable ReadWriteLock m_rwLock;
 #endif
 
