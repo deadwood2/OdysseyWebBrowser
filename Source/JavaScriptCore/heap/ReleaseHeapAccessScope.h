@@ -25,7 +25,11 @@
 
 #pragma once
 
+#if defined(WEBCORELEAKS)
+#include <JavaScriptCore/Heap.h>
+#else
 #include "Heap.h"
+#endif
 
 namespace JSC {
 

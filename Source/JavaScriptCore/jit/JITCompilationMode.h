@@ -23,7 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#pragma once
+#ifndef __JITCOMPILATIONMODE__
+#define __JITCOMPILATIONMODE__
 
 #include <wtf/PrintStream.h>
 
@@ -55,3 +56,5 @@ namespace WTF {
 void printInternal(PrintStream&, JSC::JITCompilationMode);
 
 } // namespace WTF
+
+#endif
