@@ -620,7 +620,7 @@ public:
     void simulateAudioInterruption();
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	void selectHLSStream(const String& url);
 #endif
 

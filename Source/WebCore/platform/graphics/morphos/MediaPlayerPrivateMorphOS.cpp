@@ -17,6 +17,12 @@
 #include <proto/exec.h>
 #include <exec/exec.h>
 
+#if OS(AROS)
+#include <aros/debug.h>
+#undef D
+#define dprintf bug
+#endif
+
 #define D(x)
 #define DM(x)
 #define DMHOST(x) 

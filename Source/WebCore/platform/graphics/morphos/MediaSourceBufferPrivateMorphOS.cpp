@@ -17,6 +17,12 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 
+#if OS(AROS)
+#include <aros/debug.h>
+#undef D
+#define dprintf bug
+#endif
+
 #define D(x)
 #define DR(x) //do { if (m_videoDecoderMask == 1) x; } while (0);
 #define DIO(x) //do { if (m_videoDecoderMask == 1) x; } while (0);
