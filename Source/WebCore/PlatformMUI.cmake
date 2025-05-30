@@ -7,7 +7,7 @@ include(platform/FreeType.cmake)
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/cairo"
     "${WEBCORE_DIR}/platform/graphics/cairo"
-    "${WEBCORE_DIR}/platform/graphics/mui"
+    "${WEBCORE_DIR}/platform/graphics/morphos"
     "${WEBCORE_DIR}/platform/graphics/freetype"
     "${WEBCORE_DIR}/platform/graphics/texmap"
     "${WEBCORE_DIR}/platform/graphics/opengl"
@@ -38,23 +38,23 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
 
-    platform/graphics/mui/acinerella.c
-    platform/graphics/mui/AcinerellaAudioDecoder.cpp
-    platform/graphics/mui/AcinerellaBuffer.cpp
-    platform/graphics/mui/AcinerellaContainer.cpp
-    platform/graphics/mui/AcinerellaDecoder.cpp
-    platform/graphics/mui/AcinerellaHLS.cpp
-    platform/graphics/mui/AcinerellaMuxer.cpp
-    platform/graphics/mui/AcinerellaPointer.cpp
-    platform/graphics/mui/AcinerellaVideoDecoder.cpp
-    platform/graphics/mui/AudioTrackPrivateMorphOS.cpp
-    platform/graphics/mui/DisplayRefreshMonitorMorphOS.cpp
-    platform/graphics/mui/MediaDescriptionMorphOS.cpp
-    platform/graphics/mui/MediaPlayerPrivateMorphOS.cpp
-    platform/graphics/mui/MediaSampleMorphOS.cpp
-    platform/graphics/mui/MediaSourceBufferPrivateMorphOS.cpp
-    platform/graphics/mui/MediaSourcePrivateMorphOS.cpp
-    platform/graphics/mui/VideoTrackPrivateMorphOS.cpp
+    platform/graphics/morphos/acinerella.c
+    platform/graphics/morphos/AcinerellaAudioDecoder.cpp
+    platform/graphics/morphos/AcinerellaBuffer.cpp
+    platform/graphics/morphos/AcinerellaContainer.cpp
+    platform/graphics/morphos/AcinerellaDecoder.cpp
+    platform/graphics/morphos/AcinerellaHLS.cpp
+    platform/graphics/morphos/AcinerellaMuxer.cpp
+    platform/graphics/morphos/AcinerellaPointer.cpp
+    platform/graphics/morphos/AcinerellaVideoDecoder.cpp
+    platform/graphics/morphos/AudioTrackPrivateMorphOS.cpp
+    platform/graphics/morphos/DisplayRefreshMonitorMorphOS.cpp
+    platform/graphics/morphos/MediaDescriptionMorphOS.cpp
+    platform/graphics/morphos/MediaPlayerPrivateMorphOS.cpp
+    platform/graphics/morphos/MediaSampleMorphOS.cpp
+    platform/graphics/morphos/MediaSourceBufferPrivateMorphOS.cpp
+    platform/graphics/morphos/MediaSourcePrivateMorphOS.cpp
+    platform/graphics/morphos/VideoTrackPrivateMorphOS.cpp
 
     platform/linux/FileIOLinux.cpp
 

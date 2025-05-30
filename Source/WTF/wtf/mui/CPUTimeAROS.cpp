@@ -26,9 +26,9 @@
 
 namespace WTF {
 
-Optional<CPUTime> CPUTime::get()
+std::optional<CPUTime> CPUTime::get()
 {
-    return WTF::nullopt;
+    return std::nullopt;
 }
 
 Seconds CPUTime::forCurrentThread()

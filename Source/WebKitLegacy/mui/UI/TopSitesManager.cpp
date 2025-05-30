@@ -32,6 +32,7 @@
 #include "WebView.h"
 #include "WebFrame.h"
 #include <wtf/text/WTFString.h>
+#include <wtf/text/StringToIntegerConversion.h>
 
 #include "gui.h"
 #include <clib/debug_protos.h>
@@ -79,38 +80,38 @@ TopSitesManager::TopSitesManager()
     {
         if(!m_topSitesDB.tableExists("topsites"))
         {
-            m_topSitesDB.executeCommand("CREATE TABLE topsites (url TEXT, title TEXT, screenshot BLOB, visitCount INTEGER, lastAccessed DOUBLE);");    
+            m_topSitesDB.executeCommand("CREATE TABLE topsites (url TEXT, title TEXT, screenshot BLOB, visitCount INTEGER, lastAccessed DOUBLE);"_s);    
         }
         
         if(!m_topSitesDB.tableExists("settings"))
         {
-            m_topSitesDB.executeCommand("CREATE TABLE settings (displayMode INTEGER, maxEntries INTEGER, screenshotSize INTEGER, filterMode INTEGER);");
+            m_topSitesDB.executeCommand("CREATE TABLE settings (displayMode INTEGER, maxEntries INTEGER, screenshotSize INTEGER, filterMode INTEGER);"_s);
             
-            SQLiteStatement insertStmt(m_topSitesDB, "INSERT INTO settings (displayMode, maxEntries, screenshotSize, filterMode) VALUES (?1, ?2, ?3, ?4);");
+            auto insertStmt = m_topSitesDB.prepareStatement("INSERT INTO settings (displayMode, maxEntries, screenshotSize, filterMode) VALUES (?1, ?2, ?3, ?4);"_s);
 
-            if(insertStmt.prepare())
+            if(!insertStmt)
                 return;
 
-            insertStmt.bindInt(1, m_displayMode);
-            insertStmt.bindInt(2, m_maxEntries);    
-            insertStmt.bindInt(3, m_screenshotSize);
-            insertStmt.bindInt(4, m_filterMode);
+            insertStmt->bindInt(1, m_displayMode);
+            insertStmt->bindInt(2, m_maxEntries);    
+            insertStmt->bindInt(3, m_screenshotSize);
+            insertStmt->bindInt(4, m_filterMode);
 
-            if(!insertStmt.executeCommand())
+            if(!insertStmt->executeCommand())
                 return;
         }            
         else
         {
-            SQLiteStatement select(m_topSitesDB, "SELECT displayMode INTEGER, maxEntries INTEGER, screenshotSize INTEGER, filterMode INTEGER FROM settings;");
-            if(select.prepare())
+            auto select = m_topSitesDB.prepareStatement("SELECT displayMode INTEGER, maxEntries INTEGER, screenshotSize INTEGER, filterMode INTEGER FROM settings;"_s);
+            if(!select)
                 return;
 
-            if(select.step() == SQLITE_ROW)
+            if(select->step() == SQLITE_ROW)
             {
-                m_displayMode = (displaymode_t) select.getColumnInt(0);
-                m_maxEntries  = select.getColumnInt(1);
-                m_screenshotSize = select.getColumnInt(2);
-                m_filterMode = (filtermode_t) select.getColumnInt(3);
+                m_displayMode = (displaymode_t) select->columnInt(0);
+                m_maxEntries  = select->columnInt(1);
+                m_screenshotSize = select->columnInt(2);
+                m_filterMode = (filtermode_t) select->columnInt(3);
             }
         }
         
@@ -131,16 +132,16 @@ void TopSitesManager::setDisplayMode(displaymode_t mode)
 { 
     m_displayMode = mode; 
 
-    SQLiteStatement updateStmt(m_topSitesDB, "UPDATE settings SET displayMode=?1;");
+    auto updateStmt = m_topSitesDB.prepareStatement("UPDATE settings SET displayMode=?1;"_s);
 
-    if(updateStmt.prepare())
+    if(!updateStmt)
     {
         return;
     }
 
-    updateStmt.bindInt(1, m_displayMode);
+    updateStmt->bindInt(1, m_displayMode);
 
-    if(!updateStmt.executeCommand())
+    if(!updateStmt->executeCommand())
         return;
 }
 
@@ -148,16 +149,16 @@ void TopSitesManager::setFilterMode(filtermode_t mode)
 { 
     m_filterMode = mode; 
 
-    SQLiteStatement updateStmt(m_topSitesDB, "UPDATE settings SET filterMode=?1;");
+    auto updateStmt = m_topSitesDB.prepareStatement("UPDATE settings SET filterMode=?1;"_s);
 
-    if(updateStmt.prepare())
+    if(!updateStmt)
     {
         return;
     }
 
-    updateStmt.bindInt(1, m_filterMode);
+    updateStmt->bindInt(1, m_filterMode);
 
-    if(!updateStmt.executeCommand())
+    if(!updateStmt->executeCommand())
         return;
 }
 
@@ -165,16 +166,16 @@ void TopSitesManager::setMaxEntries(int maxEntries)
 { 
     m_maxEntries = maxEntries; 
 
-    SQLiteStatement updateStmt(m_topSitesDB, "UPDATE settings SET maxEntries=?1;");
+    auto updateStmt = m_topSitesDB.prepareStatement("UPDATE settings SET maxEntries=?1;"_s);
 
-    if(updateStmt.prepare())
+    if(!updateStmt)
     {
         return;
     }
 
-    updateStmt.bindInt(1, m_maxEntries);
+    updateStmt->bindInt(1, m_maxEntries);
 
-    if(!updateStmt.executeCommand())
+    if(!updateStmt->executeCommand())
         return;
 }
 
@@ -182,29 +183,29 @@ void TopSitesManager::setScreenshotSize(int width)
 {
     m_screenshotSize = width;
 
-    SQLiteStatement updateStmt(m_topSitesDB, "UPDATE settings SET screenshotSize=?1;");
+    auto updateStmt = m_topSitesDB.prepareStatement("UPDATE settings SET screenshotSize=?1;"_s);
 
-    if(updateStmt.prepare())
+    if(!updateStmt)
     {
         return;
     }
 
-    updateStmt.bindInt(1, m_screenshotSize);
+    updateStmt->bindInt(1, m_screenshotSize);
 
-    if(!updateStmt.executeCommand())
+    if(!updateStmt->executeCommand())
         return;
 }
 
 int TopSitesManager::entries()
 {
-    SQLiteStatement select(m_topSitesDB, "SELECT count(*) FROM topsites;");
+    auto select = m_topSitesDB.prepareStatement("SELECT count(*) FROM topsites;"_s);
 
-    if(select.prepare())
+    if(!select)
         return 0;
         
-    if(select.step() == SQLITE_ROW)
+    if(select->step() == SQLITE_ROW)
     {
-        return select.getColumnInt(0);
+        return select->columnInt(0);
     }
 
     return 0;
@@ -214,15 +215,15 @@ String TopSitesManager::title(URL &url)
 {
     String title;
 
-    SQLiteStatement select(m_topSitesDB, "SELECT title FROM topsites WHERE url=?1;");
-    if(select.prepare())
+    auto select = m_topSitesDB.prepareStatement("SELECT title FROM topsites WHERE url=?1;"_s);
+    if(!select)
         return title;
 
-    select.bindText(1, url.string());
+    select->bindText(1, url.string());
         
-    if(select.step() == SQLITE_ROW)
+    if(select->step() == SQLITE_ROW)
     {
-        title = select.getColumnText(0);
+        title = select->columnText(0);
     }    
     
     return title;
@@ -232,19 +233,19 @@ RefPtr<Image> TopSitesManager::screenshot(URL &url)
 {
     RefPtr<Image> image;
     
-    SQLiteStatement select(m_topSitesDB, "SELECT screenshot FROM topsites WHERE url=?1;");
+    auto select = m_topSitesDB.prepareStatement("SELECT screenshot FROM topsites WHERE url=?1;"_s);
 
-    if(select.prepare())
+    if(!select)
         return image;
     
-    select.bindText(1, url.string());
+    select->bindText(1, url.string());
     
-    if (select.step() == SQLITE_ROW)
+    if (select->step() == SQLITE_ROW)
     {
-        Vector<char> data;
+        Vector<uint8_t> data;
         RefPtr<SharedBuffer> imageData;
         
-        select.getColumnBlobAsVector(0, data);
+        data = select->columnBlob(0);
         
         imageData = SharedBuffer::create(data.data(), data.size());
         
@@ -259,16 +260,16 @@ double TopSitesManager::lastAccessed(URL &url)
 {
     double lastAccessed = 0;
     
-    SQLiteStatement select(m_topSitesDB, "SELECT lastAccessed FROM topsites WHERE url=?1;");
+    auto select = m_topSitesDB.prepareStatement("SELECT lastAccessed FROM topsites WHERE url=?1;"_s);
 
-    if(select.prepare())
+    if(!select)
         return lastAccessed;
 
-    select.bindText(1, url.string());
+    select->bindText(1, url.string());
         
-    if(select.step() == SQLITE_ROW)
+    if(select->step() == SQLITE_ROW)
     {
-        lastAccessed = select.getColumnDouble(0);
+        lastAccessed = select->columnDouble(0);
     }    
     
     return lastAccessed;
@@ -278,16 +279,16 @@ int TopSitesManager::visitCount(URL &url)
 {
     int visitCount = 0;
     
-    SQLiteStatement select(m_topSitesDB, "SELECT visitCount FROM topsites WHERE url=?1;");
+    auto select = m_topSitesDB.prepareStatement("SELECT visitCount FROM topsites WHERE url=?1;"_s);
 
-    if(select.prepare())
+    if(!select)
         return visitCount;
 
-    select.bindText(1, url.string());
+    select->bindText(1, url.string());
         
-    if(select.step() == SQLITE_ROW)
+    if(select->step() == SQLITE_ROW)
     {
-        visitCount = select.getColumnInt(0);
+        visitCount = select->columnInt(0);
     }    
     
     return visitCount;
@@ -297,16 +298,16 @@ bool TopSitesManager::contains(URL &url)
 {
     bool found = false;
     
-    SQLiteStatement select(m_topSitesDB, "SELECT count(*) FROM topsites WHERE url=?1;");
+    auto select = m_topSitesDB.prepareStatement("SELECT count(*) FROM topsites WHERE url=?1;"_s);
 
-    if(select.prepare())
+    if(!select)
         return found;
 
-    select.bindText(1, url.string());
+    select->bindText(1, url.string());
         
-    if(select.step() == SQLITE_ROW)
+    if(select->step() == SQLITE_ROW)
     {
-        found = select.getColumnInt(0) > 0;
+        found = select->columnInt(0) > 0;
     }    
     
     return found;    
@@ -315,16 +316,16 @@ bool TopSitesManager::contains(URL &url)
 bool TopSitesManager::hasScreenshot(URL &url)
 {
     bool hasScreenshot = false;
-    SQLiteStatement select(m_topSitesDB, "SELECT screenshot FROM topsites WHERE url=?1;");
+    auto select = m_topSitesDB.prepareStatement("SELECT screenshot FROM topsites WHERE url=?1;"_s);
 
-    if(select.prepare())
+    if(!select)
         return hasScreenshot;
 
-    select.bindText(1, url.string());
+    select->bindText(1, url.string());
     
-    if (select.step() == SQLITE_ROW)
+    if (select->step() == SQLITE_ROW)
     {
-        hasScreenshot = select.isColumnNull(0);
+        hasScreenshot = !select->columnText(0).isEmpty();
     }
     
     return hasScreenshot;
@@ -335,16 +336,16 @@ bool TopSitesManager::shouldAppear(URL &url)
     bool result = false;
     int minVisitCount = 0;
     
-    SQLiteStatement select(m_topSitesDB, "SELECT MIN(visitCount) FROM topsites ORDER BY visitCount DESC LIMIT 0, ?1;");
+    auto select = m_topSitesDB.prepareStatement("SELECT MIN(visitCount) FROM topsites ORDER BY visitCount DESC LIMIT 0, ?1;"_s);
 
-    if(select.prepare())
+    if(!select)
         return result;
 
-    select.bindInt(1, maxEntries());
+    select->bindInt(1, maxEntries());
         
-    if(select.step() == SQLITE_ROW)
+    if(select->step() == SQLITE_ROW)
     {
-        minVisitCount = select.getColumnInt(0);
+        minVisitCount = select->columnInt(0);
     }    
     
     result = visitCount(url) >= minVisitCount;
@@ -356,16 +357,16 @@ int TopSitesManager::requiredVisitCount()
 {
     int minVisitCount = 0;
     
-    SQLiteStatement select(m_topSitesDB, "SELECT MIN(visitCount) FROM(SELECT visitCount FROM topsites ORDER BY visitCount DESC LIMIT 0, ?1);");
+    auto select = m_topSitesDB.prepareStatement("SELECT MIN(visitCount) FROM(SELECT visitCount FROM topsites ORDER BY visitCount DESC LIMIT 0, ?1);"_s);
 
-    if(select.prepare())
+    if(!select)
         return minVisitCount;
 
-    select.bindInt(1, maxEntries());
+    select->bindInt(1, maxEntries());
         
-    if(select.step() == SQLITE_ROW)
+    if(select->step() == SQLITE_ROW)
     {
-        minVisitCount = select.getColumnInt(0);
+        minVisitCount = select->columnInt(0);
     }    
     
     //kprintf("requiredVisitCount %d\n", minVisitCount);
@@ -398,22 +399,22 @@ void TopSitesManager::update(WebView *webView, URL &url, String &title)
                 else if(query.startsWith("maxEntries="))
                 {
                     String argument = query.substring(String("maxEntries=").length());
-                    setMaxEntries(argument.toInt());
+                    setMaxEntries(parseIntegerAllowingTrailingJunk<int>(argument).value_or(0));
                 }
                 else if(query.startsWith("displayMode="))
                 {
                     String argument = query.substring(String("displayMode=").length());
-                    setDisplayMode((displaymode_t) argument.toInt());
+                    setDisplayMode((displaymode_t) parseIntegerAllowingTrailingJunk<int>(argument).value_or(0));
                 }
                 else if(query.startsWith("filterMode="))
                 {
                     String argument = query.substring(String("filterMode=").length());
-                    setFilterMode((filtermode_t) argument.toInt());
+                    setFilterMode((filtermode_t) parseIntegerAllowingTrailingJunk<int>(argument).value_or(0));
                 }                            
                 else if(query.startsWith("screenshotSize="))
                 {
                     String argument = query.substring(String("screenshotSize=").length());
-                    setScreenshotSize(argument.toInt());
+                    setScreenshotSize(parseIntegerAllowingTrailingJunk<int>(argument).value_or(0));
                 }
                 
                 generateTemplate(webView, "topsites://");
@@ -444,30 +445,30 @@ bool TopSitesManager::shouldAdd(URL &url)
 
 void TopSitesManager::pruneOlderEntries()
 {
-    SQLiteStatement updateStmt(m_topSitesDB, "UPDATE topsites SET screenshot = NULL WHERE visitCount <= ?1;");
+    auto updateStmt = m_topSitesDB.prepareStatement("UPDATE topsites SET screenshot = NULL WHERE visitCount <= ?1;"_s);
 
-    if(updateStmt.prepare())
+    if(!updateStmt)
     {
         return;
     }
 
-    updateStmt.bindInt(1, requiredVisitCount() - 1); // Improve this
+    updateStmt->bindInt(1, requiredVisitCount() - 1); // Improve this
 
-    if(!updateStmt.executeCommand())
+    if(!updateStmt->executeCommand())
         return;    
         
     double maxAge = WebPreferences::sharedStandardPreferences()->historyAgeInDaysLimit();
     double minAge = MonotonicTime::now().secondsSinceEpoch().value() - maxAge*DAY;
-    SQLiteStatement deleteStmt(m_topSitesDB, "DELETE FROM topsites WHERE lastAccessed < ?1;");
+    auto deleteStmt = m_topSitesDB.prepareStatement("DELETE FROM topsites WHERE lastAccessed < ?1;"_s);
 
-    if(deleteStmt.prepare())
+    if(!deleteStmt)
     {
         return;
     }
 
-    deleteStmt.bindDouble(1, minAge);
+    deleteStmt->bindDouble(1, minAge);
     
-    deleteStmt.executeCommand();        
+    deleteStmt->executeCommand();        
 }
 
 bool TopSitesManager::addOrUpdate(WebView *webView, URL &url, String &title)
@@ -475,23 +476,23 @@ bool TopSitesManager::addOrUpdate(WebView *webView, URL &url, String &title)
     double timestamp = MonotonicTime::now().secondsSinceEpoch().value();
     int visitCount = 1;
     double lastAccessed = 0;
-    Vector<char> screenshot;
+    Vector<uint8_t> screenshot;
     bool found = false;
 
     //kprintf("addOrUpdate <%s>\n", url.string().utf8().data());
 
-    SQLiteStatement select(m_topSitesDB, "SELECT visitCount, screenshot, lastAccessed FROM topsites WHERE url=?1;");
-    if(select.prepare())
+    auto select = m_topSitesDB.prepareStatement("SELECT visitCount, screenshot, lastAccessed FROM topsites WHERE url=?1;"_s);
+    if(!select)
         return false;
 
-    select.bindText(1, url.string());
+    select->bindText(1, url.string());
         
-    if(select.step() == SQLITE_ROW)
+    if(select->step() == SQLITE_ROW)
     {
         found = true;
-        visitCount = select.getColumnInt(0) + 1;
-        select.getColumnBlobAsVector(1, screenshot);
-        lastAccessed = select.getColumnDouble(2);        
+        visitCount = select->columnInt(0) + 1;
+        screenshot = select->columnBlob(1);
+        lastAccessed = select->columnDouble(2);        
     }    
 
     //kprintf("visitCount %d required : %d screenshot %d timestamp %f lastaccessed %d\n", visitCount, requiredVisitCount(), screenshot.size(), timestamp, lastAccessed);
@@ -499,35 +500,35 @@ bool TopSitesManager::addOrUpdate(WebView *webView, URL &url, String &title)
 
     if(found)
     {    
-        SQLiteStatement updateStmt(m_topSitesDB, "UPDATE topsites SET title=?1, visitCount=?2, lastAccessed=?3 WHERE url=?4;");
+        auto updateStmt = m_topSitesDB.prepareStatement("UPDATE topsites SET title=?1, visitCount=?2, lastAccessed=?3 WHERE url=?4;"_s);
 
-        if(updateStmt.prepare())
+        if(!updateStmt)
         {
             return false;
         }
 
-        updateStmt.bindText(1, title);
-        updateStmt.bindInt(2, visitCount);
-        updateStmt.bindDouble(3, timestamp);
-        updateStmt.bindText(4, url.string());
+        updateStmt->bindText(1, title);
+        updateStmt->bindInt(2, visitCount);
+        updateStmt->bindDouble(3, timestamp);
+        updateStmt->bindText(4, url.string());
 
-        if(!updateStmt.executeCommand())
+        if(!updateStmt->executeCommand())
             return false;                
     }    
     else
     {        
-        SQLiteStatement insertStmt(m_topSitesDB, "INSERT INTO topsites (url, title, screenshot, visitCount, lastAccessed) VALUES (?1, ?2, ?3, ?4, ?5);");
+        auto insertStmt = m_topSitesDB.prepareStatement("INSERT INTO topsites (url, title, screenshot, visitCount, lastAccessed) VALUES (?1, ?2, ?3, ?4, ?5);"_s);
 
-        if(insertStmt.prepare())
+        if(!insertStmt)
             return false;
 
-        insertStmt.bindText(1, url.string());
-        insertStmt.bindText(2, title);    
-        insertStmt.bindNull(3);    
-        insertStmt.bindInt(4, visitCount);        
-        insertStmt.bindDouble(5, timestamp);
+        insertStmt->bindText(1, url.string());
+        insertStmt->bindText(2, title);    
+        insertStmt->bindNull(3);    
+        insertStmt->bindInt(4, visitCount);        
+        insertStmt->bindDouble(5, timestamp);
 
-        if(!insertStmt.executeCommand())
+        if(!insertStmt->executeCommand())
             return false;            
     }    
     
@@ -535,22 +536,22 @@ bool TopSitesManager::addOrUpdate(WebView *webView, URL &url, String &title)
     {
         int width = m_screenshotSize;
         int height;
-        Vector<char> imageData;
+        Vector<uint8_t> imageData;
 
         //kprintf("Generate screenshot for <%s>\n", url.string().utf8().data());
         webView->screenshot(width, height, &imageData);
         
-        SQLiteStatement updateScreenShotStmt(m_topSitesDB, "UPDATE topsites SET screenshot=?1 WHERE url=?2;");
+        auto updateScreenShotStmt = m_topSitesDB.prepareStatement("UPDATE topsites SET screenshot=?1 WHERE url=?2;"_s);
 
-        if(updateScreenShotStmt.prepare())
+        if(!updateScreenShotStmt)
         {
             return false;
         }
 
-        updateScreenShotStmt.bindBlob(1, imageData.data(), imageData.size());            
-        updateScreenShotStmt.bindText(2, url.string());        
+        updateScreenShotStmt->bindBlob(1, imageData);
+        updateScreenShotStmt->bindText(2, url.string());        
 
-        if(!updateScreenShotStmt.executeCommand())
+        if(!updateScreenShotStmt->executeCommand())
             return false;
     }        
     
@@ -559,16 +560,16 @@ bool TopSitesManager::addOrUpdate(WebView *webView, URL &url, String &title)
 
 void TopSitesManager::remove(URL &url)
 {
-    SQLiteStatement deleteStmt(m_topSitesDB, "DELETE FROM topsites WHERE url=?1;");
+    auto deleteStmt = m_topSitesDB.prepareStatement("DELETE FROM topsites WHERE url=?1;"_s);
 
-    if(deleteStmt.prepare())
+    if(!deleteStmt)
     {
         return;
     }
 
-    deleteStmt.bindText(1, url.string());
+    deleteStmt->bindText(1, url.string());
     
-    deleteStmt.executeCommand();
+    deleteStmt->executeCommand();
 }
 
 void TopSitesManager::generateTemplate(WebView *webView, String originurl)
@@ -614,15 +615,15 @@ void TopSitesManager::generateTemplate(WebView *webView, String originurl)
         String contents;
         int countEntries = 0;
 
-        SQLiteStatement select(m_topSitesDB, "SELECT url, title, screenshot, lastAccessed, visitCount FROM topsites ORDER by visitCount DESC, lastAccessed DESC;");
+        auto select = m_topSitesDB.prepareStatement("SELECT url, title, screenshot, lastAccessed, visitCount FROM topsites ORDER by visitCount DESC, lastAccessed DESC;"_s);
 
-        if(select.prepare())
+        if(!select)
             return;
             
-        while(select.step() == SQLITE_ROW && countEntries < maxEntries())
+        while(select->step() == SQLITE_ROW && countEntries < maxEntries())
         {
             bool showEntry = false;
-            String url = select.getColumnText(0);
+            String url = select->columnText(0);
                         
             switch(m_filterMode)
             {
@@ -656,28 +657,29 @@ void TopSitesManager::generateTemplate(WebView *webView, String originurl)
             
             if(showEntry)
             {
-                Vector<char> data, base64Data, closeBase64Data;
-                String title = select.getColumnText(1);    
-                select.getColumnBlobAsVector(2, data);
+                Vector<uint8_t> data;
+                String base64Data, closeBase64Data;
+                String title = select->columnText(1);    
+                data = select->columnBlob(2);
                 
                 if(data.size() == 0 && m_placeholderImage && m_placeholderImage->data())
                 {
-                    base64Encode(m_placeholderImage->data(), m_placeholderImage->size(), base64Data);
+                    base64Data = base64EncodeToString(m_placeholderImage->data(), m_placeholderImage->size());
                 }
                 else
                 {
-                    base64Encode(data, base64Data);
+                    base64Data = base64EncodeToString(data);
                 }
                 
                 if(m_closeImage && m_closeImage->data())
                 {
-                    base64Encode(m_closeImage->data(), m_closeImage->size(), closeBase64Data);
+                    closeBase64Data = base64EncodeToString(m_closeImage->data(), m_closeImage->size());
                 }
 
                 String screenshotURL =  "data:image/png;base64," + base64Data;
                 String removeURL = "data:image/png;base64," + closeBase64Data;
                 //double timestamp = select.getColumnDouble(3);
-                int visits = select.getColumnInt(4);
+                int visits = select->columnInt(4);
 
                 countEntries++;
 

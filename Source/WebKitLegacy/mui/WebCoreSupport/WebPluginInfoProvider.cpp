@@ -46,7 +46,7 @@ void WebPluginInfoProvider::refreshPlugins()
 {
 }
 
-Vector<WebCore::PluginInfo> WebPluginInfoProvider::pluginInfo(WebCore::Page& page, Optional<Vector<WebCore::SupportedPluginIdentifier>>&)
+Vector<WebCore::PluginInfo> WebPluginInfoProvider::pluginInfo(WebCore::Page& page, std::optional<Vector<WebCore::SupportedPluginIdentifier>>&)
 {
     return { };
 }

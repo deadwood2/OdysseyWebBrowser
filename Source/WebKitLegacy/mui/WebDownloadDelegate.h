@@ -41,7 +41,6 @@
 #include "SharedObject.h"
 #include "WebKitTypes.h"
 #include <set>
-#include <clib/debug_protos.h>
 
 class WebError;
 class WebDownload;

@@ -3584,7 +3584,7 @@ DEFMMETHOD(CreateShortHelp)
         IntPoint point = IntPoint(viewportPos.x(), viewportPos.y());
         HitTestResult result(point);
 
-        result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::ReadOnly});
+        result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::Type::ReadOnly});
         
         if(!result.altDisplayString().isEmpty())
             return (IPTR) utf8_to_local(result.altDisplayString().utf8().data());

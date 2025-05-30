@@ -4,7 +4,6 @@
 #include <exec/types.h>
 #include <proto/utility.h>
 #include <utility/date.h>
-#include <clib/debug_protos.h>
 
 #include "classes.h"
 #include "methodstack.h"

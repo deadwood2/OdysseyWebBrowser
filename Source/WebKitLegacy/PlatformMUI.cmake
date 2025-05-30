@@ -1,7 +1,7 @@
 list(APPEND WebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/mui"
     "${WEBCORE_DIR}/platform/bal"
-    "${WEBCORE_DIR}/platform/graphics/mui"
+    "${WEBCORE_DIR}/platform/graphics/morphos"
     "${WEBKITLEGACY_DIR}/mui/WebCoreLeaks"
     "${WEBKITLEGACY_DIR}/mui"
     "${WEBKITLEGACY_DIR}/mui/UI"

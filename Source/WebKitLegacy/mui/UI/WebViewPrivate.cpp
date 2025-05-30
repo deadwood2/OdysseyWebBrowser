@@ -1355,7 +1355,7 @@ bool WebViewPrivate::onMouseButtonDown(BalEventButton event)
             IntPoint point = IntPoint(viewportPos.x(), viewportPos.y());
             HitTestResult result(point);
 
-            result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::ReadOnly});
+            result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::Type::ReadOnly});
 
             if(result.innerNonSharedNode() && !result.absoluteLinkURL().string().isEmpty())
             {
@@ -1390,7 +1390,7 @@ bool WebViewPrivate::onMouseButtonUp(BalEventButton event)
         IntPoint point = IntPoint(viewportPos.x(), viewportPos.y());
         HitTestResult result(point);
 
-        result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::ReadOnly});
+        result = frame->eventHandler().hitTestResultAtPoint(point, {HitTestRequest::Type::ReadOnly});
 
         if (!result.innerNonSharedNode()) return handled;
 

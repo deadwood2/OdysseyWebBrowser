@@ -49,6 +49,7 @@
 #include "WebDeviceMotionClient.h"
 #endif
 #include "PageStorageSessionProvider.h"
+#include "WebBroadcastChannelRegistry.h"
 #include "WebDocumentLoader.h"
 #include "WebDownloadDelegate.h"
 #include "WebDragClient.h"
@@ -135,6 +136,7 @@
 #include <WebCore/PagePasteboardContext.h>
 #include <WebCore/BackForwardCache.h>
 #include <WebCore/PageGroup.h>
+#include <WebCore/PermissionController.h>
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/PlatformMouseEvent.h>
 #include <WebCore/PlatformWheelEvent.h>
@@ -163,6 +165,7 @@
 
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
+#include <wtf/text/StringToIntegerConversion.h>
 #include <JavaScriptCore/InitializeThreading.h>
 
 #include <wtf/HashSet.h>
@@ -407,7 +410,9 @@ WebView::WebView()
         makeUniqueRef<WebProgressTrackerClient>(webFrame),
         makeUniqueRef<WebFrameLoaderClient>(webFrame),
         makeUniqueRef<DummySpeechRecognitionProvider>(),
-        makeUniqueRef<MediaRecorderProvider>()
+        makeUniqueRef<MediaRecorderProvider>(),
+        WebBroadcastChannelRegistry::getOrCreate(false),
+        WebCore::DummyPermissionController::create()
     );
     configuration.backForwardClient = BackForwardList::create();
     configuration.chromeClient = new WebChromeClient(this);
@@ -449,8 +454,6 @@ WebView::WebView()
     settings.setAllowDisplayOfInsecureContent(true);
     settings.setTextAreasAreResizable(true);
     settings.setDataTransferItemsEnabled(true);
-
-    RuntimeEnabledFeatures::sharedFeatures().setModernMediaControlsEnabled(false);
 
     RuntimeEnabledFeatures::sharedFeatures().setCSSPaintingAPIEnabled(true);
     RuntimeEnabledFeatures::sharedFeatures().setCSSTypedOMEnabled(true);
@@ -1866,9 +1869,9 @@ void WebView::parseConfigFile(const char* url)
         String key = fileBuffer.substring(delimiter +  1, eol - delimiter).stripWhiteSpace();
 
         if (keyword == "width")
-            width = key.toInt();
+            width = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
         if (keyword == "height")
-            height = key.toInt();
+            height = parseIntegerAllowingTrailingJunk<int>(key).value_or(0);
 
         //Remove processed line from the buffer
         String truncatedBuffer = fileBuffer.substring(eol + 1, fileBuffer.length() - eol - 1);
@@ -1971,7 +1974,7 @@ WebHitTestResults* WebView::elementAtPoint(BalPoint& point)
     IntPoint webCorePoint(point);
     HitTestResult result = HitTestResult(webCorePoint);
     if (frame->contentRenderer()) {
-        constexpr OptionSet<HitTestRequest::RequestType> hitType { HitTestRequest::ReadOnly, HitTestRequest::Active, HitTestRequest::DisallowUserAgentShadowContent, HitTestRequest::AllowChildFrameContent };
+        constexpr OptionSet<HitTestRequest::Type> hitType { HitTestRequest::Type::ReadOnly, HitTestRequest::Type::Active, HitTestRequest::Type::DisallowUserAgentShadowContent, HitTestRequest::Type::AllowChildFrameContent };
         result = frame->eventHandler().hitTestResultAtPoint(webCorePoint, hitType);
     }
     return WebHitTestResults::createInstance(result);

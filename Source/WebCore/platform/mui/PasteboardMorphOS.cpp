@@ -586,18 +586,18 @@ static String getPlainText(Frame* )
 */
 }
 
-void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy, Optional<size_t>)
+void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy, std::optional<size_t>)
 {
     m_dataObject->setText(getPlainText(0));
     text.text = m_dataObject->text();
 }
 
-void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy, Optional<size_t>)
+void Pasteboard::read(PasteboardWebContentReader&, WebContentReadingPolicy, std::optional<size_t>)
 {
     notImplemented();
 }
 
-void Pasteboard::read(PasteboardFileReader& reader, Optional<size_t>)
+void Pasteboard::read(PasteboardFileReader& reader, std::optional<size_t>)
 {
     notImplemented();
 }

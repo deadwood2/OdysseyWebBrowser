@@ -43,12 +43,12 @@ private:
 public:
     virtual void initWithTimestamp(double timestamp, double latitude, double longitude, double accuracy);
 
-    const Optional<WebCore::GeolocationPositionData>& impl() const { return m_position; }
+    const std::optional<WebCore::GeolocationPositionData>& impl() const { return m_position; }
 
 private:
-    Optional<WebCore::GeolocationPositionData> m_position;
+    std::optional<WebCore::GeolocationPositionData> m_position;
 };
 
-Optional<WebCore::GeolocationPositionData> core(WebGeolocationPosition*);
+std::optional<WebCore::GeolocationPositionData> core(WebGeolocationPosition*);
 
 #endif // WebGeolocationPosition_h
