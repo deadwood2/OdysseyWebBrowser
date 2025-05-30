@@ -138,9 +138,7 @@
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/PlatformMouseEvent.h>
 #include <WebCore/PlatformWheelEvent.h>
-#include "PluginDatabase.h"
 #include <WebCore/PluginData.h>
-#include "PluginView.h"
 #include <WebCore/SocketProvider.h>
 #include <WebCore/ProgressTracker.h>
 #include <WebCore/RenderTheme.h>
@@ -2789,7 +2787,6 @@ void WebView::setAllowSiteSpecificHacks(bool allow)
 
 void WebView::addAdditionalPluginDirectory(const char* directory)
 {
-    PluginDatabase::installedPlugins()->addExtraPluginDirectory(directory);
 }
 
 void WebView::loadBackForwardListFromOtherView(WebView* otherView)

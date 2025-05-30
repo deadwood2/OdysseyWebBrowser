@@ -75,8 +75,6 @@
 #include <WebCore/Page.h>
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/PluginData.h>
-#include "PluginDatabase.h"
-#include "PluginView.h"
 #include <WebCore/PrintContext.h>
 #include <WebCore/ResourceHandle.h>
 #include <WebCore/ResourceHandle.h>
