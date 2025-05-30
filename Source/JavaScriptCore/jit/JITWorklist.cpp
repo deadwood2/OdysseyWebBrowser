@@ -57,6 +57,8 @@ JITWorklist::~JITWorklist()
     UNREACHABLE_FOR_PLATFORM();
 }
 
+#if 0
+// broken 2.34.6
 #if PLATFORM(MUI)
 void JITWorklist::shutdown()
 {
@@ -71,6 +73,7 @@ void JITWorklist::shutdown()
 
     m_thread->join();
 }
+#endif
 #endif
 
 static JITWorklist* theGlobalJITWorklist { nullptr };

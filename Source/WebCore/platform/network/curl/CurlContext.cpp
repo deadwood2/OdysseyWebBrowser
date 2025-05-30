@@ -291,12 +291,14 @@ CURLMcode CurlMultiHandle::getFdSet(fd_set& readFdSet, fd_set& writeFdSet, fd_se
 CURLMcode CurlMultiHandle::poll(const Vector<curl_waitfd>& extraFds, int timeoutMS)
 {
     int numFds = 0;
-    return curl_multi_poll(m_multiHandle, const_cast<curl_waitfd*>(extraFds.data()), extraFds.size(), timeoutMS, &numFds);
+// broken 2.34.6
+//    return curl_multi_poll(m_multiHandle, const_cast<curl_waitfd*>(extraFds.data()), extraFds.size(), timeoutMS, &numFds);
 }
 
 CURLMcode CurlMultiHandle::wakeUp()
 {
-    return curl_multi_wakeup(m_multiHandle);
+// broken 2.34.6
+//    return curl_multi_wakeup(m_multiHandle);
 }
 
 CURLMcode CurlMultiHandle::getTimeout(long &timeout)
@@ -538,9 +540,9 @@ void CurlHandle::setUrl(const URL& url)
     if (url.protocolIs("https"))
         enableSSLForHost(m_url.host().toString());
 #if PLATFORM(MUI)
-/* From curl 7.66.0 */
-/*    else
-        curl_easy_setopt(m_handle, CURLOPT_HTTP09_ALLOWED, 1L);  // HTTP only*/
+// broken 2.34.6
+//    else
+//        curl_easy_setopt(m_handle, CURLOPT_HTTP09_ALLOWED, 1L);  // HTTP only
 #endif
 }
 

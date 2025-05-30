@@ -63,7 +63,7 @@ class CurlGlobal {
 protected:
     CurlGlobal()
     {
-        curl_global_init(CURL_GLOBAL_ALL | CURL_GLOBAL_NO_GETENV);
+        curl_global_init(CURL_GLOBAL_ALL);// | CURL_GLOBAL_NO_GETENV);
     }
     
     virtual ~CurlGlobal()
