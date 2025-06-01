@@ -112,7 +112,10 @@ bool ResourceHandle::start()
         d->m_curlRequest->setAuthenticationScheme(ProtectionSpaceAuthenticationSchemeHTTPBasic);
     }
 
+#if 0
+// broken 2.34.6
     d->m_curlRequest->setStartTime(d->m_startTime);
+#endif
     if (d->m_startCurlRequestAtStart)
         d->m_curlRequest->start();
 
