@@ -109,7 +109,7 @@ void CurlRequestScheduler::startOrWakeUpThread()
         }
     }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	if (m_stopped)
 		return;
 #endif
