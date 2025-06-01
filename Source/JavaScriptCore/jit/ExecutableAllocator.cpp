@@ -380,8 +380,11 @@ static ALWAYS_INLINE JITReservation initializeJITPageReservation()
 
     reservation.pageReservation = tryCreatePageReservation(reservation.size);
 
+#if 0
+// broken 2.34.6
     if (Options::verboseExecutablePoolAllocation())
         dataLog(getpid(), ": Got executable pool reservation at ", RawPointer(reservation.pageReservation.base()), "...", RawPointer(bitwise_cast<char*>(reservation.pageReservation.base()) + reservation.pageReservation.size()), ", while I'm at ", RawPointer(bitwise_cast<void*>(initializeJITPageReservation)), "\n");
+#endif
     
     if (reservation.pageReservation) {
         ASSERT(reservation.pageReservation.size() == reservation.size);
