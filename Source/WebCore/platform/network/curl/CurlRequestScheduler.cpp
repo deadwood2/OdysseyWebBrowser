@@ -140,11 +140,13 @@ void CurlRequestScheduler::startOrWakeUpThread()
 
 void CurlRequestScheduler::wakeUpThreadIfPossible()
 {
+#if !PLATFORM(MUI)
     Locker locker { m_multiHandleMutex };
     if (!m_curlMultiHandle)
         return;
 
     m_curlMultiHandle->wakeUp();
+#endif
 }
 
 void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
@@ -268,62 +270,11 @@ void CurlRequestScheduler::workerThread()
 
         executeTasks();
 
-#if 1
+#if OS(MORPHOS)
         const int selectTimeoutMS = INT_MAX;
         CURLMcode mc = m_curlMultiHandle->poll({ }, selectTimeoutMS);
         if (mc != CURLM_OK)
             break;
-
-        // Retry 'select' if it was interrupted by a process signal.
-        int rc = 0;
-#if PLATFORM(MUI)
-        fd_set fdread;
-        fd_set fdwrite;
-        fd_set fdexcep;
-#endif
-        do {
-#if PLATFORM(MUI)
-            FD_ZERO(&fdread);
-            FD_ZERO(&fdwrite);
-            FD_ZERO(&fdexcep);
-            int maxfd = 0;
-
-            struct timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 500; // shorter timeouts give better outgoing performance
-#else
-            fd_set fdread;
-            fd_set fdwrite;
-            fd_set fdexcep;
-            int maxfd = 0;
-
-            const int selectTimeoutMS = 5;
-
-            struct timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = selectTimeoutMS * 1000; // select waits microseconds
-#endif
-
-            m_curlMultiHandle->getFdSet(fdread, fdwrite, fdexcep, maxfd);
-#if PLATFORM(MUI)
-            for (auto& stream : m_streamList.values())
-                stream->appendMonitoringFd(fdread, fdwrite, fdexcep, maxfd);
-#endif
-
-            // When the 3 file descriptors are empty, winsock will return -1
-            // and bail out, stopping the file download. So make sure we
-            // have valid file descriptors before calling select.
-            if (maxfd >= 0)
-#if PLATFORM(MUI)
-                rc = WaitSelect(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout, nullptr);
-            else {
-                usleep(100 * 1000);
-            }
-#else
-                rc = ::select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
-#endif
-        } while (rc == -1 && errno == EINTR);
-
         int activeCount = 0;
         mc = m_curlMultiHandle->perform(activeCount);
         if (mc != CURLM_OK)
@@ -352,10 +303,10 @@ void CurlRequestScheduler::workerThread()
                 completeTransfer(client, msg->data.result);
         }
 
-#if PLATFORM(MUI)
-        for (auto& stream : m_streamList.values())
-            stream->tryToTransfer(fdread, fdwrite, fdexcep);
-#endif
+//#if PLATFORM(MUI)
+//        for (auto& stream : m_streamList.values())
+//            stream->tryToTransfer(fdread, fdwrite, fdexcep);
+//#endif
 
         stopThreadIfNoMoreJobRunning();
     }
