@@ -166,12 +166,14 @@ public:
     		return MediaPlayer::SupportsType::IsNotSupported;
 		}
 
+#if !OS(AROS)
         if (!isCGXVideoValid())
         {
     		return MediaPlayer::SupportsType::IsNotSupported;
 		}
+#endif
 
-		bool withHLS = MediaPlayerMorphOSSettings::settings().m_supportHLSForHost ? MediaPlayerMorphOSSettings::settings().m_supportHLSForHost(page, host) : true;
+		bool withHLS = true;
 
 		DM(dprintf("%s: url '%s' content '%s' ctype '%s' isource %d istream %d profiles %d hlsOK %d host '%s' page %p\n", __func__,
 			parameters.url.string().utf8().data(), parameters.type.raw().utf8().data(), parameters.type.containerType().utf8().data(),

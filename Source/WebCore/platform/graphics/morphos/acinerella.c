@@ -1175,6 +1175,8 @@ static void ac_free_video_decoder(lp_ac_video_decoder pDecoder) {
 		av_frame_free(&(pDecoder->pFrame));
 		av_frame_free(&(pDecoder->pFrameRGB));
 		sws_freeContext(pDecoder->pSwsCtx);
+		if (pDecoder->pScaledFrameRGB) av_frame_free(&(pDecoder->pScaledFrameRGB));
+		if (pDecoder->pScaledSwsCtx) sws_freeContext(pDecoder->pScaledSwsCtx);
 		avcodec_close(pDecoder->pCodecCtx);
 		av_free(pDecoder->pCodecCtx);
 		av_free(pDecoder->decoder.pBuffer);
