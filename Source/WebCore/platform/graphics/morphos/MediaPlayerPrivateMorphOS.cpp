@@ -320,6 +320,16 @@ void MediaPlayerPrivateMorphOS::load(const String& url)
 	m_readyState = MediaPlayer::ReadyState::HaveNothing;
 	m_player->readyStateChanged();
 
+#if 1
+MediaPlayerMorphOSSettings::settings().m_networkingContextForRequests =
+m_player->client().mediaPlayerPage()->mainFrame().loader().networkingContext();
+
+MediaPlayerMorphOSSettings::settings().m_load = [](WebCore::MediaPlayer *player, const String &url, WebCore::MediaPlayerMorphOSInfo& info,
+		MediaPlayerMorphOSStreamSettings &settings, Function<void()> &&yieldFunc) {
+	};
+
+#endif
+
 	m_acinerella = Acinerella::Acinerella::create(this, url);
 }
 
