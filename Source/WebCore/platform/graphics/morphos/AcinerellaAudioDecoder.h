@@ -73,7 +73,7 @@ protected:
 	uint32_t        m_ahiSampleLength; // *2 for bytes
 	uint32_t        m_ahiSampleBeingPlayed;
 	uint32_t        m_ahiFrameOffset; //
-	BinarySemaphore m_ahiSampleConsumed;
+	Task           *m_pumpTask = nullptr;
 	RefPtr<Thread>  m_ahiThread;
 	bool            m_ahiThreadShuttingDown = false;
 
