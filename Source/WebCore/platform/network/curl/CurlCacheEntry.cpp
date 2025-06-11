@@ -502,6 +502,12 @@ uint64_t CurlCacheEntry::entrySize()
     return m_entrySize;
 }
 
+#if PLATFORM(MUI)
+String CurlCacheEntry::baseName()
+{
+    return m_basename;
+}
+#endif
 
 bool CurlCacheEntry::openContentFile()
 {

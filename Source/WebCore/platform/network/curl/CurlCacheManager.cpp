@@ -165,7 +165,11 @@ void CurlCacheManager::loadIndex()
             cacheEntry = makeUnique<CurlCacheEntry>(entry, nullptr, m_cacheDir);
             cacheEntry->isCached(); // force header load
         }
+#if PLATFORM(MUI)
+        else if (4 == entryComponents.size()) {
+#else
         else if (3 == entryComponents.size()) {
+#endif
             cacheEntry = makeUnique<CurlCacheEntry>(entryComponents.at(0), entryComponents.at(1).toDouble(), entryComponents.at(2).toDouble(), m_cacheDir);
         }
 
@@ -218,6 +222,10 @@ void CurlCacheManager::saveIndex()
                 sizeAndTime.append(String::number(entryIt->value->entrySize()));
                 sizeAndTime.append("\t");
                 sizeAndTime.append(String::number(entryIt->value->expireDate().secondsSinceEpoch().seconds()));
+#if PLATFORM(MUI)
+                sizeAndTime.append("\t");
+                sizeAndTime.append(entryIt->value->baseName());
+#endif
                 sizeAndTime.append("\n");
                 auto cSizeAndTime = sizeAndTime.latin1();
                 FileSystem::writeToFile(indexFile, cSizeAndTime.data(), cSizeAndTime.length());
