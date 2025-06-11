@@ -231,7 +231,9 @@ void CurlCacheManager::saveIndex()
                 FileSystem::writeToFile(indexFile, cSizeAndTime.data(), cSizeAndTime.length());
             }
             else {
+#if !PLATFORM(MUI)
                 entryIt->value->invalidate();
+#endif
             }
         }
         ++it;
