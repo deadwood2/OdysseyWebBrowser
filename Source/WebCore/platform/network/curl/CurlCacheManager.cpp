@@ -175,11 +175,7 @@ void CurlCacheManager::loadIndex()
 
         if (!!cacheEntry)
         {
-#if PLATFORM(MUI)
-            if (cacheEntry->entrySize() && cacheEntry->entrySize() < m_storageSizeLimit) {
-#else
             if (cacheEntry->isValid() && cacheEntry->entrySize() < m_storageSizeLimit) {
-#endif
                 m_currentStorageSize += cacheEntry->entrySize();
                 makeRoomForNewEntry();
                 m_LRUEntryList.prependOrMoveToFirst(entryComponents.at(0));
@@ -313,16 +309,7 @@ bool CurlCacheManager::isCached(const String& url)
 
     auto it = m_index.find(url);
     if (it != m_index.end())
-#if PLATFORM(MUI)
-    {
-        if (it->value->isCached())
-            return !it->value->isLoading();
-        else
-            invalidateCacheEntry(url);
-    }
-#else
         return it->value->isCached() && !it->value->isLoading();
-#endif
 
     return false;
 }

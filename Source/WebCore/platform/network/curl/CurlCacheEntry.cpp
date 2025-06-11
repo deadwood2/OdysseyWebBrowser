@@ -55,95 +55,6 @@
 
 namespace WebCore {
 
-#if PLATFORM(MUI)
-class DirCache{
-public:
-    DirCache() : inited(false)
-    {
-    }
-
-    void initOnce(const String& dir)
-    {
-        BPTR lock;
-        const LONG bufferSize = 4096;
-        struct ExAllData *ead;
-        struct ExAllControl *eac;
-        BOOL loop;
-
-        if(inited)
-            return;
-
-        lock = Lock(dir.latin1().data(), SHARED_LOCK);
-        if (!lock)
-            return;
-
-        ead = (struct ExAllData *)AllocVec(bufferSize, MEMF_CLEAR | MEMF_PUBLIC);
-        eac = (struct ExAllControl *)AllocDosObject(DOS_EXALLCONTROL, NULL);
-        eac->eac_LastKey = 0;
-
-        do
-        {
-            loop = ExAll(lock, ead, bufferSize, ED_COMMENT, eac);
-
-            if (!loop && IoErr() != ERROR_NO_MORE_ENTRIES)
-                break;
-
-            if (eac->eac_Entries != 0)
-            {
-                struct ExAllData * tmp = ead;
-
-                do
-                {
-                    if (tmp->ed_Type == ST_FILE)
-                        m_sizes.set(tmp->ed_Name, tmp->ed_Size);
-
-                    tmp = tmp->ed_Next;
-                }
-                while (tmp != NULL);
-            }
-
-        }while(loop);
-
-        FreeDosObject(DOS_EXALLCONTROL, eac);
-        UnLock(lock);
-        FreeVec(ead);
-
-        inited = true;
-    }
-
-    bool getFileSize(const String& path, long long& result)
-    {
-        String filename = FileSystem::pathFileName(path);
-        auto it = m_sizes.find(filename);
-        if (it != m_sizes.end())
-        {
-            result = it->value;
-            // only one time read, next time through filesystem
-            m_sizes.remove(filename);
-            return true;
-        }
-
-        auto res = FileSystem::fileSize(path);
-        if (!res)
-            return false;
-        
-        result = *res;
-        return true;
-    }
-
-private:
-    HashMap<String, int> m_sizes;
-    bool inited;
-};
-
-DirCache dc;
-
-bool CurlCacheEntry::getFileSize(const String& path, long long& result) const
-{
-    return dc.getFileSize(path, result);
-}
-#endif
-
 CurlCacheEntry::CurlCacheEntry(const String& url, ResourceHandle* job, const String& cacheDir)
     : m_headerFilename(cacheDir)
     , m_contentFilename(cacheDir)
@@ -161,10 +72,6 @@ CurlCacheEntry::CurlCacheEntry(const String& url, ResourceHandle* job, const Str
 
     m_contentFilename.append(m_basename);
     m_contentFilename.append(".content");
-
-#if PLATFORM(MUI)
-    dc.initOnce(cacheDir);
-#endif
 }
 
 CurlCacheEntry::CurlCacheEntry(const String& url, uint64_t entrySize, double expireDate, const String& cacheDir)
@@ -467,22 +374,6 @@ void CurlCacheEntry::setIsLoading(bool isLoading)
 uint64_t CurlCacheEntry::entrySize()
 {
     if (!m_entrySize) {
-#if PLATFORM(MUI)
-        long long headerFileSize;
-        long long contentFileSize;
-
-        if (!getFileSize(m_headerFilename, headerFileSize)) {
-            LOG(Network, "Cache Error: Could not get file size of %s\n", m_headerFilename.latin1().data());
-            return m_entrySize;
-        }
-
-        if (!getFileSize(m_contentFilename, contentFileSize)) {
-            LOG(Network, "Cache Error: Could not get file size of %s\n", m_contentFilename.latin1().data());
-            return m_entrySize;
-        }
-
-        m_entrySize = headerFileSize + contentFileSize;
-#else
         auto headerFileSize = FileSystem::fileSize(m_headerFilename);
         if (!headerFileSize) {
             LOG(Network, "Cache Error: Could not get file size of %s\n", m_headerFilename.latin1().data());
@@ -495,7 +386,6 @@ uint64_t CurlCacheEntry::entrySize()
         }
 
         m_entrySize = *headerFileSize + *contentFileSize;
-#endif
 
     }
 
