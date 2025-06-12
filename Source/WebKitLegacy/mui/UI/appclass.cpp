@@ -85,6 +85,7 @@
 #include <JavaScriptCore/InitializeThreading.h>
 #include <JavaScriptCore/Options.h>
 #include <wtf/text/StringConcatenateNumbers.h>
+#include <WebCore/CurlRequestScheduler.h>
 /* needed for shutting down */
 #include <WebCore/CurlContext.h>
 #include "NetworkStorageSessionMap.h"
@@ -2370,14 +2371,8 @@ void prefs_update(Object *obj, struct Data *data)
     /* Needed in ResourceHandleManager::sharedInstance() */
     stccpy(data->certificate_path, (char *) getv(data->prefswin, MA_OWBApp_CertificatePath), sizeof(data->certificate_path));
 
-#if 0
-// broken 2.24
     int activeconnections = (int) getv(data->prefswin, MA_OWBApp_ActiveConnections);
-#endif
-#if 0
-// broken 2.18
-    ResourceHandleManager::setMaxConnections(activeconnections);
-#endif
+    CurlContext::singleton().scheduler().setMaxTotalConnections(activeconnections);
     stccpy(data->useragent, (char *) getv(data->prefswin, MA_OWBApp_UserAgent), sizeof(data->useragent));
 #if 0
 // broken 2.18
