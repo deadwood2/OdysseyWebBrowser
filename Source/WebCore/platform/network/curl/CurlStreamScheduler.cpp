@@ -26,7 +26,7 @@
 #include "config.h"
 #include "CurlStreamScheduler.h"
 
-#if USE(CURL)
+#if USE(CURL) && !PLATFORM(MUI)
 
 #if OS(MORPHOS)
 extern "C" {
@@ -38,178 +38,178 @@ LONG WaitSelect(LONG nfds, fd_set *readfds, fd_set *writefds, fd_set *exeptfds,
 
 namespace WebCore {
 
-//CurlStreamScheduler::CurlStreamScheduler()
-//{
-//    ASSERT(isMainThread());
-//}
-//
-//CurlStreamScheduler::~CurlStreamScheduler()
-//{
-//    ASSERT(isMainThread());
-//}
+CurlStreamScheduler::CurlStreamScheduler()
+{
+    ASSERT(isMainThread());
+}
 
-//CurlStreamID CurlStreamScheduler::createStream(const URL& url, CurlStream::Client& client)
-//{
-//    ASSERT(isMainThread());
-//
-//    do {
-//        m_currentStreamID = (m_currentStreamID + 1 != invalidCurlStreamID) ? m_currentStreamID + 1 : 1;
-//    } while (m_clientList.contains(m_currentStreamID));
-//
-//    auto streamID = m_currentStreamID;
-//    m_clientList.add(streamID, &client);
-//
-//    callOnWorkerThread([this, streamID, url = url.isolatedCopy()]() mutable {
-//        m_streamList.add(streamID, CurlStream::create(*this, streamID, WTFMove(url)));
-//    });
-//
-//    return streamID;
-//}
-//
-//void CurlStreamScheduler::destroyStream(CurlStreamID streamID)
-//{
-//    ASSERT(isMainThread());
-//
-//    if (m_clientList.contains(streamID))
-//        m_clientList.remove(streamID);
-//
-//    callOnWorkerThread([this, streamID]() {
-//        if (m_streamList.contains(streamID))
-//            m_streamList.remove(streamID);
-//    });
-//}
-//
-//void CurlStreamScheduler::send(CurlStreamID streamID, UniqueArray<uint8_t>&& data, size_t length)
-//{
-//    ASSERT(isMainThread());
-//
-//    callOnWorkerThread([this, streamID, data = WTFMove(data), length]() mutable {
-//        if (auto stream = m_streamList.get(streamID))
-//            stream->send(WTFMove(data), length);
-//    });
-//}
-//
-//void CurlStreamScheduler::callOnWorkerThread(WTF::Function<void()>&& task)
-//{
-//    ASSERT(isMainThread());
-//
-//    {
-//        Locker locker { m_mutex };
-//        m_taskQueue.append(WTFMove(task));
-//    }
-//
-//    startThreadIfNeeded();
-//}
-//
-//void CurlStreamScheduler::callClientOnMainThread(CurlStreamID streamID, WTF::Function<void(CurlStream::Client&)>&& task)
-//{
-//    ASSERT(!isMainThread());
-//
-//    callOnMainThread([this, streamID, task = WTFMove(task)]() {
-//        if (auto client = m_clientList.get(streamID))
-//            task(*client);
-//    });
-//}
-//
-//void CurlStreamScheduler::startThreadIfNeeded()
-//{
-//    {
-//        Locker locker { m_mutex };
-//        if (m_runThread)
-//            return;
-//    }
-//
-//    if (m_thread)
-//        m_thread->waitForCompletion();
-//
-//    m_runThread = true;
-//
-//    m_thread = Thread::create("curlStreamThread", [this] {
-//        workerThread();
-//    }, ThreadType::Network);
-//}
-//
-//void CurlStreamScheduler::stopThreadIfNoMoreJobRunning()
-//{
-//    ASSERT(!isMainThread());
-//
-//    if (m_streamList.size())
-//        return;
-//
-//    Locker locker { m_mutex };
-//    if (m_taskQueue.size())
-//        return;
-//
-//    m_runThread = false;
-//}
-//
-//void CurlStreamScheduler::executeTasks()
-//{
-//    ASSERT(!isMainThread());
-//
-//    Vector<WTF::Function<void()>> taskQueue;
-//
-//    {
-//        Locker locker { m_mutex };
-//        taskQueue = WTFMove(m_taskQueue);
-//    }
-//
-//    for (auto& task : taskQueue)
-//        task();
-//}
-//
-//void CurlStreamScheduler::workerThread()
-//{
-//    ASSERT(!isMainThread());
-//#if OS(MORPHOS)
-//    static const int selectTimeoutMS = 200;
-//#else
-//    static const int selectTimeoutMS = 20;
-//#endif
-//    struct timeval timeout { 0, selectTimeoutMS * 1000};
-//
-//    while (m_runThread) {
-//        executeTasks();
-//
-//#if !OS(MORPHOS)
-//        int rc = 0;
-//#endif
-//        fd_set readfds;
-//        fd_set writefds;
-//        fd_set exceptfds;
-//
-//        do {
-//            int maxfd = -1;
-//
-//            FD_ZERO(&readfds);
-//            FD_ZERO(&writefds);
-//            FD_ZERO(&exceptfds);
-//
-//            for (auto& stream : m_streamList.values())
-//                stream->appendMonitoringFd(readfds, writefds, exceptfds, maxfd);
-//
-//            if (maxfd >= 0)
-//            {
-//#if OS(MORPHOS)
-//                ULONG maskp = 0;
-//                WaitSelect(maxfd + 1, &readfds, &writefds, &exceptfds, &timeout, &maskp);
-//#else
-//                rc = ::select(maxfd + 1, &readfds, &writefds, &exceptfds, &timeout);
-//#endif
-//            }
-//#if OS(MORPHOS)
-//        } while (0);
-//#else
-//        } while (rc == -1 && errno == EINTR);
-//#endif
-//
-//        for (auto& stream : m_streamList.values())
-//            stream->tryToTransfer(readfds, writefds, exceptfds);
-//
-//        stopThreadIfNoMoreJobRunning();
-//    }
-//}
-//
+CurlStreamScheduler::~CurlStreamScheduler()
+{
+    ASSERT(isMainThread());
+}
+
+CurlStreamID CurlStreamScheduler::createStream(const URL& url, CurlStream::Client& client)
+{
+    ASSERT(isMainThread());
+
+    do {
+        m_currentStreamID = (m_currentStreamID + 1 != invalidCurlStreamID) ? m_currentStreamID + 1 : 1;
+    } while (m_clientList.contains(m_currentStreamID));
+
+    auto streamID = m_currentStreamID;
+    m_clientList.add(streamID, &client);
+
+    callOnWorkerThread([this, streamID, url = url.isolatedCopy()]() mutable {
+        m_streamList.add(streamID, CurlStream::create(*this, streamID, WTFMove(url)));
+    });
+
+    return streamID;
+}
+
+void CurlStreamScheduler::destroyStream(CurlStreamID streamID)
+{
+    ASSERT(isMainThread());
+
+    if (m_clientList.contains(streamID))
+        m_clientList.remove(streamID);
+
+    callOnWorkerThread([this, streamID]() {
+        if (m_streamList.contains(streamID))
+            m_streamList.remove(streamID);
+    });
+}
+
+void CurlStreamScheduler::send(CurlStreamID streamID, UniqueArray<uint8_t>&& data, size_t length)
+{
+    ASSERT(isMainThread());
+
+    callOnWorkerThread([this, streamID, data = WTFMove(data), length]() mutable {
+        if (auto stream = m_streamList.get(streamID))
+            stream->send(WTFMove(data), length);
+    });
+}
+
+void CurlStreamScheduler::callOnWorkerThread(WTF::Function<void()>&& task)
+{
+    ASSERT(isMainThread());
+
+    {
+        Locker locker { m_mutex };
+        m_taskQueue.append(WTFMove(task));
+    }
+
+    startThreadIfNeeded();
+}
+
+void CurlStreamScheduler::callClientOnMainThread(CurlStreamID streamID, WTF::Function<void(CurlStream::Client&)>&& task)
+{
+    ASSERT(!isMainThread());
+
+    callOnMainThread([this, streamID, task = WTFMove(task)]() {
+        if (auto client = m_clientList.get(streamID))
+            task(*client);
+    });
+}
+
+void CurlStreamScheduler::startThreadIfNeeded()
+{
+    {
+        Locker locker { m_mutex };
+        if (m_runThread)
+            return;
+    }
+
+    if (m_thread)
+        m_thread->waitForCompletion();
+
+    m_runThread = true;
+
+    m_thread = Thread::create("curlStreamThread", [this] {
+        workerThread();
+    }, ThreadType::Network);
+}
+
+void CurlStreamScheduler::stopThreadIfNoMoreJobRunning()
+{
+    ASSERT(!isMainThread());
+
+    if (m_streamList.size())
+        return;
+
+    Locker locker { m_mutex };
+    if (m_taskQueue.size())
+        return;
+
+    m_runThread = false;
+}
+
+void CurlStreamScheduler::executeTasks()
+{
+    ASSERT(!isMainThread());
+
+    Vector<WTF::Function<void()>> taskQueue;
+
+    {
+        Locker locker { m_mutex };
+        taskQueue = WTFMove(m_taskQueue);
+    }
+
+    for (auto& task : taskQueue)
+        task();
+}
+
+void CurlStreamScheduler::workerThread()
+{
+    ASSERT(!isMainThread());
+#if OS(MORPHOS)
+    static const int selectTimeoutMS = 200;
+#else
+    static const int selectTimeoutMS = 20;
+#endif
+    struct timeval timeout { 0, selectTimeoutMS * 1000};
+
+    while (m_runThread) {
+        executeTasks();
+
+#if !OS(MORPHOS)
+        int rc = 0;
+#endif
+        fd_set readfds;
+        fd_set writefds;
+        fd_set exceptfds;
+
+        do {
+            int maxfd = -1;
+
+            FD_ZERO(&readfds);
+            FD_ZERO(&writefds);
+            FD_ZERO(&exceptfds);
+
+            for (auto& stream : m_streamList.values())
+                stream->appendMonitoringFd(readfds, writefds, exceptfds, maxfd);
+
+            if (maxfd >= 0)
+            {
+#if OS(MORPHOS)
+                ULONG maskp = 0;
+                WaitSelect(maxfd + 1, &readfds, &writefds, &exceptfds, &timeout, &maskp);
+#else
+                rc = ::select(maxfd + 1, &readfds, &writefds, &exceptfds, &timeout);
+#endif
+            }
+#if OS(MORPHOS)
+        } while (0);
+#else
+        } while (rc == -1 && errno == EINTR);
+#endif
+
+        for (auto& stream : m_streamList.values())
+            stream->tryToTransfer(readfds, writefds, exceptfds);
+
+        stopThreadIfNoMoreJobRunning();
+    }
+}
+
 }
 
 #endif

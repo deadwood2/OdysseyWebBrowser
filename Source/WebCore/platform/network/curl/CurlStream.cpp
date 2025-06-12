@@ -153,10 +153,10 @@ void CurlStream::tryToSend()
     if (!m_curlHandle || !m_sendBuffers.size())
         return;
 
-    auto& elem = m_sendBuffers.first();
+    auto& [buffer, length] = m_sendBuffers.first();
     size_t bytesSent = 0;
 
-    auto errorCode = m_curlHandle->send(std::get<0>(elem).get() + m_sendBufferOffset, std::get<1>(elem) - m_sendBufferOffset, bytesSent);
+    auto errorCode = m_curlHandle->send(buffer.get() + m_sendBufferOffset, length - m_sendBufferOffset, bytesSent);
     if (errorCode != CURLE_OK) {
         if (errorCode != CURLE_AGAIN)
             notifyFailure(errorCode);
@@ -165,7 +165,7 @@ void CurlStream::tryToSend()
 
     m_sendBufferOffset += bytesSent;
 
-    if (m_sendBufferOffset >= std::get<1>(elem)) {
+    if (m_sendBufferOffset >= length) {
         m_sendBuffers.remove(0);
         m_sendBufferOffset = 0;
     }

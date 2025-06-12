@@ -276,6 +276,7 @@ void CurlRequestScheduler::workerThread()
 
         executeTasks();
 
+#if !PLATFORM(MUI)
 #if OS(MORPHOS)
         const int selectTimeoutMS = INT_MAX;
         CURLMcode mc = m_curlMultiHandle->poll({ }, selectTimeoutMS);
@@ -296,6 +297,41 @@ void CurlRequestScheduler::workerThread()
         if (mc != CURLM_OK)
             break;
 #endif
+#else
+        // Retry 'select' if it was interrupted by a process signal.
+        int rc = 0;
+        fd_set fdread;
+        fd_set fdwrite;
+        fd_set fdexcep;
+
+        do {
+            FD_ZERO(&fdread);
+            FD_ZERO(&fdwrite);
+            FD_ZERO(&fdexcep);
+            int maxfd = 0;
+
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 500; // shorter timeouts give better outgoing performance
+
+            m_curlMultiHandle->getFdSet(fdread, fdwrite, fdexcep, maxfd);
+
+            for (auto& stream : m_streamList.values())
+                stream->appendMonitoringFd(fdread, fdwrite, fdexcep, maxfd);
+
+            // When the 3 file descriptors are empty, winsock will return -1
+            // and bail out, stopping the file download. So make sure we
+            // have valid file descriptors before calling select.
+            if (maxfd >= 0)
+                rc = WaitSelect(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout, nullptr);
+            else {
+                usleep(100 * 1000);
+            }
+        } while (rc == -1 && errno == EINTR);
+
+        int activeCount = 0;
+        while (m_curlMultiHandle->perform(activeCount) == CURLM_CALL_MULTI_PERFORM) { }
+#endif
         // check the curl messages indicating completed transfers
         // and free their resources
         while (true) {
@@ -309,10 +345,10 @@ void CurlRequestScheduler::workerThread()
                 completeTransfer(client, msg->data.result);
         }
 
-//#if PLATFORM(MUI)
-//        for (auto& stream : m_streamList.values())
-//            stream->tryToTransfer(fdread, fdwrite, fdexcep);
-//#endif
+#if PLATFORM(MUI)
+        for (auto& stream : m_streamList.values())
+            stream->tryToTransfer(fdread, fdwrite, fdexcep);
+#endif
 
         stopThreadIfNoMoreJobRunning();
     }
