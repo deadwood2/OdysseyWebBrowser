@@ -65,6 +65,9 @@ public:
     void destroyStream(CurlStreamID) final;
     void send(CurlStreamID, UniqueArray<uint8_t>&&, size_t) final;
     void callClientOnMainThread(CurlStreamID, WTF::Function<void(CurlStream::Client&)>&&) final;
+    long maxConnects() const { return m_maxConnects; };
+    long maxTotalConnections() const { return m_maxTotalConnections; };
+    void setMaxTotalConnections(long);
 #endif
 
 private:

@@ -168,6 +168,12 @@ void CurlRequestScheduler::stopCurlThread()
 	stopThread();
 }
 
+void CurlRequestScheduler::setMaxTotalConnections(long val)
+{
+    m_maxTotalConnections = val;
+    /* TODO: need to change in m_curlMultiHandle to take effect without need to restart Odyssey */
+}
+
 CurlStreamID CurlRequestScheduler::createStream(const URL& url, CurlStream::Client& client)
 {
     ASSERT(isMainThread());
