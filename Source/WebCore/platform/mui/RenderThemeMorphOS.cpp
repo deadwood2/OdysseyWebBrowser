@@ -1265,7 +1265,7 @@ Color RenderThemeBal::platformFocusRingColor(OptionSet<StyleColor::Options>) con
 #if ENABLE(TOUCH_EVENTS)
 Color RenderThemeBal::platformTapHighlightColor() const
 {
-    return Color(0, 168, 223, 50);
+    return Color(SRGBA<uint8_t>{0, 168, 223, 50});
 }
 #endif
 

@@ -450,15 +450,78 @@ WebView::WebView()
 #if ENABLE(WEB_AUDIO)
     settings.setWebAudioEnabled(true);
 #endif
+#if ENABLE(MEDIA_STREAM)
+    provideUserMediaTo(m_page, new WebUserMediaClient(*this));
+    settings.setMediaStreamEnabled(true);
+    settings.setMediaDevicesEnabled(true);
+#endif
+#if ENABLE(FULLSCREEN_API)
+    settings.setFullScreenEnabled(true);
+#endif
 
-    settings.setAllowDisplayOfInsecureContent(true);
+//
+
+    settings.setAllowDisplayOfInsecureContent(false);
+    settings.setAllowRunningOfInsecureContent(false);
+    settings.setLoadsImagesAutomatically(true);
+    settings.setScriptEnabled(true);
+    settings.setScriptMarkupEnabled(true);
+    settings.setDeferredCSSParserEnabled(true);
+//    settings.setDeviceWidth(1920);
+//    settings.setDeviceHeight(1080);
+    settings.setShrinksStandaloneImagesToFit(true);
+    settings.setSubpixelAntialiasedLayerTextEnabled(true);
+    settings.setAuthorAndUserStylesEnabled(true);
+//    settings.setFixedFontFamily("Courier New");
+//    settings.setDefaultFixedFontSize(13);
+    settings.setResizeObserverEnabled(true);
+    settings.setEditingBehaviorType(EditingBehaviorType::Unix);
+    settings.setShouldRespectImageOrientation(true);
     settings.setTextAreasAreResizable(true);
+    settings.setIntersectionObserverEnabled(true);
     settings.setDataTransferItemsEnabled(true);
+
+    settings.setForceCompositingMode(false);
+    settings.setAcceleratedCompositingEnabled(false);
+    settings.setAcceleratedDrawingEnabled(false);
+    settings.setCanvasColorSpaceEnabled(true);
+    settings.setAcceleratedCompositedAnimationsEnabled(false);
+    settings.setAcceleratedCompositingForFixedPositionEnabled(false);
+    settings.setAcceleratedFiltersEnabled(false);
+
+    settings.setWebGLEnabled(false);
+
+    settings.setMaximumSourceBufferSize(32 * 1024 * 1024);
+
+    settings.setXSSAuditorEnabled(true);
+    settings.setVisualViewportAPIEnabled(true);
+
+    settings.setHiddenPageCSSAnimationSuspensionEnabled(true);
+    settings.setAnimatedImageAsyncDecodingEnabled(false);
+
+    settings.setWebAnimationsCompositeOperationsEnabled(true);
+    settings.setWebAnimationsMutableTimelinesEnabled(true);
+    settings.setCSSCustomPropertiesAndValuesEnabled(true);
+
+    settings.setViewportFitEnabled(true);
+    settings.setConstantPropertiesEnabled(true);
+
+    // the default
+    settings.setTouchEventEmulationEnabled(false);
+
+    settings.setRequestAnimationFrameEnabled(true);
+//
+
+
 
     RuntimeEnabledFeatures::sharedFeatures().setCSSPaintingAPIEnabled(true);
     RuntimeEnabledFeatures::sharedFeatures().setCSSTypedOMEnabled(true);
 
     RuntimeEnabledFeatures::sharedFeatures().setCSSLogicalEnabled(true);
+
+    RuntimeEnabledFeatures::sharedFeatures().setOffscreenCanvasEnabled(true);
+    RuntimeEnabledFeatures::sharedFeatures().setOffscreenCanvasInWorkersEnabled(true);
+
 
     webFrame->initWithWebView(this, m_page); 
     m_mainFrame = webFrame;
@@ -2488,9 +2551,6 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->isJavaEnabled();
     settings->setJavaEnabled(enabled);
 
-    enabled = preferences->isXSSAuditorEnabled();
-    settings->setXSSAuditorEnabled(!!enabled);
-
     enabled = preferences->javaScriptCanOpenWindowsAutomatically();
     settings->setJavaScriptCanOpenWindowsAutomatically(enabled);
 
@@ -2573,14 +2633,8 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->shouldPrintBackgrounds();
     settings->setShouldPrintBackgrounds(!!enabled);
 
-    enabled = preferences->textAreasAreResizable();
-    settings->setTextAreasAreResizable(!!enabled);
-
     WebKitEditableLinkBehavior behavior = preferences->editableLinkBehavior();
     settings->setEditableLinkBehavior((EditableLinkBehavior)behavior);
-
-    enabled = preferences->requestAnimationFrameEnabled();
-    settings->setRequestAnimationFrameEnabled(!!enabled);
 
     enabled = preferences->usesPageCache();
     settings->setUsesBackForwardCache(!!enabled);
@@ -2600,12 +2654,6 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     FontSmoothingType smoothingType = preferences->fontSmoothing();
     settings->setFontRenderingMode(smoothingType != FontSmoothingTypeWindows ? FontRenderingMode::Normal : FontRenderingMode::Alternate);
 
-    enabled = preferences->authorAndUserStylesEnabled();
-    settings->setAuthorAndUserStylesEnabled(enabled);
-
-    enabled = preferences->offlineWebApplicationCacheEnabled();
-    settings->setOfflineWebApplicationCacheEnabled(enabled);
-
     enabled = preferences->databasesEnabled();
     DatabaseManager::singleton().setIsAvailable(enabled);
 
@@ -2621,17 +2669,8 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
     enabled = preferences->javaScriptCanAccessClipboard();
     settings->setJavaScriptCanAccessClipboard(!!enabled);
 
-    enabled = preferences->isXSSAuditorEnabled();
-    settings->setXSSAuditorEnabled(!!enabled);
-
     enabled = preferences->isFrameFlatteningEnabled();
     settings->setFrameFlattening(enabled ? FrameFlattening::FullyEnabled : FrameFlattening::Disabled);
-    
-    enabled = preferences->webGLEnabled();
-    settings->setWebGLEnabled(enabled);
-
-    enabled = preferences->acceleratedCompositingEnabled();
-    settings->setAcceleratedCompositingEnabled(enabled);
 
     enabled = preferences->showDebugBorders();
     settings->setShowDebugBorders(enabled);
@@ -2664,10 +2703,6 @@ void WebView::notifyPreferencesChanged(WebPreferences* preferences)
 #endif
     
     settings->setSpatialNavigationEnabled(preferences->spatialNavigationEnabled());
-
-#if ENABLE(FULLSCREEN_API)
-    settings->setFullScreenEnabled(false);
-#endif
 
     updateSharedSettingsFromPreferencesIfNeeded(preferences);
 }
