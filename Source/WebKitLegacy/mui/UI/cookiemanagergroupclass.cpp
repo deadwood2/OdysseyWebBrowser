@@ -177,10 +177,7 @@ DEFTMETHOD(CookieManagerGroup_Load)
     NetworkStorageSession& storageSession = NetworkStorageSessionMap::defaultStorageSession();
 
     HashSet<String> hosts;
-#if 0
-// broken 2.30
-    storageSession.cookieStorage().getHostnamesWithCookies(storageSession, hosts);
-#endif
+    storageSession.getHostnamesWithCookies(hosts);
     Vector<Cookie> cookies = storageSession.cookieDatabase().getAllCookies();
 
     for (HashSet<String>::iterator it = hosts.begin(); it != hosts.end(); ++it)
