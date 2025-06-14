@@ -66,4 +66,8 @@ std::optional<JSC::JSValue> deserializeIDBValueWithKeyInjection(JSC::JSGlobalObj
 
 void callOnIDBSerializationThreadAndWait(Function<void(JSC::JSGlobalObject&)>&&);
 
+#if PLATFORM(MUI)
+void shutdownIDBSerializationThread();
+#endif
+
 }
