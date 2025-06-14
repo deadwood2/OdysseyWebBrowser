@@ -31,9 +31,6 @@
 #include <wtf/HashMap.h>
 #include <wtf/Vector.h>
 #include <wtf/text/WTFString.h>
-#if PLATFORM(MUI)
-#define INTPTR_MAX  (2147483647)
-#endif
 
 #if OS(MORPHOS)
 #define INTPTR_MAX 0x7fffffff
