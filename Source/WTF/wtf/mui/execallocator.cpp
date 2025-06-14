@@ -419,6 +419,6 @@ void allocator_freemem(void * address)
 {
     D(bug("A:freemem 0x%x \n", address));
 
-    allocator.freePages(address);
-
+    if (address)
+        allocator.freePages(address);
 }
