@@ -123,7 +123,7 @@ public:
 				{
 				case RECEIVE_FRAME_SUCCESS:
 					{
-						const size_t copyBytes = std::min(frame->buffer_size, bytesLeft);
+						const size_t copyBytes = std::min((ssize_t)frame->buffer_size, bytesLeft);
 						DDECODE(dprintf("[%s]%s: FRAME_SUCCESS, copy %d bytes, left %d\033[0m\n", "\033[33mA", __func__, copyBytes, bytesLeft));
 #if READ_FLOATS
 						const float *in = (const float *)frame->pBuffer;
@@ -202,7 +202,7 @@ public:
 				{
 				case RECEIVE_FRAME_SUCCESS:
 					{
-						const size_t copyBytes = std::min(frame->buffer_size, bytesLeft);
+						const size_t copyBytes = std::min((ssize_t)frame->buffer_size, bytesLeft);
 						DDECODE(dprintf("[%s]%s: FRAME_SUCCESS, copy %d bytes...\033[0m\n", "\033[33mA", __func__, copyBytes));
 #if READ_FLOATS
 						const float *in = (const float *)frame->pBuffer;

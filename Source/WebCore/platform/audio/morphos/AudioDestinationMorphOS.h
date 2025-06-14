@@ -49,6 +49,8 @@ private:
     void stopRendering(CompletionHandler<void(bool)>&&);
     void setIsPlaying(bool playing) { m_isPlaying = playing; }
     void render(int16_t *samplesStereo, size_t count) override;
+    void renderOnRenderingTheadIfPlaying(int16_t *samplesStereo, size_t count);
+    void renderOnRenderingThead(int16_t *samplesStereo, size_t count);
 
 private:
     RefPtr<AudioBus> m_renderBus;

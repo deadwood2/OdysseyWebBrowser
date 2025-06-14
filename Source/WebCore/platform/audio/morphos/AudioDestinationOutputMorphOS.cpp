@@ -7,6 +7,9 @@
 #include <proto/dos.h>
 #include <dos/dos.h>
 
+#undef AHI_BASE_NAME
+#define AHI_BASE_NAME m_ahiBase
+
 #define D(x) 
 
 namespace WebCore {
@@ -42,6 +45,22 @@ void AudioDestinationOutputMorphOS::stop()
 		AHI_ControlAudio(m_ahiControl, AHIC_Play, FALSE, TAG_DONE);
 }
 
+#if OS(AROS)
+AROS_UFH3(void, AROS_SoundFunc,
+        AROS_UFHA(struct Hook *, hook, A0),
+        AROS_UFHA(struct AHIAudioCtrl *, actrl, A2),
+        AROS_UFHA(struct AHISoundMessage *, smsg, A1))
+{
+    AROS_USERFUNC_INIT
+
+	AHIAudioCtrl *ahiCtrl = reinterpret_cast<AHIAudioCtrl *>(actrl);
+	AudioDestinationOutputMorphOS *me = reinterpret_cast<AudioDestinationOutputMorphOS *>(ahiCtrl->ahiac_UserData);
+	AudioDestinationOutputMorphOS::soundFunc(me);
+
+    AROS_USERFUNC_EXIT
+}
+#endif
+
 bool AudioDestinationOutputMorphOS::ahiInit()
 {
 	D(dprintf("[AD]%s:\n", __func__));
@@ -60,6 +79,7 @@ bool AudioDestinationOutputMorphOS::ahiInit()
 
 				D(dprintf("[AD]%s: ahiBase %p\n", __func__, m_ahiBase));
 
+#if OS(MORPHOS)
 				static struct EmulLibEntry GATE_SoundFunc = {
 					TRAP_LIB, 0, (void (*)(void))AudioDestinationOutputMorphOS::soundFunc
 				};
@@ -69,6 +89,14 @@ bool AudioDestinationOutputMorphOS::ahiInit()
 					(ULONG (*)()) &GATE_SoundFunc,
 					NULL, NULL,
 				};
+#endif
+#if OS(AROS)
+				static struct Hook __soundHook = {
+					{NULL,NULL},
+					(APTR) AROS_SoundFunc,
+					NULL, NULL,
+				};
+#endif
 
 				if ((m_ahiControl = AHI_AllocAudio(
 					AHIA_UserData, reinterpret_cast<IPTR>(this),
@@ -180,7 +208,8 @@ void AudioDestinationOutputMorphOS::ahiCleanup()
 	if (m_ahiThread)
 	{
 		m_ahiThreadShuttingDown = true;
-		m_ahiSampleConsumed.signal();
+		if (m_pumpTask)
+			Signal(m_pumpTask, SIGF_SINGLE);
 	}
 
 	for (int i = 0; i < 2; i++)
@@ -215,23 +244,31 @@ void AudioDestinationOutputMorphOS::ahiCleanup()
 
 #undef AHI_BASE_NAME
 #define AHI_BASE_NAME me->m_ahiBase
+#if OS(MORPHOS)
 void AudioDestinationOutputMorphOS::soundFunc()
 {
 	AHIAudioCtrl *ahiCtrl = reinterpret_cast<AHIAudioCtrl *>(REG_A2);
 	AudioDestinationOutputMorphOS *me = reinterpret_cast<AudioDestinationOutputMorphOS *>(ahiCtrl->ahiac_UserData);
+#endif
+#if OS(AROS)
+void AudioDestinationOutputMorphOS::soundFunc(void *ptr)
+{
+	AudioDestinationOutputMorphOS *me = reinterpret_cast<AudioDestinationOutputMorphOS *>(ptr);
+#endif
 	
 	me->m_ahiSampleBeingPlayed ++;
 	AHI_SetSound(0, me->m_ahiSampleBeingPlayed % 2, 0, 0, me->m_ahiControl, 0);
 
-	me->m_ahiSampleConsumed.signal();
+	Signal(me->m_pumpTask, SIGF_SINGLE);
 }
 
 void AudioDestinationOutputMorphOS::ahiThreadEntryPoint()
 {
-	SetTaskPri(FindTask(0), 2);
+	m_pumpTask = FindTask(0);
+	SetTaskPri(m_pumpTask, 2);
 	while (!m_ahiThreadShuttingDown)
 	{
-		m_ahiSampleConsumed.wait();
+		Wait(SIGF_SINGLE);
 		uint32_t index = m_ahiSampleBeingPlayed % 2; // this sample will play next
 		m_renderer.render((int16_t *)(m_ahiSample[index].ahisi_Address), m_ahiSampleLength);
 	}

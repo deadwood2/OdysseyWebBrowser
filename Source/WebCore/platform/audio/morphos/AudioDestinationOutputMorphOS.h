@@ -23,12 +23,18 @@ public:
 	bool start();
 	void stop();
 
+#if OS(AROS)
+	static void soundFunc(void *ptr);
+#endif
+
 protected:
 	bool ahiInit();
 	void ahiCleanup();
 	void ahiThreadEntryPoint();
 
+#if OS(MORPHOS)
 	static void soundFunc();
+#endif
 
 protected:
 	AudioDestinationRenderer& m_renderer;
@@ -41,7 +47,7 @@ protected:
 	uint32_t        m_ahiSampleLength;
 	uint32_t        m_ahiSampleBeingPlayed;
 
-	BinarySemaphore m_ahiSampleConsumed;
+	Task           *m_pumpTask = nullptr;
 	RefPtr<Thread>  m_ahiThread;
 	bool            m_ahiThreadShuttingDown = false;
 };
