@@ -100,6 +100,8 @@
 #include "DataURLDecoder.h"
 #include <WebCore/AsyncFileStream.h>
 #include <WebCore/BlobRegistryImpl.h>
+#include <WebCore/IDBBindingUtilities.h>
+
 #include <wtf/text/StringToIntegerConversion.h>
 
 namespace JSC {
@@ -1207,6 +1209,7 @@ DEFDISP
     DataURLDecoder::shutdown();
     WebCore::AsyncFileStream::shutdown();
     WebCore::shutdownBlobRegistryImpl();
+    WebCore::shutdownIDBSerializationThread();
     /* !!! Manually call save as destructors for static objects are not getting called (where saveIndex is called) !!! */
     CurlCacheManager::singleton().saveIndex();
 
