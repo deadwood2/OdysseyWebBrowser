@@ -31,7 +31,9 @@
 #include "AudioSourceProvider.h"
 #include "NotImplemented.h"
 #include "AudioUtilities.h"
+#if OS(MORPHOS)
 #include "Altivec.h"
+#endif
 #include <proto/exec.h>
 
 namespace WebCore {
@@ -122,9 +124,22 @@ void AudioDestinationMorphOS::render(int16_t *samplesStereo, size_t count)
 		Locker locker = { AdoptLock, m_dispatchToRenderThreadLock };
 
 		if (!m_dispatchToRenderThread)
-			return;
-
+			renderOnRenderingTheadIfPlaying(samplesStereo, count);
+		else
 		m_dispatchToRenderThread([count = count, samplesStereo = samplesStereo, this, protectedThis = makeRef(*this)] {
+			protectedThis->renderOnRenderingTheadIfPlaying(samplesStereo, count);
+		});
+	}
+}
+void AudioDestinationMorphOS::renderOnRenderingTheadIfPlaying(int16_t *samplesStereo, size_t count)
+{
+    if (m_isPlaying)
+        renderOnRenderingThead(samplesStereo, count);
+}
+
+// This runs on the AudioWorkletThread when AudioWorklet is enabled, on the audio device's rendering thread otherwise.
+void AudioDestinationMorphOS::renderOnRenderingThead(int16_t *samplesStereo, size_t count)
+{
 			const auto length = m_renderBus->channel(0)->length();
 			int16_t *out = samplesStereo;
 			for (size_t i = 0; i < count; i+= length)
@@ -151,13 +166,14 @@ void AudioDestinationMorphOS::render(int16_t *samplesStereo, size_t count)
 				{
 					auto dataA = channelA->data();
 					auto dataB = channelB->data();
-					
+#if OS(MORPHOS)
 					if (WTF::HasAltivec::hasAltivec())
 					{
 						Altivec::muxFloatAudioChannelsToInterleavedInt16(out, dataA, dataB, length);
 						out += length * 2;
 					}
 					else
+#endif
 					{
 						for (size_t sample = 0; sample < length; sample ++)
 						{
@@ -170,8 +186,6 @@ void AudioDestinationMorphOS::render(int16_t *samplesStereo, size_t count)
 					}
 				}
 			};
-		});
-	}
 }
 
 }
