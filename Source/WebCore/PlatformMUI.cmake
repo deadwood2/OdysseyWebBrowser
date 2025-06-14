@@ -38,6 +38,11 @@ list(APPEND WebCore_SOURCES
     platform/graphics/ImageSource.cpp
     platform/graphics/WOFFFileFormat.cpp
 
+    platform/audio/morphos/AudioDestinationMorphOS.cpp
+    platform/audio/morphos/AudioBusMorphOS.cpp
+    platform/audio/morphos/AudioFileReaderMorphOS.cpp
+    platform/audio/morphos/AudioDestinationOutputMorphOS.cpp
+    platform/audio/morphos/FFTFrameMorphOS.cpp
     platform/graphics/morphos/acinerella.c
     platform/graphics/morphos/AcinerellaAudioDecoder.cpp
     platform/graphics/morphos/AcinerellaBuffer.cpp
