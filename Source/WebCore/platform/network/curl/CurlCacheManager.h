@@ -54,6 +54,7 @@ public:
     void didFinishLoading(ResourceHandle&);
     void didFail(ResourceHandle&);
 #if PLATFORM(MUI)
+    void didCancel(ResourceHandle&);
     void saveIndex();
 #endif
 

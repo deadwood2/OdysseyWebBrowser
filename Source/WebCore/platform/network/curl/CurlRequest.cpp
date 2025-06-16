@@ -158,6 +158,12 @@ void CurlRequest::cancel()
 
     auto& scheduler = CurlContext::singleton().scheduler();
 
+#if PLATFORM(MUI)
+    callClient([this, protectedThis = makeRef(*this)](CurlRequest& request, CurlRequestClient& client) {
+        client.curlDidCancel(request);
+    });
+#endif
+
     if (needToInvokeDidCancelTransfer()) {
         runOnWorkerThreadIfRequired([this, protectedThis = makeRef(*this)]() {
             didCancelTransfer();

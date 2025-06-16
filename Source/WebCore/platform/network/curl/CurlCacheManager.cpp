@@ -41,7 +41,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 
-#define IO_BUFFERSIZE 4096
+#define IO_BUFFERSIZE 40960
 
 namespace WebCore {
 
@@ -219,7 +219,9 @@ void CurlCacheManager::saveIndex()
                 FileSystem::writeToFile(indexFile, cSizeAndTime.data(), cSizeAndTime.length());
             }
             else {
+#if !PLATFORM(MUI)
                 entryIt->value->invalidate();
+#endif
             }
         }
         ++it;
@@ -261,7 +263,7 @@ void CurlCacheManager::didReceiveResponse(ResourceHandle& job, ResourceResponse&
 
         // Exclude HEAD, etc requests from being cached. We still want them to invalidate the
         // caches, though.
-        if (job.firstRequest().httpMethod() != "GET" && job.firstRequest().httpMethod() != "POST")
+        if (job.firstRequest().httpMethod() != "GET")
             return;
 
         auto cacheEntry = makeUnique<CurlCacheEntry>(url, &job, m_cacheDir);
@@ -271,6 +273,11 @@ void CurlCacheManager::didReceiveResponse(ResourceHandle& job, ResourceResponse&
             m_LRUEntryList.prependOrMoveToFirst(url);
             m_index.set(url, WTFMove(cacheEntry));
             saveResponseHeaders(url, response);
+#if PLATFORM(MUI)
+            static int counter = 0;
+            if ((++counter & 0x8F) == 0x0)
+                saveIndex();
+#endif
         }
     } else
         invalidateCacheEntry(url);
@@ -368,6 +375,13 @@ void CurlCacheManager::invalidateCacheEntry(const String& url)
 }
 
 void CurlCacheManager::didFail(ResourceHandle &job)
+{
+    const String& url = job.firstRequest().url().string();
+
+    invalidateCacheEntry(url);
+}
+
+void CurlCacheManager::didCancel(ResourceHandle &job)
 {
     const String& url = job.firstRequest().url().string();
 

@@ -280,7 +280,7 @@ bool CurlCacheEntry::loadFileToBuffer(const String& filepath, Vector<uint8_t>& b
     // Load the file content into buffer
     buffer.resize(*filesize);
     int bufferPosition = 0;
-    int bufferReadSize = 4096;
+    int bufferReadSize = 40960;
     int bytesRead = 0;
     while (*filesize > bufferPosition) {
         if (*filesize - bufferPosition < bufferReadSize)

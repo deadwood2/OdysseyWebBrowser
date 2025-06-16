@@ -46,6 +46,9 @@ public:
     virtual void curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&&) = 0;
     virtual void curlDidComplete(CurlRequest&, NetworkLoadMetrics&&) = 0;
     virtual void curlDidFailWithError(CurlRequest&, ResourceError&&, CertificateInfo&&) = 0;
+#if PLATFORM(MUI)
+    virtual void curlDidCancel(CurlRequest&) { };
+#endif
 };
 
 } // namespace WebCore
