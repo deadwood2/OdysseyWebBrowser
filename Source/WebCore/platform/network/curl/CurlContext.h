@@ -63,7 +63,12 @@ class CurlGlobal {
 protected:
     CurlGlobal()
     {
+#if OS(AROS)
+        // 7.76.0 does not have CURL_GLOBAL_NO_GETENV
+        curl_global_init(CURL_GLOBAL_ALL );
+#else
         curl_global_init(CURL_GLOBAL_ALL | CURL_GLOBAL_NO_GETENV);
+#endif
     }
     
     virtual ~CurlGlobal()
@@ -270,12 +275,16 @@ public:
     void enableHttpPutRequest();
     void setInFileSizeLarge(curl_off_t);
     void setHttpCustomRequest(const String&);
+#if PLATFORM(MUI)
     void setResumeOffset(long long);
+#endif
 
     void enableConnectionOnly();
 
     void enableAcceptEncoding();
+#if PLATFORM(MUI)
     void disableAcceptEncoding();
+#endif
     void enableAllowedProtocols();
 
     void setHttpAuthUserPass(const String&, const String&, long authType = CURLAUTH_ANY);

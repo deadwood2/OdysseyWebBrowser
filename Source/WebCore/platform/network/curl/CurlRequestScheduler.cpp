@@ -32,8 +32,26 @@
 
 #include "CurlRequestSchedulerClient.h"
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 #include <proto/exec.h>
+#include <proto/bsdsocket.h>
+#include <unistd.h>
+#include <bsdsocket/socketbasetags.h>
+#include <aros/debug.h>
+struct Library *SocketBase;
+void init_SocketBase()
+{
+    SocketBase = OpenLibrary("bsdsocket.library", 4L);
+    SocketBaseTags(
+        SBTM_SETVAL(SBTC_ERRNOPTR(sizeof(errno))), (IPTR) &errno,
+        SBTM_SETVAL(SBTC_LOGTAGPTR),       (IPTR) "cURL",
+        TAG_DONE);
+}
+void close_SocketBase()
+{
+    CloseLibrary(SocketBase);
+    SocketBase = NULL;
+}
 #endif
 
 namespace WebCore {
@@ -90,7 +108,7 @@ void CurlRequestScheduler::startOrWakeUpThread()
         }
     }
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	if (m_stopped)
 		return;
 #endif
@@ -104,30 +122,37 @@ void CurlRequestScheduler::startOrWakeUpThread()
     }
 
     m_thread = Thread::create("curlThread", [this] {
-#if OS(MORPHOS)
-        // Run curlThread with lower priority vs the main app.
-        // Without this the curlThread would starve the application
-        // since it's rescheduled like mad all the time. - Piru
-        Thread::current().changePriority(-1);
-        SetTaskPri(FindTask(0), -1);
+#if PLATFORM(MUI)
+        init_SocketBase();
+        /* Increase priority so that network data is transported immediatelly */
+        SetTaskPri(FindTask(NULL), 1);
 #endif
         workerThread();
+
+        Locker locker { m_mutex };
+        m_runThread = false;
+#if PLATFORM(MUI)
+        close_SocketBase();
+#endif
     }, ThreadType::Network);
 }
 
 void CurlRequestScheduler::wakeUpThreadIfPossible()
 {
+#if !PLATFORM(MUI)
     Locker locker { m_multiHandleMutex };
     if (!m_curlMultiHandle)
         return;
 
     m_curlMultiHandle->wakeUp();
+#endif
 }
 
 void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
 {
     ASSERT(!isMainThread());
-#if !OS(MORPHOS)
+#if !PLATFORM(MUI)
+    /* Keep the original curlThread running until browser quits */
     Locker locker { m_mutex };
     if (m_activeJobs.size() || m_taskQueue.size())
         return;
@@ -139,9 +164,15 @@ void CurlRequestScheduler::stopThreadIfNoMoreJobRunning()
 #if PLATFORM(MUI)
 void CurlRequestScheduler::stopCurlThread()
 {
-	m_stopped = true;
 	stopThread();
 }
+
+void CurlRequestScheduler::setMaxTotalConnections(long val)
+{
+    m_maxTotalConnections = val;
+    /* TODO: need to change in m_curlMultiHandle to take effect without need to restart Odyssey */
+}
+
 #endif
 
 void CurlRequestScheduler::stopThread()
@@ -194,7 +225,8 @@ void CurlRequestScheduler::workerThread()
 
         executeTasks();
 
-#if 1
+#if !PLATFORM(MUI)
+#if OS(MORPHOS)
         const int selectTimeoutMS = INT_MAX;
         CURLMcode mc = m_curlMultiHandle->poll({ }, selectTimeoutMS);
         if (mc != CURLM_OK)
@@ -213,6 +245,39 @@ void CurlRequestScheduler::workerThread()
         mc = m_curlMultiHandle->poll({ }, selectTimeoutMS);
         if (mc != CURLM_OK)
             break;
+#endif
+#else
+        // Retry 'select' if it was interrupted by a process signal.
+        int rc = 0;
+        fd_set fdread;
+        fd_set fdwrite;
+        fd_set fdexcep;
+
+        do {
+            FD_ZERO(&fdread);
+            FD_ZERO(&fdwrite);
+            FD_ZERO(&fdexcep);
+            int maxfd = 0;
+
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 500; // shorter timeouts give better outgoing performance
+
+            m_curlMultiHandle->getFdSet(fdread, fdwrite, fdexcep, maxfd);
+
+
+            // When the 3 file descriptors are empty, winsock will return -1
+            // and bail out, stopping the file download. So make sure we
+            // have valid file descriptors before calling select.
+            if (maxfd >= 0)
+                rc = WaitSelect(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout, nullptr);
+            else {
+                usleep(100 * 1000);
+            }
+        } while (rc == -1 && errno == EINTR);
+
+        int activeCount = 0;
+        while (m_curlMultiHandle->perform(activeCount) == CURLM_CALL_MULTI_PERFORM) { }
 #endif
         // check the curl messages indicating completed transfers
         // and free their resources

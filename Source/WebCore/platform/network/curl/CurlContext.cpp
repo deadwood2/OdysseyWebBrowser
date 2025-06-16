@@ -401,7 +401,7 @@ CurlHandle::CurlHandle()
     enableStdErrIfUsed();
 #endif
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     curl_easy_setopt(m_handle, CURLOPT_BUFFERSIZE, 64 * 1024);
 #endif
 
@@ -424,12 +424,12 @@ const String CurlHandle::errorDescription(CURLcode errorCode)
 
 void CurlHandle::enableSSLForHost(const String& host)
 {
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	bool caCertOverride = false;
 #endif
     auto& sslHandle = CurlContext::singleton().sslHandle();
     if (auto sslClientCertificate = sslHandle.getSSLClientCertificate(host)) {
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
         setCACertPath(sslClientCertificate->first.utf8().data());
         caCertOverride = true;
 #else
@@ -453,7 +453,7 @@ void CurlHandle::enableSSLForHost(const String& host)
 
     setSslCtxCallbackFunction(willSetupSslCtxCallback, this);
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	if (caCertOverride)
 		setSslVerifyHost(CurlHandle::VerifyHost::LooseNameCheck);
 	else
@@ -532,7 +532,7 @@ void CurlHandle::setUrl(const URL& url)
 
     if (url.protocolIs("https"))
         enableSSLForHost(m_url.host().toString());
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     else
         curl_easy_setopt(m_handle, CURLOPT_HTTP09_ALLOWED, 1L);  // HTTP only
 #endif
@@ -589,10 +589,12 @@ void CurlHandle::enableRequestHeaders()
     curl_easy_setopt(m_handle, CURLOPT_HTTPHEADER, headers);
 }
 
+#if PLATFORM(MUI)
 void CurlHandle::disableAcceptEncoding()
 {
     curl_easy_setopt(m_handle, CURLOPT_ENCODING, NULL);
 }
+#endif
 
 void CurlHandle::enableHttp()
 {
@@ -659,10 +661,12 @@ void CurlHandle::setHttpCustomRequest(const String& method)
     curl_easy_setopt(m_handle, CURLOPT_CUSTOMREQUEST, method.ascii().data());
 }
 
+#if PLATFORM(MUI)
 void CurlHandle::setResumeOffset(long long offset)
 {
 	curl_easy_setopt(m_handle, CURLOPT_RESUME_FROM_LARGE, curl_off_t(offset));
 }
+#endif
 
 void CurlHandle::enableAcceptEncoding()
 {

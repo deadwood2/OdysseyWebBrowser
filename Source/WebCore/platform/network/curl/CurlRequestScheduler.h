@@ -52,6 +52,10 @@ public:
 
 #if PLATFORM(MUI)
 	void stopCurlThread();
+
+    long maxConnects() const { return m_maxConnects; };
+    long maxTotalConnections() const { return m_maxTotalConnections; };
+    void setMaxTotalConnections(long);
 #endif
 
 private:
@@ -72,7 +76,7 @@ private:
     Lock m_mutex;
     RefPtr<Thread> m_thread;
     bool m_runThread { false };
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 	bool m_stopped { false };
 #endif
     Vector<Function<void()>> m_taskQueue;
