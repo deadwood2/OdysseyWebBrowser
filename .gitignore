@@ -28,3 +28,4 @@ ffmpeg/.buildstamp
 **__pycache__*
 WebKitty.xcodeproj/project.xcworkspace/xcuserdata
 
+cross-build-*
