@@ -250,8 +250,8 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 {
     "Odyssey Web Browser",
 
-    "Firefox 38 (Linux)",
-    "Firefox 3.6 (Windows)",
+    "Firefox 92 (Windows 10)",
+    "Chrome 87 (Windows 10)",
 
     "Internet Explorer 10",
     "Internet Explorer 8",
@@ -260,7 +260,7 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
     "Opera 12 (Windows)",
 
     "Safari 13.1 (Mac)",
-    "Chrome 42 (Linux)",
+    "Chrome 103 (Linux)",
 
     "IPhone",
     "IPad",
@@ -307,8 +307,8 @@ STATIC CONST STRPTR useragents_strings[] =
 {
     odysseyuseragent,
 
-    "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:38.0) Gecko/20100101 Firefox/38.0",
-    "Mozilla/5.0 (Windows NT 6.1; rv:1.9.2) Gecko/20100101 Firefox/3.6",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:92.0) Gecko/20100101 Firefox/92.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36",
 
     "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)",
     "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; .NET CLR 2.0.50727; .NET CLR 3.0.4506.2152; .NET CLR 3.5.30729)",
@@ -317,10 +317,10 @@ STATIC CONST STRPTR useragents_strings[] =
     "Opera/9.80 (Windows NT 5.1; U; en) Presto/2.12.388 Version/12.14",
 
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.152 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
 
-    "Mozilla/5.0 (iPhone9,4; U; CPU iPhone OS 10_0_1 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) Version/10.0 Mobile/14A403 Safari/602.1",
-    "Mozilla/5.0 (iPad; CPU OS 10_0_1 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) Version/10 Mobile/14A403 Safari/602.1",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 14_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPad; CPU OS 14_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
 
     NULL
 };
