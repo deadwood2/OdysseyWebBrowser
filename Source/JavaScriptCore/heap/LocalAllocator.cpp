@@ -33,7 +33,7 @@
 #include "Options.h"
 #include "SuperSampler.h"
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 extern "C" { void oomCrash(); }
 #endif
 

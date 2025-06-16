@@ -132,9 +132,6 @@ public: \
     FOR_EACH_JSC_OPTION(DECLARE_OPTION_ACCESSORS)
 #undef DECLARE_OPTION_ACCESSORS
 
-	ALWAYS_INLINE static bool logGC() { return false; }
-	ALWAYS_INLINE static bool traceLLIntExecution() { return false; }
-	ALWAYS_INLINE static bool traceLLIntSlowPath() { return false; }
 	ALWAYS_INLINE static bool reportParseTimes() { return false; }
 
     static bool isAvailable(ID, Availability);
