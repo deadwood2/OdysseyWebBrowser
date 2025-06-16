@@ -271,11 +271,11 @@ STATIC CONST CONST_STRPTR useragents_labels[] =
 #if OS(AROS) && CPU(X86)
 #define OSHEADER "AROS i686"
 #elif OS(AROS) && CPU(X86_64)
-#define OSHEADER "AROS x86_64"
+#define OSHEADER "X11; AROS x86_64"
 #elif OS(MORPHOS)
 #define OSHEADER "Macintosh; PowerPC MorphOS %u.%u"
 #endif
-const char verfmt[] = "Mozilla/5.0 (" OSHEADER "; Odyssey Web Browser; rv:" VERSION ") AppleWebKit/" WEBKITVER " (KHTML, like Gecko) OWB/" VERSION " Safari/" WEBKITVER;
+const char verfmt[] = "Mozilla/5.0 (" OSHEADER ") AppleWebKit/" WEBKITVER " (KHTML, like Gecko) Version/14.0.2 Safari/" WEBKITVER " Odyssey/" VERSION;
 STATIC char odysseyuseragent[sizeof(verfmt) + 2 * (10 - 2)];
 
 void init_useragent()
