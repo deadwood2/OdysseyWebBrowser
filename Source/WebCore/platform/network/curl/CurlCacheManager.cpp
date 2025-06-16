@@ -153,8 +153,8 @@ void CurlCacheManager::loadIndex()
     // Add entries to index
     Vector<String>::const_iterator it = indexURLs.begin();
     Vector<String>::const_iterator end = indexURLs.end();
-    if (indexURLs.size() > 1)
-        --end; // Last line is empty
+//    if (indexURLs.size() > 1)
+//        --end; // Last line is empty
     while (it != end) {
         String entry = it->stripWhiteSpace();
         Vector<String> entryComponents = entry.split('\t');
