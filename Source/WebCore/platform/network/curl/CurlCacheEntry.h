@@ -50,6 +50,9 @@ public:
     bool isValid();
     bool isLoading() const;
     uint64_t entrySize();
+#if PLATFORM(MUI)
+    String baseName();
+#endif
     const WallTime &expireDate() const { return m_expireDate; }
     HTTPHeaderMap& requestHeaders() { return m_requestHeaders; }
 
