@@ -5180,6 +5180,14 @@ bool FrameView::handleWheelEventForScrolling(const PlatformWheelEvent& wheelEven
     }
 #endif
 
+#if PLATFORM(MUI)
+    if ((wheelEvent.deltaY() || wheelEvent.deltaX()) && (!verticalScrollbar() && !horizontalScrollbar()))
+    {
+        scrollBy(IntSize(-wheelEvent.deltaX(), -wheelEvent.deltaY()));
+        return true;
+    }
+#endif
+
     return ScrollableArea::handleWheelEventForScrolling(wheelEvent, gestureState);
 }
 

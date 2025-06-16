@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceLoadTiming.h"
 #include "ResourceLoaderOptions.h"
@@ -157,6 +158,12 @@ public:
     const ResourceRequest& deferredRequest() const { return m_deferredRequest; }
     ResourceRequest takeDeferredRequest() { return std::exchange(m_deferredRequest, { }); }
 
+#if PLATFORM(MUI)
+    void setHandle(RefPtr<ResourceHandle> handle)
+    {
+        m_handle = handle;
+    }
+#endif
 protected:
     ResourceLoader(Frame&, ResourceLoaderOptions);
 
@@ -218,6 +225,9 @@ private:
 #if USE(CFURLCONNECTION)
     // FIXME: Windows should use willCacheResponse - <https://bugs.webkit.org/show_bug.cgi?id=57257>.
     bool shouldCacheResponse(ResourceHandle*, CFCachedURLResponseRef) override;
+#endif
+#if USE(CURL_OPENSSL)
+    virtual void didReceiveSSLSecurityExtension(const ResourceRequest&, const char*);
 #endif
 
 #if USE(SOUP)

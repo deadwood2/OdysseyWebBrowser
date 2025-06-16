@@ -50,6 +50,8 @@ typedef NSView *PlatformWidget;
 #elif PLATFORM(WIN)
 typedef struct HWND__* HWND;
 typedef HWND PlatformWidget;
+#elif PLATFORM(MUI)
+#include "BALBase.h"
 #else
 typedef void* PlatformWidget;
 #endif

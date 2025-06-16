@@ -50,7 +50,7 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
 
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
 extern "C" { void dprintf(const char *,...); }
 bool shouldLoadResource(const WebCore::ContentExtensions::ResourceLoadInfo& info, WebCore::DocumentLoader& loader);
 #endif
@@ -201,7 +201,7 @@ ContentRuleListResults ContentExtensionsBackend::processContentRuleListsForLoad(
     }
 
     ResourceLoadInfo resourceLoadInfo = { url, mainDocumentURL, resourceType, mainFrameContext };
-#if OS(MORPHOS)
+#if PLATFORM(MUI)
     ContentRuleListResults results;
 	if (!shouldLoadResource(resourceLoadInfo, initiatingDocumentLoader))
 	{

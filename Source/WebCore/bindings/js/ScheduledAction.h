@@ -19,6 +19,7 @@
 
 #pragma once
 
+#undef Exception
 #include <JavaScriptCore/Strong.h>
 #include <JavaScriptCore/StrongInlines.h>
 #include <memory>

@@ -26,6 +26,7 @@
 
 #pragma once
 
+#undef Exception
 #include "Blob.h"
 #include "DetachedRTCDataChannel.h"
 #include "ExceptionOr.h"

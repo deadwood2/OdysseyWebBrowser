@@ -45,6 +45,10 @@ OBJC_CLASS WebEvent;
 struct IntuiMessage;
 #endif
 
+#if PLATFORM(MUI)
+#include "BALBase.h"
+#endif
+
 namespace WebCore {
 
     class PlatformKeyboardEvent : public PlatformEvent {
@@ -67,6 +71,9 @@ namespace WebCore {
             , m_code(code)
             , m_keyIdentifier(keyIdentifier)
             , m_windowsVirtualKeyCode(windowsVirtualKeyCode)
+#if PLATFORM(MUI)
+            , m_balEventKey(0)
+#endif
         {
         }
 
@@ -154,6 +161,11 @@ namespace WebCore {
         static String singleCharacterString(unsigned);
 #endif
 
+#if PLATFORM(MUI)
+        PlatformKeyboardEvent(BalEventKey*);
+        BalEventKey* balEventKey() const;
+#endif
+
     protected:
         bool m_autoRepeat { false };
         bool m_isKeypad { false };
@@ -194,6 +206,10 @@ namespace WebCore {
 #endif
         // The modifier state is optional, since it is not needed in the UI process or in legacy WebKit.
         static std::optional<OptionSet<Modifier>> s_currentModifiers;
+
+#if PLATFORM(MUI)
+        BalEventKey* m_balEventKey;
+#endif
     };
     
 } // namespace WebCore

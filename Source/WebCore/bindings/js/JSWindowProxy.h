@@ -28,6 +28,7 @@
 
 #pragma once
 
+#undef Exception
 #include "JSDOMConvertInterface.h"
 #include "JSDOMWindow.h"
 #include "WindowProxy.h"
