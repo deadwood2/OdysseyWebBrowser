@@ -118,6 +118,7 @@ void SocketStreamHandleImpl::didFail(CurlStreamID, CURLcode errorCode)
 
     if (m_state == Closed)
         return;
+    m_state = Closed;
 
     if (errorCode == CURLE_RECV_ERROR)
         m_client.didFailToReceiveSocketStreamData(*this);

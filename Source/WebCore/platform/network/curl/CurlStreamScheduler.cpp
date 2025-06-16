@@ -26,7 +26,7 @@
 #include "config.h"
 #include "CurlStreamScheduler.h"
 
-#if USE(CURL)
+#if USE(CURL) && !PLATFORM(MUI)
 
 #if OS(MORPHOS)
 extern "C" {
