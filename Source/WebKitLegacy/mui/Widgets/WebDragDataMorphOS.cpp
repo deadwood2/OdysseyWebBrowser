@@ -28,10 +28,10 @@
 
 
 #include "config.h"
-#include "DragData.h"
-#include "DataObjectMorphOS.h"
+#include <WebCore/DragData.h>
+#include <WebCore/DataObjectMorphOS.h>
+#include <WebCore/SharedBuffer.h>
 #include <wtf/URL.h>
-#include "SharedBuffer.h"
 #include "WebDragData.h"
 #include "WebDragData_p.h"
 

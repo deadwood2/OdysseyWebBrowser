@@ -30,7 +30,7 @@
 #include "ColorChooserController.h"
 #include "DateTimeChooserController.h"
 #include <WebCore/ColorChooser.h>
-#include "DateTimeChooser.h"
+#include <WebCore/DateTimeChooser.h>
 #include <WebCore/FileChooser.h>
 #include <WebCore/FileIconLoader.h>
 #include "JSActionDelegate.h"
@@ -46,7 +46,6 @@
 #include "WebView.h"
 #include "WebViewWindow.h"
 #include <WebCore/FullscreenManager.h>
-
 #include <wtf/text/WTFString.h>
 #include <wtf/text/CString.h>
 #include <WebCore/ContextMenu.h>
@@ -60,10 +59,11 @@
 #include <WebCore/NavigationAction.h> 
 #include <WebCore/NotImplemented.h>
 #include <WebCore/Page.h>
+#include <WebCore/PopupMenuMorphOS.h>
+#include <WebCore/SearchPopupMenuMorphOS.h>
 #include <WebCore/SecurityOrigin.h>
-#include "PopupMenuMorphOS.h"
-#include "SearchPopupMenuMorphOS.h"
 #include <WebCore/WindowFeatures.h>
+
 #include "gui.h"
 #include "utils.h"
 #include <proto/intuition.h>

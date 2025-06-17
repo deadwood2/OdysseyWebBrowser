@@ -27,8 +27,8 @@
  */
 
 #include <WebCore/GraphicsContext.h>
-#include "DateTimeChooser.h"
-#include "DateTimeChooserClient.h"
+#include <WebCore/DateTimeChooser.h>
+#include <WebCore/DateTimeChooserClient.h>
 #include "DateTimeChooserController.h"
 
 #include "wtf/text/CString.h"

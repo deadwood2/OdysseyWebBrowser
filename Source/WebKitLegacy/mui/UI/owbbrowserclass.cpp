@@ -55,9 +55,9 @@
 #include <WebCore/Page.h>
 #include <WebCore/PlatformMouseEvent.h>
 #include <WebCore/PlatformKeyboardEvent.h>
+#include <WebCore/PopupMenuMorphOS.h>
 #include <WebCore/KeyboardEvent.h>
 #include <WebCore/WindowsKeyboardCodes.h>
-#include "PopupMenuMorphOS.h"
 #include <WebCore/PrintContext.h>
 #include <WebCore/ProgressTracker.h>
 #include <WebCore/RenderView.h>

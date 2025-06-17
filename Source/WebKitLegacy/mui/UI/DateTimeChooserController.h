@@ -26,10 +26,10 @@
 #ifndef DateTimeChooserController_h
 #define DateTimeChooserController_h
 
-#include "DateTimeChooserClient.h"
-#include "DateTimeChooser.h"
-#include "wtf/text/WTFString.h"
-#include "DateTimeChooserParameters.h"
+#include <WebCore/DateTimeChooser.h>
+#include <WebCore/DateTimeChooserClient.h>
+#include <WebCore/DateTimeChooserParameters.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 class DateTimeChooserClient;

@@ -108,6 +108,9 @@ list(APPEND WebCore_SOURCES
 )
 
 list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+    platform/mui/DataObjectMorphOS.h
+    platform/mui/PopupMenuMorphOS.h
+    platform/mui/SearchPopupMenuMorphOS.h
 )
 
 list(APPEND WebCore_LIBRARIES

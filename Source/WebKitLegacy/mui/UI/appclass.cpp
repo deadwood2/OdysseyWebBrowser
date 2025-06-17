@@ -97,7 +97,7 @@
 #include <WebCore/MemoryRelease.h>
 #include "JITWorklist.h"
 #include <WebCore/CommonVM.h>
-#include "DataURLDecoder.h"
+#include <WebCore/DataURLDecoder.h>
 #include <WebCore/AsyncFileStream.h>
 #include <WebCore/BlobRegistryImpl.h>
 #include <WebCore/IDBBindingUtilities.h>

@@ -27,7 +27,6 @@
 
 #include "WebView.h"
 #include "WebChromeClient.h"
-#include "DateTimeChooserClient.h"
 #include <WebCore/Color.h>
 
 #include "gui.h"

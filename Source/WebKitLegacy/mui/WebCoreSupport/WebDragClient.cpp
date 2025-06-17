@@ -26,7 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "DataObjectMorphOS.h"
 #include <WebCore/DataTransfer.h>
 #include <WebCore/DragController.h>
 #include <WebCore/Pasteboard.h>
@@ -36,6 +35,7 @@
 #include "WebView.h"
 
 #include <WebCore/DragData.h>
+#include <WebCore/DataObjectMorphOS.h>
 #include <WebCore/Font.h>
 #include <WebCore/FontDescription.h>
 #include <WebCore/FontSelector.h>
