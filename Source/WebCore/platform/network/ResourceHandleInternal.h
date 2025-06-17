@@ -25,12 +25,21 @@
 
 #pragma once
 
+#if defined(__WEBCORELEAKS__)
+#include <WebCore/AuthenticationChallenge.h>
+#include <WebCore/NetworkingContext.h>
+#include <WebCore/ResourceHandle.h>
+#include <WebCore/ResourceHandleClient.h>
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/Timer.h>
+#else
 #include "AuthenticationChallenge.h"
 #include "NetworkingContext.h"
 #include "ResourceHandle.h"
 #include "ResourceHandleClient.h"
 #include "ResourceRequest.h"
 #include "Timer.h"
+#endif
 #include <wtf/MonotonicTime.h>
 
 #if USE(CFURLCONNECTION)
@@ -39,8 +48,13 @@
 #endif
 
 #if USE(CURL)
+#if defined(__WEBCORELEAKS__)
+#include <WebCore/CurlRequest.h>
+#include <WebCore/SynchronousLoaderClient.h>
+#else
 #include "CurlRequest.h"
 #include "SynchronousLoaderClient.h"
+#endif
 #include <wtf/MessageQueue.h>
 #include <wtf/MonotonicTime.h>
 enum { STATUS_CONNECTING, STATUS_WAITING_DATA, STATUS_RECEIVING_DATA, STATUS_SENDING_DATA };

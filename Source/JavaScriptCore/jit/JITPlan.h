@@ -27,7 +27,11 @@
 
 #if ENABLE(JIT)
 
+#if defined(__WEBCORELEAKS__)
+#include <JavaScriptCore/CompilationResult.h>
+#else
 #include "CompilationResult.h"
+#endif
 #include "JITCompilationKey.h"
 #include "JITCompilationMode.h"
 #include "JITPlanStage.h"

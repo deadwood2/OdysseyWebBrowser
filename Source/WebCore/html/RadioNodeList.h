@@ -26,7 +26,11 @@
 
 #pragma once
 
+#if defined(__WEBCORELEAKS__)
+#include <WebCore/LiveNodeList.h>
+#else
 #include "LiveNodeList.h"
+#endif
 
 namespace WebCore {
 

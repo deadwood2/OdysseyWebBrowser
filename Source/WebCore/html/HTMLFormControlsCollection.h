@@ -22,8 +22,13 @@
 
 #pragma once
 
+#if defined(__WEBCORELEAKS__)
+#include <WebCore/CachedHTMLCollection.h>
+#include <WebCore/HTMLFormElement.h>
+#else
 #include "CachedHTMLCollection.h"
 #include "HTMLFormElement.h"
+#endif
 #include "RadioNodeList.h"
 
 namespace WebCore {

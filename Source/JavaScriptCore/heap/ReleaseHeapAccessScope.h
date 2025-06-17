@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if defined(WEBCORELEAKS)
+#if defined(__WEBCORELEAKS__)
 #include <JavaScriptCore/Heap.h>
 #else
 #include "Heap.h"
