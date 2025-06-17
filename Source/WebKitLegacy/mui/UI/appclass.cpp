@@ -104,13 +104,6 @@
 
 #include <wtf/text/StringToIntegerConversion.h>
 
-namespace JSC {
-namespace DFG {
-extern void shutdownGlobalDFGWorklist();
-extern void shutdownGlobalFTLWorklist();
-} }
-
-
 /* Posix */
 #include <unistd.h>
 #include <cstdio>
@@ -1218,18 +1211,10 @@ DEFDISP
     MemoryCache::singleton().setDisabled(true);
 
     delete &commonVM(); /* This looks weird, but it stops JSC Heap Collector Thread */
-#if 0
-// broken 2.34.6
+
 #if ENABLE(JIT)
     if (JSC::JITWorklist::existingGlobalWorklistOrNull())
         JSC::JITWorklist::existingGlobalWorklistOrNull()->shutdown();
-#endif
-#if ENABLE(DFG_JIT)
-    JSC::DFG::shutdownGlobalDFGWorklist();
-#endif
-#if ENABLE(FTL_JIT)
-    JSC::DFG::shutdownGlobalFTLWorklist();
-#endif
 #endif
 
     return DOSUPER;
