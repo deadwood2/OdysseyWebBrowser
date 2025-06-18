@@ -7,7 +7,6 @@ list(APPEND WebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBKITLEGACY_DIR}/mui/UI"
     "${WEBKITLEGACY_DIR}/mui/WebCoreSupport"
     "${WEBKITLEGACY_DIR}/mui/Widgets"
-    "${WEBKITLEGACY_DIR}/mui/Plugins"
     "${WEBKITLEGACY_DIR}/mui/UI/AROS/include/"
 )
 
@@ -167,6 +166,8 @@ list(APPEND WebKitLegacy_SOURCES
     mui/Widgets/WebDragDataMorphOS.cpp
 
     mui/Storage/WebDatabaseProvider.cpp
+
+    mui/AdBlock/AdBlock.cpp
 
     Storage/StorageAreaImpl.cpp
     Storage/StorageAreaSync.cpp

@@ -25,8 +25,6 @@ list(APPEND WebCore_INCLUDE_DIRECTORIES
 
 list(APPEND WebCore_SOURCES
 
-    loader/AdBlock.cpp
-
     platform/bal/ObserverServiceBookmarklet.cpp
     platform/bal/ObserverServiceData.cpp
 

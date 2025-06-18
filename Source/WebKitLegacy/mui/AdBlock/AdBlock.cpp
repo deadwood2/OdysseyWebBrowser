@@ -446,6 +446,8 @@ void removeCacheEntry(void *ptr, int type)
 	}
 }
 
+#if 0
+// currently unused
 void blockResource(const URL& url, int type, int mode)
 {
 	String target = url.string();
@@ -513,6 +515,7 @@ void blockResource(const URL& url, int type, int mode)
 	writeCache();
     flushCache();
 }
+#endif
 
 bool shouldBlock(const URL& url, int type)
 {
@@ -533,4 +536,10 @@ bool shouldBlock(const URL& url, int type)
     return ent.block;
 }
 
+}
+
+bool shouldLoadResource(const WebCore::ContentExtensions::ResourceLoadInfo& info, WebCore::DocumentLoader& loader)
+{
+    auto url = info.resourceURL;
+    return !AdBlock::shouldBlock(url, -1);
 }
