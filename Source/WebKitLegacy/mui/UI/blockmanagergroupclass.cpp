@@ -44,7 +44,7 @@
 
 using namespace WebCore;
 
-namespace WebCore
+namespace AdBlock
 {
     extern bool ad_block_enabled;
     extern void loadCache();
@@ -154,7 +154,7 @@ DEFTMETHOD(BlockManagerGroup_Load)
     if(!data->loaded)
     {
         data->loaded = TRUE;
-        WebCore::loadCache();
+        AdBlock::loadCache();
     }
     return 0;
 }
@@ -185,9 +185,9 @@ DEFTMETHOD(BlockManagerGroup_Add)
     {
         entry->rule = strdup("");
         entry->type = 1;
-        entry->ptr = WebCore::addCacheEntry(entry->rule, entry->type);
-        WebCore::writeCache();
-        WebCore::flushCache();
+        entry->ptr = AdBlock::addCacheEntry(entry->rule, entry->type);
+        AdBlock::writeCache();
+        AdBlock::flushCache();
 
         DoMethod(data->lv_rules, MUIM_List_InsertSingle, entry, MUIV_List_Insert_Bottom);
         set(data->lv_rules, MUIA_List_Active, MUIV_List_Active_Bottom);
@@ -206,9 +206,9 @@ DEFTMETHOD(BlockManagerGroup_Remove)
 
     if(entry)
     {
-        WebCore::removeCacheEntry(entry->ptr, entry->type);
-        WebCore::writeCache();
-        WebCore::flushCache();
+        AdBlock::removeCacheEntry(entry->ptr, entry->type);
+        AdBlock::writeCache();
+        AdBlock::flushCache();
         DoMethod(data->lv_rules, MUIM_List_Remove, MUIV_List_Remove_Active);
     }
 
@@ -254,17 +254,17 @@ DEFTMETHOD(BlockManagerGroup_Change)
 
         if(entry->type != (int) getv(data->cy_type, MUIA_Cycle_Active))
         {
-            WebCore::removeCacheEntry(entry->ptr, entry->type);
+            AdBlock::removeCacheEntry(entry->ptr, entry->type);
             entry->type = getv(data->cy_type, MUIA_Cycle_Active);
-            entry->ptr = WebCore::addCacheEntry(entry->rule, entry->type);
+            entry->ptr = AdBlock::addCacheEntry(entry->rule, entry->type);
         }
         else
         {
-            WebCore::updateCacheEntry(entry->rule, entry->type, entry->ptr);
+            AdBlock::updateCacheEntry(entry->rule, entry->type, entry->ptr);
         }
 
-        WebCore::writeCache();
-        WebCore::flushCache();
+        AdBlock::writeCache();
+        AdBlock::flushCache();
 
         DoMethod(data->lv_rules,  MUIM_List_Redraw, MUIV_List_Redraw_Entry, entry);
     }

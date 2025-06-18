@@ -147,7 +147,7 @@ using namespace WebCore;
 extern struct Library * OpenURLBase;
 extern char * _ProgramName;
 
-namespace WebCore
+namespace AdBlock
 {
     extern bool ad_block_enabled;
 }
@@ -2449,7 +2449,7 @@ void prefs_update(Object *obj, struct Data *data)
     iconDatabase().setEnabled(data->showfavicons);
 #endif
     
-    WebCore::ad_block_enabled = (bool) getv(data->prefswin, MA_OWBApp_EnableContentBlocking); // Hack
+    AdBlock::ad_block_enabled = (bool) getv(data->prefswin, MA_OWBApp_EnableContentBlocking); // Hack
 
     /* Fonts */
     sharedPreferences->setDefaultFontSize((int) getv(data->prefswin, MA_OWBApp_DefaultFontSize));

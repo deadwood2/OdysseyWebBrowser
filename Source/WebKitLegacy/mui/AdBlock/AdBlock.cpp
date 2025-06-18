@@ -26,10 +26,11 @@
  */
 
 #include "config.h"
-#include "CachedResource.h"
-#include <wtf/text/CString.h>
-#include "TextEncoding.h"
 #include <JavaScriptCore/RegularExpression.h>
+#include <WebCore/CachedResource.h>
+#include <WebCore/DocumentLoader.h>
+#include <WebCore/ResourceLoadInfo.h>
+#include <wtf/text/CString.h>
 #include <wtf/HashMap.h>
 #include <wtf/Vector.h>
 #include <wtf/text/StringView.h>
@@ -47,7 +48,7 @@ constexpr auto to_underlying(E e) noexcept
     return static_cast<std::underlying_type_t<E>>(e);
 }
 
-namespace WebCore {
+namespace AdBlock {
 
 #define DOCUMENT_TYPE 9
 #define CACHE_SIZE 1009
@@ -116,11 +117,11 @@ AdPattern* PatternMatcher::addPattern(const String& pat)
             typeOpt = typeOpt.substring(1);
         }
         if (typeOpt == "image") {
-            typeMask = 1<<to_underlying(CachedResource::Type::ImageResource);
+            typeMask = 1<<to_underlying(WebCore::CachedResource::Type::ImageResource);
         } else if (typeOpt == "stylesheet") {
-            typeMask = 1<<to_underlying(CachedResource::Type::CSSStyleSheet);
+            typeMask = 1<<to_underlying(WebCore::CachedResource::Type::CSSStyleSheet);
         } else if (typeOpt == "script") {
-            typeMask = 1<<to_underlying(CachedResource::Type::Script);
+            typeMask = 1<<to_underlying(WebCore::CachedResource::Type::Script);
         } else if (typeOpt == "subdocument") {
             typeMask = 1<<DOCUMENT_TYPE;
         }
@@ -196,11 +197,11 @@ bool PatternMatcher::updatePattern(const String& pat, AdPattern* newpattern)
             typeOpt = typeOpt.substring(1);
         }
         if (typeOpt == "image") {
-            typeMask = 1<<to_underlying(CachedResource::Type::ImageResource);
+            typeMask = 1<<to_underlying(WebCore::CachedResource::Type::ImageResource);
         } else if (typeOpt == "stylesheet") {
-            typeMask = 1<<to_underlying(CachedResource::Type::CSSStyleSheet);
+            typeMask = 1<<to_underlying(WebCore::CachedResource::Type::CSSStyleSheet);
         } else if (typeOpt == "script") {
-            typeMask = 1<<to_underlying(CachedResource::Type::Script);
+            typeMask = 1<<to_underlying(WebCore::CachedResource::Type::Script);
         } else if (typeOpt == "subdocument") {
             typeMask = 1<<DOCUMENT_TYPE;
         }
@@ -451,15 +452,15 @@ void blockResource(const URL& url, int type, int mode)
 	String typeOpt = "";
 	String pat;
 
-	if(type == 1<<to_underlying(CachedResource::Type::ImageResource))
+	if(type == 1<<to_underlying(WebCore::CachedResource::Type::ImageResource))
 	{
 		typeOpt = "image";
 	}
-	else if(type == 1<<to_underlying(CachedResource::Type::CSSStyleSheet))
+	else if(type == 1<<to_underlying(WebCore::CachedResource::Type::CSSStyleSheet))
 	{
 		typeOpt = "stylesheet";
 	}
-	else if (type == 1<<to_underlying(CachedResource::Type::Script))
+	else if (type == 1<<to_underlying(WebCore::CachedResource::Type::Script))
 	{
 		typeOpt = "script";
 	}
