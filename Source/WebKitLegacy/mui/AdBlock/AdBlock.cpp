@@ -517,10 +517,9 @@ void blockResource(const URL& url, int type, int mode)
 }
 #endif
 
-bool shouldBlock(const URL& url, int type)
+static bool shouldBlock(const URL& url, int type)
 {
     if (url.protocolIs("data")) { return false; }
-    if (!ad_block_enabled) { return false; }
     if (type < 0) { type = DOCUMENT_TYPE; }
 
     if (!ab_cache) {
@@ -538,8 +537,17 @@ bool shouldBlock(const URL& url, int type)
 
 }
 
+namespace WayfarerAdBlock
+{
+    bool shouldAllowRequest(const char *url, const char *mainPageURL, WebCore::DocumentLoader& loader);
+}
+
 bool shouldLoadResource(const WebCore::ContentExtensions::ResourceLoadInfo& info, WebCore::DocumentLoader& loader)
 {
-    auto url = info.resourceURL;
-    return !AdBlock::shouldBlock(url, -1);
+    if (!AdBlock::ad_block_enabled) { return true; }
+
+    auto url = info.resourceURL.string().utf8();
+    auto mainurl = info.mainDocumentURL.string().utf8();
+    bool result = WayfarerAdBlock::shouldAllowRequest(url.data(), mainurl.data(), loader) && !AdBlock::shouldBlock(info.resourceURL, -1);
+    return result;
 }

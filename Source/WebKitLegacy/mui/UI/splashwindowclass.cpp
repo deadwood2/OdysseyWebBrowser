@@ -37,6 +37,12 @@ extern "C"
     #include <cairo.h>
 }
 
+
+namespace WayfarerAdBlock
+{
+    void initialize();
+}
+
 #if !OS(AROS)
 #include <sys/signal.h>
 #endif
@@ -338,6 +344,10 @@ DEFMMETHOD(Process_Process)
     fontconfig_testcache();
 
     //kprintf("[fontcache thread] signaling thread end to main task\n");
+
+    /* It takes some time to pre-parse easylist.txt */
+    WayfarerAdBlock::initialize();
+
 
     myproc->pr_WindowPtr = oldwindowptr;
 

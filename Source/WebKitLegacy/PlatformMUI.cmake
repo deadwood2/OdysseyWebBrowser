@@ -2,6 +2,7 @@ list(APPEND WebKitLegacy_PRIVATE_INCLUDE_DIRECTORIES
     "${WEBCORE_DIR}/platform/mui"
     "${WEBCORE_DIR}/platform/bal"
     "${WEBCORE_DIR}/platform/graphics/morphos"
+    "${WEBKITLEGACY_DIR}/morphos/ABPFilterParser"
     "${WEBKITLEGACY_DIR}/mui/WebCoreLeaks"
     "${WEBKITLEGACY_DIR}/mui"
     "${WEBKITLEGACY_DIR}/mui/UI"
@@ -168,6 +169,12 @@ list(APPEND WebKitLegacy_SOURCES
     mui/Storage/WebDatabaseProvider.cpp
 
     mui/AdBlock/AdBlock.cpp
+    mui/AdBlock/WayfarerAdBlock.cpp
+    morphos/ABPFilterParser/ABPFilterParser.cpp
+    morphos/ABPFilterParser/BloomFilter.cpp
+    morphos/ABPFilterParser/cosmeticFilter.cpp
+    morphos/ABPFilterParser/filter.cpp
+    morphos/ABPFilterParser/hashFn.cpp
 
     Storage/StorageAreaImpl.cpp
     Storage/StorageAreaSync.cpp

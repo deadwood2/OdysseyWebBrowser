@@ -149,6 +149,7 @@ extern char * _ProgramName;
 
 namespace AdBlock
 {
+    void deinitialize();
     extern bool ad_block_enabled;
 }
 
@@ -1216,6 +1217,8 @@ DEFDISP
     if (JSC::JITWorklist::existingGlobalWorklistOrNull())
         JSC::JITWorklist::existingGlobalWorklistOrNull()->shutdown();
 #endif
+
+    AdBlock::deinitialize();
 
     return DOSUPER;
 }
