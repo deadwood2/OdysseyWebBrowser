@@ -7,7 +7,7 @@ list(APPEND WTF_SOURCES
     generic/RunLoopGeneric.cpp
     text/mui/TextBreakIteratorInternalICUMorphOS.cpp
     mui/CPUTimeAROS.cpp
-    mui/LanguageMorphOS.cpp
+    morphos/LanguageMorphOS.cpp
     generic/MemoryPressureHandlerGeneric.cpp
     generic/MemoryFootprintGeneric.cpp
     generic/MainThreadGeneric.cpp
