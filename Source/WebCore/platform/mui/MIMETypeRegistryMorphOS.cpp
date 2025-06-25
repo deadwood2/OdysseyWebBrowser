@@ -48,6 +48,8 @@ static const ExtensionMap extensionMap [] = {
     { textPlain, "text" },
     { textHtml, "html" },
     { textHtml, "htm" },
+    { textHtml, "shtml" },
+    { textHtml, "shtm" },
     { "text/css", "css" },
     { "text/xml", "xml" },
     { "text/xsl", "xsl" },

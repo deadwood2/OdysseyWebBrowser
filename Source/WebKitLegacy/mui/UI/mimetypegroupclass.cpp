@@ -476,11 +476,15 @@ DEFMMETHOD(Import)
     char *val;
     APTR n, m;
 
-#if 0
-// broken 2.34.6
+    HashSet<String, ASCIICaseInsensitiveHash> supportedImageMIMETypes;
+    auto tmp = MIMETypeRegistry::supportedImageMIMETypes();
+
+    for (auto it = tmp.begin(); it != tmp.end(); ++it)
+        supportedImageMIMETypes.add(String(*it));
+
     const HashSet<String, ASCIICaseInsensitiveHash>* supportedCategories[] =
     {
-        &(MIMETypeRegistry::supportedImageMIMETypes()),
+        &(supportedImageMIMETypes),
         &(MIMETypeRegistry::supportedNonImageMIMETypes()),
         &(MIMETypeRegistry::supportedMediaMIMETypes()),
         NULL,
@@ -510,7 +514,7 @@ DEFMMETHOD(Import)
 
             for(unsigned int i = 0; i < extensions.size(); i++)
             {
-                    extension.append(extensions[i]);
+                extension.append(extensions[i]);
                 if(i < extensions.size() - 1)
                 {
                     extension.append(" ");
@@ -522,7 +526,6 @@ DEFMMETHOD(Import)
 
         supportedCategoriesIterator++;
     }
-#endif
 
     /* Make sure octet-stream and "force-download" is added if user didn't add it */
     mimetype_create("application/octet-stream", NULL, MIMETYPE_ACTION_DOWNLOAD, NULL, NULL, FALSE, NULL);
@@ -532,7 +535,7 @@ DEFMMETHOD(Import)
     mimetype_create("audio/webm",         "webm",    MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
     mimetype_create("video/webm",         "webm",    MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
     mimetype_create("video/x-flv",        "flv",     MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
-        mimetype_create("video/flv",          "flv",     MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
+    mimetype_create("video/flv",          "flv",     MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
     mimetype_create("audio/ogg",          "ogg oga", MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
     mimetype_create("video/ogg",          "ogv",     MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
     mimetype_create("video/x-theora+ogg", "ogv",     MIMETYPE_ACTION_INTERNAL, "", "", TRUE, NULL);
