@@ -536,6 +536,28 @@ EXTERN lp_ac_proberesult CALL_CONVT
     ac_probe_input_buffer(uint8_t *buf, int bufsize, char *filename,
                           int *score_max);
 
+struct ac_initialization_segment_stream {
+    ac_stream_type type;
+    char codecName[128];
+    double duration;
+    int bitrate;
+    union {
+        struct ac_initialization_audio_data {
+            int channels;
+            int frequency;
+            int bits;
+        } audio;
+        struct ac_initialization_video_data {
+            int width;
+            int height;
+        } video;
+    } typeData;
+};
+
+EXTERN int CALL_CONVT
+    ac_is_initialization_segment(uint8_t *buf, int bufsize,
+        struct ac_initialization_segment_stream *stream, int streamsMax);
+
 /*
  * Additional support functions
  */

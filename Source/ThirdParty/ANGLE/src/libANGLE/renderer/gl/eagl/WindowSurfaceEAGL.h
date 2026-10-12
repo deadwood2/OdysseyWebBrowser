@@ -21,8 +21,12 @@ typedef void *EAGLContextObj;
 struct __IOSurface;
 typedef __IOSurface *IOSurfaceRef;
 
-// WebKit's build process requires that every Objective-C class name has the prefix "Web".
-@class WebSwapLayerEAGL;
+// WebKit's build process requires that every Objective-C class name has the prefix "Web" to avoid
+// clobbering user-created Objective-C classes.
+#if defined(PREFIX_OBJECTIVE_C_CLASSES_WITH_WEB_FOR_WEBKIT)
+#    define SwapLayerEAGL WebSwapLayerEAGL
+#endif
+@class SwapLayerEAGL;
 
 namespace rx
 {
@@ -87,11 +91,13 @@ class WindowSurfaceEAGL : public SurfaceGL
     EGLint isPostSubBufferSupported() const override;
     EGLint getSwapBehavior() const override;
 
-    FramebufferImpl *createDefaultFramebuffer(const gl::Context *context,
-                                              const gl::FramebufferState &state) override;
+    egl::Error attachToFramebuffer(const gl::Context *context,
+                                   gl::Framebuffer *framebuffer) override;
+    egl::Error detachFromFramebuffer(const gl::Context *context,
+                                     gl::Framebuffer *framebuffer) override;
 
   private:
-    WebSwapLayerEAGL *mSwapLayer;
+    SwapLayerEAGL *mSwapLayer;
     SharedSwapState mSwapState;
     uint64_t mCurrentSwapId;
 
@@ -101,6 +107,7 @@ class WindowSurfaceEAGL : public SurfaceGL
     StateManagerGL *mStateManager;
 
     GLuint mDSRenderbuffer;
+    GLuint mFramebufferID;
 };
 
 }  // namespace rx

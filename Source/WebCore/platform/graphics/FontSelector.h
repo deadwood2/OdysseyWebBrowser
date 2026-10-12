@@ -36,7 +36,10 @@ class FontCascadeDescription;
 class FontDescription;
 class FontSelectorClient;
 
+DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(FontAccessor);
+
 class FontAccessor : public RefCounted<FontAccessor> {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(FontAccessor);
 public:
     virtual ~FontAccessor() = default;
 
@@ -44,7 +47,7 @@ public:
     virtual bool isLoading() const = 0;
 };
 
-class FontSelector : public RefCounted<FontSelector> {
+class FontSelector : public RefCounted<FontSelector>, public CanMakeWeakPtr<FontSelector> {
 public:
     virtual ~FontSelector() = default;
 
@@ -55,7 +58,6 @@ public:
 
     virtual void opportunisticallyStartFontDataURLLoading(const FontCascadeDescription&, const AtomString& family) = 0;
 
-    virtual FontCache& fontCache() const = 0;
     virtual void fontCacheInvalidated() { }
 
     virtual void registerForInvalidationCallbacks(FontSelectorClient&) = 0;

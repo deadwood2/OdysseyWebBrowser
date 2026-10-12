@@ -71,6 +71,7 @@
             encodedString = [data base64EncodedStringWithOptions:0];
         }
 
+        auto systemValue = adoptCF(CFPreferencesCopyValue((__bridge CFStringRef)key, kCFPreferencesAnyApplication, kCFPreferencesAnyUser, kCFPreferencesAnyHost));
         auto globalValue = adoptCF(CFPreferencesCopyValue((__bridge CFStringRef)key, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
         auto domainValue = adoptCF(CFPreferencesCopyValue((__bridge CFStringRef)key, (__bridge CFStringRef)m_suiteName.get(), kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
 
@@ -78,7 +79,7 @@
             return a == b || [a isEqual:b];
         };
 
-        if (preferenceValuesAreEqual((__bridge id)globalValue.get(), newValue))
+        if (preferenceValuesAreEqual((__bridge id)systemValue.get(), newValue) || preferenceValuesAreEqual((__bridge id)globalValue.get(), newValue))
             [m_observer preferenceDidChange:nil key:key encodedValue:encodedString];
 
         if (preferenceValuesAreEqual((__bridge id)domainValue.get(), newValue))
@@ -142,6 +143,7 @@
         @"com.apple.preferences.sounds",
         @"com.apple.voiceservices",
 #else
+        @"com.apple.CFNetwork",
         @"com.apple.CoreGraphics",
         @"com.apple.HIToolbox",
         @"com.apple.ServicesMenu.Services",
@@ -161,7 +163,7 @@
             WTFLogAlways("Could not init user defaults instance for domain %s", String(domain).utf8().data());
             continue;
         }
-        userDefaults.get()->m_observer = self;
+        userDefaults->m_observer = self;
         // Start observing a dummy key in order to make the preference daemon become aware of our NSUserDefaults instance.
         // This is to make sure we receive KVO notifications. We cannot use normal KVO techniques here, since we are looking
         // for _any_ changes in a preference domain. For normal KVO techniques to work, we need to provide the specific
@@ -176,12 +178,22 @@
 {
 #if ENABLE(CFPREFS_DIRECT_MODE)
     RunLoop::main().dispatch([domain = retainPtr(domain), key = retainPtr(key), encodedValue = retainPtr(encodedValue)] {
-        std::optional<String> encodedString;
+        std::optional<String> encodedValueString;
         if (encodedValue)
-            encodedString = String(encodedValue.get());
+            encodedValueString = String(encodedValue.get());
+        String domainString = domain.get();
+        String keyString = key.get();
+
+#if ENABLE(GPU_PROCESS)
+        if (RefPtr gpuProcess = WebKit::GPUProcessProxy::singletonIfCreated())
+            gpuProcess->notifyPreferencesChanged(domainString, keyString, encodedValueString);
+#endif
+
+        if (RefPtr networkProcess = WebKit::NetworkProcessProxy::defaultNetworkProcess().get())
+            networkProcess->notifyPreferencesChanged(domainString, keyString, encodedValueString);
 
         for (auto& processPool : WebKit::WebProcessPool::allProcessPools())
-            processPool->notifyPreferencesChanged(domain.get(), key.get(), encodedString);
+            processPool->notifyPreferencesChanged(domainString, keyString, encodedValueString);
     });
 #endif
 }

@@ -30,8 +30,9 @@
 #import "PlatformUtilities.h"
 #import "TestInputDelegate.h"
 #import "TestWKWebView.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import "UserInterfaceSwizzler.h"
+#import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
 #import <wtf/RetainPtr.h>
@@ -83,6 +84,32 @@
 
 @end
 
+@interface EditorStateObserver : NSObject <WKUIDelegatePrivate>
+- (instancetype)initWithWebView:(WKWebView *)webView;
+@property (nonatomic, readonly) NSUInteger changeCount;
+@end
+
+@implementation EditorStateObserver {
+    __weak WKWebView *_webView;
+}
+
+- (instancetype)initWithWebView:(WKWebView *)webView
+{
+    if (!(self = [super init]))
+        return nil;
+
+    webView.UIDelegate = self;
+    _changeCount = 0;
+    return self;
+}
+
+- (void)_webView:(WKWebView *)webView editorStateDidChange:(NSDictionary *)editorState
+{
+    _changeCount++;
+}
+
+@end
+
 namespace TestWebKitAPI {
 
 TEST(UIWKInteractionViewProtocol, SelectTextWithCharacterGranularity)
@@ -99,12 +126,27 @@ TEST(UIWKInteractionViewProtocol, UpdateSelectionWithExtentPoint)
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 400, 400)]);
     [webView synchronouslyLoadHTMLString:@"<body contenteditable style='font-size: 20px;'>Hello world</body>"];
 
+    auto setMouseTouchGestureState = ^(UIGestureRecognizerState state) {
+        for (UIGestureRecognizer *gestureRecognizer in [webView textInputContentView].gestureRecognizers) {
+            if ([gestureRecognizer.name isEqualToString:@"WKMouseTouch"]) {
+                gestureRecognizer.state = state;
+                break;
+            }
+        }
+    };
+
     [webView evaluateJavaScript:@"getSelection().setPosition(document.body, 1)" completionHandler:nil];
+    setMouseTouchGestureState(UIGestureRecognizerStateBegan);
+    setMouseTouchGestureState(UIGestureRecognizerStateEnded);
     [webView updateSelectionWithExtentPoint:CGPointMake(5, 20)];
+    setMouseTouchGestureState(UIGestureRecognizerStatePossible);
     EXPECT_WK_STREQ("Hello world", [webView stringByEvaluatingJavaScript:@"getSelection().toString()"]);
 
     [webView evaluateJavaScript:@"getSelection().setPosition(document.body, 0)" completionHandler:nil];
+    setMouseTouchGestureState(UIGestureRecognizerStateBegan);
+    setMouseTouchGestureState(UIGestureRecognizerStateEnded);
     [webView updateSelectionWithExtentPoint:CGPointMake(300, 20)];
+    setMouseTouchGestureState(UIGestureRecognizerStatePossible);
     EXPECT_WK_STREQ("Hello world", [webView stringByEvaluatingJavaScript:@"getSelection().toString()"]);
 }
 
@@ -180,7 +222,7 @@ TEST(UIWKInteractionViewProtocol, SelectPositionAtPointInElementInNonFocusedFram
     EXPECT_WK_STREQ("DIV", [webView stringByEvaluatingJavaScript:@"document.querySelector('iframe').contentDocument.activeElement.tagName"]);
 }
 
-TEST(UIWKInteractionViewProtocol, TextInteractionCanBeginInExistingSelection)
+static std::pair<RetainPtr<TestWKWebView>, RetainPtr<TestInputDelegate>> setUpEditableWebViewAndWaitForInputSession()
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 320)]);
     auto inputDelegate = adoptNS([TestInputDelegate new]);
@@ -194,7 +236,12 @@ TEST(UIWKInteractionViewProtocol, TextInteractionCanBeginInExistingSelection)
 
     [webView synchronouslyLoadTestPageNamed:@"editable-responsive-body"];
     TestWebKitAPI::Util::run(&didStartInputSession);
+    return { WTFMove(webView), WTFMove(inputDelegate) };
+}
 
+TEST(UIWKInteractionViewProtocol, TextInteractionCanBeginInExistingSelection)
+{
+    auto [webView, inputDelegate] = setUpEditableWebViewAndWaitForInputSession();
     auto contentView = [webView textInputContentView];
     BOOL allowsTextInteractionOutsideOfSelection = [contentView textInteractionGesture:UIWKGestureLoupe shouldBeginAtPoint:CGPointMake(50, 50)];
     EXPECT_TRUE(allowsTextInteractionOutsideOfSelection);
@@ -204,6 +251,39 @@ TEST(UIWKInteractionViewProtocol, TextInteractionCanBeginInExistingSelection)
 
     BOOL allowsTextInteractionInsideSelection = [contentView textInteractionGesture:UIWKGestureLoupe shouldBeginAtPoint:CGPointMake(50, 50)];
     EXPECT_TRUE(allowsTextInteractionInsideSelection);
+}
+
+TEST(UIWKInteractionViewProtocol, ReplaceDictatedTextContainingEmojis)
+{
+    auto [webView, inputDelegate] = setUpEditableWebViewAndWaitForInputSession();
+    auto contentView = [webView textInputContentView];
+    [contentView selectAll:nil];
+    [contentView insertText:@"Hello world. This 👉🏻 is a good boy"];
+    [webView waitForNextPresentationUpdate];
+
+    [contentView replaceDictatedText:@"This 👉🏻 is a good boy" withText:@"This 👉🏻 is a 🦮"];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_WK_STREQ(@"Hello world. This 👉🏻 is a 🦮", [webView contentsAsString]);
+}
+
+TEST(UIWKInteractionViewProtocol, SuppressSelectionChangesDuringDictation)
+{
+    auto [webView, inputDelegate] = setUpEditableWebViewAndWaitForInputSession();
+    auto contentView = [webView textInputContentView];
+    [contentView selectAll:nil];
+    [contentView insertText:@"Hello world"];
+    [webView waitForNextPresentationUpdate];
+
+    auto observer = adoptNS([[EditorStateObserver alloc] initWithWebView:webView.get()]);
+    [contentView willInsertFinalDictationResult];
+    [contentView replaceDictatedText:@"Hello world" withText:@""];
+    [contentView insertText:@"Foo"];
+    [contentView insertText:@" "];
+    [contentView insertText:@"Bar"];
+    [contentView didInsertFinalDictationResult];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_WK_STREQ("Foo Bar", [webView contentsAsString]);
+    EXPECT_EQ(1U, [observer changeCount]);
 }
 
 } // namespace TestWebKitAPI

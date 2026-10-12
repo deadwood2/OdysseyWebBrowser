@@ -107,7 +107,7 @@ void WebColorPickerMac::setSelectedColor(const WebCore::Color& color)
     if (!m_client || !m_colorPickerUI)
         return;
     
-    [m_colorPickerUI setColor:nsColor(color)];
+    [m_colorPickerUI setColor:cocoaColor(color).get()];
 }
 
 void WebColorPickerMac::didChooseColor(const WebCore::Color& color)
@@ -123,7 +123,7 @@ void WebColorPickerMac::showColorPicker(const WebCore::Color& color)
     if (!m_client)
         return;
 
-    [m_colorPickerUI setAndShowPicker:this withColor:nsColor(color) suggestions:WTFMove(m_suggestions)];
+    [m_colorPickerUI setAndShowPicker:this withColor:cocoaColor(color).get() suggestions:WTFMove(m_suggestions)];
 }
 
 } // namespace WebKit
@@ -232,12 +232,15 @@ void WebColorPickerMac::showColorPicker(const WebCore::Color& color)
     [_popoverWell setWebDelegate:self];
     [_popoverWell setAction:@selector(didChooseColor:)];
     [_popoverWell setColor:color];
+#if HAVE(NSCOLORWELL_SUPPORTS_ALPHA)
+    [_popoverWell setSupportsAlpha:NO];
+#endif
 
     RetainPtr<NSColorList> suggestedColors;
     if (suggestions.size()) {
         suggestedColors = adoptNS([[NSColorList alloc] init]);
         for (size_t i = 0; i < std::min(suggestions.size(), maxColorSuggestions); i++)
-            [suggestedColors insertColor:nsColor(suggestions.at(i)) key:@(i).stringValue atIndex:i];
+            [suggestedColors insertColor:cocoaColor(suggestions.at(i)).get() key:@(i).stringValue atIndex:i];
     }
 
     [_popoverWell setSuggestedColors:suggestedColors.get()];
@@ -287,7 +290,7 @@ void WebColorPickerMac::showColorPicker(const WebCore::Color& color)
         return;
     }
 
-    _picker->didChooseColor(WebCore::colorFromNSColor([_popoverWell color]));
+    _picker->didChooseColor(WebCore::colorFromCocoaColor([_popoverWell color]));
 }
 
 - (void)setColor:(NSColor *)color

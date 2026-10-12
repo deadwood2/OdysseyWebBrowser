@@ -40,11 +40,18 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#if HAVE(UI_WINDOW_SCENE_LIVE_RESIZE)
+@interface WKWebView ()
+- (void)_beginLiveResize;
+- (void)_endLiveResize;
+@end
+#endif
+
 static bool didLayout;
 static bool didEndAnimatedResize;
 static bool didChangeSafeAreaShouldAffectObscuredInsets;
 
-@interface AnimatedResizeWebView : WKWebView <WKUIDelegate>
+@interface AnimatedResizeWebView : TestWKWebView <WKUIDelegate>
 
 @end
 
@@ -88,7 +95,7 @@ static RetainPtr<TestNavigationDelegate> createFirstVisuallyNonEmptyWatchingNavi
     return navigationDelegate;
 }
 
-TEST(WebKit, DISABLED_ResizeWithHiddenContentDoesNotHang)
+TEST(AnimatedResize, DISABLED_ResizeWithHiddenContentDoesNotHang)
 {
     auto webView = createAnimatedResizeWebView();
     [webView loadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"blinking-div" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]]];
@@ -112,7 +119,7 @@ TEST(WebKit, DISABLED_ResizeWithHiddenContentDoesNotHang)
     }
 }
 
-TEST(WebKit, AnimatedResizeDoesNotHang)
+TEST(AnimatedResize, AnimatedResizeDoesNotHang)
 {
     auto webView = createAnimatedResizeWebView();
     [webView loadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"blinking-div" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]]];
@@ -140,7 +147,7 @@ TEST(WebKit, AnimatedResizeDoesNotHang)
     }
 }
 
-TEST(WebKit, AnimatedResizeBlocksViewportFitChanges)
+TEST(AnimatedResize, AnimatedResizeBlocksViewportFitChanges)
 {
     auto webView = createAnimatedResizeWebView();
     [webView setUIDelegate:webView.get()];
@@ -187,12 +194,13 @@ TEST(WebKit, AnimatedResizeBlocksViewportFitChanges)
     EXPECT_TRUE(didChangeSafeAreaShouldAffectObscuredInsets);
 }
 
-TEST(WebKit, OverrideLayoutSizeChangesDuringAnimatedResizeSucceed)
+TEST(AnimatedResize, OverrideLayoutSizeChangesDuringAnimatedResizeSucceed)
 {
     auto webView = createAnimatedResizeWebView();
     [webView setUIDelegate:webView.get()];
 
-    [webView _overrideLayoutParametersWithMinimumLayoutSize:CGSizeMake(200, 50) maximumUnobscuredSizeOverride:CGSizeMake(200, 50)];
+    auto layoutSize = CGSizeMake(200, 50);
+    [webView _overrideLayoutParametersWithMinimumLayoutSize:layoutSize minimumUnobscuredSizeOverride:layoutSize maximumUnobscuredSizeOverride:layoutSize];
 
     [webView loadHTMLString:@"<head><meta name='viewport' content='initial-scale=1'></head>" baseURL:nil];
     auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
@@ -207,7 +215,8 @@ TEST(WebKit, OverrideLayoutSizeChangesDuringAnimatedResizeSucceed)
         [webView setFrame:CGRectMake(0, 0, [webView frame].size.width + 100, 400)];
     }];
 
-    [webView _overrideLayoutParametersWithMinimumLayoutSize:CGSizeMake(100, 200) maximumUnobscuredSizeOverride:CGSizeMake(100, 200)];
+    layoutSize = CGSizeMake(100, 200);
+    [webView _overrideLayoutParametersWithMinimumLayoutSize:layoutSize minimumUnobscuredSizeOverride:layoutSize maximumUnobscuredSizeOverride:layoutSize];
     [webView _endAnimatedResize];
 
     __block bool didReadLayoutSize = false;
@@ -227,12 +236,13 @@ TEST(WebKit, OverrideLayoutSizeChangesDuringAnimatedResizeSucceed)
     TestWebKitAPI::Util::run(&didReadLayoutSize);
 }
 
-TEST(WebKit, OverrideLayoutSizeIsRestoredAfterProcessRelaunch)
+TEST(AnimatedResize, OverrideLayoutSizeIsRestoredAfterProcessRelaunch)
 {
     auto webView = createAnimatedResizeWebView();
     [webView setUIDelegate:webView.get()];
 
-    [webView _overrideLayoutParametersWithMinimumLayoutSize:CGSizeMake(200, 50) maximumUnobscuredSizeOverride:CGSizeMake(200, 50)];
+    auto layoutSize = CGSizeMake(200, 50);
+    [webView _overrideLayoutParametersWithMinimumLayoutSize:layoutSize minimumUnobscuredSizeOverride:layoutSize maximumUnobscuredSizeOverride:layoutSize];
 
     [webView loadHTMLString:@"<head><meta name='viewport' content='initial-scale=1'></head>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -258,12 +268,13 @@ TEST(WebKit, OverrideLayoutSizeIsRestoredAfterProcessRelaunch)
     TestWebKitAPI::Util::run(&didReadLayoutSize);
 }
 
-TEST(WebKit, OverrideLayoutSizeIsRestoredAfterChangingDuringProcessRelaunch)
+TEST(AnimatedResize, OverrideLayoutSizeIsRestoredAfterChangingDuringProcessRelaunch)
 {
     auto webView = createAnimatedResizeWebView();
     [webView setUIDelegate:webView.get()];
 
-    [webView _overrideLayoutParametersWithMinimumLayoutSize:CGSizeMake(100, 100) maximumUnobscuredSizeOverride:CGSizeMake(100, 100)];
+    auto layoutSize = CGSizeMake(100, 100);
+    [webView _overrideLayoutParametersWithMinimumLayoutSize:layoutSize minimumUnobscuredSizeOverride:layoutSize maximumUnobscuredSizeOverride:layoutSize];
 
     [webView loadHTMLString:@"<head><meta name='viewport' content='initial-scale=1'></head>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -273,7 +284,8 @@ TEST(WebKit, OverrideLayoutSizeIsRestoredAfterChangingDuringProcessRelaunch)
     [window setHidden:NO];
 
     [webView _killWebContentProcessAndResetState];
-    [webView _overrideLayoutParametersWithMinimumLayoutSize:CGSizeMake(200, 50) maximumUnobscuredSizeOverride:CGSizeMake(200, 50)];
+    layoutSize = CGSizeMake(200, 50);
+    [webView _overrideLayoutParametersWithMinimumLayoutSize:layoutSize minimumUnobscuredSizeOverride:layoutSize maximumUnobscuredSizeOverride:layoutSize];
 
     [webView loadHTMLString:@"<head><meta name='viewport' content='initial-scale=1'></head>" baseURL:nil];
     [webView _test_waitForDidFinishNavigation];
@@ -291,7 +303,7 @@ TEST(WebKit, OverrideLayoutSizeIsRestoredAfterChangingDuringProcessRelaunch)
     TestWebKitAPI::Util::run(&didReadLayoutSize);
 }
 
-TEST(WebKit, ChangeFrameAndMinimumEffectiveDeviceWidthDuringAnimatedResize)
+TEST(AnimatedResize, ChangeFrameAndMinimumEffectiveDeviceWidthDuringAnimatedResize)
 {
     auto webView = createAnimatedResizeWebView();
     [[webView configuration] preferences]._shouldIgnoreMetaViewport = YES;
@@ -346,7 +358,7 @@ static UIView *immediateSubviewOfClass(UIView *view, Class cls)
     return foundSubview;
 }
 
-TEST(WebKit, ResizeWithContentHiddenCompletes)
+TEST(AnimatedResize, ResizeWithContentHiddenCompletes)
 {
     auto webView = createAnimatedResizeWebView();
     [webView setUIDelegate:webView.get()];
@@ -387,7 +399,7 @@ TEST(WebKit, ResizeWithContentHiddenCompletes)
     EXPECT_FALSE(contentView.hidden);
 }
 
-TEST(WebKit, ResizeWithContentHiddenWithSubsequentNoOpResizeCompletes)
+TEST(AnimatedResize, ResizeWithContentHiddenWithSubsequentNoOpResizeCompletes)
 {
     auto webView = createAnimatedResizeWebView();
     [webView setUIDelegate:webView.get()];
@@ -409,6 +421,8 @@ TEST(WebKit, ResizeWithContentHiddenWithSubsequentNoOpResizeCompletes)
         [webView setFrame:CGRectMake(0, 0, 100, 200)];
     }];
 
+    [webView _endAnimatedResize];
+
     __block bool didReadLayoutSize = false;
     [webView _doAfterNextPresentationUpdate:^{
         [webView evaluateJavaScript:@"[window.innerWidth, window.innerHeight]" completionHandler:^(id value, NSError *error) {
@@ -432,7 +446,7 @@ TEST(WebKit, ResizeWithContentHiddenWithSubsequentNoOpResizeCompletes)
     EXPECT_FALSE(contentView.hidden);
 }
 
-TEST(WebKit, AnimatedResizeBlocksDoAfterNextPresentationUpdate)
+TEST(AnimatedResize, AnimatedResizeBlocksDoAfterNextPresentationUpdate)
 {
     auto webView = createAnimatedResizeWebView();
     [webView setUIDelegate:webView.get()];
@@ -468,7 +482,45 @@ TEST(WebKit, AnimatedResizeBlocksDoAfterNextPresentationUpdate)
     TestWebKitAPI::Util::run(&didGetCommitAfterEndAnimatedResize);
 }
 
-TEST(WebKit, CreateWebPageAfterAnimatedResize)
+TEST(AnimatedResize, ResizeWithContentHiddenWhileScrolling)
+{
+    auto webView = createAnimatedResizeWebView();
+    [webView setUIDelegate:webView.get()];
+
+    [webView loadHTMLString:@"<head><meta name='viewport' content='initial-scale=1'></head>" baseURL:nil];
+    auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    webView.get().navigationDelegate = navigationDelegate.get();
+    [navigationDelegate waitForDidFinishNavigation];
+
+    auto window = adoptNS([[UIWindow alloc] initWithFrame:CGRectMake(0, 0, 800, 600)]);
+    [window addSubview:webView.get()];
+    [window setHidden:NO];
+
+    __block bool done = false;
+    [webView _doAfterNextPresentationUpdate:^{
+        [webView _resizeWhileHidingContentWithUpdates:^{
+            [webView setFrame:CGRectMake(0, 0, 100, 200)];
+        }];
+
+        [webView evaluateJavaScript:@"window.scrollTo(10, 0)" completionHandler:nil];
+
+        [webView _doAfterNextPresentationUpdate:^{
+            [webView evaluateJavaScript:@"[window.innerWidth, window.innerHeight]" completionHandler:^(id value, NSError *error) {
+                CGFloat innerWidth = [[value objectAtIndex:0] floatValue];
+                CGFloat innerHeight = [[value objectAtIndex:1] floatValue];
+
+                EXPECT_EQ(innerWidth, 100);
+                EXPECT_EQ(innerHeight, 200);
+
+                done = true;
+            }];
+        }];
+    }];
+
+    TestWebKitAPI::Util::run(&done);
+}
+
+TEST(AnimatedResize, CreateWebPageAfterAnimatedResize)
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 1024, 768)]);
     [webView synchronouslyLoadTestPageNamed:@"large-red-square-image"];
@@ -494,6 +546,76 @@ TEST(WebKit, CreateWebPageAfterAnimatedResize)
     NSArray<NSNumber *> *dimensions = [webView objectByEvaluatingJavaScript:@"[innerWidth, innerHeight]"];
     EXPECT_EQ(768, dimensions.firstObject.intValue);
     EXPECT_EQ(1024, dimensions.lastObject.intValue);
+}
+
+#if HAVE(UI_WINDOW_SCENE_LIVE_RESIZE)
+TEST(AnimatedResize, MinimumEffectiveDeviceWidthChangeIsDeferredDuringLiveResize)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 200, 200)]);
+    [webView synchronouslyLoadHTMLString:@"<meta name='viewport' content='initial-scale=1' />"];
+
+    EXPECT_EQ([webView scrollView].zoomScale, 1);
+
+    [webView _beginLiveResize];
+
+    [webView _setMinimumEffectiveDeviceWidth:400];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_EQ([webView scrollView].zoomScale, 1);
+
+    [webView _endLiveResize];
+
+    [webView waitForNextPresentationUpdate];
+    EXPECT_EQ([webView scrollView].zoomScale, 0.5);
+}
+#endif
+
+TEST(AnimatedResize, ResizeWithWithSubsequentNoOpResizeIsNotCancelled)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 1024, 768)]);
+    [webView synchronouslyLoadHTMLString:@"<head><meta name='viewport' content='initial-scale=1'></head>"];
+
+    UIView *scrollView = immediateSubviewOfClass(webView.get(), NSClassFromString(@"WKScrollView"));
+    UIView *contentView = immediateSubviewOfClass(scrollView, NSClassFromString(@"WKContentView"));
+
+    [webView _resizeWhileHidingContentWithUpdates:^{
+        [webView setFrame:CGRectMake(0, 0, 100, 200)];
+    }];
+
+    EXPECT_TRUE(contentView.hidden);
+
+    [webView _resizeWhileHidingContentWithUpdates:^{
+        [webView setFrame:CGRectMake(0, 0, 100, 200)];
+    }];
+
+    // The animated resize shouldn't be cancelled just because we did a no-op resize;
+    // the first one is still in progress at this point.
+    EXPECT_TRUE(contentView.hidden);
+
+    // Eventually we should get a commit that un-hides the content view.
+    while (1) {
+        [webView waitForNextPresentationUpdate];
+        if (!contentView.hidden)
+            break;
+    }
+}
+
+TEST(AnimatedResize, ScaleDuringAnimatedResizeDoesNotMoveContentViewFrameOrigin)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 1024, 768)]);
+    [webView synchronouslyLoadTestPageNamed:@"large-red-square-image"];
+
+    [webView _beginAnimatedResizeWithUpdates:^{
+        [webView setFrame:CGRectMake(0, 0, [webView frame].size.width + 100, 400)];
+    }];
+
+    [webView _endAnimatedResize];
+
+    [[webView scrollView] setZoomScale:2];
+    [webView waitForNextPresentationUpdate];
+
+    auto frameOrigin = [webView wkContentView].frame.origin;
+    EXPECT_EQ(frameOrigin.x, 0);
+    EXPECT_EQ(frameOrigin.y, 0);
 }
 
 #endif

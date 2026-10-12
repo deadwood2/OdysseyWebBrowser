@@ -42,16 +42,16 @@ String GtkSettingsManager::themeName() const
 {
     if (auto* themeNameEnv = g_getenv("GTK_THEME")) {
         String name = String::fromUTF8(themeNameEnv);
-        if (name.endsWith("-dark") || name.endsWith("-Dark") || name.endsWith(":dark"))
-            return name.substring(0, name.length() - 5);
+        if (name.endsWith("-dark"_s) || name.endsWith("-Dark"_s) || name.endsWith(":dark"_s))
+            return name.left(name.length() - 5);
         return name;
     }
 
     GUniqueOutPtr<char> themeNameSetting;
     g_object_get(m_settings, "gtk-theme-name", &themeNameSetting.outPtr(), nullptr);
     String name = String::fromUTF8(themeNameSetting.get());
-    if (name.endsWith("-dark") || name.endsWith("-Dark"))
-        return name.substring(0, name.length() - 5);
+    if (name.endsWith("-dark"_s) || name.endsWith("-Dark"_s))
+        return name.left(name.length() - 5);
     return name;
 }
 
@@ -118,6 +118,20 @@ bool GtkSettingsManager::primaryButtonWarpsSlider() const
     return buttonSetting ? true : false;
 }
 
+bool GtkSettingsManager::overlayScrolling() const
+{
+    gboolean overlayScrollingSetting;
+    g_object_get(m_settings, "gtk-overlay-scrolling", &overlayScrollingSetting, nullptr);
+    return overlayScrollingSetting ? true : false;
+}
+
+bool GtkSettingsManager::enableAnimations() const
+{
+    gboolean enableAnimationsSetting;
+    g_object_get(m_settings, "gtk-enable-animations", &enableAnimationsSetting, nullptr);
+    return enableAnimationsSetting ? true : false;
+}
+
 void GtkSettingsManager::settingsDidChange()
 {
     GtkSettingsState state;
@@ -162,6 +176,17 @@ void GtkSettingsManager::settingsDidChange()
     if (m_settingsState.primaryButtonWarpsSlider != primaryButtonWarpsSlider)
         m_settingsState.primaryButtonWarpsSlider = state.primaryButtonWarpsSlider = primaryButtonWarpsSlider;
 
+    auto overlayScrolling = this->overlayScrolling();
+    if (m_settingsState.overlayScrolling != overlayScrolling)
+        m_settingsState.overlayScrolling = state.overlayScrolling = overlayScrolling;
+
+    auto enableAnimations = this->enableAnimations();
+    if (m_settingsState.enableAnimations != enableAnimations)
+        m_settingsState.enableAnimations = state.enableAnimations = enableAnimations;
+
+    for (const auto& observer : m_observers.values())
+        observer(state);
+
     for (auto& processPool : WebProcessPool::allProcessPools())
         processPool->sendToAllProcesses(Messages::GtkSettingsManagerProxy::SettingsDidChange(state));
 }
@@ -183,6 +208,8 @@ GtkSettingsManager::GtkSettingsManager()
     m_settingsState.cursorBlink = cursorBlink();
     m_settingsState.cursorBlinkTime = cursorBlinkTime();
     m_settingsState.primaryButtonWarpsSlider = primaryButtonWarpsSlider();
+    m_settingsState.overlayScrolling = overlayScrolling();
+    m_settingsState.enableAnimations = enableAnimations();
 
     g_signal_connect_swapped(m_settings, "notify::gtk-theme-name", G_CALLBACK(settingsChangedCallback), this);
     g_signal_connect_swapped(m_settings, "notify::gtk-font-name", G_CALLBACK(settingsChangedCallback), this);
@@ -194,6 +221,18 @@ GtkSettingsManager::GtkSettingsManager()
     g_signal_connect_swapped(m_settings, "notify::gtk-cursor-blink", G_CALLBACK(settingsChangedCallback), this);
     g_signal_connect_swapped(m_settings, "notify::gtk-cursor-blink-time", G_CALLBACK(settingsChangedCallback), this);
     g_signal_connect_swapped(m_settings, "notify::gtk-primary-button-warps-slider", G_CALLBACK(settingsChangedCallback), this);
+    g_signal_connect_swapped(m_settings, "notify::gtk-overlay-scrolling", G_CALLBACK(settingsChangedCallback), this);
+    g_signal_connect_swapped(m_settings, "notify::gtk-enable-animations", G_CALLBACK(settingsChangedCallback), this);
+}
+
+void GtkSettingsManager::addObserver(Function<void(const GtkSettingsState&)>&& handler, void* context)
+{
+    m_observers.add(context, WTFMove(handler));
+}
+
+void GtkSettingsManager::removeObserver(void* context)
+{
+    m_observers.remove(context);
 }
 
 } // namespace WebKit

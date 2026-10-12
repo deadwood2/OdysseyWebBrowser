@@ -33,12 +33,11 @@ TEST(Copying, WKPreferences)
     RetainPtr<WKPreferences> a = adoptNS([[WKPreferences alloc] init]);
     [a setMinimumFontSize:10];
     [a setJavaScriptEnabled:NO];
+    [a setShouldPrintBackgrounds:YES];
 #if PLATFORM(IOS_FAMILY)
     [a setJavaScriptCanOpenWindowsAutomatically:YES];
 #else
     [a setJavaScriptCanOpenWindowsAutomatically:NO];
-    [a setJavaEnabled:YES];
-    [a setPlugInsEnabled:YES];
     [a setTabFocusesLinks:YES];
 #endif
 
@@ -47,21 +46,20 @@ TEST(Copying, WKPreferences)
     EXPECT_EQ([a minimumFontSize], [b minimumFontSize]);
     EXPECT_EQ([a javaScriptEnabled], [b javaScriptEnabled]);
     EXPECT_EQ([a javaScriptCanOpenWindowsAutomatically], [b javaScriptCanOpenWindowsAutomatically]);
+    EXPECT_EQ([a shouldPrintBackgrounds], [b shouldPrintBackgrounds]);
 #if PLATFORM(MAC)
     EXPECT_EQ([a javaEnabled], [b javaEnabled]);
-    EXPECT_EQ([a plugInsEnabled], NO);
     EXPECT_EQ([a tabFocusesLinks], [b tabFocusesLinks]);
 #endif
 
     // Change all defaults on the copied instance.
     [b setMinimumFontSize:13];
     [b setJavaScriptEnabled:YES];
+    [b setShouldPrintBackgrounds:NO];
 #if PLATFORM(IOS_FAMILY)
     [b setJavaScriptCanOpenWindowsAutomatically:NO];
 #else
     [b setJavaScriptCanOpenWindowsAutomatically:YES];
-    [b setJavaEnabled:NO];
-    [b setPlugInsEnabled:NO];
     [b setTabFocusesLinks:NO];
 #endif
 
@@ -69,9 +67,8 @@ TEST(Copying, WKPreferences)
     EXPECT_NE([a minimumFontSize], [b minimumFontSize]);
     EXPECT_NE([a javaScriptEnabled], [b javaScriptEnabled]);
     EXPECT_NE([a javaScriptCanOpenWindowsAutomatically], [b javaScriptCanOpenWindowsAutomatically]);
+    EXPECT_NE([a shouldPrintBackgrounds], [b shouldPrintBackgrounds]);
 #if PLATFORM(MAC)
-    EXPECT_NE([a javaEnabled], [b javaEnabled]);
-    EXPECT_EQ([a plugInsEnabled], [b plugInsEnabled]);
     EXPECT_NE([a tabFocusesLinks], [b tabFocusesLinks]);
 #endif
 

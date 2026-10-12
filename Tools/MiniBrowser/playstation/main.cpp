@@ -23,10 +23,18 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#if defined(HAVE_CONFIG_H) && HAVE_CONFIG_H && defined(BUILDING_WITH_CMAKE)
+#include "cmakeconfig.h"
+#endif
 #include "MainWindow.h"
+#include <JavaScriptCore/JSRemoteInspectorServer.h>
 #include <WebKit/WKRunLoop.h>
 #include <dlfcn.h>
 #include <toolkitten/Application.h>
+
+#if defined (USE_WPE_BACKEND_PLAYSTATION) && USE_WPE_BACKEND_PLAYSTATION
+#include <wpe/playstation.h>
+#endif
 
 using toolkitten::Widget;
 using toolkitten::Application;
@@ -43,18 +51,39 @@ __attribute__((constructor(110)))
 static void initialize()
 {
     loadLibraryOrExit("PosixWebKit");
-    setenv_np("WebInspectorServerPort", "868", 1);
 
-    loadLibraryOrExit("libpng16");
-    loadLibraryOrExit("libicu");
-    loadLibraryOrExit("libfontconfig");
-    loadLibraryOrExit("libfreetype");
-    loadLibraryOrExit("libharfbuzz");
-    loadLibraryOrExit("libcairo");
-    loadLibraryOrExit("libToolKitten");    
-    loadLibraryOrExit("libSceNKWebKitRequirements");
+    loadLibraryOrExit(ICU_LOAD_AT);
+    loadLibraryOrExit(PNG_LOAD_AT);
+#if defined(JPEG_LOAD_AT)
+    loadLibraryOrExit(JPEG_LOAD_AT);
+#endif
+#if defined(WebP_LOAD_AT)
+    loadLibraryOrExit(WebP_LOAD_AT);
+#endif
+    loadLibraryOrExit(Fontconfig_LOAD_AT);
+    loadLibraryOrExit(Freetype_LOAD_AT);
+    loadLibraryOrExit(HarfBuzz_LOAD_AT);
+#if defined(USE_CAIRO) && USE_CAIRO && defined(Cairo_LOAD_AT)
+    loadLibraryOrExit(Cairo_LOAD_AT);
+#endif
+    loadLibraryOrExit(ToolKitten_LOAD_AT);
+    loadLibraryOrExit(WebKitRequirements_LOAD_AT);
+#if defined(LibPSL_LOAD_AT)
+    loadLibraryOrExit(LibPSL_LOAD_AT);
+#endif
+#if defined(WPE_LOAD_AT)
+    loadLibraryOrExit(WPE_LOAD_AT);
+#endif
+#if !(defined(ENABLE_STATIC_JSC) && ENABLE_STATIC_JSC)
     loadLibraryOrExit("libJavaScriptCore");
+#endif
     loadLibraryOrExit("libWebKit");
+
+#if defined (USE_WPE_BACKEND_PLAYSTATION) && USE_WPE_BACKEND_PLAYSTATION
+    wpe_playstation_process_provider_register_backend();
+#endif
+
+    JSRemoteInspectorServerStart(nullptr, 868);
 }
 
 class ApplicationClient : public Application::Client {
@@ -71,7 +100,7 @@ private:
     }
 };
 
-int main(int, char *[])
+int main(int argc, char *argv[])
 {
     WKRunLoopInitializeMain();
 
@@ -79,9 +108,10 @@ int main(int, char *[])
     auto& app = Application::singleton();
     app.init(&applicationClient);
 
-    auto mainWindow = std::make_unique<MainWindow>();
+    const std::vector<std::string> options(argv + 1, argv + argc);
+    auto mainWindow = std::make_unique<MainWindow>(options);
     mainWindow->setFocused();
-    app.setRootWidget(move(mainWindow));
+    app.setRootWidget(std::move(mainWindow));
 
     // Request the first frame to start the application loop.
     applicationClient.requestNextFrame();

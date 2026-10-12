@@ -23,7 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 
 #import <CoreGraphics/CGGeometry.h>
 #import <wtf/RetainPtr.h>
@@ -74,6 +74,8 @@ RetainPtr<IOHIDEventRef> createHIDKeyEvent(NSString *, uint64_t timestamp, bool 
 @interface HIDEventGenerator : NSObject
 
 + (HIDEventGenerator *)sharedHIDEventGenerator;
+
+- (void)resetActiveModifiers;
 
 // Touches
 - (void)touchDown:(CGPoint)location touchCount:(NSUInteger)count completionBlock:(void (^)(void))completionBlock;

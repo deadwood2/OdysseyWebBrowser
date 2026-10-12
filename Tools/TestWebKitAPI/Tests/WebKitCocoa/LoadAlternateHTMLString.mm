@@ -25,16 +25,17 @@
 
 #import "config.h"
 
+#import "DeprecatedGlobalValues.h"
 #import "HTTPServer.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
+#import "TestUIDelegate.h"
 #import <WebKit/WKFoundation.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/cocoa/NSURLExtras.h>
 
-static bool isDone;
 static int provisionalLoadCount;
 
 @interface LoadAlternateHTMLStringFromProvisionalLoadErrorController : NSObject <WKNavigationDelegate>
@@ -53,7 +54,7 @@ static int provisionalLoadCount;
     isDone = true;
 }
 
-- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(null_unspecified WKNavigation *)navigation
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation
 {
     provisionalLoadCount++;
 }
@@ -128,6 +129,19 @@ TEST(WKWebView, LoadAlternateHTMLStringNoFileSystemPath)
     [webView loadHTMLString:@"<html>hi</html>" baseURL:[NSURL URLWithString:@"file:///.file/id="]];
 }
 
+TEST(WKWebView, LoadNilAlternateHTMLStringDoesNotCrash)
+{
+    auto webView = adoptNS([[WKWebView alloc] init]);
+    auto controller = adoptNS([LoadAlternateHTMLStringFromProvisionalLoadErrorController new]);
+    [webView setNavigationDelegate:controller.get()];
+
+    IGNORE_NULL_CHECK_WARNINGS_BEGIN
+    [webView _loadAlternateHTMLString:nil baseURL:nil forUnreachableURL:[NSURL URLWithString:@"https://www.example.com"]];
+    IGNORE_NULL_CHECK_WARNINGS_END
+
+    TestWebKitAPI::Util::run(&isDone);
+}
+
 TEST(WKWebView, LoadAlternateHTMLStringFromProvisionalLoadErrorReload)
 {
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
@@ -171,7 +185,7 @@ TEST(WKWebView, LoadHTMLStringOrigin)
         completionHandler(WKNavigationActionPolicyAllow);
     };
     webView.get().navigationDelegate = delegate.get();
-    NSString *html = @"<script>var xhr = new XMLHttpRequest(); xhr.open('GET', 'http://127.0.0.1:%d/', true); xhr.send();</script>";
+    constexpr NSString *html = @"<script>var xhr = new XMLHttpRequest(); xhr.open('GET', 'http://127.0.0.1:%d/', true); xhr.send();</script>";
     [webView loadHTMLString:[NSString stringWithFormat:html, server.port()] baseURL:[NSURL URLWithString:@"custom-scheme://"]];
     Util::run(&done);
 }
@@ -184,7 +198,7 @@ TEST(WebKit, LoadHTMLStringWithInvalidBaseURL)
     [webView setNavigationDelegate:navigationDelegate.get()];
 
     __block bool didCrash = false;
-    navigationDelegate.get().webContentProcessDidTerminate = ^(WKWebView *view) {
+    navigationDelegate.get().webContentProcessDidTerminate = ^(WKWebView *view, _WKProcessTerminationReason) {
         didCrash = true;
     };
 
@@ -198,4 +212,41 @@ TEST(WebKit, LoadHTMLStringWithInvalidBaseURL)
     EXPECT_WK_STREQ([webView URL].absoluteString, "invalid");
 
     EXPECT_FALSE(didCrash);
+}
+
+TEST(WebKit, LoadMoreThan4GB)
+{
+    constexpr auto html = "<script>"
+    "async function main() {"
+    "    const response = await fetch('/bigdata');"
+    "    await response.arrayBuffer();"
+    "}"
+    "main().catch(e => {"
+    "    alert('caught error ' + e);"
+    "}).finally(() => {"
+    "    alert('did not catch error');"
+    "});"
+    "</script>"_s;
+
+    using namespace TestWebKitAPI;
+    auto longData = dataFromVector(Vector<uint8_t>(static_cast<size_t>(0x10000000), [] (size_t) {
+        return static_cast<uint8_t>('a');
+    }));
+
+    HTTPServer server(HTTPServer::UseCoroutines::Yes, [&] (Connection connection) -> Task { while (true) {
+        auto request = co_await connection.awaitableReceiveHTTPRequest();
+        auto path = HTTPServer::parsePath(request);
+        if (path == "/"_s)
+            co_await connection.awaitableSend(HTTPResponse(html).serialize());
+        else {
+            co_await connection.awaitableSend("HTTP/1.1 200 OK\r\nContent-type: application/octet-stream\r\n\r\n"_s);
+            for (size_t i = 0; i < 16; ++i)
+                co_await connection.awaitableSend(RetainPtr { longData.get() });
+            connection.terminate();
+        }
+    } });
+
+    RetainPtr webView = adoptNS([WKWebView new]);
+    [webView loadRequest:server.request()];
+    EXPECT_WK_STREQ([webView _test_waitForAlert], "caught error RangeError: Out of memory");
 }

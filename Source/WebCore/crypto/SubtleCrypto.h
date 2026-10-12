@@ -25,14 +25,12 @@
 
 #pragma once
 
-#if ENABLE(WEB_CRYPTO)
-
 #include "ContextDestructionObserver.h"
 #include "CryptoKeyFormat.h"
 #include <JavaScriptCore/Strong.h>
+#include <variant>
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
-#include <wtf/Variant.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/WorkQueue.h>
 
@@ -50,7 +48,7 @@ class BufferSource;
 class CryptoKey;
 class DeferredPromise;
 
-enum class CryptoAlgorithmIdentifier;
+enum class CryptoAlgorithmIdentifier : uint8_t;
 enum class CryptoKeyUsage;
 
 class SubtleCrypto : public ContextDestructionObserver, public RefCounted<SubtleCrypto>, public CanMakeWeakPtr<SubtleCrypto> {
@@ -60,8 +58,8 @@ public:
 
     using KeyFormat = CryptoKeyFormat;
 
-    using AlgorithmIdentifier = Variant<JSC::Strong<JSC::JSObject>, String>;
-    using KeyDataVariant = Variant<RefPtr<JSC::ArrayBufferView>, RefPtr<JSC::ArrayBuffer>, JsonWebKey>;
+    using AlgorithmIdentifier = std::variant<JSC::Strong<JSC::JSObject>, String>;
+    using KeyDataVariant = std::variant<RefPtr<JSC::ArrayBufferView>, RefPtr<JSC::ArrayBuffer>, JsonWebKey>;
 
     void encrypt(JSC::JSGlobalObject&, AlgorithmIdentifier&&, CryptoKey&, BufferSource&& data, Ref<DeferredPromise>&&);
     void decrypt(JSC::JSGlobalObject&, AlgorithmIdentifier&&, CryptoKey&, BufferSource&& data, Ref<DeferredPromise>&&);
@@ -70,7 +68,7 @@ public:
     void digest(JSC::JSGlobalObject&, AlgorithmIdentifier&&, BufferSource&& data, Ref<DeferredPromise>&&);
     void generateKey(JSC::JSGlobalObject&, AlgorithmIdentifier&&, bool extractable, Vector<CryptoKeyUsage>&& keyUsages, Ref<DeferredPromise>&&);
     void deriveKey(JSC::JSGlobalObject&, AlgorithmIdentifier&&, CryptoKey& baseKey, AlgorithmIdentifier&& derivedKeyType, bool extractable, Vector<CryptoKeyUsage>&&, Ref<DeferredPromise>&&);
-    void deriveBits(JSC::JSGlobalObject&, AlgorithmIdentifier&&, CryptoKey& baseKey, unsigned length, Ref<DeferredPromise>&&);
+    void deriveBits(JSC::JSGlobalObject&, AlgorithmIdentifier&&, CryptoKey& baseKey, std::optional<unsigned> length, Ref<DeferredPromise>&&);
     void importKey(JSC::JSGlobalObject&, KeyFormat, KeyDataVariant&&, AlgorithmIdentifier&&, bool extractable, Vector<CryptoKeyUsage>&&, Ref<DeferredPromise>&&);
     void exportKey(KeyFormat, CryptoKey&, Ref<DeferredPromise>&&);
     void wrapKey(JSC::JSGlobalObject&, KeyFormat, CryptoKey&, CryptoKey& wrappingKey, AlgorithmIdentifier&& wrapAlgorithm, Ref<DeferredPromise>&&);
@@ -86,6 +84,4 @@ private:
     HashMap<DeferredPromise*, Ref<DeferredPromise>> m_pendingPromises;
 };
 
-}
-
-#endif
+} // namespace WebCore

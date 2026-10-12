@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2008, 2013 Apple Inc. All Rights Reserved.
- * Copyright (C) 2010 Google Inc. All Rights Reserved.
+ * Copyright (C) 2010-2020 Google Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -53,15 +53,18 @@ private:
         AfterRule,
         RuleValue,
         AfterRuleValue,
+        RuleConditions,
         DoneParsingImportRules,
     };
 
     inline void tokenize(UChar);
     void emitRule();
+    bool hasFinishedRuleValue() const;
 
     State m_state;
     Vector<UChar> m_rule;
     Vector<UChar> m_ruleValue;
+    Vector<UChar> m_ruleConditions;
 
     // Only non-zero during scan()
     PreloadRequestStream* m_requests;

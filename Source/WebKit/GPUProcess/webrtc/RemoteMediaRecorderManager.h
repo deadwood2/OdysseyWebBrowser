@@ -1,5 +1,3 @@
-
-
 /*
  * Copyright (C) 2020 Apple Inc. All rights reserved.
  *
@@ -27,12 +25,15 @@
 
 #pragma once
 
-#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_STREAM) && HAVE(AVASSETWRITERDELEGATE)
+#if PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && ENABLE(MEDIA_RECORDER)
 
 #include "MediaRecorderIdentifier.h"
 #include "MessageReceiver.h"
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
+#include <wtf/ThreadSafeWeakPtr.h>
+#include <wtf/WeakRef.h>
 
 namespace IPC {
 class Connection;
@@ -50,7 +51,7 @@ class GPUConnectionToWebProcess;
 class RemoteMediaRecorder;
 
 class RemoteMediaRecorderManager : private IPC::MessageReceiver {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(RemoteMediaRecorderManager);
 public:
     explicit RemoteMediaRecorderManager(GPUConnectionToWebProcess&);
     ~RemoteMediaRecorderManager();
@@ -66,7 +67,7 @@ private:
     void createRecorder(MediaRecorderIdentifier, bool recordAudio, bool recordVideo, const WebCore::MediaRecorderPrivateOptions&, CompletionHandler<void(std::optional<WebCore::ExceptionData>&&, String&&, unsigned, unsigned)>&&);
     void releaseRecorder(MediaRecorderIdentifier);
 
-    GPUConnectionToWebProcess& m_gpuConnectionToWebProcess;
+    ThreadSafeWeakPtr<GPUConnectionToWebProcess> m_gpuConnectionToWebProcess;
     HashMap<MediaRecorderIdentifier, std::unique_ptr<RemoteMediaRecorder>> m_recorders;
 };
 

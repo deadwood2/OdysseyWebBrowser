@@ -56,7 +56,10 @@ static NSError *toUserContentRuleListStoreError(const NSError *error)
     }
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 @implementation _WKUserContentExtensionStore
+#pragma clang diagnostic pop
 
 + (instancetype)defaultStore
 {
@@ -70,7 +73,7 @@ static NSError *toUserContentRuleListStoreError(const NSError *error)
 
 - (void)compileContentExtensionForIdentifier:(NSString *)identifier encodedContentExtension:(NSString *)encodedContentRuleList completionHandler:(void (^)(_WKUserContentFilter *, NSError *))completionHandler
 {
-    [_contentRuleListStore _compileContentRuleListForIdentifier:identifier encodedContentRuleList:encodedContentRuleList completionHandler:^(WKContentRuleList *contentRuleList, NSError *error) {
+    [_contentRuleListStore compileContentRuleListForIdentifier:identifier encodedContentRuleList:encodedContentRuleList completionHandler:^(WKContentRuleList *contentRuleList, NSError *error) {
         auto contentFilter = contentRuleList ? adoptNS([[_WKUserContentFilter alloc] _initWithWKContentRuleList:contentRuleList]) : nil;
         completionHandler(contentFilter.get(), toUserContentRuleListStoreError(error));
     }];
@@ -100,7 +103,10 @@ static NSError *toUserContentRuleListStoreError(const NSError *error)
 
 @end
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-implementations"
 @implementation _WKUserContentExtensionStore (WKPrivate)
+#pragma clang diagnostic pop
 
 // For testing only.
 

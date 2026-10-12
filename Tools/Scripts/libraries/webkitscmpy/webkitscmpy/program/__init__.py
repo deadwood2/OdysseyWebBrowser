@@ -1,4 +1,4 @@
-# Copyright (C) 2020, 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -28,28 +28,50 @@ import sys
 from .blame import Blame
 from .branch import Branch
 from .canonicalize import Canonicalize
-from .clean import Clean
+from .cherry_pick import CherryPick
+from .clean import Clean, DeletePRBranches
+from .clone import Clone
 from .command import Command
+from .commit import Commit
+from .conflict import Conflict
+from .squash import Squash
 from .checkout import Checkout
+from .classify import Classify
+from .credentials import Credentials
 from .find import Find, Info
+from .pickable import Pickable
+from .publish import Publish
+from .install_git_lfs import InstallGitLFS
+from .install_hooks import InstallHooks
+from .land import Land
 from .log import Log
 from .pull import Pull
 from .pull_request import PullRequest
+from .revert import Revert
+from .review import Review
 from .setup_git_svn import SetupGitSvn
 from .setup import Setup
+from .show import Show
+from .trace import Trace
+from .track import Track
 
-from webkitcorepy import arguments, log as webkitcorepy_log
+from webkitbugspy import log as webkitbugspy_log
+from webkitcorepy import arguments, filtered_call, log as webkitcorepy_log, Terminal
 from webkitscmpy import local, log, remote
 
 
-def main(args=None, path=None, loggers=None, contributors=None, identifier_template=None, subversion=None):
+def main(
+    args=None, path=None, loggers=None, contributors=None,
+    identifier_template=None, subversion=None, additional_setup=None, hooks=None,
+    canonical_svn=None, programs=None, classifier=None, **kwargs
+):
     logging.basicConfig(level=logging.WARNING)
 
-    loggers = [logging.getLogger(), webkitcorepy_log,  log] + (loggers or [])
+    loggers = [logging.getLogger(), webkitcorepy_log,  webkitbugspy_log, log] + (loggers or [])
 
     parser = argparse.ArgumentParser(
         description='Custom git tooling from the WebKit team to interact with a ' +
-                    'repository using identifers',
+                    'repository using identifiers',
     )
     arguments.LoggingGroup(
         parser,
@@ -66,12 +88,28 @@ def main(args=None, path=None, loggers=None, contributors=None, identifier_templ
     )
 
     subparsers = parser.add_subparsers(help='sub-command help')
-    programs = [Blame, Branch, Canonicalize, Checkout, Clean, Find, Info, Log, Pull, PullRequest, Setup]
+    subparser = subparsers.add_parser('help', help='Print all help messages')
+    arguments.LoggingGroup(subparser, loggers=loggers)
+    subparser.set_defaults(main=lambda *args, **kwargs: parser.print_help())
+
+    programs = [
+        Blame, Branch, Canonicalize, Checkout,
+        Clean, Clone, Conflict, Find, Info, Land, Log, Pull,
+        PullRequest, Revert, Review, Setup, InstallGitLFS,
+        Credentials, Commit, DeletePRBranches, Squash,
+        Pickable, CherryPick, Trace, Track, Show, Publish,
+        Classify, InstallHooks,
+    ] + (programs or [])
     if subversion:
         programs.append(SetupGitSvn)
 
+    provisional_classifier = classifier(None) if callable(classifier) else classifier
     for program in programs:
-        kwargs = dict(help=program.help)
+        if callable(program.help):
+            help = filtered_call(program.help, classifier=provisional_classifier)
+        else:
+            help = program.help
+        kwargs = dict(help=help)
         if sys.version_info > (3, 0):
             kwargs['aliases'] = program.aliases
         subparser = subparsers.add_parser(program.name, **kwargs)
@@ -83,10 +121,17 @@ def main(args=None, path=None, loggers=None, contributors=None, identifier_templ
             loggers=loggers,
             help='{} amount of logging and commit information displayed',
         )
-        program.parser(subparser, loggers=loggers)
+        filtered_call(
+            program.parser, subparser,
+            classifier=provisional_classifier,
+            loggers=loggers,
+        )
 
     args = args or sys.argv[1:]
     parsed, unknown = parser.parse_known_args(args=args)
+    if not getattr(parsed, 'program', None):
+        parser.print_help()
+        return 255
     if unknown:
         program_index = 0
         for candidate in [parsed.program] + parsed.aliases:
@@ -99,17 +144,50 @@ def main(args=None, path=None, loggers=None, contributors=None, identifier_templ
             parsed = parser.parse_args(args=args)
 
     if parsed.repository.startswith(('https://', 'http://')):
-        repository = remote.Scm.from_url(parsed.repository, contributors=contributors)
+        repository = remote.Scm.from_url(
+            parsed.repository,
+            contributors=None if callable(contributors) else contributors,
+            classifier=None if callable(classifier) else classifier,
+        )
     else:
-        repository = local.Scm.from_path(path=parsed.repository, contributors=contributors)
+        try:
+            repository = local.Scm.from_path(
+                path=parsed.repository,
+                contributors=None if callable(contributors) else contributors,
+                classifier=None if callable(classifier) else classifier,
+            )
+        except OSError:
+            log.warning("No repository found at '{}'".format(parsed.repository))
+            repository = None
+
+    if repository and callable(contributors):
+        repository.contributors = contributors(repository) or repository.contributors
+    if repository and callable(classifier):
+        repository.classifier = classifier(repository) or repository.classifier
+    if callable(identifier_template):
+        identifier_template = identifier_template(repository) if repository else None
+    if callable(subversion):
+        subversion = subversion(repository) if repository else None
+    if callable(hooks):
+        hooks = hooks(repository) if repository else None
+
+    if callable(additional_setup):
+        additional_setup = filtered_call(additional_setup, repository=repository)
+
+    if callable(canonical_svn):
+        canonical_svn = canonical_svn(repository) if repository else repository
 
     if not getattr(parsed, 'main', None):
         parser.print_help()
         return -1
 
-    return parsed.main(
-        args=parsed,
-        repository=repository,
-        identifier_template=identifier_template,
-        subversion=subversion,
-    )
+    with Terminal.disable_keyboard_interrupt_stacktracktrace():
+        return parsed.main(
+            args=parsed,
+            repository=repository,
+            identifier_template=identifier_template,
+            subversion=subversion,
+            additional_setup=additional_setup,
+            hooks=hooks,
+            canonical_svn=canonical_svn,
+        )

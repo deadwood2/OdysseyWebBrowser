@@ -25,6 +25,8 @@
 
 #import "config.h"
 
+#import "DeprecatedGlobalValues.h"
+#import "PlatformUtilities.h"
 #import "RemoteObjectRegistry.h"
 #import "TestWKWebView.h"
 #import "Utilities.h"
@@ -32,12 +34,11 @@
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKWebView.h>
 #import <WebKit/WKWebViewPrivate.h>
-#import <WebKit/_WKInternalDebugFeature.h>
+#import <WebKit/_WKFeature.h>
 #import <WebKit/_WKRemoteObjectInterface.h>
 #import <WebKit/_WKRemoteObjectRegistry.h>
 #import <wtf/RetainPtr.h>
 
-static bool done = false;
 static bool didCrash = false;
 static RetainPtr<NSString> alertMessage;
 static RetainPtr<NSString> promptDefault;
@@ -46,7 +47,7 @@ static RetainPtr<NSString> promptResult;
 @interface IPCTestingAPIDelegate : NSObject <WKUIDelegate, WKNavigationDelegate>
 - (BOOL)sayHelloWasCalled;
 @end
-    
+
 @implementation IPCTestingAPIDelegate {
     BOOL _didCallSayHello;
 }
@@ -58,7 +59,7 @@ static RetainPtr<NSString> promptResult;
     completionHandler();
 }
 
-- (void)webView:(WKWebView *)webView runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt defaultText:(NSString *)defaultText initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSString * _Nullable))completionHandler
+- (void)webView:(WKWebView *)webView runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt defaultText:(NSString *)defaultText initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSString *))completionHandler
 {
     promptDefault = defaultText;
     done = true;
@@ -96,14 +97,16 @@ TEST(IPCTestingAPI, IsDisabledByDefault)
     EXPECT_STREQ([alertMessage UTF8String], "undefined");
 }
 
+// Note: There are more IPC tests using IPC testing API in `LayoutTests/ipc`.
+
 #if ENABLE(IPC_TESTING_API)
 
 static RetainPtr<TestWKWebView> createWebViewWithIPCTestingAPI()
 {
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
-    for (_WKInternalDebugFeature *feature in [WKPreferences _internalDebugFeatures]) {
+    for (_WKFeature *feature in [WKPreferences _features]) {
         if ([feature.key isEqualToString:@"IPCTestingAPIEnabled"]) {
-            [[configuration preferences] _setEnabled:YES forInternalDebugFeature:feature];
+            [[configuration preferences] _setEnabled:YES forFeature:feature];
             break;
         }
     }
@@ -158,7 +161,7 @@ TEST(IPCTestingAPI, CanDetectNilReplyBlocks)
         // mostly zero objects + "v@?c" (objective-C method signature)
         "0x0,0x0,0x1,0x0,0x0,0x0,0x2c,0x0,0x0,0x0,0x59,0x1,0x0,0x0,0x0,0x9b,0x0,0x0,0x4,0x0,0x0,0x0,0x1,0x76,0x40,0x3f,0x63,0x0,]);"
         "for(var x=0; x<100; x++) IPC.sendMessage('UI', x, IPC.messages.RemoteObjectRegistry_InvokeMethod.name, [buf]);</script>"];
-    TestWebKitAPI::Util::runFor(&done, 1);
+    TestWebKitAPI::Util::runFor(&done, 1_s);
 
     // Make sure sayHello was not called, as the reply block was nil.
     EXPECT_FALSE([delegate.get() sayHelloWasCalled]);
@@ -175,7 +178,7 @@ TEST(IPCTestingAPI, CanSendAlert)
 
     done = false;
     [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>IPC.sendSyncMessage('UI', IPC.webPageProxyID, IPC.messages.WebPageProxy_RunJavaScriptAlert.name, 100,"
-        "[{type: 'uint64_t', value: IPC.frameID}, {type: 'FrameInfoData'}, {'type': 'String', 'value': 'hi'}]);</script>"];
+        "[{type: 'FrameID', value: IPC.frameID}, {type: 'FrameInfoData', value: IPC}, {'type': 'String', 'value': 'hi'}]);</script>"];
     TestWebKitAPI::Util::run(&done);
 
     EXPECT_STREQ([alertMessage UTF8String], "hi");
@@ -220,14 +223,15 @@ TEST(IPCTestingAPI, CanSendInvalidSyncMessageToUIProcessWithoutTermination)
 
     done = false;
     [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>"
-        "IPC.sendSyncMessage('UI', IPC.webPageProxyID, IPC.messages.WebPageProxy_RunJavaScriptAlert.name, 100, [{type: 'uint64_t', value: IPC.frameID}]);"
-        "alert('hi')</script>"];
+        "try{IPC.sendSyncMessage('UI', IPC.webPageProxyID, IPC.messages.WebPageProxy_RunJavaScriptAlert.name, 100, [{type: 'FrameID', value: IPC.frameID}]);}catch(e){alert(e.message)}"
+        "</script>"];
     TestWebKitAPI::Util::run(&done);
 
-    EXPECT_STREQ([alertMessage UTF8String], "hi");
+    EXPECT_STREQ([alertMessage UTF8String], "Failed to successfully deserialize the message");
 }
 
 #if ENABLE(GPU_PROCESS)
+
 TEST(IPCTestingAPI, CanSendSyncMessageToGPUProcess)
 {
     auto webView = createWebViewWithIPCTestingAPI();
@@ -252,9 +256,10 @@ TEST(IPCTestingAPI, CanSendAsyncMessageToGPUProcess)
     [webView setUIDelegate:delegate.get()];
 
     done = false;
-    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>(async function test() {"
-        "window.result = await IPC.sendMessage('GPU', 0, IPC.messages.RemoteAudioDestinationManager_StartAudioDestination.name, [{type: 'uint64_t', value: 12345}]);"
-        "alert(!!result)"
+    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>(function test() {"
+        "let c = IPC.connectionForProcessTarget('GPU');"
+        "let cb = (result) => { window.result = result; alert(!!result); };"
+        "c.sendWithAsyncReply(0, IPC.messages.RemoteAudioDestinationManager_StartAudioDestination.name, [{type: 'uint64_t', value: 12345}], cb);"
         "})();</script>"];
     TestWebKitAPI::Util::run(&done);
 
@@ -271,10 +276,11 @@ TEST(IPCTestingAPI, CanSendInvalidAsyncMessageToGPUProcessWithoutTermination)
     [webView setUIDelegate:delegate.get()];
 
     done = false;
-    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>(async function test() {"
-        "IPC.sendMessage('GPU', 0, IPC.messages.GPUConnectionToWebProcess_CreateRenderingBackend.name, []);"
-        "window.result = await IPC.sendMessage('GPU', 0, IPC.messages.RemoteAudioDestinationManager_StartAudioDestination.name, [{type: 'uint64_t', value: 12345}]);"
-        "alert(!!result)"
+    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>(function test() {"
+        "let c = IPC.connectionForProcessTarget('GPU');"
+        "c.sendMessage(0, IPC.messages.GPUConnectionToWebProcess_CreateRenderingBackend.name, []);"
+        "let cb = (result) => { window.result = result; alert(!!result); };"
+        "c.sendWithAsyncReply(0, IPC.messages.RemoteAudioDestinationManager_StartAudioDestination.name, [{type: 'uint64_t', value: 12345}], cb);"
         "})();</script>"];
     TestWebKitAPI::Util::run(&done);
 
@@ -283,67 +289,7 @@ TEST(IPCTestingAPI, CanSendInvalidAsyncMessageToGPUProcessWithoutTermination)
     EXPECT_FALSE([webView stringByEvaluatingJavaScript:@"result.arguments[0].value"].boolValue);
 }
 
-TEST(IPCTestingAPI, CanReceiveIPCSemaphore)
-{
-    auto webView = createWebViewWithIPCTestingAPI();
-
-    auto delegate = adoptNS([[IPCTestingAPIDelegate alloc] init]);
-    [webView setUIDelegate:delegate.get()];
-
-    done = false;
-    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>"
-        "const semaphore = IPC.createSemaphore();"
-        "IPC.sendMessage('GPU', 0, IPC.messages.GPUConnectionToWebProcess_CreateRenderingBackend.name,"
-        "    [{type: 'RemoteRenderingBackendCreationParameters', 'identifier': 123, semaphore, 'pageProxyID': IPC.webPageProxyID, 'pageID': IPC.pageID}]);"
-        "const result = IPC.sendSyncMessage('GPU', 123, IPC.messages.RemoteRenderingBackend_SemaphoreForGetPixelBuffer.name, 100, []);"
-        "semaphore.signal();"
-        "alert(result.arguments.length + ':' + result.arguments[0].type + ':' + result.arguments[0].value.waitFor(100));"
-        "</script>"];
-    TestWebKitAPI::Util::run(&done);
-
-    EXPECT_STREQ([alertMessage UTF8String], "1:Semaphore:false");
-}
-
-TEST(IPCTestingAPI, CanReceiveSharedMemory)
-{
-    auto webView = createWebViewWithIPCTestingAPI();
-
-    auto delegate = adoptNS([[IPCTestingAPIDelegate alloc] init]);
-    [webView setUIDelegate:delegate.get()];
-
-    auto* html = @R"HTML(<!DOCTYPE html>
-<script>
-IPC.sendMessage('GPU', 0, IPC.messages.GPUConnectionToWebProcess_CreateRenderingBackend.name,
-    [{type: 'RemoteRenderingBackendCreationParameters', 'identifier': 123, semaphore: IPC.createSemaphore(), 'pageProxyID': IPC.webPageProxyID, 'pageID': IPC.pageID}]);
-const result = IPC.sendSyncMessage('GPU', 123, IPC.messages.RemoteRenderingBackend_UpdateSharedMemoryForGetPixelBuffer.name, 100, [{type: 'uint32_t', value: 8}]);
-alert(result.arguments.length);
-</script>)HTML";
-
-    done = false;
-    [webView synchronouslyLoadHTMLString:html];
-    TestWebKitAPI::Util::run(&done);
-
-    EXPECT_EQ([alertMessage intValue], 1);
-    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"firstReply = result.arguments[0]; firstReply.type"].UTF8String, "SharedMemory");
-    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"firstReply.protection"].UTF8String, "ReadOnly");
-    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"Array.from(new Uint8Array(firstReply.value.readBytes(0, 8))).toString()"].UTF8String, "0,0,0,0,0,0,0,0");
-
-}
-#endif
-
-TEST(IPCTestingAPI, CanCreateIPCSemaphore)
-{
-    auto webView = createWebViewWithIPCTestingAPI();
-
-    auto delegate = adoptNS([[IPCTestingAPIDelegate alloc] init]);
-    [webView setUIDelegate:delegate.get()];
-
-    done = false;
-    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>alert(IPC.createSemaphore().waitFor(100));</script>"];
-    TestWebKitAPI::Util::run(&done);
-
-    EXPECT_FALSE([alertMessage boolValue]);
-}
+#endif // ENABLE(GPU_PROCESS)
 
 TEST(IPCTestingAPI, CanCreateSharedMemory)
 {
@@ -364,36 +310,6 @@ TEST(IPCTestingAPI, CanCreateSharedMemory)
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"Array.from(new Int8Array(sharedMemory.readBytes())).toString()"].UTF8String, "1,2,101,102,103,32,0,0");
 }
 
-TEST(IPCTestingAPI, CanSendSemaphore)
-{
-    auto webView = createWebViewWithIPCTestingAPI();
-
-    auto delegate = adoptNS([[IPCTestingAPIDelegate alloc] init]);
-    [webView setUIDelegate:delegate.get()];
-
-    auto* html = @R"HTML(<!DOCTYPE html>
-<body>
-<script>
-const audioContext = new AudioContext;
-const destination = audioContext.createMediaStreamDestination();
-const semaphore = IPC.createSemaphore();
-const result = IPC.sendSyncMessage('GPU', 0, IPC.messages.RemoteAudioDestinationManager_CreateAudioDestination.name, 100,
-    [{type: 'String', value: 'some device'},
-    {type: 'uint32_t', value: destination.numberOfInputs},
-    {type: 'uint32_t', value: destination.channelCount},
-    {type: 'float', value: audioContext.sampleRate}, {type: 'float', value: audioContext.sampleRate},
-    {type: 'Semaphore', value: semaphore}]);
-alert(result.arguments[0].type);
-</script>
-</body>)HTML";
-
-    done = false;
-    [webView synchronouslyLoadHTMLString:html];
-    TestWebKitAPI::Util::run(&done);
-
-    EXPECT_STREQ([alertMessage UTF8String], "uint64_t");
-}
-
 #if PLATFORM(COCOA)
 TEST(IPCTestingAPI, CanSendSharedMemory)
 {
@@ -407,10 +323,12 @@ TEST(IPCTestingAPI, CanSendSharedMemory)
 <script>
 const sharedMemory = IPC.createSharedMemory(8);
 sharedMemory.writeBytes(new Uint8Array(Array.from('hello').map((char) => char.charCodeAt(0))));
-const result = IPC.sendSyncMessage('UI', 0, IPC.messages.WebPasteboardProxy_SetPasteboardBufferForType.name, 100, [
-    {type: 'String', value: 'Apple CFPasteboard general'}, {type: 'String', value: 'text/plain'},
-    {type: 'SharedMemory', value: sharedMemory, protection: 'ReadOnly'}, {type: 'bool', value: 1}, {type: 'uint64_t', value: IPC.pageID}]);
-alert(result.arguments.length + ':' + JSON.stringify(result.arguments[0]));
+const result = IPC.sendSyncMessage('UI', 0, IPC.messages.WebPasteboardProxy_TestIPCSharedMemory.name, 100, [
+    {type: 'String', value: 'Apple CFPasteboard general'},
+    {type: 'String', value: 'text/plain'},
+    {type: 'SharedMemory', value: sharedMemory, protection: 'ReadOnly'},
+    {type: 'bool', value: 1}, {type: 'uint64_t', value: IPC.pageID}]);
+alert(result.arguments.length + ':' + JSON.stringify(result.arguments[0]) + ',' + JSON.stringify(result.arguments[1]));
 </script>
 </body>)HTML";
 
@@ -418,7 +336,7 @@ alert(result.arguments.length + ':' + JSON.stringify(result.arguments[0]));
     [webView synchronouslyLoadHTMLString:html];
     TestWebKitAPI::Util::run(&done);
 
-    EXPECT_STREQ([alertMessage UTF8String], "1:{\"type\":\"int64_t\",\"value\":0}");
+    EXPECT_STREQ([alertMessage UTF8String], "2:{\"type\":\"int64_t\",\"value\":8},{\"type\":\"String\",\"value\":\"hello\\u0000\\u0000\\u0000\"}");
 }
 #endif
 
@@ -432,14 +350,13 @@ TEST(IPCTestingAPI, DecodesReplyArgumentsForPrompt)
     done = false;
     promptResult = @"foo";
     [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>result = IPC.sendSyncMessage('UI', IPC.webPageProxyID, IPC.messages.WebPageProxy_RunJavaScriptPrompt.name, 100,"
-        "[{type: 'uint64_t', value: IPC.frameID}, {type: 'FrameInfoData'}, {'type': 'String', 'value': 'hi'}, {'type': 'String', 'value': 'bar'}]);</script>"];
+        "[{type: 'FrameID', value: IPC.frameID}, {type: 'FrameInfoData', value: IPC}, {'type': 'String', 'value': 'hi'}, {'type': 'String', 'value': 'bar'}]);</script>"];
     TestWebKitAPI::Util::run(&done);
 
     EXPECT_STREQ([promptDefault UTF8String], "bar");
     EXPECT_STREQ([[webView stringByEvaluatingJavaScript:@"JSON.stringify(result.arguments)"] UTF8String], "[{\"type\":\"String\",\"value\":\"foo\"}]");
 }
 
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
 TEST(IPCTestingAPI, DecodesReplyArgumentsForAsyncMessage)
 {
     auto webView = createWebViewWithIPCTestingAPI();
@@ -448,15 +365,16 @@ TEST(IPCTestingAPI, DecodesReplyArgumentsForAsyncMessage)
     [webView setUIDelegate:delegate.get()];
 
     done = false;
-    promptResult = @"foo";
-    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>IPC.sendMessage(\"Networking\", 0, IPC.messages.NetworkConnectionToWebProcess_HasStorageAccess.name,"
-        "[{type: 'RegistrableDomain', value: 'https://ipctestingapi.com'}, {type: 'RegistrableDomain', value: 'https://webkit.org'}, {type: 'uint64_t', value: IPC.frameID},"
-        "{type: 'uint64_t', value: IPC.pageID}]).then((result) => alert(JSON.stringify(result.arguments)));</script>"];
+    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>"
+        "let c = IPC.connectionForProcessTarget('Networking');"
+        "let cb = (result) => alert(JSON.stringify(result.arguments));"
+        "c.sendWithAsyncReply(0, IPC.messages.NetworkConnectionToWebProcess_HasStorageAccess.name,"
+        "[{type: 'RegistrableDomain', value: 'https://ipctestingapi.com'}, {type: 'RegistrableDomain', value: 'https://webkit.org'}, {type: 'FrameID', value: IPC.frameID},"
+        "{type: 'uint64_t', value: IPC.pageID}], cb);</script>"];
     TestWebKitAPI::Util::run(&done);
 
     EXPECT_STREQ([alertMessage UTF8String], "[{\"type\":\"bool\",\"value\":false}]");
 }
-#endif
 
 TEST(IPCTestingAPI, DescribesArguments)
 {
@@ -491,8 +409,8 @@ TEST(IPCTestingAPI, CanInterceptAlert)
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"messages = messages.filter((message) => message.name == IPC.messages.WebPageProxy_RunJavaScriptAlert.name); messages.length"].UTF8String, "1");
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"messages[0].description"].UTF8String, "WebPageProxy_RunJavaScriptAlert");
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"args = messages[0].arguments; args.length"].intValue, 3);
-    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"args[0].type"].UTF8String, "uint64_t");
-    EXPECT_EQ([webView stringByEvaluatingJavaScript:@"args[0].value"].intValue, [webView stringByEvaluatingJavaScript:@"IPC.frameID.toString()"].intValue);
+    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"args[0].type"].UTF8String, "(null)");
+    EXPECT_EQ([webView stringByEvaluatingJavaScript:@"args[0].value"].intValue, 0);
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"args[1] instanceof ArrayBuffer"].boolValue, YES);
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"args[2].type"].UTF8String, "String");
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"args[2].value"].UTF8String, "ok");
@@ -501,7 +419,6 @@ TEST(IPCTestingAPI, CanInterceptAlert)
         [webView stringByEvaluatingJavaScript:@"IPC.webPageProxyID.toString()"].intValue);
 }
 
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
 TEST(IPCTestingAPI, CanInterceptHasStorageAccess)
 {
     auto webView = createWebViewWithIPCTestingAPI();
@@ -513,8 +430,10 @@ TEST(IPCTestingAPI, CanInterceptHasStorageAccess)
     promptResult = @"foo";
     [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html><script>let targetMessage = {}; const messageName = IPC.messages.NetworkConnectionToWebProcess_HasStorageAccess.name;"
         "IPC.addOutgoingMessageListener('Networking', (currentMessage) => { if (currentMessage.name == messageName) targetMessage = currentMessage; });"
-        "IPC.sendMessage('Networking', 0, messageName, [{type: 'RegistrableDomain', value: 'https://ipctestingapi.com'}, {type: 'RegistrableDomain', value: 'https://webkit.org'},"
-        "{type: 'uint64_t', value: IPC.frameID}, {type: 'uint64_t', value: IPC.pageID}]).then((result) => alert(JSON.stringify(result.arguments)));</script>"];
+        "let c = IPC.connectionForProcessTarget('Networking');"
+        "let cb = (result) => alert(JSON.stringify(result.arguments));"
+        "c.sendWithAsyncReply(0, messageName, [{type: 'RegistrableDomain', value: 'https://ipctestingapi.com'}, {type: 'RegistrableDomain', value: 'https://webkit.org'},"
+        "{type: 'FrameID', value: IPC.frameID}, {type: 'uint64_t', value: IPC.pageID}], cb);</script>"];
     TestWebKitAPI::Util::run(&done);
 
     EXPECT_STREQ([alertMessage UTF8String], "[{\"type\":\"bool\",\"value\":false}]");
@@ -524,14 +443,13 @@ TEST(IPCTestingAPI, CanInterceptHasStorageAccess)
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[0].value"].UTF8String, "ipctestingapi.com");
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[1].type"].UTF8String, "RegistrableDomain");
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[1].value"].UTF8String, "webkit.org");
-    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[2].type"].UTF8String, "uint64_t");
-    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[2].value"].UTF8String, [webView stringByEvaluatingJavaScript:@"IPC.frameID.toString()"].UTF8String);
+    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[2].type"].UTF8String, "(null)");
+    EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[2].value"].UTF8String, "(null)");
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[3].type"].UTF8String, "uint64_t");
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"targetMessage.arguments[3].value"].intValue, [webView stringByEvaluatingJavaScript:@"IPC.pageID.toString()"].intValue);
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"typeof(targetMessage.syncRequestID)"].UTF8String, "undefined");
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"targetMessage.destinationID"].intValue, 0);
 }
-#endif
 
 TEST(IPCTestingAPI, CanInterceptFindString)
 {
@@ -561,9 +479,316 @@ TEST(IPCTestingAPI, CanInterceptFindString)
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"args[1].isOptionSet"].boolValue, YES);
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"args[2].type"].UTF8String, "uint32_t");
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"args[2].value"].intValue, 1);
+
     EXPECT_STREQ([webView stringByEvaluatingJavaScript:@"typeof(messages[0].syncRequestID)"].UTF8String, "undefined");
     EXPECT_EQ([webView stringByEvaluatingJavaScript:@"messages[0].destinationID"].intValue,
         [webView stringByEvaluatingJavaScript:@"IPC.webPageProxyID.toString()"].intValue);
 }
 
+static NSSet<NSString *> *splitTypeFromList(NSString *container, NSString *list)
+{
+    bool firstTypeOnly = [container isEqualToString:@"std::span"]
+        || [container isEqualToString:@"Vector"]
+        || [container isEqualToString:@"std::array"]
+        || [container isEqualToString:@"HashSet"];
+    bool firstTwoTypesOnly = [container isEqualToString:@"HashMap"];
+
+    NSMutableSet *set = NSMutableSet.set;
+    size_t nestedTypeDepth { 0 };
+    bool atComma { false };
+    size_t previousTypeEnd { 0 };
+    for (size_t i = 0; i < list.length; i++) {
+        auto c = [list characterAtIndex:i];
+        if (c == '<')
+            nestedTypeDepth++;
+        if (c == '>')
+            nestedTypeDepth--;
+        if (c == ',') {
+            atComma = true;
+            continue;
+        }
+        if (c == ' ' && !nestedTypeDepth && atComma) {
+            [set addObject:[list substringWithRange:NSMakeRange(previousTypeEnd, i - 1 - previousTypeEnd)]];
+            if (firstTypeOnly)
+                return set;
+            if ([set count] == 2 && firstTwoTypesOnly)
+                return set;
+            previousTypeEnd = i + 1;
+        }
+        atComma = false;
+    }
+    [set addObject:[list substringWithRange:NSMakeRange(previousTypeEnd, list.length - previousTypeEnd)]];
+    return set;
+}
+
+static NSMutableSet<NSString *> *extractTypesFromContainers(NSSet<NSString *> *inputSet)
+{
+    NSMutableSet *outputSet = NSMutableSet.set;
+    for (NSString *input in inputSet) {
+        BOOL foundContainer = NO;
+        NSArray<NSString *> *containerTypes = @[
+            @"Expected",
+            @"HashMap",
+            @"MemoryCompactRobinHoodHashMap",
+            @"MemoryCompactLookupOnlyRobinHoodHashSet",
+            @"std::pair",
+            @"IPC::ArrayReferenceTuple",
+            @"std::span",
+            @"std::array",
+            @"std::tuple",
+            @"std::variant",
+            @"std::unique_ptr",
+            @"UniqueRef",
+            @"Vector",
+            @"HashSet",
+            @"Ref",
+            @"RefPtr",
+            @"std::optional",
+            @"OptionSet",
+            @"OptionalTuple",
+            @"KeyValuePair",
+            @"Markable",
+            @"RetainPtr",
+            @"HashCountedSet",
+            @"IPC::CoreIPCRetainPtr",
+            @"WebCore::RectEdges"
+        ];
+        for (NSString *container in containerTypes) {
+            if ([input hasPrefix:[container stringByAppendingString:@"<"]]
+                && [input hasSuffix:@">"]) {
+                NSString *containedTypes = [input substringWithRange:NSMakeRange(container.length + 1, input.length - container.length - 2)];
+                for (NSString *type : extractTypesFromContainers(splitTypeFromList(container, containedTypes)))
+                    [outputSet addObject:type];
+                foundContainer = YES;
+            }
+        }
+        if ([input hasPrefix:@"const "])
+            input = [input substringWithRange:NSMakeRange(6, input.length - 6)];
+        if (!foundContainer)
+            [outputSet addObject:input];
+    }
+    return outputSet;
+}
+
+TEST(IPCTestingAPI, SerializedTypeInfo)
+{
+    auto webView = createWebViewWithIPCTestingAPI();
+    NSDictionary *typeInfo = [webView objectByEvaluatingJavaScript:@"IPC.serializedTypeInfo"];
+    NSArray *expectedArray = @[@{
+        @"name": @"ignoreSearch",
+        @"type": @"bool"
+    }, @{
+        @"name": @"ignoreMethod",
+        @"type": @"bool"
+    }, @{
+        @"name": @"ignoreVary",
+        @"type": @"bool"
+    }];
+    EXPECT_TRUE([typeInfo[@"WebCore::CacheQueryOptions"] isEqualToArray:expectedArray]);
+
+    NSDictionary *expectedDictionary = @{
+        @"isOptionSet" : @1,
+        @"size" : @1,
+        @"validValues" : @[@1, @2]
+    };
+    NSDictionary *enumInfo = [webView objectByEvaluatingJavaScript:@"IPC.serializedEnumInfo"];
+    EXPECT_TRUE([enumInfo[@"WebKit::WebsiteDataFetchOption"] isEqualToDictionary:expectedDictionary]);
+    NSDictionary *expectedMouseEventButtonDictionary = @{
+        @"isOptionSet" : @NO,
+        @"size" : @1,
+        @"validValues" : @[@0, @1, @2, @254]
+    };
+    EXPECT_TRUE([enumInfo[@"WebKit::WebMouseEventButton"] isEqualToDictionary:expectedMouseEventButtonDictionary]);
+
+    NSArray *objectIdentifiers = [webView objectByEvaluatingJavaScript:@"IPC.objectIdentifiers"];
+    EXPECT_TRUE([objectIdentifiers containsObject:@"WebCore::PageIdentifier"]);
+
+    NSMutableSet<NSString *> *typesNeedingDescriptions = NSMutableSet.set;
+    NSDictionary *messages = [webView objectByEvaluatingJavaScript:@"IPC.messages"];
+    for (NSDictionary *message in messages.allValues) {
+        if (![message isKindOfClass:NSDictionary.class])
+            continue;
+        for (NSString *key in @[@"arguments", @"replyArguments"]) {
+            NSArray *arguments = message[key];
+            if (![arguments isKindOfClass:NSArray.class])
+                continue;
+            for (NSDictionary *argument in arguments) {
+                if (![argument isKindOfClass:NSDictionary.class])
+                    continue;
+                if (NSString *enumName = argument[@"enum"]) {
+                    [typesNeedingDescriptions addObject:enumName];
+                    continue;
+                }
+                [typesNeedingDescriptions addObject:argument[@"type"]];
+            }
+        }
+    }
+    for (NSArray *memberTypes in typeInfo.allValues) {
+        for (NSDictionary *memberType in memberTypes)
+            [typesNeedingDescriptions addObject:memberType[@"type"]];
+    }
+
+    typesNeedingDescriptions = extractTypesFromContainers(typesNeedingDescriptions);
+
+    NSMutableSet<NSString *> *typesHavingDescriptions = NSMutableSet.set;
+    for (NSString *describedType in typeInfo.keyEnumerator)
+        [typesHavingDescriptions addObject:describedType];
+    for (NSString *describedType in enumInfo.keyEnumerator)
+        [typesHavingDescriptions addObject:describedType];
+    for (NSString *objectIdentifier in objectIdentifiers)
+        [typesHavingDescriptions addObject:objectIdentifier];
+
+    NSSet *fundamentalTypes = [NSSet setWithArray:@[
+        @"char",
+        @"char32_t",
+        @"short",
+        @"float",
+        @"bool",
+        @"NSUInteger",
+        @"NSInteger",
+        @"size_t",
+        @"std::nullptr_t",
+        @"uint32_t",
+        @"int32_t",
+        @"uint8_t",
+        @"UInt32",
+        @"long",
+        @"unsigned",
+        @"unsigned long long",
+        @"unsigned long",
+        @"unsigned char",
+        @"unsigned short",
+        @"void",
+        @"double",
+        @"uint16_t",
+        @"int64_t",
+        @"pid_t",
+        @"CGFloat",
+        @"String",
+        @"uint32_t",
+        @"int16_t",
+        @"uint64_t",
+        @"int",
+        @"long long",
+        @"GCGLint",
+        @"GCGLenum",
+        @"OSStatus",
+    ]];
+
+    [typesNeedingDescriptions minusSet:typesHavingDescriptions];
+    [typesNeedingDescriptions minusSet:fundamentalTypes];
+
+    NSSet<NSString *> *expectedTypesNeedingDescriptions = [NSSet setWithArray:@[
+        @"CTFontDescriptorOptions",
+        @"NSObject<NSSecureCoding>",
+        @"PKSecureElementPass",
+        @"GCGLErrorCodeSet",
+#if !HAVE(WK_SECURE_CODING_NSURLREQUEST)
+        @"NSURLRequest",
 #endif
+        @"MachSendRight",
+        @"CGBitmapInfo",
+        @"NSParagraphStyle",
+#if ENABLE(DATA_DETECTION) && !HAVE(WK_SECURE_CODING_DATA_DETECTORS)
+        @"DDScannerResult",
+#endif
+#if PLATFORM(MAC)
+#if !HAVE(WK_SECURE_CODING_DATA_DETECTORS)
+        @"WKDDActionContext",
+#endif
+        @"WebCore::ContextMenuAction"
+#endif
+    ]];
+    if (![expectedTypesNeedingDescriptions isEqual:typesNeedingDescriptions]) {
+        EXPECT_TRUE(false);
+        WTFLogAlways("%@", typesNeedingDescriptions);
+    }
+}
+
+#endif
+
+TEST(IPCTestingAPI, CGColorInNSSecureCoding)
+{
+    auto archiver = adoptNS([[NSKeyedArchiver alloc] initRequiringSecureCoding:YES]);
+
+    RetainPtr<id<NSKeyedArchiverDelegate, NSKeyedUnarchiverDelegate>> delegate = adoptNS([[NSClassFromString(@"WKSecureCodingArchivingDelegate") alloc] init]);
+    archiver.get().delegate = delegate.get();
+
+    NSString *key = @"SomeString";
+    auto value = adoptCF(CGColorCreateSRGB(0.2, 0.3, 0.4, 0.5));
+    auto payload = @{ key : static_cast<id>(value.get()) };
+    [archiver encodeObject:payload forKey:NSKeyedArchiveRootObjectKey];
+    [archiver finishEncoding];
+    [archiver setDelegate:nil];
+
+    auto data = [archiver encodedData];
+
+    auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:data error:nullptr]);
+    unarchiver.get().decodingFailurePolicy = NSDecodingFailurePolicyRaiseException;
+    unarchiver.get().delegate = delegate.get();
+
+    auto allowedClassSet = adoptNS([NSMutableSet new]);
+    [allowedClassSet addObject:NSDictionary.class];
+    [allowedClassSet addObject:NSString.class];
+    [allowedClassSet addObject:NSClassFromString(@"WKSecureCodingCGColorWrapper")];
+
+    NSDictionary *result = [unarchiver decodeObjectOfClasses:allowedClassSet.get() forKey:NSKeyedArchiveRootObjectKey];
+    // Round-tripping the color can slightly change the representation, causing [payload isEqual:result] to report NO.
+    EXPECT_EQ(result.count, static_cast<NSUInteger>(1));
+    NSString *resultKey = result.allKeys[0];
+    EXPECT_TRUE([key isEqual:resultKey]);
+    CGColorRef resultValue = static_cast<CGColorRef>(result.allValues[0]);
+    ASSERT_EQ(CFGetTypeID(resultValue), CGColorGetTypeID());
+    RetainPtr resultValueColorSpace = CGColorGetColorSpace(resultValue);
+    auto resultValueColorSpaceName = adoptCF(CGColorSpaceCopyName(resultValueColorSpace.get()));
+    EXPECT_NE(CFStringFind(resultValueColorSpaceName.get(), CFSTR("SRGB"), 0).location, kCFNotFound);
+    ASSERT_EQ(CGColorGetNumberOfComponents(resultValue), CGColorGetNumberOfComponents(value.get()));
+    for (size_t i = 0; i < CGColorGetNumberOfComponents(resultValue); ++i)
+        EXPECT_EQ(CGColorGetComponents(resultValue)[i], CGColorGetComponents(value.get())[i]);
+    [unarchiver finishDecoding];
+    unarchiver.get().delegate = nil;
+}
+
+TEST(IPCTestingAPI, NSURLWithBaseURLInNSSecureCoding)
+{
+    auto archiver = adoptNS([[NSKeyedArchiver alloc] initRequiringSecureCoding:YES]);
+
+    RetainPtr<id<NSKeyedArchiverDelegate, NSKeyedUnarchiverDelegate>> delegate = adoptNS([[NSClassFromString(@"WKSecureCodingArchivingDelegate") alloc] init]);
+    archiver.get().delegate = delegate.get();
+
+    NSString *key = @"SomeString";
+    NSURL *value = [NSURL URLWithString:@"/garden_home.html" relativeToURL:[NSURL URLWithString:@"amcomponent://com.xunmeng.pinduoduo/"]];
+    EXPECT_WK_STREQ(value.baseURL.absoluteString, @"amcomponent://com.xunmeng.pinduoduo/");
+    EXPECT_WK_STREQ(value.relativeString, @"/garden_home.html");
+    EXPECT_WK_STREQ(value.absoluteString, @"amcomponent://com.xunmeng.pinduoduo/garden_home.html");
+
+    auto payload = @{ key : static_cast<id>(value) };
+    [archiver encodeObject:payload forKey:NSKeyedArchiveRootObjectKey];
+    [archiver finishEncoding];
+    [archiver setDelegate:nil];
+
+    auto data = [archiver encodedData];
+
+    auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:data error:nullptr]);
+    unarchiver.get().decodingFailurePolicy = NSDecodingFailurePolicyRaiseException;
+    unarchiver.get().delegate = delegate.get();
+
+    auto allowedClassSet = adoptNS([NSMutableSet new]);
+    [allowedClassSet addObject:NSDictionary.class];
+    [allowedClassSet addObject:NSString.class];
+    [allowedClassSet addObject:NSClassFromString(@"WKSecureCodingURLWrapper")];
+
+    NSDictionary *result = [unarchiver decodeObjectOfClasses:allowedClassSet.get() forKey:NSKeyedArchiveRootObjectKey];
+
+    EXPECT_EQ(result.count, static_cast<NSUInteger>(1));
+    NSString *resultKey = result.allKeys[0];
+    EXPECT_TRUE([key isEqual:resultKey]);
+    NSURL *resultValue = (NSURL *)(result.allValues[0]);
+
+    // Our coder resolves the URL so we end up with an absolute URL instead of base URL + relative string.
+    EXPECT_WK_STREQ(resultValue.baseURL.absoluteString, @"");
+    EXPECT_WK_STREQ(resultValue.baseURL.relativeString, @"");
+    EXPECT_WK_STREQ(resultValue.absoluteString, @"amcomponent://com.xunmeng.pinduoduo/garden_home.html");
+    [unarchiver finishDecoding];
+    unarchiver.get().delegate = nil;
+}

@@ -25,8 +25,8 @@
 
 #include "config.h"
 
-#include "WTFStringUtilities.h"
-
+#include "Test.h"
+#include "WTFTestUtilities.h"
 #include <wtf/text/StringParsingBuffer.h>
 #include <wtf/text/StringView.h>
 
@@ -46,21 +46,21 @@ TEST(WTF, StringParsingBufferEmpty)
 
 TEST(WTF, StringParsingBufferInitial)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
 
     EXPECT_FALSE(parsingBuffer.atEnd());
     EXPECT_TRUE(parsingBuffer.hasCharactersRemaining());
-    EXPECT_EQ(parsingBuffer.position(), string.characters8());
-    EXPECT_EQ(parsingBuffer.end(), string.characters8() + string.length());
+    EXPECT_EQ(parsingBuffer.position(), string.span8().data());
+    EXPECT_EQ(parsingBuffer.end(), string.span8().data() + string.length());
     EXPECT_EQ(parsingBuffer.lengthRemaining(), 3u);
     EXPECT_EQ(*parsingBuffer, 'a');
 }
 
 TEST(WTF, StringParsingBufferAdvance)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
 
     parsingBuffer.advance();
     EXPECT_FALSE(parsingBuffer.atEnd());
@@ -71,8 +71,8 @@ TEST(WTF, StringParsingBufferAdvance)
 
 TEST(WTF, StringParsingBufferAdvanceBy)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
 
     parsingBuffer.advanceBy(2);
     EXPECT_FALSE(parsingBuffer.atEnd());
@@ -83,8 +83,8 @@ TEST(WTF, StringParsingBufferAdvanceBy)
 
 TEST(WTF, StringParsingBufferPreIncrement)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
 
     auto preIncrementedParsingBuffer = ++parsingBuffer;
     EXPECT_FALSE(parsingBuffer.atEnd());
@@ -99,8 +99,8 @@ TEST(WTF, StringParsingBufferPreIncrement)
 
 TEST(WTF, StringParsingBufferPostIncrement)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
 
     auto postIncrementedParsingBuffer = parsingBuffer++;
     EXPECT_FALSE(parsingBuffer.atEnd());
@@ -115,8 +115,8 @@ TEST(WTF, StringParsingBufferPostIncrement)
 
 TEST(WTF, StringParsingBufferPlusEquals)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
 
     parsingBuffer += 2;
     EXPECT_FALSE(parsingBuffer.atEnd());
@@ -127,8 +127,8 @@ TEST(WTF, StringParsingBufferPlusEquals)
 
 TEST(WTF, StringParsingBufferEnd)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
 
     ++parsingBuffer;
     EXPECT_FALSE(parsingBuffer.atEnd());
@@ -147,8 +147,8 @@ TEST(WTF, StringParsingBufferEnd)
 
 TEST(WTF, StringParsingBufferSubscript)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
     
     ++parsingBuffer;
     EXPECT_EQ(parsingBuffer[0], 'b');
@@ -157,8 +157,8 @@ TEST(WTF, StringParsingBufferSubscript)
 
 TEST(WTF, StringParsingBufferStringView)
 {
-    StringView string { "abc" };
-    StringParsingBuffer<LChar> parsingBuffer { string.characters8(), string.length() };
+    StringView string { "abc"_s };
+    StringParsingBuffer parsingBuffer { string.span8() };
 
     ++parsingBuffer;
     auto viewRemaining = parsingBuffer.stringViewOfCharactersRemaining();
@@ -169,7 +169,7 @@ TEST(WTF, StringParsingBufferStringView)
 
 TEST(WTF, StringParsingBufferReadCharactersForParsing)
 {
-    auto latin1 = StringView { "abc" };
+    auto latin1 = StringView { "abc"_s };
     auto result1 = WTF::readCharactersForParsing(latin1, [](auto parsingBuffer) {
         EXPECT_FALSE(parsingBuffer.atEnd());
         EXPECT_TRUE(parsingBuffer.hasCharactersRemaining());

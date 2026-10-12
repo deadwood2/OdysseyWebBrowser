@@ -264,7 +264,10 @@ LINKFILES := \
 	$(ROOTPATH)/lib/libicu67/instdir/lib/libicudata.a \
 	$(ROOTPATH)/lib/libwebp/objects/host-libnix/tmpinstalldir/lib/libwebp.a \
 	$(ROOTPATH)/lib/libwebp/objects/host-libnix/tmpinstalldir/lib/libwebpdemux.a \
-	$(ROOTPATH)/gen/host/libnix/lib/libopenjp2.a
+	$(ROOTPATH)/gen/host/libnix/lib/libopenjp2.a \
+	$(ROOTPATH)/gen/host/libnix/lib/libtasn1.a \
+	$(ROOTPATH)/gen/host/libnix/lib/libgcrypt.a \
+	$(ROOTPATH)/gen/host/libnix/lib/libgpg-error.a
 
 .PHONY: linkpackage
 linkpackage:
@@ -277,3 +280,11 @@ linkpackage:
 	bash ./.run.sh; \
 	done
 	@rm ./.run.sh
+
+sdk: linkpackage
+	rm -rf /tmp/webkittysdk
+	mkdir -p /tmp/webkittysdk/linklibs /tmp/webkittysdk/includes/webkitty /tmp/webkittysdk/Resources
+	cp linkpackage/* /tmp/webkittysdk/linklibs
+	cp Source/WebCore/Resources/* /tmp/webkittysdk/Resources
+	cp Source/WebKitLegacy/morphos/Wk*.h /tmp/webkittysdk/includes/webkitty
+	rm -f /tmp/webkittysdk/includes/webkitty/*_private.h

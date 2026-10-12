@@ -1,3 +1,5 @@
+#include "config.h"
+
 #define SYSTEM_PRIVATE
 #include "AcinerellaVideoDecoder.h"
 #include "AcinerellaContainer.h"
@@ -29,8 +31,8 @@
 #include <proto/graphics.h>
 
 #define D(x)
-#define DSYNC(x) 
-#define DOVL(x) 
+#define DSYNC(x)
+#define DOVL(x)
 #define DFRAME(x) 
 
 // #pragma GCC optimize ("O0")
@@ -48,14 +50,17 @@ AcinerellaVideoDecoder::AcinerellaVideoDecoder(AcinerellaDecoderClient* client, 
 	m_frameDuration = 1.f / m_fps;
 	m_frameWidth = info.additional_info.video_info.frame_width;
 	m_frameHeight = info.additional_info.video_info.frame_height;
-	D(dprintf("\033[35m[VD]%s: %p fps %f %dx%d\033[0m\n", __func__, this, float(m_fps), m_frameWidth, m_frameHeight));
+    m_ismjpeg = 0 == strcmp(ac_codec_name(acinerella->instance(), index), "mjpeg");
+	D(dprintf("\033[35m[VD]%s: %p fps %f %dx%d codec %s\033[0m\n", __func__, this, float(m_fps), m_frameWidth, m_frameHeight, ac_codec_name(acinerella->instance(), index)));
 	
 	auto decoder = acinerella->decoder(index);
-	ac_set_output_format(decoder, AC_OUTPUT_YUV420P);
+	//ac_set_output_format(decoder, AC_OUTPUT_YUV420P);
+    if (decoder)
+        ac_decoder_set_loopfilter(decoder, int(m_client->streamSettings().m_loopFilter));
 	
     m_cgxVideo = OpenLibrary("cgxvideo.library", 43);
  
-	m_pullThread = Thread::create("Acinerella Video Pump", [this] {
+	m_pullThread = Thread::create("Acinerella Video Pump"_s, [this] {
 		pullThreadEntryPoint();
 	});
 	
@@ -86,18 +91,18 @@ AcinerellaVideoDecoder::~AcinerellaVideoDecoder()
 void AcinerellaVideoDecoder::onDecoderChanged(RefPtr<AcinerellaPointer> acinerella)
 {
 	auto decoder = acinerella->decoder(m_index);
-	ac_set_output_format(decoder, AC_OUTPUT_YUV420P);
+	//ac_set_output_format(decoder, AC_OUTPUT_YUV420P);
     ac_decoder_set_loopfilter(decoder, int(m_client->streamSettings().m_loopFilter));
 }
 
 bool AcinerellaVideoDecoder::isReadyToPlay() const
 {
-	return isWarmedUp() && m_didShowFirstFrame;
+	return isWarmedUp() && (m_didShowFirstFrame || m_ismjpeg);
 }
 
 bool AcinerellaVideoDecoder::isWarmedUp() const
 {
-	return (bufferSize() >= readAheadTime()) || m_decoderEOF;
+	return (bufferSize() >= readAheadTime()) || m_decoderEOF || m_ismjpeg;
 }
 
 bool AcinerellaVideoDecoder::isPlaying() const
@@ -126,7 +131,7 @@ void AcinerellaVideoDecoder::startPlaying()
 void AcinerellaVideoDecoder::onGetReadyToPlay()
 {
 	D(dprintf("\033[35m[VD]%s: %p\033[0m\n", __func__, this));
-	m_client->onDecoderWantsToRender(makeRef(*this));
+	m_client->onDecoderWantsToRender(Ref{*this});
 }
 
 void AcinerellaVideoDecoder::stopPlaying()
@@ -172,12 +177,17 @@ void AcinerellaVideoDecoder::onFrameDecoded(const AcinerellaDecodedFrame &frame)
 	DFRAME(dprintf("\033[35m[VD]%s: %p [>> %f pts %f]\033[0m\n", __func__, this, float(m_bufferedSeconds), float(frame.pts())));
 
 	auto *avframe = frame.frame();
-	if (m_isHLS)// && avframe->timecode <= 0.0)
+
+    // YT nominally marks both audio and video correctly these days, so this is normally unnecessary
+    // would have to be synced with audio decoder code!
+    #if 0
+	if (m_isHLS && avframe->timecode <= 0.0)
 	{
 		auto *nonconstframe = const_cast<ac_decoder_frame *>(avframe);
 		nonconstframe->timecode = m_liveTimeCode;
 		m_liveTimeCode += m_frameDuration;
 	}
+    #endif
 
 	m_pullEvent.signal();
 	if (!m_didShowFirstFrame && m_overlayHandle)
@@ -185,13 +195,20 @@ void AcinerellaVideoDecoder::onFrameDecoded(const AcinerellaDecodedFrame &frame)
 	// caled under locks!
 		showFirstFrame(false);
 	}
+ 
+    if (m_ismjpeg)
+    {
+        m_decoderEOF = true;
+        m_bufferedSeconds = 30;
+    }
 }
 
-void AcinerellaVideoDecoder::flush()
+void AcinerellaVideoDecoder::flush(bool willSeek)
 {
 	DSYNC(dprintf("\033[35m[VD]%s: %p\033[0m\n", __func__, this));
-	AcinerellaDecoder::flush();
-	m_hasAudioPosition = false;
+	AcinerellaDecoder::flush(willSeek);
+    if (willSeek)
+        m_hasAudioPosition = false;
 	m_bufferedSeconds = 0;
 	m_frameCount = 0;
 	m_liveTimeCode = 0;
@@ -207,17 +224,15 @@ void AcinerellaVideoDecoder::dumpStatus()
 void AcinerellaVideoDecoder::setAudioPresentationTime(double apts)
 {
 	DSYNC(dprintf("\033[35m[VD]%s: %p -> %f\033[0m\n", __func__, this, float(apts)));
-	float delta;
+
 	{
 		auto lock = Locker(m_audioLock);
 		m_audioPositionRealTime = MonotonicTime::now();
-		delta = fabs(m_audioPosition - apts);
 		m_audioPosition = apts;
 		m_hasAudioPosition = true;
 	}
 
-	if (delta > 2.0)
-		m_frameEvent.signal(); // abort a possible long sleep
+    m_frameEvent.signal(); // abort a possible long sleep
 }
 
 bool AcinerellaVideoDecoder::getAudioPresentationTime(double &time)
@@ -230,7 +245,7 @@ bool AcinerellaVideoDecoder::getAudioPresentationTime(double &time)
 		time = m_audioPosition + (MonotonicTime::now() - m_audioPositionRealTime).value();
 		
 		// In case of a stall, don't over-report the audio position, but cause a stall on the video pipeline too!
-		time = std::min(time, m_audioPosition + 1.5);
+		time = std::min(time, m_audioPosition + 0.5);
 		
 		return true;
 	}
@@ -323,7 +338,7 @@ void AcinerellaVideoDecoder::showFirstFrame(bool locks)
 		auto lock = Locker(m_lock);
 		if (m_decodedFrames.size())
 		{
-			m_position = m_decodedFrames.front().pts();
+			m_position = m_decodedFrames.first().pts();
 			blitFrameLocked();
 			didShowFrame = true;
 		}
@@ -332,11 +347,13 @@ void AcinerellaVideoDecoder::showFirstFrame(bool locks)
 	{
 		if (m_decodedFrames.size())
 		{
-			m_position = m_decodedFrames.front().pts();
+			m_position = m_decodedFrames.first().pts();
 			blitFrameLocked();
 			didShowFrame = true;
 		}
 	}
+
+    DFRAME(dprintf("\033[35m[VD]%s: dishow %d\033[0m\n", __func__, didShowFrame));
 
 	if (didShowFrame)
 	{
@@ -416,87 +433,15 @@ void AcinerellaVideoDecoder::paint(GraphicsContext& gc, const FloatRect& rect)
 
 	if (needsToSetCoords && m_client)
 	{
-		m_client->onDecoderRenderUpdate(makeRef(*this));
+		m_client->onDecoderRenderUpdate(Ref{*this});
 	}
-
-#if 0
-// ?!? WE cannot paint since the data is in planar yuv or some other cgxvideo format
-
-	EP_SCOPE(paint);
-
-	auto lock = Locker(m_lock);
-	if (m_decodedFrames.size())
-	{
-		MonotonicTime mtStart = MonotonicTime::now();
-	
-		const auto *frame = m_decodedFrames.front().frame();
-		WebCore::PlatformContextCairo *context = gc.platformContext();
-		cairo_t* cr = context->cr();
-		auto *avFrame = ac_get_frame(m_decodedFrames.front().pointer()->decoder(m_index));
-		// CAIRO_FORMAT_RGB24 is actually 00RRGGBB on BigEndian
-
-		if (rect.width() == m_frameWidth && rect.height() == m_frameHeight)
-		{
-			auto surface = cairo_image_surface_create_for_data(avFrame->data[0], CAIRO_FORMAT_RGB24, m_frameWidth, m_frameHeight, avFrame->linesize[0]);
-			if (surface)
-			{
-				cairo_save(cr);
-				cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-				cairo_translate(cr, rect.x(), rect.y());
-				cairo_rectangle(cr, 0, 0, rect.width(), rect.height());
-				cairo_clip(cr);
-				cairo_set_source_surface(cr, surface, 0, 0);
-				cairo_paint(cr);
-				cairo_restore(cr);
-				cairo_surface_destroy(surface);
-			}
-		}
-		else
-		{
-			auto surface = cairo_image_surface_create_for_data(avFrame->data[0], CAIRO_FORMAT_RGB24, m_frameWidth, m_frameHeight, avFrame->linesize[0]);
-			if (surface)
-			{
-				cairo_save(cr);
-				cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-				cairo_translate(cr, rect.x(), rect.y());
-				cairo_rectangle(cr, 0, 0, rect.width(), rect.height());
-				cairo_pattern_t *pattern = cairo_pattern_create_for_surface(surface);
-				if (pattern)
-				{
-					cairo_matrix_t matrix;
-					cairo_matrix_init_scale(&matrix, double(m_frameWidth) / rect.width(), double(m_frameHeight) / rect.height());
-					cairo_pattern_set_matrix(pattern, &matrix);
-					cairo_pattern_set_filter(pattern, CAIRO_FILTER_FAST);
-					cairo_set_source(cr, pattern);
-					cairo_clip(cr);
-					cairo_set_antialias(cr, CAIRO_ANTIALIAS_NONE);
-					cairo_paint(cr);
-					cairo_pattern_destroy(pattern);
-				}
-				cairo_restore(cr);
-				cairo_surface_destroy(surface);
-			}
-		}
-		
-		MonotonicTime mtEnd = MonotonicTime::now();
-		Seconds decodingTime = (mtEnd - mtStart);
-
-		m_accumulatedCairoCount ++;
-		m_accumulatedCairoTime += decodingTime;
-
-		if (m_accumulatedCairoCount % int(m_fps))
-			D(dprintf("\033[35m[VD]%s: paint time %f, avg %f\033[0m\n", __func__, float(decodingTime.value()),
-				float(m_accumulatedCairoTime.value() / float(m_accumulatedCairoCount))));
-				
-	}
-#endif
 }
 
 void AcinerellaVideoDecoder::blitFrameLocked()
 {
 	if (m_overlayHandle && m_decodedFrames.size())
 	{
-		auto *frame = m_decodedFrames.front().frame();
+		auto *frame = m_decodedFrames.first().frame();
 		auto *avFrame = ac_get_frame_real(frame);
 
 		if (avFrame && ((avFrame->width != m_frameWidth) || (avFrame->height != m_frameHeight)))
@@ -505,7 +450,7 @@ void AcinerellaVideoDecoder::blitFrameLocked()
 				return;
 			m_frameSizeTransition = true;
 
-			WTF::callOnMainThread([this, width = avFrame->width, height = avFrame->height, protectedThis = makeRef(*this)]() {
+			WTF::callOnMainThread([this, width = avFrame->width, height = avFrame->height, protectedThis = Ref{*this}]() {
 				auto lock = Locker(m_lock);
 				
 				m_frameWidth = width;
@@ -610,7 +555,7 @@ void AcinerellaVideoDecoder::blitFrameLocked()
 void AcinerellaVideoDecoder::pullThreadEntryPoint()
 {
 	D(dprintf("\033[36m[VD]%s: %p\033[0m\n", __func__, this));
-	SetTaskPri(FindTask(0), 3);
+	SetTaskPri(FindTask(0), 0);
 
 	while (!m_terminating)
 	{
@@ -642,9 +587,9 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 					{
 						if (m_decodedFrames.size())
 						{
-							pts = m_decodedFrames.front().pts();
+							pts = m_decodedFrames.first().pts();
 							m_position = pts;
-							m_decodedFrames.pop();
+							m_decodedFrames.removeFirst();
 							m_bufferedSeconds -= m_frameDuration;
 							dropFrame = false;
 							m_frameCount++;
@@ -663,14 +608,14 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 								SwapVLayerBuffer(m_overlayHandle);
 
 							// Store current frame's pts
-							pts = m_decodedFrames.front().pts();
+							pts = m_decodedFrames.first().pts();
 							m_position = pts;
 							
 							// Blit the frame into overlay backbuffer
 							blitFrameLocked();
 
 							// Pop the frame
-							m_decodedFrames.pop();
+							m_decodedFrames.removeFirst();
 							m_bufferedSeconds -= m_frameDuration;
 
 							m_frameCount++;
@@ -701,9 +646,10 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 					decodeUntilBufferFull();
 				});
 
+resync:
 				double audioAt = -1;
 				bool canDropFrames = false;
-				
+
 				while (m_playing && !m_terminating)
 				{
 					{
@@ -712,7 +658,7 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 						// Get next presentation time
 						if (m_decodedFrames.size())
 						{
-							double nextPts = m_decodedFrames.front().pts();
+							double nextPts = m_decodedFrames.first().pts();
 
 							if (nextPts <= pts)
 							{
@@ -723,8 +669,8 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 							{
 								if (getAudioPresentationTime(audioAt))
 								{
-									sleepFor = Seconds((pts - audioAt) + (nextPts - pts));
-									if (audioAt > 1.0)
+									sleepFor = Seconds(nextPts - audioAt);
+									if (audioAt > 0.5)
 										canDropFrames = true;
 								}
 								else
@@ -740,6 +686,18 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 								
 							break;
 						}
+                        else if (m_decoderEOF)
+                        {
+                            dispatch([this, protectedThis(Ref{*this})]() {
+                                stopPlaying();
+                                if (!m_terminating)
+                                {
+                                    m_position = m_duration;
+                                    onPositionChanged();
+                                    onEnded();
+                                }
+                            });
+                        }
 					}
 
 					m_pullEvent.waitFor(5_s);
@@ -747,14 +705,20 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 
 				if (sleepFor.value() > 0.0)
 				{
-					if (sleepFor.value() > 1.0)
+					if (sleepFor.value() > (m_frameDuration * 10))
 					{
 						DSYNC(dprintf("\033[36m[VD]%s: long sleep %f to catch to %f\033[0m\n", __func__, float(sleepFor.value()), float(audioAt)));
+                        if (m_frameEvent.waitFor(10_s))
+                            goto resync;
 					}
-
-					m_frameEvent.waitFor(sleepFor);
+                    else
+                    {
+                        // waitFor returns true if sleep was aborted, let's check the time before eating a frame...
+                        if (m_frameEvent.waitFor(sleepFor))
+                            goto resync;
+                    }
 				}
-				else if (m_canDropKeyFrames && canDropFrames && sleepFor.value() < -2.5)
+				else if (m_canDropKeyFrames && canDropFrames && sleepFor.value() < -1.0)
 				{
 					DSYNC(dprintf("\033[36m[VD]%s: dropping video frames until %f\033[0m\n", __func__, float(audioAt) + 1.0));
 					
@@ -762,16 +726,16 @@ void AcinerellaVideoDecoder::pullThreadEntryPoint()
 						auto lock = Locker(m_lock);
 						while (m_decodedFrames.size())
 						{
-							auto pts = m_decodedFrames.front().pts();
-							if (pts >= audioAt + 1.0)
+							auto pts = m_decodedFrames.first().pts();
+							if (pts >= audioAt + 0.5)
 								break;
 							DSYNC(dprintf("\033[36m[VD]%s: droppped frame at %f\033[0m\n", __func__, float(pts)));
-							m_decodedFrames.pop();
+							m_decodedFrames.removeFirst();
 							m_bufferedSeconds -= m_frameDuration;
 						}
 					}
 						
-					dropUntilPTS(audioAt + 1.0);
+					dropUntilPTS(audioAt + 0.5);
 				}
 				else if (sleepFor.value() < -(m_frameDuration * 0.1))
 				{

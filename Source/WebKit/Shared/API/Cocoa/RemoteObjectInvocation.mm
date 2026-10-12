@@ -26,67 +26,15 @@
 #import "config.h"
 #import "RemoteObjectInvocation.h"
 
-#import "ArgumentCoders.h"
-#import "UserData.h"
-
 namespace WebKit {
 
-RemoteObjectInvocation::RemoteObjectInvocation()
-{
-}
+RemoteObjectInvocation::RemoteObjectInvocation() = default;
 
 RemoteObjectInvocation::RemoteObjectInvocation(const String& interfaceIdentifier, RefPtr<API::Dictionary>&& encodedInvocation, std::unique_ptr<ReplyInfo>&& replyInfo)
     : m_interfaceIdentifier(interfaceIdentifier)
     , m_encodedInvocation(WTFMove(encodedInvocation))
     , m_replyInfo(WTFMove(replyInfo))
 {
-}
-
-void RemoteObjectInvocation::encode(IPC::Encoder& encoder) const
-{
-    encoder << m_interfaceIdentifier;
-    UserData::encode(encoder, m_encodedInvocation.get());
-    if (!m_replyInfo) {
-        encoder << false;
-        return;
-    }
-
-    encoder << true;
-    encoder << m_replyInfo->replyID;
-    encoder << m_replyInfo->blockSignature;
-}
-
-bool RemoteObjectInvocation::decode(IPC::Decoder& decoder, RemoteObjectInvocation& result)
-{
-    if (!decoder.decode(result.m_interfaceIdentifier))
-        return false;
-
-    RefPtr<API::Object> encodedInvocation;
-    if (!UserData::decode(decoder, encodedInvocation))
-        return false;
-
-    if (!encodedInvocation || encodedInvocation->type() != API::Object::Type::Dictionary)
-        return false;
-
-    result.m_encodedInvocation = static_cast<API::Dictionary*>(encodedInvocation.get());
-
-    bool hasReplyInfo;
-    if (!decoder.decode(hasReplyInfo))
-        return false;
-
-    if (hasReplyInfo) {
-        uint64_t replyID;
-        if (!decoder.decode(replyID))
-            return false;
-
-        String blockSignature;
-        if (!decoder.decode(blockSignature))
-            return false;
-
-        result.m_replyInfo = makeUnique<ReplyInfo>(replyID, WTFMove(blockSignature));
-    }
-
-    return true;
 }
 
 }

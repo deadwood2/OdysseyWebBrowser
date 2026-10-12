@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,6 +25,7 @@
 
 #include "config.h"
 #include "DisplayCaptureManagerCocoa.h"
+#include "RealtimeMediaSourceCenter.h"
 
 #if ENABLE(MEDIA_STREAM)
 
@@ -32,13 +33,13 @@
 #include <wtf/Algorithms.h>
 #include <wtf/NeverDestroyed.h>
 
-#if PLATFORM(MAC)
-#include "ScreenDisplayCapturerMac.h"
-#include "WindowDisplayCapturerMac.h"
-#include <CoreGraphics/CGDirectDisplay.h>
+#if PLATFORM(IOS) || PLATFORM(VISION)
+#include "ReplayKitCaptureSource.h"
 #endif
 
-#include "CoreVideoSoftLink.h"
+#if HAVE(SCREEN_CAPTURE_KIT)
+#include "ScreenCaptureKitCaptureSource.h"
+#endif
 
 namespace WebCore {
 
@@ -50,32 +51,16 @@ DisplayCaptureManagerCocoa& DisplayCaptureManagerCocoa::singleton()
 
 const Vector<CaptureDevice>& DisplayCaptureManagerCocoa::captureDevices()
 {
-    m_devices.clear();
-
-    updateDisplayCaptureDevices();
-    updateWindowCaptureDevices();
-
     return m_devices;
-}
-
-void DisplayCaptureManagerCocoa::updateDisplayCaptureDevices()
-{
-#if PLATFORM(MAC)
-    ScreenDisplayCapturerMac::screenCaptureDevices(m_devices);
-#endif
-}
-
-void DisplayCaptureManagerCocoa::updateWindowCaptureDevices()
-{
-#if PLATFORM(MAC)
-    WindowDisplayCapturerMac::windowCaptureDevices(m_devices);
-#endif
 }
 
 std::optional<CaptureDevice> DisplayCaptureManagerCocoa::screenCaptureDeviceWithPersistentID(const String& deviceID)
 {
-#if PLATFORM(MAC)
-    return ScreenDisplayCapturerMac::screenCaptureDeviceWithPersistentID(deviceID);
+#if HAVE(SCREEN_CAPTURE_KIT)
+    if (ScreenCaptureKitCaptureSource::isAvailable())
+        return ScreenCaptureKitCaptureSource::screenCaptureDeviceWithPersistentID(deviceID);
+    ASSERT_NOT_REACHED();
+    return std::nullopt;
 #else
     UNUSED_PARAM(deviceID);
     return std::nullopt;
@@ -84,12 +69,14 @@ std::optional<CaptureDevice> DisplayCaptureManagerCocoa::screenCaptureDeviceWith
 
 std::optional<CaptureDevice> DisplayCaptureManagerCocoa::windowCaptureDeviceWithPersistentID(const String& deviceID)
 {
-#if PLATFORM(MAC)
-    return WindowDisplayCapturerMac::windowCaptureDeviceWithPersistentID(deviceID);
-#else
     UNUSED_PARAM(deviceID);
-    return std::nullopt;
+
+#if HAVE(SCREEN_CAPTURE_KIT)
+    if (ScreenCaptureKitCaptureSource::isAvailable())
+        return ScreenCaptureKitCaptureSource::windowCaptureDeviceWithPersistentID(deviceID);
 #endif
+
+    return std::nullopt;
 }
 
 std::optional<CaptureDevice> DisplayCaptureManagerCocoa::captureDeviceWithPersistentID(CaptureDevice::DeviceType type, const String& id)
@@ -103,6 +90,7 @@ std::optional<CaptureDevice> DisplayCaptureManagerCocoa::captureDeviceWithPersis
         return windowCaptureDeviceWithPersistentID(id);
         break;
 
+    case CaptureDevice::DeviceType::SystemAudio:
     case CaptureDevice::DeviceType::Camera:
     case CaptureDevice::DeviceType::Microphone:
     case CaptureDevice::DeviceType::Speaker:

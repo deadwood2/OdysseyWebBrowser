@@ -8,10 +8,6 @@
 //   iOS-specific subclass of ContextGL.
 //
 
-#import "common/platform.h"
-
-#if defined(ANGLE_ENABLE_EAGL)
-
 #include "libANGLE/renderer/gl/eagl/ContextEAGL.h"
 
 #include "libANGLE/Context.h"
@@ -28,5 +24,3 @@ ContextEAGL::ContextEAGL(const gl::State &state,
 {}
 
 }  // namespace rx
-
-#endif  // defined(ANGLE_ENABLE_EAGL)

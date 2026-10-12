@@ -25,39 +25,40 @@
 
 #pragma once
 
-#include "DataReference.h"
 #include "NetworkResourceLoadIdentifier.h"
 #include "PolicyDecision.h"
 #include "SandboxExtension.h"
 #include "UserData.h"
 #include "WebsitePoliciesData.h"
+#include <WebCore/AdvancedPrivacyProtections.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/FrameLoaderTypes.h>
+#include <WebCore/NavigationIdentifier.h>
+#include <WebCore/OwnerPermissionsPolicyData.h>
+#include <WebCore/PublicSuffixStore.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ShouldTreatAsContinuingLoad.h>
 #include <WebCore/SubstituteData.h>
 
 OBJC_CLASS NSDictionary;
 
-namespace IPC {
-class Decoder;
-class Encoder;
+namespace WebCore {
+using SandboxFlags = int;
+class SharedBuffer;
 }
 
 namespace WebKit {
 
 struct LoadParameters {
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, LoadParameters&);
+    WebCore::PublicSuffix publicSuffix;
 
-    void platformEncode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool platformDecode(IPC::Decoder&, LoadParameters&);
-
-    uint64_t navigationID;
+    std::optional<WebCore::NavigationIdentifier> navigationID;
+    std::optional<WebCore::FrameIdentifier> frameIdentifier;
 
     WebCore::ResourceRequest request;
     SandboxExtension::Handle sandboxExtensionHandle;
 
-    IPC::DataReference data;
+    RefPtr<WebCore::SharedBuffer> data;
     String MIMEType;
     String encodingName;
 
@@ -74,17 +75,19 @@ struct LoadParameters {
     WebCore::LockBackForwardList lockBackForwardList { WebCore::LockBackForwardList::No };
     WebCore::SubstituteData::SessionHistoryVisibility sessionHistoryVisibility { WebCore::SubstituteData::SessionHistoryVisibility::Visible };
     String clientRedirectSourceForHistory;
+    WebCore::SandboxFlags effectiveSandboxFlags { 0 };
+    std::optional<WebCore::OwnerPermissionsPolicyData> ownerPermissionsPolicy;
     std::optional<NavigatingToAppBoundDomain> isNavigatingToAppBoundDomain;
     std::optional<NetworkResourceLoadIdentifier> existingNetworkResourceLoadIdentifierToResume;
+    bool isServiceWorkerLoad { false };
 
 #if PLATFORM(COCOA)
-    RetainPtr<NSDictionary> dataDetectionContext;
-    Vector<SandboxExtension::Handle> networkExtensionSandboxExtensionHandles;
+    std::optional<double> dataDetectionReferenceDate;
 #endif
-#if PLATFORM(IOS)
-    std::optional<SandboxExtension::Handle> contentFilterExtensionHandle;
-    std::optional<SandboxExtension::Handle> frontboardServiceExtensionHandle;
-#endif
+    bool isRequestFromClientOrUserInput { false };
+    bool isPerformingHTTPFallback { false };
+
+    std::optional<OptionSet<WebCore::AdvancedPrivacyProtections>> advancedPrivacyProtections;
 };
 
 } // namespace WebKit

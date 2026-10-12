@@ -27,9 +27,11 @@
 
 #if ENABLE(UI_SIDE_COMPOSITING)
 
-#include "RemoteScrollingCoordinator.h"
 #include <WebCore/ScrollingConstraints.h>
+#include <WebCore/ScrollingCoordinatorTypes.h>
 #include <WebCore/ScrollingTree.h>
+#include <WebCore/WheelEventTestMonitor.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 class PlatformMouseEvent;
@@ -39,38 +41,70 @@ namespace WebKit {
 
 class RemoteScrollingCoordinatorProxy;
 
-class RemoteScrollingTree final : public WebCore::ScrollingTree {
+class RemoteScrollingTree : public WebCore::ScrollingTree {
 public:
     static Ref<RemoteScrollingTree> create(RemoteScrollingCoordinatorProxy&);
     virtual ~RemoteScrollingTree();
 
-    bool isRemoteScrollingTree() const override { return true; }
+    bool isRemoteScrollingTree() const final { return true; }
 
-    void handleMouseEvent(const WebCore::PlatformMouseEvent&);
+    void invalidate() final;
 
-    const RemoteScrollingCoordinatorProxy& scrollingCoordinatorProxy() const { return m_scrollingCoordinatorProxy; }
+    virtual void willSendEventForDefaultHandling(const WebCore::PlatformWheelEvent&) { }
+    virtual void waitForEventDefaultHandlingCompletion(const WebCore::PlatformWheelEvent&) { }
+    virtual void receivedEventAfterDefaultHandling(const WebCore::PlatformWheelEvent&, std::optional<WebCore::WheelScrollGestureState>) { };
+    virtual WebCore::WheelEventHandlingResult handleWheelEventAfterDefaultHandling(const WebCore::PlatformWheelEvent&, std::optional<WebCore::ScrollingNodeID>, std::optional<WebCore::WheelScrollGestureState>) { return WebCore::WheelEventHandlingResult::unhandled(); }
+
+    RemoteScrollingCoordinatorProxy* scrollingCoordinatorProxy() const;
 
     void scrollingTreeNodeDidScroll(WebCore::ScrollingTreeScrollingNode&, WebCore::ScrollingLayerPositionAction = WebCore::ScrollingLayerPositionAction::Sync) override;
-    void scrollingTreeNodeRequestsScroll(WebCore::ScrollingNodeID, const WebCore::FloatPoint& scrollPosition, WebCore::ScrollType, WebCore::ScrollClamping) override;
+    void scrollingTreeNodeDidStopAnimatedScroll(WebCore::ScrollingTreeScrollingNode&) override;
+    bool scrollingTreeNodeRequestsScroll(WebCore::ScrollingNodeID, const WebCore::RequestedScrollData&) override;
+    bool scrollingTreeNodeRequestsKeyboardScroll(WebCore::ScrollingNodeID, const WebCore::RequestedKeyboardScrollData&) override;
 
-    void currentSnapPointIndicesDidChange(WebCore::ScrollingNodeID, std::optional<unsigned> horizontal, std::optional<unsigned> vertical) override;
-
-private:
-    explicit RemoteScrollingTree(RemoteScrollingCoordinatorProxy&);
-
-#if PLATFORM(MAC)
-    void handleWheelEventPhase(WebCore::ScrollingNodeID, WebCore::PlatformWheelEventPhase) override;
-#endif
-
-#if PLATFORM(IOS_FAMILY)
-    void scrollingTreeNodeWillStartPanGesture(WebCore::ScrollingNodeID) override;
     void scrollingTreeNodeWillStartScroll(WebCore::ScrollingNodeID) override;
     void scrollingTreeNodeDidEndScroll(WebCore::ScrollingNodeID) override;
-#endif
+    void clearNodesWithUserScrollInProgress() override;
+
+    void scrollingTreeNodeDidBeginScrollSnapping(WebCore::ScrollingNodeID) override;
+    void scrollingTreeNodeDidEndScrollSnapping(WebCore::ScrollingNodeID) override;
+
+    void currentSnapPointIndicesDidChange(WebCore::ScrollingNodeID, std::optional<unsigned> horizontal, std::optional<unsigned> vertical) override;
+    void reportExposedUnfilledArea(MonotonicTime, unsigned unfilledArea) override;
+    void reportSynchronousScrollingReasonsChanged(MonotonicTime, OptionSet<WebCore::SynchronousScrollingReason>) override;
+
+    void tryToApplyLayerPositions();
+
+protected:
+    explicit RemoteScrollingTree(RemoteScrollingCoordinatorProxy&);
 
     Ref<WebCore::ScrollingTreeNode> createScrollingTreeNode(WebCore::ScrollingNodeType, WebCore::ScrollingNodeID) override;
+
+    void receivedWheelEventWithPhases(WebCore::PlatformWheelEventPhase phase, WebCore::PlatformWheelEventPhase momentumPhase) override;
+    void deferWheelEventTestCompletionForReason(WebCore::ScrollingNodeID, WebCore::WheelEventTestMonitor::DeferReason) override;
+    void removeWheelEventTestCompletionDeferralForReason(WebCore::ScrollingNodeID, WebCore::WheelEventTestMonitor::DeferReason) override;
+    void propagateSynchronousScrollingReasons(const HashSet<WebCore::ScrollingNodeID>&) WTF_REQUIRES_LOCK(m_treeLock) override;
+
+    // This gets nulled out via invalidate(), since the scrolling thread can hold a ref to the ScrollingTree after the RemoteScrollingCoordinatorProxy has gone away.
+    WeakPtr<RemoteScrollingCoordinatorProxy> m_scrollingCoordinatorProxy;
+    bool m_hasNodesWithSynchronousScrollingReasons WTF_GUARDED_BY_LOCK(m_treeLock) { false };
+};
+
+class RemoteLayerTreeHitTestLocker {
+public:
+    RemoteLayerTreeHitTestLocker(RemoteScrollingTree& scrollingTree)
+        : m_scrollingTree(scrollingTree)
+    {
+        m_scrollingTree->lockLayersForHitTesting();
+    }
     
-    RemoteScrollingCoordinatorProxy& m_scrollingCoordinatorProxy;
+    ~RemoteLayerTreeHitTestLocker()
+    {
+        m_scrollingTree->unlockLayersForHitTesting();
+    }
+
+private:
+    Ref<RemoteScrollingTree> m_scrollingTree;
 };
 
 } // namespace WebKit

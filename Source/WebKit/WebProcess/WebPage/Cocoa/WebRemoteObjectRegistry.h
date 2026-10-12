@@ -26,6 +26,16 @@
 #pragma once
 
 #include "RemoteObjectRegistry.h"
+#include <wtf/WeakRef.h>
+
+namespace WebKit {
+class WebRemoteObjectRegistry;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::WebRemoteObjectRegistry> : std::true_type { };
+}
 
 namespace WebKit {
 
@@ -39,10 +49,10 @@ public:
     void close();
     
 private:
-    IPC::MessageSender& messageSender() final;
+    MessageSender messageSender() final;
     uint64_t messageDestinationID() final;
 
-    WebPage& m_page;
+    WeakRef<WebPage> m_page;
 };
 
 } // namespace WebKit

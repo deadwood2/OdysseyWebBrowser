@@ -25,47 +25,70 @@
 
 #pragma once
 
+#include "ActiveDOMObject.h"
+#include "AttachmentAssociatedElement.h"
 #include "HTMLElement.h"
+#include "MediaQuery.h"
 #include "Timer.h"
 
 namespace WebCore {
 
-class MediaQuerySet;
-
-class HTMLSourceElement final : public HTMLElement, public ActiveDOMObject {
-    WTF_MAKE_ISO_ALLOCATED(HTMLSourceElement);
+class HTMLSourceElement final
+    : public HTMLElement
+#if ENABLE(ATTACHMENT_ELEMENT)
+    , public AttachmentAssociatedElement
+#endif
+    , public ActiveDOMObject {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLSourceElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLSourceElement);
 public:
     static Ref<HTMLSourceElement> create(Document&);
     static Ref<HTMLSourceElement> create(const QualifiedName&, Document&);
 
+    // ActiveDOMObject.
+    void ref() const final { HTMLElement::ref(); }
+    void deref() const final { HTMLElement::deref(); }
+
     void scheduleErrorEvent();
     void cancelPendingErrorEvent();
 
-    const MediaQuerySet* parsedMediaAttribute(Document&) const;
+    const MQ::MediaQueryList& parsedMediaAttribute(Document&) const;
 
 private:
     HTMLSourceElement(const QualifiedName&, Document&);
     
     InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
     void removedFromAncestor(RemovalType, ContainerNode&) final;
+    void didMoveToNewDocument(Document& oldDocument, Document& newDocument) final;
+
     bool isURLAttribute(const Attribute&) const final;
+    bool attributeContainsURL(const Attribute&) const final;
+    Attribute replaceURLsInAttributeValue(const Attribute&, const HashMap<String, String>&) const override;
+    void addCandidateSubresourceURLs(ListHashSet<URL>&) const override;
 
     // ActiveDOMObject.
-    const char* activeDOMObjectName() const final;
-    void suspend(ReasonForSuspension) final;
-    void resume() final;
     void stop() final;
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+#if ENABLE(ATTACHMENT_ELEMENT)
+    HTMLSourceElement& asHTMLElement() final { return *this; }
+    const HTMLSourceElement& asHTMLElement() const final { return *this; }
+
+    void refAttachmentAssociatedElement() const final { HTMLElement::ref(); }
+    void derefAttachmentAssociatedElement() const final { HTMLElement::deref(); }
+
+    AttachmentAssociatedElement* asAttachmentAssociatedElement() final { return this; }
+
+    AttachmentAssociatedElementType attachmentAssociatedElementType() const final { return AttachmentAssociatedElementType::Source; }
+#endif
+
+    Ref<Element> cloneElementWithoutAttributesAndChildren(Document& targetDocument) final;
+    void copyNonAttributePropertiesFromElement(const Element&) final;
 
     void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
 
-    void errorEventTimerFired();
-
-    Timer m_errorEventTimer;
-    bool m_shouldRescheduleErrorEventOnResume { false };
+    TaskCancellationGroup m_errorEventCancellationGroup;
     bool m_shouldCallSourcesChanged { false };
-    mutable std::optional<RefPtr<const MediaQuerySet>> m_cachedParsedMediaAttribute;
+    mutable std::optional<MQ::MediaQueryList> m_cachedParsedMediaAttribute;
 };
 
 } // namespace WebCore

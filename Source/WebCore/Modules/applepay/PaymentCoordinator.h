@@ -30,7 +30,17 @@
 #include "ApplePaySessionPaymentRequest.h"
 #include <wtf/Expected.h>
 #include <wtf/Function.h>
+#include <wtf/UniqueRef.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebCore {
+class PaymentCoordinator;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::PaymentCoordinator> : std::true_type { };
+}
 
 namespace WebCore {
 
@@ -43,28 +53,27 @@ class PaymentMerchantSession;
 class PaymentMethod;
 class PaymentSession;
 class PaymentSessionError;
-enum class PaymentAuthorizationStatus;
 struct ApplePayCouponCodeUpdate;
+struct ApplePayPaymentAuthorizationResult;
 struct ApplePayPaymentMethodUpdate;
 struct ApplePaySetupConfiguration;
 struct ApplePayShippingContactUpdate;
 struct ApplePayShippingMethod;
 struct ApplePayShippingMethodUpdate;
 struct ExceptionDetails;
-struct PaymentAuthorizationResult;
 
 class PaymentCoordinator : public CanMakeWeakPtr<PaymentCoordinator> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    WEBCORE_EXPORT explicit PaymentCoordinator(PaymentCoordinatorClient&);
+    WEBCORE_EXPORT explicit PaymentCoordinator(UniqueRef<PaymentCoordinatorClient>&&);
     WEBCORE_EXPORT ~PaymentCoordinator();
 
-    PaymentCoordinatorClient& client() { return m_client; }
+    PaymentCoordinatorClient& client() { return m_client.get(); }
 
     bool supportsVersion(Document&, unsigned version) const;
-    bool canMakePayments(Document&);
-    void canMakePaymentsWithActiveCard(Document&, const String& merchantIdentifier, WTF::Function<void(bool)>&& completionHandler);
-    void openPaymentSetup(Document&, const String& merchantIdentifier, WTF::Function<void(bool)>&& completionHandler);
+    bool canMakePayments();
+    void canMakePaymentsWithActiveCard(Document&, const String& merchantIdentifier, Function<void(bool)>&& completionHandler);
+    void openPaymentSetup(Document&, const String& merchantIdentifier, Function<void(bool)>&& completionHandler);
 
     bool hasActiveSession() const { return m_activeSession; }
 
@@ -76,7 +85,7 @@ public:
 #if ENABLE(APPLE_PAY_COUPON_CODE)
     void completeCouponCodeChange(std::optional<ApplePayCouponCodeUpdate>&&);
 #endif
-    void completePaymentSession(std::optional<PaymentAuthorizationResult>&&);
+    void completePaymentSession(ApplePayPaymentAuthorizationResult&&);
     void abortPaymentSession();
     void cancelPaymentSession();
 
@@ -92,17 +101,12 @@ public:
 
     std::optional<String> validatedPaymentNetwork(Document&, unsigned version, const String&) const;
 
-    bool shouldEnableApplePayAPIs(Document&) const;
-    WEBCORE_EXPORT Expected<void, ExceptionDetails> shouldAllowUserAgentScripts(Document&) const;
-
     void getSetupFeatures(const ApplePaySetupConfiguration&, const URL&, CompletionHandler<void(Vector<Ref<ApplePaySetupFeature>>&&)>&&);
-    void beginApplePaySetup(const ApplePaySetupConfiguration&, const URL&, Vector<RefPtr<ApplePaySetupFeature>>&&, CompletionHandler<void(bool)>&&);
+    void beginApplePaySetup(const ApplePaySetupConfiguration&, const URL&, Vector<Ref<ApplePaySetupFeature>>&&, CompletionHandler<void(bool)>&&);
     void endApplePaySetup();
 
 private:
-    bool setApplePayIsActiveIfAllowed(Document&) const;
-
-    PaymentCoordinatorClient& m_client;
+    UniqueRef<PaymentCoordinatorClient> m_client;
     RefPtr<PaymentSession> m_activeSession;
 };
 

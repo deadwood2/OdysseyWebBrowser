@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,15 +26,35 @@
 #include "config.h"
 #include "WasmOpcodeOrigin.h"
 
-#if ENABLE(WEBASSEMBLY)
+#include <wtf/text/MakeString.h>
+
+#if ENABLE(WEBASSEMBLY_OMGJIT)
 
 namespace JSC { namespace Wasm {
 
 void OpcodeOrigin::dump(PrintStream& out) const
 {
-    out.print("{opcode: ", makeString(opcode()), ", location: ", RawPointer(reinterpret_cast<void*>(location())), "}");
+    switch (opcode()) {
+#if USE(JSVALUE64)
+    case OpType::ExtGC:
+        out.print("{opcode: ", makeString(gcOpcode()), ", location: ", RawHex(location()), "}");
+        break;
+    case OpType::Ext1:
+        out.print("{opcode: ", makeString(ext1Opcode()), ", location: ", RawHex(location()), "}");
+        break;
+    case OpType::ExtSIMD:
+        out.print("{opcode: ", makeString(simdOpcode()), ", location: ", RawHex(location()), "}");
+        break;
+    case OpType::ExtAtomic:
+        out.print("{opcode: ", makeString(atomicOpcode()), ", location: ", RawHex(location()), "}");
+        break;
+#endif
+    default:
+        out.print("{opcode: ", makeString(opcode()), ", location: ", RawHex(location()), "}");
+        break;
+    }
 }
 
 } } // namespace JSC::Wasm
 
-#endif // ENABLE(WEBASSEMBLY)
+#endif // ENABLE(WEBASSEMBLY_OMGJIT)

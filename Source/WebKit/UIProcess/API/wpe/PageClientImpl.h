@@ -30,12 +30,14 @@
 
 struct wpe_view_backend;
 typedef struct _AtkObject AtkObject;
+typedef struct _WPEView WPEView;
 
 namespace WKWPE {
 class View;
 }
 
 namespace WebCore {
+enum class DOMPasteAccessCategory : uint8_t;
 enum class DOMPasteAccessResponse : uint8_t;
 }
 
@@ -56,19 +58,23 @@ public:
     virtual ~PageClientImpl();
 
     struct wpe_view_backend* viewBackend();
+#if ENABLE(WPE_PLATFORM)
+    WPEView* wpeView() const;
+#endif
 
-#if ENABLE(ACCESSIBILITY)
+#if USE(ATK)
     AtkObject* accessible();
 #endif
 
     void sendMessageToWebView(UserMessage&&, CompletionHandler<void(UserMessage&&)>&&);
     void setInputMethodState(std::optional<InputMethodState>&&);
+    void callAfterNextPresentationUpdate(CompletionHandler<void()>&&);
 
 private:
     // PageClient
     std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy(WebProcessProxy&) override;
     void setViewNeedsDisplay(const WebCore::Region&) override;
-    void requestScroll(const WebCore::FloatPoint&, const WebCore::IntPoint&) override;
+    void requestScroll(const WebCore::FloatPoint&, const WebCore::IntPoint&, WebCore::ScrollIsAnimated) override;
     WebCore::FloatPoint viewScrollPosition() override;
     WebCore::IntSize viewSize() override;
     bool isViewWindowActive() override;
@@ -83,7 +89,6 @@ private:
     void toolTipChanged(const String&, const String&) override;
 
     void didCommitLoadForMainFrame(const String&, bool) override;
-    void handleDownloadRequest(DownloadProxy&) override;
 
     void didChangeContentSize(const WebCore::IntSize&) override;
 
@@ -118,7 +123,7 @@ private:
     void exitAcceleratedCompositingMode() override;
     void updateAcceleratedCompositingMode(const LayerTreeContext&) override;
 
-    void didFinishLoadingDataForCustomContentProvider(const String&, const IPC::DataReference&) override;
+    void didFinishLoadingDataForCustomContentProvider(const String&, std::span<const uint8_t>) override;
 
     void navigationGestureDidBegin() override;
     void navigationGestureWillEnd(bool, WebBackForwardListItem&) override;
@@ -140,10 +145,6 @@ private:
     void refView() override;
     void derefView() override;
 
-#if ENABLE(VIDEO) && USE(GSTREAMER)
-    bool decidePolicyForInstallMissingMediaPluginsPermissionRequest(InstallMissingMediaPluginsPermissionRequest&) override;
-#endif
-
     void didRestoreScrollPosition() override;
 
 #if ENABLE(FULLSCREEN_API)
@@ -157,14 +158,16 @@ private:
     void beganExitFullScreen(const WebCore::IntRect& initialFrame, const WebCore::IntRect& finalFrame) override;
 #endif
 
-    IPC::Attachment hostFileDescriptor() final;
-    void requestDOMPasteAccess(const WebCore::IntRect&, const String&, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&&) final;
+    UnixFileDescriptor hostFileDescriptor() final;
+    void requestDOMPasteAccess(WebCore::DOMPasteAccessCategory, WebCore::DOMPasteRequiresInteraction, const WebCore::IntRect&, const String&, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&&) final;
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override;
 
     void didChangeWebPageID() const override;
 
     void selectionDidChange() override;
+
+    WebKitWebResourceLoadManager* webResourceLoadManager() override;
 
     WKWPE::View& m_view;
 };

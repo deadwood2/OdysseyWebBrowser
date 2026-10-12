@@ -70,6 +70,7 @@ bool doesGC(Graph& graph, Node* node)
     case SetLocal:
     case MovHint:
     case InitializeEntrypointArguments:
+    case ZombieHint:
     case ExitOK:
     case Phantom:
     case Upsilon:
@@ -107,6 +108,7 @@ bool doesGC(Graph& graph, Node* node)
     case ArithCeil:
     case ArithTrunc:
     case ArithFRound:
+    case ArithF16Round:
     case ArithUnary:
     case CheckStructure:
     case CheckStructureOrEmpty:
@@ -122,6 +124,7 @@ bool doesGC(Graph& graph, Node* node)
     case SkipScope:
     case GetGlobalObject:
     case GetGlobalThis:
+    case UnwrapGlobalProxy:
     case GetClosureVar:
     case PutClosureVar:
     case GetInternalField:
@@ -142,6 +145,7 @@ bool doesGC(Graph& graph, Node* node)
     case ProfileControlFlow:
     case OverridesHasInstance:
     case IsEmpty:
+    case IsEmptyStorage:
     case TypeOfIsUndefined:
     case TypeOfIsObject:
     case TypeOfIsFunction:
@@ -166,14 +170,17 @@ bool doesGC(Graph& graph, Node* node)
     case SuperSamplerEnd:
     case CPUIntrinsic:
     case NormalizeMapKey: // HeapBigInt => BigInt32 conversion does not involve GC.
-    case GetMapBucketHead:
-    case GetMapBucketNext:
-    case LoadKeyFromMapBucket:
-    case LoadValueFromMapBucket:
+    case MapGet:
+    case LoadMapValue:
+    case MapIteratorNext:
+    case MapIteratorKey:
+    case MapIteratorValue:
+    case MapStorage:
+    case MapIterationNext:
+    case MapIterationEntry:
+    case MapIterationEntryKey:
+    case MapIterationEntryValue:
     case ExtractValueFromWeakMapGet:
-    case WeakMapGet:
-    case WeakSetAdd:
-    case WeakMapSet:
     case Unreachable:
     case ExtractOSREntryLocal:
     case ExtractCatchLocal:
@@ -185,10 +192,12 @@ bool doesGC(Graph& graph, Node* node)
     case NotifyWrite:
     case AssertInBounds:
     case CheckInBounds:
+    case CheckInBoundsInt52:
     case ConstantStoragePointer:
     case Check:
     case CheckVarargs:
     case CheckTypeInfoFlags:
+    case HasStructureWithFlags:
     case MultiGetByOffset:
     case MultiDeleteByOffset:
     case ValueRep:
@@ -197,11 +206,15 @@ bool doesGC(Graph& graph, Node* node)
     case GetGetter:
     case GetSetter:
     case GetArrayLength:
+    case GetUndetachedTypeArrayLength:
+    case GetTypedArrayLengthAsInt52:
     case GetVectorLength:
     case StringCharCodeAt:
     case StringCodePointAt:
     case GetTypedArrayByteOffset:
+    case GetTypedArrayByteOffsetAsInt52:
     case GetPrototypeOf:
+    case GetWebAssemblyInstanceExports:
     case PutStructure:
     case GetByOffset:
     case GetGetterSetterByOffset:
@@ -258,19 +271,21 @@ bool doesGC(Graph& graph, Node* node)
     case DataViewGetFloat:
     case DataViewSet:
     case PutByOffset:
+    case WeakMapGet:
+    case NumberIsNaN:
         return false;
 
 #if ASSERT_ENABLED
     case ArrayPush:
     case ArrayPop:
+    case ArraySpliceExtract:
     case PushWithScope:
     case CreateActivation:
     case CreateDirectArguments:
     case CreateScopedArguments:
     case CreateClonedArguments:
-    case CreateArgumentsButterfly:
     case Call:
-    case CallEval:
+    case CallDirectEval:
     case CallForwardVarargs:
     case CallObjectConstructor:
     case CallVarargs:
@@ -288,23 +303,32 @@ bool doesGC(Graph& graph, Node* node)
     case DirectConstruct:
     case DirectTailCall:
     case DirectTailCallInlinedCaller:
+    case CallWasm:
+    case CallCustomAccessorGetter:
+    case CallCustomAccessorSetter:
     case ForceOSRExit:
     case FunctionToString:
+    case FunctionBind:
     case GetById:
     case GetByIdDirect:
     case GetByIdDirectFlush:
     case GetByIdFlush:
+    case GetByIdMegamorphic:
     case GetByIdWithThis:
+    case GetByIdWithThisMegamorphic:
     case GetByValWithThis:
+    case GetByValWithThisMegamorphic:
     case GetDynamicVar:
-    case GetMapBucket:
     case HasIndexedProperty:
     case HasOwnProperty:
     case InById:
+    case InByIdMegamorphic:
     case InByVal:
+    case InByValMegamorphic:
     case HasPrivateName:
     case HasPrivateBrand:
     case InstanceOf:
+    case InstanceOfMegamorphic:
     case InstanceOfCustom:
     case VarargsLength:
     case LoadVarargs:
@@ -314,6 +338,7 @@ bool doesGC(Graph& graph, Node* node)
     case PutById:
     case PutByIdDirect:
     case PutByIdFlush:
+    case PutByIdMegamorphic:
     case PutByIdWithThis:
     case PutByValWithThis:
     case PutDynamicVar:
@@ -335,10 +360,12 @@ bool doesGC(Graph& graph, Node* node)
     case RegExpMatchFast:
     case RegExpMatchFastGlobal:
     case RegExpTest:
+    case RegExpTestInline:
     case ResolveScope:
     case ResolveScopeForHoistingFuncDeclInEval:
     case Return:
     case StringCharAt:
+    case StringLocaleCompare:
     case TailCall:
     case TailCallForwardVarargs:
     case TailCallForwardVarargsInlinedCaller:
@@ -351,6 +378,7 @@ bool doesGC(Graph& graph, Node* node)
     case ToObject:
     case ToPrimitive:
     case ToPropertyKey:
+    case ToPropertyKeyOrNumber:
     case ToThis:
     case TryGetById:
     case CreateThis:
@@ -361,6 +389,9 @@ bool doesGC(Graph& graph, Node* node)
     case ObjectCreate:
     case ObjectKeys:
     case ObjectGetOwnPropertyNames:
+    case ObjectGetOwnPropertySymbols:
+    case ObjectToString:
+    case ReflectOwnKeys:
     case AllocatePropertyStorage:
     case ReallocatePropertyStorage:
     case Arrayify:
@@ -373,15 +404,21 @@ bool doesGC(Graph& graph, Node* node)
     case NewInternalFieldObject:
     case Spread:
     case NewArrayWithSize:
+    case NewArrayWithConstantSize:
+    case NewArrayWithSpecies:
     case NewArrayBuffer:
     case NewRegexp:
     case NewStringObject:
+    case NewMap:
+    case NewSet:
     case NewSymbol:
     case MakeRope:
+    case MakeAtomString:
     case NewFunction:
     case NewGeneratorFunction:
     case NewAsyncGeneratorFunction:
     case NewAsyncFunction:
+    case NewBoundFunction:
     case NewTypedArray:
     case ThrowStaticError:
     case GetPropertyEnumerator:
@@ -396,7 +433,9 @@ bool doesGC(Graph& graph, Node* node)
     case StrCat:
     case StringReplace:
     case StringReplaceRegExp:
+    case StringReplaceString:
     case StringSlice:
+    case StringSubstring:
     case StringValueOf:
     case CreateRest:
     case ToLowerCase:
@@ -407,6 +446,7 @@ bool doesGC(Graph& graph, Node* node)
     case ParseInt: // We might resolve a rope even though we don't clobber anything.
     case SetAdd:
     case MapSet:
+    case MapOrSetDelete:
     case ValueBitAnd:
     case ValueBitOr:
     case ValueBitXor:
@@ -420,12 +460,21 @@ bool doesGC(Graph& graph, Node* node)
     case ValuePow:
     case ValueBitNot:
     case ValueNegate:
+    case DateSetTime:
+    case StringIndexOf:
 #else // not ASSERT_ENABLED
     // See comment at the top for why the default for all nodes should be to
     // return true.
     default:
 #endif // not ASSERT_ENABLED
         return true;
+
+    case ToIntegerOrInfinity:
+    case ToLength:
+        return node->child1().useKind() == UntypedUse;
+
+    case GlobalIsNaN:
+        return node->child1().useKind() != DoubleRepUse;
 
     case CallNumberConstructor:
         switch (node->child1().useKind()) {
@@ -441,6 +490,7 @@ bool doesGC(Graph& graph, Node* node)
         switch (node->child1().useKind()) {
         case StringObjectUse:
         case StringOrStringObjectUse:
+        case StringOrOtherUse:
             return false;
         default:
             break;
@@ -449,7 +499,7 @@ bool doesGC(Graph& graph, Node* node)
 
     case CheckTraps:
         // FIXME: https://bugs.webkit.org/show_bug.cgi?id=194323
-        ASSERT(Options::usePollingTraps());
+        ASSERT(Options::usePollingTraps() || graph.m_plan.isUnlinked());
         return true;
 
     case CompareEq:
@@ -472,44 +522,53 @@ bool doesGC(Graph& graph, Node* node)
             if (node->isBinaryUseKind(BooleanUse)
                 || node->isBinaryUseKind(SymbolUse)
                 || node->isBinaryUseKind(ObjectUse)
-                || node->isBinaryUseKind(ObjectUse, ObjectOrOtherUse) || node->isBinaryUseKind(ObjectOrOtherUse, ObjectUse))
+                || node->isSymmetricBinaryUseKind(ObjectUse, ObjectOrOtherUse))
                 return false;
         }
         return true;
 
     case CompareStrictEq:
         if (node->isBinaryUseKind(BooleanUse)
+            || node->isSymmetricBinaryUseKind(BooleanUse, UntypedUse)
             || node->isBinaryUseKind(Int32Use)
 #if USE(JSVALUE64)
             || node->isBinaryUseKind(Int52RepUse)
 #endif
             || node->isBinaryUseKind(DoubleRepUse)
             || node->isBinaryUseKind(SymbolUse)
-            || node->isBinaryUseKind(SymbolUse, UntypedUse)
-            || node->isBinaryUseKind(UntypedUse, SymbolUse)
+            || node->isSymmetricBinaryUseKind(SymbolUse, UntypedUse)
             || node->isBinaryUseKind(StringIdentUse)
-            || node->isBinaryUseKind(ObjectUse, UntypedUse) || node->isBinaryUseKind(UntypedUse, ObjectUse)
+            || node->isSymmetricBinaryUseKind(ObjectUse, UntypedUse)
             || node->isBinaryUseKind(ObjectUse)
-            || node->isBinaryUseKind(MiscUse, UntypedUse) || node->isBinaryUseKind(UntypedUse, MiscUse)
-            || node->isBinaryUseKind(StringIdentUse, NotStringVarUse) || node->isBinaryUseKind(NotStringVarUse, StringIdentUse)
-            || node->isBinaryUseKind(NotDoubleUse, NeitherDoubleNorHeapBigIntNorStringUse) || node->isBinaryUseKind(NotDoubleUse, NeitherDoubleNorHeapBigIntNorStringUse))
+            || node->isBinaryUseKind(OtherUse)
+            || node->isSymmetricBinaryUseKind(OtherUse, UntypedUse)
+            || node->isBinaryUseKind(MiscUse)
+            || node->isSymmetricBinaryUseKind(MiscUse, UntypedUse)
+            || node->isSymmetricBinaryUseKind(StringIdentUse, NotStringVarUse)
+            || node->isSymmetricBinaryUseKind(NotDoubleUse, NeitherDoubleNorHeapBigIntNorStringUse))
             return false;
         return true;
 
     case GetIndexedPropertyStorage:
+        return false;
+
     case GetByVal:
+    case GetByValMegamorphic:
     case EnumeratorGetByVal:
         if (node->arrayMode().type() == Array::String)
             return true;
         return false;
 
-    case EnumeratorNextExtractMode:
-    case EnumeratorNextExtractIndex:
+    case ResolveRope:
+        return true;
+
+    case ExtractFromTuple:
         return false;
 
     case PutByValDirect:
     case PutByVal:
     case PutByValAlias:
+    case PutByValMegamorphic:
         if (!graph.m_plan.isFTL()) {
             switch (node->arrayMode().modeForPut().type()) {
             case Array::Int8Array:
@@ -525,6 +584,9 @@ bool doesGC(Graph& graph, Node* node)
             }
         }
         return false;
+
+    case EnumeratorPutByVal:
+        return true;
 
     case MapHash:
         switch (node->child1().useKind()) {
@@ -584,6 +646,14 @@ bool doesGC(Graph& graph, Node* node)
         default:
             return true;
         }
+
+    // WeakSet / WeakMap storages are not GC-managed buffer, thus adding an element does not cause GC,
+    // unless we throw an error due to key type. An error can be thrown even though a key is Symbol
+    // if the Symbol key is not registered one.
+    case WeakSetAdd:
+        return node->child2().useKind() != ObjectUse;
+    case WeakMapSet:
+        return graph.varArgChild(node, 1).useKind() != ObjectUse;
 
     case LastNodeType:
         RELEASE_ASSERT_NOT_REACHED();

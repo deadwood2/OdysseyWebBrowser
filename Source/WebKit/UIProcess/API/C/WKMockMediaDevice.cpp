@@ -28,27 +28,51 @@
 #include "WKMockMediaDevice.h"
 
 #include "WKAPICast.h"
+#include "WKDictionary.h"
+#include "WKRetainPtr.h"
 #include "WKString.h"
 #include "WebProcessPool.h"
 #include <WebCore/MockMediaDevice.h>
 
 using namespace WebKit;
 
-void WKAddMockMediaDevice(WKContextRef context, WKStringRef persistentId, WKStringRef label, WKStringRef type)
+void WKAddMockMediaDevice(WKContextRef context, WKStringRef persistentId, WKStringRef label, WKStringRef type, WKDictionaryRef properties)
 {
 #if ENABLE(MEDIA_STREAM)
     String typeString = WebKit::toImpl(type)->string();
-    Variant<WebCore::MockMicrophoneProperties, WebCore::MockSpeakerProperties, WebCore::MockCameraProperties, WebCore::MockDisplayProperties> properties;
-    if (typeString == "camera")
-        properties = WebCore::MockCameraProperties { };
-    else if (typeString == "screen")
-        properties = WebCore::MockDisplayProperties { };
-    else if (typeString == "speaker")
-        properties = WebCore::MockSpeakerProperties { };
-    else if (typeString != "microphone")
+    std::variant<WebCore::MockMicrophoneProperties, WebCore::MockSpeakerProperties, WebCore::MockCameraProperties, WebCore::MockDisplayProperties> deviceProperties;
+    if (typeString == "camera"_s) {
+        WebCore::MockCameraProperties cameraProperties;
+        if (properties) {
+            auto facingModeKey = adoptWK(WKStringCreateWithUTF8CString("facingMode"));
+            if (auto facingMode = WKDictionaryGetItemForKey(properties, facingModeKey.get())) {
+                if (WKStringIsEqualToUTF8CString(static_cast<WKStringRef>(facingMode), "unknown"))
+                    cameraProperties.facingMode = WebCore::VideoFacingMode::Unknown;
+            }
+            auto fillColorKey = adoptWK(WKStringCreateWithUTF8CString("fillColor"));
+            if (auto fillColor = WKDictionaryGetItemForKey(properties, fillColorKey.get())) {
+                if (WKStringIsEqualToUTF8CString(static_cast<WKStringRef>(fillColor), "green"))
+                    cameraProperties.fillColor = WebCore::Color::green;
+            }
+        }
+        deviceProperties = WTFMove(cameraProperties);
+    } else if (typeString == "screen"_s)
+        deviceProperties = WebCore::MockDisplayProperties { };
+    else if (typeString == "speaker"_s)
+        deviceProperties = WebCore::MockSpeakerProperties { };
+    else if (typeString != "microphone"_s)
         return;
 
-    toImpl(context)->addMockMediaDevice({ WebKit::toImpl(persistentId)->string(), WebKit::toImpl(label)->string(), WTFMove(properties) });
+    WebCore::MockMediaDevice::Flags flags;
+    if (properties) {
+        auto invalidKey = adoptWK(WKStringCreateWithUTF8CString("invalid"));
+        if (auto invalid = WKDictionaryGetItemForKey(properties, invalidKey.get())) {
+            if (WKStringIsEqualToUTF8CString(static_cast<WKStringRef>(invalid), "true"))
+                flags.add(WebCore::MockMediaDevice::Flag::Invalid);
+        }
+    }
+
+    toImpl(context)->addMockMediaDevice({ WebKit::toImpl(persistentId)->string(), WebKit::toImpl(label)->string(), flags, WTFMove(deviceProperties) });
 #endif
 }
 
@@ -65,4 +89,9 @@ void WKRemoveMockMediaDevice(WKContextRef context, WKStringRef persistentId)
 void WKResetMockMediaDevices(WKContextRef context)
 {
     toImpl(context)->resetMockMediaDevices();
+}
+
+void WKSetMockMediaDeviceIsEphemeral(WKContextRef context, WKStringRef persistentId, bool isEphemeral)
+{
+    toImpl(context)->setMockMediaDeviceIsEphemeral(WebKit::toImpl(persistentId)->string(), isEphemeral);
 }

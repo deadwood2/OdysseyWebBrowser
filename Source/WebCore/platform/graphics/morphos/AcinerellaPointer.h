@@ -1,7 +1,4 @@
 #pragma once
-
-#include "config.h"
-
 #if ENABLE(VIDEO)
 
 #include <wtf/ThreadSafeRefCounted.h>

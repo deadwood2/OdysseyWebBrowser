@@ -34,8 +34,17 @@ OBJC_CLASS NSHTTPCookieStorage;
 OBJC_CLASS WebCookieObserverAdapter;
 
 namespace WebCore {
+class CookieStorageObserver;
+}
 
-// Use eager initialization for the WeakPtrFactory since we call makeWeakPtr() from a non-main thread.
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::CookieStorageObserver> : std::true_type { };
+}
+
+namespace WebCore {
+
+// Use eager initialization for the WeakPtrFactory since we construct WeakPtrs on a non-main thread.
 class WEBCORE_EXPORT CookieStorageObserver : public CanMakeWeakPtr<CookieStorageObserver, WeakPtrFactoryInitialization::Eager> {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(CookieStorageObserver);
@@ -52,7 +61,7 @@ private:
     RetainPtr<NSHTTPCookieStorage> m_cookieStorage;
     bool m_hasRegisteredInternalsForNotifications { false };
     RetainPtr<WebCookieObserverAdapter> m_observerAdapter;
-    WTF::Function<void()> m_cookieChangeCallback;
+    Function<void()> m_cookieChangeCallback;
 };
 
 } // namespace WebCore

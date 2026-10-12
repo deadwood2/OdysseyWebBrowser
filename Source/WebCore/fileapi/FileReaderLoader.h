@@ -32,10 +32,11 @@
 
 #include "BlobResourceHandle.h"
 #include "ExceptionCode.h"
-#include <wtf/URL.h>
-#include "TextEncoding.h"
 #include "ThreadableLoaderClient.h"
+#include "URLKeepingBlobAlive.h"
+#include <pal/text/TextEncoding.h>
 #include <wtf/Forward.h>
+#include <wtf/URL.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
@@ -51,14 +52,17 @@ class ScriptExecutionContext;
 class TextResourceDecoder;
 class ThreadableLoader;
 
-class FileReaderLoader : public ThreadableLoaderClient {
+class FileReaderLoader final : public ThreadableLoaderClient {
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Loader);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(FileReaderLoader);
 public:
     enum ReadType {
         ReadAsArrayBuffer,
         ReadAsBinaryString,
         ReadAsBlob,
         ReadAsText,
-        ReadAsDataURL
+        ReadAsDataURL,
+        ReadAsBinaryChunks
     };
 
     // If client is given, do the loading asynchronously. Otherwise, load synchronously.
@@ -66,13 +70,14 @@ public:
     ~FileReaderLoader();
 
     WEBCORE_EXPORT void start(ScriptExecutionContext*, Blob&);
+    void start(ScriptExecutionContext*, const URL&);
     WEBCORE_EXPORT void cancel();
 
     // ThreadableLoaderClient
-    void didReceiveResponse(unsigned long, const ResourceResponse&) override;
-    void didReceiveData(const uint8_t*, int) override;
-    void didFinishLoading(unsigned long) override;
-    void didFail(const ResourceError&) override;
+    void didReceiveResponse(ScriptExecutionContextIdentifier, ResourceLoaderIdentifier, const ResourceResponse&) override;
+    void didReceiveData(const SharedBuffer&) override;
+    void didFinishLoading(ScriptExecutionContextIdentifier, ResourceLoaderIdentifier, const NetworkLoadMetrics&) override;
+    void didFail(ScriptExecutionContextIdentifier, const ResourceError&) override;
 
     String stringResult();
     WEBCORE_EXPORT RefPtr<JSC::ArrayBuffer> arrayBufferResult() const;
@@ -80,7 +85,7 @@ public:
     unsigned totalBytes() const { return m_totalBytes; }
     std::optional<ExceptionCode> errorCode() const { return m_errorCode; }
 
-    void setEncoding(const String&);
+    void setEncoding(StringView);
     void setDataType(const String& dataType) { m_dataType = dataType; }
 
     const URL& url() { return m_urlForReading; }
@@ -93,16 +98,17 @@ private:
     void failed(ExceptionCode);
     void convertToText();
     void convertToDataURL();
+    bool processResponse(const ResourceResponse&);
 
     static ExceptionCode httpStatusCodeToErrorCode(int);
     static ExceptionCode toErrorCode(BlobResourceHandle::Error);
 
     ReadType m_readType;
     WeakPtr<FileReaderLoaderClient> m_client;
-    TextEncoding m_encoding;
+    PAL::TextEncoding m_encoding;
     String m_dataType;
 
-    URL m_urlForReading;
+    URLKeepingBlobAlive m_urlForReading;
     RefPtr<ThreadableLoader> m_loader;
 
     RefPtr<JSC::ArrayBuffer> m_rawData;

@@ -31,57 +31,39 @@
 #include "WebProcess.h"
 #include <glib.h>
 
-#if ENABLE(ACCESSIBILITY)
-#include <atk-bridge.h>
-#include <atk/atk.h>
-#endif
-
 #if USE(GCRYPT)
 #include <pal/crypto/gcrypt/Initialization.h>
+#endif
+
+#if USE(GSTREAMER)
+#include <WebCore/GStreamerCommon.h>
+#endif
+
+#if USE(SKIA)
+#include <skia/core/SkGraphics.h>
+#endif
+
+#if USE(SYSPROF_CAPTURE)
+#include <wtf/SystemTracing.h>
 #endif
 
 namespace WebKit {
 using namespace WebCore;
 
-#if ENABLE(ACCESSIBILITY)
-static void initializeAccessibility()
-{
-    auto* atkUtilClass = ATK_UTIL_CLASS(g_type_class_ref(ATK_TYPE_UTIL));
-
-    atkUtilClass->add_key_event_listener = [](AtkKeySnoopFunc, gpointer) -> guint {
-        return 0;
-    };
-
-    atkUtilClass->remove_key_event_listener = [](guint) {
-    };
-
-    atkUtilClass->get_root = []() -> AtkObject* {
-        // ATK bridge needs a root object. We use an AtkPlug because that way the
-        // web process is not registered as an application.
-        static AtkObject* root = nullptr;
-        if (!root)
-            root = atk_plug_new();
-        return root;
-    };
-
-    atkUtilClass->get_toolkit_name = []() -> const gchar* {
-        return "WPEWebKit";
-    };
-
-    atkUtilClass->get_toolkit_version = []() -> const gchar* {
-        return "";
-    };
-
-    atk_bridge_adaptor_init(nullptr, nullptr);
-}
-#endif
-
 class WebProcessMainWPE final : public AuxiliaryProcessMainBase<WebProcess> {
 public:
     bool platformInitialize() override
     {
+#if USE(SYSPROF_CAPTURE)
+        SysprofAnnotator::createIfNeeded("WebKit (Web)"_s);
+#endif
+
 #if USE(GCRYPT)
         PAL::GCrypt::initialize();
+#endif
+
+#if USE(SKIA)
+        SkGraphics::Init();
 #endif
 
 #if ENABLE(DEVELOPER_MODE)
@@ -93,11 +75,14 @@ public:
         // FIXME: This should be probably called in other processes as well.
         g_set_prgname("WPEWebProcess");
 
-#if ENABLE(ACCESSIBILITY)
-        initializeAccessibility();
-#endif
-
         return true;
+    }
+
+    void platformFinalize() override
+    {
+#if USE(GSTREAMER)
+        deinitializeGStreamer();
+#endif
     }
 };
 

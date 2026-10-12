@@ -46,16 +46,19 @@ _log = logging.getLogger(__name__)
 
 
 class DriverInput(object):
-    def __init__(self, test_name, timeout, image_hash, should_run_pixel_test, should_dump_jsconsolelog_in_stderr=None, args=None):
+    def __init__(self, test_name, timeout, image_hash, should_run_pixel_test, should_dump_jsconsolelog_in_stderr=None, additional_header=None, args=None, self_comparison_header=None, force_dump_pixels=False):
         self.test_name = test_name
         self.timeout = timeout  # in ms
         self.image_hash = image_hash
         self.should_run_pixel_test = should_run_pixel_test
         self.should_dump_jsconsolelog_in_stderr = should_dump_jsconsolelog_in_stderr
         self.args = args or []
+        self.self_comparison_header = self_comparison_header
+        self.additional_header = additional_header
+        self.force_dump_pixels = force_dump_pixels
 
     def __repr__(self):
-        return "DriverInput(test_name='{}', timeout={}, image_hash={}, should_run_pixel_test={}, should_dump_jsconsolelog_in_stderr={}'".format(self.test_name, self.timeout, self.image_hash, self.should_run_pixel_test, self.should_dump_jsconsolelog_in_stderr)
+        return "DriverInput(test_name='{}', timeout={}, image_hash={}, should_run_pixel_test={}, should_dump_jsconsolelog_in_stderr={}, additional_header={}, self_comparison_header={}, force_dump_pixels={}'".format(self.test_name, self.timeout, self.image_hash, self.should_run_pixel_test, self.should_dump_jsconsolelog_in_stderr, self.additional_header, self.self_comparison_header, self.force_dump_pixels)
 
 
 class DriverOutput(object):
@@ -193,6 +196,10 @@ class Driver(object):
         self.web_platform_test_server_doc_root = self._port.web_platform_test_server_doc_root()
         self.web_platform_test_server_base_http_url = self._port.web_platform_test_server_base_http_url()
         self.web_platform_test_server_base_https_url = self._port.web_platform_test_server_base_https_url()
+        self.web_platform_test_server_base_h2_url = self._port.web_platform_test_server_base_h2_url()
+        self.web_platform_test_server_localhost_base_http_url = self._port.web_platform_test_server_base_http_url(localhost_only=True)
+        self.web_platform_test_server_localhost_base_https_url = self._port.web_platform_test_server_base_https_url(localhost_only=True)
+        self.web_platform_test_server_localhost_base_h2_url = self._port.web_platform_test_server_base_h2_url(localhost_only=True)
 
     def __del__(self):
         self.stop()
@@ -243,7 +250,7 @@ class Driver(object):
             # In the timeout case, we kill the hung process as well.
             out, err = self._server_process.stop(self._port.driver_stop_timeout() if stop_when_done else 0.0)
             if out:
-                text += string_utils.decode(out, target_type=str)
+                text += string_utils.decode(out, target_type=str, errors='backslashreplace')
             if err:
                 self.error_from_test += string_utils.decode(err, target_type=str)
             self._server_process = None
@@ -252,7 +259,13 @@ class Driver(object):
         if self._crash_report_from_driver:
             crash_log = self._crash_report_from_driver
         elif crashed:
-            self.error_from_test, crash_log = self._get_crash_log(text, self.error_from_test, newer_than=start_time)
+            gather_crash_log = True
+            if not self._port.get_option('gather-expected-crash-logs'):
+                gather_crash_log = self._port.is_unexpected_crash(driver_input.test_name)
+            gather_str = 'now' if gather_crash_log else 'not'
+            _log.debug('Test %s crashed, we will %s gather a crash log.', driver_input.test_name, gather_str)
+            if gather_crash_log:
+                self.error_from_test, crash_log = self._get_crash_log(text, self.error_from_test, newer_than=start_time)
             # If we don't find a crash log use a placeholder error message instead.
             if not crash_log:
                 pid_str = str(self._crashed_pid) if self._crashed_pid else "unknown pid"
@@ -296,7 +309,7 @@ class Driver(object):
         child_processes = defaultdict(list)
 
         for line in output.splitlines():
-            m = re.match(b'^([^:]+): ([0-9]+)$', line)
+            m = re.match(r'^([^:]+): ([0-9]+)$', line)
             if m:
                 process_name = string_utils.decode(m.group(1), target_type=str)
                 process_id = string_utils.decode(m.group(2), target_type=str)
@@ -337,8 +350,10 @@ class Driver(object):
     WEBKIT_SPECIFIC_WEB_PLATFORM_TEST_SUBDIR = "http/wpt/"
     WEBKIT_WEB_PLATFORM_TEST_SERVER_ROUTE = "WebKit/"
 
-    def is_http_test(self, test_name):
-        return test_name.startswith(self.HTTP_DIR) and not test_name.startswith(self.HTTP_LOCAL_DIR)
+    def is_http_test(self, driver_input):
+        if driver_input.additional_header and "runInCrossOriginFrame=true" in driver_input.additional_header:
+            return True
+        return driver_input.test_name.startswith(self.HTTP_DIR) and not driver_input.test_name.startswith(self.HTTP_LOCAL_DIR)
 
     def is_webkit_specific_web_platform_test(self, test_name):
         return test_name.startswith(self.WEBKIT_SPECIFIC_WEB_PLATFORM_TEST_SUBDIR)
@@ -347,7 +362,21 @@ class Driver(object):
         return test_name.startswith(self.web_platform_test_server_doc_root)
 
     def wpt_test_path_to_uri(self, path):
-        return self.web_platform_test_server_base_https_url + path if ".https." in path else self.web_platform_test_server_base_http_url + path
+        if ".h2." in path:
+            return self.web_platform_test_server_base_h2_url + path
+        elif ".https." in path or ".serviceworker." in path or ".serviceworker-module." in path:
+            return self.web_platform_test_server_base_https_url + path
+        else:
+            return self.web_platform_test_server_base_http_url + path
+
+    def wpt_webkit_test_path_to_uri(self, path):
+        # Our custom test cases currently hardcode localhost/127.0.0.1 for all tests.
+        if ".h2." in path:
+            return self.web_platform_test_server_localhost_base_h2_url + path
+        elif ".https." in path:
+            return self.web_platform_test_server_localhost_base_https_url + path
+        else:
+            return self.web_platform_test_server_localhost_base_http_url + path
 
     def http_test_path_to_uri(self, path):
         path = path.replace(os.sep, '/')
@@ -359,17 +388,19 @@ class Driver(object):
     def http_base_url(self, secure=None):
         return "%s://127.0.0.1:%d/" % (('https', 8443) if secure else ('http', 8000))
 
-    def test_to_uri(self, test_name):
+    def test_to_uri(self, driver_input):
         """Convert a test name to a URI."""
+        test_name = driver_input.test_name
         if self.is_web_platform_test(test_name):
             return self.wpt_test_path_to_uri(test_name[len(self.web_platform_test_server_doc_root):])
         if self.is_webkit_specific_web_platform_test(test_name):
-            return self.wpt_test_path_to_uri(self.WEBKIT_WEB_PLATFORM_TEST_SERVER_ROUTE + test_name[len(self.WEBKIT_SPECIFIC_WEB_PLATFORM_TEST_SUBDIR):])
+            return self.wpt_webkit_test_path_to_uri(self.WEBKIT_WEB_PLATFORM_TEST_SERVER_ROUTE + test_name[len(self.WEBKIT_SPECIFIC_WEB_PLATFORM_TEST_SUBDIR):])
 
-        if not self.is_http_test(test_name):
+        if not self.is_http_test(driver_input):
             return path.abspath_to_uri(self._port.host.platform, self._port.abspath_for_test(test_name))
-
-        return self.http_test_path_to_uri(test_name[len(self.HTTP_DIR):])
+        if self.HTTP_DIR in test_name:
+            return self.http_test_path_to_uri(test_name[len(self.HTTP_DIR):])
+        return self.http_test_path_to_uri("root/" + test_name)
 
     def uri_to_test(self, uri):
         """Return the base layout test name for a given URI.
@@ -393,6 +424,9 @@ class Driver(object):
         if uri.startswith(self.web_platform_test_server_base_https_url):
             return uri.replace(self.web_platform_test_server_base_https_url, self.web_platform_test_server_doc_root)
         if uri.startswith("http://"):
+            base_url = self.http_base_url(secure=False)
+            if base_url + "root/" in uri:
+                return uri.replace(base_url + "root/", "")
             return uri.replace(self.http_base_url(secure=False), self.HTTP_DIR)
         if uri.startswith("https://"):
             return uri.replace(self.http_base_url(secure=True), self.HTTP_DIR)
@@ -435,6 +469,9 @@ class Driver(object):
         self._append_environment_variable_path(environment, '__XPC_DYLD_LIBRARY_PATH', build_root_path)
         self._append_environment_variable_path(environment, 'DYLD_FRAMEWORK_PATH', build_root_path)
         self._append_environment_variable_path(environment, '__XPC_DYLD_FRAMEWORK_PATH', build_root_path)
+
+        self._port.port_adjust_environment_for_test_driver(environment)
+
         # Use an isolated temp directory that can be deleted after testing (especially important on Mac, as
         # CoreMedia disk cache is in the temp directory).
         environment['TMPDIR'] = str(self._driver_tempdir)
@@ -529,6 +566,10 @@ class Driver(object):
             cmd.append('--accelerated-drawing')
         if self._port.get_option('remote_layer_tree'):
             cmd.append('--remote-layer-tree')
+        if self._port.get_option('no_remote_layer_tree'):
+            cmd.append('--no-remote-layer-tree')
+        if self._port.get_option('wpe_platform_api'):
+            cmd.append('--wpe-platform-api')
         if self._port.get_option('world_leaks'):
             cmd.append('--world-leaks')
         if self._port.get_option('threaded'):
@@ -549,6 +590,10 @@ class Driver(object):
         for feature in self._port.internal_feature():
             cmd.append('--internal-feature')
             cmd.append(feature)
+
+        for alias in self._port.localhost_aliases():
+            cmd.append('--localhost-alias')
+            cmd.append(alias)
 
         if not self._port.get_option('enable_all_experimental_features'):
             cmd.append('--no-enable-all-experimental-features')
@@ -614,8 +659,8 @@ class Driver(object):
         # FIXME: performance tests pass in full URLs instead of test names.
         if driver_input.test_name.startswith('http://') or driver_input.test_name.startswith('https://')  or driver_input.test_name == ('about:blank'):
             command = driver_input.test_name
-        elif self.is_web_platform_test(driver_input.test_name) or self.is_webkit_specific_web_platform_test(driver_input.test_name) or self.is_http_test(driver_input.test_name):
-            command = self.test_to_uri(driver_input.test_name)
+        elif self.is_web_platform_test(driver_input.test_name) or self.is_webkit_specific_web_platform_test(driver_input.test_name) or self.is_http_test(driver_input):
+            command = self.test_to_uri(driver_input)
             command += "'--absolutePath'"
             absPath = self._port.abspath_for_test(driver_input.test_name, self._target_host)
             if sys.platform == 'cygwin':
@@ -631,12 +676,21 @@ class Driver(object):
         # ' is the separator between arguments.
         if self._port.supports_per_test_timeout():
             command += "'--timeout'%s" % driver_input.timeout
-        if driver_input.should_run_pixel_test:
-            command += "'--pixel-test"
         if driver_input.should_dump_jsconsolelog_in_stderr:
             command += "'--dump-jsconsolelog-in-stderr"
-        if driver_input.image_hash:
-            command += "'" + driver_input.image_hash
+        if driver_input.self_comparison_header:
+            command += "'--self-compare-with-header'%s" % driver_input.self_comparison_header
+        if driver_input.additional_header:
+            command += "'--additional-header'%s" % driver_input.additional_header
+        if driver_input.force_dump_pixels:
+            command += "'--force-dump-pixels"
+
+        # --pixel-test must be the last argument, because the hash is optional,
+        # and any argument put in its place will be incorrectly consumed as the hash.
+        if driver_input.should_run_pixel_test:
+            command += "'--pixel-test"
+            if driver_input.image_hash:
+                command += "'" + driver_input.image_hash
         return command + "\n"
 
     def _read_first_block(self, deadline, test_name):
@@ -732,7 +786,7 @@ class Driver(object):
                     break
                 elif self._check_for_address_sanitizer_violation(err_line):
                     asan_violation_detected = True
-                    self._crash_report_from_driver = b''
+                    self._crash_report_from_driver = ''
                     # ASan report starts with a nondescript line, we only detect the second line.
                     end_of_previous_error_line = self.error_from_test.rfind('\n', 0, -1)
                     if end_of_previous_error_line > 0:
@@ -806,8 +860,8 @@ class DriverProxy(object):
         return self._driver._target_host
 
     # FIXME: this should be a @classmethod (or implemented on Port instead).
-    def is_http_test(self, test_name):
-        return self._driver.is_http_test(test_name)
+    def is_http_test(self, driver_input):
+        return self._driver.is_http_test(driver_input)
 
     def is_web_platform_test(self, test_name):
         return self._driver.is_web_platform_test(test_name)
@@ -816,8 +870,8 @@ class DriverProxy(object):
         return self._driver.is_webkit_specific_web_platform_test(test_name)
 
     # FIXME: this should be a @classmethod (or implemented on Port instead).
-    def test_to_uri(self, test_name):
-        return self._driver.test_to_uri(test_name)
+    def test_to_uri(self, driver_input):
+        return self._driver.test_to_uri(driver_input)
 
     # FIXME: this should be a @classmethod (or implemented on Port instead).
     def uri_to_test(self, uri):

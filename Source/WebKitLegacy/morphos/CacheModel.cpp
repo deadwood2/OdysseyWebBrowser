@@ -24,6 +24,7 @@
  */
 
 //#include "config.h"
+#include "WebKit.h"
 #include "CacheModel.h"
 
 #include <algorithm>

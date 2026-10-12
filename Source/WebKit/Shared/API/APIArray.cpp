@@ -40,15 +40,26 @@ Ref<Array> Array::create(Vector<RefPtr<Object>>&& elements)
     return adoptRef(*new Array(WTFMove(elements)));
 }
 
+Ref<Array> Array::createWithCapacity(size_t capacity)
+{
+    auto array = create(Vector<RefPtr<Object>>());
+    array->m_elements.reserveInitialCapacity(capacity);
+    return array;
+}
+
 Ref<Array> Array::createStringArray(const Vector<WTF::String>& strings)
 {
-    Vector<RefPtr<Object>> elements;
-    elements.reserveInitialCapacity(strings.size());
-
-    for (const auto& string : strings)
-        elements.uncheckedAppend(API::String::create(string));
-
+    auto elements = strings.map([](auto& string) -> RefPtr<Object> {
+        return API::String::create(string);
+    });
     return create(WTFMove(elements));
+}
+
+Ref<Array> Array::createStringArray(const std::span<const WTF::String> strings)
+{
+    return create(WTF::map(strings, [] (auto string) -> RefPtr<Object> {
+        return API::String::create(string);
+    }));
 }
 
 Vector<WTF::String> Array::toStringVector()
@@ -61,7 +72,7 @@ Vector<WTF::String> Array::toStringVector()
 
     patternsVector.reserveInitialCapacity(size);
     for (auto entry : elementsOfType<API::String>())
-        patternsVector.uncheckedAppend(entry->string());
+        patternsVector.append(entry->string());
     return patternsVector;
 }
 
@@ -71,15 +82,8 @@ Ref<API::Array> Array::copy()
     if (!size)
         return Array::create();
 
-    Vector<RefPtr<Object>> elements;
-    elements.reserveInitialCapacity(size);
-    for (const auto& entry : this->elements())
-        elements.uncheckedAppend(entry);
+    Vector<RefPtr<Object>> elements = this->elements();
     return Array::create(WTFMove(elements));
-}
-
-Array::~Array()
-{
 }
 
 } // namespace API

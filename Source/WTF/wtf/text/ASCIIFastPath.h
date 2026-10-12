@@ -60,16 +60,29 @@ template<> struct NonASCIIMask<4, UChar> {
 template<> struct NonASCIIMask<4, LChar> {
     static inline uint32_t value() { return 0x80808080U; }
 };
+template<> struct NonASCIIMask<4, char8_t> {
+    static inline uint32_t value() { return 0x80808080U; }
+};
 template<> struct NonASCIIMask<8, UChar> {
     static inline uint64_t value() { return 0xFF80FF80FF80FF80ULL; }
 };
 template<> struct NonASCIIMask<8, LChar> {
     static inline uint64_t value() { return 0x8080808080808080ULL; }
 };
+template<> struct NonASCIIMask<8, char8_t> {
+    static inline uint64_t value() { return 0x8080808080808080ULL; }
+};
 
+template<size_t size, typename CharacterType> struct NonLatin1Mask;
+template<> struct NonLatin1Mask<4, UChar> {
+    static inline uint32_t value() { return 0xFF00FF00U; }
+};
+template<> struct NonLatin1Mask<8, UChar> {
+    static inline uint64_t value() { return 0xFF00FF00FF00FF00ULL; }
+};
 
 template<typename CharacterType>
-inline bool isAllASCII(MachineWord word)
+inline bool containsOnlyASCII(MachineWord word)
 {
     return !(word & NonASCIIMask<sizeof(MachineWord), CharacterType>::value());
 }
@@ -77,10 +90,11 @@ inline bool isAllASCII(MachineWord word)
 // Note: This function assume the input is likely all ASCII, and
 // does not leave early if it is not the case.
 template<typename CharacterType>
-inline bool charactersAreAllASCII(const CharacterType* characters, size_t length)
+inline bool charactersAreAllASCII(std::span<const CharacterType> span)
 {
     MachineWord allCharBits = 0;
-    const CharacterType* end = characters + length;
+    auto* characters = span.data();
+    auto* end = characters + span.size();
 
     // Prologue: align the input.
     while (!isAlignedToMachineWord(characters) && characters != end) {
@@ -106,89 +120,41 @@ inline bool charactersAreAllASCII(const CharacterType* characters, size_t length
     return !(allCharBits & nonASCIIBitMask);
 }
 
-inline void copyLCharsFromUCharSource(LChar* destination, const UChar* source, size_t length)
+// Note: This function assume the input is likely all Latin1, and
+// does not leave early if it is not the case.
+template<typename CharacterType>
+inline bool charactersAreAllLatin1(std::span<const CharacterType> span)
 {
-#if CPU(X86_SSE2)
-    const uintptr_t memoryAccessSize = 16; // Memory accesses on 16 byte (128 bit) alignment
-    const uintptr_t memoryAccessMask = memoryAccessSize - 1;
+    if constexpr (sizeof(CharacterType) == 1)
+        return true;
+    else {
+        MachineWord allCharBits = 0;
+        auto* characters = span.data();
+        auto* end = characters + span.size();
 
-    size_t i = 0;
-    for (;i < length && !isAlignedTo<memoryAccessMask>(&source[i]); ++i) {
-        ASSERT(!(source[i] & 0xff00));
-        destination[i] = static_cast<LChar>(source[i]);
-    }
-
-    const uintptr_t sourceLoadSize = 32; // Process 32 bytes (16 UChars) each iteration
-    const size_t ucharsPerLoop = sourceLoadSize / sizeof(UChar);
-    if (length > ucharsPerLoop) {
-        const size_t endLength = length - ucharsPerLoop + 1;
-        for (; i < endLength; i += ucharsPerLoop) {
-#ifndef NDEBUG
-            for (unsigned checkIndex = 0; checkIndex < ucharsPerLoop; ++checkIndex)
-                ASSERT(!(source[i+checkIndex] & 0xff00));
-#endif
-            __m128i first8UChars = _mm_load_si128(reinterpret_cast<const __m128i*>(&source[i]));
-            __m128i second8UChars = _mm_load_si128(reinterpret_cast<const __m128i*>(&source[i+8]));
-            __m128i packedChars = _mm_packus_epi16(first8UChars, second8UChars);
-            _mm_storeu_si128(reinterpret_cast<__m128i*>(&destination[i]), packedChars);
+        // Prologue: align the input.
+        while (!isAlignedToMachineWord(characters) && characters != end) {
+            allCharBits |= *characters;
+            ++characters;
         }
+
+        // Compare the values of CPU word size.
+        const CharacterType* wordEnd = alignToMachineWord(end);
+        const size_t loopIncrement = sizeof(MachineWord) / sizeof(CharacterType);
+        while (characters < wordEnd) {
+            allCharBits |= *(reinterpret_cast_ptr<const MachineWord*>(characters));
+            characters += loopIncrement;
+        }
+
+        // Process the remaining bytes.
+        while (characters != end) {
+            allCharBits |= *characters;
+            ++characters;
+        }
+
+        MachineWord nonLatin1BitMask = NonLatin1Mask<sizeof(MachineWord), CharacterType>::value();
+        return !(allCharBits & nonLatin1BitMask);
     }
-
-    for (; i < length; ++i) {
-        ASSERT(!(source[i] & 0xff00));
-        destination[i] = static_cast<LChar>(source[i]);
-    }
-#elif COMPILER(GCC_COMPATIBLE) && CPU(ARM64) && !defined(__ILP32__) && defined(NDEBUG)
-    const LChar* const end = destination + length;
-    const uintptr_t memoryAccessSize = 16;
-
-    if (length >= memoryAccessSize) {
-        const uintptr_t memoryAccessMask = memoryAccessSize - 1;
-
-        // Vector interleaved unpack, we only store the lower 8 bits.
-        const uintptr_t lengthLeft = end - destination;
-        const LChar* const simdEnd = destination + (lengthLeft & ~memoryAccessMask);
-        do {
-            asm("ld2   { v0.16B, v1.16B }, [%[SOURCE]], #32\n\t"
-                "st1   { v0.16B }, [%[DESTINATION]], #16\n\t"
-                : [SOURCE]"+r" (source), [DESTINATION]"+r" (destination)
-                :
-                : "memory", "v0", "v1");
-        } while (destination != simdEnd);
-    }
-
-    while (destination != end)
-        *destination++ = static_cast<LChar>(*source++);
-#elif COMPILER(GCC_COMPATIBLE) && CPU(ARM_NEON) && !(CPU(BIG_ENDIAN) || CPU(MIDDLE_ENDIAN)) && defined(NDEBUG)
-    const LChar* const end = destination + length;
-    const uintptr_t memoryAccessSize = 8;
-
-    if (length >= (2 * memoryAccessSize) - 1) {
-        // Prefix: align dst on 64 bits.
-        const uintptr_t memoryAccessMask = memoryAccessSize - 1;
-        while (!isAlignedTo<memoryAccessMask>(destination))
-            *destination++ = static_cast<LChar>(*source++);
-
-        // Vector interleaved unpack, we only store the lower 8 bits.
-        const uintptr_t lengthLeft = end - destination;
-        const LChar* const simdEnd = end - (lengthLeft % memoryAccessSize);
-        do {
-            asm("vld2.8   { d0-d1 }, [%[SOURCE]] !\n\t"
-                "vst1.8   { d0 }, [%[DESTINATION],:64] !\n\t"
-                : [SOURCE]"+r" (source), [DESTINATION]"+r" (destination)
-                :
-                : "memory", "d0", "d1");
-        } while (destination != simdEnd);
-    }
-
-    while (destination != end)
-        *destination++ = static_cast<LChar>(*source++);
-#else
-    for (size_t i = 0; i < length; ++i) {
-        ASSERT(!(source[i] & 0xff00));
-        destination[i] = static_cast<LChar>(source[i]);
-    }
-#endif
 }
 
 } // namespace WTF

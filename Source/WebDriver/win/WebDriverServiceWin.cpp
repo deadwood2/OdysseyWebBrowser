@@ -38,17 +38,17 @@ void WebDriverService::platformInit()
 Capabilities WebDriverService::platformCapabilities()
 {
     Capabilities capabilities;
-    capabilities.platformName = String("win");
+    capabilities.platformName = String("win"_s);
     capabilities.setWindowRect = true;
     return capabilities;
 }
 
-bool WebDriverService::platformCompareBrowserVersions(const String& requiredVersion, const String& proposedVersion)
+bool WebDriverService::platformCompareBrowserVersions(const String&, const String&)
 {
     return true;
 }
 
-bool WebDriverService::platformValidateCapability(const String& name, const Ref<JSON::Value>& value) const
+bool WebDriverService::platformValidateCapability(const String&, const Ref<JSON::Value>&) const
 {
     return true;
 }

@@ -33,11 +33,12 @@ namespace WebCore {
 
 class WebGLVertexArrayObjectOES final : public WebGLVertexArrayObjectBase {
 public:
-    static Ref<WebGLVertexArrayObjectOES> create(WebGLRenderingContextBase&, Type);
+    static Ref<WebGLVertexArrayObjectOES> createDefault(WebGLRenderingContextBase&);
+    static RefPtr<WebGLVertexArrayObjectOES> createUser(WebGLRenderingContextBase&);
     virtual ~WebGLVertexArrayObjectOES();
 private:
-    WebGLVertexArrayObjectOES(WebGLRenderingContextBase&, Type);
-    void deleteObjectImpl(const WTF::AbstractLocker&, GraphicsContextGL*, PlatformGLObject) final;
+    WebGLVertexArrayObjectOES(WebGLRenderingContextBase&, PlatformGLObject, Type);
+    void deleteObjectImpl(const AbstractLocker&, GraphicsContextGL*, PlatformGLObject) final;
 };
 
 } // namespace WebCore

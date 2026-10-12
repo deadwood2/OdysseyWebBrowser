@@ -32,12 +32,13 @@
 #import <wtf/RobinHoodHashMap.h>
 #import <wtf/RobinHoodHashSet.h>
 #import <wtf/cocoa/VectorCocoa.h>
+#import <wtf/text/MakeString.h>
 
 namespace WebCore {
 
 static MemoryCompactLookupOnlyRobinHoodHashMap<String, MemoryCompactLookupOnlyRobinHoodHashSet<String>>& extensionsForMIMETypeMap()
 {
-    static auto extensionsForMIMETypeMap = makeNeverDestroyed([] {
+    static NeverDestroyed extensionsForMIMETypeMap = [] {
         MemoryCompactLookupOnlyRobinHoodHashMap<String, MemoryCompactLookupOnlyRobinHoodHashSet<String>> map;
 
         auto addExtension = [&](const String& type, const String& extension) {
@@ -58,9 +59,9 @@ static MemoryCompactLookupOnlyRobinHoodHashMap<String, MemoryCompactLookupOnlyRo
             }
         };
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         auto allUTIs = adoptCF(_UTCopyDeclaredTypeIdentifiers());
 
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         for (NSString *uti in (__bridge NSArray<NSString *> *)allUTIs.get()) {
             auto type = adoptCF(UTTypeCopyPreferredTagWithClass((__bridge CFStringRef)uti, kUTTagClassMIMEType));
             if (!type)
@@ -73,9 +74,56 @@ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 ALLOW_DEPRECATED_DECLARATIONS_END
 
         return map;
-    }());
+    }();
 
     return extensionsForMIMETypeMap;
+}
+
+// Specify MIME type <-> extension mappings for type identifiers recognized by the system that are missing MIME type values.
+static const HashMap<String, String, ASCIICaseInsensitiveHash>& additionalMimeTypesMap()
+{
+    static NeverDestroyed<HashMap<String, String, ASCIICaseInsensitiveHash>> mimeTypesMap = [] {
+        HashMap<String, String, ASCIICaseInsensitiveHash> map;
+        static constexpr TypeExtensionPair additionalTypes[] = {
+            // FIXME: Remove this list once rdar://112044000 (Many camera RAW image type identifiers are missing MIME types) is resolved.
+            { "image/x-canon-cr2"_s, "cr2"_s },
+            { "image/x-canon-cr3"_s, "cr3"_s },
+            { "image/x-epson-erf"_s, "erf"_s },
+            { "image/x-fuji-raf"_s, "raf"_s },
+            { "image/x-hasselblad-3fr"_s, "3fr"_s },
+            { "image/x-hasselblad-fff"_s, "fff"_s },
+            { "image/x-leaf-mos"_s, "mos"_s },
+            { "image/x-leica-rwl"_s, "rwl"_s },
+            { "image/x-minolta-mrw"_s, "mrw"_s },
+            { "image/x-nikon-nef"_s, "nef"_s },
+            { "image/x-olympus-orf"_s, "orf"_s },
+            { "image/x-panasonic-raw"_s, "raw"_s },
+            { "image/x-panasonic-rw2"_s, "rw2"_s },
+            { "image/x-pentax-pef"_s, "pef"_s },
+            { "image/x-phaseone-iiq"_s, "iiq"_s },
+            { "image/x-samsung-srw"_s, "srw"_s },
+            { "image/x-sony-arw"_s, "arw"_s },
+            { "image/x-sony-srf"_s, "srf"_s },
+        };
+        for (auto& [type, extension] : additionalTypes)
+            map.add(extension, type);
+        return map;
+    }();
+    return mimeTypesMap;
+}
+
+static const HashMap<String, Vector<String>, ASCIICaseInsensitiveHash>& additionalExtensionsMap()
+{
+    static NeverDestroyed<HashMap<String, Vector<String>, ASCIICaseInsensitiveHash>> extensionsMap = [] {
+        HashMap<String, Vector<String>, ASCIICaseInsensitiveHash> map;
+        for (auto& [extension, type] : additionalMimeTypesMap()) {
+            map.ensure(type, [] {
+                return Vector<String>();
+            }).iterator->value.append(extension);
+        }
+        return map;
+    }();
+    return extensionsMap;
 }
 
 static Vector<String> extensionsForWildcardMIMEType(const String& type)
@@ -89,36 +137,69 @@ static Vector<String> extensionsForWildcardMIMEType(const String& type)
     return extensions;
 }
 
-String MIMETypeRegistry::mimeTypeForExtension(const String& extension)
+String MIMETypeRegistry::mimeTypeForExtension(StringView extension)
 {
-    return [[NSURLFileTypeMappings sharedMappings] MIMETypeForExtension:(NSString *)extension];
+    auto string = extension.createNSStringWithoutCopying();
+
+    NSString *mimeType = [[NSURLFileTypeMappings sharedMappings] MIMETypeForExtension:string.get()];
+    if (mimeType.length)
+        return mimeType;
+
+    auto mapEntry = additionalMimeTypesMap().find<ASCIICaseInsensitiveStringViewHashTranslator>(extension);
+    if (mapEntry != additionalMimeTypesMap().end())
+        return mapEntry->value;
+
+    return nullString();
 }
 
 Vector<String> MIMETypeRegistry::extensionsForMIMEType(const String& type)
 {
+    if (type.isNull())
+        return { };
+
     if (type.endsWith('*'))
         return extensionsForWildcardMIMEType(type);
-    return makeVector<String>([[NSURLFileTypeMappings sharedMappings] extensionsForMIMEType:type]);
+
+    NSArray *extensions = [[NSURLFileTypeMappings sharedMappings] extensionsForMIMEType:type];
+    if (extensions.count)
+        return makeVector<String>(extensions);
+
+    auto mapEntry = additionalExtensionsMap().find(type);
+    if (mapEntry != additionalExtensionsMap().end())
+        return mapEntry->value;
+
+    return { };
 }
 
 String MIMETypeRegistry::preferredExtensionForMIMEType(const String& type)
 {
-    // System Previews accept some non-standard MIMETypes, so we can't rely on
+    if (type.isNull())
+        return nullString();
+
+    // We accept some non-standard USD MIMETypes, so we can't rely on
     // the file type mappings.
-    if (isSystemPreviewMIMEType(type))
+    if (isUSDMIMEType(type))
         return "usdz"_s;
 
-    return [[NSURLFileTypeMappings sharedMappings] preferredExtensionForMIMEType:(NSString *)type];
+    NSString *preferredExtension = [[NSURLFileTypeMappings sharedMappings] preferredExtensionForMIMEType:(NSString *)type];
+    if (preferredExtension.length)
+        return preferredExtension;
+
+    auto mapEntry = additionalExtensionsMap().find(type);
+    if (mapEntry != additionalExtensionsMap().end())
+        return mapEntry->value.first();
+
+    return nullString();
 }
 
 bool MIMETypeRegistry::isApplicationPluginMIMEType(const String& MIMEType)
 {
-#if ENABLE(PDFKIT_PLUGIN)
+#if ENABLE(PDF_PLUGIN)
     // FIXME: This should test if we're actually going to use PDFPlugin,
     // but we only know that in WebKit2 at the moment. This is not a problem
     // in practice because if we don't have PDFPlugin and we go to instantiate the
     // plugin, there won't exist an application plugin supporting these MIME types.
-    if (isPDFOrPostScriptMIMEType(MIMEType))
+    if (isPDFMIMEType(MIMEType))
         return true;
 #else
     UNUSED_PARAM(MIMEType);

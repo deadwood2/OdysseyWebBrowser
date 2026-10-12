@@ -28,24 +28,25 @@
 #if ENABLE(WEBGL)
 #include "EXTBlendMinMax.h"
 
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(EXTBlendMinMax);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(EXTBlendMinMax);
 
 EXTBlendMinMax::EXTBlendMinMax(WebGLRenderingContextBase& context)
-    : WebGLExtension(context)
+    : WebGLExtension(context, WebGLExtensionName::EXTBlendMinMax)
 {
+    context.protectedGraphicsContextGL()->ensureExtensionEnabled("GL_EXT_blend_minmax"_s);
 }
 
 EXTBlendMinMax::~EXTBlendMinMax() = default;
 
-WebGLExtension::ExtensionName EXTBlendMinMax::getName() const
+bool EXTBlendMinMax::supported(GraphicsContextGL& context)
 {
-    return EXTBlendMinMaxName;
+    return context.supportsExtension("GL_EXT_blend_minmax"_s);
 }
-    
+
 } // namespace WebCore
 
 #endif // ENABLE(WEBGL)

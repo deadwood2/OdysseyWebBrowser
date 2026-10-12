@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006, 2007, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006 Rob Buis <buis@kde.org>
- * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -28,7 +28,8 @@
 namespace WebCore {
 
 class SVGMarkerElement final : public SVGElement, public SVGFitToViewBox {
-    WTF_MAKE_ISO_ALLOCATED(SVGMarkerElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGMarkerElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGMarkerElement);
 public:
     // Forward declare enumerations in the W3C naming scheme, for IDL generation.
     enum {
@@ -63,8 +64,8 @@ public:
     SVGAnimatedAngle& orientAngleAnimated() { return m_orientAngle; }
     Ref<SVGAnimatedEnumeration> orientTypeAnimated() { return m_orientType.copyRef(); }
 
-    String orient() const;
-    void setOrient(const String&);
+    AtomString orient() const;
+    void setOrient(const AtomString&);
 
     void setOrientToAuto();
     void setOrientToAngle(const SVGAngle&);
@@ -73,9 +74,8 @@ private:
     SVGMarkerElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGMarkerElement, SVGElement, SVGFitToViewBox>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomString&) override;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) override;
     void svgAttributeChanged(const QualifiedName&) override;
     void childrenChanged(const ChildChange&) override;
 
@@ -86,11 +86,14 @@ private:
 
     bool selfHasRelativeLengths() const override;
 
-    PropertyRegistry m_propertyRegistry { *this };
+    bool supportsFocus() const final { return false; }
+
+    void invalidateMarkerResource();
+
     Ref<SVGAnimatedLength> m_refX { SVGAnimatedLength::create(this, SVGLengthMode::Width) };
     Ref<SVGAnimatedLength> m_refY { SVGAnimatedLength::create(this, SVGLengthMode::Height) };
-    Ref<SVGAnimatedLength> m_markerWidth { SVGAnimatedLength::create(this, SVGLengthMode::Width, "3") };
-    Ref<SVGAnimatedLength> m_markerHeight { SVGAnimatedLength::create(this, SVGLengthMode::Height, "3") };
+    Ref<SVGAnimatedLength> m_markerWidth { SVGAnimatedLength::create(this, SVGLengthMode::Width, "3"_s) };
+    Ref<SVGAnimatedLength> m_markerHeight { SVGAnimatedLength::create(this, SVGLengthMode::Height, "3"_s) };
     Ref<SVGAnimatedEnumeration> m_markerUnits { SVGAnimatedEnumeration::create(this, SVGMarkerUnitsStrokeWidth) };
     Ref<SVGAnimatedAngle> m_orientAngle { SVGAnimatedAngle::create(this) };
     Ref<SVGAnimatedOrientType> m_orientType { SVGAnimatedOrientType::create(this, SVGMarkerOrientAngle) };

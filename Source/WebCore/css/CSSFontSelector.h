@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2011 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -41,22 +41,27 @@
 
 namespace WebCore {
 
-class CSSFontFaceRule;
 class CSSPrimitiveValue;
 class CSSSegmentedFontFace;
 class CSSValueList;
 class CachedFont;
 class ScriptExecutionContext;
 class StyleRuleFontFace;
+class StyleRuleFontFeatureValues;
+class StyleRuleFontPaletteValues;
 
-class CSSFontSelector final : public FontSelector, public CSSFontFace::Client, public CanMakeWeakPtr<CSSFontSelector>, public ActiveDOMObject {
+class CSSFontSelector final : public FontSelector, public CSSFontFaceClient, public ActiveDOMObject {
 public:
-    static Ref<CSSFontSelector> create(ScriptExecutionContext& context)
-    {
-        return adoptRef(*new CSSFontSelector(context));
-    }
+    using FontSelector::weakPtrFactory;
+    using FontSelector::WeakValueType;
+    using FontSelector::WeakPtrImplType;
+
+    using FontSelector::ref;
+    using FontSelector::deref;
+
+    static Ref<CSSFontSelector> create(ScriptExecutionContext&);
     virtual ~CSSFontSelector();
-    
+
     unsigned version() const final { return m_version; }
     unsigned uniqueId() const final { return m_uniqueId; }
 
@@ -70,8 +75,9 @@ public:
     void buildCompleted();
 
     void addFontFaceRule(StyleRuleFontFace&, bool isInitiatingElementInUserAgentShadowTree);
+    void addFontPaletteValuesRule(const StyleRuleFontPaletteValues&);
+    void addFontFeatureValuesRule(const StyleRuleFontFeatureValues&);
 
-    FontCache& fontCache() const final { return m_fontCache.get(); }
     void fontCacheInvalidated() final;
 
     bool isEmpty() const;
@@ -83,15 +89,18 @@ public:
 
     FontFaceSet* fontFaceSetIfExists();
     FontFaceSet& fontFaceSet();
+    CSSFontFaceSet& cssFontFaceSet() { return m_cssFontFaceSet; }
 
     void incrementIsComputingRootStyleFont() { ++m_computingRootStyleFontCount; }
     void decrementIsComputingRootStyleFont() { --m_computingRootStyleFontCount; }
 
     void loadPendingFonts();
 
-    // CSSFontFace::Client needs to be able to be held in a RefPtr.
-    void ref() final { FontSelector::ref(); }
-    void deref() final { FontSelector::deref(); }
+    void updateStyleIfNeeded();
+
+    // CSSFontFaceClient needs to be able to be held in a RefPtr.
+    void ref() const final { FontSelector::ref(); }
+    void deref() const final { FontSelector::deref(); }
 
 private:
     explicit CSSFontSelector(ScriptExecutionContext&);
@@ -102,14 +111,14 @@ private:
 
     std::optional<AtomString> resolveGenericFamily(const FontDescription&, const AtomString& family);
 
-    // CSSFontFace::Client
+    const FontPaletteValues& lookupFontPaletteValues(const AtomString& familyName, const FontDescription&);
+    RefPtr<FontFeatureValues> lookupFontFeatureValues(const AtomString& familyName);
+
+    // CSSFontFaceClient
     void fontLoaded(CSSFontFace&) final;
-    void fontStyleUpdateNeeded(CSSFontFace&) final;
+    void updateStyleIfNeeded(CSSFontFace&) final;
 
     void fontModified();
-
-    // ActiveDOMObject
-    const char* activeDOMObjectName() const final { return "CSSFontSelector"_s; }
 
     struct PendingFontFaceRule {
         StyleRuleFontFace& styleRuleFontFace;
@@ -118,10 +127,23 @@ private:
     Vector<PendingFontFaceRule> m_stagingArea;
 
     WeakPtr<ScriptExecutionContext> m_context;
-    Ref<FontCache> m_fontCache;
     RefPtr<FontFaceSet> m_fontFaceSet;
     Ref<CSSFontFaceSet> m_cssFontFaceSet;
     HashSet<FontSelectorClient*> m_clients;
+
+    struct PaletteMapHash : DefaultHash<std::pair<AtomString, AtomString>> {
+        static unsigned hash(const std::pair<AtomString, AtomString>& key)
+        {
+            return pairIntHash(ASCIICaseInsensitiveHash::hash(key.first), DefaultHash<AtomString>::hash(key.second));
+        }
+
+        static bool equal(const std::pair<AtomString, AtomString>& a, const std::pair<AtomString, AtomString>& b)
+        {
+            return ASCIICaseInsensitiveHash::equal(a.first, b.first) && DefaultHash<AtomString>::equal(a.second, b.second);
+        }
+    };
+    HashMap<std::pair<AtomString, AtomString>, FontPaletteValues, PaletteMapHash> m_paletteMap;
+    HashMap<String, Ref<FontFeatureValues>> m_featureValues;
 
     HashSet<RefPtr<CSSFontFace>> m_cssConnectionsPossiblyToRemove;
     HashSet<RefPtr<StyleRuleFontFace>> m_cssConnectionsEncounteredDuringBuild;

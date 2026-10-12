@@ -47,7 +47,6 @@ WebContextMenuClient::WebContextMenuClient(WebPage* webView)
 
 void WebContextMenuClient::contextMenuDestroyed()
 {
-    delete this;
 }
 
 void WebContextMenuClient::downloadURL(const URL& url)
@@ -55,7 +54,7 @@ void WebContextMenuClient::downloadURL(const URL& url)
 	m_webPage->topLevelFrame().startDownload(url);
 }
 
-void WebContextMenuClient::searchWithGoogle(const Frame* )
+void WebContextMenuClient::searchWithGoogle(const LocalFrame* )
 {
 #if 0
     String searchString = frame->editor().selectedText();
@@ -72,7 +71,7 @@ void WebContextMenuClient::searchWithGoogle(const Frame* )
 #endif
 }
 
-void WebContextMenuClient::lookUpInDictionary(Frame*)
+void WebContextMenuClient::lookUpInDictionary(LocalFrame*)
 {
     notImplemented();
 }
@@ -87,7 +86,7 @@ void WebContextMenuClient::stopSpeaking()
     notImplemented();
 }
 
-bool WebContextMenuClient::isSpeaking()
+bool WebContextMenuClient::isSpeaking() const
 {
     notImplemented();
     return false;

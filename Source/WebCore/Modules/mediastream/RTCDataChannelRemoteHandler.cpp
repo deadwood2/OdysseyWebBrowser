@@ -27,8 +27,10 @@
 
 #if ENABLE(WEB_RTC)
 
+#include "ProcessQualified.h"
 #include "RTCDataChannelHandlerClient.h"
 #include "RTCDataChannelRemoteHandlerConnection.h"
+#include "ScriptExecutionContextIdentifier.h"
 #include "SharedBuffer.h"
 
 namespace WebCore {
@@ -46,9 +48,7 @@ RTCDataChannelRemoteHandler::RTCDataChannelRemoteHandler(RTCDataChannelIdentifie
 {
 }
 
-RTCDataChannelRemoteHandler::~RTCDataChannelRemoteHandler()
-{
-}
+RTCDataChannelRemoteHandler::~RTCDataChannelRemoteHandler() = default;
 
 void RTCDataChannelRemoteHandler::didChangeReadyState(RTCDataChannelState state)
 {
@@ -60,14 +60,14 @@ void RTCDataChannelRemoteHandler::didReceiveStringData(String&& text)
     m_client->didReceiveStringData(text);
 }
 
-void RTCDataChannelRemoteHandler::didReceiveRawData(const uint8_t* data, size_t size)
+void RTCDataChannelRemoteHandler::didReceiveRawData(std::span<const uint8_t> data)
 {
-    m_client->didReceiveRawData(data, size);
+    m_client->didReceiveRawData(data);
 }
 
-void RTCDataChannelRemoteHandler::didDetectError()
+void RTCDataChannelRemoteHandler::didDetectError(Ref<RTCError>&& error)
 {
-    m_client->didDetectError();
+    m_client->didDetectError(WTFMove(error));
 }
 
 void RTCDataChannelRemoteHandler::bufferedAmountIsDecreasing(size_t amount)
@@ -80,7 +80,7 @@ void RTCDataChannelRemoteHandler::readyToSend()
     m_isReadyToSend = true;
 
     for (auto& message : m_pendingMessages)
-        m_connection->sendData(m_remoteIdentifier, message.isRaw, message.buffer->data(), message.buffer->size());
+        m_connection->sendData(m_remoteIdentifier, message.isRaw, message.buffer->makeContiguous()->span());
     m_pendingMessages.clear();
 
     if (m_isPendingClose)
@@ -97,20 +97,20 @@ void RTCDataChannelRemoteHandler::setClient(RTCDataChannelHandlerClient& client,
 bool RTCDataChannelRemoteHandler::sendStringData(const CString& text)
 {
     if (!m_isReadyToSend) {
-        m_pendingMessages.append(Message { false, SharedBuffer::create(text.data(), text.length()) });
+        m_pendingMessages.append(Message { false, SharedBuffer::create(text.span()) });
         return true;
     }
-    m_connection->sendData(m_remoteIdentifier, false, text.dataAsUInt8Ptr(), text.length());
+    m_connection->sendData(m_remoteIdentifier, false, text.span());
     return true;
 }
 
-bool RTCDataChannelRemoteHandler::sendRawData(const uint8_t* data, size_t size)
+bool RTCDataChannelRemoteHandler::sendRawData(std::span<const uint8_t> data)
 {
     if (!m_isReadyToSend) {
-        m_pendingMessages.append(Message { true, SharedBuffer::create(data, size) });
+        m_pendingMessages.append(Message { true, SharedBuffer::create(data) });
         return true;
     }
-    m_connection->sendData(m_remoteIdentifier, true, data, size);
+    m_connection->sendData(m_remoteIdentifier, true, data);
     return true;
 }
 

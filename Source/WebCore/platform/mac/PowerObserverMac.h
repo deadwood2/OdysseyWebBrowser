@@ -31,20 +31,30 @@
 #import <wtf/Function.h>
 #import <wtf/Noncopyable.h>
 #import <wtf/OSObjectPtr.h>
+#import <wtf/WeakPtr.h>
+
+namespace WebCore {
+class PowerObserver;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::PowerObserver> : std::true_type { };
+}
 
 namespace WebCore {
 
-class PowerObserver {
+class PowerObserver : public CanMakeWeakPtr<PowerObserver, WeakPtrFactoryInitialization::Eager> {
     WTF_MAKE_NONCOPYABLE(PowerObserver); WTF_MAKE_FAST_ALLOCATED;
 
 public:
-    WEBCORE_EXPORT PowerObserver(WTF::Function<void()>&& powerOnHander);
+    WEBCORE_EXPORT PowerObserver(Function<void()>&& powerOnHander);
     WEBCORE_EXPORT ~PowerObserver();
 
 private:
     void didReceiveSystemPowerNotification(io_service_t, uint32_t messageType, void* messageArgument);
 
-    WTF::Function<void()> m_powerOnHander;
+    Function<void()> m_powerOnHander;
     io_connect_t m_powerConnection;
     IONotificationPortRef m_notificationPort;
     io_object_t m_notifierReference;

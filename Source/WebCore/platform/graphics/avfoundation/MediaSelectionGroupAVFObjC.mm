@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,9 +29,9 @@
 #if ENABLE(VIDEO)
 
 #import <AVFoundation/AVAsset.h>
-#import <AVFoundation/AVMediaSelectionGroup.h>
 #import <AVFoundation/AVPlayerItem.h>
 #import <objc/runtime.h>
+#import <pal/spi/cocoa/AVFoundationSPI.h>
 #import <wtf/Language.h>
 #import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/text/WTFString.h>
@@ -82,6 +82,13 @@ int MediaSelectionOptionAVFObjC::index() const
     return [[m_group->avMediaSelectionGroup() options] indexOfObject:m_mediaSelectionOption.get()];
 }
 
+AVAssetTrack* MediaSelectionOptionAVFObjC::assetTrack() const
+{
+    if ([m_mediaSelectionOption respondsToSelector:@selector(track)])
+        return [m_mediaSelectionOption track];
+    return nil;
+}
+
 Ref<MediaSelectionGroupAVFObjC> MediaSelectionGroupAVFObjC::create(AVPlayerItem *item, AVMediaSelectionGroup *group, const Vector<String>& characteristics)
 {
     return adoptRef(*new MediaSelectionGroupAVFObjC(item, group, characteristics));
@@ -120,9 +127,9 @@ void MediaSelectionGroupAVFObjC::updateOptions(const Vector<String>& characteris
 
         m_options.remove((__bridge CFTypeRef)removedAVOption);
     }
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     AVMediaSelectionOption* selectedOption = [m_playerItem selectedMediaOptionInMediaSelectionGroup:m_mediaSelectionGroup.get()];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     for (AVMediaSelectionOption* addedAVOption in addedAVOptions.get()) {
         auto addedOption = MediaSelectionOptionAVFObjC::create(*this, addedAVOption);
         if (addedAVOption == selectedOption)
@@ -173,7 +180,11 @@ void MediaSelectionGroupAVFObjC::setSelectedOption(MediaSelectionOptionAVFObjC* 
 
 void MediaSelectionGroupAVFObjC::selectionTimerFired()
 {
-    [m_playerItem selectMediaOption:(m_selectedOption ? m_selectedOption->avMediaSelectionOption() : nil) inMediaSelectionGroup:m_mediaSelectionGroup.get()];
+    @try {
+        [m_playerItem selectMediaOption:(m_selectedOption ? m_selectedOption->avMediaSelectionOption() : nil) inMediaSelectionGroup:m_mediaSelectionGroup.get()];
+    } @catch(NSException *exception) {
+        WTFReportError(__FILE__, __LINE__, WTF_PRETTY_FUNCTION, "exception thrown from -selectMediaOption:inMediaSelectionGroup: %s", exception.name.UTF8String);
+    }
 }
 
 }

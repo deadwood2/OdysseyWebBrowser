@@ -34,13 +34,22 @@
 #include <wtf/WeakPtr.h>
 
 namespace WebKit {
+class PingLoad;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::PingLoad> : std::true_type { };
+}
+
+namespace WebKit {
 
 class NetworkConnectionToWebProcess;
 class NetworkLoadChecker;
 class NetworkProcess;
 class NetworkSchemeRegistry;
 
-class PingLoad final : public CanMakeWeakPtr<PingLoad>, private NetworkDataTaskClient {
+class PingLoad final : public NetworkDataTaskClient {
 public:
     PingLoad(NetworkProcess&, PAL::SessionID, NetworkResourceLoadParameters&&, CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&&);
     PingLoad(NetworkConnectionToWebProcess&, NetworkResourceLoadParameters&&, CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&&);
@@ -53,13 +62,14 @@ private:
 
     void willPerformHTTPRedirection(WebCore::ResourceResponse&&, WebCore::ResourceRequest&&, RedirectCompletionHandler&&) final;
     void didReceiveChallenge(WebCore::AuthenticationChallenge&&, NegotiatedLegacyTLS, ChallengeCompletionHandler&&) final;
-    void didReceiveResponse(WebCore::ResourceResponse&&, NegotiatedLegacyTLS, ResponseCompletionHandler&&) final;
-    void didReceiveData(Ref<WebCore::SharedBuffer>&&) final;
+    void didReceiveResponse(WebCore::ResourceResponse&&, NegotiatedLegacyTLS, PrivateRelayed, ResponseCompletionHandler&&) final;
+    void didReceiveData(const WebCore::SharedBuffer&) final;
     void didCompleteWithError(const WebCore::ResourceError&, const WebCore::NetworkLoadMetrics&) final;
     void didSendData(uint64_t totalBytesSent, uint64_t totalBytesExpectedToSend) final;
     void wasBlocked() final;
     void cannotShowURL() final;
     void wasBlockedByRestrictions() final;
+    void wasBlockedByDisabledFTP() final;
     void timeoutTimerFired();
 
     void loadRequest(NetworkProcess&, WebCore::ResourceRequest&&);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,25 +34,27 @@
 namespace JSC {
 
 class CallFrame;
-struct Instruction;
 struct ProtoCallFrame;
 
-namespace Wasm {
-class Instance;
-}
+template<typename> struct BaseInstruction;
+struct WasmOpcodeTraits;
+using WasmInstruction = BaseInstruction<WasmOpcodeTraits>;
+
+class JSWebAssemblyInstance;
 
 namespace LLInt {
 
 #define WASM_SLOW_PATH_DECL(name) \
-    extern "C" SlowPathReturnType slow_path_wasm_##name(CallFrame* callFrame, const Instruction* pc, Wasm::Instance* instance)
+    extern "C" UGPRPair SYSV_ABI slow_path_wasm_##name(CallFrame* callFrame, const WasmInstruction* pc, JSWebAssemblyInstance* instance)
 
 #define WASM_SLOW_PATH_HIDDEN_DECL(name) \
     WASM_SLOW_PATH_DECL(name) REFERENCED_FROM_ASM WTF_INTERNAL
 
-#if ENABLE(WEBASSEMBLY_B3JIT)
+#if ENABLE(WEBASSEMBLY_OMGJIT)
 WASM_SLOW_PATH_HIDDEN_DECL(prologue_osr);
 WASM_SLOW_PATH_HIDDEN_DECL(loop_osr);
 WASM_SLOW_PATH_HIDDEN_DECL(epilogue_osr);
+WASM_SLOW_PATH_HIDDEN_DECL(simd_go_straight_to_bbq_osr);
 #endif
 
 WASM_SLOW_PATH_HIDDEN_DECL(trace);
@@ -62,31 +64,61 @@ WASM_SLOW_PATH_HIDDEN_DECL(ref_func);
 WASM_SLOW_PATH_HIDDEN_DECL(table_get);
 WASM_SLOW_PATH_HIDDEN_DECL(table_set);
 WASM_SLOW_PATH_HIDDEN_DECL(table_init);
-WASM_SLOW_PATH_HIDDEN_DECL(elem_drop);
-WASM_SLOW_PATH_HIDDEN_DECL(table_size);
 WASM_SLOW_PATH_HIDDEN_DECL(table_fill);
-WASM_SLOW_PATH_HIDDEN_DECL(table_copy);
 WASM_SLOW_PATH_HIDDEN_DECL(table_grow);
 WASM_SLOW_PATH_HIDDEN_DECL(grow_memory);
-WASM_SLOW_PATH_HIDDEN_DECL(memory_fill);
-WASM_SLOW_PATH_HIDDEN_DECL(memory_copy);
 WASM_SLOW_PATH_HIDDEN_DECL(memory_init);
-WASM_SLOW_PATH_HIDDEN_DECL(data_drop);
 WASM_SLOW_PATH_HIDDEN_DECL(call);
-WASM_SLOW_PATH_HIDDEN_DECL(call_no_tls);
 WASM_SLOW_PATH_HIDDEN_DECL(call_indirect);
-WASM_SLOW_PATH_HIDDEN_DECL(call_indirect_no_tls);
+
 WASM_SLOW_PATH_HIDDEN_DECL(call_ref);
-WASM_SLOW_PATH_HIDDEN_DECL(call_ref_no_tls);
+WASM_SLOW_PATH_HIDDEN_DECL(tail_call);
+WASM_SLOW_PATH_HIDDEN_DECL(tail_call_indirect);
+WASM_SLOW_PATH_HIDDEN_DECL(call_builtin);
 WASM_SLOW_PATH_HIDDEN_DECL(set_global_ref);
+
 WASM_SLOW_PATH_HIDDEN_DECL(set_global_ref_portable_binding);
 WASM_SLOW_PATH_HIDDEN_DECL(memory_atomic_wait32);
 WASM_SLOW_PATH_HIDDEN_DECL(memory_atomic_wait64);
 WASM_SLOW_PATH_HIDDEN_DECL(memory_atomic_notify);
+WASM_SLOW_PATH_HIDDEN_DECL(throw);
+WASM_SLOW_PATH_HIDDEN_DECL(rethrow);
+WASM_SLOW_PATH_HIDDEN_DECL(retrieve_and_clear_exception);
+WASM_SLOW_PATH_HIDDEN_DECL(array_new);
+WASM_SLOW_PATH_HIDDEN_DECL(array_get);
+WASM_SLOW_PATH_HIDDEN_DECL(array_set);
+WASM_SLOW_PATH_HIDDEN_DECL(array_fill);
+WASM_SLOW_PATH_HIDDEN_DECL(struct_new);
+WASM_SLOW_PATH_HIDDEN_DECL(struct_get);
+WASM_SLOW_PATH_HIDDEN_DECL(struct_set);
 
-extern "C" SlowPathReturnType slow_path_wasm_throw_exception(CallFrame*, const Instruction*, Wasm::Instance* instance, Wasm::ExceptionType) REFERENCED_FROM_ASM WTF_INTERNAL;
-extern "C" SlowPathReturnType slow_path_wasm_popcount(const Instruction* pc, uint32_t) REFERENCED_FROM_ASM WTF_INTERNAL;
-extern "C" SlowPathReturnType slow_path_wasm_popcountll(const Instruction* pc, uint64_t) REFERENCED_FROM_ASM WTF_INTERNAL;
+extern "C" NO_RETURN void SYSV_ABI wasm_log_crash(CallFrame*, JSWebAssemblyInstance* instance) REFERENCED_FROM_ASM WTF_INTERNAL;
+extern "C" UGPRPair SYSV_ABI slow_path_wasm_throw_exception(CallFrame*, JSWebAssemblyInstance* instance, Wasm::ExceptionType) REFERENCED_FROM_ASM WTF_INTERNAL;
+extern "C" UGPRPair SYSV_ABI slow_path_wasm_popcount(const WasmInstruction* pc, uint32_t) REFERENCED_FROM_ASM WTF_INTERNAL;
+extern "C" UGPRPair SYSV_ABI slow_path_wasm_popcountll(const WasmInstruction* pc, uint64_t) REFERENCED_FROM_ASM WTF_INTERNAL;
+
+#if USE(JSVALUE32_64)
+WASM_SLOW_PATH_HIDDEN_DECL(f32_ceil);
+WASM_SLOW_PATH_HIDDEN_DECL(f32_floor);
+WASM_SLOW_PATH_HIDDEN_DECL(f32_trunc);
+WASM_SLOW_PATH_HIDDEN_DECL(f32_nearest);
+WASM_SLOW_PATH_HIDDEN_DECL(f64_ceil);
+WASM_SLOW_PATH_HIDDEN_DECL(f64_floor);
+WASM_SLOW_PATH_HIDDEN_DECL(f64_trunc);
+WASM_SLOW_PATH_HIDDEN_DECL(f64_nearest);
+WASM_SLOW_PATH_HIDDEN_DECL(f32_convert_u_i64);
+WASM_SLOW_PATH_HIDDEN_DECL(f32_convert_s_i64);
+WASM_SLOW_PATH_HIDDEN_DECL(f64_convert_u_i64);
+WASM_SLOW_PATH_HIDDEN_DECL(f64_convert_s_i64);
+WASM_SLOW_PATH_HIDDEN_DECL(i64_trunc_u_f32);
+WASM_SLOW_PATH_HIDDEN_DECL(i64_trunc_s_f32);
+WASM_SLOW_PATH_HIDDEN_DECL(i64_trunc_u_f64);
+WASM_SLOW_PATH_HIDDEN_DECL(i64_trunc_s_f64);
+WASM_SLOW_PATH_HIDDEN_DECL(i64_trunc_sat_f32_u);
+WASM_SLOW_PATH_HIDDEN_DECL(i64_trunc_sat_f32_s);
+WASM_SLOW_PATH_HIDDEN_DECL(i64_trunc_sat_f64_u);
+WASM_SLOW_PATH_HIDDEN_DECL(i64_trunc_sat_f64_s);
+#endif
 
 } } // namespace JSC::LLInt
 

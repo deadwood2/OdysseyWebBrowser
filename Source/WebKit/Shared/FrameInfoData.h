@@ -28,23 +28,23 @@
 #include <WebCore/FrameIdentifier.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/SecurityOriginData.h>
-
-namespace IPC {
-class Decoder;
-class Encoder;
-}
+#include <wtf/ProcessID.h>
 
 namespace WebKit {
 
-struct FrameInfoData {
-    void encode(IPC::Encoder&) const;
-    static std::optional<FrameInfoData> decode(IPC::Decoder&);
+enum class FrameType : bool { Local, Remote };
 
+struct FrameInfoData {
     bool isMainFrame { false };
+    FrameType frameType { FrameType::Local };
     WebCore::ResourceRequest request;
     WebCore::SecurityOriginData securityOrigin;
-    std::optional<WebCore::FrameIdentifier> frameID;
+    String frameName;
+    WebCore::FrameIdentifier frameID;
     std::optional<WebCore::FrameIdentifier> parentFrameID;
+    ProcessID processID;
+    bool isFocused { false };
+    bool errorOccurred { false };
 };
 
 }

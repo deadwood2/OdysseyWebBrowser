@@ -41,17 +41,12 @@ class LayoutTraits
         throw "Derived class must implement this function.";
     }
 
-    overridenSupportingObjectClasses()
+    supportingObjectClasses()
     {
-        throw "Derived class must implement this function.";
+        return [AirplaySupport, AudioSupport, CloseSupport, ControlsVisibilitySupport, FullscreenSupport, MuteSupport, OverflowSupport, PiPSupport, PlacardSupport, PlaybackSupport, ScrubbingSupport, SeekBackwardSupport, SeekForwardSupport, SkipBackSupport, SkipForwardSupport, StartSupport, StatusSupport, TimeControlSupport, TracksSupport, VolumeSupport];
     }
 
     resourceDirectory()
-    {
-        throw "Derived class must implement this function.";
-    }
-
-    controlsAlwaysAvailable()
     {
         throw "Derived class must implement this function.";
     }
@@ -66,17 +61,12 @@ class LayoutTraits
         throw "Derived class must implement this function.";
     }
 
-    knobStyleForScrubber()
-    {
-        throw "Derived class must implement this function.";
-    }
-
     supportsDurationTimeLabel()
     {
         throw "Derived class must implement this function.";
     }
 
-    playPauseButtonScaleFactor()
+    skipDuration()
     {
         throw "Derived class must implement this function.";
     }
@@ -91,9 +81,26 @@ class LayoutTraits
         throw "Derived class must implement this function.";
     }
 
-    additionalControlScaleFactor()
+    supportsTouches()
     {
-        return 1;
+        // Can be overridden by subclasses.
+
+        return GestureRecognizer.SupportsTouches;
+    }
+
+    supportsAirPlay()
+    {
+        throw "Derived class must implement this function.";
+    }
+
+    supportsPiP()
+    {
+        throw "Derived class must implement this function.";
+    }
+
+    inheritsBorderRadius()
+    {
+        throw "Derived class must implement this function.";
     }
 }
 

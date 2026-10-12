@@ -26,28 +26,31 @@
 #include "config.h"
 #include <wtf/persistence/PersistentCoders.h>
 
+#include <wtf/StdLibExtras.h>
+#include <wtf/URL.h>
 #include <wtf/text/CString.h>
 #include <wtf/text/WTFString.h>
 
-namespace WTF {
-namespace Persistence {
+namespace WTF::Persistence {
 
-void Coder<AtomString>::encode(Encoder& encoder, const AtomString& atomString)
+void Coder<AtomString>::encodeForPersistence(Encoder& encoder, const AtomString& atomString)
 {
     encoder << atomString.string();
 }
 
-std::optional<AtomString> Coder<AtomString>::decode(Decoder& decoder)
+// FIXME: Constructing a String and then looking it up in the AtomStringTable is inefficient.
+// Ideally, we wouldn't need to allocate a String when it is already in the AtomStringTable.
+std::optional<AtomString> Coder<AtomString>::decodeForPersistence(Decoder& decoder)
 {
     std::optional<String> string;
     decoder >> string;
     if (!string)
         return std::nullopt;
 
-    return {{ WTFMove(*string) }};
+    return { AtomString { WTFMove(*string) } };
 }
 
-void Coder<CString>::encode(Encoder& encoder, const CString& string)
+void Coder<CString>::encodeForPersistence(Encoder& encoder, const CString& string)
 {
     // Special case the null string.
     if (string.isNull()) {
@@ -57,10 +60,10 @@ void Coder<CString>::encode(Encoder& encoder, const CString& string)
 
     uint32_t length = string.length();
     encoder << length;
-    encoder.encodeFixedLengthData({ string.dataAsUInt8Ptr(), length });
+    encoder.encodeFixedLengthData(string.span());
 }
 
-std::optional<CString> Coder<CString>::decode(Decoder& decoder)
+std::optional<CString> Coder<CString>::decodeForPersistence(Decoder& decoder)
 {
     std::optional<uint32_t> length;
     decoder >> length;
@@ -78,13 +81,13 @@ std::optional<CString> Coder<CString>::decode(Decoder& decoder)
 
     char* buffer;
     CString string = CString::newUninitialized(*length, buffer);
-    if (!decoder.decodeFixedLengthData({ reinterpret_cast<uint8_t*>(buffer), *length }))
+    if (!decoder.decodeFixedLengthData({ byteCast<uint8_t>(buffer), *length }))
         return std::nullopt;
 
     return string;
 }
 
-void Coder<String>::encode(Encoder& encoder, const String& string)
+void Coder<String>::encodeForPersistence(Encoder& encoder, const String& string)
 {
     // Special case the null string.
     if (string.isNull()) {
@@ -92,15 +95,14 @@ void Coder<String>::encode(Encoder& encoder, const String& string)
         return;
     }
 
-    uint32_t length = string.length();
     bool is8Bit = string.is8Bit();
 
-    encoder << length << is8Bit;
+    encoder << string.length() << is8Bit;
 
     if (is8Bit)
-        encoder.encodeFixedLengthData({ string.characters8(), length });
+        encoder.encodeFixedLengthData(string.span8());
     else
-        encoder.encodeFixedLengthData({ reinterpret_cast<const uint8_t*>(string.characters16()), length * sizeof(UChar) });
+        encoder.encodeFixedLengthData(asBytes(string.span16()));
 }
 
 template <typename CharacterType>
@@ -118,7 +120,7 @@ static inline std::optional<String> decodeStringText(Decoder& decoder, uint32_t 
     return string;
 }
 
-std::optional<String> Coder<String>::decode(Decoder& decoder)
+std::optional<String> Coder<String>::decodeForPersistence(Decoder& decoder)
 {
     std::optional<uint32_t> length;
     decoder >> length;
@@ -140,12 +142,26 @@ std::optional<String> Coder<String>::decode(Decoder& decoder)
     return decodeStringText<UChar>(decoder, *length);
 }
 
-void Coder<SHA1::Digest>::encode(Encoder& encoder, const SHA1::Digest& digest)
+void Coder<URL>::encodeForPersistence(Encoder& encoder, const URL& url)
+{
+    encoder << url.string();
+}
+
+std::optional<URL> Coder<URL>::decodeForPersistence(Decoder& decoder)
+{
+    std::optional<String> string;
+    decoder >> string;
+    if (!string)
+        return std::nullopt;
+    return URL(WTFMove(*string));
+}
+
+void Coder<SHA1::Digest>::encodeForPersistence(Encoder& encoder, const SHA1::Digest& digest)
 {
     encoder.encodeFixedLengthData({ digest.data(), sizeof(digest) });
 }
 
-std::optional<SHA1::Digest> Coder<SHA1::Digest>::decode(Decoder& decoder)
+std::optional<SHA1::Digest> Coder<SHA1::Digest>::decodeForPersistence(Decoder& decoder)
 {
     SHA1::Digest tmp;
     if (!decoder.decodeFixedLengthData({ tmp.data(), sizeof(tmp) }))
@@ -153,5 +169,33 @@ std::optional<SHA1::Digest> Coder<SHA1::Digest>::decode(Decoder& decoder)
     return tmp;
 }
 
+void Coder<WallTime>::encodeForPersistence(Encoder& encoder, const WallTime& time)
+{
+    encoder << time.secondsSinceEpoch().value();
 }
+
+std::optional<WallTime> Coder<WallTime>::decodeForPersistence(Decoder& decoder)
+{
+    std::optional<double> value;
+    decoder >> value;
+    if (!value)
+        return std::nullopt;
+
+    return WallTime::fromRawSeconds(*value);
+}
+
+void Coder<Seconds>::encodeForPersistence(Encoder& encoder, const Seconds& seconds)
+{
+    encoder << seconds.value();
+}
+
+std::optional<Seconds> Coder<Seconds>::decodeForPersistence(Decoder& decoder)
+{
+    std::optional<double> value;
+    decoder >> value;
+    if (!value)
+        return std::nullopt;
+    return Seconds(*value);
+}
+
 }

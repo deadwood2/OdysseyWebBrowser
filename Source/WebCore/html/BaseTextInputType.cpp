@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2009 Michelangelo De Simone <micdesim@gmail.com>
  * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2022 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -25,9 +25,11 @@
 #include "config.h"
 #include "BaseTextInputType.h"
 
+#include "ElementInlines.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include <JavaScriptCore/RegularExpression.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -39,13 +41,23 @@ bool BaseTextInputType::patternMismatch(const String& value) const
     // FIXME: We should execute RegExp parser first to check validity instead of creating an actual RegularExpression.
     // https://bugs.webkit.org/show_bug.cgi?id=183361
     const AtomString& rawPattern = element()->attributeWithoutSynchronization(patternAttr);
-    if (rawPattern.isNull() || value.isEmpty() || !JSC::Yarr::RegularExpression(rawPattern, JSC::Yarr::TextCaseSensitive, JSC::Yarr::MultilineDisabled, JSC::Yarr::UnicodeAwareMode).isValid())
+    if (rawPattern.isNull() || value.isEmpty() || !JSC::Yarr::RegularExpression(rawPattern, { JSC::Yarr::Flags::UnicodeSets }).isValid())
         return false;
-    String pattern = "^(?:" + rawPattern + ")$";
-    int matchLength = 0;
-    int valueLength = value.length();
-    int matchOffset = JSC::Yarr::RegularExpression(pattern, JSC::Yarr::TextCaseSensitive, JSC::Yarr::MultilineDisabled, JSC::Yarr::UnicodeAwareMode).match(value, 0, &matchLength);
-    return matchOffset || matchLength != valueLength;
+
+    String pattern = makeString("^(?:"_s, rawPattern, ")$"_s);
+    JSC::Yarr::RegularExpression regex(pattern, { JSC::Yarr::Flags::UnicodeSets });
+    auto valuePatternMismatch = [&regex](auto& value) {
+        int matchLength = 0;
+        int valueLength = value.length();
+        int matchOffset = regex.match(value, 0, &matchLength);
+        return matchOffset || matchLength != valueLength;
+    };
+
+    if (isEmailField() && element()->multiple()) {
+        auto values = value.split(',');
+        return values.findIf(valuePatternMismatch) != notFound;
+    }
+    return valuePatternMismatch(value);
 }
 
 bool BaseTextInputType::supportsPlaceholder() const
@@ -54,6 +66,11 @@ bool BaseTextInputType::supportsPlaceholder() const
 }
 
 bool BaseTextInputType::supportsSelectionAPI() const
+{
+    return true;
+}
+
+bool BaseTextInputType::dirAutoUsesValue() const
 {
     return true;
 }

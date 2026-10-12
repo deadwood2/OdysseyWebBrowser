@@ -25,75 +25,21 @@
 
 #include "config.h"
 #include "CalcExpressionOperation.h"
-
 #include <wtf/text/TextStream.h>
 
 namespace WebCore {
 
 float CalcExpressionOperation::evaluate(float maxValue) const
 {
-    switch (m_operator) {
-    case CalcOperator::Add: {
-        float sum = 0;
-        for (auto& child : m_children)
-            sum += child->evaluate(maxValue);
-        return sum;
-    }
-    case CalcOperator::Subtract: {
-        // FIXME
-        ASSERT(m_children.size() == 2);
-        float left = m_children[0]->evaluate(maxValue);
-        float right = m_children[1]->evaluate(maxValue);
-        return left - right;
-    }
-    case CalcOperator::Multiply: {
-        float product = 1;
-        for (auto& child : m_children)
-            product *= child->evaluate(maxValue);
-        return product;
-    }
-    case CalcOperator::Divide: {
-        // FIXME
-        ASSERT(m_children.size() == 1 || m_children.size() == 2);
-        if (m_children.size() == 1)
-            return std::numeric_limits<float>::quiet_NaN();
-        float left = m_children[0]->evaluate(maxValue);
-        float right = m_children[1]->evaluate(maxValue);
-        return left / right;
-    }
-    case CalcOperator::Min: {
-        if (m_children.isEmpty())
-            return std::numeric_limits<float>::quiet_NaN();
-        float minimum = m_children[0]->evaluate(maxValue);
-        for (auto& child : m_children)
-            minimum = std::min(minimum, child->evaluate(maxValue));
-        return minimum;
-    }
-    case CalcOperator::Max: {
-        if (m_children.isEmpty())
-            return std::numeric_limits<float>::quiet_NaN();
-        float maximum = m_children[0]->evaluate(maxValue);
-        for (auto& child : m_children)
-            maximum = std::max(maximum, child->evaluate(maxValue));
-        return maximum;
-    }
-    case CalcOperator::Clamp: {
-        if (m_children.size() != 3)
-            return std::numeric_limits<float>::quiet_NaN();
-
-        float min = m_children[0]->evaluate(maxValue);
-        float value = m_children[1]->evaluate(maxValue);
-        float max = m_children[2]->evaluate(maxValue);
-        return std::max(min, std::min(value, max));
-    }
-    }
-    ASSERT_NOT_REACHED();
-    return std::numeric_limits<float>::quiet_NaN();
+    return evaluateCalcExpression(m_operator, m_children, [&](auto& child) {
+        return child->evaluate(maxValue);
+    });
 }
 
 bool CalcExpressionOperation::operator==(const CalcExpressionNode& other) const
 {
-    return is<CalcExpressionOperation>(other) && *this == downcast<CalcExpressionOperation>(other);
+    auto* otherExpressionOperation = dynamicDowncast<CalcExpressionOperation>(other);
+    return otherExpressionOperation && *this == *otherExpressionOperation;
 }
 
 bool operator==(const CalcExpressionOperation& a, const CalcExpressionOperation& b)

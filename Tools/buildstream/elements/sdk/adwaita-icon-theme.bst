@@ -1,11 +1,11 @@
-kind: autotools
+kind: meson
 sources:
 - kind: tar
-  url: gnome_downloads:adwaita-icon-theme/40/adwaita-icon-theme-40.1.1.tar.xz
-  ref: 0b6c436ed6ad9887a88ada1f72a0197b1eb73b020d8d344abab4c7fa7250f8f6
+  url: gnome_downloads:adwaita-icon-theme/45/adwaita-icon-theme-45.0.tar.xz
+  ref: 2442bfb06f4e6cc95bf6e2682fdff98fa5eddc688751b9d6215c623cb4e42ff1
 build-depends:
-- freedesktop-sdk.bst:public-stacks/buildsystem-autotools.bst
+- freedesktop-sdk.bst:public-stacks/buildsystem-meson.bst
 depends:
-- sdk/gtk+-3.bst
+- freedesktop-sdk.bst:components/gtk3.bst
 - freedesktop-sdk.bst:components/librsvg.bst
 - freedesktop-sdk.bst:bootstrap-import.bst

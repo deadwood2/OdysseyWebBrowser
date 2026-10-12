@@ -27,13 +27,16 @@
 #include "WebSocketTaskSoup.h"
 
 #include "NetworkProcess.h"
+#include "NetworkSession.h"
 #include "NetworkSocketChannel.h"
+#include <WebCore/AuthenticationChallenge.h>
 #include <WebCore/HTTPParsers.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ResourceResponse.h>
 #include <WebCore/SoupVersioning.h>
-#include <WebCore/WebSocketChannel.h>
+#include <WebCore/ThreadableWebSocketChannel.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/glib/RunLoopSourcePriority.h>
 #include <wtf/text/StringBuilder.h>
@@ -53,6 +56,8 @@ static inline bool isConnectionError(GError* error, SoupMessage* message)
 #endif
 }
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebSocketTask);
+
 WebSocketTask::WebSocketTask(NetworkSocketChannel& channel, const WebCore::ResourceRequest& request, SoupSession* session, SoupMessage* msg, const String& protocol)
     : m_channel(channel)
     , m_request(request)
@@ -66,7 +71,7 @@ WebSocketTask::WebSocketTask(NetworkSocketChannel& channel, const WebCore::Resou
         protocols.reset(static_cast<char**>(g_new0(char*, protocolList.size() + 1)));
         unsigned i = 0;
         for (auto& subprotocol : protocolList)
-            protocols.get()[i++] = g_strdup(WebCore::stripLeadingAndTrailingHTTPSpaces(subprotocol).utf8().data());
+            protocols.get()[i++] = g_strdup(subprotocol.trim(isASCIIWhitespaceWithoutFF<UChar>).utf8().data());
     }
 
 #if USE(SOUP2)
@@ -74,6 +79,21 @@ WebSocketTask::WebSocketTask(NetworkSocketChannel& channel, const WebCore::Resou
     // FIXME: this is done by libsoup since 2.69.1 and 2.68.4, so it can be removed when bumping the libsoup requirement.
     // See https://bugs.webkit.org/show_bug.cgi?id=203404
     soup_message_set_flags(msg, static_cast<SoupMessageFlags>(soup_message_get_flags(msg) | SOUP_MESSAGE_NEW_CONNECTION));
+#else
+    {
+        // No need to subscribe to the "request-certificate" signal, just set the client certificate upfront.
+        auto protectionSpace = WebCore::AuthenticationChallenge::protectionSpaceForClientCertificate(WebCore::soupURIToURL(soup_message_get_uri(msg)));
+        auto certificate = m_channel.session()->networkStorageSession()->credentialStorage().get(m_request.cachePartition(), protectionSpace).certificate();
+        soup_message_set_tls_client_certificate(msg, certificate);
+    }
+
+    g_signal_connect(msg, "request-certificate-password", G_CALLBACK(+[](SoupMessage* msg, GTlsPassword* tlsPassword, WebSocketTask* task) -> gboolean {
+        auto protectionSpace = WebCore::AuthenticationChallenge::protectionSpaceForClientCertificatePassword(WebCore::soupURIToURL(soup_message_get_uri(msg)), tlsPassword);
+        auto password = task->m_channel.session()->networkStorageSession()->credentialStorage().get(task->m_request.cachePartition(), protectionSpace).password().utf8();
+        g_tls_password_set_value(tlsPassword, reinterpret_cast<const unsigned char*>(password.data()), password.length());
+        soup_message_tls_client_certificate_password_request_complete(msg);
+        return TRUE;
+    }), this);
 #endif
 
     soup_session_websocket_connect_async(session, msg, nullptr, protocols.get(), RunLoopSourcePriority::AsyncIONetwork, m_cancellable.get(),
@@ -117,7 +137,7 @@ String WebSocketTask::acceptedExtensions() const
         auto* extension = SOUP_WEBSOCKET_EXTENSION(it->data);
 
         if (!result.isEmpty())
-            result.append(", ");
+            result.append(", "_s);
         result.append(String::fromUTF8(SOUP_WEBSOCKET_EXTENSION_GET_CLASS(extension)->name));
 
         GUniquePtr<char> params(soup_websocket_extension_get_response_params(extension));
@@ -144,7 +164,7 @@ void WebSocketTask::didConnect(GRefPtr<SoupWebsocketConnection>&& connection)
     g_signal_connect_swapped(m_connection.get(), "error", reinterpret_cast<GCallback>(didReceiveErrorCallback), this);
     g_signal_connect_swapped(m_connection.get(), "closed", reinterpret_cast<GCallback>(didCloseCallback), this);
 
-    m_channel.didConnect(soup_websocket_connection_get_protocol(m_connection.get()), acceptedExtensions());
+    m_channel.didConnect(String::fromLatin1(soup_websocket_connection_get_protocol(m_connection.get())), acceptedExtensions());
 
     m_channel.didReceiveHandshakeResponse(m_handshakeMessage.get());
     g_signal_handlers_disconnect_by_data(m_handshakeMessage.get(), this);
@@ -158,13 +178,14 @@ void WebSocketTask::didReceiveMessageCallback(WebSocketTask* task, SoupWebsocket
 
     gsize dataSize;
     const auto* data = g_bytes_get_data(message, &dataSize);
+    std::span dataSpan { static_cast<const uint8_t*>(data), dataSize };
 
     switch (dataType) {
     case SOUP_WEBSOCKET_DATA_TEXT:
-        task->m_channel.didReceiveText(String::fromUTF8(static_cast<const char*>(data), dataSize));
+        task->m_channel.didReceiveText(String::fromUTF8(dataSpan));
         break;
     case SOUP_WEBSOCKET_DATA_BINARY:
-        task->m_channel.didReceiveBinaryData(static_cast<const uint8_t*>(data), dataSize);
+        task->m_channel.didReceiveBinaryData(dataSpan);
         break;
     }
 }
@@ -177,7 +198,7 @@ void WebSocketTask::didReceiveErrorCallback(WebSocketTask* task, GError* error)
     task->didFail(String::fromUTF8(error->message));
 }
 
-void WebSocketTask::didFail(const String& errorMessage)
+void WebSocketTask::didFail(String&& errorMessage)
 {
     if (m_receivedDidFail)
         return;
@@ -188,19 +209,24 @@ void WebSocketTask::didFail(const String& errorMessage)
         g_signal_handlers_disconnect_by_data(m_handshakeMessage.get(), this);
         m_handshakeMessage = nullptr;
     }
-    m_channel.didReceiveMessageError(errorMessage);
+    m_channel.didReceiveMessageError(WTFMove(errorMessage));
     if (!m_connection) {
         didClose(SOUP_WEBSOCKET_CLOSE_ABNORMAL, { });
         return;
     }
 
     if (soup_websocket_connection_get_state(m_connection.get()) == SOUP_WEBSOCKET_STATE_OPEN)
-        didClose(WebCore::WebSocketChannel::CloseEventCodeAbnormalClosure, { });
+        didClose(WebCore::ThreadableWebSocketChannel::CloseEventCodeAbnormalClosure, { });
 }
 
 void WebSocketTask::didCloseCallback(WebSocketTask* task)
 {
-    task->didClose(soup_websocket_connection_get_close_code(task->m_connection.get()), String::fromUTF8(soup_websocket_connection_get_close_data(task->m_connection.get())));
+    auto code = soup_websocket_connection_get_close_code(task->m_connection.get());
+    if (!code) {
+        // The connection was closed but close frame was not received or sent.
+        code = SOUP_WEBSOCKET_CLOSE_ABNORMAL;
+    }
+    task->didClose(code, String::fromUTF8(soup_websocket_connection_get_close_data(task->m_connection.get())));
 }
 
 void WebSocketTask::didClose(unsigned short code, const String& reason)
@@ -212,7 +238,7 @@ void WebSocketTask::didClose(unsigned short code, const String& reason)
     m_channel.didClose(code, reason);
 }
 
-void WebSocketTask::sendString(const IPC::DataReference& utf8, CompletionHandler<void()>&& callback)
+void WebSocketTask::sendString(std::span<const uint8_t> utf8, CompletionHandler<void()>&& callback)
 {
     if (m_connection && soup_websocket_connection_get_state(m_connection.get()) == SOUP_WEBSOCKET_STATE_OPEN) {
 #if SOUP_CHECK_VERSION(2, 67, 3)
@@ -226,7 +252,7 @@ void WebSocketTask::sendString(const IPC::DataReference& utf8, CompletionHandler
     callback();
 }
 
-void WebSocketTask::sendData(const IPC::DataReference& data, CompletionHandler<void()>&& callback)
+void WebSocketTask::sendData(std::span<const uint8_t> data, CompletionHandler<void()>&& callback)
 {
     if (m_connection && soup_websocket_connection_get_state(m_connection.get()) == SOUP_WEBSOCKET_STATE_OPEN)
         soup_websocket_connection_send_binary(m_connection.get(), data.data(), data.size());
@@ -245,7 +271,7 @@ void WebSocketTask::close(int32_t code, const String& reason)
     }
 
 #if SOUP_CHECK_VERSION(2, 67, 90)
-    if (code == WebCore::WebSocketChannel::CloseEventCodeNotSpecified)
+    if (code == WebCore::ThreadableWebSocketChannel::CloseEventCodeNotSpecified)
         code = SOUP_WEBSOCKET_CLOSE_NO_STATUS;
 #endif
 
@@ -269,7 +295,7 @@ void WebSocketTask::resume()
 
 void WebSocketTask::delayFailTimerFired()
 {
-    didFail(m_delayErrorMessage);
+    didFail(WTFMove(m_delayErrorMessage));
 }
 
 } // namespace WebKit

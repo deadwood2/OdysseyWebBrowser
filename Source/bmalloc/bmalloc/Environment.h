@@ -23,8 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef Environment_h
-#define Environment_h
+#pragma once
 
 #include "Mutex.h"
 #include "StaticPerProcess.h"
@@ -42,8 +41,8 @@ private:
 
     bool m_isDebugHeapEnabled;
 };
+BALLOW_DEPRECATED_DECLARATIONS_BEGIN
 DECLARE_STATIC_PER_PROCESS_STORAGE(Environment);
+BALLOW_DEPRECATED_DECLARATIONS_END
 
 } // namespace bmalloc
-
-#endif // Environment_h

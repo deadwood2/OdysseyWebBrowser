@@ -32,7 +32,8 @@ class TextRun;
 // Renderer for embeds and objects, often, but not always, rendered via plug-ins.
 // For example, <embed src="foo.html"> does not invoke a plug-in.
 class RenderEmbeddedObject final : public RenderWidget {
-    WTF_MAKE_ISO_ALLOCATED(RenderEmbeddedObject);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RenderEmbeddedObject);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(RenderEmbeddedObject);
 public:
     RenderEmbeddedObject(HTMLFrameOwnerElement&, RenderStyle&&);
     virtual ~RenderEmbeddedObject();
@@ -55,11 +56,17 @@ public:
 
     void handleUnavailablePluginIndicatorEvent(Event*);
 
-    bool allowsAcceleratedCompositing() const;
+    bool requiresAcceleratedCompositing() const override;
 
     LayoutRect unavailablePluginIndicatorBounds(const LayoutPoint& accumulatedOffset) const;
 
     const String& pluginReplacementTextIfUnavailable() const { return m_unavailablePluginReplacementText; }
+
+    ScrollableArea* scrollableArea() const;
+    bool usesAsyncScrolling() const;
+    ScrollingNodeID scrollingNodeID() const;
+    void willAttachScrollingNode();
+    void didAttachScrollingNode();
 
 private:
     void paintReplaced(PaintInfo&, const LayoutPoint&) final;
@@ -70,17 +77,14 @@ private:
     void layout() final;
     void willBeDestroyed() final;
 
-    const char* renderName() const final { return "RenderEmbeddedObject"; }
-    bool isEmbeddedObject() const final { return true; }
+    ASCIILiteral renderName() const final { return "RenderEmbeddedObject"_s; }
 
     bool showsUnavailablePluginIndicator() const { return isPluginUnavailable() && m_isUnavailablePluginIndicatorState != UnavailablePluginIndicatorState::Hidden; }
 
-    bool requiresLayer() const final;
-
     bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) final;
 
-    bool scroll(ScrollDirection, ScrollGranularity, float multiplier = 1, Element** stopElement = nullptr, RenderBox* startBox = nullptr, const IntPoint& wheelEventAbsolutePoint = IntPoint()) final;
-    bool logicalScroll(ScrollLogicalDirection, ScrollGranularity, float multiplier, Element** stopElement) final;
+    bool scroll(ScrollDirection, ScrollGranularity, unsigned stepCount = 1, Element** stopElement = nullptr, RenderBox* startBox = nullptr, const IntPoint& wheelEventAbsolutePoint = IntPoint()) final;
+    bool logicalScroll(ScrollLogicalDirection, ScrollGranularity, unsigned stepCount, Element** stopElement) final;
 
     void setUnavailablePluginIndicatorIsPressed(bool);
     bool isInUnavailablePluginIndicator(const MouseEvent&) const;
@@ -100,4 +104,4 @@ private:
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderEmbeddedObject, isEmbeddedObject())
+SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderEmbeddedObject, isRenderEmbeddedObject())

@@ -22,8 +22,9 @@
 #include "JSDedicatedWorkerGlobalScope.h"
 
 #include "ActiveDOMObject.h"
-#include "DOMIsoSubspaces.h"
 #include "DedicatedWorkerGlobalScope.h"
+#include "ExtendedDOMClientIsoSubspaces.h"
+#include "ExtendedDOMIsoSubspaces.h"
 #include "JSDOMAttribute.h"
 #include "JSDOMBinding.h"
 #include "JSDOMConstructorNotConstructable.h"
@@ -31,6 +32,7 @@
 #include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMWrapperCache.h"
 #include "JSDedicatedWorkerGlobalScope.h"
+#include "JSExposedStar.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreJSClientData.h"
 #include <JavaScriptCore/HeapAnalyzer.h>
@@ -41,6 +43,7 @@
 #include <wtf/GetPtr.h>
 #include <wtf/PointerPreparations.h>
 #include <wtf/URL.h>
+#include <wtf/text/MakeString.h>
 
 
 namespace WebCore {
@@ -50,24 +53,29 @@ using namespace JSC;
 
 static JSC_DECLARE_CUSTOM_GETTER(jsDedicatedWorkerGlobalScopeConstructor);
 static JSC_DECLARE_CUSTOM_GETTER(jsDedicatedWorkerGlobalScope_DedicatedWorkerGlobalScopeConstructor);
+static JSC_DECLARE_CUSTOM_GETTER(jsDedicatedWorkerGlobalScope_ExposedStarConstructor);
 
 using JSDedicatedWorkerGlobalScopeDOMConstructor = JSDOMConstructorNotConstructable<JSDedicatedWorkerGlobalScope>;
 
 /* Hash table */
 
-static const struct CompactHashIndex JSDedicatedWorkerGlobalScopeTableIndex[2] = {
+static const struct CompactHashIndex JSDedicatedWorkerGlobalScopeTableIndex[5] = {
     { -1, -1 },
-    { 0, -1 },
+    { -1, -1 },
+    { -1, -1 },
+    { 0, 4 },
+    { 1, -1 },
 };
 
 
 static const HashTableValue JSDedicatedWorkerGlobalScopeTableValues[] =
 {
-    { "DedicatedWorkerGlobalScope", static_cast<unsigned>(JSC::PropertyAttribute::DontEnum), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsDedicatedWorkerGlobalScope_DedicatedWorkerGlobalScopeConstructor), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
+    { "DedicatedWorkerGlobalScope"_s, static_cast<unsigned>(JSC::PropertyAttribute::DontEnum), NoIntrinsic, { HashTableValue::GetterSetterType, jsDedicatedWorkerGlobalScope_DedicatedWorkerGlobalScopeConstructor, 0 } },
+    { "ExposedStar"_s, static_cast<unsigned>(JSC::PropertyAttribute::DontEnum), NoIntrinsic, { HashTableValue::GetterSetterType, jsDedicatedWorkerGlobalScope_ExposedStarConstructor, 0 } },
 };
 
-static const HashTable JSDedicatedWorkerGlobalScopeTable = { 1, 1, true, JSDedicatedWorkerGlobalScope::info(), JSDedicatedWorkerGlobalScopeTableValues, JSDedicatedWorkerGlobalScopeTableIndex };
-template<> const ClassInfo JSDedicatedWorkerGlobalScopeDOMConstructor::s_info = { "DedicatedWorkerGlobalScope", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDedicatedWorkerGlobalScopeDOMConstructor) };
+static const HashTable JSDedicatedWorkerGlobalScopeTable = { 2, 3, static_cast<uint8_t>(static_cast<unsigned>(JSC::PropertyAttribute::DontEnum)), JSDedicatedWorkerGlobalScope::info(), JSDedicatedWorkerGlobalScopeTableValues, JSDedicatedWorkerGlobalScopeTableIndex };
+template<> const ClassInfo JSDedicatedWorkerGlobalScopeDOMConstructor::s_info = { "DedicatedWorkerGlobalScope"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDedicatedWorkerGlobalScopeDOMConstructor) };
 
 template<> JSValue JSDedicatedWorkerGlobalScopeDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
@@ -76,9 +84,11 @@ template<> JSValue JSDedicatedWorkerGlobalScopeDOMConstructor::prototypeForStruc
 
 template<> void JSDedicatedWorkerGlobalScopeDOMConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, globalObject.getPrototypeDirect(vm), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "DedicatedWorkerGlobalScope"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    JSString* nameString = jsNontrivialString(vm, "DedicatedWorkerGlobalScope"_s);
+    m_originalName.set(vm, this, nameString);
+    putDirect(vm, vm.propertyNames->name, nameString, JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, globalObject.getPrototypeDirect(), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum | JSC::PropertyAttribute::DontDelete);
 }
 
 /* Hash table for prototype */
@@ -91,11 +101,11 @@ static const struct CompactHashIndex JSDedicatedWorkerGlobalScopePrototypeTableI
 
 static const HashTableValue JSDedicatedWorkerGlobalScopePrototypeTableValues[] =
 {
-    { "constructor", static_cast<unsigned>(JSC::PropertyAttribute::DontEnum), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsDedicatedWorkerGlobalScopeConstructor), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
+    { "constructor"_s, static_cast<unsigned>(PropertyAttribute::DontEnum), NoIntrinsic, { HashTableValue::GetterSetterType, jsDedicatedWorkerGlobalScopeConstructor, 0 } },
 };
 
-static const HashTable JSDedicatedWorkerGlobalScopePrototypeTable = { 1, 1, true, JSDedicatedWorkerGlobalScope::info(), JSDedicatedWorkerGlobalScopePrototypeTableValues, JSDedicatedWorkerGlobalScopePrototypeTableIndex };
-const ClassInfo JSDedicatedWorkerGlobalScopePrototype::s_info = { "DedicatedWorkerGlobalScope", &Base::s_info, &JSDedicatedWorkerGlobalScopePrototypeTable, nullptr, CREATE_METHOD_TABLE(JSDedicatedWorkerGlobalScopePrototype) };
+static const HashTable JSDedicatedWorkerGlobalScopePrototypeTable = { 1, 1, static_cast<uint8_t>(static_cast<unsigned>(PropertyAttribute::DontEnum)), JSDedicatedWorkerGlobalScope::info(), JSDedicatedWorkerGlobalScopePrototypeTableValues, JSDedicatedWorkerGlobalScopePrototypeTableIndex };
+const ClassInfo JSDedicatedWorkerGlobalScopePrototype::s_info = { "DedicatedWorkerGlobalScope"_s, &Base::s_info, &JSDedicatedWorkerGlobalScopePrototypeTable, nullptr, CREATE_METHOD_TABLE(JSDedicatedWorkerGlobalScopePrototype) };
 
 void JSDedicatedWorkerGlobalScopePrototype::finishCreation(VM& vm)
 {
@@ -104,20 +114,27 @@ void JSDedicatedWorkerGlobalScopePrototype::finishCreation(VM& vm)
     JSC_TO_STRING_TAG_WITHOUT_TRANSITION();
 }
 
-const ClassInfo JSDedicatedWorkerGlobalScope::s_info = { "DedicatedWorkerGlobalScope", &Base::s_info, &JSDedicatedWorkerGlobalScopeTable, nullptr, CREATE_METHOD_TABLE(JSDedicatedWorkerGlobalScope) };
+const ClassInfo JSDedicatedWorkerGlobalScope::s_info = { "DedicatedWorkerGlobalScope"_s, &Base::s_info, &JSDedicatedWorkerGlobalScopeTable, nullptr, CREATE_METHOD_TABLE(JSDedicatedWorkerGlobalScope) };
 
 JSDedicatedWorkerGlobalScope::JSDedicatedWorkerGlobalScope(VM& vm, Structure* structure, Ref<DedicatedWorkerGlobalScope>&& impl)
     : JSWorkerGlobalScope(vm, structure, WTFMove(impl))
 {
 }
 
-void JSDedicatedWorkerGlobalScope::finishCreation(VM& vm, JSProxy* proxy)
+Ref<DedicatedWorkerGlobalScope> JSDedicatedWorkerGlobalScope::protectedWrapped() const
+{
+    return wrapped();
+}
+
+static_assert(!std::is_base_of<ActiveDOMObject, DedicatedWorkerGlobalScope>::value, "Interface is not marked as [ActiveDOMObject] even though implementation class subclasses ActiveDOMObject.");
+
+#if ASSERT_ENABLED
+void JSDedicatedWorkerGlobalScope::finishCreation(VM& vm, JSGlobalProxy* proxy)
 {
     Base::finishCreation(vm, proxy);
 
-    static_assert(!std::is_base_of<ActiveDOMObject, DedicatedWorkerGlobalScope>::value, "Interface is not marked as [ActiveDOMObject] even though implementation class subclasses ActiveDOMObject.");
-
 }
+#endif
 
 JSValue JSDedicatedWorkerGlobalScope::getConstructor(VM& vm, const JSGlobalObject* globalObject)
 {
@@ -126,12 +143,12 @@ JSValue JSDedicatedWorkerGlobalScope::getConstructor(VM& vm, const JSGlobalObjec
 
 JSC_DEFINE_CUSTOM_GETTER(jsDedicatedWorkerGlobalScopeConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
 {
-    VM& vm = JSC::getVM(lexicalGlobalObject);
+    auto& vm = JSC::getVM(lexicalGlobalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto* prototype = jsDynamicCast<JSDedicatedWorkerGlobalScopePrototype*>(vm, JSValue::decode(thisValue));
+    auto* prototype = jsDynamicCast<JSDedicatedWorkerGlobalScopePrototype*>(JSValue::decode(thisValue));
     if (UNLIKELY(!prototype))
         return throwVMTypeError(lexicalGlobalObject, throwScope);
-    return JSValue::encode(JSDedicatedWorkerGlobalScope::getConstructor(JSC::getVM(lexicalGlobalObject), prototype->globalObject()));
+    return JSValue::encode(JSDedicatedWorkerGlobalScope::getConstructor(vm, prototype->globalObject()));
 }
 
 static inline JSValue jsDedicatedWorkerGlobalScope_DedicatedWorkerGlobalScopeConstructorGetter(JSGlobalObject& lexicalGlobalObject, JSDedicatedWorkerGlobalScope& thisObject)
@@ -145,23 +162,26 @@ JSC_DEFINE_CUSTOM_GETTER(jsDedicatedWorkerGlobalScope_DedicatedWorkerGlobalScope
     return IDLAttribute<JSDedicatedWorkerGlobalScope>::get<jsDedicatedWorkerGlobalScope_DedicatedWorkerGlobalScopeConstructorGetter>(*lexicalGlobalObject, thisValue, attributeName);
 }
 
-JSC::IsoSubspace* JSDedicatedWorkerGlobalScope::subspaceForImpl(JSC::VM& vm)
+static inline JSValue jsDedicatedWorkerGlobalScope_ExposedStarConstructorGetter(JSGlobalObject& lexicalGlobalObject, JSDedicatedWorkerGlobalScope& thisObject)
 {
-    auto& clientData = *static_cast<JSVMClientData*>(vm.clientData);
-    auto& spaces = clientData.subspaces();
-    if (auto* space = spaces.m_subspaceForDedicatedWorkerGlobalScope.get())
-        return space;
-    spaces.m_subspaceForDedicatedWorkerGlobalScope = makeUnique<IsoSubspace> ISO_SUBSPACE_INIT(vm.heap, clientData.m_heapCellTypeForJSDedicatedWorkerGlobalScope.get(), JSDedicatedWorkerGlobalScope);
-    auto* space = spaces.m_subspaceForDedicatedWorkerGlobalScope.get();
-IGNORE_WARNINGS_BEGIN("unreachable-code")
-IGNORE_WARNINGS_BEGIN("tautological-compare")
-    void (*myVisitOutputConstraint)(JSC::JSCell*, JSC::SlotVisitor&) = JSDedicatedWorkerGlobalScope::visitOutputConstraints;
-    void (*jsCellVisitOutputConstraint)(JSC::JSCell*, JSC::SlotVisitor&) = JSC::JSCell::visitOutputConstraints;
-    if (myVisitOutputConstraint != jsCellVisitOutputConstraint)
-        clientData.outputConstraintSpaces().append(space);
-IGNORE_WARNINGS_END
-IGNORE_WARNINGS_END
-    return space;
+    UNUSED_PARAM(lexicalGlobalObject);
+    return JSExposedStar::getConstructor(JSC::getVM(&lexicalGlobalObject), &thisObject);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(jsDedicatedWorkerGlobalScope_ExposedStarConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName attributeName))
+{
+    return IDLAttribute<JSDedicatedWorkerGlobalScope>::get<jsDedicatedWorkerGlobalScope_ExposedStarConstructorGetter>(*lexicalGlobalObject, thisValue, attributeName);
+}
+
+JSC::GCClient::IsoSubspace* JSDedicatedWorkerGlobalScope::subspaceForImpl(JSC::VM& vm)
+{
+    return WebCore::subspaceForImpl<JSDedicatedWorkerGlobalScope, UseCustomHeapCellType::Yes>(vm,
+        [] (auto& spaces) { return spaces.m_clientSubspaceForDedicatedWorkerGlobalScope.get(); },
+        [] (auto& spaces, auto&& space) { spaces.m_clientSubspaceForDedicatedWorkerGlobalScope = std::forward<decltype(space)>(space); },
+        [] (auto& spaces) { return spaces.m_subspaceForDedicatedWorkerGlobalScope.get(); },
+        [] (auto& spaces, auto&& space) { spaces.m_subspaceForDedicatedWorkerGlobalScope = std::forward<decltype(space)>(space); },
+        [] (auto& server) -> JSC::HeapCellType& { return server.m_heapCellTypeForJSDedicatedWorkerGlobalScope; }
+    );
 }
 
 void JSDedicatedWorkerGlobalScope::analyzeHeap(JSCell* cell, HeapAnalyzer& analyzer)
@@ -169,7 +189,7 @@ void JSDedicatedWorkerGlobalScope::analyzeHeap(JSCell* cell, HeapAnalyzer& analy
     auto* thisObject = jsCast<JSDedicatedWorkerGlobalScope*>(cell);
     analyzer.setWrappedObjectForCell(cell, &thisObject->wrapped());
     if (thisObject->scriptExecutionContext())
-        analyzer.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
+        analyzer.setLabelForCell(cell, makeString("url "_s, thisObject->scriptExecutionContext()->url().string()));
     Base::analyzeHeap(cell, analyzer);
 }
 

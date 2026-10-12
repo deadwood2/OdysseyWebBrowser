@@ -41,7 +41,7 @@ namespace WebCore {
 class FloatPointGraph {
     WTF_MAKE_NONCOPYABLE(FloatPointGraph);
 public:
-    FloatPointGraph() { }
+    FloatPointGraph() = default;
 
     class Node : public FloatPoint {
         WTF_MAKE_NONCOPYABLE(Node);
@@ -260,7 +260,13 @@ static FloatPointGraph::Polygon edgesForRect(FloatRect rect, FloatPointGraph& gr
 static Vector<FloatPointGraph::Polygon> polygonsForRect(const Vector<FloatRect>& rects, FloatPointGraph& graph)
 {
     Vector<FloatRect> sortedRects = rects;
-    std::sort(sortedRects.begin(), sortedRects.end(), [](FloatRect a, FloatRect b) { return b.y() > a.y(); });
+    // FIXME: Replace it with 2 dimensional sort.
+    std::sort(sortedRects.begin(), sortedRects.end(), [](FloatRect a, FloatRect b) {
+        return a.x() < b.x();
+    });
+    std::sort(sortedRects.begin(), sortedRects.end(), [](FloatRect a, FloatRect b) {
+        return a.y() < b.y();
+    });
 
     Vector<FloatPointGraph::Polygon> rectPolygons;
     rectPolygons.reserveInitialCapacity(sortedRects.size());
@@ -277,24 +283,21 @@ static Vector<FloatPointGraph::Polygon> polygonsForRect(const Vector<FloatRect>&
         }
 
         if (!isContained)
-            rectPolygons.uncheckedAppend(edgesForRect(rect, graph));
+            rectPolygons.append(edgesForRect(rect, graph));
     }
     return unitePolygons(rectPolygons, graph);
 }
 
 Vector<Path> PathUtilities::pathsWithShrinkWrappedRects(const Vector<FloatRect>& rects, float radius)
 {
-    Vector<Path> paths;
-
     if (rects.isEmpty())
-        return paths;
+        return { };
 
     if (rects.size() > 20) {
         Path path;
         for (const auto& rect : rects)
             path.addRoundedRect(rect, FloatSize(radius, radius));
-        paths.append(path);
-        return paths;
+        return { WTFMove(path) };
     }
 
     FloatPointGraph graph;
@@ -303,11 +306,10 @@ Vector<Path> PathUtilities::pathsWithShrinkWrappedRects(const Vector<FloatRect>&
         Path path;
         for (const auto& rect : rects)
             path.addRoundedRect(rect, FloatSize(radius, radius));
-        paths.append(path);
-        return paths;
+        return { WTFMove(path) };
     }
 
-    for (auto& poly : polys) {
+    return WTF::map(polys, [&](auto& poly) {
         Path path;
         for (unsigned i = 0; i < poly.size(); ++i) {
             FloatPointGraph::Edge& toEdge = poly[i];
@@ -319,8 +321,8 @@ Vector<Path> PathUtilities::pathsWithShrinkWrappedRects(const Vector<FloatRect>&
 
             // Clamp the radius to no more than half the length of either adjacent edge,
             // because we want a smooth curve and don't want unequal radii.
-            float clampedRadius = std::min(radius, fabsf(fromEdgeVec.x() ? fromEdgeVec.x() : fromEdgeVec.y()) / 2);
-            clampedRadius = std::min(clampedRadius, fabsf(toEdgeVec.x() ? toEdgeVec.x() : toEdgeVec.y()) / 2);
+            float clampedRadius = std::min(radius, fromEdgeVec.length() / 2);
+            clampedRadius = std::min(clampedRadius, toEdgeVec.length() / 2);
 
             FloatPoint fromEdgeNorm = fromEdgeVec;
             fromEdgeNorm.normalize();
@@ -338,9 +340,8 @@ Vector<Path> PathUtilities::pathsWithShrinkWrappedRects(const Vector<FloatRect>&
             path.addArcTo(*fromEdge.second, *toEdge.first + toOffset, clampedRadius);
         }
         path.closeSubpath();
-        paths.append(path);
-    }
-    return paths;
+        return path;
+    });
 }
 
 Path PathUtilities::pathWithShrinkWrappedRects(const Vector<FloatRect>& rects, float radius)
@@ -352,6 +353,19 @@ Path PathUtilities::pathWithShrinkWrappedRects(const Vector<FloatRect>& rects, f
         unionPath.addPath(path, AffineTransform());
 
     return unionPath;
+}
+
+Path PathUtilities::pathWithShrinkWrappedRects(const Vector<FloatRect>& rects, const FloatRoundedRect::Radii& radii)
+{
+    if (radii.isUniformCornerRadius())
+        return pathWithShrinkWrappedRects(rects, radii.topLeft().width());
+
+    // FIXME: This could potentially take non-uniform radii into account when running the
+    // shrink-wrap algorithm above, by averaging corner radii between adjacent edges.
+    Path path;
+    for (auto& rect : rects)
+        path.addRoundedRect(FloatRoundedRect { rect, radii });
+    return path;
 }
 
 static std::pair<FloatPoint, FloatPoint> startAndEndPointsForCorner(const FloatPointGraph::Edge& fromEdge, const FloatPointGraph::Edge& toEdge, const FloatSize& radius)
@@ -439,7 +453,7 @@ static std::pair<FloatPoint, FloatPoint> controlPointsForBezierCurve(CornerType 
     return std::make_pair(cp1, cp2);
 }
 
-static FloatRoundedRect::Radii adjustedtRadiiForHuggingCurve(const FloatSize& topLeftRadius, const FloatSize& topRightRadius,
+static FloatRoundedRect::Radii adjustedRadiiForHuggingCurve(const FloatSize& topLeftRadius, const FloatSize& topRightRadius,
     const FloatSize& bottomLeftRadius, const FloatSize& bottomRightRadius, float outlineOffset)
 {
     FloatRoundedRect::Radii radii;
@@ -491,8 +505,6 @@ static std::optional<FloatRect> rectFromPolygon(const FloatPointGraph::Polygon& 
 Path PathUtilities::pathWithShrinkWrappedRectsForOutline(const Vector<FloatRect>& rects, const BorderData& borderData,
     float outlineOffset, TextDirection direction, WritingMode writingMode, float deviceScaleFactor)
 {
-    ASSERT(borderData.hasBorderRadius());
-
     FloatSize topLeftRadius { borderData.topLeftRadius().width.value(), borderData.topLeftRadius().height.value() };
     FloatSize topRightRadius { borderData.topRightRadius().width.value(), borderData.topRightRadius().height.value() };
     FloatSize bottomRightRadius { borderData.bottomRightRadius().width.value(), borderData.bottomRightRadius().height.value() };
@@ -500,7 +512,7 @@ Path PathUtilities::pathWithShrinkWrappedRectsForOutline(const Vector<FloatRect>
 
     auto roundedRect = [topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius, outlineOffset, deviceScaleFactor] (const FloatRect& rect)
     {
-        auto radii = adjustedtRadiiForHuggingCurve(topLeftRadius, topRightRadius, bottomLeftRadius, bottomRightRadius, outlineOffset);
+        auto radii = adjustedRadiiForHuggingCurve(topLeftRadius, topRightRadius, bottomLeftRadius, bottomRightRadius, outlineOffset);
         radii.scale(calcBorderRadiiConstraintScaleFor(rect, radii));
         RoundedRect roundedRect(LayoutRect(rect),
             RoundedRect::Radii(LayoutSize(radii.topLeft()), LayoutSize(radii.topRight()), LayoutSize(radii.bottomLeft()), LayoutSize(radii.bottomRight())));
@@ -537,13 +549,14 @@ Path PathUtilities::pathWithShrinkWrappedRectsForOutline(const Vector<FloatRect>
     bottomLeftRadius = firstLineRadii.bottomLeft();
     topRightRadius = lastLineRadii.topRight();
     bottomRightRadius = lastLineRadii.bottomRight();
-    Vector<FloatPoint> corners;
     // physical topLeft/topRight/bottomRight/bottomLeft
     auto isHorizontal = isHorizontalWritingMode(writingMode);
-    corners.append(firstLineRect.minXMinYCorner());
-    corners.append(isHorizontal ? lastLineRect.maxXMinYCorner() : firstLineRect.maxXMinYCorner());
-    corners.append(lastLineRect.maxXMaxYCorner());
-    corners.append(isHorizontal ? firstLineRect.minXMaxYCorner() : lastLineRect.minXMaxYCorner());
+    auto corners = Vector<FloatPoint>::from(
+        firstLineRect.minXMinYCorner(),
+        isHorizontal ? lastLineRect.maxXMinYCorner() : firstLineRect.maxXMinYCorner(),
+        lastLineRect.maxXMaxYCorner(),
+        isHorizontal ? firstLineRect.minXMaxYCorner() : lastLineRect.minXMaxYCorner()
+    );
 
     for (unsigned i = 0; i < poly.size(); ++i) {
         auto moveOrAddLineTo = [i, &path] (const FloatPoint& startPoint)

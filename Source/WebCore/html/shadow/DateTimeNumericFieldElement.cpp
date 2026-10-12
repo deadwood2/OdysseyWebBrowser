@@ -31,11 +31,13 @@
 
 #include "EventNames.h"
 #include "FontCascade.h"
+#include "HTMLNames.h"
 #include "KeyboardEvent.h"
 #include "PlatformLocale.h"
 #include "RenderBlock.h"
-#include "RenderStyle.h"
-#include <wtf/IsoMallocInlines.h>
+#include "RenderStyleSetters.h"
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringToIntegerConversion.h>
 
 namespace WebCore {
@@ -52,16 +54,17 @@ bool DateTimeNumericFieldElement::Range::isInRange(int value) const
     return value >= minimum && value <= maximum;
 }
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(DateTimeNumericFieldElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(DateTimeNumericFieldElement);
 
-DateTimeNumericFieldElement::DateTimeNumericFieldElement(Document& document, FieldOwner& fieldOwner, const Range& range, int placeholder)
+DateTimeNumericFieldElement::DateTimeNumericFieldElement(Document& document, DateTimeFieldElementFieldOwner& fieldOwner, const Range& range, int placeholder)
     : DateTimeFieldElement(document, fieldOwner)
     , m_range(range)
     , m_placeholder(formatValue(placeholder))
+    , m_placeholderValue(placeholder)
 {
 }
 
-void DateTimeNumericFieldElement::adjustMinWidth(RenderStyle& style) const
+void DateTimeNumericFieldElement::adjustMinInlineSize(RenderStyle& style) const
 {
     auto& font = style.fontCascade();
 
@@ -73,13 +76,16 @@ void DateTimeNumericFieldElement::adjustMinWidth(RenderStyle& style) const
 
     auto& locale = localeForOwner();
 
-    float width = 0;
+    float inlineSize = 0;
     for (char c = '0'; c <= '9'; ++c) {
         auto numberString = locale.convertToLocalizedNumber(makeString(pad(c, length, makeString(c))));
-        width = std::max(width, font.width(RenderBlock::constructTextRun(numberString, style)));
+        inlineSize = std::max(inlineSize, font.width(RenderBlock::constructTextRun(numberString, style)));
     }
 
-    style.setMinWidth({ width, LengthType::Fixed });
+    if (style.isHorizontalWritingMode())
+        style.setMinWidth({ inlineSize, LengthType::Fixed });
+    else
+        style.setMinHeight({ inlineSize, LengthType::Fixed });
 }
 
 int DateTimeNumericFieldElement::maximum() const
@@ -103,17 +109,13 @@ bool DateTimeNumericFieldElement::hasValue() const
     return m_hasValue;
 }
 
-void DateTimeNumericFieldElement::initialize(const AtomString& pseudo)
-{
-    DateTimeFieldElement::initialize(pseudo);
-}
-
 void DateTimeNumericFieldElement::setEmptyValue(EventBehavior eventBehavior)
 {
     m_value = 0;
     m_hasValue = false;
     m_typeAheadBuffer.clear();
     updateVisibleValue(eventBehavior);
+    setARIAValueAttributesWithInteger(0);
 }
 
 void DateTimeNumericFieldElement::setValueAsInteger(int value, EventBehavior eventBehavior)
@@ -121,12 +123,19 @@ void DateTimeNumericFieldElement::setValueAsInteger(int value, EventBehavior eve
     m_value = m_range.clampValue(value);
     m_hasValue = true;
     updateVisibleValue(eventBehavior);
+    setARIAValueAttributesWithInteger(value);
 }
 
 void DateTimeNumericFieldElement::setValueAsIntegerByStepping(int value)
 {
     m_typeAheadBuffer.clear();
     setValueAsInteger(value, DispatchInputAndChangeEvents);
+}
+
+void DateTimeNumericFieldElement::setARIAValueAttributesWithInteger(int value)
+{
+    setAttributeWithoutSynchronization(HTMLNames::aria_valuenowAttr, AtomString::number(value));
+    setAttributeWithoutSynchronization(HTMLNames::aria_valuetextAttr, AtomString::number(value));
 }
 
 void DateTimeNumericFieldElement::stepDown()
@@ -155,18 +164,13 @@ String DateTimeNumericFieldElement::placeholderValue() const
     return m_placeholder;
 }
 
-int DateTimeNumericFieldElement::valueAsInteger() const
-{
-    return m_hasValue ? m_value : -1;
-}
-
 void DateTimeNumericFieldElement::handleKeyboardEvent(KeyboardEvent& keyboardEvent)
 {
     if (keyboardEvent.type() != eventNames().keypressEvent)
         return;
 
     auto charCode = static_cast<UChar>(keyboardEvent.charCode());
-    String number = localeForOwner().convertFromLocalizedNumber(String(&charCode, 1));
+    String number = localeForOwner().convertFromLocalizedNumber(span(charCode));
     int digit = number[0] - '0';
     if (digit < 0 || digit > 9)
         return;

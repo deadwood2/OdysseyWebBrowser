@@ -32,11 +32,12 @@
 #include "FlexibleBoxAlgorithm.h"
 
 #include "RenderBox.h"
+#include "RenderStyleInlines.h"
 
 namespace WebCore {
 
-FlexItem::FlexItem(RenderBox& box, LayoutUnit flexBaseContentSize, LayoutUnit mainAxisBorderAndPadding, LayoutUnit mainAxisMargin, std::pair<LayoutUnit, LayoutUnit> minMaxSizes, bool everHadLayout)
-    : box(box)
+FlexLayoutItem::FlexLayoutItem(RenderBox& flexItem, LayoutUnit flexBaseContentSize, LayoutUnit mainAxisBorderAndPadding, LayoutUnit mainAxisMargin, std::pair<LayoutUnit, LayoutUnit> minMaxSizes, bool everHadLayout)
+    : renderer(flexItem)
     , flexBaseContentSize(flexBaseContentSize)
     , mainAxisBorderAndPadding(mainAxisBorderAndPadding)
     , mainAxisMargin(mainAxisMargin)
@@ -45,11 +46,11 @@ FlexItem::FlexItem(RenderBox& box, LayoutUnit flexBaseContentSize, LayoutUnit ma
     , frozen(false)
     , everHadLayout(everHadLayout)
 {
-    ASSERT(!box.isOutOfFlowPositioned());
+    ASSERT(!flexItem.isOutOfFlowPositioned());
 }
 
-FlexLayoutAlgorithm::FlexLayoutAlgorithm(const RenderStyle& style, LayoutUnit lineBreakLength, const Vector<FlexItem>& allItems, LayoutUnit gapBetweenItems, LayoutUnit gapBetweenLines)
-    : m_style(style)
+FlexLayoutAlgorithm::FlexLayoutAlgorithm(RenderFlexibleBox& flexbox, LayoutUnit lineBreakLength, const Vector<FlexLayoutItem>& allItems, LayoutUnit gapBetweenItems, LayoutUnit gapBetweenLines)
+    : m_flexbox(flexbox)
     , m_lineBreakLength(lineBreakLength)
     , m_allItems(allItems)
     , m_gapBetweenItems(gapBetweenItems)
@@ -57,24 +58,47 @@ FlexLayoutAlgorithm::FlexLayoutAlgorithm(const RenderStyle& style, LayoutUnit li
 {
 }
 
-bool FlexLayoutAlgorithm::computeNextFlexLine(size_t& nextIndex, Vector<FlexItem>& lineItems, LayoutUnit& sumFlexBaseSize, double& totalFlexGrow, double& totalFlexShrink, double& totalWeightedFlexShrink, LayoutUnit& sumHypotheticalMainSize)
+bool FlexLayoutAlgorithm::canFitItemWithTrimmedMarginEnd(const FlexLayoutItem& flexLayoutItem, LayoutUnit sumHypotheticalMainSize) const
+{
+    auto marginTrim = m_flexbox.style().marginTrim();
+    if ((m_flexbox.isHorizontalFlow() && marginTrim.contains(MarginTrimType::InlineEnd)) || (m_flexbox.isColumnFlow() && marginTrim.contains(MarginTrimType::BlockEnd)))
+        return sumHypotheticalMainSize + flexLayoutItem.hypotheticalMainAxisMarginBoxSize() - m_flexbox.flowAwareMarginEndForFlexItem(flexLayoutItem.renderer) <= m_lineBreakLength;
+    return false;
+}
+
+void FlexLayoutAlgorithm::removeMarginEndFromFlexSizes(FlexLayoutItem& flexLayoutItem, LayoutUnit& sumFlexBaseSize, LayoutUnit& sumHypotheticalMainSize) const
+{
+    LayoutUnit margin;
+    if (m_flexbox.isHorizontalFlow())
+        margin = flexLayoutItem.renderer->marginEnd(&m_flexbox.style());
+    else
+        margin = flexLayoutItem.renderer->marginAfter(&m_flexbox.style());
+    sumFlexBaseSize -= margin;
+    sumHypotheticalMainSize -= margin;
+} 
+
+bool FlexLayoutAlgorithm::computeNextFlexLine(size_t& nextIndex, Vector<FlexLayoutItem>& lineItems, LayoutUnit& sumFlexBaseSize, double& totalFlexGrow, double& totalFlexShrink, double& totalWeightedFlexShrink, LayoutUnit& sumHypotheticalMainSize)
 {
     lineItems.clear();
     sumFlexBaseSize = 0_lu;
     totalFlexGrow = totalFlexShrink = totalWeightedFlexShrink = 0;
     sumHypotheticalMainSize = 0_lu;
 
+    // Trim main axis margin for item at the start of the flex line
+    if (nextIndex < m_allItems.size() && m_flexbox.shouldTrimMainAxisMarginStart())
+        m_flexbox.trimMainAxisMarginStart(m_allItems[nextIndex]);
     for (; nextIndex < m_allItems.size(); ++nextIndex) {
-        const auto& flexItem = m_allItems[nextIndex];
-        ASSERT(!flexItem.box.isOutOfFlowPositioned());
-        if (isMultiline() && sumHypotheticalMainSize + flexItem.hypotheticalMainAxisMarginBoxSize() > m_lineBreakLength && !lineItems.isEmpty())
+        const auto& flexLayoutItem = m_allItems[nextIndex];
+        auto& style = flexLayoutItem.style();
+        ASSERT(!flexLayoutItem.renderer->isOutOfFlowPositioned());
+        if (isMultiline() && (sumHypotheticalMainSize + flexLayoutItem.hypotheticalMainAxisMarginBoxSize() > m_lineBreakLength && !canFitItemWithTrimmedMarginEnd(flexLayoutItem, sumHypotheticalMainSize)) && !lineItems.isEmpty())
             break;
-        lineItems.append(flexItem);
-        sumFlexBaseSize += flexItem.flexBaseMarginBoxSize() + m_gapBetweenItems;
-        totalFlexGrow += flexItem.box.style().flexGrow();
-        totalFlexShrink += flexItem.box.style().flexShrink();
-        totalWeightedFlexShrink += flexItem.box.style().flexShrink() * flexItem.flexBaseContentSize;
-        sumHypotheticalMainSize += flexItem.hypotheticalMainAxisMarginBoxSize() + m_gapBetweenItems;
+        lineItems.append(flexLayoutItem);
+        sumFlexBaseSize += flexLayoutItem.flexBaseMarginBoxSize() + m_gapBetweenItems;
+        totalFlexGrow += style.flexGrow();
+        totalFlexShrink += style.flexShrink();
+        totalWeightedFlexShrink += style.flexShrink() * flexLayoutItem.flexBaseContentSize;
+        sumHypotheticalMainSize += flexLayoutItem.hypotheticalMainAxisMarginBoxSize() + m_gapBetweenItems;
     }
 
     if (!lineItems.isEmpty()) {
@@ -85,10 +109,16 @@ bool FlexLayoutAlgorithm::computeNextFlexLine(size_t& nextIndex, Vector<FlexItem
     }
 
     ASSERT(lineItems.size() > 0 || nextIndex == m_allItems.size());
+    // Trim main axis margin for item at the end of the flex line
+    if (lineItems.size() && m_flexbox.shouldTrimMainAxisMarginEnd()) {
+        auto lastItem = lineItems.last();
+        removeMarginEndFromFlexSizes(lastItem, sumFlexBaseSize, sumHypotheticalMainSize);
+        m_flexbox.trimMainAxisMarginEnd(lastItem);
+    }
     return lineItems.size() > 0;
 }
 
-LayoutUnit FlexItem::constrainSizeByMinMax(const LayoutUnit size) const
+LayoutUnit FlexLayoutItem::constrainSizeByMinMax(const LayoutUnit size) const
 {
     return std::max(minMaxSizes.first, std::min(size, minMaxSizes.second));
 }

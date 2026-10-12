@@ -24,10 +24,14 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from __future__ import print_function
-import os, sys
+import json
+import os
 import getpass
 import re
 import subprocess
+import sys
+import time
+
 
 def listAllWebKitPrograms(builddir_bin):
     foundWebKitPrograms = []
@@ -76,34 +80,39 @@ def orphanedShmSegmentsByUser(username):
             continue
     return ret
 
+def are_simulators_booted():
+    simctl_output = dict()
+    try:
+        simctl_output = json.loads(subprocess.check_output(
+            ['xcrun', 'simctl', 'list', '--json'],
+            **(dict(encoding='utf-8') if sys.version_info > (3, 0) else dict())
+        ))
+    except json.decoder.JSONDecodeError:
+        return False
+    except subprocess.CalledProcessError:
+        return False
+    for runtime, devices in simctl_output.get('devices', {}).items():
+        for device in devices:
+            state = device.get('state', '(unavailable)')
+            if state not in ('(unavailable)', 'Shutdown'):
+                print('{} is still {}'.format(device.get('udid', '?'), state))
+                return True
+    return False
+
 def main(user=None):
     tasksToKillWin = [
-        "cl.exe",
-        "devenv.com",
-        "devenv.exe",
-        "DumpRenderTree.exe",
-        "DumpRenderTree_debug.exe",
+        "clang-cl.exe",
         "httpd.exe",
         "imagediff.exe",
-        "imagediff_debug.exe",
         "jsc.exe",
-        "jsc_debug.exe",
-        "LightTPD.exe",
-        "link.exe",
-        "midl.exe",
+        "lld-link.exe",
         "perl.exe",
-        "Safari.exe",
-        "svn.exe",
         "testapi.exe",
-        "testapi_debug.exe",
-        "VcBuildHelper.exe",
-        "wdiff.exe",
+        "WebKitGPUProcess.exe",
         "WebKitNetworkProcess.exe",
-        "WebKitNetworkProcess_debug.exe",
-        "WebKitWebProcess.exe",
-        "WebKitWebProcess_debug.exe",
         "WebKitTestRunner.exe",
-        "WebKitTestRunner_debug.exe",
+        "WebKitTestRunnerWS.exe",
+        "WebKitWebProcess.exe",
     ]
 
     tasksToKillMac = [
@@ -121,7 +130,8 @@ def main(user=None):
         "make",
         "perl5.12",
         "perl5.16",
-        "perl5.18",        
+        "perl5.18",
+        "perl5.30",
         "perl",
         "Problem Reporter",
         "ruby",
@@ -141,7 +151,7 @@ def main(user=None):
         "WebProcess",
         "xcodebuild",
         # FIXME: Consider moving iOS-specific tasks to their own list.
-        "Simulator.app",
+        "Simulator",
     ]
 
     taskToKillUnix = [
@@ -153,7 +163,6 @@ def main(user=None):
         "cmake",
         "svn",
         # System process that are executed as part of the test steps
-        "Xvfb",
         "gdb",
         "ruby",
         "apache2",
@@ -164,14 +173,22 @@ def main(user=None):
     # This allows to specify on the environment of the bot a list of process that should be killed.
     tasksToKill = os.getenv("WEBKITBOT_TASKSTOKILL", "").split()
     if sys.platform == 'darwin':
+        # Shutdown any simulators
+        if os.geteuid() == 0 and user:
+            os.system("sudo -u {} xcrun simctl shutdown all".format(user))
+        else:
+            os.system("xcrun simctl shutdown all")
+
+        # Ensure that simulators are shut down
+        start = time.time()
+        while are_simulators_booted() and start + 60 > time.time():
+            print('Waiting on simulators to shut down...')
+            time.sleep(10)
+
         os.system("ps aux")
         for task in tasksToKill + tasksToKillMac:
             os.system("killall -9 -v -m " + task)
-        # Shutdown any simulators
-        if os.geteuid() == 0 and user:
-            os.system("sudo -u {} xcrun simctl shutdown booted".format(user))
-        else:
-            os.system("xcrun simctl shutdown booted")
+
         # Kill all instances of python executing run-webkit-tests
         os.system("ps aux | grep -E '.+/Python3? .+(run_webkit_tests|run-webkit-tests|mod_pywebsocket)' | grep -v grep | awk '{print $2}' | xargs kill")
         # FIXME: <rdar://problem/81476546> Remove stale simulator temp files
@@ -187,6 +204,10 @@ def main(user=None):
             os.system("killall -9 -v " + task)
         os.system("ps aux | grep -P '.+/python3? .+(run_webkit_tests|run-webkit-tests|mod_pywebsocket)' | grep -v grep | awk '{print $2}' | xargs -r kill")
         removeOrphanShmSegments()
+
+        # Filter Xvfb instances likely spawned by our harness, skipping ones run with xvfb-run like
+        # the one  used for dbus activation on the bots
+        os.system("ps aux | grep -P 'Xvfb -displayfd [0-9]' | awk '{print $2}' | xargs -r kill")
     else:
         sys.exit()
         # FIXME: Should we return an exit code based on how the kills went?

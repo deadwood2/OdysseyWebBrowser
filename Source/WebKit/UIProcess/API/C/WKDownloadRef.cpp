@@ -27,6 +27,7 @@
 #include "WKDownloadRef.h"
 
 #include "APIArray.h"
+#include "APIClient.h"
 #include "APIData.h"
 #include "APIDownloadClient.h"
 #include "APIURLRequest.h"
@@ -105,7 +106,7 @@ void WKDownloadSetClient(WKDownloadRef download, WKDownloadClientBase* client)
                 completionHandler(WebKit::AllowOverwrite::No, { });
                 return;
             }
-            API::String* destination = toImpl(m_client.decideDestinationWithResponse(toAPI(download), toAPI(response), toAPI(suggestedFilename.impl()), m_client.base.clientInfo));
+            auto destination = adoptRef(toImpl(m_client.decideDestinationWithResponse(toAPI(download), toAPI(response), toAPI(suggestedFilename.impl()), m_client.base.clientInfo)));
             if (!destination) {
                 completionHandler(WebKit::AllowOverwrite::No, { });
                 return;
@@ -129,7 +130,7 @@ void WKDownloadSetClient(WKDownloadRef download, WKDownloadClientBase* client)
 
         void processDidCrash(WebKit::DownloadProxy& download) override
         {
-            didFail(download, WebCore::ResourceError { WebCore::errorDomainWebKitInternal, 0, download.request().url(), "Network process crashed during download" }, nullptr);
+            didFail(download, WebCore::ResourceError { WebCore::errorDomainWebKitInternal, 0, download.request().url(), "Network process crashed during download"_s }, nullptr);
         }
 
         void willSendRequest(WebKit::DownloadProxy& download, WebCore::ResourceRequest&& request, const WebCore::ResourceResponse& response, CompletionHandler<void(WebCore::ResourceRequest&&)>&& completionHandler) override

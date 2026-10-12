@@ -23,12 +23,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if ENABLE(ACCESSIBILITY) && PLATFORM(IOS_FAMILY)
+#if PLATFORM(IOS_FAMILY)
 
 #import "AXObjectCache.h"
 #import "AccessibilityObject.h"
 #import "WebAccessibilityObjectWrapperBase.h"
 #import "WAKView.h"
+
+// NSAttributedStrings support.
+
+static NSString * const UIAccessibilityTextAttributeContext = @"UIAccessibilityTextAttributeContext";
+static NSString * const UIAccessibilityTextualContextSourceCode = @"UIAccessibilityTextualContextSourceCode";
 
 @interface WAKView (iOSAccessibility)
 - (BOOL)accessibilityIsIgnored;
@@ -39,6 +44,8 @@
     int m_isAccessibilityElement;
     uint64_t m_accessibilityTraitsFromAncestor;
 }
+
+- (WebCore::AccessibilityObject *)axBackingObject;
 
 - (id)accessibilityHitTest:(CGPoint)point;
 - (AccessibilityObjectWrapper *)accessibilityPostProcessHitTest:(CGPoint)point;
@@ -55,7 +62,14 @@
 
 - (BOOL)isAttachment;
 
-- (void)postNotification:(NSString *)notificationName;
+// This interacts with Accessibility system to post-process some notifications.
+// FIXME: remove this first overload once the system Accessibility bundle has been updated to the second overload.
+- (void)accessibilityOverrideProcessNotification:(NSString *)notificationName;
+- (void)accessibilityOverrideProcessNotification:(NSString *)notificationName notificationData:(NSData *)notificationData;
+
+// This is called by the Accessibility system to relay back to the chrome.
+- (void)handleNotificationRelayToChrome:(NSString *)notificationName notificationData:(NSData *)notificationData;
+
 @end
 
-#endif // ENABLE(ACCESSIBILITY) && PLATFORM(IOS_FAMILY)
+#endif // PLATFORM(IOS_FAMILY)

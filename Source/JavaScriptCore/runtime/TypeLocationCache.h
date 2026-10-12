@@ -25,10 +25,10 @@
 
 #pragma once
 
+#include "SourceID.h"
 #include "TypeLocation.h"
 #include <wtf/FastMalloc.h>
-#include <wtf/HashMethod.h>
-#include <wtf/StdUnorderedMap.h>
+#include <wtf/GenericHashKey.h>
 
 namespace JSC {
 
@@ -37,14 +37,14 @@ class VM;
 class TypeLocationCache {
 public:
     struct LocationKey {
+        struct Hash {
+            static unsigned hash(const LocationKey& key) { return key.hash(); }
+            static bool equal(const LocationKey& a, const LocationKey& b) { return a == b; }
+            static constexpr bool safeToCompareToEmptyOrDeleted = false;
+        };
+
         LocationKey() {}
-        bool operator==(const LocationKey& other) const 
-        {
-            return m_globalVariableID == other.m_globalVariableID
-                && m_sourceID == other.m_sourceID
-                && m_start == other.m_start
-                && m_end == other.m_end;
-        }
+        friend bool operator==(const LocationKey&, const LocationKey&) = default;
 
         unsigned hash() const
         {
@@ -52,14 +52,14 @@ public:
         }
 
         GlobalVariableID m_globalVariableID;
-        intptr_t m_sourceID;
+        SourceID m_sourceID;
         unsigned m_start;
         unsigned m_end;
     };
 
-    std::pair<TypeLocation*, bool> getTypeLocation(GlobalVariableID, intptr_t, unsigned start, unsigned end, RefPtr<TypeSet>&&, VM*);
+    std::pair<TypeLocation*, bool> getTypeLocation(GlobalVariableID, SourceID, unsigned start, unsigned end, RefPtr<TypeSet>&&, VM*);
 private:
-    using LocationMap = StdUnorderedMap<LocationKey, TypeLocation*, HashMethod<LocationKey>>;
+    using LocationMap = HashMap<GenericHashKey<LocationKey, LocationKey::Hash>, TypeLocation*>;
     LocationMap m_locationMap;
 };
 

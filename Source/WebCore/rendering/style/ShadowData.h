@@ -24,9 +24,12 @@
 
 #pragma once
 
-#include "Color.h"
 #include "FloatRect.h"
 #include "LayoutRect.h"
+#include "Length.h"
+#include "LengthBox.h"
+#include "LengthPoint.h"
+#include "StyleColor.h"
 
 namespace WebCore {
 
@@ -39,8 +42,8 @@ class ShadowData {
 public:
     ShadowData() = default;
 
-    ShadowData(const LayoutPoint& location, int radius, LayoutUnit spread, ShadowStyle style, bool isWebkitBoxShadow, const Color& color)
-        : m_location(location)
+    ShadowData(const LengthPoint& location, Length radius, Length spread, ShadowStyle style, bool isWebkitBoxShadow, const StyleColor& color)
+        : m_location(location.x(), location.y())
         , m_spread(spread)
         , m_radius(radius)
         , m_color(color)
@@ -49,52 +52,84 @@ public:
     {
     }
 
+    ~ShadowData();
+
     ShadowData(const ShadowData&);
     static std::optional<ShadowData> clone(const ShadowData*);
 
     ShadowData& operator=(ShadowData&&) = default;
 
     bool operator==(const ShadowData& o) const;
-    bool operator!=(const ShadowData& o) const
-    {
-        return !(*this == o);
-    }
     
-    LayoutUnit x() const { return m_location.x(); }
-    LayoutUnit y() const { return m_location.y(); }
-    LayoutPoint location() const { return m_location; }
-    int radius() const { return m_radius; }
+    const Length& x() const { return m_location.x(); }
+    const Length& y() const { return m_location.y(); }
+    const LengthPoint& location() const { return m_location; }
+    const Length& radius() const { return m_radius; }
+
     LayoutUnit paintingExtent() const
     {
         // Blurring uses a Gaussian function whose std. deviation is m_radius/2, and which in theory
         // extends to infinity. In 8-bit contexts, however, rounding causes the effect to become
         // undetectable at around 1.4x the radius.
         const float radiusExtentMultiplier = 1.4;
-        return LayoutUnit(ceilf(m_radius * radiusExtentMultiplier));
+        return LayoutUnit(ceilf(m_radius.value() * radiusExtentMultiplier));
     }
-    LayoutUnit spread() const { return m_spread; }
+
+    const Length& spread() const { return m_spread; }
+
     ShadowStyle style() const { return m_style; }
 
-    void setColor(const Color& color) { m_color = color; }
-    const Color& color() const { return m_color; }
+    void setColor(const StyleColor& color) { m_color = color; }
+    const StyleColor& color() const { return m_color; }
 
     bool isWebkitBoxShadow() const { return m_isWebkitBoxShadow; }
 
     const ShadowData* next() const { return m_next.get(); }
     void setNext(std::unique_ptr<ShadowData>&& shadow) { m_next = WTFMove(shadow); }
 
-    void adjustRectForShadow(LayoutRect&, int additionalOutlineSize = 0) const;
-    void adjustRectForShadow(FloatRect&, int additionalOutlineSize = 0) const;
+    void adjustRectForShadow(LayoutRect&) const;
+    void adjustRectForShadow(FloatRect&) const;
+
+    LayoutBoxExtent shadowOutsetExtent() const;
+    LayoutBoxExtent shadowInsetExtent() const;
+
+    static LayoutBoxExtent shadowOutsetExtent(const ShadowData*);
+    static LayoutBoxExtent shadowInsetExtent(const ShadowData*);
 
 private:
-    LayoutPoint m_location;
-    LayoutUnit m_spread;
-    int m_radius { 0 }; // This is the "blur radius", or twice the standard deviation of the Gaussian blur.
-    Color m_color;
+    void deleteNextLinkedListWithoutRecursion();
+
+    LengthPoint m_location;
+    Length m_spread;
+    Length m_radius; // This is the "blur radius", or twice the standard deviation of the Gaussian blur.
+    StyleColor m_color;
     ShadowStyle m_style { ShadowStyle::Normal };
     bool m_isWebkitBoxShadow { false };
     std::unique_ptr<ShadowData> m_next;
 };
+
+inline ShadowData::~ShadowData()
+{
+    if (m_next)
+        deleteNextLinkedListWithoutRecursion();
+}
+
+
+inline LayoutBoxExtent ShadowData::shadowOutsetExtent(const ShadowData* shadow)
+{
+    if (!shadow)
+        return { };
+
+    return shadow->shadowOutsetExtent();
+}
+
+inline LayoutBoxExtent ShadowData::shadowInsetExtent(const ShadowData* shadow)
+{
+    if (!shadow)
+        return { };
+
+    return shadow->shadowInsetExtent();
+}
 
 WTF::TextStream& operator<<(WTF::TextStream&, const ShadowData&);
 

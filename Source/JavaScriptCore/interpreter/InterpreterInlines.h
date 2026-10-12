@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2016 Yusuke Suzuki <utatane.tea@gmail.com>
- * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include "CallFrameClosure.h"
+#include "CachedCall.h"
 #include "Exception.h"
 #include "FunctionCodeBlock.h"
 #include "FunctionExecutable.h"
@@ -34,13 +34,36 @@
 #include "Interpreter.h"
 #include "JSCPtrTag.h"
 #include "LLIntData.h"
+#include "LLIntThunks.h"
 #include "ProtoCallFrameInlines.h"
+#include "StackAlignment.h"
 #include "UnlinkedCodeBlock.h"
+#include "VMTrapsInlines.h"
 #include <wtf/UnalignedAccess.h>
 
 namespace JSC {
 
-inline Opcode Interpreter::getOpcode(OpcodeID id)
+ALWAYS_INLINE VM& Interpreter::vm()
+{
+    return *bitwise_cast<VM*>(bitwise_cast<uint8_t*>(this) - OBJECT_OFFSETOF(VM, interpreter));
+}
+
+inline CallFrame* calleeFrameForVarargs(CallFrame* callFrame, unsigned numUsedStackSlots, unsigned argumentCountIncludingThis)
+{
+    // We want the new frame to be allocated on a stack aligned offset with a stack
+    // aligned size. Align the size here.
+    argumentCountIncludingThis = WTF::roundUpToMultipleOf(
+        stackAlignmentRegisters(),
+        argumentCountIncludingThis + CallFrame::headerSizeInRegisters) - CallFrame::headerSizeInRegisters;
+
+    // Align the frame offset here.
+    unsigned paddedCalleeFrameOffset = WTF::roundUpToMultipleOf(
+        stackAlignmentRegisters(),
+        numUsedStackSlots + argumentCountIncludingThis + CallFrame::headerSizeInRegisters);
+    return CallFrame::create(callFrame->registers() - paddedCalleeFrameOffset);
+}
+
+inline JSC::Opcode Interpreter::getOpcode(OpcodeID id)
 {
     return LLInt::getOpcode(id);
 }
@@ -48,7 +71,7 @@ inline Opcode Interpreter::getOpcode(OpcodeID id)
 // This function is only available as a debugging tool for development work.
 // It is not currently used except in a RELEASE_ASSERT to ensure that it is
 // working properly.
-inline OpcodeID Interpreter::getOpcodeID(Opcode opcode)
+inline OpcodeID Interpreter::getOpcodeID(JSC::Opcode opcode)
 {
 #if ENABLE(COMPUTED_GOTO_OPCODES)
     ASSERT(isOpcode(opcode));
@@ -70,9 +93,9 @@ inline OpcodeID Interpreter::getOpcodeID(Opcode opcode)
 #endif
 }
 
-ALWAYS_INLINE JSValue Interpreter::execute(CallFrameClosure& closure)
+ALWAYS_INLINE JSValue Interpreter::executeCachedCall(CachedCall& cachedCall)
 {
-    VM& vm = *closure.vm;
+    VM& vm = this->vm();
     auto throwScope = DECLARE_THROW_SCOPE(vm);
 
     ASSERT(!vm.isCollectorBusyOnCurrentThread());
@@ -80,28 +103,64 @@ ALWAYS_INLINE JSValue Interpreter::execute(CallFrameClosure& closure)
 
     StackStats::CheckPoint stackCheckPoint;
 
-    if (UNLIKELY(vm.traps().needHandling(VMTraps::NonDebuggerAsyncEvents))) {
-        ASSERT(vm.topCallFrame == closure.oldCallFrame);
-        if (vm.hasExceptionsAfterHandlingTraps())
-            return throwScope.exception();
+    auto clobberizeValidator = makeScopeExit([&] {
+        vm.didEnterVM = true;
+    });
+
+    // We don't handle `NonDebuggerAsyncEvents` explicitly here. This is a JS function (since this is CachedCall),
+    // so the called JS function always handles it.
+
+    auto* entry = cachedCall.m_addressForCall;
+    if (UNLIKELY(!entry)) {
+        DeferTraps deferTraps(vm); // We can't jettison this code if we're about to run it.
+        cachedCall.relink();
+        RETURN_IF_EXCEPTION(throwScope, throwScope.exception());
+        entry = cachedCall.m_addressForCall;
     }
 
-    // Reload CodeBlock since GC can replace CodeBlock owned by Executable.
-    CodeBlock* codeBlock;
-    Exception* error = closure.functionExecutable->prepareForExecution<FunctionExecutable>(vm, closure.function, closure.scope, CodeForCall, codeBlock);
-    EXCEPTION_ASSERT(throwScope.exception() == error);
-    if (UNLIKELY(error))
-        return checkedReturn(error);
-    codeBlock->m_shouldAlwaysBeInlined = false;
-    {
-        DisallowGC disallowGC; // Ensure no GC happens. GC can replace CodeBlock in Executable.
-        closure.protoCallFrame->setCodeBlock(codeBlock);
-    }
     // Execute the code:
     throwScope.release();
-    JSValue result = closure.functionExecutable->generatedJITCodeForCall()->execute(&vm, closure.protoCallFrame);
-
-    return checkedReturn(result);
+    return JSValue::decode(vmEntryToJavaScript(entry, &vm, &cachedCall.m_protoCallFrame));
 }
+
+#if CPU(ARM64) && CPU(ADDRESS64) && !ENABLE(C_LOOP)
+template<typename... Args>
+ALWAYS_INLINE JSValue Interpreter::tryCallWithArguments(CachedCall& cachedCall, JSValue thisValue, Args... args)
+{
+    VM& vm = this->vm();
+    static_assert(sizeof...(args) <= 3);
+
+    ASSERT(!vm.isCollectorBusyOnCurrentThread());
+    ASSERT(vm.currentThreadIsHoldingAPILock());
+
+    StackStats::CheckPoint stackCheckPoint;
+
+    auto clobberizeValidator = makeScopeExit([&] {
+        vm.didEnterVM = true;
+    });
+
+    // We don't handle `NonDebuggerAsyncEvents` explicitly here. This is a JS function (since this is CachedCall),
+    // so the called JS function always handles it.
+
+    auto* entry = cachedCall.m_addressForCall;
+    if (UNLIKELY(!entry))
+        return { };
+
+    // Execute the code:
+    auto* codeBlock = cachedCall.m_protoCallFrame.codeBlock();
+    auto* callee = cachedCall.m_protoCallFrame.callee();
+
+    if constexpr (!sizeof...(args))
+        return JSValue::decode(vmEntryToJavaScriptWith0Arguments(entry, &vm, codeBlock, callee, thisValue, args...));
+    else if constexpr (sizeof...(args) == 1)
+        return JSValue::decode(vmEntryToJavaScriptWith1Arguments(entry, &vm, codeBlock, callee, thisValue, args...));
+    else if constexpr (sizeof...(args) == 2)
+        return JSValue::decode(vmEntryToJavaScriptWith2Arguments(entry, &vm, codeBlock, callee, thisValue, args...));
+    else if constexpr (sizeof...(args) == 3)
+        return JSValue::decode(vmEntryToJavaScriptWith3Arguments(entry, &vm, codeBlock, callee, thisValue, args...));
+    else
+        return { };
+}
+#endif
 
 } // namespace JSC

@@ -36,11 +36,13 @@
 #include "DateComponents.h"
 #include "DateTimeFieldsState.h"
 #include "Decimal.h"
+#include "ElementInlines.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "InputTypeNames.h"
 #include "PlatformLocale.h"
 #include "StepRange.h"
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -61,13 +63,13 @@ DateComponentsType DateTimeLocalInputType::dateType() const
     return DateComponentsType::DateTimeLocal;
 }
 
-double DateTimeLocalInputType::valueAsDate() const
+WallTime DateTimeLocalInputType::valueAsDate() const
 {
     // valueAsDate doesn't work for the datetime-local type according to the standard.
-    return DateComponents::invalidMilliseconds();
+    return WallTime::nan();
 }
 
-ExceptionOr<void> DateTimeLocalInputType::setValueAsDate(double value) const
+ExceptionOr<void> DateTimeLocalInputType::setValueAsDate(WallTime value) const
 {
     // valueAsDate doesn't work for the datetime-local type according to the standard.
     return InputType::setValueAsDate(value);
@@ -76,14 +78,14 @@ ExceptionOr<void> DateTimeLocalInputType::setValueAsDate(double value) const
 StepRange DateTimeLocalInputType::createStepRange(AnyStepHandling anyStepHandling) const
 {
     ASSERT(element());
-    const Decimal stepBase = parseToNumber(element()->attributeWithoutSynchronization(minAttr), 0);
+    const Decimal stepBase = findStepBase(dateTimeLocalDefaultStepBase);
     const Decimal minimum = parseToNumber(element()->attributeWithoutSynchronization(minAttr), Decimal::fromDouble(DateComponents::minimumDateTime()));
     const Decimal maximum = parseToNumber(element()->attributeWithoutSynchronization(maxAttr), Decimal::fromDouble(DateComponents::maximumDateTime()));
     const Decimal step = StepRange::parseStep(anyStepHandling, dateTimeLocalStepDescription, element()->attributeWithoutSynchronization(stepAttr));
     return StepRange(stepBase, RangeLimitations::Valid, minimum, maximum, step, dateTimeLocalStepDescription);
 }
 
-std::optional<DateComponents> DateTimeLocalInputType::parseToDateComponents(const StringView& source) const
+std::optional<DateComponents> DateTimeLocalInputType::parseToDateComponents(StringView source) const
 {
     return DateComponents::fromParsingDateTimeLocal(source);
 }
@@ -96,6 +98,15 @@ std::optional<DateComponents> DateTimeLocalInputType::setMillisecondToDateCompon
 bool DateTimeLocalInputType::isValidFormat(OptionSet<DateTimeFormatValidationResults> results) const
 {
     return results.containsAll({ DateTimeFormatValidationResults::HasYear, DateTimeFormatValidationResults::HasMonth, DateTimeFormatValidationResults::HasDay, DateTimeFormatValidationResults::HasHour, DateTimeFormatValidationResults::HasMinute, DateTimeFormatValidationResults::HasMeridiem });
+}
+
+String DateTimeLocalInputType::sanitizeValue(const String& proposedValue) const
+{
+    if (proposedValue.isEmpty())
+        return proposedValue;
+
+    auto components = DateComponents::fromParsingDateTimeLocal(proposedValue);
+    return components ? components->toString() : emptyString();
 }
 
 String DateTimeLocalInputType::formatDateTimeFieldsState(const DateTimeFieldsState& state) const

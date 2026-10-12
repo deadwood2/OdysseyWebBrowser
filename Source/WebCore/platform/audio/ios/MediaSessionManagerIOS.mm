@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #if PLATFORM(IOS_FAMILY)
 
 #import "Logging.h"
+#import "MediaConfiguration.h"
 #import "MediaPlaybackTargetCocoa.h"
 #import "MediaPlayer.h"
 #import "PlatformMediaSession.h"
@@ -45,7 +46,7 @@ std::unique_ptr<PlatformMediaSessionManager> PlatformMediaSessionManager::create
 {
     auto manager = std::unique_ptr<MediaSessionManageriOS>(new MediaSessionManageriOS);
     MediaSessionHelper::sharedHelper().addClient(*manager);
-    return WTFMove(manager);
+    return manager;
 }
 
 MediaSessionManageriOS::MediaSessionManageriOS()
@@ -87,7 +88,12 @@ bool MediaSessionManageriOS::hasWirelessTargetsAvailable()
     return MediaSessionHelper::sharedHelper().isExternalOutputDeviceAvailable();
 }
 
-void MediaSessionManageriOS::configureWireLessTargetMonitoring()
+bool MediaSessionManageriOS::isMonitoringWirelessTargets() const
+{
+    return m_isMonitoringWirelessRoutes;
+}
+
+void MediaSessionManageriOS::configureWirelessTargetMonitoring()
 {
 #if !PLATFORM(WATCHOS)
     bool requiresMonitoring = anyOfSessions([] (auto& session) {
@@ -118,19 +124,6 @@ void MediaSessionManageriOS::providePresentingApplicationPIDIfNecessary()
 #endif
 }
 
-void MediaSessionManageriOS::mediaServerConnectionDied()
-{
-    ALWAYS_LOG(LOGIDENTIFIER, m_havePresentedApplicationPID);
-
-    if (!m_havePresentedApplicationPID)
-        return;
-
-    m_havePresentedApplicationPID = false;
-    callOnMainThread([] () {
-        providePresentingApplicationPID();
-    });
-}
-
 void MediaSessionManageriOS::providePresentingApplicationPID()
 {
     MediaSessionHelper::sharedHelper().providePresentingApplicationPID(presentingApplicationPID());
@@ -159,7 +152,7 @@ void MediaSessionManageriOS::sessionWillEndPlayback(PlatformMediaSession& sessio
     MediaSessionManagerCocoa::sessionWillEndPlayback(session, delayCallingUpdateNowPlaying);
 
 #if USE(AUDIO_SESSION)
-    if (isApplicationInBackground() && !anyOfSessions([] (auto& session) { return session.state() == PlatformMediaSession::Playing; }))
+    if (isApplicationInBackground() && !anyOfSessions([] (auto& session) { return session.state() == PlatformMediaSession::State::Playing; }))
         maybeDeactivateAudioSession();
 #endif
 }
@@ -176,6 +169,28 @@ void MediaSessionManageriOS::externalOutputDeviceAvailableDidChange(HasAvailable
 void MediaSessionManageriOS::isPlayingToAutomotiveHeadUnitDidChange(PlayingToAutomotiveHeadUnit playingToAutomotiveHeadUnit)
 {
     setIsPlayingToAutomotiveHeadUnit(playingToAutomotiveHeadUnit == PlayingToAutomotiveHeadUnit::Yes);
+}
+
+void MediaSessionManageriOS::activeAudioRouteSupportsSpatialPlaybackDidChange(SupportsSpatialAudioPlayback supportsSpatialPlayback)
+{
+    setSupportsSpatialAudioPlayback(supportsSpatialPlayback == SupportsSpatialAudioPlayback::Yes);
+}
+
+std::optional<bool> MediaSessionManagerCocoa::supportsSpatialAudioPlaybackForConfiguration(const MediaConfiguration& configuration)
+{
+    ASSERT(configuration.audio);
+
+    // Only multichannel audio can be spatially rendered on iOS.
+    if (!configuration.audio || configuration.audio->channels.toDouble() <= 2)
+        return { false };
+
+    auto supportsSpatialAudioPlayback = this->supportsSpatialAudioPlayback();
+    if (supportsSpatialAudioPlayback.has_value())
+        return supportsSpatialAudioPlayback;
+
+    MediaSessionHelper::sharedHelper().updateActiveAudioRouteSupportsSpatialPlayback();
+
+    return this->supportsSpatialAudioPlayback();
 }
 
 void MediaSessionManageriOS::activeAudioRouteDidChange(ShouldPause shouldPause)
@@ -200,7 +215,7 @@ void MediaSessionManageriOS::activeVideoRouteDidChange(SupportsAirPlayVideo supp
     m_playbackTargetSupportsAirPlayVideo = supportsAirPlayVideo == SupportsAirPlayVideo::Yes;
 #endif
 
-    auto nowPlayingSession = nowPlayingEligibleSession();
+    CheckedPtr nowPlayingSession = nowPlayingEligibleSession().get();
     if (!nowPlayingSession)
         return;
 
@@ -241,6 +256,5 @@ void MediaSessionManageriOS::applicationWillBecomeInactive()
 }
 
 } // namespace WebCore
-
 
 #endif // PLATFORM(IOS_FAMILY)

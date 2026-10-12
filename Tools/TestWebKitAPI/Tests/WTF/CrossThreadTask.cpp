@@ -46,8 +46,8 @@ struct LifetimeLogger {
         defaultConstructorSet.add(fullName());
     }
 
-    LifetimeLogger(const char* inputName)
-        : name(*inputName)
+    LifetimeLogger(ASCIILiteral inputName)
+        : name(inputName)
     {
         nameConstructorSet.add(fullName());
     }
@@ -82,16 +82,16 @@ struct LifetimeLogger {
     String fullName()
     {
         StringBuilder builder;
-        builder.append(&name);
-        builder.append("-");
+        builder.append(name);
+        builder.append('-');
         builder.append(String::number(copyGeneration));
-        builder.append("-");
+        builder.append('-');
         builder.append(String::number(moveGeneration));
 
         return builder.toString();
     }
 
-    const char& name { *"<default>" };
+    ASCIILiteral name { "<default>"_s };
     int copyGeneration { 0 };
     int moveGeneration { 0 };
 };
@@ -106,41 +106,41 @@ TEST(WTF_CrossThreadTask, Basic)
     {
         LifetimeLogger logger1;
         LifetimeLogger logger2(logger1);
-        LifetimeLogger logger3("logger");
+        LifetimeLogger logger3("logger"_s);
 
         auto task = createCrossThreadTask(testFunction, logger1, logger2, logger3);
         task.performTask();
     }
 
     ASSERT_EQ(1u, defaultConstructorSet.size());
-    ASSERT_EQ(1u, defaultConstructorSet.count("<default>-0-0"));
+    ASSERT_EQ(1u, defaultConstructorSet.count("<default>-0-0"_s));
 
     ASSERT_EQ(1u, nameConstructorSet.size());
-    ASSERT_EQ(1u, nameConstructorSet.count("logger-0-0"));
+    ASSERT_EQ(1u, nameConstructorSet.count("logger-0-0"_s));
 
     ASSERT_EQ(3u, copyConstructorSet.size());
-    ASSERT_EQ(1u, copyConstructorSet.count("logger-1-0"));
-    ASSERT_EQ(2u, copyConstructorSet.count("<default>-1-0"));
-    ASSERT_EQ(1u, copyConstructorSet.count("<default>-2-0"));
+    ASSERT_EQ(1u, copyConstructorSet.count("logger-1-0"_s));
+    ASSERT_EQ(2u, copyConstructorSet.count("<default>-1-0"_s));
+    ASSERT_EQ(1u, copyConstructorSet.count("<default>-2-0"_s));
 
-#if !COMPILER(MSVC)
+#if !COMPILER(MSVC) || COMPILER(CLANG)
     ASSERT_EQ(6u, moveConstructorSet.size());
 #else
-    // The number of times the move constructor is called is different on Windows in this test.
-    // This seems to be caused by differences in MSVC's implementation of lambdas or std functions like std::make_tuple.
+    // The number of times the move constructor is called is different with MSVC in this test.
+    // This seems to be caused by differences in MSVC's implementation of lambdas.
     ASSERT_EQ(9u, moveConstructorSet.size());
 #endif
-    ASSERT_EQ(1u, moveConstructorSet.count("logger-1-1"));
-    ASSERT_EQ(1u, moveConstructorSet.count("logger-1-2"));
-    ASSERT_EQ(1u, moveConstructorSet.count("<default>-2-1"));
-    ASSERT_EQ(1u, moveConstructorSet.count("<default>-2-2"));
-    ASSERT_EQ(1u, moveConstructorSet.count("<default>-1-1"));
-    ASSERT_EQ(1u, moveConstructorSet.count("<default>-1-2"));
+    ASSERT_EQ(1u, moveConstructorSet.count("logger-1-1"_s));
+    ASSERT_EQ(1u, moveConstructorSet.count("logger-1-2"_s));
+    ASSERT_EQ(1u, moveConstructorSet.count("<default>-2-1"_s));
+    ASSERT_EQ(1u, moveConstructorSet.count("<default>-2-2"_s));
+    ASSERT_EQ(1u, moveConstructorSet.count("<default>-1-1"_s));
+    ASSERT_EQ(1u, moveConstructorSet.count("<default>-1-2"_s));
 
-#if !COMPILER(MSVC)
+#if !COMPILER(MSVC) || COMPILER(CLANG)
     ASSERT_EQ(12u, totalDestructorCalls);
 #else
-    // Since the move constructor is called 3 more times on Windows (see above), we will have 3 more destructor calls.
+    // Since the move constructor is called 3 more times with MSVC (see above), we will have 3 more destructor calls.
     ASSERT_EQ(15u, totalDestructorCalls);
 #endif
     ASSERT_EQ(3u, totalIsolatedCopyCalls);

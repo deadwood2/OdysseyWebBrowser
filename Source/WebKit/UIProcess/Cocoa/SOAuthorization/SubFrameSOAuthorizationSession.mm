@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,44 +28,47 @@
 
 #if HAVE(APP_SSO)
 
+#import "APIFrameHandle.h"
 #import "APINavigationAction.h"
-#import "DataReference.h"
+#import "WebFrameProxy.h"
 #import "WebPageProxy.h"
 #import "WebProcessProxy.h"
+#import <WebCore/ContentSecurityPolicy.h>
+#import <WebCore/HTTPParsers.h>
+#import <WebCore/HTTPStatusCodes.h>
 #import <WebCore/ResourceResponse.h>
 #import <wtf/RunLoop.h>
+#import <wtf/cocoa/VectorCocoa.h>
+#import <wtf/text/MakeString.h>
 
 namespace WebKit {
 using namespace WebCore;
 
-#define AUTHORIZATIONSESSION_RELEASE_LOG(fmt, ...) RELEASE_LOG(AppSSO, "%p - [InitiatingAction=%s][State=%s] SubFrameSOAuthorizationSession::" fmt, this, initiatingActionString(), stateString(), ##__VA_ARGS__)
+#define AUTHORIZATIONSESSION_RELEASE_LOG(fmt, ...) RELEASE_LOG(AppSSO, "%p - [InitiatingAction=%s][State=%s] SubFrameSOAuthorizationSession::" fmt, this, initiatingActionString().characters(), stateString().characters(), ##__VA_ARGS__)
 
 namespace {
 
-const char* soAuthorizationPostDidStartMessageToParent = "<script>parent.postMessage('SOAuthorizationDidStart', '*');</script>";
-const char* soAuthorizationPostDidCancelMessageToParent = "<script>parent.postMessage('SOAuthorizationDidCancel', '*');</script>";
+constexpr auto soAuthorizationPostDidStartMessageToParent = "<script>parent.postMessage('SOAuthorizationDidStart', '*');</script>"_s;
+constexpr auto soAuthorizationPostDidCancelMessageToParent = "<script>parent.postMessage('SOAuthorizationDidCancel', '*');</script>"_s;
 
 } // namespace
 
-Ref<SOAuthorizationSession> SubFrameSOAuthorizationSession::create(SOAuthorization *soAuthorization, Ref<API::NavigationAction>&& navigationAction, WebPageProxy& page, Callback&& completionHandler, FrameIdentifier frameID)
+Ref<SOAuthorizationSession> SubFrameSOAuthorizationSession::create(RetainPtr<WKSOAuthorizationDelegate> delegate, Ref<API::NavigationAction>&& navigationAction, WebPageProxy& page, Callback&& completionHandler, FrameIdentifier frameID)
 {
-    return adoptRef(*new SubFrameSOAuthorizationSession(soAuthorization, WTFMove(navigationAction), page, WTFMove(completionHandler), frameID));
+    return adoptRef(*new SubFrameSOAuthorizationSession(delegate, WTFMove(navigationAction), page, WTFMove(completionHandler), frameID));
 }
 
-SubFrameSOAuthorizationSession::SubFrameSOAuthorizationSession(SOAuthorization *soAuthorization, Ref<API::NavigationAction>&& navigationAction, WebPageProxy& page, Callback&& completionHandler, FrameIdentifier frameID)
-    : NavigationSOAuthorizationSession(soAuthorization, WTFMove(navigationAction), page, InitiatingAction::SubFrame, WTFMove(completionHandler))
+SubFrameSOAuthorizationSession::SubFrameSOAuthorizationSession(RetainPtr<WKSOAuthorizationDelegate> delegate, Ref<API::NavigationAction>&& navigationAction, WebPageProxy& page, Callback&& completionHandler, FrameIdentifier frameID)
+    : NavigationSOAuthorizationSession(delegate, WTFMove(navigationAction), page, InitiatingAction::SubFrame, WTFMove(completionHandler))
     , m_frameID(frameID)
 {
-    if (auto* frame = page.process().webFrame(m_frameID))
+    if (auto* frame = WebFrameProxy::webFrame(m_frameID))
         frame->frameLoadState().addObserver(*this);
 }
 
 SubFrameSOAuthorizationSession::~SubFrameSOAuthorizationSession()
 {
-    auto* page = this->page();
-    if (!page)
-        return;
-    if (auto* frame = page->process().webFrame(m_frameID))
+    if (auto* frame = WebFrameProxy::webFrame(m_frameID))
         frame->frameLoadState().removeObserver(*this);
 }
 
@@ -73,7 +76,7 @@ void SubFrameSOAuthorizationSession::fallBackToWebPathInternal()
 {
     AUTHORIZATIONSESSION_RELEASE_LOG("fallBackToWebPathInternal: navigationAction=%p", navigationAction());
     ASSERT(navigationAction());
-    appendRequestToLoad(URL(navigationAction()->request().url()), Vector { reinterpret_cast<const uint8_t*>(soAuthorizationPostDidCancelMessageToParent), strlen(soAuthorizationPostDidCancelMessageToParent) });
+    appendRequestToLoad(URL(navigationAction()->request().url()), Vector<uint8_t>(span8(soAuthorizationPostDidCancelMessageToParent)));
     appendRequestToLoad(URL(navigationAction()->request().url()), String(navigationAction()->request().httpReferrer()));
 }
 
@@ -86,11 +89,11 @@ void SubFrameSOAuthorizationSession::abortInternal()
 void SubFrameSOAuthorizationSession::completeInternal(const WebCore::ResourceResponse& response, NSData *data)
 {
     AUTHORIZATIONSESSION_RELEASE_LOG("completeInternal: httpState=%d", response.httpStatusCode());
-    if (response.httpStatusCode() != 200) {
+    if (response.httpStatusCode() != httpStatus200OK) {
         fallBackToWebPathInternal();
         return;
     }
-    appendRequestToLoad(URL(response.url()), Vector { reinterpret_cast<const uint8_t*>(data.bytes), data.length });
+    appendRequestToLoad(URL(response.url()), makeVector(data));
 }
 
 void SubFrameSOAuthorizationSession::beforeStart()
@@ -99,16 +102,13 @@ void SubFrameSOAuthorizationSession::beforeStart()
     // Cancelled the current load before loading the data to post SOAuthorizationDidStart to the parent frame.
     invokeCallback(true);
     ASSERT(navigationAction());
-    appendRequestToLoad(URL(navigationAction()->request().url()), Vector { reinterpret_cast<const uint8_t*>(soAuthorizationPostDidStartMessageToParent), strlen(soAuthorizationPostDidStartMessageToParent) });
+    appendRequestToLoad(URL(navigationAction()->request().url()), Vector<uint8_t>(span8(soAuthorizationPostDidStartMessageToParent)));
 }
 
 void SubFrameSOAuthorizationSession::didFinishLoad()
 {
     AUTHORIZATIONSESSION_RELEASE_LOG("didFinishLoad");
-    auto* page = this->page();
-    if (!page)
-        return;
-    auto* frame = page->process().webFrame(m_frameID);
+    RefPtr frame = WebFrameProxy::webFrame(m_frameID);
     ASSERT(frame);
     if (m_requestsToLoad.isEmpty() || m_requestsToLoad.first().first != frame->url())
         return;
@@ -126,19 +126,84 @@ void SubFrameSOAuthorizationSession::appendRequestToLoad(URL&& url, Supplement&&
 void SubFrameSOAuthorizationSession::loadRequestToFrame()
 {
     AUTHORIZATIONSESSION_RELEASE_LOG("loadRequestToFrame");
-    auto* page = this->page();
+    RefPtr page = this->page();
     if (!page || m_requestsToLoad.isEmpty())
         return;
 
-    if (auto* frame = page->process().webFrame(m_frameID)) {
+    if (RefPtr frame = WebFrameProxy::webFrame(m_frameID)) {
         page->setShouldSuppressSOAuthorizationInNextNavigationPolicyDecision();
         auto& url = m_requestsToLoad.first().first;
         WTF::switchOn(m_requestsToLoad.first().second, [&](const Vector<uint8_t>& data) {
-            frame->loadData(IPC::DataReference(data), "text/html", "UTF-8", url);
+            frame->loadData(data, "text/html"_s, "UTF-8"_s, url);
         }, [&](const String& referrer) {
             frame->loadURL(url, referrer);
         });
     }
+}
+
+bool SubFrameSOAuthorizationSession::shouldInterruptLoadForXFrameOptions(Vector<Ref<SecurityOrigin>>&& frameAncestorOrigins, const String& xFrameOptions, const URL& url)
+{
+    switch (parseXFrameOptionsHeader(xFrameOptions)) {
+    case XFrameOptionsDisposition::None:
+    case XFrameOptionsDisposition::AllowAll:
+        return false;
+    case XFrameOptionsDisposition::Deny:
+        return true;
+    case XFrameOptionsDisposition::SameOrigin: {
+        auto origin = SecurityOrigin::create(url);
+        for (auto& ancestorOrigin : frameAncestorOrigins) {
+            if (!origin->isSameSchemeHostPort(ancestorOrigin))
+                return true;
+        }
+        return false;
+    }
+    case XFrameOptionsDisposition::Conflict: {
+        auto errorMessage = makeString("Multiple 'X-Frame-Options' headers with conflicting values ('"_s, xFrameOptions, "') encountered. Falling back to 'DENY'."_s);
+        AUTHORIZATIONSESSION_RELEASE_LOG("shouldInterruptLoadForXFrameOptions: %s", errorMessage.utf8().data());
+        return true;
+    }
+    case XFrameOptionsDisposition::Invalid: {
+        auto errorMessage = makeString("Invalid 'X-Frame-Options' header encountered: '"_s, xFrameOptions, "' is not a recognized directive. The header will be ignored."_s);
+        AUTHORIZATIONSESSION_RELEASE_LOG("shouldInterruptLoadForXFrameOptions: %s", errorMessage.utf8().data());
+        return false;
+    }
+    }
+    ASSERT_NOT_REACHED();
+    return false;
+}
+
+bool SubFrameSOAuthorizationSession::shouldInterruptLoadForCSPFrameAncestorsOrXFrameOptions(const WebCore::ResourceResponse& response)
+{
+    if (auto* page = this->page(); page && page->preferences().ignoreIframeEmbeddingProtectionsEnabled())
+        return false;
+
+    Vector<Ref<SecurityOrigin>> frameAncestorOrigins;
+
+    ASSERT(navigationAction());
+    if (auto* targetFrame = navigationAction()->targetFrame()) {
+        if (auto parentFrameHandle = targetFrame->parentFrameHandle()) {
+            for (auto* parent = WebFrameProxy::webFrame(parentFrameHandle->frameID()); parent; parent = parent->parentFrame())
+                frameAncestorOrigins.append(SecurityOrigin::create(parent->url()));
+        }
+    }
+
+    auto url = response.url();
+    ContentSecurityPolicy contentSecurityPolicy { URL { url }, nullptr, nullptr };
+    contentSecurityPolicy.didReceiveHeaders(ContentSecurityPolicyResponseHeaders { response }, navigationAction()->request().httpReferrer());
+    if (!contentSecurityPolicy.allowFrameAncestors(frameAncestorOrigins, url))
+        return true;
+
+    if (!contentSecurityPolicy.overridesXFrameOptions()) {
+        String xFrameOptions = response.httpHeaderField(HTTPHeaderName::XFrameOptions);
+        if (!xFrameOptions.isNull() && shouldInterruptLoadForXFrameOptions(WTFMove(frameAncestorOrigins), xFrameOptions, response.url())) {
+            String errorMessage = makeString("Refused to display '"_s, response.url().stringCenterEllipsizedToLength(), "' in a frame because it set 'X-Frame-Options' to '"_s, xFrameOptions, "'."_s);
+            AUTHORIZATIONSESSION_RELEASE_LOG("shouldInterruptLoadForCSPFrameAncestorsOrXFrameOptions: %s", errorMessage.utf8().data());
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 } // namespace WebKit

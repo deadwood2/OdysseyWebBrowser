@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "WebKit.h"
 #include <wtf/HashSet.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>

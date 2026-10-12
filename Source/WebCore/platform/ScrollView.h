@@ -57,25 +57,38 @@ OBJC_CLASS WAKView;
 
 namespace WebCore {
 
-class EventRegionContext;
 class FloatQuad;
 class HostWindow;
 class LegacyTileCache;
+class RegionContext;
 class Scrollbar;
 
-class ScrollView : public Widget, public ScrollableArea {
+enum class DelegatedScrollingMode : uint8_t {
+    NotDelegated,
+    DelegatedToNativeScrollView,
+    DelegatedToWebKit,
+};
+
+class ScrollView : public Widget, public ScrollableArea, public CanMakeCheckedPtr<ScrollView> {
+    WTF_MAKE_FAST_ALLOCATED;
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(ScrollView);
 public:
     virtual ~ScrollView();
 
-    using WeakValueType = Widget::WeakValueType;
+    // CheckedPtr interface
+    uint32_t ptrCount() const final { return CanMakeCheckedPtr::ptrCount(); }
+    uint32_t ptrCountWithoutThreadCheck() const final { return CanMakeCheckedPtr::ptrCountWithoutThreadCheck(); }
+    void incrementPtrCount() const final { CanMakeCheckedPtr::incrementPtrCount(); }
+    void decrementPtrCount() const final { CanMakeCheckedPtr::decrementPtrCount(); }
+
     using Widget::weakPtrFactory;
+    using Widget::WeakValueType;
+    using Widget::WeakPtrImplType;
 
     // ScrollableArea functions.
     WEBCORE_EXPORT void setScrollOffset(const ScrollOffset&) final;
     bool isScrollCornerVisible() const final;
     void scrollbarStyleChanged(ScrollbarStyle, bool forceUpdate) override;
-
-    virtual void notifyPageThatContentAreaWillPaint() const;
 
     IntPoint locationOfContents() const;
 
@@ -109,7 +122,7 @@ public:
     // widget may choose not to honor the requested modes.
     WEBCORE_EXPORT void setScrollbarModes(ScrollbarMode horizontalMode, ScrollbarMode verticalMode, bool horizontalLock = false, bool verticalLock = false);
     void setHorizontalScrollbarMode(ScrollbarMode mode, bool lock = false) { setScrollbarModes(mode, verticalScrollbarMode(), lock, verticalScrollbarLock()); }
-    void setVerticalScrollbarMode(ScrollbarMode mode, bool lock = false) { setScrollbarModes(horizontalScrollbarMode(), mode, horizontalScrollbarLock(), lock); };
+    void setVerticalScrollbarMode(ScrollbarMode mode, bool lock = false) { setScrollbarModes(horizontalScrollbarMode(), mode, horizontalScrollbarLock(), lock); }
     WEBCORE_EXPORT void scrollbarModes(ScrollbarMode& horizontalMode, ScrollbarMode& verticalMode) const;
     ScrollbarMode horizontalScrollbarMode() const final { ScrollbarMode horizontal, vertical; scrollbarModes(horizontal, vertical); return horizontal; }
     ScrollbarMode verticalScrollbarMode() const final { ScrollbarMode horizontal, vertical; scrollbarModes(horizontal, vertical); return vertical; }
@@ -123,8 +136,6 @@ public:
 
     WEBCORE_EXPORT virtual void setCanHaveScrollbars(bool);
 
-    virtual bool avoidScrollbarCreation() const { return false; }
-
     void setScrollbarOverlayStyle(ScrollbarOverlayStyle) final;
 
     // By default you only receive paint events for the area that is visible. In the case of using a
@@ -132,11 +143,13 @@ public:
     bool paintsEntireContents() const { return m_paintsEntireContents; }
     WEBCORE_EXPORT void setPaintsEntireContents(bool);
 
-    // By default programmatic scrolling is handled by WebCore and not by the UI application.
-    // In the case of using a tiled backing store, this mode can be set, so that the scroll requests
-    // are delegated to the UI application.
-    bool delegatesScrolling() const { return m_delegatesScrolling; }
-    WEBCORE_EXPORT void setDelegatesScrolling(bool);
+    // By default scrolling is handled by WebCore, but some WebKit implementations take over scrolling,
+    // delegating it to a native scrolling widget or the UI process.
+    DelegatedScrollingMode delegatedScrollingMode() const { return m_delegatedScrollingMode; }
+    WEBCORE_EXPORT void setDelegatedScrollingMode(DelegatedScrollingMode);
+
+    bool delegatesScrolling() const { return m_delegatedScrollingMode != DelegatedScrollingMode::NotDelegated; }
+    bool delegatesScrollingToNativeView() const { return m_delegatedScrollingMode == DelegatedScrollingMode::DelegatedToNativeScrollView; }
 
     // Overridden by FrameView to create custom CSS scrollbars if applicable.
     virtual Ref<Scrollbar> createScrollbar(ScrollbarOrientation);
@@ -154,7 +167,7 @@ public:
         ~ProhibitScrollingWhenChangingContentSizeForScope();
 
     private:
-        WeakPtr<ScrollView> m_scrollView;
+        SingleThreadWeakPtr<ScrollView> m_scrollView;
     };
 
     std::unique_ptr<ProhibitScrollingWhenChangingContentSizeForScope> prohibitScrollingWhenChangingContentSizeForScope();
@@ -171,6 +184,7 @@ public:
     // will be returned instead of the value set on Page.
     enum class TopContentInsetType { WebCoreContentInset, WebCoreOrPlatformContentInset };
     virtual float topContentInset(TopContentInsetType = TopContentInsetType::WebCoreContentInset) const { return 0; }
+    IntRect frameRectShrunkByInset() const;
 
     // The visible content rect has a location that is the scrolled offset of the document. The width and height are the unobscured viewport
     // width and height. By default the scrollbars themselves are excluded from this rectangle, but an optional boolean argument allows them
@@ -188,10 +202,10 @@ public:
     // Parts of the document can be visible through transparent or blured UI widgets of the chrome. Those parts
     // contribute to painting but not to the scrollable area.
     // The unobscuredContentRect is the area that is not covered by UI elements.
-    WEBCORE_EXPORT IntRect unobscuredContentRect(VisibleContentRectIncludesScrollbars = ExcludeScrollbars) const;
+    WEBCORE_EXPORT IntRect unobscuredContentRect(VisibleContentRectIncludesScrollbars = VisibleContentRectIncludesScrollbars::No) const;
 
 #if PLATFORM(IOS_FAMILY)
-    IntRect unobscuredContentRectIncludingScrollbars() const { return unobscuredContentRect(IncludeScrollbars); }
+    IntRect unobscuredContentRectIncludingScrollbars() const { return unobscuredContentRect(VisibleContentRectIncludesScrollbars::Yes); }
 #else
     IntRect unobscuredContentRectIncludingScrollbars() const { return visibleContentRectIncludingScrollbars(); }
 #endif
@@ -211,7 +225,7 @@ public:
 #endif
 
     // Size available for view contents, including content inset areas. Not affected by zooming.
-    IntSize sizeForVisibleContent(VisibleContentRectIncludesScrollbars = ExcludeScrollbars) const;
+    IntSize sizeForVisibleContent(VisibleContentRectIncludesScrollbars = VisibleContentRectIncludesScrollbars::No) const;
     // FIXME: remove this. It's only used for the incorrectly behaving ScrollView::unobscuredContentRectInternal().
     virtual float visibleContentScaleFactor() const { return 1; }
 
@@ -271,8 +285,12 @@ public:
 
     IntSize overhangAmount() const final;
 
-    void cacheCurrentScrollPosition() { m_cachedScrollPosition = scrollPosition(); }
+    void cacheCurrentScrollState();
     ScrollPosition cachedScrollPosition() const { return m_cachedScrollPosition; }
+#if PLATFORM(IOS_FAMILY)
+    IntRect cachedUnobscuredContentRect() const { return m_cachedUnobscuredContentRect; }
+    FloatRect cachedExposedContentRect() const { return m_cachedExposedContentRect; }
+#endif
 
     // Functions for scrolling the view.
     virtual void setScrollPosition(const ScrollPosition&, const ScrollPositionChangeOptions& = ScrollPositionChangeOptions::createProgrammatic());
@@ -330,7 +348,7 @@ public:
 
     // Functions for converting to and from screen coordinates.
     WEBCORE_EXPORT IntRect contentsToScreen(const IntRect&) const;
-    IntPoint screenToContents(const IntPoint&) const;
+    WEBCORE_EXPORT IntPoint screenToContents(const IntPoint&) const;
 
     // The purpose of this function is to answer whether or not the scroll view is currently visible. Animations and painting updates can be suspended if
     // we know that we are either not in a window right now or if that window is not visible.
@@ -348,35 +366,12 @@ public:
     // For platforms that need to hit test scrollbars from within the engine's event handlers (like Win32).
     Scrollbar* scrollbarAtPoint(const IntPoint& windowPoint);
 
-    IntPoint convertChildToSelf(const Widget* child, const IntPoint& point) const
-    {
-        IntPoint newPoint = point;
-        if (!isScrollViewScrollbar(child))
-            newPoint = point - toIntSize(scrollPosition());
-        newPoint.moveBy(child->location());
-        return newPoint;
-    }
-
-    FloatPoint convertChildToSelf(const Widget* child, const FloatPoint& point) const
-    {
-        FloatPoint newPoint = point;
-        if (!isScrollViewScrollbar(child))
-            newPoint -= toFloatSize(scrollPosition());
-        newPoint.moveBy(child->location());
-        return newPoint;
-    }
-
-    IntPoint convertSelfToChild(const Widget* child, const IntPoint& point) const
-    {
-        IntPoint newPoint = point;
-        if (!isScrollViewScrollbar(child))
-            newPoint = point + toIntSize(scrollPosition());
-        newPoint.moveBy(-child->location());
-        return newPoint;
-    }
+    IntPoint convertChildToSelf(const Widget*, IntPoint) const;
+    FloatPoint convertChildToSelf(const Widget*, FloatPoint) const;
+    IntPoint convertSelfToChild(const Widget*, IntPoint) const;
 
     // Widget override. Handles painting of the contents of the view as well as the scrollbars.
-    WEBCORE_EXPORT void paint(GraphicsContext&, const IntRect&, Widget::SecurityOriginPaintPolicy = SecurityOriginPaintPolicy::AnyOrigin, EventRegionContext* = nullptr) final;
+    WEBCORE_EXPORT void paint(GraphicsContext&, const IntRect&, Widget::SecurityOriginPaintPolicy = SecurityOriginPaintPolicy::AnyOrigin, RegionContext* = nullptr) final;
     void paintScrollbars(GraphicsContext&, const IntRect&);
 
     // Widget overrides to ensure that our children's visibility status is kept up to date when we get shown and hidden.
@@ -411,17 +406,20 @@ public:
     bool managesScrollbars() const;
     virtual void updateScrollbarSteps();
 
+    // Called to update the scrollbars to accurately reflect the state of the view.
+    void updateScrollbars(const ScrollPosition& desiredPosition);
+
 protected:
     ScrollView();
 
     virtual void repaintContentRectangle(const IntRect&);
-    virtual void paintContents(GraphicsContext&, const IntRect& damageRect, SecurityOriginPaintPolicy = SecurityOriginPaintPolicy::AnyOrigin, EventRegionContext* = nullptr) = 0;
+    virtual void paintContents(GraphicsContext&, const IntRect& damageRect, SecurityOriginPaintPolicy = SecurityOriginPaintPolicy::AnyOrigin, RegionContext* = nullptr) = 0;
 
     virtual void paintOverhangAreas(GraphicsContext&, const IntRect& horizontalOverhangArea, const IntRect& verticalOverhangArea, const IntRect& dirtyRect);
 
     void availableContentSizeChanged(AvailableSizeChangeReason) override;
     virtual void addedOrRemovedScrollbar() = 0;
-    virtual void delegatesScrollingDidChange() = 0;
+    virtual void delegatedScrollingModeDidChange() = 0;
 
     // These functions are used to create/destroy scrollbars.
     // They return true if the scrollbar was added or removed.
@@ -441,9 +439,6 @@ protected:
     // Subclassed by FrameView to check the writing-mode of the document.
     virtual bool isVerticalDocument() const = 0;
     virtual bool isFlippedDocument() const = 0;
-
-    // Called to update the scrollbars to accurately reflect the state of the view.
-    void updateScrollbars(const ScrollPosition& desiredPosition);
 
     float platformTopContentInset() const;
     void platformSetTopContentInset(float);
@@ -468,10 +463,10 @@ private:
 
 private:
     // Size available for view contents, excluding content insets. Not affected by zooming.
-    IntSize sizeForUnobscuredContent(VisibleContentRectIncludesScrollbars = ExcludeScrollbars) const;
+    IntSize sizeForUnobscuredContent(VisibleContentRectIncludesScrollbars = VisibleContentRectIncludesScrollbars::No) const;
 
     IntRect visibleContentRectInternal(VisibleContentRectIncludesScrollbars, VisibleContentRectBehavior) const final;
-    WEBCORE_EXPORT IntRect unobscuredContentRectInternal(VisibleContentRectIncludesScrollbars = ExcludeScrollbars) const;
+    WEBCORE_EXPORT IntRect unobscuredContentRectInternal(VisibleContentRectIncludesScrollbars = VisibleContentRectIncludesScrollbars::No) const;
 
     void completeUpdatesAfterScrollTo(const IntSize& scrollDelta);
 
@@ -536,8 +531,8 @@ private:
 
     RefPtr<Scrollbar> m_horizontalScrollbar;
     RefPtr<Scrollbar> m_verticalScrollbar;
-    ScrollbarMode m_horizontalScrollbarMode { ScrollbarAuto };
-    ScrollbarMode m_verticalScrollbarMode { ScrollbarAuto };
+    ScrollbarMode m_horizontalScrollbarMode { ScrollbarMode::Auto };
+    ScrollbarMode m_verticalScrollbarMode { ScrollbarMode::Auto };
 
 
     // FIXME: More things will move into here.
@@ -554,6 +549,10 @@ private:
 #endif
     ScrollPosition m_scrollPosition;
     IntPoint m_cachedScrollPosition;
+#if PLATFORM(IOS_FAMILY)
+    IntRect m_cachedUnobscuredContentRect;
+    FloatRect m_cachedExposedContentRect;
+#endif
     IntSize m_fixedLayoutSize;
     IntSize m_contentsSize;
 
@@ -564,6 +563,8 @@ private:
 
     unsigned m_updateScrollbarsPass { 0 };
     unsigned m_prohibitsScrollingWhenChangingContentSizeCount { 0 };
+
+    DelegatedScrollingMode m_delegatedScrollingMode { DelegatedScrollingMode::NotDelegated };
 
     bool m_horizontalScrollbarLock { false };
     bool m_verticalScrollbarLock { false };
@@ -582,7 +583,6 @@ private:
     bool m_useFixedLayout { false };
 
     bool m_paintsEntireContents { false };
-    bool m_delegatesScrolling { false };
 
 }; // class ScrollView
 

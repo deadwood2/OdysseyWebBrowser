@@ -31,10 +31,11 @@
 #include "WebPageProxy.h"
 #include "WebProcessPool.h"
 #include "WebProcessProxy.h"
+#include <WebCore/RuntimeApplicationChecks.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/WeakHashSet.h>
-#include <wtf/text/StringConcatenateNumbers.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebKit {
 
@@ -59,7 +60,7 @@ unsigned inspectorLevelForPage(WebPageProxy* page)
 
 String defaultInspectorPageGroupIdentifierForPage(WebPageProxy* page)
 {
-    return makeString("__WebInspectorPageGroupLevel", inspectorLevelForPage(page), "__");
+    return makeString("__WebInspectorPageGroupLevel"_s, inspectorLevelForPage(page), "__"_s);
 }
 
 void trackInspectorPage(WebPageProxy* inspectorPage, WebPageProxy* inspectedPage)
@@ -96,9 +97,6 @@ WebProcessPool& defaultInspectorProcessPool(unsigned inspectionLevel)
 
 void prepareProcessPoolForInspector(WebProcessPool& processPool)
 {
-    // Do not delay process launch for inspector pages as inspector pages do not know how to transition from a terminated process.
-    processPool.disableDelayedWebProcessLaunch();
-
     allInspectorProcessPools().add(processPool);
 }
 
@@ -111,5 +109,17 @@ bool isInspectorPage(WebPageProxy& webPage)
 {
     return pageLevelMap().contains(&webPage);
 }
+
+#if PLATFORM(COCOA)
+CFStringRef bundleIdentifierForSandboxBroker()
+{
+    if (WebCore::applicationBundleIdentifier() == "com.apple.SafariTechnologyPreview"_s)
+        return CFSTR("com.apple.SafariTechnologyPreview.SandboxBroker");
+    if (WebCore::applicationBundleIdentifier() == "com.apple.Safari.automation"_s)
+        return CFSTR("com.apple.Safari.automation.SandboxBroker");
+
+    return CFSTR("com.apple.Safari.SandboxBroker");
+}
+#endif // PLATFORM(COCOA)
 
 } // namespace WebKit

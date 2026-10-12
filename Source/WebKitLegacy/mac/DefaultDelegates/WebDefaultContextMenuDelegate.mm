@@ -46,8 +46,8 @@
 #import <Foundation/NSURLConnection.h>
 #import <Foundation/NSURLRequest.h>
 #import <WebCore/Editor.h>
-#import <WebCore/Frame.h>
 #import <WebCore/FrameLoader.h>
+#import <WebCore/LocalFrame.h>
 #import <WebKitLegacy/DOM.h>
 #import <WebKitLegacy/DOMPrivate.h>
 #import <pal/system/mac/DefaultSearchProvider.h>
@@ -85,10 +85,6 @@
         case WebMenuItemTagReload:
             title = UI_STRING_INTERNAL("Reload", "Reload context menu item");
             action = @selector(reload:);
-            break;
-        case WebMenuItemTagSearchInSpotlight:
-            title = UI_STRING_INTERNAL("Search in Spotlight", "Search in Spotlight context menu item");
-            action = @selector(_searchWithSpotlightFromMenu:);
             break;
         case WebMenuItemTagSearchWeb: {
             auto searchProviderName = PAL::defaultSearchProviderDisplayName();
@@ -143,7 +139,7 @@
     WebFrame *webFrame = [element objectForKey:WebElementFrameKey];
     
     if ([[element objectForKey:WebElementIsSelectedKey] boolValue]) {
-        // The Spotlight and Google items are implemented in WebView, and require that the
+        // The Google item is implemented in WebView, and requires that the
         // current document view conforms to WebDocumentText
         ASSERT([[[webFrame frameView] documentView] conformsToProtocol:@protocol(WebDocumentText)]);
 

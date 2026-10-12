@@ -30,8 +30,6 @@
 
 #include "ScalableImageDecoder.h"
 
-#if USE(WEBP)
-
 #include "webp/decode.h"
 #include "webp/demux.h"
 
@@ -47,7 +45,7 @@ public:
     virtual ~WEBPImageDecoder();
 
     String filenameExtension() const override { return "webp"_s; }
-    void setData(SharedBuffer&, bool) final;
+    void setData(const FragmentedSharedBuffer&, bool) final;
     ScalableImageDecoderFrame* frameBufferAtIndex(size_t index) override;
     RepetitionCount repetitionCount() const override;
     size_t frameCount() const override { return m_frameCount; }
@@ -70,5 +68,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif

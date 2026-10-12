@@ -26,19 +26,39 @@
 #include "config.h"
 #include "PseudoClassChangeInvalidation.h"
 
-#include "ElementChildIterator.h"
+#include "ElementChildIteratorInlines.h"
+#include "ElementRareData.h"
 #include "StyleInvalidationFunctions.h"
 
 namespace WebCore {
 namespace Style {
 
-void PseudoClassChangeInvalidation::computeInvalidation(CSSSelector::PseudoClassType pseudoClass, InvalidationScope invalidationScope)
+Vector<PseudoClassInvalidationKey, 4> makePseudoClassInvalidationKeys(CSSSelector::PseudoClass pseudoClass, const Element& element)
+{
+    Vector<PseudoClassInvalidationKey, 4> keys;
+
+    if (!element.idForStyleResolution().isEmpty())
+        keys.append(makePseudoClassInvalidationKey(pseudoClass, InvalidationKeyType::Id, element.idForStyleResolution()));
+
+    if (element.hasClass()) {
+        keys.appendContainerWithMapping(element.classNames(), [&](auto& className) {
+            return makePseudoClassInvalidationKey(pseudoClass, InvalidationKeyType::Class, className);
+        });
+    }
+
+    keys.append(makePseudoClassInvalidationKey(pseudoClass, InvalidationKeyType::Tag, element.localNameLowercase()));
+    keys.append(makePseudoClassInvalidationKey(pseudoClass, InvalidationKeyType::Universal));
+
+    return keys;
+};
+
+void PseudoClassChangeInvalidation::computeInvalidation(CSSSelector::PseudoClass pseudoClass, Value value, InvalidationScope invalidationScope)
 {
     bool shouldInvalidateCurrent = false;
     bool mayAffectStyleInShadowTree = false;
 
     traverseRuleFeatures(m_element, [&] (const RuleFeatureSet& features, bool mayAffectShadowTree) {
-        if (mayAffectShadowTree && features.pseudoClassRules.contains(pseudoClass))
+        if (mayAffectShadowTree && features.pseudoClasses.contains(pseudoClass))
             mayAffectStyleInShadowTree = true;
         if (m_element.shadowRoot() && features.pseudoClassesAffectingHost.contains(pseudoClass))
             shouldInvalidateCurrent = true;
@@ -52,33 +72,68 @@ void PseudoClassChangeInvalidation::computeInvalidation(CSSSelector::PseudoClass
     if (shouldInvalidateCurrent)
         m_element.invalidateStyle();
 
-    auto& ruleSets = m_element.styleResolver().ruleSets();
-    if (auto* invalidationRuleSets = ruleSets.pseudoClassInvalidationRuleSets(pseudoClass)) {
+    for (auto& key : makePseudoClassInvalidationKeys(pseudoClass, m_element))
+        collectRuleSets(key, value, invalidationScope);
+}
+
+void PseudoClassChangeInvalidation::collectRuleSets(const PseudoClassInvalidationKey& key, Value value, InvalidationScope invalidationScope)
+{
+    auto collect = [&](auto& ruleSets, std::optional<MatchElement> onlyMatchElement = { }) {
+        auto* invalidationRuleSets = ruleSets.pseudoClassInvalidationRuleSets(key);
+        if (!invalidationRuleSets)
+            return;
+
         for (auto& invalidationRuleSet : *invalidationRuleSets) {
+            if (onlyMatchElement && invalidationRuleSet.matchElement != onlyMatchElement)
+                continue;
+
             // For focus/hover we flip the whole ancestor chain. We only need to do deep invalidation traversal in the change root.
             auto shouldInvalidate = [&] {
+                bool invalidatesAllDescendants = invalidationRuleSet.matchElement == MatchElement::Ancestor && isUniversalInvalidation(key);
                 switch (invalidationScope) {
                 case InvalidationScope::All:
                     return true;
                 case InvalidationScope::SelfChildrenAndSiblings:
-                    return invalidationRuleSet.matchElement != MatchElement::Ancestor;
+                    return !invalidatesAllDescendants;
                 case InvalidationScope::Descendants:
-                    return invalidationRuleSet.matchElement == MatchElement::Ancestor;
+                    return invalidatesAllDescendants;
                 }
                 ASSERT_NOT_REACHED();
                 return true;
             }();
             if (!shouldInvalidate)
                 continue;
-            Invalidator::addToMatchElementRuleSets(m_matchElementRuleSets, invalidationRuleSet);
+
+            if (value == Value::Any) {
+                Invalidator::addToMatchElementRuleSets(m_beforeChangeRuleSets, invalidationRuleSet);
+                Invalidator::addToMatchElementRuleSets(m_afterChangeRuleSets, invalidationRuleSet);
+                continue;
+            }
+
+            bool invalidateBeforeChange = invalidationRuleSet.isNegation == IsNegation::Yes ? value == Value::True : value == Value::False;
+            if (invalidateBeforeChange)
+                Invalidator::addToMatchElementRuleSets(m_beforeChangeRuleSets, invalidationRuleSet);
+            else
+                Invalidator::addToMatchElementRuleSets(m_afterChangeRuleSets, invalidationRuleSet);
         }
-    }
+    };
+
+    collect(m_element.styleResolver().ruleSets());
+
+    if (auto* shadowRoot = m_element.shadowRoot())
+        collect(shadowRoot->styleScope().resolver().ruleSets(), MatchElement::Host);
 }
 
-void PseudoClassChangeInvalidation::invalidateStyleWithRuleSets()
+void PseudoClassChangeInvalidation::invalidateBeforeChange()
 {
-    Invalidator::invalidateWithMatchElementRuleSets(m_element, m_matchElementRuleSets);
+    Invalidator::invalidateWithMatchElementRuleSets(m_element, m_beforeChangeRuleSets);
 }
+
+void PseudoClassChangeInvalidation::invalidateAfterChange()
+{
+    Invalidator::invalidateWithMatchElementRuleSets(m_element, m_afterChangeRuleSets);
+}
+
 
 }
 }

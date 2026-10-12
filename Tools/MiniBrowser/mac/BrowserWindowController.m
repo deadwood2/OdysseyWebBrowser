@@ -28,7 +28,9 @@
 #import "AppDelegate.h"
 #import "SettingsController.h"
 
-@interface BrowserWindowController () <NSSharingServicePickerDelegate, NSSharingServiceDelegate>
+@interface BrowserWindowController () <NSSharingServicePickerDelegate, NSSharingServiceDelegate> {
+    NSTimer *_mainThreadStallTimer;
+}
 @end
 
 @implementation BrowserWindowController
@@ -43,18 +45,17 @@
 
 - (void)windowDidLoad
 {
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 110000
     // FIXME: We should probably adopt the default unified style, but we'd need
     // somewhere to put the window/page title.
     self.window.toolbarStyle = NSWindowToolbarStyleExpanded;
 
-    reloadButton.image = [NSImage imageWithSystemSymbolName:@"arrow.clockwise" accessibilityDescription:@"Reload"];
-    // FIXME: Should these be localized?
-    backButton.image = [NSImage imageWithSystemSymbolName:@"chevron.left" accessibilityDescription:@"Go back"];
-    forwardButton.image = [NSImage imageWithSystemSymbolName:@"chevron.right" accessibilityDescription:@"Go forward"];
-    share.image = [NSImage imageWithSystemSymbolName:@"square.and.arrow.up" accessibilityDescription:@"Share"];
-    toggleUseShrinkToFitButton.image = [NSImage imageWithSystemSymbolName:@"arrow.up.left.and.arrow.down.right" accessibilityDescription:@"Use Shrink to fit"];
-#endif
+    NSString *sizeString = [[NSUserDefaults standardUserDefaults] stringForKey:@"WindowSize"];
+    if (sizeString) {
+        NSSize size = NSSizeFromString(sizeString);
+        if (size.width && size.height)
+            [self.window setContentSize:size];
+    }
+
     [share sendActionOn:NSEventMaskLeftMouseDown];
     [super windowDidLoad];
 }
@@ -114,6 +115,11 @@
 }
 
 - (IBAction)saveAsPDF:(id)sender
+{
+    [self doesNotRecognizeSelector:_cmd];
+}
+
+- (IBAction)saveAsImage:(id)sender
 {
     [self doesNotRecognizeSelector:_cmd];
 }
@@ -250,6 +256,16 @@
     [self doesNotRecognizeSelector:_cmd];
 }
 
+- (IBAction)togglePictureInPicture:(id)sender
+{
+    [self doesNotRecognizeSelector:_cmd];
+}
+
+- (IBAction)toggleInWindowFullscreen:(id)sender
+{
+    [self doesNotRecognizeSelector:_cmd];
+}
+
 - (void)didChangeSettings
 {
     [self doesNotRecognizeSelector:_cmd];
@@ -267,9 +283,35 @@
     return nil;
 }
 
+- (NSImage *)windowSnapshotInRect:(CGRect)rect
+{
+    [self doesNotRecognizeSelector:_cmd];
+    return nil;
+}
+
 - (IBAction)toggleEditable:(id)sender
 {
     self.editable = !self.isEditable;
+}
+
+- (IBAction)toggleMainThreadStalls:(id)sender
+{
+    if (_mainThreadStallTimer) {
+        [_mainThreadStallTimer invalidate];
+        _mainThreadStallTimer = nil;
+        return;
+    }
+
+    const NSTimeInterval stallTimerRepeatInterval = 0.2;
+    _mainThreadStallTimer = [NSTimer scheduledTimerWithTimeInterval:stallTimerRepeatInterval repeats:YES block:^(NSTimer * _Nonnull timer) {
+        const NSTimeInterval stallDuration = 0.2;
+        usleep(stallDuration * USEC_PER_SEC);
+    }];
+}
+
+- (BOOL)mainThreadStallsEnabled
+{
+    return !!_mainThreadStallTimer;
 }
 
 #pragma mark -
@@ -280,12 +322,12 @@
     return proposedServices;
 }
 
-- (nullable id <NSSharingServiceDelegate>)sharingServicePicker:(NSSharingServicePicker *)sharingServicePicker delegateForSharingService:(NSSharingService *)sharingService
+- (id <NSSharingServiceDelegate>)sharingServicePicker:(NSSharingServicePicker *)sharingServicePicker delegateForSharingService:(NSSharingService *)sharingService
 {
     return self;
 }
 
-- (void)sharingServicePicker:(NSSharingServicePicker *)sharingServicePicker didChooseSharingService:(nullable NSSharingService *)service
+- (void)sharingServicePicker:(NSSharingServicePicker *)sharingServicePicker didChooseSharingService:(NSSharingService *)service
 {
 }
 
@@ -308,23 +350,19 @@ static CGRect coreGraphicsScreenRectForAppKitScreenRect(NSRect rect)
 - (NSImage *)sharingService:(NSSharingService *)sharingService transitionImageForShareItem:(id)item contentRect:(NSRect *)contentRect
 {
     NSRect contentFrame = [self.window convertRectToScreen:self.mainContentView.bounds];
-
     CGRect frame = coreGraphicsScreenRectForAppKitScreenRect(contentFrame);
-    CGImageRef imageRef = CGWindowListCreateImage(frame, kCGWindowListOptionIncludingWindow, (CGWindowID)[self.window windowNumber], kCGWindowImageBoundsIgnoreFraming);
-    
-    if (!imageRef)
-        return nil;
-    
-    NSImage *image = [[NSImage alloc] initWithCGImage:imageRef size:NSZeroSize];
-    CGImageRelease(imageRef);
-
-    return [image autorelease];
+    return [self windowSnapshotInRect:frame];
 }
 
-- (nullable NSWindow *)sharingService:(NSSharingService *)sharingService sourceWindowForShareItems:(NSArray *)items sharingContentScope:(NSSharingContentScope *)sharingContentScope
+- (NSWindow *)sharingService:(NSSharingService *)sharingService sourceWindowForShareItems:(NSArray *)items sharingContentScope:(NSSharingContentScope *)sharingContentScope
 {
     *sharingContentScope = NSSharingContentScopeFull;
     return self.window;
+}
+
+- (void)updateTitleForBadgeChange
+{
+    // Only implemented in WebKit2
 }
 
 @end

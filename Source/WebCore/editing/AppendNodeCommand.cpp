@@ -41,15 +41,15 @@ AppendNodeCommand::AppendNodeCommand(Ref<ContainerNode>&& parent, Ref<Node>&& no
     , m_node(WTFMove(node))
 {
     ASSERT(!m_node->parentNode());
-    ASSERT(m_parent->hasEditableStyle() || !m_parent->renderer());
 }
 
 void AppendNodeCommand::doApply()
 {
-    if (!m_parent->hasEditableStyle() && m_parent->renderer())
+    auto parent = protectedParent();
+    if (!parent->hasEditableStyle() && parent->renderer())
         return;
 
-    m_parent->appendChild(m_node);
+    parent->appendChild(m_node);
 }
 
 void AppendNodeCommand::doUnapply()
@@ -57,7 +57,7 @@ void AppendNodeCommand::doUnapply()
     if (!m_parent->hasEditableStyle())
         return;
 
-    m_node->remove();
+    protectedNode()->remove();
 }
 
 #ifndef NDEBUG

@@ -38,7 +38,7 @@ WKTypeID WKURLRequestGetTypeID()
 
 WKURLRequestRef WKURLRequestCreateWithWKURL(WKURLRef url)
 {
-    return WebKit::toAPI(&API::URLRequest::create(URL(URL(), WebKit::toImpl(url)->string())).leakRef());
+    return WebKit::toAPI(&API::URLRequest::create(URL { WebKit::toImpl(url)->string() }).leakRef());
 }
 
 WKURLRef WKURLRequestCopyURL(WKURLRequestRef requestRef)
@@ -59,7 +59,7 @@ WKStringRef WKURLRequestCopyHTTPMethod(WKURLRequestRef requestRef)
 WKURLRequestRef WKURLRequestCopySettingHTTPBody(WKURLRequestRef requestRef, WKDataRef body)
 {
     WebCore::ResourceRequest requestCopy(WebKit::toImpl(requestRef)->resourceRequest());
-    requestCopy.setHTTPBody(WebCore::FormData::create(WKDataGetBytes(body), WKDataGetSize(body)));
+    requestCopy.setHTTPBody(WebCore::FormData::create(std::span { WKDataGetBytes(body), WKDataGetSize(body) }));
     return WebKit::toAPI(&API::URLRequest::create(requestCopy).leakRef());
 }
 

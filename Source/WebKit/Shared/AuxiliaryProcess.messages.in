@@ -24,7 +24,12 @@ messages -> AuxiliaryProcess NotRefCounted {
     ShutDown()
     SetProcessSuppressionEnabled(bool flag)
 
-    MainThreadPing() -> () Async
+    MainThreadPing() -> ()
+
+#if ENABLE(CFPREFS_DIRECT_MODE)
+    PreferenceDidUpdate(String domain, String key, std::optional<String> encodedValue)
+    PreferencesDidUpdate(HashMap<String, std::optional<String>> domainlessPreferences, HashMap<std::pair<String, String>, std::optional<String>> preferences)
+#endif
 
 #if OS(LINUX)
     void DidReceiveMemoryPressureEvent(bool isCritical)

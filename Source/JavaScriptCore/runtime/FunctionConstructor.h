@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2006, 2008 Apple Inc. All rights reserved.
+ *  Copyright (C) 2006-2021 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -29,6 +29,7 @@ class TextPosition;
 namespace JSC {
 
 class FunctionPrototype;
+enum class SourceTaintedOrigin : uint8_t;
 
 class FunctionConstructor final : public InternalFunction {
 public:
@@ -36,17 +37,14 @@ public:
 
     static FunctionConstructor* create(VM& vm, Structure* structure, FunctionPrototype* functionPrototype)
     {
-        FunctionConstructor* constructor = new (NotNull, allocateCell<FunctionConstructor>(vm.heap)) FunctionConstructor(vm, structure);
+        FunctionConstructor* constructor = new (NotNull, allocateCell<FunctionConstructor>(vm)) FunctionConstructor(vm, structure);
         constructor->finishCreation(vm, functionPrototype);
         return constructor;
     }
 
     DECLARE_INFO;
 
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype) 
-    { 
-        return Structure::create(vm, globalObject, prototype, TypeInfo(InternalFunctionType, StructureFlags), info()); 
-    }
+    inline static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
 private:
     FunctionConstructor(VM&, Structure*);
@@ -61,12 +59,13 @@ enum class FunctionConstructionMode {
     AsyncGenerator,
 };
 
-JSObject* constructFunction(JSGlobalObject*, const ArgList&, const Identifier& functionName, const SourceOrigin&, const String& sourceURL, const WTF::TextPosition&, FunctionConstructionMode = FunctionConstructionMode::Function, JSValue newTarget = JSValue());
+JSObject* constructFunction(JSGlobalObject*, const ArgList&, const Identifier& functionName, const SourceOrigin&, const String& sourceURL, SourceTaintedOrigin, const WTF::TextPosition&, FunctionConstructionMode = FunctionConstructionMode::Function, JSValue newTarget = JSValue());
 JSObject* constructFunction(JSGlobalObject*, CallFrame*, const ArgList&, FunctionConstructionMode = FunctionConstructionMode::Function, JSValue newTarget = JSValue());
 
 JS_EXPORT_PRIVATE JSObject* constructFunctionSkippingEvalEnabledCheck(
-    JSGlobalObject*, const ArgList&, const Identifier&, const SourceOrigin&,
-    const String&, const WTF::TextPosition&, int overrideLineNumber = -1,
+    JSGlobalObject*, String&& program, LexicallyScopedFeatures, const Identifier&, const SourceOrigin&,
+    const String&, SourceTaintedOrigin, const WTF::TextPosition&, int overrideLineNumber = -1,
+    std::optional<int> functionConstructorParametersEndPosition = std::nullopt,
     FunctionConstructionMode = FunctionConstructionMode::Function, JSValue newTarget = JSValue());
 
 } // namespace JSC

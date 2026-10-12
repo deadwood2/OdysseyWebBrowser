@@ -54,8 +54,8 @@ CertificateInfo::CertificateInfo(const ResourceError& resourceError)
 {
 }
 
-CertificateInfo::CertificateInfo(GTlsCertificate* certificate, GTlsCertificateFlags tlsErrors)
-    : m_certificate(certificate)
+CertificateInfo::CertificateInfo(GRefPtr<GTlsCertificate>&& certificate, GTlsCertificateFlags tlsErrors)
+    : m_certificate(WTFMove(certificate))
     , m_tlsErrors(tlsErrors)
 {
 }
@@ -128,7 +128,7 @@ std::optional<CertificateSummary> CertificateInfo::summary() const
             GBytes* bytes = static_cast<GBytes*>(dnsNames->pdata[i]);
             gsize dataLength;
             const auto* data = g_bytes_get_data(bytes, &dataLength);
-            summaryInfo.dnsNames.append(String(static_cast<const char*>(data), dataLength));
+            summaryInfo.dnsNames.append(String({ static_cast<const char*>(data), dataLength }));
         }
     }
     if (ipAddresses) {

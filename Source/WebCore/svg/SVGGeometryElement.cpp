@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2004, 2005, 2006, 2008 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
  * Copyright (C) 2018 Adobe Systems Incorporated. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -24,19 +24,21 @@
 #include "SVGGeometryElement.h"
 
 #include "DOMPoint.h"
-#include "RenderSVGResource.h"
+#include "DocumentInlines.h"
+#include "LegacyRenderSVGResource.h"
+#include "LegacyRenderSVGShape.h"
 #include "RenderSVGShape.h"
 #include "SVGDocumentExtensions.h"
 #include "SVGPathUtilities.h"
 #include "SVGPoint.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SVGGeometryElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SVGGeometryElement);
 
-SVGGeometryElement::SVGGeometryElement(const QualifiedName& tagName, Document& document)
-    : SVGGraphicsElement(tagName, document)
+SVGGeometryElement::SVGGeometryElement(const QualifiedName& tagName, Document& document, UniqueRef<SVGPropertyRegistry>&& propertyRegistry)
+    : SVGGraphicsElement(tagName, document, WTFMove(propertyRegistry))
 {
     static std::once_flag onceFlag;
     std::call_once(onceFlag, [] {
@@ -46,74 +48,101 @@ SVGGeometryElement::SVGGeometryElement(const QualifiedName& tagName, Document& d
 
 float SVGGeometryElement::getTotalLength() const
 {
-    document().updateLayoutIgnorePendingStylesheets();
+    protectedDocument()->updateLayoutIgnorePendingStylesheets({ LayoutOptions::ContentVisibilityForceLayout }, this);
 
-    auto* renderer = downcast<RenderSVGShape>(this->renderer());
+    auto* renderer = this->renderer();
     if (!renderer)
         return 0;
 
-    return renderer->getTotalLength();
+    if (CheckedPtr renderSVGShape = dynamicDowncast<LegacyRenderSVGShape>(renderer))
+        return renderSVGShape->getTotalLength();
+
+    if (CheckedPtr renderSVGShape = dynamicDowncast<RenderSVGShape>(renderer))
+        return renderSVGShape->getTotalLength();
+
+    ASSERT_NOT_REACHED();
+    return 0;
 }
 
 ExceptionOr<Ref<SVGPoint>> SVGGeometryElement::getPointAtLength(float distance) const
 {
-    document().updateLayoutIgnorePendingStylesheets();
+    protectedDocument()->updateLayoutIgnorePendingStylesheets({ LayoutOptions::ContentVisibilityForceLayout }, this);
 
-    auto* renderer = downcast<RenderSVGShape>(this->renderer());
-    
-    // Spec: If current element is a non-rendered element, throw an InvalidStateError.
-    if (!renderer)
-        return Exception { InvalidStateError };
-    
     // Spec: Clamp distance to [0, length].
     distance = clampTo<float>(distance, 0, getTotalLength());
 
+    auto* renderer = this->renderer();
+    // Spec: If current element is a non-rendered element, throw an InvalidStateError.
+    if (!renderer)
+        return Exception { ExceptionCode::InvalidStateError };
+
     // Spec: Return a newly created, detached SVGPoint object.
-    return SVGPoint::create(renderer->getPointAtLength(distance));
+    if (CheckedPtr renderSVGShape = dynamicDowncast<LegacyRenderSVGShape>(renderer))
+        return SVGPoint::create(renderSVGShape->getPointAtLength(distance));
+
+    if (CheckedPtr renderSVGShape = dynamicDowncast<RenderSVGShape>(renderer))
+        return SVGPoint::create(renderSVGShape->getPointAtLength(distance));
+
+    ASSERT_NOT_REACHED();
+    return Exception { ExceptionCode::InvalidStateError };
 }
 
 bool SVGGeometryElement::isPointInFill(DOMPointInit&& pointInit)
 {
-    document().updateLayoutIgnorePendingStylesheets();
+    protectedDocument()->updateLayoutIgnorePendingStylesheets({ LayoutOptions::ContentVisibilityForceLayout }, this);
 
-    auto* renderer = downcast<RenderSVGShape>(this->renderer());
+    auto* renderer = this->renderer();
     if (!renderer)
         return false;
 
     FloatPoint point {static_cast<float>(pointInit.x), static_cast<float>(pointInit.y)};
-    return renderer->isPointInFill(point);
+    if (CheckedPtr renderSVGShape = dynamicDowncast<LegacyRenderSVGShape>(renderer))
+        return renderSVGShape->isPointInFill(point);
+
+    if (CheckedPtr renderSVGShape = dynamicDowncast<RenderSVGShape>(renderer))
+        return renderSVGShape->isPointInFill(point);
+
+    ASSERT_NOT_REACHED();
+    return false;
 }
 
 bool SVGGeometryElement::isPointInStroke(DOMPointInit&& pointInit)
 {
-    document().updateLayoutIgnorePendingStylesheets();
+    protectedDocument()->updateLayoutIgnorePendingStylesheets({ LayoutOptions::ContentVisibilityForceLayout }, this);
 
-    auto* renderer = downcast<RenderSVGShape>(this->renderer());
+    auto* renderer = this->renderer();
     if (!renderer)
         return false;
 
     FloatPoint point {static_cast<float>(pointInit.x), static_cast<float>(pointInit.y)};
-    return renderer->isPointInStroke(point);
+    if (CheckedPtr renderSVGShape = dynamicDowncast<LegacyRenderSVGShape>(renderer))
+        return renderSVGShape->isPointInStroke(point);
+
+    if (CheckedPtr renderSVGShape = dynamicDowncast<RenderSVGShape>(renderer))
+        return renderSVGShape->isPointInStroke(point);
+
+    ASSERT_NOT_REACHED();
+    return false;
 }
 
-void SVGGeometryElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void SVGGeometryElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
     if (name == SVGNames::pathLengthAttr) {
-        m_pathLength->setBaseValInternal(value.toFloat());
-        if (m_pathLength->baseVal() < 0)
-            document().accessSVGExtensions().reportError("A negative value for path attribute <pathLength> is not allowed");
-        return;
+        Ref pathLength = m_pathLength;
+        pathLength->setBaseValInternal(newValue.toFloat());
+        if (pathLength->baseVal() < 0)
+            protectedDocument()->checkedSVGExtensions()->reportError("A negative value for path attribute <pathLength> is not allowed"_s);
     }
 
-    SVGGraphicsElement::parseAttribute(name, value);
+    SVGGraphicsElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
 }
 
 void SVGGeometryElement::svgAttributeChanged(const QualifiedName& attrName)
 {
-    if (attrName == SVGNames::pathLengthAttr) {
+    if (PropertyRegistry::isKnownAttribute(attrName)) {
+        ASSERT(attrName == SVGNames::pathLengthAttr);
         InstanceInvalidationGuard guard(*this);
-        if (auto* renderer = this->renderer())
-            RenderSVGResource::markForLayoutAndParentResourceInvalidation(*renderer);
+        updateSVGRendererForElementChange();
         return;
     }
 

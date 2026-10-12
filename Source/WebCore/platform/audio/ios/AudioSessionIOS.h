@@ -27,7 +27,7 @@
 
 #if USE(AUDIO_SESSION) && PLATFORM(IOS_FAMILY)
 
-#include "AudioSession.h"
+#include "AudioSessionCocoa.h"
 
 OBJC_CLASS WebInterruptionObserverHelper;
 
@@ -37,20 +37,26 @@ class WorkQueue;
 
 namespace WebCore {
 
-class AudioSessionIOS final : public AudioSession {
+class AudioSessionIOS final : public AudioSessionCocoa {
 public:
     AudioSessionIOS();
     virtual ~AudioSessionIOS();
 
+    void setHostProcessAttribution(audit_token_t) final;
+    void setPresentingProcesses(Vector<audit_token_t>&&) final;
+
+    using CategoryChangedObserver = WTF::Observer<void(AudioSession&, CategoryType)>;
+    WEBCORE_EXPORT static void addAudioSessionCategoryChangedObserver(const CategoryChangedObserver&);
+
 private:
     // AudioSession
     CategoryType category() const final;
-    void setCategory(CategoryType, RouteSharingPolicy) final;
+    Mode mode() const final;
+    void setCategory(CategoryType, Mode, RouteSharingPolicy) final;
     float sampleRate() const final;
     size_t bufferSize() const final;
     size_t numberOfOutputChannels() const final;
     size_t maximumNumberOfOutputChannels() const final;
-    bool tryToSetActiveInternal(bool) final;
     RouteSharingPolicy routeSharingPolicy() const final;
     String routingContextUID() const final;
     size_t preferredBufferSize() const final;
@@ -58,8 +64,18 @@ private:
     bool isMuted() const final;
     void handleMutedStateChange() final;
 
-    Ref<WTF::WorkQueue> m_workQueue;
+    void updateSpatialExperience();
+
+    void setSceneIdentifier(const String&) final;
+    const String& sceneIdentifier() const final { return m_sceneIdentifier; }
+
+    void setSoundStageSize(SoundStageSize) final;
+    SoundStageSize soundStageSize() const final { return m_soundStageSize; }
+
+    String m_lastSetPreferredAudioDeviceUID;
     RetainPtr<WebInterruptionObserverHelper> m_interruptionObserverHelper;
+    String m_sceneIdentifier;
+    SoundStageSize m_soundStageSize { SoundStageSize::Automatic };
 };
 
 }

@@ -32,7 +32,7 @@ namespace WebKit {
 
 class IconDatabase : public ThreadSafeRefCounted<IconDatabase> {
 public:
-    enum class AllowDatabaseWrite { No, Yes };
+    enum class AllowDatabaseWrite : bool { No, Yes };
 
     static Ref<IconDatabase> create(const String& path, AllowDatabaseWrite allowDatabaseWrite)
     {
@@ -46,7 +46,7 @@ public:
     void checkIconURLAndSetPageURLIfNeeded(const String& iconURL, const String& pageURL, AllowDatabaseWrite, CompletionHandler<void(bool, bool)>&&);
     void loadIconForPageURL(const String&, AllowDatabaseWrite, CompletionHandler<void(WebCore::PlatformImagePtr&&)>&&);
     String iconURLForPageURL(const String&);
-    void setIconForPageURL(const String& iconURL, const uint8_t*, size_t, const String& pageURL, AllowDatabaseWrite, CompletionHandler<void(bool)>&&);
+    void setIconForPageURL(const String& iconURL, std::span<const uint8_t>, const String& pageURL, AllowDatabaseWrite, CompletionHandler<void(bool)>&&);
     void clear(CompletionHandler<void()>&&);
 
 private:
@@ -85,8 +85,8 @@ private:
     std::unique_ptr<WebCore::SQLiteStatement> m_deleteIconStatement;
     std::unique_ptr<WebCore::SQLiteStatement> m_pruneIconsStatement;
 
-    std::unique_ptr<RunLoop::Timer<IconDatabase>> m_pruneTimer;
-    RunLoop::Timer<IconDatabase> m_clearLoadedIconsTimer;
+    std::unique_ptr<RunLoop::Timer> m_pruneTimer;
+    RunLoop::Timer m_clearLoadedIconsTimer;
 };
 
 } // namespace WebKit

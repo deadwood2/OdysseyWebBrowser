@@ -26,53 +26,11 @@
 #import "config.h"
 #import "InteractionInformationRequest.h"
 
-#import "ArgumentCodersCF.h"
 #import "WebCoreArgumentCoders.h"
 
 namespace WebKit {
 
 #if PLATFORM(IOS_FAMILY)
-
-void InteractionInformationRequest::encode(IPC::Encoder& encoder) const
-{
-    encoder << point;
-    encoder << includeSnapshot;
-    encoder << includeLinkIndicator;
-    encoder << includeCaretContext;
-    encoder << includeHasDoubleClickHandler;
-    encoder << includeImageData;
-    encoder << linkIndicatorShouldHaveLegacyMargins;
-    encoder << disallowUserAgentShadowContent;
-}
-
-bool InteractionInformationRequest::decode(IPC::Decoder& decoder, InteractionInformationRequest& result)
-{
-    if (!decoder.decode(result.point))
-        return false;
-
-    if (!decoder.decode(result.includeSnapshot))
-        return false;
-
-    if (!decoder.decode(result.includeLinkIndicator))
-        return false;
-
-    if (!decoder.decode(result.includeCaretContext))
-        return false;
-
-    if (!decoder.decode(result.includeHasDoubleClickHandler))
-        return false;
-
-    if (!decoder.decode(result.includeImageData))
-        return false;
-
-    if (!decoder.decode(result.linkIndicatorShouldHaveLegacyMargins))
-        return false;
-
-    if (!decoder.decode(result.disallowUserAgentShadowContent))
-        return false;
-
-    return true;
-}
 
 bool InteractionInformationRequest::isValidForRequest(const InteractionInformationRequest& other, int radius) const
 {
@@ -91,10 +49,10 @@ bool InteractionInformationRequest::isValidForRequest(const InteractionInformati
     if (other.includeImageData && !includeImageData)
         return false;
 
-    if (other.linkIndicatorShouldHaveLegacyMargins != linkIndicatorShouldHaveLegacyMargins)
+    if (other.gatherAnimations && !gatherAnimations)
         return false;
 
-    if (other.disallowUserAgentShadowContent != disallowUserAgentShadowContent)
+    if (other.linkIndicatorShouldHaveLegacyMargins != linkIndicatorShouldHaveLegacyMargins)
         return false;
 
     return (other.point - point).diagonalLengthSquared() <= radius * radius;

@@ -31,21 +31,20 @@
 
 namespace TestWebKitAPI {
 
-void SharedBufferTest::SetUp()
+void FragmentedSharedBufferTest::SetUp()
 {
     WTF::initializeMainThread();
 
     // create temp file
-    FileSystem::PlatformFileHandle handle;
-    m_tempFilePath = FileSystem::openTemporaryFile("tempTestFile", handle);
-    FileSystem::writeToFile(handle, testData(), strlen(testData()));
-    FileSystem::closeFile(handle);
+    auto result = FileSystem::openTemporaryFile("tempTestFile"_s);
+    m_tempFilePath = result.first;
+    FileSystem::writeToFile(result.second, testData().span8());
+    FileSystem::closeFile(result.second);
 
-    m_tempEmptyFilePath = FileSystem::openTemporaryFile("tempEmptyTestFile", handle);
-    FileSystem::closeFile(handle);
+    m_tempEmptyFilePath = FileSystem::createTemporaryFile("tempEmptyTestFile"_s);
 }
 
-void SharedBufferTest::TearDown()
+void FragmentedSharedBufferTest::TearDown()
 {
     FileSystem::deleteFile(m_tempFilePath);
     FileSystem::deleteFile(m_tempEmptyFilePath);

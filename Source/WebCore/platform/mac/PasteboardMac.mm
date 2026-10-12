@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 
 #if PLATFORM(MAC)
 
+#import "CommonAtomStrings.h"
 #import "DragData.h"
 #import "Image.h"
 #import "LegacyNSPasteboardTypes.h"
@@ -50,12 +51,12 @@
 
 namespace WebCore {
 
-const char* const WebArchivePboardType = "Apple Web Archive pasteboard type";
-const char* const WebURLNamePboardType = "public.url-name";
-const char* const WebURLsWithTitlesPboardType = "WebURLsWithTitlesPboardType";
+const ASCIILiteral WebArchivePboardType = "Apple Web Archive pasteboard type"_s;
+const ASCIILiteral WebURLNamePboardType = "public.url-name"_s;
+const ASCIILiteral WebURLsWithTitlesPboardType = "WebURLsWithTitlesPboardType"_s;
 
-const char WebSmartPastePboardType[] = "NeXT smart paste pasteboard type";
-const char WebURLPboardType[] = "public.url";
+const ASCIILiteral WebSmartPastePboardType = "NeXT smart paste pasteboard type"_s;
+const ASCIILiteral WebURLPboardType = "public.url"_s;
 
 static const Vector<String> writableTypesForURL()
 {
@@ -101,9 +102,7 @@ Pasteboard::Pasteboard(std::unique_ptr<PasteboardContext>&& context, const Strin
 
 std::unique_ptr<Pasteboard> Pasteboard::createForCopyAndPaste(std::unique_ptr<PasteboardContext>&& context)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    return makeUnique<Pasteboard>(WTFMove(context), NSGeneralPboard);
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    return makeUnique<Pasteboard>(WTFMove(context), NSPasteboardNameGeneral);
 }
 
 #if ENABLE(DRAG_SUPPORT)
@@ -114,9 +113,7 @@ String Pasteboard::nameOfDragPasteboard()
 
 std::unique_ptr<Pasteboard> Pasteboard::createForDragAndDrop(std::unique_ptr<PasteboardContext>&& context)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    return makeUnique<Pasteboard>(WTFMove(context), NSDragPboard);
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    return makeUnique<Pasteboard>(WTFMove(context), NSPasteboardNameDrag);
 }
 
 std::unique_ptr<Pasteboard> Pasteboard::create(const DragData& dragData)
@@ -133,6 +130,12 @@ void Pasteboard::clear()
 void Pasteboard::write(const PasteboardWebContent& content)
 {
     Vector<String> types;
+    Vector<String> clientTypes;
+    Vector<RefPtr<WebCore::SharedBuffer>> clientData;
+    for (size_t it = 0; it < content.clientTypesAndData.size(); ++it) {
+        clientTypes.append(content.clientTypesAndData[it].first);
+        clientData.append(content.clientTypesAndData[it].second);
+    }
 
     if (content.canSmartCopyOrDelete)
         types.append(WebSmartPastePboardType);
@@ -151,7 +154,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
         types.append(String(legacyHTMLPasteboardType()));
     if (!content.dataInStringFormat.isNull())
         types.append(String(legacyStringPasteboardType()));
-    types.appendVector(content.clientTypes);
+    types.appendVector(clientTypes);
     types.append(PasteboardCustomData::cocoaType());
 
     m_changeCount = platformStrategies()->pasteboardStrategy()->setTypes(types, m_pasteboardName, context());
@@ -159,17 +162,17 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     // FIXME: The following code should be refactored, such that it only requires a single call out to the client layer.
     // In WebKit2, this currently results in many unnecessary synchronous round-trip IPC messages.
 
-    ASSERT(content.clientTypes.size() == content.clientData.size());
-    for (size_t i = 0, size = content.clientTypes.size(); i < size; ++i)
-        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.clientData[i].get(), content.clientTypes[i], m_pasteboardName, context());
+    ASSERT(clientTypes.size() == clientData.size());
+    for (size_t i = 0, size = clientTypes.size(); i < size; ++i)
+        m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(clientData[i].get(), clientTypes[i], m_pasteboardName, context());
     if (content.canSmartCopyOrDelete)
         m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(nullptr, WebSmartPastePboardType, m_pasteboardName, context());
     if (content.dataInWebArchiveFormat) {
         m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInWebArchiveFormat.get(), WebArchivePboardType, m_pasteboardName, context());
 
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInWebArchiveFormat.get(), kUTTypeWebArchive, m_pasteboardName, context());
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     }
     if (content.dataInRTFDFormat)
         m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(content.dataInRTFDFormat.get(), legacyRTFDPasteboardType(), m_pasteboardName, context());
@@ -215,7 +218,7 @@ static long writeURLForTypes(const Vector<String>& types, const String& pasteboa
     }
 
     if (types.contains(WebURLsWithTitlesPboardType)) {
-        PasteboardURL url = { pasteboardURL.url, String(title).stripWhiteSpace(), emptyString() };
+        PasteboardURL url = { pasteboardURL.url, String(title).trim(deprecatedIsSpaceOrNewline), emptyString() };
         newChangeCount = platformStrategies()->pasteboardStrategy()->setURL(url, pasteboardName, context);
     }
     if (types.contains(String(legacyURLPasteboardType())))
@@ -237,7 +240,7 @@ void Pasteboard::write(const PasteboardURL& pasteboardURL)
 
 void Pasteboard::writeTrustworthyWebURLsPboardType(const PasteboardURL& pasteboardURL)
 {
-    PasteboardURL url = { pasteboardURL.url, pasteboardURL.title.stripWhiteSpace(), emptyString() };
+    PasteboardURL url = { pasteboardURL.url, pasteboardURL.title.trim(deprecatedIsSpaceOrNewline), emptyString() };
     m_changeCount = platformStrategies()->pasteboardStrategy()->setURL(url, m_pasteboardName, context());
 }
 
@@ -250,7 +253,7 @@ void Pasteboard::write(const Color& color)
 
 static NSFileWrapper* fileWrapper(const PasteboardImage& pasteboardImage)
 {
-    auto wrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:pasteboardImage.resourceData->createNSData().get()]);
+    auto wrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:pasteboardImage.resourceData->makeContiguous()->createNSData().get()]);
     [wrapper setPreferredFilename:suggestedFilenameWithMIMEType(pasteboardImage.url.url, pasteboardImage.resourceMIMEType)];
     return wrapper.autorelease();
 }
@@ -268,7 +271,7 @@ static void writeFileWrapperAsRTFDAttachment(NSFileWrapper *wrapper, const Strin
 
 void Pasteboard::write(const PasteboardImage& pasteboardImage)
 {
-    CFDataRef imageData = pasteboardImage.image->tiffRepresentation();
+    CFDataRef imageData = pasteboardImage.image->adapter().tiffRepresentation();
     if (!imageData)
         return;
 
@@ -289,13 +292,27 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (auto archiveData = pasteboardImage.dataInWebArchiveFormat) {
         m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(archiveData.get(), WebArchivePboardType, m_pasteboardName, context());
 
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(archiveData.get(), kUTTypeWebArchive, m_pasteboardName, context());
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     }
     if (!pasteboardImage.dataInHTMLFormat.isEmpty())
         m_changeCount = platformStrategies()->pasteboardStrategy()->setStringForType(pasteboardImage.dataInHTMLFormat, legacyHTMLPasteboardType(), m_pasteboardName, context());
     writeFileWrapperAsRTFDAttachment(fileWrapper(pasteboardImage), m_pasteboardName, m_changeCount, context());
+}
+
+void Pasteboard::write(const PasteboardBuffer& pasteboardBuffer)
+{
+    ASSERT(!pasteboardBuffer.type.isEmpty());
+    ASSERT(pasteboardBuffer.data);
+
+    m_changeCount = platformStrategies()->pasteboardStrategy()->setTypes({ pasteboardBuffer.type, PasteboardCustomData::cocoaType() }, m_pasteboardName, context());
+
+    m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(pasteboardBuffer.data.get(), pasteboardBuffer.type, m_pasteboardName, context());
+
+    PasteboardCustomData pasteboardCustomData;
+    pasteboardCustomData.setOrigin(pasteboardBuffer.contentOrigin);
+    m_changeCount = platformStrategies()->pasteboardStrategy()->setBufferForType(pasteboardCustomData.createSharedBuffer().ptr(), PasteboardCustomData::cocoaType(), m_pasteboardName, context());
 }
 
 bool Pasteboard::canSmartReplace()
@@ -362,7 +379,7 @@ void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy allow
     
     if (types.contains(String(legacyRTFDPasteboardType()))) {
         if (auto data = readBufferAtPreferredItemIndex(legacyRTFDPasteboardType(), itemIndex, strategy, m_pasteboardName, context())) {
-            if (auto attributedString = adoptNS([[NSAttributedString alloc] initWithRTFD:data->createNSData().get() documentAttributes:nil])) {
+            if (auto attributedString = adoptNS([[NSAttributedString alloc] initWithRTFD:data->makeContiguous()->createNSData().get() documentAttributes:nil])) {
                 text.text = [attributedString string];
                 text.isURL = false;
                 return;
@@ -424,15 +441,29 @@ void Pasteboard::read(PasteboardPlainText& text, PlainTextURLReadingPolicy allow
 void Pasteboard::read(PasteboardWebContentReader& reader, WebContentReadingPolicy policy, std::optional<size_t> itemIndex)
 {
     auto& strategy = *platformStrategies()->pasteboardStrategy();
+    auto platformTypesFromItems = [](const Vector<PasteboardItemInfo>& items) {
+        HashSet<String> types;
+        for (auto& item : items) {
+            for (auto& type : item.platformTypesByFidelity)
+                types.add(type);
+        }
+        return types;
+    };
 
+    HashSet<String> nonTranscodedTypes;
     Vector<String> types;
     if (itemIndex) {
-        if (auto itemInfo = strategy.informationForItemAtIndex(*itemIndex, m_pasteboardName, m_changeCount, context()))
+        if (auto itemInfo = strategy.informationForItemAtIndex(*itemIndex, m_pasteboardName, m_changeCount, context())) {
             types = itemInfo->platformTypesByFidelity;
-    } else
+            nonTranscodedTypes = platformTypesFromItems({ *itemInfo });
+        }
+    } else {
         strategy.getTypes(types, m_pasteboardName, context());
+        if (auto allItems = strategy.allPasteboardItemInfo(m_pasteboardName, m_changeCount, context()))
+            nonTranscodedTypes = platformTypesFromItems(*allItems);
+    }
 
-    reader.contentOrigin = readOrigin();
+    reader.setContentOrigin(readOrigin());
 
     if (types.contains(WebArchivePboardType)) {
         if (auto buffer = readBufferAtPreferredItemIndex(WebArchivePboardType, itemIndex, strategy, m_pasteboardName, context())) {
@@ -505,51 +536,46 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (policy == WebContentReadingPolicy::OnlyRichTextTypes)
         return;
 
-    if (types.contains(String(legacyTIFFPasteboardType()))) {
-        if (auto buffer = readBufferAtPreferredItemIndex(legacyTIFFPasteboardType(), itemIndex, strategy, m_pasteboardName, context())) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "image/tiff"_s))
-                return;
-        }
-    }
-
-    if (types.contains(String(NSPasteboardTypeTIFF))) {
-        if (auto buffer = readBufferAtPreferredItemIndex(NSPasteboardTypeTIFF, itemIndex, strategy, m_pasteboardName, context())) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "image/tiff"_s))
-                return;
-        }
-    }
-
-    if (types.contains(String(legacyPDFPasteboardType()))) {
-        if (auto buffer = readBufferAtPreferredItemIndex(legacyPDFPasteboardType(), itemIndex, strategy, m_pasteboardName, context())) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "application/pdf"_s))
-                return;
-        }
-    }
-
-    if (types.contains(String(NSPasteboardTypePDF))) {
-        if (auto buffer = readBufferAtPreferredItemIndex(NSPasteboardTypePDF, itemIndex, strategy, m_pasteboardName, context())) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "application/pdf"_s))
-                return;
-        }
-    }
-
+    using ImageReadingInfo = std::tuple<String, ASCIILiteral>;
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    if (types.contains(String(kUTTypePNG))) {
-        if (auto buffer = readBufferAtPreferredItemIndex(kUTTypePNG, itemIndex, strategy, m_pasteboardName, context())) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "image/png"_s))
-                return;
-        }
-    }
+    const std::array<ImageReadingInfo, 6> imageTypesToRead { {
+        { String(legacyTIFFPasteboardType()), "image/tiff"_s },
+        { String(NSPasteboardTypeTIFF), "image/tiff"_s },
+        { String(legacyPDFPasteboardType()), "application/pdf"_s },
+        { String(NSPasteboardTypePDF), "application/pdf"_s },
+        { String(kUTTypePNG), "image/png"_s },
+        { String(kUTTypeJPEG), "image/jpeg"_s }
+    } };
 ALLOW_DEPRECATED_DECLARATIONS_END
 
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    if (types.contains(String(kUTTypeJPEG))) {
-        if (auto buffer = readBufferAtPreferredItemIndex(kUTTypeJPEG, itemIndex, strategy, m_pasteboardName, context())) {
-            if (m_changeCount != changeCount() || reader.readImage(buffer.releaseNonNull(), "image/jpeg"_s))
-                return;
+    auto tryToReadImage = [&] (const String& pasteboardType, ASCIILiteral mimeType) {
+        if (!types.contains(pasteboardType))
+            return false;
+
+        auto buffer = readBufferAtPreferredItemIndex(pasteboardType, itemIndex, strategy, m_pasteboardName, context());
+        if (m_changeCount != changeCount())
+            return true;
+
+        if (!buffer)
+            return false;
+
+        return reader.readImage(buffer.releaseNonNull(), mimeType);
+    };
+
+    Vector<ImageReadingInfo, 6> transcodedImageTypesToRead;
+    for (auto& [pasteboardType, mimeType] : imageTypesToRead) {
+        if (!nonTranscodedTypes.contains(pasteboardType)) {
+            transcodedImageTypesToRead.append({ pasteboardType, mimeType });
+            continue;
         }
+        if (tryToReadImage(pasteboardType, mimeType))
+            return;
     }
-ALLOW_DEPRECATED_DECLARATIONS_END
+
+    for (auto& [pasteboardType, mimeType] : transcodedImageTypesToRead) {
+        if (tryToReadImage(pasteboardType, mimeType))
+            return;
+    }
 
     if (types.contains(String(legacyURLPasteboardType()))) {
         URL url = strategy.url(m_pasteboardName, context());
@@ -588,7 +614,7 @@ static String cocoaTypeFromHTMLClipboardType(const String& type)
     }
 
     // Reject types that might contain subframe information.
-    if (type == "text/rtf" || type == "public.rtf" || type == "com.apple.traditional-mac-plain-text")
+    if (type == "text/rtf"_s || type == "public.rtf"_s || type == "com.apple.traditional-mac-plain-text"_s)
         return String();
 
     auto utiType = UTIFromMIMEType(type);
@@ -646,12 +672,12 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 void Pasteboard::addHTMLClipboardTypesForCocoaType(ListHashSet<String>& resultTypes, const String& cocoaType)
 {
-    if (cocoaType == "NeXT plain ascii pasteboard type")
+    if (cocoaType == "NeXT plain ascii pasteboard type"_s)
         return; // Skip this ancient type that gets auto-supplied by some system conversion.
 
     // UTI may not do these right, so make sure we get the right, predictable result
     if (cocoaType == String(legacyStringPasteboardType()) || cocoaType == String(NSPasteboardTypeString)) {
-        resultTypes.add("text/plain"_s);
+        resultTypes.add(textPlainContentTypeAtom());
         return;
     }
     if (cocoaType == String(legacyURLPasteboardType())) {
@@ -679,10 +705,7 @@ ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         NSURL *url = [NSURL URLWithString:cocoaData];
         if ([url isFileURL])
             return;
-
-        Vector<String> types;
-        types.append(cocoaType);
-        platformStrategies()->pasteboardStrategy()->setTypes(types, m_pasteboardName, context());
+        platformStrategies()->pasteboardStrategy()->setTypes({ cocoaType }, m_pasteboardName, context());
         m_changeCount = platformStrategies()->pasteboardStrategy()->setStringForType(cocoaData, cocoaType, m_pasteboardName, context());
 
         return;
@@ -691,9 +714,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
     if (!cocoaType.isEmpty()) {
         // everything else we know of goes on the pboard as a string
-        Vector<String> types;
-        types.append(cocoaType);
-        platformStrategies()->pasteboardStrategy()->addTypes(types, m_pasteboardName, context());
+        platformStrategies()->pasteboardStrategy()->addTypes({ cocoaType }, m_pasteboardName, context());
         m_changeCount = platformStrategies()->pasteboardStrategy()->setStringForType(cocoaData, cocoaType, m_pasteboardName, context());
     }
 }
@@ -745,16 +766,16 @@ static void setDragImageImpl(NSImage *image, NSPoint offset)
     RetainPtr<NSBitmapImageRep> bitmapImage;
     if (!imageRep || ![imageRep isKindOfClass:[NSBitmapImageRep class]] || !NSEqualSizes(imageRep.size, imageSize)) {
         [image lockFocus];
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         bitmapImage = adoptNS([[NSBitmapImageRep alloc] initWithFocusedViewRect:*(NSRect*)&imageRect]);
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
         [image unlockFocus];
         
         // we may have to flip the bits we just read if the image was flipped since it means the cache was also
         // and CoreDragSetImage can't take a transform for rendering.
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         flipImage = image.isFlipped;
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     } else {
         flipImage = false;
         bitmapImage = (NSBitmapImageRep *)imageRep;
@@ -801,6 +822,8 @@ void Pasteboard::setDragImage(DragImage image, const IntPoint& location)
 
     // Dashboard wants to be able to set the drag image during dragging, but Cocoa does not allow this.
     // Instead we must drop down to the CoreGraphics API.
+
+    // FIXME: Do we still need this now Dashboard is gone?
     setDragImageImpl(image.get().get(), location);
 
     // Hack: We must post an event to wake up the NSDragManager, which is sitting in a nextEvent call
@@ -820,6 +843,44 @@ void Pasteboard::setDragImage(DragImage image, const IntPoint& location)
 bool Pasteboard::canWriteTrustworthyWebURLsPboardType()
 {
     return true;
+}
+
+RefPtr<WebCore::SharedBuffer> Pasteboard::bufferConvertedToPasteboardType(const PasteboardBuffer& pasteboardBuffer, const String& pasteboardType)
+{
+    if (pasteboardBuffer.type == pasteboardType)
+        return pasteboardBuffer.data;
+
+    if (pasteboardType != String(legacyTIFFPasteboardType()))
+        return pasteboardBuffer.data;
+
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    if (pasteboardBuffer.type == String(kUTTypeTIFF))
+        return pasteboardBuffer.data;
+ALLOW_DEPRECATED_DECLARATIONS_END
+
+    auto sourceData = pasteboardBuffer.data->createCFData();
+    auto sourceType = pasteboardBuffer.type.createCFString();
+
+    const void* key = kCGImageSourceTypeIdentifierHint;
+    const void* value = sourceType.get();
+    auto options = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, &key, &value, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+
+    auto source = adoptCF(CGImageSourceCreateWithData(sourceData.get(), options.get()));
+    if (!source)
+        return nullptr;
+
+    auto data = adoptCF(CFDataCreateMutable(0, 0));
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    auto destination = adoptCF(CGImageDestinationCreateWithData(data.get(), kUTTypeTIFF, 1, NULL));
+ALLOW_DEPRECATED_DECLARATIONS_END
+    if (!destination)
+        return nullptr;
+
+    CGImageDestinationAddImageFromSource(destination.get(), source.get(), 0, NULL);
+    if (!CGImageDestinationFinalize(destination.get()))
+        return nullptr;
+
+    return SharedBuffer::create(data.get());
 }
 
 }

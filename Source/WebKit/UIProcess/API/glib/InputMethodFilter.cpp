@@ -23,8 +23,11 @@
 #include "WebKitInputMethodContextPrivate.h"
 #include "WebKitWebViewPrivate.h"
 #include "WebPageProxy.h"
-#include <WebCore/PlatformDisplay.h>
 #include <wtf/SetForScope.h>
+
+#if PLATFORM(GTK)
+#include "Display.h"
+#endif
 
 namespace WebKit {
 using namespace WebCore;
@@ -101,7 +104,7 @@ InputMethodFilter::FilterResult InputMethodFilter::filterKeyEvent(PlatformEventK
     if (!isEnabled() || !m_context)
         return { };
 
-    SetForScope<bool> filteringContextIsAcive(m_filteringContext.isActive, true);
+    SetForScope filteringContextIsAcive(m_filteringContext.isActive, true);
     m_filteringContext.preeditChanged = false;
     m_compositionResult = { };
 
@@ -128,10 +131,10 @@ bool InputMethodFilter::isViewFocused() const
     if (!isEnabled() || !m_context)
         return false;
 
-#if ENABLE(DEVELOPER_MODE) && PLATFORM(X11)
+#if ENABLE(DEVELOPER_MODE) && PLATFORM(GTK)
     // Xvfb doesn't support toplevel focus, so the WebView is never focused. We simply assume the WebView is focused
     // since it's the only application running.
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11) {
+    if (Display::singleton().isX11()) {
         if (!g_strcmp0(g_getenv("UNDER_XVFB"), "yes"))
             return true;
     }
@@ -215,6 +218,10 @@ void InputMethodFilter::notifyCursorRect(const IntRect& cursorRect)
     if (!isEnabled() || !m_context)
         return;
 
+    // Don't notify cursor area when cursorRect is default-initialized (location and size are all 0).
+    if (!cursorRect.x() && !cursorRect.y() && !cursorRect.width() && !cursorRect.height())
+        return;
+
     // Don't move the window unless the cursor actually moves more than 10
     // pixels. This prevents us from making the window flash during minor
     // cursor adjustments.
@@ -240,10 +247,10 @@ void InputMethodFilter::notifySurrounding(const String& text, uint64_t cursorPos
     m_surrounding.selectionPosition = selectionPosition;
 
     auto textUTF8 = m_surrounding.text.utf8();
-    auto cursorPositionUTF8 = cursorPosition != text.length() ? text.substring(0, cursorPosition).utf8().length() : textUTF8.length();
+    auto cursorPositionUTF8 = cursorPosition != text.length() ? StringView(text).left(cursorPosition).utf8().length() : textUTF8.length();
     auto selectionPositionUTF8 = cursorPositionUTF8;
     if (cursorPosition != selectionPosition)
-        selectionPositionUTF8 = selectionPosition != text.length() ? text.substring(0, selectionPosition).utf8().length() : textUTF8.length();
+        selectionPositionUTF8 = selectionPosition != text.length() ? StringView(text).left(selectionPosition).utf8().length() : textUTF8.length();
     webkit_input_method_context_notify_surrounding(m_context.get(), textUTF8.data(), textUTF8.length(), cursorPositionUTF8, selectionPositionUTF8);
 }
 

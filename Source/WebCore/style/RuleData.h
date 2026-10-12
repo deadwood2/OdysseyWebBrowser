@@ -21,19 +21,12 @@
 
 #pragma once
 
+#include "PropertyAllowlist.h"
 #include "SelectorFilter.h"
 #include "StyleRule.h"
 
 namespace WebCore {
 namespace Style {
-
-enum PropertyAllowlistType {
-    PropertyAllowlistNone   = 0,
-    PropertyAllowlistMarker,
-#if ENABLE(VIDEO)
-    PropertyAllowlistCue
-#endif
-};
 
 enum class MatchBasedOnRuleHash : unsigned {
     None,
@@ -43,17 +36,23 @@ enum class MatchBasedOnRuleHash : unsigned {
     ClassC
 };
 
+enum class IsStartingStyle : bool { No, Yes };
+
 class RuleData {
 public:
     static const unsigned maximumSelectorComponentCount = 8192;
 
-    RuleData(const StyleRule&, unsigned selectorIndex, unsigned selectorListIndex, unsigned position);
+    RuleData(const StyleRule&, unsigned selectorIndex, unsigned selectorListIndex, unsigned position, IsStartingStyle);
 
     unsigned position() const { return m_position; }
 
     const StyleRule& styleRule() const { return *m_styleRule; }
 
-    const CSSSelector* selector() const { return m_styleRule->selectorList().selectorAt(m_selectorIndex); }
+    const CSSSelector* selector() const
+    { 
+        return m_styleRule->selectorList().selectorAt(m_selectorIndex);
+    }
+
 #if ENABLE(CSS_SELECTOR_JIT)
     CompiledSelector& compiledSelector() const { return m_styleRule->compiledSelectorForListIndex(m_selectorListIndex); }
 #endif
@@ -65,7 +64,8 @@ public:
     MatchBasedOnRuleHash matchBasedOnRuleHash() const { return static_cast<MatchBasedOnRuleHash>(m_matchBasedOnRuleHash); }
     bool containsUncommonAttributeSelector() const { return m_containsUncommonAttributeSelector; }
     unsigned linkMatchType() const { return m_linkMatchType; }
-    PropertyAllowlistType propertyAllowlistType() const { return static_cast<PropertyAllowlistType>(m_propertyAllowlistType); }
+    PropertyAllowlist propertyAllowlist() const { return static_cast<PropertyAllowlist>(m_propertyAllowlist); }
+    IsStartingStyle isStartingStyle() const { return static_cast<IsStartingStyle>(m_isStartingStyle); }
     bool isEnabled() const { return m_isEnabled; }
     void setEnabled(bool value) { m_isEnabled = value; }
 
@@ -79,12 +79,13 @@ private:
     unsigned m_selectorIndex : 16;
     unsigned m_selectorListIndex : 16;
     // If we have more rules than 2^bitcount here we'll get confused about rule order.
-    unsigned m_position : 22;
+    unsigned m_position : 21;
     unsigned m_matchBasedOnRuleHash : 3;
     unsigned m_canMatchPseudoElement : 1;
     unsigned m_containsUncommonAttributeSelector : 1;
     unsigned m_linkMatchType : 2; //  SelectorChecker::LinkMatchMask
-    unsigned m_propertyAllowlistType : 2;
+    unsigned m_propertyAllowlist : 2;
+    unsigned m_isStartingStyle : 1;
     unsigned m_isEnabled : 1;
     SelectorFilter::Hashes m_descendantSelectorIdentifierHashes;
 };

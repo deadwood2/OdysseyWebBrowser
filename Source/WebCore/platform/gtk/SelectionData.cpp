@@ -21,15 +21,32 @@
 
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
+#include <wtf/unicode/CharacterNames.h>
 
 namespace WebCore {
 
-static void replaceNonBreakingSpaceWithSpace(String& str)
+SelectionData::SelectionData(const String& text, const String& markup, const URL& url, const String& uriList, RefPtr<WebCore::Image>&& image, RefPtr<WebCore::SharedBuffer>&& buffer, bool canSmartReplace)
 {
-    static const UChar NonBreakingSpaceCharacter = 0xA0;
-    static const UChar SpaceCharacter = ' ';
-    str.replace(NonBreakingSpaceCharacter, SpaceCharacter);
+    if (!text.isEmpty())
+        setText(text);
+    if (!markup.isEmpty())
+        setMarkup(markup);
+    if (!url.isEmpty())
+        setURL(url, String());
+    if (!uriList.isEmpty())
+        setURIList(uriList);
+    if (image)
+        setImage(WTFMove(image));
+    if (buffer)
+        setCustomData(buffer.releaseNonNull());
+    setCanSmartReplace(canSmartReplace);
+}
+
+static void replaceNonBreakingSpaceWithSpace(String& string)
+{
+    string = makeStringByReplacingAll(string, noBreakSpace, space);
 }
 
 void SelectionData::setText(const String& newText)
@@ -55,13 +72,13 @@ void SelectionData::setURIList(const String& uriListString)
     // from the URI list.
     bool setURL = hasURL();
     for (auto& line : uriListString.split('\n')) {
-        line = line.stripWhiteSpace();
+        line = line.trim(deprecatedIsSpaceOrNewline);
         if (line.isEmpty())
             continue;
         if (line[0] == '#')
             continue;
 
-        URL url = URL(URL(), line);
+        URL url { line };
         if (url.isValid()) {
             if (!setURL) {
                 m_url = url;
@@ -88,18 +105,11 @@ void SelectionData::setURL(const URL& url, const String& label)
     if (hasMarkup())
         return;
 
-    String actualLabel(label);
-    if (actualLabel.isEmpty())
-        actualLabel = url.string();
-
-    StringBuilder markup;
-    markup.append("<a href=\"");
-    markup.append(url.string());
-    markup.append("\">");
+    String actualLabel = label.isEmpty() ? url.string() : label;
     GUniquePtr<gchar> escaped(g_markup_escape_text(actualLabel.utf8().data(), -1));
-    markup.append(String::fromUTF8(escaped.get()));
-    markup.append("</a>");
-    setMarkup(markup.toString());
+
+    setMarkup(makeString("<a href=\""_s, url.string(), "\">"_s,
+        String::fromUTF8(escaped.get()), "</a>"_s));
 }
 
 const String& SelectionData::urlLabel() const
@@ -121,6 +131,7 @@ void SelectionData::clearAllExceptFilenames()
     clearURL();
     clearImage();
     clearCustomData();
+    clearBuffers();
 
     m_canSmartReplace = false;
 }

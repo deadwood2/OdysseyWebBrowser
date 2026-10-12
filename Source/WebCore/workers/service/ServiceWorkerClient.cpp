@@ -24,8 +24,6 @@
  */
 
 #include "config.h"
-
-#if ENABLE(SERVICE_WORKER)
 #include "ServiceWorkerClient.h"
 
 #include "MessagePort.h"
@@ -39,11 +37,8 @@
 
 namespace WebCore {
 
-Ref<ServiceWorkerClient> ServiceWorkerClient::getOrCreate(ServiceWorkerGlobalScope& context, ServiceWorkerClientData&& data)
+Ref<ServiceWorkerClient> ServiceWorkerClient::create(ServiceWorkerGlobalScope& context, ServiceWorkerClientData&& data)
 {
-    if (auto* client = context.serviceWorkerClient(data.identifier))
-        return *client;
-
     if (data.type == ServiceWorkerClientType::Window)
         return ServiceWorkerWindowClient::create(context, WTFMove(data));
 
@@ -54,13 +49,10 @@ ServiceWorkerClient::ServiceWorkerClient(ServiceWorkerGlobalScope& context, Serv
     : ContextDestructionObserver(&context)
     , m_data(WTFMove(data))
 {
-    context.addServiceWorkerClient(*this);
 }
 
 ServiceWorkerClient::~ServiceWorkerClient()
 {
-    if (auto* context = scriptExecutionContext())
-        downcast<ServiceWorkerGlobalScope>(*context).removeServiceWorkerClient(*this);
 }
 
 const URL& ServiceWorkerClient::url() const
@@ -85,8 +77,8 @@ String ServiceWorkerClient::id() const
 
 ExceptionOr<void> ServiceWorkerClient::postMessage(JSC::JSGlobalObject& globalObject, JSC::JSValue messageValue, StructuredSerializeOptions&& options)
 {
-    Vector<RefPtr<MessagePort>> ports;
-    auto messageData = SerializedScriptValue::create(globalObject, messageValue, WTFMove(options.transfer), ports, SerializationContext::WorkerPostMessage);
+    Vector<Ref<MessagePort>> ports;
+    auto messageData = SerializedScriptValue::create(globalObject, messageValue, WTFMove(options.transfer), ports, SerializationForStorage::No, SerializationContext::WorkerPostMessage);
     if (messageData.hasException())
         return messageData.releaseException();
 
@@ -107,5 +99,3 @@ ExceptionOr<void> ServiceWorkerClient::postMessage(JSC::JSGlobalObject& globalOb
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(SERVICE_WORKER)

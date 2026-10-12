@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,18 +29,20 @@
 #import "AutomationClient.h"
 #import "CacheModel.h"
 #import "DownloadManager.h"
+#import "GPUProcessProxy.h"
 #import "LegacyDownloadClient.h"
 #import "Logging.h"
-#import "PluginProcessManager.h"
+#import "NetworkProcessProxy.h"
 #import "SandboxUtilities.h"
 #import "UIGamepadProvider.h"
+#import "WKAPICast.h"
 #import "WKDownloadInternal.h"
 #import "WKObject.h"
 #import "WKWebViewInternal.h"
 #import "WKWebsiteDataStoreInternal.h"
 #import "WebBackForwardCache.h"
-#import "WebCertificateInfo.h"
-#import "WebCookieManagerProxy.h"
+#import "WebNotificationManagerProxy.h"
+#import "WebPageProxy.h"
 #import "WebProcessCache.h"
 #import "WebProcessMessages.h"
 #import "WebProcessPool.h"
@@ -50,7 +52,6 @@
 #import "_WKDownloadInternal.h"
 #import "_WKProcessPoolConfigurationInternal.h"
 #import <WebCore/CertificateInfo.h>
-#import <WebCore/HTTPCookieAcceptPolicyCocoa.h>
 #import <WebCore/PluginData.h>
 #import <WebCore/RegistrableDomain.h>
 #import <WebCore/WebCoreObjCExtras.h>
@@ -65,6 +66,14 @@
 #import <WebCore/WebCoreThreadSystemInterface.h>
 #import "WKGeolocationProviderIOS.h"
 #endif
+
+@interface _WKProcessInfo()
+- (instancetype)initWithTaskInfo:(const WebKit::AuxiliaryProcessProxy::TaskInfo&)info;
+@end
+
+@interface _WKWebContentProcessInfo()
+- (instancetype)initWithTaskInfo:(const WebKit::AuxiliaryProcessProxy::TaskInfo&)info process:(const WebKit::WebProcessProxy&)process;
+@end
 
 static RetainPtr<WKProcessPool>& sharedProcessPool()
 {
@@ -82,6 +91,8 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
     RetainPtr<id <_WKGeolocationCoreLocationProvider>> _coreLocationProvider;
 #endif // PLATFORM(IOS_FAMILY)
 }
+
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
 
 - (instancetype)_initWithConfiguration:(_WKProcessPoolConfiguration *)configuration
 {
@@ -142,7 +153,7 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 - (_WKProcessPoolConfiguration *)_configuration
 {
-    return wrapper(_processPool->configuration().copy());
+    return wrapper(_processPool->configuration().copy()).autorelease();
 }
 
 - (API::Object&)_apiObject
@@ -175,7 +186,7 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 + (NSArray<WKProcessPool *> *)_allProcessPoolsForTesting
 {
-    return createNSArray(WebKit::WebProcessPool::allProcessPools(), [] (auto& pool) {
+    return createNSArray(WebKit::WebProcessPool::allProcessPools(), [] (auto&& pool) {
         return wrapper(pool.get());
     }).autorelease();
 }
@@ -224,10 +235,6 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 {
 }
 
-- (void)_setCookieAcceptPolicy:(NSHTTPCookieAcceptPolicy)policy
-{
-}
-
 - (id)_objectForBundleParameter:(NSString *)parameter
 {
     return [_processPool->bundleParameters() objectForKey:parameter];
@@ -251,7 +258,7 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
         [_processPool->ensureBundleParameters() removeObjectForKey:parameter];
 
     auto data = keyedArchiver.get().encodedData;
-    _processPool->sendToAllProcesses(Messages::WebProcess::SetInjectedBundleParameter(parameter, IPC::DataReference(static_cast<const uint8_t*>([data bytes]), [data length])));
+    _processPool->sendToAllProcesses(Messages::WebProcess::SetInjectedBundleParameter(parameter, span(data)));
 }
 
 - (void)_setObjectsForBundleParametersWithDictionary:(NSDictionary *)dictionary
@@ -269,7 +276,7 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
     [_processPool->ensureBundleParameters() setValuesForKeysWithDictionary:copy.get()];
 
     auto data = keyedArchiver.get().encodedData;
-    _processPool->sendToAllProcesses(Messages::WebProcess::SetInjectedBundleParameters(IPC::DataReference(static_cast<const uint8_t*>([data bytes]), [data length])));
+    _processPool->sendToAllProcesses(Messages::WebProcess::SetInjectedBundleParameters(span(data)));
 }
 
 #if !TARGET_OS_IPHONE
@@ -364,12 +371,9 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 - (pid_t)_prewarmedProcessIdentifier
 {
-    return _processPool->prewarmedProcessIdentifier();
+    return _processPool->prewarmedProcessID();
 }
 
-- (void)_syncNetworkProcessCookies
-{
-}
 
 - (void)_clearWebProcessCache
 {
@@ -385,18 +389,32 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 {
 #if ENABLE(GPU_PROCESS)
     auto* gpuProcess = _processPool->gpuProcess();
-    return gpuProcess ? gpuProcess->processIdentifier() : 0;
+    return gpuProcess ? gpuProcess->processID() : 0;
 #else
     return 0;
 #endif
 }
 
+- (BOOL)_hasAudibleMediaActivity
+{
+    return _processPool->hasAudibleMediaActivity() ? YES : NO;
+}
+
 - (BOOL)_requestWebProcessTermination:(pid_t)pid
 {
-    for (auto& process : _processPool->processes()) {
-        if (process->processIdentifier() == pid)
+    for (Ref process : _processPool->processes()) {
+        if (process->processID() == pid)
             process->requestTermination(WebKit::ProcessTerminationReason::RequestedByClient);
         return YES;
+    }
+    return NO;
+}
+
+- (BOOL)_isWebProcessSuspended:(pid_t)pid
+{
+    for (Ref process : _processPool->processes()) {
+        if (process->processID() == pid)
+            return process->throttler().isSuspended();
     }
     return NO;
 }
@@ -408,7 +426,7 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 - (BOOL)_hasPrewarmedWebProcess
 {
-    for (auto& process : _processPool->processes()) {
+    for (Ref process : _processPool->processes()) {
         if (process->isPrewarmed())
             return YES;
     }
@@ -423,7 +441,7 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 - (size_t)_webProcessCountIgnoringPrewarmedAndCached
 {
     size_t count = 0;
-    for (auto& process : _processPool->processes()) {
+    for (Ref process : _processPool->processes()) {
         if (!process->isInProcessCache() && !process->isPrewarmed())
             ++count;
     }
@@ -433,10 +451,8 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 - (size_t)_webPageContentProcessCount
 {
     auto result = _processPool->processes().size();
-#if ENABLE(SERVICE_WORKER)
     if (_processPool->useSeparateServiceWorkerProcess())
         result -= _processPool->serviceWorkerProxiesCount();
-#endif
     return result;
 }
 
@@ -446,11 +462,7 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 - (size_t)_pluginProcessCount
 {
-#if !PLATFORM(IOS_FAMILY)
-    return WebKit::PluginProcessManager::singleton().pluginProcesses().size();
-#else
     return 0;
-#endif
 }
 
 - (NSUInteger)_maximumSuspendedPageCount
@@ -470,11 +482,14 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 - (size_t)_serviceWorkerProcessCount
 {
-#if ENABLE(SERVICE_WORKER)
     return _processPool->serviceWorkerProxiesCount();
-#else
-    return 0;
-#endif
+}
+
+- (void)_isJITDisabledInAllRemoteWorkerProcesses:(void(^)(BOOL))completionHandler
+{
+    _processPool->isJITDisabledInAllRemoteWorkerProcesses([completionHandler = makeBlockPtr(completionHandler)] (bool result) {
+        completionHandler(result);
+    });
 }
 
 + (void)_forceGameControllerFramework
@@ -486,12 +501,32 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 + (void)_setLinkedOnOrBeforeEverythingForTesting
 {
-    setApplicationSDKVersion(0);
+    disableAllSDKAlignedBehaviors();
 }
 
 + (void)_setLinkedOnOrAfterEverythingForTesting
 {
-    setApplicationSDKVersion(std::numeric_limits<uint32_t>::max());
+    [self _setLinkedOnOrAfterEverything];
+}
+
++ (void)_setLinkedOnOrAfterEverything
+{
+    enableAllSDKAlignedBehaviors();
+}
+
++ (void)_setCaptivePortalModeEnabledGloballyForTesting:(BOOL)isEnabled
+{
+    WebKit::setLockdownModeEnabledGloballyForTesting(!!isEnabled);
+}
+
++ (BOOL)_lockdownModeEnabledGloballyForTesting
+{
+    return WebKit::lockdownModeEnabledBySystem();
+}
+
++ (void)_clearCaptivePortalModeEnabledGloballyForTesting
+{
+    WebKit::setLockdownModeEnabledGloballyForTesting(std::nullopt);
 }
 
 - (BOOL)_isCookieStoragePartitioningEnabled
@@ -521,12 +556,12 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 - (_WKDownload *)_downloadURLRequest:(NSURLRequest *)request websiteDataStore:(WKWebsiteDataStore *)dataStore originatingWebView:(WKWebView *)webView
 {
-    return [_WKDownload downloadWithDownload:wrapper(_processPool->download(*dataStore->_websiteDataStore, [webView _page], request))];
+    return [_WKDownload downloadWithDownload:wrapper(_processPool->download(*dataStore->_websiteDataStore, [webView _page], request)).get()];
 }
 
 - (_WKDownload *)_resumeDownloadFromData:(NSData *)resumeData websiteDataStore:(WKWebsiteDataStore *)dataStore  path:(NSString *)path originatingWebView:(WKWebView *)webView
 {
-    return [_WKDownload downloadWithDownload:wrapper(_processPool->resumeDownload(*dataStore->_websiteDataStore, [webView _page], API::Data::createWithoutCopying(resumeData).get(), path, WebKit::CallDownloadDidStart::No))];
+    return [_WKDownload downloadWithDownload:wrapper(_processPool->resumeDownload(*dataStore->_websiteDataStore, [webView _page], API::Data::createWithoutCopying(resumeData).get(), path, WebKit::CallDownloadDidStart::No)).get()];
 }
 
 - (void)_getActivePagesOriginsInWebProcessForTesting:(pid_t)pid completionHandler:(void(^)(NSArray<NSString *> *))completionHandler
@@ -543,16 +578,14 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 
 - (void)_seedResourceLoadStatisticsForTestingWithFirstParty:(NSURL *)firstPartyURL thirdParty:(NSURL *)thirdPartyURL shouldScheduleNotification:(BOOL)shouldScheduleNotification completionHandler:(void(^)(void))completionHandler
 {
-#if ENABLE(RESOURCE_LOAD_STATISTICS)
     _processPool->seedResourceLoadStatisticsForTesting(WebCore::RegistrableDomain { firstPartyURL }, WebCore::RegistrableDomain { thirdPartyURL }, shouldScheduleNotification, [completionHandler = makeBlockPtr(completionHandler)] () {
         completionHandler();
     });
-#else
-    UNUSED_PARAM(firstPartyURL);
-    UNUSED_PARAM(thirdPartyURL);
-    UNUSED_PARAM(shouldScheduleNotification);
-    UNUSED_PARAM(completionHandler);
-#endif
+}
+
++ (void)_setWebProcessCountLimit:(unsigned)limit
+{
+    WebKit::WebProcessProxy::setProcessCountLimit(limit);
 }
 
 - (void)_garbageCollectJavaScriptObjectsForTesting
@@ -578,6 +611,156 @@ static RetainPtr<WKProcessPool>& sharedProcessPool()
 - (void)_setUsesOnlyHIDGamepadProviderForTesting:(BOOL)usesHIDProvider
 {
     _processPool->setUsesOnlyHIDGamepadProviderForTesting(usesHIDProvider);
+}
+
+- (void)_terminateAllWebContentProcesses
+{
+    _processPool->terminateAllWebContentProcesses(WebKit::ProcessTerminationReason::RequestedByClient);
+}
+
+- (WKNotificationManagerRef)_notificationManagerForTesting
+{
+    return WebKit::toAPI(_processPool->supplement<WebKit::WebNotificationManagerProxy>());
+}
+
++ (_WKProcessInfo *)_gpuProcessInfo
+{
+    RetainPtr<_WKProcessInfo> result;
+
+    if (auto gpuProcess = WebKit::GPUProcessProxy::singletonIfCreated()) {
+        if (auto taskInfo = gpuProcess->taskInfo())
+            result = adoptNS([[_WKProcessInfo alloc] initWithTaskInfo:*taskInfo]);
+    }
+
+    return result.autorelease();
+}
+
++ (NSArray<_WKProcessInfo *> *)_networkingProcessInfo
+{
+    RetainPtr result = adoptNS([NSMutableArray new]);
+
+    for (auto& networkProcess : WebKit::NetworkProcessProxy::allNetworkProcesses()) {
+        if (auto taskInfo = networkProcess->taskInfo())
+            [result addObject:adoptNS([[_WKProcessInfo alloc] initWithTaskInfo:*taskInfo]).get()];
+    }
+
+    return result.autorelease();
+}
+
++ (NSArray<_WKProcessInfo *> *)_webContentProcessInfo
+{
+    RetainPtr result = adoptNS([NSMutableArray new]);
+
+    for (auto& webProcessPool : WebKit::WebProcessPool::allProcessPools()) {
+        for (auto& webProcess : webProcessPool->processes()) {
+            if (auto taskInfo = webProcess->taskInfo())
+                [result addObject:adoptNS([[_WKWebContentProcessInfo alloc] initWithTaskInfo:*taskInfo process:webProcess.get()]).get()];
+        }
+    }
+
+    return result.autorelease();
+}
+
+@end
+
+
+@implementation _WKProcessInfo {
+    pid_t _pid;
+    _WKProcessState _state;
+    NSTimeInterval _totalUserCPUTime;
+    NSTimeInterval _totalSystemCPUTime;
+    size_t _physicalFootprint;
+}
+
+@synthesize pid = _pid;
+@synthesize state = _state;
+@synthesize totalUserCPUTime = _totalUserCPUTime;
+@synthesize totalSystemCPUTime = _totalSystemCPUTime;
+@synthesize physicalFootprint = _physicalFootprint;
+
+static _WKProcessState processStateFromThrottleState(WebKit::ProcessThrottleState state)
+{
+    switch (state) {
+    case WebKit::ProcessThrottleState::Foreground:
+        return _WKProcessStateForeground;
+    case WebKit::ProcessThrottleState::Background:
+        return _WKProcessStateBackground;
+    case WebKit::ProcessThrottleState::Suspended:
+        return _WKProcessStateSuspended;
+    default:
+        ASSERT_NOT_REACHED();
+        return _WKProcessStateForeground;
+    }
+}
+
+- (instancetype)initWithTaskInfo:(const WebKit::AuxiliaryProcessProxy::TaskInfo&)info
+{
+    if (!(self = [super init]))
+        return nil;
+
+    _pid = info.pid;
+    _state = processStateFromThrottleState(info.state);
+    _totalUserCPUTime = info.totalUserCPUTime.seconds();
+    _totalSystemCPUTime = info.totalSystemCPUTime.seconds();
+    _physicalFootprint = info.physicalFootprint;
+
+    return self;
+}
+
+@end
+
+
+@implementation _WKWebContentProcessInfo {
+    _WKWebContentProcessState _webContentState;
+    RetainPtr<NSMutableArray<WKWebView *>> _webViews;
+    BOOL _runningServiceWorkers;
+    BOOL _runningSharedWorkers;
+    NSTimeInterval _totalForegroundTime;
+    NSTimeInterval _totalBackgroundTime;
+    NSTimeInterval _totalSuspendedTime;
+}
+
+@synthesize webContentState = _webContentState;
+@synthesize runningServiceWorkers = _runningServiceWorkers;
+@synthesize runningSharedWorkers = _runningSharedWorkers;
+@synthesize totalForegroundTime = _totalForegroundTime;
+@synthesize totalBackgroundTime = _totalBackgroundTime;
+@synthesize totalSuspendedTime = _totalSuspendedTime;
+
+- (instancetype)initWithTaskInfo:(const WebKit::AuxiliaryProcessProxy::TaskInfo&)info process:(const WebKit::WebProcessProxy&)process
+{
+    if (!(self = [super initWithTaskInfo:info]))
+        return nil;
+
+    _webContentState = _WKWebContentProcessStateActive;
+    if (process.isPrewarmed())
+        _webContentState = _WKWebContentProcessStatePrewarmed;
+    else if (process.isInProcessCache())
+        _webContentState = _WKWebContentProcessStateCached;
+
+    if (_webContentState == _WKWebContentProcessStateActive) {
+        for (auto& page : process.pages()) {
+            if (auto webView = page->cocoaView()) {
+                if (!_webViews)
+                    _webViews = adoptNS([[NSMutableArray alloc] init]);
+                [_webViews addObject:webView.get()];
+            }
+        }
+    }
+
+    _runningServiceWorkers = process.isRunningServiceWorkers();
+    _runningSharedWorkers = process.isRunningSharedWorkers();
+
+    _totalForegroundTime = process.totalForegroundTime().seconds();
+    _totalBackgroundTime = process.totalBackgroundTime().seconds();
+    _totalSuspendedTime = process.totalSuspendedTime().seconds();
+
+    return self;
+}
+
+- (NSArray<WKWebView *> *)webViews
+{
+    return _webViews.get();
 }
 
 @end

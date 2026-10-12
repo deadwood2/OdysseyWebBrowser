@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2011 Google Inc. All rights reserved.
  * Copyright (C) 2011, 2012, 2015 Ericsson AB. All rights reserved.
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  * Copyright (C) 2013 Nokia Corporation and/or its subsidiary(-ies).
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,11 +37,11 @@
 #include "MediaStreamTrackEvent.h"
 #include "Page.h"
 #include "RealtimeMediaSource.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(MediaStream);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(MediaStream);
 
 Ref<MediaStream> MediaStream::create(Document& document)
 {
@@ -50,27 +50,31 @@ Ref<MediaStream> MediaStream::create(Document& document)
 
 Ref<MediaStream> MediaStream::create(Document& document, MediaStream& stream)
 {
-    return adoptRef(*new MediaStream(document, stream.getTracks()));
+    auto mediaStream = adoptRef(*new MediaStream(document, stream.getTracks()));
+    mediaStream->suspendIfNeeded();
+    return mediaStream;
 }
 
-Ref<MediaStream> MediaStream::create(Document& document, const MediaStreamTrackVector& tracks)
+Ref<MediaStream> MediaStream::create(Document& document, const Vector<Ref<MediaStreamTrack>>& tracks)
 {
-    return adoptRef(*new MediaStream(document, tracks));
+    auto mediaStream = adoptRef(*new MediaStream(document, tracks));
+    mediaStream->suspendIfNeeded();
+    return mediaStream;
 }
 
 Ref<MediaStream> MediaStream::create(Document& document, Ref<MediaStreamPrivate>&& streamPrivate)
 {
-    return adoptRef(*new MediaStream(document, WTFMove(streamPrivate)));
+    auto mediaStream = adoptRef(*new MediaStream(document, WTFMove(streamPrivate)));
+    mediaStream->suspendIfNeeded();
+    return mediaStream;
 }
 
-static inline MediaStreamTrackPrivateVector createTrackPrivateVector(const MediaStreamTrackVector& tracks)
+static inline MediaStreamTrackPrivateVector createTrackPrivateVector(const Vector<Ref<MediaStreamTrack>>& tracks)
 {
-    return map(tracks, [](auto& track) {
-        return makeRefPtr(&track->privateTrack());
-    });
+    return map(tracks, [](auto& track) { return Ref { track->privateTrack() }; });
 }
 
-MediaStream::MediaStream(Document& document, const MediaStreamTrackVector& tracks)
+MediaStream::MediaStream(Document& document, const Vector<Ref<MediaStreamTrack>>& tracks)
     : ActiveDOMObject(document)
     , m_private(MediaStreamPrivate::create(document.logger(), createTrackPrivateVector(tracks)))
 {
@@ -78,11 +82,10 @@ MediaStream::MediaStream(Document& document, const MediaStreamTrackVector& track
     // from the JavaScript MediaStream constructor.
 
     for (auto& track : tracks)
-        m_trackSet.add(track->id(), track);
+        m_trackMap.add(track->id(), track);
 
     setIsActive(m_private->active());
     m_private->addObserver(*this);
-    suspendIfNeeded();
 }
 
 MediaStream::MediaStream(Document& document, Ref<MediaStreamPrivate>&& streamPrivate)
@@ -92,11 +95,10 @@ MediaStream::MediaStream(Document& document, Ref<MediaStreamPrivate>&& streamPri
     ALWAYS_LOG(LOGIDENTIFIER);
 
     for (auto& trackPrivate : m_private->tracks())
-        m_trackSet.add(trackPrivate->id(), MediaStreamTrack::create(document, *trackPrivate));
+        m_trackMap.add(trackPrivate->id(), MediaStreamTrack::create(document, trackPrivate.get()));
 
     setIsActive(m_private->active());
     m_private->addObserver(*this);
-    suspendIfNeeded();
 }
 
 MediaStream::~MediaStream()
@@ -105,7 +107,7 @@ MediaStream::~MediaStream()
     // mediaState(), are short circuited.
     m_isActive = false;
     m_private->removeObserver(*this);
-    if (auto* document = this->document()) {
+    if (WeakPtr document = this->document()) {
         if (m_isWaitingUntilMediaCanStart)
             document->removeMediaCanStartListener(*this);
     }
@@ -115,13 +117,13 @@ RefPtr<MediaStream> MediaStream::clone()
 {
     ALWAYS_LOG(LOGIDENTIFIER);
 
-    MediaStreamTrackVector clonedTracks;
-    clonedTracks.reserveInitialCapacity(m_trackSet.size());
-
-    for (auto& track : m_trackSet.values())
-        clonedTracks.uncheckedAppend(track->clone());
-
-    return MediaStream::create(*document(), clonedTracks);
+    Vector<Ref<MediaStreamTrack>> clonedTracks;
+    clonedTracks.reserveInitialCapacity(m_trackMap.size());
+    for (auto& track : m_trackMap.values()) {
+        if (auto clone = track->clone())
+            clonedTracks.append(clone.releaseNonNull());
+    }
+    return MediaStream::create(*document(), WTFMove(clonedTracks));
 }
 
 void MediaStream::addTrack(MediaStreamTrack& track)
@@ -145,26 +147,48 @@ void MediaStream::removeTrack(MediaStreamTrack& track)
 
 MediaStreamTrack* MediaStream::getTrackById(String id)
 {
-    auto iterator = m_trackSet.find(id);
-    if (iterator != m_trackSet.end())
-        return iterator->value.get();
+    auto iterator = m_trackMap.find(id);
+    if (iterator != m_trackMap.end())
+        return iterator->value.ptr();
 
+    return nullptr;
+}
+
+MediaStreamTrack* MediaStream::getFirstAudioTrack() const
+{
+    for (auto& track : m_trackMap.values()) {
+        if (track->isAudio())
+            return track.ptr();
+    }
+    return nullptr;
+}
+
+MediaStreamTrack* MediaStream::getFirstVideoTrack() const
+{
+    for (auto& track : m_trackMap.values()) {
+        if (track->isVideo())
+            return track.ptr();
+    }
     return nullptr;
 }
 
 MediaStreamTrackVector MediaStream::getAudioTracks() const
 {
-    return trackVectorForType(RealtimeMediaSource::Type::Audio);
+    return filteredTracks([] (auto& track) mutable {
+        return track.isAudio();
+    });
 }
 
 MediaStreamTrackVector MediaStream::getVideoTracks() const
 {
-    return trackVectorForType(RealtimeMediaSource::Type::Video);
+    return filteredTracks([] (auto& track) mutable {
+        return track.isVideo();
+    });
 }
 
 MediaStreamTrackVector MediaStream::getTracks() const
 {
-    return copyToVector(m_trackSet.values());
+    return copyToVector(m_trackMap.values());
 }
 
 void MediaStream::activeStatusChanged()
@@ -204,14 +228,14 @@ void MediaStream::addTrackFromPlatform(Ref<MediaStreamTrack>&& track)
 
 void MediaStream::internalAddTrack(Ref<MediaStreamTrack>&& trackToAdd)
 {
-    ASSERT(!m_trackSet.contains(trackToAdd->id()));
-    m_trackSet.add(trackToAdd->id(), WTFMove(trackToAdd));
+    ASSERT(!m_trackMap.contains(trackToAdd->id()));
+    m_trackMap.add(trackToAdd->id(), WTFMove(trackToAdd));
     updateActiveState();
 }
 
 RefPtr<MediaStreamTrack> MediaStream::internalTakeTrack(const String& trackId)
 {
-    auto track = m_trackSet.take(trackId);
+    auto track = m_trackMap.take(trackId);
     if (track)
         updateActiveState();
 
@@ -277,14 +301,14 @@ void MediaStream::stopProducingData()
     m_private->stopProducingData();
 }
 
-MediaProducer::MediaStateFlags MediaStream::mediaState() const
+MediaProducerMediaStateFlags MediaStream::mediaState() const
 {
-    MediaProducer::MediaStateFlags state;
+    MediaProducerMediaStateFlags state;
 
     if (!m_isActive || !document() || !document()->page())
         return state;
 
-    for (const auto& track : m_trackSet.values())
+    for (const auto& track : m_trackMap.values())
         state.add(track->mediaState());
 
     return state;
@@ -292,7 +316,7 @@ MediaProducer::MediaStateFlags MediaStream::mediaState() const
 
 void MediaStream::statusDidChange()
 {
-    if (auto* document = this->document()) {
+    if (RefPtr document = this->document()) {
         if (!m_isActive)
             return;
         document->updateIsPlayingMedia();
@@ -311,7 +335,7 @@ void MediaStream::characteristicsChanged()
 void MediaStream::updateActiveState()
 {
     bool active = false;
-    for (auto& track : m_trackSet.values()) {
+    for (auto& track : m_trackMap.values()) {
         if (!track->ended()) {
             active = true;
             break;
@@ -324,11 +348,11 @@ void MediaStream::updateActiveState()
     setIsActive(active);
 }
 
-MediaStreamTrackVector MediaStream::trackVectorForType(RealtimeMediaSource::Type filterType) const
+MediaStreamTrackVector MediaStream::filteredTracks(const Function<bool(const MediaStreamTrack&)>& filter) const
 {
     MediaStreamTrackVector tracks;
-    for (auto& track : m_trackSet.values()) {
-        if (track->source().type() == filterType)
+    for (auto& track : m_trackMap.values()) {
+        if (filter(track))
             tracks.append(track);
     }
 
@@ -345,14 +369,14 @@ void MediaStream::stop()
     m_isActive = false;
 }
 
-const char* MediaStream::activeDOMObjectName() const
-{
-    return "MediaStream";
-}
-
 bool MediaStream::virtualHasPendingActivity() const
 {
     return m_isActive;
+}
+
+Ref<MediaStreamPrivate> MediaStream::protectedPrivateStream()
+{
+    return m_private;
 }
 
 #if !RELEASE_LOG_DISABLED

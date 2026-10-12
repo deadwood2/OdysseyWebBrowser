@@ -35,7 +35,7 @@ MockAuthenticatorManager::MockAuthenticatorManager(WebCore::MockWebAuthenticatio
 {
 }
 
-UniqueRef<AuthenticatorTransportService> MockAuthenticatorManager::createService(WebCore::AuthenticatorTransport transport, AuthenticatorTransportService::Observer& observer) const
+UniqueRef<AuthenticatorTransportService> MockAuthenticatorManager::createService(WebCore::AuthenticatorTransport transport, AuthenticatorTransportServiceObserver& observer) const
 {
     return AuthenticatorTransportService::createMock(transport, observer, m_testConfiguration);
 }
@@ -56,6 +56,9 @@ void MockAuthenticatorManager::filterTransports(TransportSet& transports) const
         transports.remove(WebCore::AuthenticatorTransport::Nfc);
     if (!m_testConfiguration.local)
         transports.remove(WebCore::AuthenticatorTransport::Internal);
+    if (!m_testConfiguration.ccid)
+        transports.remove(WebCore::AuthenticatorTransport::SmartCard);
+    transports.remove(WebCore::AuthenticatorTransport::Ble);
 }
 
 } // namespace WebKit

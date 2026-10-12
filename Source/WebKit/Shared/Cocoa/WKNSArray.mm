@@ -51,8 +51,8 @@
 
 - (id)objectAtIndex:(NSUInteger)i
 {
-    API::Object* object = _array->at(i);
-    return object ? object->wrapper() : [NSNull null];
+    RefPtr object = _array->at(i);
+    return object ? (id)object->wrapper() : [NSNull null];
 }
 
 #pragma mark NSCopying protocol implementation

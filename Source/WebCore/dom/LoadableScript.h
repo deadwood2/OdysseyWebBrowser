@@ -26,8 +26,8 @@
 #pragma once
 
 #include "ScriptElementCachedScriptFetcher.h"
-#include <JavaScriptCore/ConsoleTypes.h>
-#include <wtf/HashCountedSet.h>
+#include <wtf/CheckedRef.h>
+#include <wtf/WeakHashCountedSet.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
@@ -35,31 +35,22 @@ namespace WebCore {
 class LoadableScriptClient;
 class ScriptElement;
 
+struct LoadableScriptConsoleMessage;
+struct LoadableScriptError;
+
+enum class LoadableScriptErrorType : uint8_t;
+
 class LoadableScript : public ScriptElementCachedScriptFetcher {
 public:
-    enum class ErrorType {
-        CachedScript,
-        CrossOriginLoad,
-        MIMEType,
-        Nosniff,
-        FailedIntegrityCheck,
-    };
+    using ConsoleMessage = LoadableScriptConsoleMessage;
+    using Error = LoadableScriptError;
+    using ErrorType = LoadableScriptErrorType;
 
-    struct ConsoleMessage {
-        MessageSource source;
-        MessageLevel level;
-        String message;
-    };
-
-    struct Error {
-        ErrorType type;
-        std::optional<ConsoleMessage> consoleMessage;
-    };
-
-    virtual ~LoadableScript() = default;
+    virtual ~LoadableScript();
 
     virtual bool isLoaded() const = 0;
-    virtual std::optional<Error> error() const = 0;
+    virtual bool hasError() const = 0;
+    virtual std::optional<Error> takeError() = 0;
     virtual bool wasCanceled() const = 0;
 
     virtual void execute(ScriptElement&) = 0;
@@ -68,15 +59,12 @@ public:
     void removeClient(LoadableScriptClient&);
 
 protected:
-    LoadableScript(const String& nonce, ReferrerPolicy policy, const String& crossOriginMode, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree)
-        : ScriptElementCachedScriptFetcher(nonce, policy, crossOriginMode, charset, initiatorName, isInUserAgentShadowTree)
-    {
-    }
+    LoadableScript(const AtomString& nonce, ReferrerPolicy, RequestPriority, const AtomString& crossOriginMode, const String& charset, const AtomString& initiatorType, bool isInUserAgentShadowTree);
 
     void notifyClientFinished();
 
 private:
-    HashCountedSet<LoadableScriptClient*> m_clients;
+    WeakHashCountedSet<LoadableScriptClient> m_clients;
 };
 
 }

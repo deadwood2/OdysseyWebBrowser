@@ -22,7 +22,8 @@
 #include "JSTestStringifierReadWriteAttribute.h"
 
 #include "ActiveDOMObject.h"
-#include "DOMIsoSubspaces.h"
+#include "ExtendedDOMClientIsoSubspaces.h"
+#include "ExtendedDOMIsoSubspaces.h"
 #include "JSDOMAttribute.h"
 #include "JSDOMBinding.h"
 #include "JSDOMConstructorNotConstructable.h"
@@ -42,6 +43,7 @@
 #include <wtf/GetPtr.h>
 #include <wtf/PointerPreparations.h>
 #include <wtf/URL.h>
+#include <wtf/text/MakeString.h>
 
 
 namespace WebCore {
@@ -62,17 +64,17 @@ public:
     using Base = JSC::JSNonFinalObject;
     static JSTestStringifierReadWriteAttributePrototype* create(JSC::VM& vm, JSDOMGlobalObject* globalObject, JSC::Structure* structure)
     {
-        JSTestStringifierReadWriteAttributePrototype* ptr = new (NotNull, JSC::allocateCell<JSTestStringifierReadWriteAttributePrototype>(vm.heap)) JSTestStringifierReadWriteAttributePrototype(vm, globalObject, structure);
+        JSTestStringifierReadWriteAttributePrototype* ptr = new (NotNull, JSC::allocateCell<JSTestStringifierReadWriteAttributePrototype>(vm)) JSTestStringifierReadWriteAttributePrototype(vm, globalObject, structure);
         ptr->finishCreation(vm);
         return ptr;
     }
 
     DECLARE_INFO;
     template<typename CellType, JSC::SubspaceAccess>
-    static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestStringifierReadWriteAttributePrototype, Base);
-        return &vm.plainObjectSpace;
+        return &vm.plainObjectSpace();
     }
     static JSC::Structure* createStructure(JSC::VM& vm, JSC::JSGlobalObject* globalObject, JSC::JSValue prototype)
     {
@@ -91,7 +93,7 @@ STATIC_ASSERT_ISO_SUBSPACE_SHARABLE(JSTestStringifierReadWriteAttributePrototype
 
 using JSTestStringifierReadWriteAttributeDOMConstructor = JSDOMConstructorNotConstructable<JSTestStringifierReadWriteAttribute>;
 
-template<> const ClassInfo JSTestStringifierReadWriteAttributeDOMConstructor::s_info = { "TestStringifierReadWriteAttribute", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestStringifierReadWriteAttributeDOMConstructor) };
+template<> const ClassInfo JSTestStringifierReadWriteAttributeDOMConstructor::s_info = { "TestStringifierReadWriteAttribute"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestStringifierReadWriteAttributeDOMConstructor) };
 
 template<> JSValue JSTestStringifierReadWriteAttributeDOMConstructor::prototypeForStructure(JSC::VM& vm, const JSDOMGlobalObject& globalObject)
 {
@@ -101,21 +103,23 @@ template<> JSValue JSTestStringifierReadWriteAttributeDOMConstructor::prototypeF
 
 template<> void JSTestStringifierReadWriteAttributeDOMConstructor::initializeProperties(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    putDirect(vm, vm.propertyNames->prototype, JSTestStringifierReadWriteAttribute::prototype(vm, globalObject), JSC::PropertyAttribute::DontDelete | JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
-    putDirect(vm, vm.propertyNames->name, jsNontrivialString(vm, "TestStringifierReadWriteAttribute"_s), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
     putDirect(vm, vm.propertyNames->length, jsNumber(0), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    JSString* nameString = jsNontrivialString(vm, "TestStringifierReadWriteAttribute"_s);
+    m_originalName.set(vm, this, nameString);
+    putDirect(vm, vm.propertyNames->name, nameString, JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum);
+    putDirect(vm, vm.propertyNames->prototype, JSTestStringifierReadWriteAttribute::prototype(vm, globalObject), JSC::PropertyAttribute::ReadOnly | JSC::PropertyAttribute::DontEnum | JSC::PropertyAttribute::DontDelete);
 }
 
 /* Hash table for prototype */
 
 static const HashTableValue JSTestStringifierReadWriteAttributePrototypeTableValues[] =
 {
-    { "constructor", static_cast<unsigned>(JSC::PropertyAttribute::DontEnum), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestStringifierReadWriteAttributeConstructor), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(0) } },
-    { "identifier", static_cast<unsigned>(JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute), NoIntrinsic, { (intptr_t)static_cast<PropertySlot::GetValueFunc>(jsTestStringifierReadWriteAttribute_identifier), (intptr_t) static_cast<PutPropertySlot::PutValueFunc>(setJSTestStringifierReadWriteAttribute_identifier) } },
-    { "toString", static_cast<unsigned>(JSC::PropertyAttribute::Function), NoIntrinsic, { (intptr_t)static_cast<RawNativeFunction>(jsTestStringifierReadWriteAttributePrototypeFunction_toString), (intptr_t) (0) } },
+    { "constructor"_s, static_cast<unsigned>(PropertyAttribute::DontEnum), NoIntrinsic, { HashTableValue::GetterSetterType, jsTestStringifierReadWriteAttributeConstructor, 0 } },
+    { "identifier"_s, JSC::PropertyAttribute::CustomAccessor | JSC::PropertyAttribute::DOMAttribute, NoIntrinsic, { HashTableValue::GetterSetterType, jsTestStringifierReadWriteAttribute_identifier, setJSTestStringifierReadWriteAttribute_identifier } },
+    { "toString"_s, static_cast<unsigned>(JSC::PropertyAttribute::Function), NoIntrinsic, { HashTableValue::NativeFunctionType, jsTestStringifierReadWriteAttributePrototypeFunction_toString, 0 } },
 };
 
-const ClassInfo JSTestStringifierReadWriteAttributePrototype::s_info = { "TestStringifierReadWriteAttribute", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestStringifierReadWriteAttributePrototype) };
+const ClassInfo JSTestStringifierReadWriteAttributePrototype::s_info = { "TestStringifierReadWriteAttribute"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestStringifierReadWriteAttributePrototype) };
 
 void JSTestStringifierReadWriteAttributePrototype::finishCreation(VM& vm)
 {
@@ -124,25 +128,20 @@ void JSTestStringifierReadWriteAttributePrototype::finishCreation(VM& vm)
     JSC_TO_STRING_TAG_WITHOUT_TRANSITION();
 }
 
-const ClassInfo JSTestStringifierReadWriteAttribute::s_info = { "TestStringifierReadWriteAttribute", &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestStringifierReadWriteAttribute) };
+const ClassInfo JSTestStringifierReadWriteAttribute::s_info = { "TestStringifierReadWriteAttribute"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSTestStringifierReadWriteAttribute) };
 
 JSTestStringifierReadWriteAttribute::JSTestStringifierReadWriteAttribute(Structure* structure, JSDOMGlobalObject& globalObject, Ref<TestStringifierReadWriteAttribute>&& impl)
     : JSDOMWrapper<TestStringifierReadWriteAttribute>(structure, globalObject, WTFMove(impl))
 {
 }
 
-void JSTestStringifierReadWriteAttribute::finishCreation(VM& vm)
-{
-    Base::finishCreation(vm);
-    ASSERT(inherits(vm, info()));
-
-    static_assert(!std::is_base_of<ActiveDOMObject, TestStringifierReadWriteAttribute>::value, "Interface is not marked as [ActiveDOMObject] even though implementation class subclasses ActiveDOMObject.");
-
-}
+static_assert(!std::is_base_of<ActiveDOMObject, TestStringifierReadWriteAttribute>::value, "Interface is not marked as [ActiveDOMObject] even though implementation class subclasses ActiveDOMObject.");
 
 JSObject* JSTestStringifierReadWriteAttribute::createPrototype(VM& vm, JSDOMGlobalObject& globalObject)
 {
-    return JSTestStringifierReadWriteAttributePrototype::create(vm, &globalObject, JSTestStringifierReadWriteAttributePrototype::createStructure(vm, &globalObject, globalObject.objectPrototype()));
+    auto* structure = JSTestStringifierReadWriteAttributePrototype::createStructure(vm, &globalObject, globalObject.objectPrototype());
+    structure->setMayBePrototype(true);
+    return JSTestStringifierReadWriteAttributePrototype::create(vm, &globalObject, structure);
 }
 
 JSObject* JSTestStringifierReadWriteAttribute::prototype(VM& vm, JSDOMGlobalObject& globalObject)
@@ -163,12 +162,12 @@ void JSTestStringifierReadWriteAttribute::destroy(JSC::JSCell* cell)
 
 JSC_DEFINE_CUSTOM_GETTER(jsTestStringifierReadWriteAttributeConstructor, (JSGlobalObject* lexicalGlobalObject, EncodedJSValue thisValue, PropertyName))
 {
-    VM& vm = JSC::getVM(lexicalGlobalObject);
+    auto& vm = JSC::getVM(lexicalGlobalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    auto* prototype = jsDynamicCast<JSTestStringifierReadWriteAttributePrototype*>(vm, JSValue::decode(thisValue));
+    auto* prototype = jsDynamicCast<JSTestStringifierReadWriteAttributePrototype*>(JSValue::decode(thisValue));
     if (UNLIKELY(!prototype))
         return throwVMTypeError(lexicalGlobalObject, throwScope);
-    return JSValue::encode(JSTestStringifierReadWriteAttribute::getConstructor(JSC::getVM(lexicalGlobalObject), prototype->globalObject()));
+    return JSValue::encode(JSTestStringifierReadWriteAttribute::getConstructor(vm, prototype->globalObject()));
 }
 
 static inline JSValue jsTestStringifierReadWriteAttribute_identifierGetter(JSGlobalObject& lexicalGlobalObject, JSTestStringifierReadWriteAttribute& thisObject)
@@ -187,12 +186,14 @@ JSC_DEFINE_CUSTOM_GETTER(jsTestStringifierReadWriteAttribute_identifier, (JSGlob
 static inline bool setJSTestStringifierReadWriteAttribute_identifierSetter(JSGlobalObject& lexicalGlobalObject, JSTestStringifierReadWriteAttribute& thisObject, JSValue value)
 {
     auto& vm = JSC::getVM(&lexicalGlobalObject);
+    UNUSED_PARAM(vm);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
     auto& impl = thisObject.wrapped();
-    auto nativeValue = convert<IDLDOMString>(lexicalGlobalObject, value);
-    RETURN_IF_EXCEPTION(throwScope, false);
+    auto nativeValueConversionResult = convert<IDLDOMString>(lexicalGlobalObject, value);
+    if (UNLIKELY(nativeValueConversionResult.hasException(throwScope)))
+        return false;
     invokeFunctorPropagatingExceptionIfNecessary(lexicalGlobalObject, throwScope, [&] {
-        return impl.setIdentifier(WTFMove(nativeValue));
+        return impl.setIdentifier(nativeValueConversionResult.releaseReturnValue());
     });
     return true;
 }
@@ -217,27 +218,14 @@ JSC_DEFINE_HOST_FUNCTION(jsTestStringifierReadWriteAttributePrototypeFunction_to
     return IDLOperation<JSTestStringifierReadWriteAttribute>::call<jsTestStringifierReadWriteAttributePrototypeFunction_toStringBody>(*lexicalGlobalObject, *callFrame, "toString");
 }
 
-JSC::IsoSubspace* JSTestStringifierReadWriteAttribute::subspaceForImpl(JSC::VM& vm)
+JSC::GCClient::IsoSubspace* JSTestStringifierReadWriteAttribute::subspaceForImpl(JSC::VM& vm)
 {
-    auto& clientData = *static_cast<JSVMClientData*>(vm.clientData);
-    auto& spaces = clientData.subspaces();
-    if (auto* space = spaces.m_subspaceForTestStringifierReadWriteAttribute.get())
-        return space;
-    static_assert(std::is_base_of_v<JSC::JSDestructibleObject, JSTestStringifierReadWriteAttribute> || !JSTestStringifierReadWriteAttribute::needsDestruction);
-    if constexpr (std::is_base_of_v<JSC::JSDestructibleObject, JSTestStringifierReadWriteAttribute>)
-        spaces.m_subspaceForTestStringifierReadWriteAttribute = makeUnique<IsoSubspace> ISO_SUBSPACE_INIT(vm.heap, vm.destructibleObjectHeapCellType.get(), JSTestStringifierReadWriteAttribute);
-    else
-        spaces.m_subspaceForTestStringifierReadWriteAttribute = makeUnique<IsoSubspace> ISO_SUBSPACE_INIT(vm.heap, vm.cellHeapCellType.get(), JSTestStringifierReadWriteAttribute);
-    auto* space = spaces.m_subspaceForTestStringifierReadWriteAttribute.get();
-IGNORE_WARNINGS_BEGIN("unreachable-code")
-IGNORE_WARNINGS_BEGIN("tautological-compare")
-    void (*myVisitOutputConstraint)(JSC::JSCell*, JSC::SlotVisitor&) = JSTestStringifierReadWriteAttribute::visitOutputConstraints;
-    void (*jsCellVisitOutputConstraint)(JSC::JSCell*, JSC::SlotVisitor&) = JSC::JSCell::visitOutputConstraints;
-    if (myVisitOutputConstraint != jsCellVisitOutputConstraint)
-        clientData.outputConstraintSpaces().append(space);
-IGNORE_WARNINGS_END
-IGNORE_WARNINGS_END
-    return space;
+    return WebCore::subspaceForImpl<JSTestStringifierReadWriteAttribute, UseCustomHeapCellType::No>(vm,
+        [] (auto& spaces) { return spaces.m_clientSubspaceForTestStringifierReadWriteAttribute.get(); },
+        [] (auto& spaces, auto&& space) { spaces.m_clientSubspaceForTestStringifierReadWriteAttribute = std::forward<decltype(space)>(space); },
+        [] (auto& spaces) { return spaces.m_subspaceForTestStringifierReadWriteAttribute.get(); },
+        [] (auto& spaces, auto&& space) { spaces.m_subspaceForTestStringifierReadWriteAttribute = std::forward<decltype(space)>(space); }
+    );
 }
 
 void JSTestStringifierReadWriteAttribute::analyzeHeap(JSCell* cell, HeapAnalyzer& analyzer)
@@ -245,11 +233,11 @@ void JSTestStringifierReadWriteAttribute::analyzeHeap(JSCell* cell, HeapAnalyzer
     auto* thisObject = jsCast<JSTestStringifierReadWriteAttribute*>(cell);
     analyzer.setWrappedObjectForCell(cell, &thisObject->wrapped());
     if (thisObject->scriptExecutionContext())
-        analyzer.setLabelForCell(cell, "url " + thisObject->scriptExecutionContext()->url().string());
+        analyzer.setLabelForCell(cell, makeString("url "_s, thisObject->scriptExecutionContext()->url().string()));
     Base::analyzeHeap(cell, analyzer);
 }
 
-bool JSTestStringifierReadWriteAttributeOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, AbstractSlotVisitor& visitor, const char** reason)
+bool JSTestStringifierReadWriteAttributeOwner::isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown> handle, void*, AbstractSlotVisitor& visitor, ASCIILiteral* reason)
 {
     UNUSED_PARAM(handle);
     UNUSED_PARAM(visitor);
@@ -261,7 +249,7 @@ void JSTestStringifierReadWriteAttributeOwner::finalize(JSC::Handle<JSC::Unknown
 {
     auto* jsTestStringifierReadWriteAttribute = static_cast<JSTestStringifierReadWriteAttribute*>(handle.slot()->asCell());
     auto& world = *static_cast<DOMWrapperWorld*>(context);
-    uncacheWrapper(world, &jsTestStringifierReadWriteAttribute->wrapped(), jsTestStringifierReadWriteAttribute);
+    uncacheWrapper(world, jsTestStringifierReadWriteAttribute->protectedWrapped().ptr(), jsTestStringifierReadWriteAttribute);
 }
 
 #if ENABLE(BINDING_INTEGRITY)
@@ -271,28 +259,27 @@ extern "C" { extern void (*const __identifier("??_7TestStringifierReadWriteAttri
 #else
 extern "C" { extern void* _ZTVN7WebCore33TestStringifierReadWriteAttributeE[]; }
 #endif
+template<typename T, typename = std::enable_if_t<std::is_same_v<T, TestStringifierReadWriteAttribute>, void>> static inline void verifyVTable(TestStringifierReadWriteAttribute* ptr) {
+    if constexpr (std::is_polymorphic_v<T>) {
+        const void* actualVTablePointer = getVTablePointer<T>(ptr);
+#if PLATFORM(WIN)
+        void* expectedVTablePointer = __identifier("??_7TestStringifierReadWriteAttribute@WebCore@@6B@");
+#else
+        void* expectedVTablePointer = &_ZTVN7WebCore33TestStringifierReadWriteAttributeE[2];
 #endif
 
+        // If you hit this assertion you either have a use after free bug, or
+        // TestStringifierReadWriteAttribute has subclasses. If TestStringifierReadWriteAttribute has subclasses that get passed
+        // to toJS() we currently require TestStringifierReadWriteAttribute you to opt out of binding hardening
+        // by adding the SkipVTableValidation attribute to the interface IDL definition
+        RELEASE_ASSERT(actualVTablePointer == expectedVTablePointer);
+    }
+}
+#endif
 JSC::JSValue toJSNewlyCreated(JSC::JSGlobalObject*, JSDOMGlobalObject* globalObject, Ref<TestStringifierReadWriteAttribute>&& impl)
 {
-
 #if ENABLE(BINDING_INTEGRITY)
-    const void* actualVTablePointer = getVTablePointer(impl.ptr());
-#if PLATFORM(WIN)
-    void* expectedVTablePointer = __identifier("??_7TestStringifierReadWriteAttribute@WebCore@@6B@");
-#else
-    void* expectedVTablePointer = &_ZTVN7WebCore33TestStringifierReadWriteAttributeE[2];
-#endif
-
-    // If this fails TestStringifierReadWriteAttribute does not have a vtable, so you need to add the
-    // ImplementationLacksVTable attribute to the interface definition
-    static_assert(std::is_polymorphic<TestStringifierReadWriteAttribute>::value, "TestStringifierReadWriteAttribute is not polymorphic");
-
-    // If you hit this assertion you either have a use after free bug, or
-    // TestStringifierReadWriteAttribute has subclasses. If TestStringifierReadWriteAttribute has subclasses that get passed
-    // to toJS() we currently require TestStringifierReadWriteAttribute you to opt out of binding hardening
-    // by adding the SkipVTableValidation attribute to the interface IDL definition
-    RELEASE_ASSERT(actualVTablePointer == expectedVTablePointer);
+    verifyVTable<TestStringifierReadWriteAttribute>(impl.ptr());
 #endif
     return createWrapper<TestStringifierReadWriteAttribute>(globalObject, WTFMove(impl));
 }
@@ -302,9 +289,9 @@ JSC::JSValue toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSDOMGlobalObject* g
     return wrap(lexicalGlobalObject, globalObject, impl);
 }
 
-TestStringifierReadWriteAttribute* JSTestStringifierReadWriteAttribute::toWrapped(JSC::VM& vm, JSC::JSValue value)
+TestStringifierReadWriteAttribute* JSTestStringifierReadWriteAttribute::toWrapped(JSC::VM&, JSC::JSValue value)
 {
-    if (auto* wrapper = jsDynamicCast<JSTestStringifierReadWriteAttribute*>(vm, value))
+    if (auto* wrapper = jsDynamicCast<JSTestStringifierReadWriteAttribute*>(value))
         return &wrapper->wrapped();
     return nullptr;
 }

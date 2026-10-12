@@ -50,6 +50,14 @@ public:
     void* memalignLarge(size_t alignment, size_t);
     void freeLarge(void* base);
 
+#if BENABLE(MALLOC_SIZE)
+    size_t mallocSize(const void* object) { return malloc_size(object); }
+#endif
+
+#if BENABLE(MALLOC_GOOD_SIZE)
+    size_t mallocGoodSize(size_t size) { return malloc_good_size(size); }
+#endif
+
     void scavenge();
     void dump();
 
@@ -67,7 +75,9 @@ private:
     size_t m_pageSize { 0 };
     std::unordered_map<void*, size_t> m_sizeMap;
 };
+BALLOW_DEPRECATED_DECLARATIONS_BEGIN
 DECLARE_STATIC_PER_PROCESS_STORAGE(DebugHeap);
+BALLOW_DEPRECATED_DECLARATIONS_END
 
 extern BEXPORT DebugHeap* debugHeapCache;
 

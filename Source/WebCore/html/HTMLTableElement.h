@@ -35,10 +35,12 @@ class HTMLTableRowsCollection;
 class HTMLTableSectionElement;
 
 class HTMLTableElement final : public HTMLElement {
-    WTF_MAKE_ISO_ALLOCATED(HTMLTableElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLTableElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLTableElement);
 public:
     static Ref<HTMLTableElement> create(Document&);
     static Ref<HTMLTableElement> create(const QualifiedName&, Document&);
+    ~HTMLTableElement();
 
     WEBCORE_EXPORT RefPtr<HTMLTableCaptionElement> caption() const;
     WEBCORE_EXPORT ExceptionOr<void> setCaption(RefPtr<HTMLTableCaptionElement>&&);
@@ -65,19 +67,19 @@ public:
     const AtomString& rules() const;
     const AtomString& summary() const;
 
-    const StyleProperties* additionalCellStyle() const;
-    const StyleProperties* additionalGroupStyle(bool rows) const;
+    const MutableStyleProperties* additionalCellStyle() const;
+    const MutableStyleProperties* additionalGroupStyle(bool rows) const;
 
 private:
     HTMLTableElement(const QualifiedName&, Document&);
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     bool hasPresentationalHintsForAttribute(const QualifiedName&) const final;
     void collectPresentationalHintsForAttribute(const QualifiedName&, const AtomString&, MutableStyleProperties&) final;
     bool isURLAttribute(const Attribute&) const final;
 
     // Used to obtain either a solid or outset border decl and to deal with the frame and rules attributes.
-    const StyleProperties* additionalPresentationalHintStyle() const final;
+    const MutableStyleProperties* additionalPresentationalHintStyle() const final;
 
     void addSubresourceAttributeURLs(ListHashSet<URL>&) const final;
 
@@ -86,16 +88,15 @@ private:
 
     CellBorders cellBorders() const;
 
-    Ref<StyleProperties> createSharedCellStyle() const;
+    Ref<MutableStyleProperties> createSharedCellStyle() const;
 
     HTMLTableSectionElement* lastBody() const;
 
     bool m_borderAttr { false }; // Sets a precise border width and creates an outset border for the table and for its cells.
-    bool m_borderColorAttr { false }; // Overrides the outset border and makes it solid for the table and cells instead.
     bool m_frameAttr { false }; // Implies a thin border width if no border is set and then a certain set of solid/hidden borders based off the value.
     TableRules m_rulesAttr { UnsetRules }; // Implies a thin border width, a collapsing border model, and all borders on the table becoming set to hidden (if frame/border are present, to none otherwise).
     unsigned short m_padding { 1 };
-    mutable RefPtr<const StyleProperties> m_sharedCellStyle;
+    mutable RefPtr<const MutableStyleProperties> m_sharedCellStyle;
 };
 
 } //namespace

@@ -35,19 +35,28 @@ namespace WebCore {
 class RenderText;
 class RenderedDocumentMarker;
 
-struct StyledMarkedText : MarkedText {
-    StyledMarkedText(const MarkedText& marker)
-        : MarkedText { marker }
-    {
-    }
+struct StyledMarkedText final : MarkedText {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_STRUCT_OVERRIDE_DELETE_FOR_CHECKED_PTR(StyledMarkedText);
 
     struct Style {
         Color backgroundColor;
         TextPaintStyle textStyles;
         TextDecorationPainter::Styles textDecorationStyles;
         std::optional<ShadowData> textShadow;
-        float alpha;
+        float alpha { 1 };
     };
+
+    StyledMarkedText(const MarkedText& marker)
+        : MarkedText { marker }
+    {
+    }
+
+    StyledMarkedText(const MarkedText& marker, Style style)
+        : MarkedText { marker }
+        , style(style)
+    {
+    }
 
     Style style;
 
@@ -55,6 +64,7 @@ struct StyledMarkedText : MarkedText {
     static Vector<StyledMarkedText> coalesceAdjacentWithEqualBackground(const Vector<StyledMarkedText>&);
     static Vector<StyledMarkedText> coalesceAdjacentWithEqualForeground(const Vector<StyledMarkedText>&);
     static Vector<StyledMarkedText> coalesceAdjacentWithEqualDecorations(const Vector<StyledMarkedText>&);
+    static Style computeStyleForUnmarkedMarkedText(const RenderText&, const RenderStyle&, bool isFirstLine, const PaintInfo&);
 };
 
 }

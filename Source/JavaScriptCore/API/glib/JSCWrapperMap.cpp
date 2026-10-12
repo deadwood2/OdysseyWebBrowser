@@ -21,6 +21,7 @@
 #include "JSCWrapperMap.h"
 
 #include "APICast.h"
+#include "IntegrityInlines.h"
 #include "JSAPIWrapperGlobalObject.h"
 #include "JSAPIWrapperObject.h"
 #include "JSCClassPrivate.h"
@@ -65,9 +66,9 @@ void WrapperMap::unwrap(JSValueRef jsValue)
 
 void WrapperMap::registerClass(JSCClass* jscClass)
 {
-    auto* jsClass = jscClassGetJSClass(jscClass);
-    ASSERT(!m_classMap.contains(jsClass));
-    m_classMap.set(jsClass, jscClass);
+    RefPtr jsClass = jscClassGetJSClass(jscClass);
+    ASSERT(!m_classMap.contains(jsClass.get()));
+    m_classMap.set(jsClass.get(), jscClass);
 }
 
 JSCClass* WrapperMap::registeredClass(JSClassRef jsClass) const
@@ -75,11 +76,11 @@ JSCClass* WrapperMap::registeredClass(JSClassRef jsClass) const
     return m_classMap.get(jsClass);
 }
 
-JSObject* WrapperMap::createJSWrappper(JSGlobalContextRef jsContext, JSClassRef jsClass, JSValueRef prototype, gpointer wrappedObject, GDestroyNotify destroyFunction)
+JSObject* WrapperMap::createJSWrapper(JSGlobalContextRef jsContext, JSClassRef jsClass, JSValueRef prototype, gpointer wrappedObject, GDestroyNotify destroyFunction)
 {
     ASSERT(toJSGlobalObject(jsContext)->wrapperMap() == this);
     JSGlobalObject* globalObject = toJS(jsContext);
-    VM& vm = globalObject->vm();
+    Ref vm = globalObject->vm();
     JSLockHolder locker(vm);
     auto* object = JSC::JSCallbackObject<JSC::JSAPIWrapperObject>::create(globalObject, globalObject->glibWrapperObjectStructure(), jsClass, nullptr);
     if (wrappedObject) {
@@ -93,7 +94,7 @@ JSObject* WrapperMap::createJSWrappper(JSGlobalContextRef jsContext, JSClassRef 
     return object;
 }
 
-JSGlobalContextRef WrapperMap::createContextWithJSWrappper(JSContextGroupRef jsGroup, JSClassRef jsClass, JSValueRef prototype, gpointer wrappedObject, GDestroyNotify destroyFunction)
+JSGlobalContextRef WrapperMap::createContextWithJSWrapper(JSContextGroupRef jsGroup, JSClassRef jsClass, JSValueRef prototype, gpointer wrappedObject, GDestroyNotify destroyFunction)
 {
     Ref<VM> vm(*toJS(jsGroup));
     JSLockHolder locker(vm.ptr());
@@ -123,13 +124,12 @@ gpointer WrapperMap::wrappedObject(JSGlobalContextRef jsContext, JSObjectRef jsO
 {
     ASSERT(toJSGlobalObject(jsContext)->wrapperMap() == this);
     JSLockHolder locker(toJS(jsContext));
-    VM& vm = toJS(jsContext)->vm();
     auto* object = toJS(jsObject);
-    if (object->inherits(vm, JSC::JSCallbackObject<JSC::JSAPIWrapperObject>::info())) {
+    if (object->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperObject>>()) {
         if (auto* wrapper = JSC::jsCast<JSC::JSAPIWrapperObject*>(object)->wrappedObject())
             return static_cast<JSC::JSCGLibWrapperObject*>(wrapper)->object();
     }
-    if (object->inherits(vm, JSC::JSCallbackObject<JSC::JSAPIWrapperGlobalObject>::info())) {
+    if (object->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperGlobalObject>>()) {
         if (auto* wrapper = JSC::jsCast<JSC::JSAPIWrapperGlobalObject*>(object)->wrappedObject())
             return wrapper->object();
     }

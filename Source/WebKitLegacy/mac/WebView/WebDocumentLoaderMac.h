@@ -27,6 +27,7 @@
  */
 
 #import <WebCore/DocumentLoader.h>
+#import <WebCore/ResourceLoaderIdentifier.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/HashSet.h>
 
@@ -34,7 +35,7 @@
 @class WebView;
 
 namespace WebCore {
-    class ResourceRequest;
+class ResourceRequest;
 }
 
 class WebDocumentLoaderMac : public WebCore::DocumentLoader {
@@ -48,14 +49,14 @@ public:
     void detachDataSource();
     WebDataSource *dataSource() const;
 
-    void increaseLoadCount(unsigned long identifier);
-    void decreaseLoadCount(unsigned long identifier);
+    void increaseLoadCount(WebCore::ResourceLoaderIdentifier);
+    void decreaseLoadCount(WebCore::ResourceLoaderIdentifier);
 
 private:
     WebDocumentLoaderMac(const WebCore::ResourceRequest&, const WebCore::SubstituteData&);
 
     virtual void attachToFrame();
-    virtual void detachFromFrame();
+    virtual void detachFromFrame(WebCore::LoadWillContinueInAnotherProcess);
 
     void retainDataSource();
     void releaseDataSource();
@@ -64,5 +65,5 @@ private:
     bool m_isDataSourceRetained;
     RetainPtr<id> m_resourceLoadDelegate;
     RetainPtr<id> m_downloadDelegate;
-    HashSet<unsigned long> m_loadingResources;
+    HashSet<WebCore::ResourceLoaderIdentifier> m_loadingResources;
 };

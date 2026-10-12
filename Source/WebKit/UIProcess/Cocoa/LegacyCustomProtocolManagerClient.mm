@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,11 +26,12 @@
 #import "config.h"
 #import "LegacyCustomProtocolManagerClient.h"
 
-#import "DataReference.h"
+#import "CacheStoragePolicy.h"
 #import "LegacyCustomProtocolManagerProxy.h"
 #import <WebCore/ResourceError.h>
 #import <WebCore/ResourceRequest.h>
 #import <WebCore/ResourceResponse.h>
+#import <wtf/cocoa/SpanCocoa.h>
 
 @interface WKCustomProtocolLoader : NSObject <NSURLConnectionDelegate> {
 @private
@@ -52,14 +53,14 @@
         return nil;
 
     ASSERT(request);
-    _customProtocolManagerProxy = makeWeakPtr(customProtocolManagerProxy);
+    _customProtocolManagerProxy = customProtocolManagerProxy;
     _customProtocolID = customProtocolID;
     _storagePolicy = NSURLCacheStorageNotAllowed;
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     _urlConnection = adoptNS([[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:NO]);
     [_urlConnection scheduleInRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
     [_urlConnection start];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     return self;
 }
@@ -100,7 +101,7 @@
         return;
 
     WebCore::ResourceResponse coreResponse(response);
-    _customProtocolManagerProxy->didReceiveResponse(_customProtocolID, coreResponse, _storagePolicy);
+    _customProtocolManagerProxy->didReceiveResponse(_customProtocolID, coreResponse, WebKit::toCacheStoragePolicy(_storagePolicy));
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data
@@ -108,8 +109,7 @@
     if (!_customProtocolManagerProxy)
         return;
 
-    IPC::DataReference coreData(static_cast<const uint8_t*>([data bytes]), [data length]);
-    _customProtocolManagerProxy->didLoadData(_customProtocolID, coreData);
+    _customProtocolManagerProxy->didLoadData(_customProtocolID, span(data));
 }
 
 - (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)redirectResponse

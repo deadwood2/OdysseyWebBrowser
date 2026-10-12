@@ -27,6 +27,7 @@
 #pragma once
 
 #include <type_traits>
+#include <utility>
 #include <wtf/FastMalloc.h>
 #include <wtf/MathExtras.h>
 #include <wtf/StdLibExtras.h>
@@ -44,13 +45,16 @@ template<typename PointerType, typename Type>
 class CompactPointerTuple final {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static_assert(sizeof(Type) <= 2, "");
-    static_assert(std::is_pointer<PointerType>::value, "");
-    static_assert(std::is_integral<Type>::value || std::is_enum<Type>::value, "");
+    static_assert(sizeof(Type) <= 2);
+    static_assert(std::is_pointer<PointerType>::value);
+    static_assert(::allowCompactPointers<PointerType>());
+    static_assert(std::is_integral<Type>::value || std::is_enum<Type>::value);
     using UnsignedType = std::make_unsigned_t<std::conditional_t<std::is_same_v<Type, bool>, uint8_t, Type>>;
     static_assert(sizeof(UnsignedType) == sizeof(Type));
 
     CompactPointerTuple() = default;
+
+    friend bool operator==(const CompactPointerTuple&, const CompactPointerTuple&) = default;
 
 #if CPU(ADDRESS64)
 public:
@@ -58,7 +62,7 @@ public:
     static_assert(OS_CONSTANT(EFFECTIVE_ADDRESS_WIDTH) <= maxNumberOfBitsInPointer);
 
 #if CPU(LITTLE_ENDIAN)
-    static ptrdiff_t offsetOfType()
+    static constexpr ptrdiff_t offsetOfType()
     {
         return maxNumberOfBitsInPointer / 8;
     }

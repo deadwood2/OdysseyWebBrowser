@@ -29,13 +29,8 @@
     [ConditionallyReadWrite=CONDITION] attribute Node conditionallyReadWriteAttribute;
     [Conditional=CONDITION2, ConditionallyReadWrite=CONDITION] attribute Node conditionalAndConditionallyReadWriteAttribute;
 
-    [RuntimeConditionallyReadWrite=TestFeature] attribute Node runtimeConditionallyReadWriteAttribute;
-    [RuntimeConditionallyReadWrite=TestFeature, LegacyUnforgeable] attribute Node runtimeConditionallyReadWriteAttributeUnforgeable;
-    [RuntimeConditionallyReadWrite=TestFeature, PrivateIdentifier, LegacyUnforgeable] attribute Node runtimeConditionallyReadWriteAttributeUnforgeablePrivate;
-    [RuntimeConditionallyReadWrite=TestFeature] attribute Promise<double> runtimeConditionallyReadWriteAttributePromise;
-
-    [SettingsConditionallyReadWrite=TestFeature] attribute Node settingsConditionallyReadWriteAttribute;
-    [SettingsConditionallyReadWrite=TestFeature, LegacyUnforgeable] attribute Node settingsConditionallyReadWriteAttributeUnforgeable;
-    [SettingsConditionallyReadWrite=TestFeature, PrivateIdentifier, LegacyUnforgeable] attribute Node settingsConditionallyReadWriteAttributeUnforgeablePrivate;
-    [SettingsConditionallyReadWrite=TestFeature] attribute Promise<double> settingsConditionallyReadWriteAttributePromise;
+    [EnabledConditionallyReadWriteBySetting=TestFeatureEnabled] attribute Node enabledConditionallyReadWriteBySettingAttribute;
+    [EnabledConditionallyReadWriteBySetting=TestFeatureEnabled, LegacyUnforgeable] attribute Node enabledConditionallyReadWriteBySettingAttributeUnforgeable;
+    [EnabledConditionallyReadWriteBySetting=TestFeatureEnabled, PrivateIdentifier, LegacyUnforgeable] attribute Node enabledConditionallyReadWriteBySettingAttributeUnforgeablePrivate;
+    [EnabledConditionallyReadWriteBySetting=TestFeatureEnabled] attribute Promise<double> enabledConditionallyReadWriteBySettingAttributePromise;
 };

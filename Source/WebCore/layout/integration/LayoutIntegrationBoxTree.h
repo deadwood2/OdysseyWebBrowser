@@ -25,58 +25,73 @@
 
 #pragma once
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
 #include "LayoutInitialContainingBlock.h"
 #include <wtf/HashMap.h>
+#include <wtf/UniqueRef.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakPtr.h>
+
+namespace WebCore {
+namespace LayoutIntegration {
+class BoxTree;
+}
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::LayoutIntegration::BoxTree> : std::true_type { };
+}
 
 namespace WebCore {
 
-class RenderBlockFlow;
+class RenderBlock;
 class RenderBoxModelObject;
+class RenderElement;
+class RenderObject;
+class RenderInline;
+class RenderText;
 
 namespace LayoutIntegration {
 
-class BoxTree {
+#if ENABLE(TREE_DEBUGGING)
+struct InlineContent;
+#endif
+
+class BoxTree : public CanMakeWeakPtr<BoxTree> {
 public:
-    BoxTree(RenderBlockFlow&);
+    BoxTree(RenderBlock&);
+    ~BoxTree();
 
-    void updateStyle(const RenderBoxModelObject&);
+    static void updateStyle(const RenderObject&);
+    void updateContent(const RenderText&);
 
-    const RenderBlockFlow& flow() const { return m_flow; }
-    RenderBlockFlow& flow() { return m_flow; }
+    const Layout::Box& insert(const RenderElement& parent, RenderObject& child, const RenderObject* beforeChild = nullptr);
+    UniqueRef<Layout::Box> remove(const RenderElement& parent, RenderObject& child);
 
-    const Layout::InitialContainingBlock& rootLayoutBox() const { return m_root; }
-    Layout::InitialContainingBlock& rootLayoutBox() { return m_root; }
+    const RenderBlock& rootRenderer() const { return m_rootRenderer; }
+    RenderBlock& rootRenderer() { return m_rootRenderer; }
 
-    const Layout::Box& layoutBoxForRenderer(const RenderObject&) const;
-    Layout::Box& layoutBoxForRenderer(const RenderObject&);
+    const Layout::ElementBox& rootLayoutBox() const;
+    Layout::ElementBox& rootLayoutBox();
 
-    const RenderObject& rendererForLayoutBox(const Layout::Box&) const;
-    RenderObject& rendererForLayoutBox(const Layout::Box&);
-
-    size_t boxCount() const { return m_boxes.size(); }
-
-    struct BoxAndRenderer {
-        std::unique_ptr<Layout::Box> box;
-        RenderObject* renderer { nullptr };
-    };
-    const auto& boxAndRendererList() const { return m_boxes; }
+    bool contains(const RenderElement&) const;
 
 private:
-    void buildTree();
-    void appendChild(std::unique_ptr<Layout::Box>, RenderObject&);
+    Layout::InitialContainingBlock& initialContainingBlock();
 
-    RenderBlockFlow& m_flow;
-    Layout::InitialContainingBlock m_root;
-    Vector<BoxAndRenderer, 1> m_boxes;
+    static UniqueRef<Layout::Box> createLayoutBox(RenderObject&);
+    static void adjustStyleIfNeeded(const RenderElement&, RenderStyle&, RenderStyle* firstLineStyle);
 
-    HashMap<const RenderObject*, Layout::Box*> m_rendererToBoxMap;
-    HashMap<const Layout::Box*, RenderObject*> m_boxToRendererMap;
+    void buildTreeForInlineContent();
+    void buildTreeForFlexContent();
+    void insertChild(UniqueRef<Layout::Box>, RenderObject&, const RenderObject* beforeChild = nullptr);
+
+    RenderBlock& m_rootRenderer;
 };
 
+#if ENABLE(TREE_DEBUGGING)
+void showInlineContent(TextStream&, const InlineContent&, size_t depth, bool isDamaged = false);
+#endif
 }
 }
 
-#endif

@@ -29,7 +29,7 @@
 
 namespace WebKit {
 
-enum DisplayLinkObserverIDType { };
-using DisplayLinkObserverID = ObjectIdentifier<DisplayLinkObserverIDType>;
+struct DisplayLinkObserverIDType;
+using DisplayLinkObserverID = LegacyNullableObjectIdentifier<DisplayLinkObserverIDType>;
 
 } // namespace WebKit

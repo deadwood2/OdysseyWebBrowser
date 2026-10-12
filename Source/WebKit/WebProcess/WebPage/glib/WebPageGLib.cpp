@@ -28,35 +28,71 @@
 
 #include "EditorState.h"
 #include "InputMethodState.h"
+#include "MessageSenderInlines.h"
 #include "UserMessage.h"
-#include "WebKitExtensionManager.h"
 #include "WebKitUserMessage.h"
-#include "WebKitWebExtension.h"
 #include "WebKitWebPagePrivate.h"
 #include "WebPageProxyMessages.h"
+#include "WebProcessExtensionManager.h"
 #include <WebCore/Editor.h>
-#include <WebCore/Frame.h>
-#include <WebCore/FrameView.h>
 #include <WebCore/HTMLInputElement.h>
 #include <WebCore/HTMLTextAreaElement.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/Range.h>
 #include <WebCore/TextIterator.h>
 #include <WebCore/UserAgent.h>
 #include <WebCore/VisiblePosition.h>
 #include <WebCore/VisibleUnits.h>
+#include <wtf/text/MakeString.h>
+
+#if ENABLE(2022_GLIB_API)
+#include "WebKitWebProcessExtension.h"
+#else
+#include "WebKitWebExtension.h"
+#endif
 
 namespace WebKit {
 using namespace WebCore;
 
-void WebPage::sendMessageToWebExtensionWithReply(UserMessage&& message, CompletionHandler<void(UserMessage&&)>&& completionHandler)
+void WebPage::platformInitialize(const WebPageCreationParameters&)
 {
-    auto* extension = WebKitExtensionManager::singleton().extension();
+#if USE(ATSPI)
+    // Create the accessible object (the plug) that will serve as the
+    // entry point to the Web process, and send a message to the UI
+    // process to connect the two worlds through the accessibility
+    // object there specifically placed for that purpose (the socket).
+    if (RefPtr page = corePage()) {
+        m_accessibilityRootObject = AccessibilityRootAtspi::create(*page);
+        m_accessibilityRootObject->registerObject([&](const String& plugID) {
+            if (!plugID.isEmpty())
+                send(Messages::WebPageProxy::BindAccessibilityTree(plugID));
+        });
+    }
+#endif
+}
+
+void WebPage::platformDetach()
+{
+#if USE(ATSPI)
+    if (m_accessibilityRootObject)
+        m_accessibilityRootObject->unregisterObject();
+#endif
+}
+
+void WebPage::sendMessageToWebProcessExtensionWithReply(UserMessage&& message, CompletionHandler<void(UserMessage&&)>&& completionHandler)
+{
+    auto* extension = WebProcessExtensionManager::singleton().extension();
     if (!extension) {
         completionHandler(UserMessage(message.name, WEBKIT_USER_MESSAGE_UNHANDLED_MESSAGE));
         return;
     }
 
+#if ENABLE(2022_GLIB_API)
+    auto* page = webkit_web_process_extension_get_page(extension, m_identifier.toUInt64());
+#else
     auto* page = webkit_web_extension_get_page(extension, m_identifier.toUInt64());
+#endif
     if (!page) {
         completionHandler(UserMessage(message.name, WEBKIT_USER_MESSAGE_UNHANDLED_MESSAGE));
         return;
@@ -65,18 +101,19 @@ void WebPage::sendMessageToWebExtensionWithReply(UserMessage&& message, Completi
     webkitWebPageDidReceiveUserMessage(page, WTFMove(message), WTFMove(completionHandler));
 }
 
-void WebPage::sendMessageToWebExtension(UserMessage&& message)
+void WebPage::sendMessageToWebProcessExtension(UserMessage&& message)
 {
-    sendMessageToWebExtensionWithReply(WTFMove(message), [](UserMessage&&) { });
+    sendMessageToWebProcessExtensionWithReply(WTFMove(message), [](UserMessage&&) { });
 }
 
-void WebPage::getPlatformEditorState(Frame& frame, EditorState& result) const
+void WebPage::getPlatformEditorState(LocalFrame& frame, EditorState& result) const
 {
-    if (result.isMissingPostLayoutData || !frame.view() || frame.view()->needsLayout())
+    if (!result.hasPostLayoutAndVisualData() || !frame.view() || frame.view()->needsLayout())
         return;
 
-    auto& postLayoutData = result.postLayoutData();
-    postLayoutData.caretRectAtStart = frame.selection().absoluteCaretBounds();
+    auto& postLayoutData = *result.postLayoutData;
+    auto& visualData = *result.visualData;
+    visualData.caretRectAtStart = frame.selection().absoluteCaretBounds();
 
     const VisibleSelection& selection = frame.selection().selection();
     if (selection.isNone())
@@ -85,23 +122,23 @@ void WebPage::getPlatformEditorState(Frame& frame, EditorState& result) const
 #if PLATFORM(GTK)
     const Editor& editor = frame.editor();
     if (selection.isRange()) {
-        if (editor.selectionHasStyle(CSSPropertyFontWeight, "bold") == TriState::True)
-            postLayoutData.typingAttributes |= AttributeBold;
-        if (editor.selectionHasStyle(CSSPropertyFontStyle, "italic") == TriState::True)
-            postLayoutData.typingAttributes |= AttributeItalics;
-        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "underline") == TriState::True)
-            postLayoutData.typingAttributes |= AttributeUnderline;
-        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "line-through") == TriState::True)
-            postLayoutData.typingAttributes |= AttributeStrikeThrough;
+        if (editor.selectionHasStyle(CSSPropertyFontWeight, "bold"_s) == TriState::True)
+            postLayoutData.typingAttributes.add(TypingAttribute::Bold);
+        if (editor.selectionHasStyle(CSSPropertyFontStyle, "italic"_s) == TriState::True)
+            postLayoutData.typingAttributes.add(TypingAttribute::Italics);
+        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "underline"_s) == TriState::True)
+            postLayoutData.typingAttributes.add(TypingAttribute::Underline);
+        if (editor.selectionHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "line-through"_s) == TriState::True)
+            postLayoutData.typingAttributes.add(TypingAttribute::StrikeThrough);
     } else if (selection.isCaret()) {
-        if (editor.selectionStartHasStyle(CSSPropertyFontWeight, "bold"))
-            postLayoutData.typingAttributes |= AttributeBold;
-        if (editor.selectionStartHasStyle(CSSPropertyFontStyle, "italic"))
-            postLayoutData.typingAttributes |= AttributeItalics;
-        if (editor.selectionStartHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "underline"))
-            postLayoutData.typingAttributes |= AttributeUnderline;
-        if (editor.selectionStartHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "line-through"))
-            postLayoutData.typingAttributes |= AttributeStrikeThrough;
+        if (editor.selectionStartHasStyle(CSSPropertyFontWeight, "bold"_s))
+            postLayoutData.typingAttributes.add(TypingAttribute::Bold);
+        if (editor.selectionStartHasStyle(CSSPropertyFontStyle, "italic"_s))
+            postLayoutData.typingAttributes.add(TypingAttribute::Italics);
+        if (editor.selectionStartHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "underline"_s))
+            postLayoutData.typingAttributes.add(TypingAttribute::Underline);
+        if (editor.selectionStartHasStyle(CSSPropertyWebkitTextDecorationsInEffect, "line-through"_s))
+            postLayoutData.typingAttributes.add(TypingAttribute::StrikeThrough);
     }
 #endif
 
@@ -112,7 +149,7 @@ void WebPage::getPlatformEditorState(Frame& frame, EditorState& result) const
         auto compositionRange = frame.editor().compositionRange();
         if (surroundingRange && compositionRange && contains<ComposedTree>(*surroundingRange, *compositionRange)) {
             auto beforeText = plainText({ surroundingRange->start, compositionRange->start });
-            postLayoutData.surroundingContext = beforeText + plainText({ compositionRange->end, surroundingRange->end });
+            postLayoutData.surroundingContext = makeString(beforeText, plainText({ compositionRange->end, surroundingRange->end }));
             postLayoutData.surroundingContextCursorPosition = beforeText.length();
             postLayoutData.surroundingContextSelectionPosition = postLayoutData.surroundingContextCursorPosition;
         } else {
@@ -125,7 +162,7 @@ void WebPage::getPlatformEditorState(Frame& frame, EditorState& result) const
     }
 }
 
-static std::optional<InputMethodState> inputMethodSateForElement(Element* element)
+static std::optional<InputMethodState> inputMethodStateForElement(Element* element)
 {
     if (!element || !element->shouldUseInputMethod())
         return std::nullopt;
@@ -134,11 +171,15 @@ static std::optional<InputMethodState> inputMethodSateForElement(Element* elemen
     if (is<HTMLInputElement>(*element)) {
         auto& inputElement = downcast<HTMLInputElement>(*element);
         state.setPurposeForInputElement(inputElement);
+#if ENABLE(AUTOCAPITALIZE)
         state.addHintsForAutocapitalizeType(inputElement.autocapitalizeType());
+#endif
     } else if (is<HTMLTextAreaElement>(*element) || (element->hasEditableStyle() && is<HTMLElement>(*element))) {
         auto& htmlElement = downcast<HTMLElement>(*element);
         state.setPurposeOrHintForInputMode(htmlElement.canonicalInputMode());
+#if ENABLE(AUTOCAPITALIZE)
         state.addHintsForAutocapitalizeType(htmlElement.autocapitalizeType());
+#endif
     }
 
     if (element->isSpellCheckingEnabled())
@@ -149,7 +190,7 @@ static std::optional<InputMethodState> inputMethodSateForElement(Element* elemen
 
 void WebPage::setInputMethodState(Element* element)
 {
-    auto state = inputMethodSateForElement(element);
+    auto state = inputMethodStateForElement(element);
     if (m_inputMethodState == state)
         return;
 

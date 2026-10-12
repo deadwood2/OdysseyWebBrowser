@@ -11,11 +11,15 @@
 #define LIBANGLE_RENDERER_NULL_DISPLAYNULL_H_
 
 #include "libANGLE/renderer/DisplayImpl.h"
+#include "libANGLE/renderer/ShareGroupImpl.h"
 
 namespace rx
 {
 class ShareGroupNULL : public ShareGroupImpl
-{};
+{
+  public:
+    ShareGroupNULL(const egl::ShareGroupState &state) : ShareGroupImpl(state) {}
+};
 
 class AllocationTrackerNULL;
 
@@ -40,7 +44,9 @@ class DisplayNULL : public DisplayImpl
 
     bool isValidNativeWindow(EGLNativeWindowType window) const override;
 
-    std::string getVendorString() const override;
+    std::string getRendererDescription() override;
+    std::string getVendorString() override;
+    std::string getVersionString(bool includeFullVersion) override;
 
     DeviceImpl *createDevice() override;
 
@@ -48,6 +54,7 @@ class DisplayNULL : public DisplayImpl
     egl::Error waitNative(const gl::Context *context, EGLint engine) override;
     gl::Version getMaxSupportedESVersion() const override;
     gl::Version getMaxConformantESVersion() const override;
+    Optional<gl::Version> getMaxSupportedDesktopVersion() const override;
 
     SurfaceImpl *createWindowSurface(const egl::SurfaceState &state,
                                      EGLNativeWindowType window,
@@ -76,7 +83,7 @@ class DisplayNULL : public DisplayImpl
     StreamProducerImpl *createStreamProducerD3DTexture(egl::Stream::ConsumerType consumerType,
                                                        const egl::AttributeMap &attribs) override;
 
-    ShareGroupImpl *createShareGroup() override;
+    ShareGroupImpl *createShareGroup(const egl::ShareGroupState &state) override;
 
     void populateFeatureList(angle::FeatureList *features) override {}
 

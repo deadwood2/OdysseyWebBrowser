@@ -38,6 +38,7 @@ namespace WebCore {
 class SVGElement;
 class SVGSMILElement;
 class SVGSVGElement;
+class WeakPtrImplWithEventTargetData;
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(SMILTimeContainer);
 class SMILTimeContainer final : public RefCounted<SMILTimeContainer>  {
@@ -55,7 +56,6 @@ public:
 
     bool isActive() const;
     bool isPaused() const;
-    bool isStarted() const;
 
     void begin();
     void pause();
@@ -67,6 +67,7 @@ public:
 private:
     SMILTimeContainer(SVGSVGElement& owner);
 
+    bool isStarted() const;
     void timerFired();
     void startTimer(SMILTime elapsed, SMILTime fireTime, SMILTime minimumDelay = 0);
     void updateAnimations(SMILTime elapsed, bool seekToTime = false);
@@ -88,7 +89,7 @@ private:
     bool m_documentOrderIndexesDirty { false };
     Timer m_timer;
     GroupedAnimationsMap m_scheduledAnimations;
-    SVGSVGElement& m_ownerSVGElement;
+    WeakRef<SVGSVGElement, WeakPtrImplWithEventTargetData> m_ownerSVGElement;
 };
 
 } // namespace WebCore

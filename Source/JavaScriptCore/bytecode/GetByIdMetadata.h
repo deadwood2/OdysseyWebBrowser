@@ -49,7 +49,9 @@ struct GetByIdModeMetadataUnset {
 static_assert(sizeof(GetByIdModeMetadataUnset) == 12);
 
 struct GetByIdModeMetadataArrayLength {
-    ArrayProfile arrayProfile;
+    unsigned padding1;
+    unsigned padding2;
+    unsigned padding3;
 };
 static_assert(sizeof(GetByIdModeMetadataArrayLength) == 12);
 
@@ -68,7 +70,7 @@ static_assert(sizeof(GetByIdModeMetadataProtoLoad) == 16);
 union GetByIdModeMetadata {
     GetByIdModeMetadata()
     {
-        defaultMode.structureID = 0;
+        defaultMode.structureID = StructureID();
         defaultMode.cachedOffset = 0;
         defaultMode.padding1 = 0;
         mode = GetByIdMode::Default;
@@ -88,6 +90,7 @@ union GetByIdModeMetadata {
         GetByIdMode mode;
         uint8_t hitCountForLLIntCaching; // This must be zero when we use ProtoLoad mode.
     };
+    static constexpr ptrdiff_t offsetOfMode() { return OBJECT_OFFSETOF(GetByIdModeMetadata, mode); }
     GetByIdModeMetadataDefault defaultMode;
     GetByIdModeMetadataUnset unsetMode;
     GetByIdModeMetadataArrayLength arrayLengthMode;
@@ -98,7 +101,7 @@ static_assert(sizeof(GetByIdModeMetadata) == 16);
 struct GetByIdModeMetadata {
     GetByIdModeMetadata()
     {
-        defaultMode.structureID = 0;
+        defaultMode.structureID = StructureID();
         defaultMode.cachedOffset = 0;
         defaultMode.padding1 = 0;
         mode = GetByIdMode::Default;
@@ -117,6 +120,7 @@ struct GetByIdModeMetadata {
         GetByIdModeMetadataProtoLoad protoLoadMode;
     };
     GetByIdMode mode;
+    static constexpr ptrdiff_t offsetOfMode() { return OBJECT_OFFSETOF(GetByIdModeMetadata, mode); }
     uint8_t hitCountForLLIntCaching;
 };
 #endif
@@ -124,7 +128,7 @@ struct GetByIdModeMetadata {
 inline void GetByIdModeMetadata::clearToDefaultModeWithoutCache()
 {
     mode = GetByIdMode::Default;
-    defaultMode.structureID = 0;
+    defaultMode.structureID = StructureID();
     defaultMode.cachedOffset = 0;
 }
 
@@ -137,7 +141,6 @@ inline void GetByIdModeMetadata::setUnsetMode(Structure* structure)
 inline void GetByIdModeMetadata::setArrayLengthMode()
 {
     mode = GetByIdMode::ArrayLength;
-    new (&arrayLengthMode.arrayProfile) ArrayProfile;
     // Prevent the prototype cache from ever happening.
     hitCountForLLIntCaching = 0;
 }

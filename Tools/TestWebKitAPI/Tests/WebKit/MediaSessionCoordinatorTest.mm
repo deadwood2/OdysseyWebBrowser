@@ -33,13 +33,14 @@
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
-#import <WebKit/_WKExperimentalFeature.h>
+#import <WebKit/_WKFeature.h>
 #import <WebKit/_WKProcessPoolConfiguration.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/HashSet.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/RunLoop.h>
 #import <wtf/WeakObjCPtr.h>
+#import <wtf/text/MakeString.h>
 #import <wtf/text/StringHash.h>
 
 @interface _WKMockMediaSessionCoordinator : NSObject <_WKMediaSessionCoordinator>
@@ -190,7 +191,7 @@ public:
         auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
         auto preferences = [configuration preferences];
 
-        for (_WKExperimentalFeature *feature in [WKPreferences _experimentalFeatures]) {
+        for (_WKFeature *feature in [WKPreferences _features]) {
             if ([feature.key isEqualToString:@"MediaSessionCoordinatorEnabled"])
                 [preferences _setEnabled:YES forFeature:feature];
             if ([feature.key isEqualToString:@"MediaSessionEnabled"])
@@ -238,7 +239,7 @@ public:
         [webView() performAfterReceivingMessage:@"canplaythrough event" action:[&] {
             canplaythrough = true;
         }];
-        runScriptWithUserGesture("load()");
+        runScriptWithUserGesture("load()"_s);
         Util::run(&canplaythrough);
     }
 
@@ -251,7 +252,7 @@ public:
     {
         bool playing = false;
         [_webView performAfterReceivingMessage:@"play event" action:[&] { playing = true; }];
-        runScriptWithUserGesture("audio.play()");
+        runScriptWithUserGesture("audio.play()"_s);
         Util::run(&playing);
     }
 
@@ -259,14 +260,14 @@ public:
     {
         bool paused = false;
         [_webView performAfterReceivingMessage:@"pause event" action:[&] { paused = true; }];
-        runScriptWithUserGesture("audio.pause()");
+        runScriptWithUserGesture("audio.pause()"_s);
         Util::run(&paused);
     }
 
-    void listenForEventMessages(std::initializer_list<const char*> events)
+    void listenForEventMessages(std::initializer_list<ASCIILiteral> events)
     {
-        for (auto* event : events) {
-            auto eventMessage = makeString(event, " event");
+        for (auto event : events) {
+            auto eventMessage = makeString(event, " event"_s);
             [webView() performAfterReceivingMessage:eventMessage action:[this, eventMessage = WTFMove(eventMessage)] {
                 _eventListenersCalled.add(eventMessage);
             }];
@@ -275,7 +276,7 @@ public:
 
     bool eventListenerWasCalled(const String& event)
     {
-        return _eventListenersCalled.contains(makeString(event, " event"));
+        return _eventListenersCalled.contains(makeString(event, " event"_s));
     }
 
     void clearEventListenerState()
@@ -289,7 +290,7 @@ public:
         do {
             if (callback())
                 return;
-            Util::sleep(0.1);
+            Util::runFor(0.1_s);
         } while (++tries <= retries);
 
         return;
@@ -302,9 +303,9 @@ public:
         });
     }
 
-    void listenForMessagesPosted(std::initializer_list<const char*> handlers, const char* suffix)
+    void listenForMessagesPosted(std::initializer_list<ASCIILiteral> handlers, ASCIILiteral suffix)
     {
-        for (auto* handler : handlers) {
+        for (auto handler : handlers) {
             auto handlerMessage = makeString(handler, suffix);
             [_messageHandlers addObject:handlerMessage];
             [webView() performAfterReceivingMessage:handlerMessage action:[this, handlerMessage = WTFMove(handlerMessage)] {
@@ -318,14 +319,14 @@ public:
         _sessionMessagesPosted.clear();
     }
 
-    void listenForSessionHandlerMessages(std::initializer_list<const char*> handlers)
+    void listenForSessionHandlerMessages(std::initializer_list<ASCIILiteral> handlers)
     {
-        listenForMessagesPosted(handlers, " handler");
+        listenForMessagesPosted(handlers, " handler"_s);
     }
 
     bool sessionHandlerWasCalled(const String& handler)
     {
-        return _sessionMessagesPosted.contains(makeString(handler, " handler"));
+        return _sessionMessagesPosted.contains(makeString(handler, " handler"_s));
     }
 
     void waitForSessionHandlerToBeCalled(const String& handler)
@@ -335,26 +336,26 @@ public:
         });
     }
 
-    void listenForPromiseMessages(std::initializer_list<const char*> handlers)
+    void listenForPromiseMessages(std::initializer_list<ASCIILiteral> handlers)
     {
-        listenForMessagesPosted(handlers, " resolved");
-        listenForMessagesPosted(handlers, " rejected");
+        listenForMessagesPosted(handlers, " resolved"_s);
+        listenForMessagesPosted(handlers, " rejected"_s);
     }
 
     void clearPromiseMessages(const String& promise)
     {
-        _sessionMessagesPosted.remove(makeString(promise, " resolved"));
-        _sessionMessagesPosted.remove(makeString(promise, " rejected"));
+        _sessionMessagesPosted.remove(makeString(promise, " resolved"_s));
+        _sessionMessagesPosted.remove(makeString(promise, " rejected"_s));
     }
 
     bool promiseWasResolved(const String& promise)
     {
-        return _sessionMessagesPosted.contains(makeString(promise, " resolved"));
+        return _sessionMessagesPosted.contains(makeString(promise, " resolved"_s));
     }
 
     bool promiseWasRejected(const String& promise)
     {
-        return _sessionMessagesPosted.contains(makeString(promise, " rejected"));
+        return _sessionMessagesPosted.contains(makeString(promise, " rejected"_s));
     }
 
     void waitForPromise(const String& promise)
@@ -406,7 +407,7 @@ TEST_F(MediaSessionCoordinatorTest, JoinAndLeave)
     String lastMethodCalled;
     executeUntil([&] {
         lastMethodCalled = coordinator().lastMethodCalled;
-        return lastMethodCalled == "leave";
+        return lastMethodCalled == "leave"_s;
     });
     EXPECT_STREQ("leave", lastMethodCalled.utf8().data());
 
@@ -436,7 +437,7 @@ TEST_F(MediaSessionCoordinatorTest, StateChanges)
     String lastStateChange;
     executeUntil([&] {
         lastStateChange = coordinator().lastStateChange;
-        return lastStateChange == "positionStateChanged";
+        return lastStateChange == "positionStateChanged"_s;
     });
     EXPECT_STREQ("positionStateChanged", lastStateChange.utf8().data());
 
@@ -444,7 +445,7 @@ TEST_F(MediaSessionCoordinatorTest, StateChanges)
         [webView() objectByEvaluatingJavaScript:[NSString stringWithFormat:@"navigator.mediaSession.readyState = '%@'", state]];
         executeUntil([&] {
             lastStateChange = coordinator().lastStateChange;
-            return lastStateChange == "readyStateChanged";
+            return lastStateChange == "readyStateChanged"_s;
         });
         EXPECT_STREQ("readyStateChanged", lastStateChange.utf8().data());
 
@@ -456,7 +457,7 @@ TEST_F(MediaSessionCoordinatorTest, StateChanges)
         [webView() objectByEvaluatingJavaScript:[NSString stringWithFormat:@"navigator.mediaSession.playbackState = '%@'", state]];
         executeUntil([&] {
             lastStateChange = coordinator().lastStateChange;
-            return lastStateChange == "playbackStateChanged";
+            return lastStateChange == "playbackStateChanged"_s;
         });
         EXPECT_STREQ("playbackStateChanged", lastStateChange.utf8().data());
 
@@ -468,7 +469,7 @@ TEST_F(MediaSessionCoordinatorTest, StateChanges)
     String lastMethodCalled;
     executeUntil([&] {
         lastMethodCalled = coordinator().lastMethodCalled;
-        return lastMethodCalled == "leave";
+        return lastMethodCalled == "leave"_s;
     });
     EXPECT_STREQ("leave", lastMethodCalled.utf8().data());
 
@@ -525,28 +526,28 @@ TEST_F(MediaSessionCoordinatorTest, CallSessionMethods)
     [coordinator() seekSessionToTime:20];
     executeUntil([&] {
         lastMethodCalled = coordinator().lastMethodCalled;
-        return lastMethodCalled == "seekSessionToTime";
+        return lastMethodCalled == "seekSessionToTime"_s;
     });
     EXPECT_STREQ("seekSessionToTime", lastMethodCalled.utf8().data());
 
     [coordinator() playSession];
     executeUntil([&] {
         lastMethodCalled = coordinator().lastMethodCalled;
-        return lastMethodCalled == "playSession";
+        return lastMethodCalled == "playSession"_s;
     });
     EXPECT_STREQ("playSession", lastMethodCalled.utf8().data());
 
     [coordinator() pauseSession];
     executeUntil([&] {
         lastMethodCalled = coordinator().lastMethodCalled;
-        return lastMethodCalled == "pauseSession";
+        return lastMethodCalled == "pauseSession"_s;
     });
     EXPECT_STREQ("pauseSession", lastMethodCalled.utf8().data());
 
     [coordinator() setSessionTrack:@"Track 0"];
     executeUntil([&] {
         lastMethodCalled = coordinator().lastMethodCalled;
-        return lastMethodCalled == "setSessionTrack";
+        return lastMethodCalled == "setSessionTrack"_s;
     });
     EXPECT_STREQ("setSessionTrack", lastMethodCalled.utf8().data());
 }

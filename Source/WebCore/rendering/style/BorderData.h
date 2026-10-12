@@ -32,16 +32,19 @@ namespace WebCore {
 
 class OutlineValue;
 
+struct BorderDataRadii {
+    LengthSize topLeft { LengthType::Fixed, LengthType::Fixed };
+    LengthSize topRight { LengthType::Fixed, LengthType::Fixed };
+    LengthSize bottomLeft { LengthType::Fixed, LengthType::Fixed };
+    LengthSize bottomRight { LengthType::Fixed, LengthType::Fixed };
+
+    friend bool operator==(const BorderDataRadii&, const BorderDataRadii&) = default;
+};
+
 class BorderData {
 friend class RenderStyle;
 public:
-    BorderData()
-        : m_topLeftRadius { { 0, LengthType::Fixed }, { 0, LengthType::Fixed } }
-        , m_topRightRadius { { 0, LengthType::Fixed }, { 0, LengthType::Fixed } }
-        , m_bottomLeftRadius { { 0, LengthType::Fixed }, { 0, LengthType::Fixed } }
-        , m_bottomRightRadius { { 0, LengthType::Fixed }, { 0, LengthType::Fixed } }
-    {
-    }
+    using Radii = BorderDataRadii;
 
     bool hasBorder() const
     {
@@ -60,16 +63,18 @@ public:
 
     bool hasBorderRadius() const
     {
-        return !m_topLeftRadius.width.isZero()
-            || !m_topRightRadius.width.isZero()
-            || !m_bottomLeftRadius.width.isZero()
-            || !m_bottomRightRadius.width.isZero();
+        return !m_radii.topLeft.isEmpty()
+            || !m_radii.topRight.isEmpty()
+            || !m_radii.bottomLeft.isEmpty()
+            || !m_radii.bottomRight.isEmpty();
     }
 
     float borderLeftWidth() const
     {
         if (m_left.style() == BorderStyle::None || m_left.style() == BorderStyle::Hidden)
-            return 0; 
+            return 0;
+        if (m_image.overridesBorderWidths() && m_image.borderSlices().left().isFixed())
+            return m_image.borderSlices().left().value();
         return m_left.width();
     }
 
@@ -77,6 +82,8 @@ public:
     {
         if (m_right.style() == BorderStyle::None || m_right.style() == BorderStyle::Hidden)
             return 0;
+        if (m_image.overridesBorderWidths() && m_image.borderSlices().right().isFixed())
+            return m_image.borderSlices().right().value();
         return m_right.width();
     }
 
@@ -84,6 +91,8 @@ public:
     {
         if (m_top.style() == BorderStyle::None || m_top.style() == BorderStyle::Hidden)
             return 0;
+        if (m_image.overridesBorderWidths() && m_image.borderSlices().top().isFixed())
+            return m_image.borderSlices().top().value();
         return m_top.width();
     }
 
@@ -91,6 +100,8 @@ public:
     {
         if (m_bottom.style() == BorderStyle::None || m_bottom.style() == BorderStyle::Hidden)
             return 0;
+        if (m_image.overridesBorderWidths() && m_image.borderSlices().bottom().isFixed())
+            return m_image.borderSlices().bottom().value();
         return m_bottom.width();
     }
 
@@ -99,16 +110,9 @@ public:
         return FloatBoxExtent(borderTopWidth(), borderRightWidth(), borderBottomWidth(), borderLeftWidth());
     }
 
-    bool operator==(const BorderData& o) const
-    {
-        return m_left == o.m_left && m_right == o.m_right && m_top == o.m_top && m_bottom == o.m_bottom && m_image == o.m_image
-            && m_topLeftRadius == o.m_topLeftRadius && m_topRightRadius == o.m_topRightRadius && m_bottomLeftRadius == o.m_bottomLeftRadius && m_bottomRightRadius == o.m_bottomRightRadius;
-    }
+    bool isEquivalentForPainting(const BorderData& other, bool currentColorDiffers) const;
 
-    bool operator!=(const BorderData& o) const
-    {
-        return !(*this == o);
-    }
+    friend bool operator==(const BorderData&, const BorderData&) = default;
 
     const BorderValue& left() const { return m_left; }
     const BorderValue& right() const { return m_right; }
@@ -117,10 +121,10 @@ public:
 
     const NinePieceImage& image() const { return m_image; }
 
-    const LengthSize& topLeftRadius() const { return m_topLeftRadius; }
-    const LengthSize& topRightRadius() const { return m_topRightRadius; }
-    const LengthSize& bottomLeftRadius() const { return m_bottomLeftRadius; }
-    const LengthSize& bottomRightRadius() const { return m_bottomRightRadius; }
+    const LengthSize& topLeftRadius() const { return m_radii.topLeft; }
+    const LengthSize& topRightRadius() const { return m_radii.topRight; }
+    const LengthSize& bottomLeftRadius() const { return m_radii.bottomLeft; }
+    const LengthSize& bottomRightRadius() const { return m_radii.bottomRight; }
 
     void dump(TextStream&, DumpStyleValues = DumpStyleValues::All) const;
 
@@ -132,10 +136,7 @@ private:
 
     NinePieceImage m_image;
 
-    LengthSize m_topLeftRadius;
-    LengthSize m_topRightRadius;
-    LengthSize m_bottomLeftRadius;
-    LengthSize m_bottomRightRadius;
+    Radii m_radii;
 };
 
 WTF::TextStream& operator<<(WTF::TextStream&, const BorderValue&);

@@ -49,9 +49,7 @@
 #import <WebCore/WebActionDisablingCALayerDelegate.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <pal/spi/mac/NSEventSPI.h>
-
-static const double minElasticMagnification = 0.75;
-static const double maxElasticMagnification = 4;
+#import <wtf/BlockObjCExceptions.h>
 
 static const double zoomOutBoost = 1.6;
 static const double zoomOutResistance = 0.10;
@@ -88,7 +86,7 @@ void ViewGestureController::platformTeardown()
         removeSwipeSnapshot();
 }
 
-double ViewGestureController::resistanceForDelta(double deltaScale, double currentScale)
+double ViewGestureController::resistanceForDelta(double deltaScale, double currentScale, double minMagnification, double maxMagnification)
 {
     // Zoom out with slight acceleration, until we reach minimum scale.
     if (deltaScale < 0 && currentScale > minMagnification)
@@ -135,11 +133,19 @@ void ViewGestureController::handleMagnificationGestureEvent(NSEvent *event, Floa
 
     willBeginGesture(ViewGestureType::Magnification);
 
+    auto minMagnification = m_webPageProxy.minPageZoomFactor();
+    auto maxMagnification = m_webPageProxy.maxPageZoomFactor();
+
     double scale = event.magnification;
-    double scaleWithResistance = resistanceForDelta(scale, m_magnification) * scale;
+    double scaleWithResistance = resistanceForDelta(scale, m_magnification, minMagnification, maxMagnification) * scale;
+
+    auto minElasticMagnification = minMagnification * 0.75;
+    auto maxElasticMagnification = maxMagnification * 1.333;
 
     m_magnification += m_magnification * scaleWithResistance;
     m_magnification = std::min(std::max(m_magnification, minElasticMagnification), maxElasticMagnification);
+
+    LOG_WITH_STREAM(ViewGestures, stream << "ViewGestureController::handleMagnificationGestureEvent - gesture scale " << scale << " with resistance " << scaleWithResistance << " clamped to " << m_magnification << " origin in view coords " << origin);
 
     m_magnificationOrigin = origin;
 
@@ -149,12 +155,14 @@ void ViewGestureController::handleMagnificationGestureEvent(NSEvent *event, Floa
         endMagnificationGesture();
 }
 
-void ViewGestureController::handleSmartMagnificationGesture(FloatPoint origin)
+void ViewGestureController::handleSmartMagnificationGesture(FloatPoint gestureLocationInViewCoordinates)
 {
     if (m_activeGestureType != ViewGestureType::None)
         return;
 
-    m_webPageProxy.send(Messages::ViewGestureGeometryCollector::CollectGeometryForSmartMagnificationGesture(origin));
+    LOG_WITH_STREAM(ViewGestures, stream << "ViewGestureController::handleSmartMagnificationGesture - gesture location " << gestureLocationInViewCoordinates);
+
+    m_webPageProxy.legacyMainFrameProcess().send(Messages::ViewGestureGeometryCollector::CollectGeometryForSmartMagnificationGesture(gestureLocationInViewCoordinates), m_webPageProxy.webPageIDInMainFrameProcess());
 }
 
 static float maximumRectangleComponentDelta(FloatRect a, FloatRect b)
@@ -162,15 +170,17 @@ static float maximumRectangleComponentDelta(FloatRect a, FloatRect b)
     return std::max(std::abs(a.x() - b.x()), std::max(std::abs(a.y() - b.y()), std::max(std::abs(a.width() - b.width()), std::abs(a.height() - b.height()))));
 }
 
-void ViewGestureController::didCollectGeometryForSmartMagnificationGesture(FloatPoint origin, FloatRect renderRect, FloatRect visibleContentRect, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale)
+void ViewGestureController::didCollectGeometryForSmartMagnificationGesture(FloatPoint gestureLocationInViewCoordinates, FloatRect absoluteTargetRect, FloatRect visibleContentRect, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale)
 {
     double currentScaleFactor = m_webPageProxy.pageScaleFactor();
 
-    FloatRect unscaledTargetRect = renderRect;
+    LOG_WITH_STREAM(ViewGestures, stream << "ViewGestureController::didCollectGeometryForSmartMagnificationGesture - gesture location " << gestureLocationInViewCoordinates << " absoluteTargetRect " << absoluteTargetRect);
+
+    auto unscaledTargetRect = absoluteTargetRect;
 
     // If there was no usable element under the cursor, we'll scale towards the cursor instead.
     if (unscaledTargetRect.isEmpty())
-        unscaledTargetRect.setLocation(origin);
+        unscaledTargetRect.setLocation(gestureLocationInViewCoordinates);
 
     unscaledTargetRect.scale(1 / currentScaleFactor);
     unscaledTargetRect.inflateX(unscaledTargetRect.width() * smartMagnificationElementPadding);
@@ -178,21 +188,23 @@ void ViewGestureController::didCollectGeometryForSmartMagnificationGesture(Float
 
     double targetMagnification = visibleContentRect.width() / unscaledTargetRect.width();
 
-    FloatRect unscaledVisibleContentRect = visibleContentRect;
+    auto unscaledVisibleContentRect = visibleContentRect;
     unscaledVisibleContentRect.scale(1 / currentScaleFactor);
-    FloatRect viewportConstrainedUnscaledTargetRect = unscaledTargetRect;
+    auto viewportConstrainedUnscaledTargetRect = unscaledTargetRect;
     viewportConstrainedUnscaledTargetRect.intersect(unscaledVisibleContentRect);
 
     if (unscaledTargetRect.width() > viewportConstrainedUnscaledTargetRect.width())
-        viewportConstrainedUnscaledTargetRect.setX(unscaledVisibleContentRect.x() + (origin.x() / currentScaleFactor) - viewportConstrainedUnscaledTargetRect.width() / 2);
+        viewportConstrainedUnscaledTargetRect.setX(unscaledVisibleContentRect.x() + (gestureLocationInViewCoordinates.x() / currentScaleFactor) - viewportConstrainedUnscaledTargetRect.width() / 2);
     if (unscaledTargetRect.height() > viewportConstrainedUnscaledTargetRect.height())
-        viewportConstrainedUnscaledTargetRect.setY(unscaledVisibleContentRect.y() + (origin.y() / currentScaleFactor) - viewportConstrainedUnscaledTargetRect.height() / 2);
+        viewportConstrainedUnscaledTargetRect.setY(unscaledVisibleContentRect.y() + (gestureLocationInViewCoordinates.y() / currentScaleFactor) - viewportConstrainedUnscaledTargetRect.height() / 2);
 
     // For replaced elements like images, we want to fit the whole element
     // in the view, so scale it down enough to make both dimensions fit if possible.
     if (fitEntireRect)
         targetMagnification = std::min(targetMagnification, static_cast<double>(visibleContentRect.height() / viewportConstrainedUnscaledTargetRect.height()));
 
+    auto minMagnification = m_webPageProxy.minPageZoomFactor();
+    auto maxMagnification = m_webPageProxy.maxPageZoomFactor();
     targetMagnification = std::min(std::max(targetMagnification, minMagnification), maxMagnification);
 
     // Allow panning between elements via double-tap while magnified, unless the target rect is
@@ -201,23 +213,26 @@ void ViewGestureController::didCollectGeometryForSmartMagnificationGesture(Float
         if (maximumRectangleComponentDelta(m_lastSmartMagnificationUnscaledTargetRect, unscaledTargetRect) < smartMagnificationPanScrollThreshold)
             targetMagnification = 1;
 
-        if (m_lastSmartMagnificationOrigin == origin)
+        if (m_lastSmartMagnificationOrigin == gestureLocationInViewCoordinates)
             targetMagnification = 1;
     }
 
-    FloatRect targetRect(viewportConstrainedUnscaledTargetRect);
+    auto targetRect = viewportConstrainedUnscaledTargetRect;
     targetRect.scale(targetMagnification);
-    FloatPoint targetOrigin(visibleContentRect.center());
-    targetOrigin.moveBy(-targetRect.center());
+
+    auto targetOrigin = visibleContentRect.center();
+    auto targetCenter = targetRect.center();
+    targetOrigin.moveBy(-targetCenter);
 
     m_initialMagnification = m_webPageProxy.pageScaleFactor();
-    m_initialMagnificationOrigin = FloatPoint();
+    m_initialMagnificationOrigin = { };
 
-    m_webPageProxy.drawingArea()->adjustTransientZoom(m_webPageProxy.pageScaleFactor(), scaledMagnificationOrigin(FloatPoint(), m_webPageProxy.pageScaleFactor()));
+    auto pageScaleFactor = m_webPageProxy.pageScaleFactor();
+    m_webPageProxy.drawingArea()->adjustTransientZoom(pageScaleFactor, scaledMagnificationOrigin(FloatPoint(), pageScaleFactor));
     m_webPageProxy.drawingArea()->commitTransientZoom(targetMagnification, targetOrigin);
 
     m_lastSmartMagnificationUnscaledTargetRect = unscaledTargetRect;
-    m_lastSmartMagnificationOrigin = origin;
+    m_lastSmartMagnificationOrigin = gestureLocationInViewCoordinates;
 
     m_lastMagnificationGestureWasSmartMagnification = true;
 }
@@ -261,6 +276,7 @@ void ViewGestureController::trackSwipeGesture(PlatformScrollEvent event, SwipeDi
     RetainPtr<WKSwipeCancellationTracker> swipeCancellationTracker = adoptNS([[WKSwipeCancellationTracker alloc] init]);
     m_swipeCancellationTracker = swipeCancellationTracker;
 
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
     [event trackSwipeEventWithOptions:NSEventSwipeTrackingConsumeMouseEvents dampenAmountThresholdMin:minProgress max:maxProgress usingHandler:^(CGFloat progress, NSEventPhase phase, BOOL isComplete, BOOL *stop) {
         if ([swipeCancellationTracker isCancelled]) {
             *stop = YES;
@@ -277,6 +293,7 @@ void ViewGestureController::trackSwipeGesture(PlatformScrollEvent event, SwipeDi
         if (isComplete)
             this->endSwipeGesture(targetItem.get(), swipeCancelled);
     }];
+    END_BLOCK_OBJC_EXCEPTIONS
 }
 
 FloatRect ViewGestureController::windowRelativeBoundsForCustomSwipeViews() const

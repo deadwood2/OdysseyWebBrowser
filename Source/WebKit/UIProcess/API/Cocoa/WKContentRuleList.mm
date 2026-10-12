@@ -26,6 +26,7 @@
 #import "config.h"
 #import "WKContentRuleListInternal.h"
 
+#import "WKError.h"
 #import "WebCompiledContentRuleList.h"
 #import <WebCore/WebCoreObjCExtras.h>
 
@@ -50,7 +51,11 @@
 
 - (NSString *)identifier
 {
+#if ENABLE(CONTENT_EXTENSIONS)
     return _contentRuleList->name();
+#else
+    return nil;
+#endif
 }
 
 @end
@@ -59,7 +64,25 @@
 
 + (BOOL)_supportsRegularExpression:(NSString *)regex
 {
+#if ENABLE(CONTENT_EXTENSIONS)
     return API::ContentRuleList::supportsRegularExpression(regex);
+#else
+    return NO;
+#endif
+}
+
++ (NSError *)_parseRuleList:(NSString *)ruleList
+{
+#if ENABLE(CONTENT_EXTENSIONS)
+    std::error_code error = API::ContentRuleList::parseRuleList(ruleList);
+    if (!error)
+        return nil;
+
+    auto userInfo = @{ NSHelpAnchorErrorKey: [NSString stringWithFormat:@"Rule list parsing failed: %s", error.message().c_str()] };
+    return [NSError errorWithDomain:WKErrorDomain code:WKErrorContentRuleListStoreCompileFailed userInfo:userInfo];
+#else
+    return nil;
+#endif
 }
 
 @end

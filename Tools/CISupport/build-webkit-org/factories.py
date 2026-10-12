@@ -1,4 +1,4 @@
-# Copyright (C) 2017-2021 Apple Inc. All rights reserved.
+# Copyright (C) 2017-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -23,56 +23,64 @@
 from buildbot.process import factory
 from buildbot.steps import trigger
 
-from steps import *
+from .steps import *
 
 
 class Factory(factory.BuildFactory):
-    def __init__(self, platform, configuration, architectures, buildOnly, additionalArguments, device_model):
+    shouldInstallDependencies = True
+    shouldUseCrossTargetImage = False
+
+    def __init__(self, platform, configuration, architectures, buildOnly, additionalArguments, device_model, triggers=None):
         factory.BuildFactory.__init__(self)
-        self.addStep(ConfigureBuild(platform=platform, configuration=configuration, architecture=" ".join(architectures), buildOnly=buildOnly, additionalArguments=additionalArguments, device_model=device_model))
+        self.addStep(ConfigureBuild(platform=platform, configuration=configuration, architecture=" ".join(architectures), buildOnly=buildOnly, additionalArguments=additionalArguments, device_model=device_model, triggers=triggers))
         self.addStep(PrintConfiguration())
         self.addStep(CheckOutSource())
+        self.addStep(CheckOutSpecificRevision())
         self.addStep(ShowIdentifier())
         if not (platform == "jsc-only"):
             self.addStep(KillOldProcesses())
         self.addStep(CleanBuildIfScheduled())
         self.addStep(DeleteStaleBuildFiles())
-        if platform == "win":
-            self.addStep(InstallWin32Dependencies())
-        if platform == "gtk" and "--no-experimental-features" not in (additionalArguments or []):
-            self.addStep(InstallGtkDependencies())
-        if platform == "wpe":
-            self.addStep(InstallWpeDependencies())
+        if platform.startswith('mac'):
+            self.addStep(PruneCoreSymbolicationdCacheIfTooLarge())
+        if self.shouldInstallDependencies:
+            if platform.startswith("gtk"):
+                self.addStep(InstallGtkDependencies())
+            if platform == "wpe":
+                self.addStep(InstallWpeDependencies())
 
 
 class BuildFactory(Factory):
-    ShouldRunJSCBundleStep = False
-    ShouldRunMiniBrowserBundleStep = False
+    shouldRunJSCBundleStep = False
+    shouldRunMiniBrowserBundleStep = False
 
     def __init__(self, platform, configuration, architectures, triggers=None, additionalArguments=None, device_model=None):
-        Factory.__init__(self, platform, configuration, architectures, True, additionalArguments, device_model)
+        Factory.__init__(self, platform, configuration, architectures, True, additionalArguments, device_model, triggers=triggers)
 
-        if platform == "win" or platform.startswith("playstation"):
+        if platform.startswith("playstation"):
             self.addStep(CompileWebKit(timeout=2 * 60 * 60))
         else:
             self.addStep(CompileWebKit())
 
-        if self.ShouldRunJSCBundleStep:
+        if self.shouldUseCrossTargetImage:
+            self.addStep(CheckIfNeededUpdateDeployedCrossTargetImage())
+        if self.shouldRunJSCBundleStep:
             self.addStep(GenerateJSCBundle())
-        if self.ShouldRunMiniBrowserBundleStep:
+        if self.shouldRunMiniBrowserBundleStep:
             self.addStep(GenerateMiniBrowserBundle())
 
         if triggers:
-            if platform == "gtk":
+            if platform.startswith("gtk"):
                 self.addStep(InstallBuiltProduct())
-
-            self.addStep(ArchiveBuiltProduct())
-            self.addStep(UploadBuiltProduct())
-            if platform.startswith('mac') or platform.startswith('ios-simulator') or platform.startswith('tvos-simulator') or platform.startswith('watchos-simulator'):
-                self.addStep(ArchiveMinifiedBuiltProduct())
-                self.addStep(UploadMinifiedBuiltProduct())
-            self.addStep(TransferToS3())
             self.addStep(trigger.Trigger(schedulerNames=triggers))
+
+
+class NoInstallDependenciesBuildFactory(BuildFactory):
+    shouldInstallDependencies = False
+
+
+class CrossTargetBuildFactory(NoInstallDependenciesBuildFactory):
+    shouldUseCrossTargetImage = True
 
 
 class TestFactory(Factory):
@@ -90,7 +98,7 @@ class TestFactory(Factory):
         if platform == 'wincairo':
             self.addStep(InstallWinCairoDependencies())
 
-        if platform.startswith('mac') or platform.startswith('ios-simulator'):
+        if platform.startswith(('mac', 'ios-simulator', 'visionos-simulator')):
             self.addStep(WaitForCrashCollection())
 
         if self.JSCTestClass:
@@ -105,10 +113,11 @@ class TestFactory(Factory):
             self.addStep(ExtractTestResults())
             self.addStep(SetPermissions())
 
-        if platform.startswith('win') or platform.startswith('mac') or platform.startswith('ios-simulator'):
+        if platform.startswith(('win', 'mac', 'ios-simulator')):
             self.addStep(RunAPITests())
 
-        if platform.startswith('mac') and (platform != 'mac-catalina'):
+        # FIXME: Re-enable these tests for Monterey once webkit.org/b/239463 is resolved.
+        if platform.startswith('mac') and (platform != 'mac-monterey'):
             self.addStep(RunLLDBWebKitTests())
 
         self.addStep(RunWebKitPyTests())
@@ -116,16 +125,15 @@ class TestFactory(Factory):
         self.addStep(RunBindingsTests())
         self.addStep(RunBuiltinsTests())
 
-        if platform.startswith('mac') or platform.startswith('ios-simulator'):
+        if platform.startswith(('mac', 'ios-simulator', 'visionos-simulator')):
             self.addStep(TriggerCrashLogSubmission())
 
-        if platform == "gtk":
+        if platform.startswith("gtk"):
             self.addStep(RunGtkAPITests())
             if additionalArguments and "--display-server=wayland" in additionalArguments:
                 self.addStep(RunWebDriverTests())
         if platform == "wpe":
             self.addStep(RunWPEAPITests())
-            self.addStep(RunWebDriverTests())
 
 
 class BuildAndTestFactory(TestFactory):
@@ -169,25 +177,31 @@ class TestAllButJSCFactory(TestFactory):
     JSCTestClass = None
 
 
-class BuildAndTestAllButJSCFactory(BuildAndTestFactory):
+class BuildAndTestAndArchiveAllButJSCFactory(BuildAndTestFactory):
     JSCTestClass = None
 
     def __init__(self, platform, configuration, architectures, triggers=None, additionalArguments=None, device_model=None, **kwargs):
-        BuildAndTestFactory.__init__(self, platform, configuration, architectures, additionalArguments, device_model, **kwargs)
-        self.addStep(RunWebDriverTests())
+        BuildAndTestFactory.__init__(self, platform, configuration, architectures, triggers, additionalArguments, device_model, **kwargs)
+        # The parent class will already archive if triggered
+        if not triggers:
+            self.addStep(InstallBuiltProduct())
+            self.addStep(ArchiveBuiltProduct())
+            self.addStep(UploadBuiltProduct())
+        if platform != "gtk-4":
+            self.addStep(RunWebDriverTests())
 
 
 class BuildAndGenerateJSCBundleFactory(BuildFactory):
-    ShouldRunJSCBundleStep = True
+    shouldRunJSCBundleStep = True
 
 
 class BuildAndGenerateMiniBrowserBundleFactory(BuildFactory):
-    ShouldRunMiniBrowserBundleStep = True
+    shouldRunMiniBrowserBundleStep = True
 
 
 class BuildAndGenerateMiniBrowserJSCBundleFactory(BuildFactory):
-    ShouldRunJSCBundleStep = True
-    ShouldRunMiniBrowserBundleStep = True
+    shouldRunJSCBundleStep = True
+    shouldRunMiniBrowserBundleStep = True
 
 
 class TestJSCFactory(Factory):
@@ -195,6 +209,8 @@ class TestJSCFactory(Factory):
         Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, device_model)
         self.addStep(DownloadBuiltProduct())
         self.addStep(ExtractBuiltProduct())
+        if platform == 'wincairo':
+            self.addStep(InstallWinCairoDependencies())
         self.addStep(RunJavaScriptCoreTests())
 
 
@@ -250,15 +266,30 @@ class BuildAndPerfTestFactory(Factory):
         Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, device_model, **kwargs)
         self.addStep(CompileWebKit())
         self.addStep(RunAndUploadPerfTests())
-        if platform == "gtk":
+        if platform.startswith("gtk"):
             self.addStep(RunBenchmarkTests(timeout=2000))
 
 
 class DownloadAndPerfTestFactory(Factory):
     def __init__(self, platform, configuration, architectures, additionalArguments=None, device_model=None, **kwargs):
         Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, device_model, **kwargs)
+        if self.shouldUseCrossTargetImage:
+            self.addStep(CheckIfNeededUpdateRunningCrossTargetImage())
         self.addStep(DownloadBuiltProduct())
         self.addStep(ExtractBuiltProduct())
-        self.addStep(RunAndUploadPerfTests())
-        if platform == "gtk":
+        if platform != "wpe":
+            self.addStep(RunAndUploadPerfTests())
+        if platform in ["gtk", "wpe"]:
             self.addStep(RunBenchmarkTests(timeout=2000))
+
+
+class SmartPointerStaticAnalyzerFactory(Factory):
+    def __init__(self, platform, configuration, architectures, additionalArguments=None, device_model=None, **kwargs):
+        Factory.__init__(self, platform, configuration, architectures, False, additionalArguments, device_model, **kwargs)
+        self.addStep(PrintClangVersion())
+        self.addStep(ScanBuildSmartPointer())
+
+
+class CrossTargetDownloadAndPerfTestFactory(DownloadAndPerfTestFactory):
+    shouldInstallDependencies = False
+    shouldUseCrossTargetImage = True

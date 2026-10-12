@@ -25,17 +25,21 @@
 
 #include "config.h"
 #include "WOFFFileFormat.h"
-#include <zlib.h>
 
 #include "SharedBuffer.h"
-#include <wtf/ByteOrder.h>
 
+#if !HAVE(WOFF_SUPPORT)
+#include <wtf/ByteOrder.h>
+#include <zlib.h>
 #if USE(WOFF2)
 #include <woff2/decode.h>
 static const uint32_t kWoff2Signature = 0x774f4632; // "wOF2"
 #endif
+#endif
 
 namespace WebCore {
+
+#if !HAVE(WOFF_SUPPORT)
 
 static bool readUInt32(SharedBuffer& buffer, size_t& offset, uint32_t& value)
 {
@@ -43,7 +47,7 @@ static bool readUInt32(SharedBuffer& buffer, size_t& offset, uint32_t& value)
     if (buffer.size() - offset < sizeof(value))
         return false;
 
-    value = ntohl(*reinterpret_cast_ptr<const uint32_t*>(buffer.data() + offset));
+    value = ntohl(*reinterpret_cast_ptr<const uint32_t*>(buffer.span().subspan(offset).data()));
     offset += sizeof(value);
 
     return true;
@@ -55,7 +59,7 @@ static bool readUInt16(SharedBuffer& buffer, size_t& offset, uint16_t& value)
     if (buffer.size() - offset < sizeof(value))
         return false;
 
-    value = ntohs(*reinterpret_cast_ptr<const uint16_t*>(buffer.data() + offset));
+    value = ntohs(*reinterpret_cast_ptr<const uint16_t*>(buffer.span().subspan(offset).data()));
     offset += sizeof(value);
 
     return true;
@@ -64,13 +68,13 @@ static bool readUInt16(SharedBuffer& buffer, size_t& offset, uint16_t& value)
 static bool writeUInt32(Vector<uint8_t>& vector, uint32_t value)
 {
     uint32_t bigEndianValue = htonl(value);
-    return vector.tryAppend(reinterpret_cast_ptr<uint8_t*>(&bigEndianValue), sizeof(bigEndianValue));
+    return vector.tryAppend(std::span { reinterpret_cast_ptr<uint8_t*>(&bigEndianValue), sizeof(bigEndianValue) });
 }
 
 static bool writeUInt16(Vector<uint8_t>& vector, uint16_t value)
 {
     uint16_t bigEndianValue = htons(value);
-    return vector.tryAppend(reinterpret_cast_ptr<uint8_t*>(&bigEndianValue), sizeof(bigEndianValue));
+    return vector.tryAppend(std::span { reinterpret_cast_ptr<uint8_t*>(&bigEndianValue), sizeof(bigEndianValue) });
 }
 
 static const uint32_t woffSignature = 0x774f4646; /* 'wOFF' */
@@ -101,7 +105,7 @@ public:
     {
         if (!m_vector.tryReserveCapacity(m_vector.size() + n))
             return false;
-        m_vector.append(static_cast<const uint8_t*>(data), n);
+        m_vector.append(std::span { static_cast<const uint8_t*>(data), n });
         return true;
     }
 
@@ -141,15 +145,14 @@ bool convertWOFFToSfnt(SharedBuffer& woff, Vector<uint8_t>& sfnt)
 
 #if USE(WOFF2)
     if (signature == kWoff2Signature) {
-        auto* woffData = woff.data();
-        const size_t woffSize = woff.size();
-        const size_t sfntSize = woff2::ComputeWOFF2FinalSize(woffData, woffSize);
+        auto woffData = woff.span();
+        const size_t sfntSize = woff2::ComputeWOFF2FinalSize(woffData.data(), woffData.size());
 
         if (!sfnt.tryReserveCapacity(sfntSize))
             return false;
 
         WOFF2VectorOut out(sfnt);
-        return woff2::ConvertWOFF2ToTTF(woffData, woffSize, &out);
+        return woff2::ConvertWOFF2ToTTF(woffData.data(), woffData.size(), &out);
     }
 #endif
 
@@ -261,7 +264,7 @@ bool convertWOFFToSfnt(SharedBuffer& woff, Vector<uint8_t>& sfnt)
 
         if (tableCompLength == tableOrigLength) {
             // The table is not compressed.
-            if (!sfnt.tryAppend(woff.data() + tableOffset, tableCompLength))
+            if (!sfnt.tryAppend(woff.span().subspan(tableOffset, tableCompLength)))
                 return false;
         } else {
             uLongf destLen = tableOrigLength;
@@ -269,7 +272,7 @@ bool convertWOFFToSfnt(SharedBuffer& woff, Vector<uint8_t>& sfnt)
                 return false;
             Bytef* dest = reinterpret_cast<Bytef*>(sfnt.end());
             sfnt.grow(sfnt.size() + tableOrigLength);
-            if (uncompress(dest, &destLen, reinterpret_cast<const Bytef*>(woff.data() + tableOffset), tableCompLength) != Z_OK)
+            if (uncompress(dest, &destLen, reinterpret_cast<const Bytef*>(woff.span().subspan(tableOffset).data()), tableCompLength) != Z_OK)
                 return false;
             if (destLen != tableOrigLength)
                 return false;
@@ -285,10 +288,6 @@ bool convertWOFFToSfnt(SharedBuffer& woff, Vector<uint8_t>& sfnt)
 
 bool convertWOFFToSfntIfNecessary(RefPtr<SharedBuffer>& buffer)
 {
-#if PLATFORM(COCOA)
-    UNUSED_PARAM(buffer);
-    return false;
-#else
     if (!buffer || !isWOFF(*buffer))
         return false;
 
@@ -299,7 +298,15 @@ bool convertWOFFToSfntIfNecessary(RefPtr<SharedBuffer>& buffer)
         buffer = nullptr;
 
     return true;
-#endif
 }
+
+#else
+
+bool convertWOFFToSfntIfNecessary(RefPtr<SharedBuffer>&)
+{
+    return false;
+}
+
+#endif // HAVE(WOFF_SUPPORT)
 
 } // namespace WebCore

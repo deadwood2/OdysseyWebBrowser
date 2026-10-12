@@ -25,45 +25,46 @@
 
 #pragma once
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
-#include "FlexFormattingGeometry.h"
-#include "FlexFormattingState.h"
-#include "FormattingQuirks.h"
-#include <wtf/IsoMalloc.h>
+#include "FlexFormattingConstraints.h"
+#include "FlexFormattingUtils.h"
+#include "FlexLayout.h"
+#include "FlexRect.h"
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 namespace Layout {
 
-class InvalidationState;
 // This class implements the layout logic for flex formatting contexts.
 // https://www.w3.org/TR/css-flexbox-1/
-class FlexFormattingContext final : public FormattingContext {
-    WTF_MAKE_ISO_ALLOCATED(FlexFormattingContext);
+class FlexFormattingContext {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(FlexFormattingContext);
 public:
-    FlexFormattingContext(const ContainerBox& formattingContextRoot, FlexFormattingState&);
-    void layoutInFlowContent(InvalidationState&, const ConstraintsForInFlowContent&) override;
-    LayoutUnit usedContentHeight() const override;
+    FlexFormattingContext(const ElementBox& flexBox, LayoutState&);
 
-    IntrinsicWidthConstraints computedIntrinsicWidthConstraints() override;
+    void layout(const ConstraintsForFlexContent&);
+    IntrinsicWidthConstraints computedIntrinsicWidthConstraints();
 
-    const FlexFormattingGeometry& formattingGeometry() const final { return m_flexFormattingGeometry; }
-    const FormattingQuirks& formattingQuirks() const final { return m_flexFormattingQuirks; }
+    const ElementBox& root() const { return m_flexBox; }
+    const FlexFormattingUtils& formattingUtils() const { return m_flexFormattingUtils; }
+
+    const BoxGeometry& geometryForFlexItem(const Box&) const;
+    BoxGeometry& geometryForFlexItem(const Box&);
+
+    const LayoutState& layoutState() const { return m_layoutState; }
+    LayoutState& layoutState() { return m_layoutState; }
 
 private:
-    void sizeAndPlaceFlexItems(const ConstraintsForInFlowContent&);
-    void computeIntrinsicWidthConstraintsForFlexItems();
+    FlexLayout::LogicalFlexItems convertFlexItemsToLogicalSpace(const ConstraintsForFlexContent&);
+    void setFlexItemsGeometry(const FlexLayout::LogicalFlexItems&, const FlexLayout::LogicalFlexItemRects&, const ConstraintsForFlexContent&);
 
-    const FlexFormattingState& formattingState() const { return downcast<FlexFormattingState>(FormattingContext::formattingState()); }
-    FlexFormattingState& formattingState() { return downcast<FlexFormattingState>(FormattingContext::formattingState()); }
+    std::optional<LayoutUnit> computedAutoMarginValueForFlexItems(const ConstraintsForFlexContent&);
 
-    const FlexFormattingGeometry m_flexFormattingGeometry;
-    const FormattingQuirks m_flexFormattingQuirks;
+private:
+    const ElementBox& m_flexBox;
+    LayoutState& m_layoutState;
+    const FlexFormattingUtils m_flexFormattingUtils;
 };
 
 }
 }
 
-SPECIALIZE_TYPE_TRAITS_LAYOUT_FORMATTING_CONTEXT(FlexFormattingContext, isFlexFormattingContext())
-
-#endif

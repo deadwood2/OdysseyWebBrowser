@@ -27,14 +27,30 @@
 
 #if ENABLE(GAMEPAD)
 
+#include "GamepadHapticEffectType.h"
 #include "SharedGamepadValue.h"
+#include <wtf/CompletionHandler.h>
 #include <wtf/Forward.h>
 #include <wtf/MonotonicTime.h>
+#include <wtf/WeakHashMap.h>
+#include <wtf/WeakHashSet.h>
+#include <wtf/WeakPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
+class PlatformGamepad;
+}
 
-class PlatformGamepad {
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::PlatformGamepad> : std::true_type { };
+}
+
+namespace WebCore {
+
+struct GamepadEffectParameters;
+
+class PlatformGamepad : public CanMakeWeakPtr<PlatformGamepad> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     virtual ~PlatformGamepad() = default;
@@ -44,11 +60,14 @@ public:
     unsigned index() const { return m_index; }
     virtual MonotonicTime lastUpdateTime() const { return m_lastUpdateTime; }
     MonotonicTime connectTime() const { return m_connectTime; }
+    const GamepadHapticEffectTypeSet& supportedEffectTypes() const { return m_supportedEffectTypes; }
     
     virtual const Vector<SharedGamepadValue>& axisValues() const = 0;
     virtual const Vector<SharedGamepadValue>& buttonValues() const = 0;
+    virtual void playEffect(GamepadHapticEffectType, const GamepadEffectParameters&, CompletionHandler<void(bool)>&& completionHandler) { completionHandler(false); }
+    virtual void stopEffects(CompletionHandler<void()>&& completionHandler) { completionHandler(); }
 
-    virtual const char* source() const { return "Unknown"_s; }
+    virtual ASCIILiteral source() const { return "Unknown"_s; }
 
 protected:
     explicit PlatformGamepad(unsigned index)
@@ -61,6 +80,7 @@ protected:
     unsigned m_index;
     MonotonicTime m_lastUpdateTime;
     MonotonicTime m_connectTime;
+    GamepadHapticEffectTypeSet m_supportedEffectTypes;
 };
 
 } // namespace WebCore

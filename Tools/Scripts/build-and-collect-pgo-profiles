@@ -1,0 +1,145 @@
+#!/bin/bash
+set -e
+set -o pipefail
+
+# Build WebKit, run benchmarks, and spit out compressed PGO profiles
+
+DisplayHelp() {
+    echo "Usage: build-and-collect-pgo-profiles [ options ]"
+    echo "  -h              Show this help message."
+    echo "  -o <directory>  Directory in which output files are stored. Default: /Volumes/WebKit/BenchmarkProfiles/."
+    echo "  -a <app>        Path to Safari.app to generate profiles for. If not specified, the script will build WebKit."
+    echo "  -d <directory>  Path to build directory. Use seperately from -a."
+    echo "  -y              Use for automated collection. No user input."
+}
+
+BASE="/Volumes/WebKit/BenchmarkProfiles/"
+
+while getopts "o:a:d:yh" flag; do
+    case "${flag}" in
+        o) BASE=${OPTARG};;
+        a) APP=${OPTARG};;
+        d) BUILD=${OPTARG};;
+        y) NINPUT=true ;;
+        h)
+          DisplayHelp
+          exit;;
+    esac
+done
+
+if [[ -n $APP ]] ; then
+    echo "app: $APP"
+fi
+
+if [[ -n $BUILD ]]; then
+    echo "build: $BUILD"
+fi
+
+echo "base: $BASE"
+
+if [ ! -z $APP ] && [ ! -z $BUILD ] ; then
+    echo "These flags (-a and -d) cannot be used together."
+    DisplayHelp
+    exit
+fi
+
+while [[ ! "$NINPUT" ]] ; do
+    read -p "Have you read the source of this script, and do you understand that it is potentially destructive? [y/N]" yn
+    case $yn in
+        [Yy]* ) break;;
+        [Nn]* ) exit;;
+        * ) echo "Please answer yes or no.";;
+    esac
+done
+
+echo "Using output directory: $BASE"
+
+if [[ ! -d "$BASE" ]] ; then
+    echo "$BASE is missing, creating directory."
+    mkdir -p "$BASE"
+fi
+
+rm -rf "$BASE/*"
+
+mkdir -p "$BASE/speedometer2"
+mkdir -p "$BASE/speedometer3"
+mkdir -p "$BASE/jetstream"
+mkdir -p "$BASE/motionmark"
+mkdir -p "$BASE/output"
+mkdir -p "$BASE/Internal/WebKit/WebKitAdditions/Profiling/"
+
+if [[ -z $APP ]] ; then
+    cd Internal
+    echo "Building WebKit..."
+    rm -rf ../OpenSource/WebKitBuild
+    make release WK_LTO_MODE=thin ENABLE_LLVM_PROFILE_GENERATION=ON
+    cd ../
+else
+    if [[ ! -e "$APP" ]] ; then
+        echo "$APP is missing, aborting."
+        DisplayHelp
+        exit
+    fi
+    echo "Using .app: $APP"
+fi
+
+jsargs=(
+    --plan jetstream2
+    --diagnose-directory="$BASE/jetstream"
+    --generate-pgo-profiles
+    --http-server-type builtin
+    --count 1
+)
+
+sp3args=(
+    --plan speedometer3
+    --diagnose-directory="$BASE/speedometer3"
+    --generate-pgo-profiles
+    --http-server-type builtin
+    --count 1
+)
+
+mmargs=(
+    --plan motionmark
+    --diagnose-directory="$BASE/motionmark"
+    --generate-pgo-profiles
+    --http-server-type builtin
+    --count 1
+)
+
+if [[ -n $APP ]] ; then
+   jsargs+=(--browser-path "$APP")
+   sp3args+=(--browser-path "$APP")
+   mmargs+=(--browser-path "$APP")
+   deployment_target=$(vtool -show-build "$APP"/Contents/Frameworks/JavaScriptCore.framework/Versions/A/JavaScriptCore | grep -m1 minos | tr -d -c .0-9)
+else
+   jsargs+=(--build-directory $BUILD)
+   sp3args+=(--build-directory $BUILD)
+   mmargs+=(--build-directory $BUILD)
+   deployment_target=$(vtool -show-build "$BUILD"/JavaScriptCore.framework/Versions/A/JavaScriptCore | grep -m1 minos | tr -d -c .0-9)
+fi
+
+# The reported target triple is based on an arbitrary binary (JavaScriptCore)
+# and this machine's architecture.
+target_triple=$(machine)-apple-macos${deployment_target}
+
+SPTH='OpenSource/Tools/Scripts'
+
+$SPTH/run-benchmark "${jsargs[@]}"
+$SPTH/pgo-profile merge "$BASE/jetstream"
+
+$SPTH/run-benchmark "${sp3args[@]}"
+$SPTH/pgo-profile merge "$BASE/speedometer3"
+
+$SPTH/run-benchmark "${mmargs[@]}"
+$SPTH/pgo-profile merge "$BASE/motionmark"
+
+rm *.result
+
+$SPTH/pgo-profile combine --jetstream "$BASE/jetstream" --speedometer3 "$BASE/speedometer3" --motionmark "$BASE/motionmark" --output "$BASE/output"
+
+mkdir -p "$BASE/Internal/WebKit/WebKitAdditions/Profiling/$target_triple"
+$SPTH/pgo-profile compress --input "$BASE/output" --output "$BASE/Internal/WebKit/WebKitAdditions/Profiling/$target_triple"
+
+echo "Done! Find your profiles in $BASE/Internal/WebKit/WebKitAdditions/Profiling/$target_triple"
+echo "To check these in, do: 'cp -r $BASE/Internal/ ../Internal/'"

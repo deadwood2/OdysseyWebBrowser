@@ -6,6 +6,8 @@
 // Unit tests for HandleAllocator.
 //
 
+#include <unordered_set>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -90,7 +92,8 @@ TEST(HandleAllocatorTest, Reallocation)
     EXPECT_EQ(finalResult, 1);
 }
 
-// The following test covers reserving a handle with max uint value. See http://anglebug.com/1052
+// The following test covers reserving a handle with max uint value. See
+// http://anglebug.com/42260058
 TEST(HandleAllocatorTest, ReserveMaxUintHandle)
 {
     gl::HandleAllocator allocator;
@@ -150,6 +153,32 @@ TEST(HandleAllocatorTest, Reset)
     }
 }
 
+// Tests the reset method of custom allocator works as expected.
+TEST(HandleAllocatorTest, ResetAndReallocate)
+{
+    // Allocates handles - [1, 3]
+    gl::HandleAllocator allocator(3);
+    const std::unordered_set<GLuint> expectedHandles = {1, 2, 3};
+    std::unordered_set<GLuint> handles;
+
+    EXPECT_EQ(allocator.anyHandleAvailableForAllocation(), true);
+    handles.insert(allocator.allocate());
+    handles.insert(allocator.allocate());
+    handles.insert(allocator.allocate());
+    EXPECT_EQ(expectedHandles, handles);
+    EXPECT_EQ(allocator.anyHandleAvailableForAllocation(), false);
+
+    // Reset the allocator
+    allocator.reset();
+
+    EXPECT_EQ(allocator.anyHandleAvailableForAllocation(), true);
+    handles.insert(allocator.allocate());
+    handles.insert(allocator.allocate());
+    handles.insert(allocator.allocate());
+    EXPECT_EQ(expectedHandles, handles);
+    EXPECT_EQ(allocator.anyHandleAvailableForAllocation(), false);
+}
+
 // Covers a particular bug with reserving and allocating sub ranges.
 TEST(HandleAllocatorTest, ReserveAndAllocateIterated)
 {
@@ -191,6 +220,27 @@ TEST(HandleAllocatorTest, ReserveAfterReleaseBug)
     allocator.reserve(1);
 
     allocator.allocate();
+}
+
+// This test is to verify that we consolidate handle ranges when releasing a handle.
+TEST(HandleAllocatorTest, ConsolidateRangeDuringRelease)
+{
+    gl::HandleAllocator allocator;
+
+    // Reserve GLuint(-1)
+    allocator.reserve(static_cast<GLuint>(-1));
+    // Allocate a few others
+    allocator.allocate();
+    allocator.allocate();
+
+    // Release GLuint(-1)
+    allocator.release(static_cast<GLuint>(-1));
+
+    // Allocate one more handle.
+    // Since we consolidate handle ranges during a release we do not expect to get back a
+    // handle value of GLuint(-1).
+    GLuint handle = allocator.allocate();
+    EXPECT_NE(handle, static_cast<GLuint>(-1));
 }
 
 }  // anonymous namespace

@@ -26,6 +26,8 @@
 #include "config.h"
 #include "WebNotificationProvider.h"
 
+#include "DataFunctions.h"
+#include "StringFunctions.h"
 #include <WebKit/WKMutableArray.h>
 #include <WebKit/WKNotification.h>
 #include <WebKit/WKNotificationManager.h>
@@ -62,12 +64,13 @@ static WKDictionaryRef notificationPermissions(const void* clientInfo)
 
 WebNotificationProvider::WebNotificationProvider()
 {
+    m_permissions = adoptWK(WKMutableDictionaryCreate());
 }
 
 WebNotificationProvider::~WebNotificationProvider()
 {
-    for (auto& manager : m_ownedNotifications)
-        WKNotificationManagerSetProvider(manager.key.get(), nullptr);
+    for (auto& manager : m_knownManagers)
+        WKNotificationManagerSetProvider(manager.get(), nullptr);
 }
 
 WKNotificationProviderV0 WebNotificationProvider::provider()
@@ -85,48 +88,43 @@ WKNotificationProviderV0 WebNotificationProvider::provider()
     return notificationProvider;
 }
 
-void WebNotificationProvider::showWebNotification(WKPageRef page, WKNotificationRef notification)
+static WKNotificationManagerRef notificationManagerForPage(WKPageRef page)
 {
-    auto context = WKPageGetContext(page);
-    auto notificationManager = WKContextGetNotificationManager(context);
-    uint64_t id = WKNotificationGetID(notification);
+    if (page)
+        return WKContextGetNotificationManager(WKPageGetContext(page));
 
-    ASSERT(m_ownedNotifications.contains(notificationManager));
-    auto addResult = m_ownedNotifications.find(notificationManager)->value.add(id);
-    ASSERT_UNUSED(addResult, addResult.isNewEntry);
-    auto addResult2 = m_owningManager.set(id, notificationManager);
-    ASSERT_UNUSED(addResult2, addResult2.isNewEntry);
-    auto addResult3 = m_localToGlobalNotificationIDMap.add(std::make_pair(page, WKNotificationManagerGetLocalIDForTesting(notificationManager, notification)), id);
-    ASSERT_UNUSED(addResult3, addResult3.isNewEntry);
-
-    WKNotificationManagerProviderDidShowNotification(notificationManager, id);
+    return WKNotificationManagerGetSharedServiceWorkerNotificationManager();
 }
 
-static void removeGlobalIDFromIDMap(HashMap<std::pair<WKPageRef, uint64_t>, uint64_t>& map, uint64_t id)
+void WebNotificationProvider::showWebNotification(WKPageRef page, WKNotificationRef notification)
 {
-    for (auto iter = map.begin(); iter != map.end(); ++iter) {
-        if (iter->value == id) {
-            map.remove(iter);
-            return;
-        }
-    }
-    ASSERT_NOT_REACHED();
+    if (WKNotificationGetIsPersistent(notification))
+        m_knownPersistentNotifications.add(notification);
+
+    auto notificationManager = notificationManagerForPage(page);
+    ASSERT(m_knownManagers.contains(notificationManager));
+
+    uint64_t identifier = WKNotificationGetID(notification);
+    auto coreIdentifier = adoptWK(WKNotificationCopyCoreIDForTesting(notification));
+
+    auto addResult = m_owningManager.set(dataToUUID(coreIdentifier.get()), notificationManager);
+    ASSERT_UNUSED(addResult, addResult.isNewEntry);
+
+    WKNotificationManagerProviderDidShowNotification(notificationManager, identifier);
 }
 
 void WebNotificationProvider::closeWebNotification(WKNotificationRef notification)
 {
-    uint64_t id = WKNotificationGetID(notification);
-    ASSERT(m_owningManager.contains(id));
-    auto notificationManager = m_owningManager.get(id);
+    if (WKNotificationGetIsPersistent(notification))
+        m_knownPersistentNotifications.remove(notification);
 
-    ASSERT(m_ownedNotifications.contains(notificationManager));
-    bool success = m_ownedNotifications.find(notificationManager)->value.remove(id);
-    ASSERT_UNUSED(success, success);
-    m_owningManager.remove(id);
+    auto identifier = adoptWK(WKNotificationCopyCoreIDForTesting(notification));
 
-    removeGlobalIDFromIDMap(m_localToGlobalNotificationIDMap, id);
+    auto notificationManager = m_owningManager.take(dataToUUID(identifier.get()));
+    ASSERT(notificationManager);
+    ASSERT(m_knownManagers.contains(notificationManager));
 
-    auto wkID = adoptWK(WKUInt64Create(id));
+    auto wkID = adoptWK(WKUInt64Create(WKNotificationGetID(notification)));
     auto array = adoptWK(WKMutableArrayCreate());
     WKArrayAppendItem(array.get(), wkID.get());
     WKNotificationManagerProviderDidCloseNotifications(notificationManager, array.get());
@@ -134,54 +132,102 @@ void WebNotificationProvider::closeWebNotification(WKNotificationRef notificatio
 
 void WebNotificationProvider::addNotificationManager(WKNotificationManagerRef manager)
 {
-    m_ownedNotifications.add(manager, HashSet<uint64_t>());
+    ASSERT(!m_knownManagers.contains(manager) || manager == WKNotificationManagerGetSharedServiceWorkerNotificationManager());
+    m_knownManagers.add(manager);
 }
 
 void WebNotificationProvider::removeNotificationManager(WKNotificationManagerRef manager)
 {
-    auto iterator = m_ownedNotifications.find(manager);
-    ASSERT(iterator != m_ownedNotifications.end());
-    auto toRemove = iterator->value;
-    WKRetainPtr<WKNotificationManagerRef> guard(manager);
-    m_ownedNotifications.remove(iterator);
-    auto array = adoptWK(WKMutableArrayCreate());
-    for (uint64_t notificationID : toRemove) {
-        bool success = m_owningManager.remove(notificationID);
-        ASSERT_UNUSED(success, success);
-        removeGlobalIDFromIDMap(m_localToGlobalNotificationIDMap, notificationID);
-        WKArrayAppendItem(array.get(), adoptWK(WKUInt64Create(notificationID)).get());
+    auto protectedManager = m_knownManagers.take(manager);
+    ASSERT(protectedManager);
+
+    auto toRemove = Vector<WTF::UUID> { };
+    for (auto& iterator : m_owningManager) {
+        if (iterator.value != manager)
+            continue;
+        toRemove.append(iterator.key);
     }
+
+    auto array = adoptWK(WKMutableArrayCreate());
+    for (auto& identifier : toRemove) {
+        WKArrayAppendItem(array.get(), uuidToData(identifier).get());
+        m_owningManager.remove(identifier);
+    }
+
     WKNotificationManagerProviderDidCloseNotifications(manager, array.get());
 }
 
 WKDictionaryRef WebNotificationProvider::notificationPermissions()
 {
-    // Initial permissions are always empty.
-    return WKMutableDictionaryCreate();
+    WKRetain(m_permissions.get());
+    return m_permissions.get();
 }
 
-void WebNotificationProvider::simulateWebNotificationClick(WKPageRef page, uint64_t notificationID)
+// If the state is not stored in m_permissions, return nullopt. Otherwise, return true if
+// the permission is granted and false if it's denied.
+std::optional<bool> WebNotificationProvider::permissionState(WKSecurityOriginRef securityOrigin)
 {
-    ASSERT(m_localToGlobalNotificationIDMap.contains(std::make_pair(page, notificationID)));
-    auto globalID = m_localToGlobalNotificationIDMap.get(std::make_pair(page, notificationID));
-    ASSERT(m_owningManager.contains(globalID));
-    WKNotificationManagerProviderDidClickNotification(m_owningManager.get(globalID), globalID);
+    auto securityOriginString = adoptWK(WKSecurityOriginCopyToString(securityOrigin));
+    if (auto value = WKDictionaryGetItemForKey(m_permissions.get(), securityOriginString.get()))
+        return WKBooleanGetValue(static_cast<WKBooleanRef>(value));
+
+    return std::nullopt;
+}
+
+void WebNotificationProvider::setPermission(const String& origin, bool allowed)
+{
+    auto wkAllowed = adoptWK(WKBooleanCreate(allowed));
+    WKDictionarySetItem(m_permissions.get(), toWK(origin).get(), wkAllowed.get());
+}
+
+void WebNotificationProvider::simulateWebNotificationClick(WKPageRef, WKDataRef notificationID)
+{
+    auto identifier = dataToUUID(notificationID);
+    ASSERT(m_owningManager.contains(identifier));
+
+    WKNotificationManagerProviderDidClickNotification_b(m_owningManager.get(identifier), notificationID);
+}
+
+#if !PLATFORM(COCOA)
+void WebNotificationProvider::simulateWebNotificationClickForServiceWorkerNotifications()
+{
+    auto sharedManager = WKNotificationManagerGetSharedServiceWorkerNotificationManager();
+    for (auto& iterator : m_owningManager) {
+        if (iterator.value != sharedManager)
+            continue;
+        WKNotificationManagerProviderDidClickNotification_b(sharedManager, uuidToData(iterator.key).get());
+    }
+}
+#endif
+
+WKRetainPtr<WKArrayRef> securityOriginsFromStrings(WKArrayRef originStrings)
+{
+    auto origins = adoptWK(WKMutableArrayCreate());
+    for (size_t i = 0; i < WKArrayGetSize(originStrings); i++) {
+        auto originString = static_cast<WKStringRef>(WKArrayGetItemAtIndex(originStrings, i));
+        auto origin = adoptWK(WKSecurityOriginCreateFromString(originString));
+        WKArrayAppendItem(origins.get(), static_cast<WKTypeRef>(origin.get()));
+    }
+    return origins;
 }
 
 void WebNotificationProvider::reset()
 {
-    for (auto& notificationPair : m_ownedNotifications) {
-        if (notificationPair.value.isEmpty())
-            continue;
+    for (auto iterator : m_owningManager) {
         auto array = adoptWK(WKMutableArrayCreate());
-        for (uint64_t notificationID : notificationPair.value)
-            WKArrayAppendItem(array.get(), adoptWK(WKUInt64Create(notificationID)).get());
-
-        notificationPair.value.clear();
-        WKNotificationManagerProviderDidCloseNotifications(notificationPair.key.get(), array.get());
+        WKArrayAppendItem(array.get(), uuidToData(iterator.key).get());
+        WKNotificationManagerProviderDidCloseNotifications(iterator.value, array.get());
     }
+
+    m_knownPersistentNotifications.clear();
     m_owningManager.clear();
-    m_localToGlobalNotificationIDMap.clear();
+
+    auto originStrings = adoptWK(WKDictionaryCopyKeys(static_cast<WKDictionaryRef>(m_permissions.get())));
+    auto origins = securityOriginsFromStrings(originStrings.get());
+    for (auto manager : m_knownManagers)
+        WKNotificationManagerProviderDidRemoveNotificationPolicies(manager.get(), origins.get());
+
+    m_permissions = adoptWK(WKMutableDictionaryCreate());
 }
 
 } // namespace WTR

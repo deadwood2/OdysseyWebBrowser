@@ -63,18 +63,15 @@ public:
 
     void resize(unsigned newLength)
     {
-        if (newLength > m_length) {
-            if (newLength > std::numeric_limits<unsigned>::max() / sizeof(UChar))
-                CRASH();
-            m_data = static_cast<UChar*>(StringBufferMalloc::realloc(m_data, newLength * sizeof(UChar)));
-        }
+        if (newLength > m_length)
+            m_data = static_cast<CharType*>(StringBufferMalloc::realloc(m_data, Checked<size_t>(newLength) * sizeof(CharType)));
         m_length = newLength;
     }
 
     unsigned length() const { return m_length; }
     CharType* characters() { return m_data; }
 
-    CharType& operator[](unsigned i) { ASSERT_WITH_SECURITY_IMPLICATION(i < m_length); return m_data[i]; }
+    CharType& operator[](unsigned i) { RELEASE_ASSERT(i < m_length); return m_data[i]; }
 
     MallocPtr<CharType, StringBufferMalloc> release()
     {

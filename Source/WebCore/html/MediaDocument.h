@@ -32,11 +32,14 @@
 namespace WebCore {
 
 class MediaDocument final : public HTMLDocument {
-    WTF_MAKE_ISO_ALLOCATED(MediaDocument);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(MediaDocument);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(MediaDocument);
 public:
-    static Ref<MediaDocument> create(Frame* frame, const Settings& settings, const URL& url)
+    static Ref<MediaDocument> create(LocalFrame* frame, const Settings& settings, const URL& url)
     {
-        return adoptRef(*new MediaDocument(frame, settings, url));
+        auto document = adoptRef(*new MediaDocument(frame, settings, url));
+        document->addToContextsMap();
+        return document;
     }
     virtual ~MediaDocument();
 
@@ -44,7 +47,7 @@ public:
     String outgoingReferrer() const { return m_outgoingReferrer; }
 
 private:
-    MediaDocument(Frame*, const Settings&, const URL&);
+    MediaDocument(LocalFrame*, const Settings&, const URL&);
 
     Ref<DocumentParser> createParser() override;
 
@@ -59,7 +62,11 @@ private:
 
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::MediaDocument)
     static bool isType(const WebCore::Document& document) { return document.isMediaDocument(); }
-    static bool isType(const WebCore::Node& node) { return is<WebCore::Document>(node) && isType(downcast<WebCore::Document>(node)); }
+    static bool isType(const WebCore::Node& node)
+    {
+        auto* document = dynamicDowncast<WebCore::Document>(node);
+        return document && isType(*document);
+    }
 SPECIALIZE_TYPE_TRAITS_END()
 
 #endif // ENABLE(VIDEO)

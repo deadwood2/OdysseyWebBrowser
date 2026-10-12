@@ -36,6 +36,7 @@
 #include "HTMLObjectElement.h"
 #include "SVGElement.h"
 #include "SVGImageElement.h"
+#include "SVGElementTypeHelpers.h"
 #include "Pasteboard.h"
 #include "Settings.h"
 #include "XLinkNames.h"
@@ -48,7 +49,7 @@
 
 namespace WebCore {
 
-static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pasteboard, Frame& frame, const SimpleRange& range, bool allowPlainText, bool& chosePlainText)
+static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pasteboard, LocalFrame& frame, const SimpleRange& range, bool allowPlainText, bool& chosePlainText)
 {
     chosePlainText = false;
 
@@ -56,18 +57,18 @@ static RefPtr<DocumentFragment> createFragmentFromPasteboardData(Pasteboard& pas
     if (types.isEmpty())
         return nullptr;
 
-    if (types.contains("text/html;charset=utf-8") && frame.document()) {
-        String markup = pasteboard.readString("text/html;charset=utf-8");
-        if (RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), markup, emptyString(), DisallowScriptingAndPluginContent))
+    if (types.contains("text/html;charset=utf-8"_s) && frame.document()) {
+        String markup = pasteboard.readString("text/html;charset=utf-8"_s);
+        if (RefPtr<DocumentFragment> fragment = createFragmentFromMarkup(*frame.document(), markup, emptyString()))
             return fragment;
     }
 
     if (!allowPlainText)
         return nullptr;
 
-    if (types.contains("text/plain;charset=utf-8")) {
+    if (types.contains("text/plain;charset=utf-8"_s)) {
         chosePlainText = true;
-        if (RefPtr<DocumentFragment> fragment = createFragmentFromText(range, pasteboard.readString("text/plain;charset=utf-8")))
+        if (RefPtr<DocumentFragment> fragment = createFragmentFromText(range, pasteboard.readString("text/plain;charset=utf-8"_s)))
             return fragment;
     }
 
@@ -78,8 +79,7 @@ void Editor::writeSelectionToPasteboard(Pasteboard& pasteboard)
 {
     PasteboardWebContent pasteboardContent;
     pasteboardContent.text = selectedTextForDataTransfer();
-    pasteboardContent.markup = serializePreservingVisualAppearance(m_document.selection().selection(), ResolveURLs::YesExcludingLocalFileURLsForPrivacy,
-        m_document.settings().selectionAcrossShadowBoundariesEnabled() ? SerializeComposedTree::Yes : SerializeComposedTree::No);
+    pasteboardContent.markup = serializePreservingVisualAppearance(document().selection().selection(), ResolveURLs::YesExcludingURLsForPrivacy, SerializeComposedTree::Yes, IgnoreUserSelectNone::Yes);
     pasteboard.write(pasteboardContent);
 }
 
@@ -116,7 +116,7 @@ void Editor::writeImageToPasteboard(Pasteboard& pasteboard, Element&imageElement
         return;
     ASSERT(pasteboardImage.image);
 
-    pasteboardImage.url.url = imageElement.document().completeURL(stripLeadingAndTrailingHTMLSpaces(elementURL(imageElement)));
+    pasteboardImage.url.url = imageElement.document().completeURL(elementURL(imageElement));
     pasteboardImage.url.title = title;
     pasteboard.write(pasteboardImage);
 }
@@ -128,7 +128,7 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
         return;
 
     bool chosePlainText;
-    auto fragment = createFragmentFromPasteboardData(*pasteboard, *m_document.frame(), *range, options.contains(PasteOption::AllowPlainText), chosePlainText);
+    auto fragment = createFragmentFromPasteboardData(*pasteboard, *document().frame(), *range, options.contains(PasteOption::AllowPlainText), chosePlainText);
 
     if (fragment && options.contains(PasteOption::AsQuotation))
         quoteFragmentForPasting(*fragment);
@@ -139,10 +139,18 @@ void Editor::pasteWithPasteboard(Pasteboard* pasteboard, OptionSet<PasteOption> 
 
 RefPtr<DocumentFragment> Editor::webContentFromPasteboard(Pasteboard& pasteboard, const SimpleRange& context, bool allowPlainText, bool& chosePlainText)
 {
-    WebContentReader reader(*m_document.frame(), context, allowPlainText);
+    WebContentReader reader(*document().frame(), context, allowPlainText);
     pasteboard.read(reader);
-    chosePlainText = reader.madeFragmentFromPlainText;
-    return WTFMove(reader.fragment);
+    chosePlainText = reader.madeFragmentFromPlainText();
+    return reader.takeFragment();
+}
+
+void Editor::platformCopyFont()
+{
+}
+
+void Editor::platformPasteFont()
+{
 }
 
 } // namespace WebCore

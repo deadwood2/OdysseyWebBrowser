@@ -28,6 +28,8 @@
 
 #include "unicode/utypes.h"
 
+#if U_SHOW_CPLUSPLUS_API
+
 /**
  * \file
  * \brief C++ API: Format and parse dates in a language-independent manner.
@@ -49,6 +51,7 @@ class FieldPositionHandler;
 class TimeZoneFormat;
 class SharedNumberFormat;
 class SimpleDateFormatMutableNFs;
+class DateIntervalFormat;
 
 namespace number {
 class LocalizedNumberFormatter;
@@ -78,7 +81,7 @@ class LocalizedNumberFormatter;
  * the date and time formatting algorithm and pattern letters defined by
  * <a href="http://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table">UTS#35
  * Unicode Locale Data Markup Language (LDML)</a> and further documented for ICU in the
- * <a href="https://sites.google.com/site/icuprojectuserguide/formatparse/datetime?pli=1#TOC-Date-Field-Symbol-Table">ICU
+ * <a href="https://unicode-org.github.io/icu/userguide/format_parse/datetime/#date-field-symbol-table">ICU
  * User Guide</a>. The following pattern letters are currently available (note that the actual
  * values depend on CLDR and may change from the examples shown here):</p>
  *
@@ -753,7 +756,7 @@ public:
      * names of the months), but not to provide the pattern.
      * <P>
      * A numbering system override is a string containing either the name of a known numbering system,
-     * or a set of field and numbering system pairs that specify which fields are to be formattied with
+     * or a set of field and numbering system pairs that specify which fields are to be formatted with
      * the alternate numbering system.  For example, to specify that all numeric fields in the specified
      * date or time pattern are to be rendered using Thai digits, simply specify the numbering system override
      * as "thai".  To specify that just the year portion of the date be formatted using Hebrew numbering,
@@ -794,7 +797,7 @@ public:
      * names of the months), but not to provide the pattern.
      * <P>
      * A numbering system override is a string containing either the name of a known numbering system,
-     * or a set of field and numbering system pairs that specify which fields are to be formattied with
+     * or a set of field and numbering system pairs that specify which fields are to be formatted with
      * the alternate numbering system.  For example, to specify that all numeric fields in the specified
      * date or time pattern are to be rendered using Thai digits, simply specify the numbering system override
      * as "thai".  To specify that just the year portion of the date be formatted using Hebrew numbering,
@@ -864,7 +867,7 @@ public:
      * @return    A copy of the object.
      * @stable ICU 2.0
      */
-    virtual Format* clone(void) const;
+    virtual SimpleDateFormat* clone() const override;
 
     /**
      * Return true if the given Format objects are semantically equal. Objects
@@ -873,7 +876,7 @@ public:
      * @return         true if the given Format objects are semantically equal.
      * @stable ICU 2.0
      */
-    virtual UBool operator==(const Format& other) const;
+    virtual bool operator==(const Format& other) const override;
 
 
     using DateFormat::format;
@@ -896,7 +899,7 @@ public:
      */
     virtual UnicodeString& format(  Calendar& cal,
                                     UnicodeString& appendTo,
-                                    FieldPosition& pos) const;
+                                    FieldPosition& pos) const override;
 
     /**
      * Format a date or time, which is the standard millis since 24:00 GMT, Jan
@@ -919,7 +922,7 @@ public:
     virtual UnicodeString& format(  Calendar& cal,
                                     UnicodeString& appendTo,
                                     FieldPositionIterator* posIter,
-                                    UErrorCode& status) const;
+                                    UErrorCode& status) const override;
 
     using DateFormat::parse;
 
@@ -951,7 +954,7 @@ public:
      */
     virtual void parse( const UnicodeString& text,
                         Calendar& cal,
-                        ParsePosition& pos) const;
+                        ParsePosition& pos) const override;
 
 
     /**
@@ -1094,7 +1097,7 @@ public:
      *                  other classes have different class IDs.
      * @stable ICU 2.0
      */
-    virtual UClassID getDynamicClassID(void) const;
+    virtual UClassID getDynamicClassID(void) const override;
 
     /**
      * Set the calendar to be used by this date format. Initially, the default
@@ -1105,7 +1108,7 @@ public:
      * @param calendarToAdopt    Calendar object to be adopted.
      * @stable ICU 2.0
      */
-    virtual void adoptCalendar(Calendar* calendarToAdopt);
+    virtual void adoptCalendar(Calendar* calendarToAdopt) override;
 
     /* Cannot use #ifndef U_HIDE_INTERNAL_API for the following methods since they are virtual */
     /**
@@ -1141,16 +1144,16 @@ public:
      *               updated with any new status from the function.
      * @stable ICU 53
      */
-    virtual void setContext(UDisplayContext value, UErrorCode& status);
+    virtual void setContext(UDisplayContext value, UErrorCode& status) override;
 
     /**
      * Overrides base class method and
      * This method clears per field NumberFormat instances
      * previously set by {@see adoptNumberFormat(const UnicodeString&, NumberFormat*, UErrorCode)}
-     * @param adoptNF the NumbeferFormat used
+     * @param formatToAdopt the NumbeferFormat used
      * @stable ICU 54
      */
-    void adoptNumberFormat(NumberFormat *formatToAdopt);
+    void adoptNumberFormat(NumberFormat *formatToAdopt) override;
 
     /**
      * Allow the user to set the NumberFormat for several fields
@@ -1162,7 +1165,7 @@ public:
      * Per field NumberFormat can also be cleared in {@see DateFormat::setNumberFormat(const NumberFormat& newNumberFormat)}
      *
      * @param fields  the fields to override(like y)
-     * @param adoptNF the NumbeferFormat used
+     * @param formatToAdopt the NumbeferFormat used
      * @param status  Receives a status code, which will be U_ZERO_ERROR
      *                if the operation succeeds.
      * @stable ICU 54
@@ -1180,11 +1183,11 @@ public:
     /**
      * This is for ICU internal use only. Please do not use.
      * Check whether the 'field' is smaller than all the fields covered in
-     * pattern, return TRUE if it is. The sequence of calendar field,
+     * pattern, return true if it is. The sequence of calendar field,
      * from large to small is: ERA, YEAR, MONTH, DATE, AM_PM, HOUR, MINUTE,...
      * @param field    the calendar field need to check against
-     * @return         TRUE if the 'field' is smaller than all the fields
-     *                 covered in pattern. FALSE otherwise.
+     * @return         true if the 'field' is smaller than all the fields
+     *                 covered in pattern. false otherwise.
      * @internal ICU 4.0
      */
     UBool isFieldUnitIgnored(UCalendarDateFields field) const;
@@ -1193,12 +1196,12 @@ public:
     /**
      * This is for ICU internal use only. Please do not use.
      * Check whether the 'field' is smaller than all the fields covered in
-     * pattern, return TRUE if it is. The sequence of calendar field,
+     * pattern, return true if it is. The sequence of calendar field,
      * from large to small is: ERA, YEAR, MONTH, DATE, AM_PM, HOUR, MINUTE,...
      * @param pattern  the pattern to check against
      * @param field    the calendar field need to check against
-     * @return         TRUE if the 'field' is smaller than all the fields
-     *                 covered in pattern. FALSE otherwise.
+     * @return         true if the 'field' is smaller than all the fields
+     *                 covered in pattern. false otherwise.
      * @internal ICU 4.0
      */
     static UBool isFieldUnitIgnored(const UnicodeString& pattern,
@@ -1217,6 +1220,7 @@ public:
 
 private:
     friend class DateFormat;
+    friend class DateIntervalFormat;
 
     void initializeDefaultCentury(void);
 
@@ -1270,6 +1274,7 @@ private:
                    int32_t count,
                    UDisplayContext capitalizationContext,
                    int32_t fieldNum,
+                   char16_t fieldToOutput,
                    FieldPositionHandler& handler,
                    Calendar& cal,
                    UErrorCode& status) const; // in case of illegal argument
@@ -1294,18 +1299,18 @@ private:
                            int32_t maxDigits) const;
 
     /**
-     * Return true if the given format character, occuring count
+     * Return true if the given format character, occurring count
      * times, represents a numeric field.
      */
     static UBool isNumeric(char16_t formatChar, int32_t count);
 
     /**
-     * Returns TRUE if the patternOffset is at the start of a numeric field.
+     * Returns true if the patternOffset is at the start of a numeric field.
      */
     static UBool isAtNumericField(const UnicodeString &pattern, int32_t patternOffset);
 
     /**
-     * Returns TRUE if the patternOffset is right after a non-numeric field.
+     * Returns true if the patternOffset is right after a non-numeric field.
      */
     static UBool isAfterNonNumericField(const UnicodeString &pattern, int32_t patternOffset);
 
@@ -1381,15 +1386,15 @@ private:
      *
      * @param pattern the pattern string
      * @param patternOffset the starting offset into the pattern text. On
-     *        outupt will be set the offset of the first non-literal character in the pattern
+     *        output will be set the offset of the first non-literal character in the pattern
      * @param text the text being parsed
      * @param textOffset the starting offset into the text. On output
      *                   will be set to the offset of the character after the match
-     * @param whitespaceLenient <code>TRUE</code> if whitespace parse is lenient, <code>FALSE</code> otherwise.
-     * @param partialMatchLenient <code>TRUE</code> if partial match parse is lenient, <code>FALSE</code> otherwise.
-     * @param oldLeniency <code>TRUE</code> if old leniency control is lenient, <code>FALSE</code> otherwise.
+     * @param whitespaceLenient <code>true</code> if whitespace parse is lenient, <code>false</code> otherwise.
+     * @param partialMatchLenient <code>true</code> if partial match parse is lenient, <code>false</code> otherwise.
+     * @param oldLeniency <code>true</code> if old leniency control is lenient, <code>false</code> otherwise.
      *
-     * @return <code>TRUE</code> if the literal text could be matched, <code>FALSE</code> otherwise.
+     * @return <code>true</code> if the literal text could be matched, <code>false</code> otherwise.
      */
     static UBool matchLiterals(const UnicodeString &pattern, int32_t &patternOffset,
                                const UnicodeString &text, int32_t &textOffset,
@@ -1597,6 +1602,7 @@ private:
 
     UBool                fHasMinute;
     UBool                fHasSecond;
+    UBool                fHasHanYearChar; // pattern contains the Han year character \u5E74
 
     /**
      * Sets fHasMinutes and fHasSeconds.
@@ -1640,7 +1646,7 @@ private:
 
     UBool fHaveDefaultCentury;
 
-    BreakIterator* fCapitalizationBrkIter;
+    const BreakIterator* fCapitalizationBrkIter;
 };
 
 inline UDate
@@ -1652,6 +1658,8 @@ SimpleDateFormat::get2DigitYearStart(UErrorCode& /*status*/) const
 U_NAMESPACE_END
 
 #endif /* #if !UCONFIG_NO_FORMATTING */
+
+#endif /* U_SHOW_CPLUSPLUS_API */
 
 #endif // _SMPDTFMT
 //eof

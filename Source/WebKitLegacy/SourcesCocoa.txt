@@ -165,9 +165,6 @@ mac/Plugins/WebPluginController.mm
 mac/Plugins/WebPluginDatabase.mm
 
 mac/History/WebBackForwardList.mm
-
-mac/WebCoreSupport/WebApplicationCache.mm
-mac/WebCoreSupport/WebApplicationCacheQuotaManager.mm
 mac/WebCoreSupport/WebFrameLoaderClient.mm
 
 mac/WebInspector/WebInspector.mm
@@ -185,3 +182,4 @@ mac/WebView/WebScriptDebugger.mm
 mac/WebView/WebScriptDebugDelegate.mm
 mac/WebView/WebScriptWorld.mm
 mac/WebView/WebView.mm
+mac/WebView/WebViewRenderingUpdateScheduler.mm

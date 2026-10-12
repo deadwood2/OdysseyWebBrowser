@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2021 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2012-2022 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,7 +44,7 @@ namespace JSC {
 
 static_assert(sizeof(UnlinkedFunctionExecutable) <= 128, "UnlinkedFunctionExecutable should fit in a 128-byte cell to keep allocated blocks count to only one after initializing JSGlobalObject.");
 
-const ClassInfo UnlinkedFunctionExecutable::s_info = { "UnlinkedFunctionExecutable", nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(UnlinkedFunctionExecutable) };
+const ClassInfo UnlinkedFunctionExecutable::s_info = { "UnlinkedFunctionExecutable"_s, nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(UnlinkedFunctionExecutable) };
 
 static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
     VM& vm, UnlinkedFunctionExecutable* executable, const SourceCode& source,
@@ -52,12 +52,11 @@ static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
     UnlinkedFunctionKind functionKind, ParserError& error, SourceParseMode parseMode)
 {
     JSParserBuiltinMode builtinMode = executable->isBuiltinFunction() ? JSParserBuiltinMode::Builtin : JSParserBuiltinMode::NotBuiltin;
-    JSParserStrictMode strictMode = executable->isInStrictContext() ? JSParserStrictMode::Strict : JSParserStrictMode::NotStrict;
     JSParserScriptMode scriptMode = executable->scriptMode();
     ASSERT(isFunctionParseMode(executable->parseMode()));
-    auto* classFieldLocations = executable->classFieldLocations();
+    auto* classElementDefinitions = executable->classElementDefinitions();
     std::unique_ptr<FunctionNode> function = parse<FunctionNode>(
-        vm, source, executable->name(), builtinMode, strictMode, scriptMode, executable->parseMode(), executable->superBinding(), error, nullptr, ConstructorKind::None, DerivedContextType::None, EvalContextType::None, nullptr, nullptr, classFieldLocations);
+        vm, source, executable->name(), executable->implementationVisibility(), builtinMode, executable->lexicallyScopedFeatures(), scriptMode, executable->parseMode(), executable->functionMode(), executable->superBinding(), error, executable->constructorKind(), executable->derivedContextType(), EvalContextType::None, nullptr, classElementDefinitions);
 
     if (!function) {
         ASSERT(error.isValid());
@@ -65,15 +64,16 @@ static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
     }
 
     function->finishParsing(executable->name(), executable->functionMode());
-    executable->recordParse(function->features(), function->lexicalScopeFeatures(), function->hasCapturedVariables());
+    executable->recordParse(function->features(), function->lexicallyScopedFeatures(), function->hasCapturedVariables());
 
     bool isClassContext = executable->superBinding() == SuperBinding::Needed || executable->parseMode() == SourceParseMode::ClassFieldInitializerMode;
 
     UnlinkedFunctionCodeBlock* result = UnlinkedFunctionCodeBlock::create(vm, FunctionCode, ExecutableInfo(kind == CodeForConstruct, executable->privateBrandRequirement(), functionKind == UnlinkedBuiltinFunction, executable->constructorKind(), scriptMode, executable->superBinding(), parseMode, executable->derivedContextType(), executable->needsClassFieldInitializer(), false, isClassContext, EvalContextType::FunctionEvalContext), codeGenerationMode);
 
     auto parentScopeTDZVariables = executable->parentScopeTDZVariables();
+    const FixedVector<Identifier>* generatorOrAsyncWrapperFunctionParameterNames = executable->generatorOrAsyncWrapperFunctionParameterNames();
     const PrivateNameEnvironment* parentPrivateNameEnvironment = executable->parentPrivateNameEnvironment();
-    error = BytecodeGenerator::generate(vm, function.get(), source, result, codeGenerationMode, parentScopeTDZVariables, parentPrivateNameEnvironment);
+    error = BytecodeGenerator::generate(vm, function.get(), source, result, codeGenerationMode, parentScopeTDZVariables, generatorOrAsyncWrapperFunctionParameterNames, parentPrivateNameEnvironment);
 
     if (error.isValid())
         return nullptr;
@@ -81,13 +81,13 @@ static UnlinkedFunctionCodeBlock* generateUnlinkedFunctionCodeBlock(
     return result;
 }
 
-UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM& vm, Structure* structure, const SourceCode& parentSource, FunctionMetadataNode* node, UnlinkedFunctionKind kind, ConstructAbility constructAbility, JSParserScriptMode scriptMode, RefPtr<TDZEnvironmentLink> parentScopeTDZVariables, std::optional<PrivateNameEnvironment> parentPrivateNameEnvironment, DerivedContextType derivedContextType, NeedsClassFieldInitializer needsClassFieldInitializer, PrivateBrandRequirement privateBrandRequirement, bool isBuiltinDefaultClassConstructor)
+UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM& vm, Structure* structure, const SourceCode& parentSource, FunctionMetadataNode* node, UnlinkedFunctionKind kind, ConstructAbility constructAbility, InlineAttribute inlineAttribute, JSParserScriptMode scriptMode, RefPtr<TDZEnvironmentLink> parentScopeTDZVariables, std::optional<Vector<Identifier>>&& generatorOrAsyncWrapperFunctionParameterNames, std::optional<PrivateNameEnvironment> parentPrivateNameEnvironment, DerivedContextType derivedContextType, NeedsClassFieldInitializer needsClassFieldInitializer, PrivateBrandRequirement privateBrandRequirement, bool isBuiltinDefaultClassConstructor)
     : Base(vm, structure)
     , m_firstLineOffset(node->firstLine() - parentSource.firstLine().oneBasedInt())
     , m_isGeneratedFromCache(false)
     , m_lineCount(node->lastLine() - node->firstLine())
     , m_hasCapturedVariables(false)
-    , m_unlinkedFunctionNameStart(node->functionNameStart() - parentSource.startOffset())
+    , m_unlinkedFunctionStart(node->functionStart())
     , m_isBuiltinFunction(kind == UnlinkedBuiltinFunction)
     , m_unlinkedBodyStartColumn(node->startColumn())
     , m_isBuiltinDefaultClassConstructor(isBuiltinDefaultClassConstructor)
@@ -99,29 +99,32 @@ UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM& vm, Structure* struct
     , m_superBinding(static_cast<unsigned>(node->superBinding()))
     , m_parametersStartOffset(node->parametersStart())
     , m_isCached(false)
-    , m_typeProfilingStartOffset(node->functionKeywordStart())
+    , m_unlinkedFunctionEnd(node->startStartOffset() + node->source().length() - 1)
     , m_needsClassFieldInitializer(static_cast<unsigned>(needsClassFieldInitializer))
-    , m_typeProfilingEndOffset(node->startStartOffset() + node->source().length() - 1)
     , m_parameterCount(node->parameterCount())
     , m_privateBrandRequirement(static_cast<unsigned>(privateBrandRequirement))
     , m_features(0)
     , m_constructorKind(static_cast<unsigned>(node->constructorKind()))
     , m_sourceParseMode(node->parseMode())
-    , m_lexicalScopeFeatures(node->lexicalScopeFeatures())
+    , m_implementationVisibility(static_cast<unsigned>(node->implementationVisibility()))
+    , m_lexicallyScopedFeatures(node->lexicallyScopedFeatures())
     , m_functionMode(static_cast<unsigned>(node->functionMode()))
     , m_derivedContextType(static_cast<unsigned>(derivedContextType))
+    , m_inlineAttribute(static_cast<unsigned>(inlineAttribute))
     , m_unlinkedCodeBlockForCall()
     , m_unlinkedCodeBlockForConstruct()
     , m_name(node->ident())
     , m_ecmaName(node->ecmaName())
 {
     // Make sure these bitfields are adequately wide.
+    ASSERT(m_implementationVisibility == static_cast<unsigned>(node->implementationVisibility()));
     ASSERT(m_constructAbility == static_cast<unsigned>(constructAbility));
     ASSERT(m_constructorKind == static_cast<unsigned>(node->constructorKind()));
     ASSERT(m_functionMode == static_cast<unsigned>(node->functionMode()));
     ASSERT(m_scriptMode == static_cast<unsigned>(scriptMode));
     ASSERT(m_superBinding == static_cast<unsigned>(node->superBinding()));
     ASSERT(m_derivedContextType == static_cast<unsigned>(derivedContextType));
+    ASSERT(m_inlineAttribute == static_cast<unsigned>(inlineAttribute));
     ASSERT(m_privateBrandRequirement == static_cast<unsigned>(privateBrandRequirement));
     ASSERT(!(m_isBuiltinDefaultClassConstructor && constructorKind() == ConstructorKind::None));
     ASSERT(!m_needsClassFieldInitializer || (isClassConstructorFunction() || derivedContextType == DerivedContextType::DerivedConstructorContext));
@@ -129,6 +132,8 @@ UnlinkedFunctionExecutable::UnlinkedFunctionExecutable(VM& vm, Structure* struct
         setClassSource(node->classSource());
     if (parentScopeTDZVariables)
         ensureRareData().m_parentScopeTDZVariables = WTFMove(parentScopeTDZVariables);
+    if (generatorOrAsyncWrapperFunctionParameterNames)
+        ensureRareData().m_generatorOrAsyncWrapperFunctionParameterNames = FixedVector<Identifier>(WTFMove(generatorOrAsyncWrapperFunctionParameterNames.value()));
     if (parentPrivateNameEnvironment)
         ensureRareData().m_parentPrivateNameEnvironment = WTFMove(*parentPrivateNameEnvironment);
 }
@@ -198,14 +203,14 @@ FunctionExecutable* UnlinkedFunctionExecutable::link(VM& vm, ScriptExecutable* t
 }
 
 UnlinkedFunctionExecutable* UnlinkedFunctionExecutable::fromGlobalCode(
-    const Identifier& name, JSGlobalObject* globalObject, const SourceCode& source, 
+    const Identifier& name, JSGlobalObject* globalObject, const SourceCode& source, LexicallyScopedFeatures lexicallyScopedFeatures,
     JSObject*& exception, int overrideLineNumber, std::optional<int> functionConstructorParametersEndPosition)
 {
     ParserError error;
     VM& vm = globalObject->vm();
     CodeCache* codeCache = vm.codeCache();
     OptionSet<CodeGenerationMode> codeGenerationMode = globalObject->defaultCodeGenerationMode();
-    UnlinkedFunctionExecutable* executable = codeCache->getUnlinkedGlobalFunctionExecutable(vm, name, source, codeGenerationMode, functionConstructorParametersEndPosition, error);
+    UnlinkedFunctionExecutable* executable = codeCache->getUnlinkedGlobalFunctionExecutable(vm, name, source, lexicallyScopedFeatures, codeGenerationMode, functionConstructorParametersEndPosition, error);
 
     if (globalObject->hasDebugger())
         globalObject->debugger()->sourceParsed(globalObject, source.provider(), error.line(), error.message());
@@ -251,7 +256,8 @@ UnlinkedFunctionCodeBlock* UnlinkedFunctionExecutable::unlinkedCodeBlockFor(
         m_unlinkedCodeBlockForConstruct.set(vm, this, result);
         break;
     }
-    vm.unlinkedFunctionExecutableSpace.set.add(this);
+    // FIXME GlobalGC: Need syncrhonization here for accessing the Heap server.
+    vm.heap.unlinkedFunctionExecutableSpaceAndSet.set.add(this);
     return result;
 }
 
@@ -265,7 +271,7 @@ void UnlinkedFunctionExecutable::decodeCachedCodeBlocks(VM& vm)
     int32_t cachedCodeBlockForCallOffset = m_cachedCodeBlockForCallOffset;
     int32_t cachedCodeBlockForConstructOffset = m_cachedCodeBlockForConstructOffset;
 
-    DeferGC deferGC(vm.heap);
+    DeferGC deferGC(vm);
 
     // No need to clear m_unlinkedCodeBlockForCall here, since we moved the decoder out of the same slot
     if (cachedCodeBlockForCallOffset)
@@ -277,7 +283,7 @@ void UnlinkedFunctionExecutable::decodeCachedCodeBlocks(VM& vm)
 
     WTF::storeStoreFence();
     m_isCached = false;
-    vm.heap.writeBarrier(this);
+    vm.writeBarrier(this);
 }
 
 UnlinkedFunctionExecutable::RareData& UnlinkedFunctionExecutable::ensureRareDataSlow()
@@ -287,13 +293,7 @@ UnlinkedFunctionExecutable::RareData& UnlinkedFunctionExecutable::ensureRareData
     return *m_rareData;
 }
 
-void UnlinkedFunctionExecutable::setInvalidTypeProfilingOffsets()
-{
-    m_typeProfilingStartOffset = INT32_MAX;
-    m_typeProfilingEndOffset = std::numeric_limits<unsigned>::max();
-}
-
-void UnlinkedFunctionExecutable::finalizeUnconditionally(VM& vm)
+void UnlinkedFunctionExecutable::finalizeUnconditionally(VM& vm, CollectionScope)
 {
     if (codeBlockEdgeMayBeWeak()) {
         bool isCleared = false;
@@ -309,8 +309,10 @@ void UnlinkedFunctionExecutable::finalizeUnconditionally(VM& vm)
         };
         clearIfDead(m_unlinkedCodeBlockForCall);
         clearIfDead(m_unlinkedCodeBlockForConstruct);
-        if (isCleared && !isStillValid)
-            vm.unlinkedFunctionExecutableSpace.set.remove(this);
+        if (isCleared && !isStillValid) {
+            // FIXME GlobalGC: Need syncrhonization here for accessing the Heap server.
+            vm.heap.unlinkedFunctionExecutableSpaceAndSet.set.remove(this);
+        }
     }
 }
 

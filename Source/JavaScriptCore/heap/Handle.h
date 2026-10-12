@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "HandleForward.h"
 #include "HandleTypes.h"
 
 namespace JSC {
@@ -36,10 +37,6 @@ namespace JSC {
     The base Handle class represents a temporary reference to a pointer whose
     lifetime is guaranteed by something else.
 */
-
-enum class ShouldStrongDestructorGrabLock : bool { No, Yes };
-
-template <class T> class Handle;
 
 // Creating a JSValue Handle is invalid
 template <> class Handle<JSValue>;
@@ -156,31 +153,6 @@ template <typename T, typename U> inline bool operator==(const Handle<T>& a, U* 
 template <typename T, typename U> inline bool operator==(T* a, const Handle<U>& b) 
 {
     return a == b.get(); 
-}
-
-template <typename T, typename U> inline bool operator!=(const Handle<T>& a, const Handle<U>& b)
-{ 
-    return a.get() != b.get(); 
-}
-
-template <typename T, typename U> inline bool operator!=(const Handle<T>& a, U* b)
-{
-    return a.get() != b; 
-}
-
-template <typename T, typename U> inline bool operator!=(T* a, const Handle<U>& b)
-{ 
-    return a != b.get(); 
-}
-
-template <typename T, typename U> inline bool operator!=(const Handle<T>& a, JSValue b)
-{
-    return a.get() != b; 
-}
-
-template <typename T, typename U> inline bool operator!=(JSValue a, const Handle<U>& b)
-{ 
-    return a != b.get(); 
 }
 
 } // namespace JSC

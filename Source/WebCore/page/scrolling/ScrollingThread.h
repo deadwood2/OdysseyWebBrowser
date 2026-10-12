@@ -25,7 +25,7 @@
 
 #pragma once
 
-#if ENABLE(SCROLLING_THREAD)
+#if ENABLE(SCROLLING_THREAD) || ENABLE(THREADED_ANIMATION_RESOLUTION)
 
 #include <functional>
 #include <wtf/Condition.h>
@@ -57,13 +57,11 @@ private:
 
     ScrollingThread();
 
-    void dispatchFunctionsFromScrollingThread();
-    RunLoop& runLoop() { return *m_runLoop; }
+    RunLoop& runLoop() { return m_runLoop; }
 
-    RefPtr<Thread> m_thread;
-    RunLoop* m_runLoop { nullptr };
+    Ref<RunLoop> m_runLoop;
 };
 
 } // namespace WebCore
 
-#endif // ENABLE(SCROLLING_THREAD)
+#endif // ENABLE(SCROLLING_THREAD) || ENABLE(THREADED_ANIMATION_RESOLUTION)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,14 +26,13 @@
 #include "config.h"
 #include "RenderTreeBuilderInline.h"
 
-#include "FullscreenManager.h"
 #include "RenderBlockFlow.h"
 #include "RenderChildIterator.h"
-#include "RenderFullScreen.h"
 #include "RenderInline.h"
 #include "RenderTable.h"
 #include "RenderTreeBuilderMultiColumn.h"
 #include "RenderTreeBuilderTable.h"
+#include <wtf/SetForScope.h>
 
 namespace WebCore {
 
@@ -50,8 +49,8 @@ static bool canUseAsParentForContinuation(const RenderObject* renderer)
 
 static RenderBoxModelObject* nextContinuation(RenderObject* renderer)
 {
-    if (is<RenderInline>(*renderer) && !renderer->isReplaced())
-        return downcast<RenderInline>(*renderer).continuation();
+    if (auto* renderInline = dynamicDowncast<RenderInline>(*renderer); renderInline && !renderInline->isReplacedOrInlineBlock())
+        return renderInline->continuation();
     return downcast<RenderBlock>(*renderer).inlineContinuation();
 }
 
@@ -82,7 +81,9 @@ static RenderBoxModelObject* continuationBefore(RenderInline& parent, RenderObje
 
 static RenderPtr<RenderInline> cloneAsContinuation(RenderInline& renderer)
 {
-    RenderPtr<RenderInline> cloneInline = createRenderer<RenderInline>(*renderer.element(), RenderStyle::clone(renderer.style()));
+    auto continuationStyle = RenderStyle::clone(renderer.style());
+    continuationStyle.setDisplay(DisplayType::Inline);
+    RenderPtr<RenderInline> cloneInline = createRenderer<RenderInline>(RenderObject::Type::Inline, *renderer.element(), WTFMove(continuationStyle));
     cloneInline->initializeStyle();
     cloneInline->setFragmentedFlowState(renderer.fragmentedFlowState());
     cloneInline->setHasOutlineAutoAncestor(renderer.hasOutlineAutoAncestor());
@@ -152,7 +153,7 @@ void RenderTreeBuilder::Inline::insertChildToContinuation(RenderInline& parent, 
     bool childInline = newChildIsInline(parent, *child);
     // The goal here is to match up if we can, so that we can coalesce and create the
     // minimal # of continuations needed for the inline.
-    if (childInline == beforeChildAncestor->isInline())
+    if (childInline == beforeChildAncestor->isInline() || (beforeChild && beforeChild->isInline()))
         return m_builder.attachIgnoringContinuation(*beforeChildAncestor, WTFMove(child), beforeChild);
     if (flow->isInline() == childInline)
         return m_builder.attachIgnoringContinuation(*flow, WTFMove(child)); // Just treat like an append.
@@ -172,14 +173,14 @@ void RenderTreeBuilder::Inline::attachIgnoringContinuation(RenderInline& parent,
         // inline into continuations. This involves creating an anonymous block box to hold
         // |newChild|. We then make that block box a continuation of this inline. We take all of
         // the children after |beforeChild| and put them in a clone of this object.
-        auto newStyle = RenderStyle::createAnonymousStyleWithDisplay(parent.style(), DisplayType::Block);
+        auto newStyle = RenderStyle::createAnonymousStyleWithDisplay(parent.containingBlock() ? parent.containingBlock()->style() : parent.style(), DisplayType::Block);
 
         // If inside an inline affected by in-flow positioning the block needs to be affected by it too.
         // Giving the block a layer like this allows it to collect the x/y offsets from inline parents later.
         if (auto positionedAncestor = inFlowPositionedInlineAncestor(parent))
             newStyle.setPosition(positionedAncestor->style().position());
 
-        auto newBox = createRenderer<RenderBlockFlow>(parent.document(), WTFMove(newStyle));
+        auto newBox = createRenderer<RenderBlockFlow>(RenderObject::Type::BlockFlow, parent.document(), WTFMove(newStyle));
         newBox->initializeStyle();
         newBox->setIsContinuation();
         RenderBoxModelObject* oldContinuation = parent.continuation();
@@ -214,8 +215,8 @@ void RenderTreeBuilder::Inline::splitFlow(RenderInline& parent, RenderObject* be
         // FIXME-BLOCKFLOW: The enclosing method should likely be switched over
         // to only work on RenderBlockFlow, in which case this conversion can be
         // removed.
-        if (is<RenderBlockFlow>(*pre))
-            downcast<RenderBlockFlow>(*pre).removeFloatingObjects();
+        if (auto* blockFlow = dynamicDowncast<RenderBlockFlow>(*pre))
+            blockFlow->removeFloatingObjects();
         block = block->containingBlock();
     } else {
         // No anonymous block available for use. Make one.
@@ -238,8 +239,9 @@ void RenderTreeBuilder::Inline::splitFlow(RenderInline& parent, RenderObject* be
         RenderObject* o = boxFirst;
         while (o) {
             RenderObject* no = o;
+            auto internalMoveScope = SetForScope { m_builder.m_internalMovesType, IsInternalMove::Yes };
             o = no->nextSibling();
-            auto childToMove = m_builder.detachFromRenderElement(*block, *no);
+            auto childToMove = m_builder.detachFromRenderElement(*block, *no, WillBeDestroyed::No);
             m_builder.attachToRenderElementInternal(*pre, WTFMove(childToMove));
             no->setNeedsLayoutAndPrefWidthsRecalc();
         }
@@ -266,18 +268,10 @@ void RenderTreeBuilder::Inline::splitFlow(RenderInline& parent, RenderObject* be
 
 void RenderTreeBuilder::Inline::splitInlines(RenderInline& parent, RenderBlock* fromBlock, RenderBlock* toBlock, RenderBlock* middleBlock, RenderObject* beforeChild, RenderBoxModelObject* oldCont)
 {
+    auto internalMoveScope = SetForScope { m_builder.m_internalMovesType, IsInternalMove::Yes };
     // Create a clone of this inline.
     RenderPtr<RenderInline> cloneInline = cloneAsContinuation(parent);
-#if ENABLE(FULLSCREEN_API)
-    // If we're splitting the inline containing the fullscreened element,
-    // |beforeChild| may be the renderer for the fullscreened element. However,
-    // that renderer is wrapped in a RenderFullScreen, so |this| is not its
-    // parent. Since the splitting logic expects |this| to be the parent, set
-    // |beforeChild| to be the RenderFullScreen.
-    const Element* fullScreenElement = parent.document().fullscreenManager().currentFullscreenElement();
-    if (fullScreenElement && beforeChild && beforeChild->node() == fullScreenElement)
-        beforeChild = parent.document().fullscreenManager().fullscreenRenderer();
-#endif
+
     // Now take all of the children from beforeChild to the end and remove
     // them from |this| and place them in the clone.
     for (RenderObject* rendererToMove = beforeChild; rendererToMove;) {
@@ -312,8 +306,8 @@ void RenderTreeBuilder::Inline::splitInlines(RenderInline& parent, RenderBlock* 
         auto childToMove = m_builder.detachFromRenderElement(*rendererToMove->parent(), *rendererToMove, WillBeDestroyed::No);
         m_builder.attachIgnoringContinuation(*cloneInline, WTFMove(childToMove));
         auto* newParent = rendererToMove->parent();
-        if (is<RenderBox>(newParent))
-            markBoxForRelayoutAfterSplit(downcast<RenderBox>(*newParent));
+        if (CheckedPtr newParentBox = dynamicDowncast<RenderBox>(newParent))
+            markBoxForRelayoutAfterSplit(*newParentBox);
         rendererToMove->setNeedsLayoutAndPrefWidthsRecalc();
         rendererToMove = nextSibling;
     }
@@ -335,7 +329,7 @@ void RenderTreeBuilder::Inline::splitInlines(RenderInline& parent, RenderBlock* 
     unsigned splitDepth = 1;
     const unsigned cMaxSplitDepth = 200;
     while (current && current != fromBlock) {
-        if (splitDepth < cMaxSplitDepth) {
+        if (splitDepth < cMaxSplitDepth && !current->isAnonymous()) {
             // Create a new clone.
             RenderPtr<RenderInline> cloneChild = WTFMove(cloneInline);
             cloneInline = cloneAsContinuation(downcast<RenderInline>(*current));
@@ -397,7 +391,7 @@ void RenderTreeBuilder::Inline::childBecameNonInline(RenderInline& parent, Rende
         oldContinuation->removeFromContinuationChain();
     newBox->insertIntoContinuationChainAfter(parent);
     auto* beforeChild = child.nextSibling();
-    auto removedChild = m_builder.detachFromRenderElement(parent, child);
+    auto removedChild = m_builder.detachFromRenderElement(parent, child, WillBeDestroyed::No);
     splitFlow(parent, beforeChild, WTFMove(newBox), WTFMove(removedChild), oldContinuation);
 }
 

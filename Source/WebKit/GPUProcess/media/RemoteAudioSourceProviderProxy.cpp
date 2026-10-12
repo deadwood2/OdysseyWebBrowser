@@ -33,12 +33,12 @@
 
 namespace WebKit {
 
-Ref<RemoteAudioSourceProviderProxy> RemoteAudioSourceProviderProxy::create(WebCore::MediaPlayerIdentifier identifier, Ref<IPC::Connection>&& connection, AudioSourceProviderAVFObjC& localProvider)
+Ref<RemoteAudioSourceProviderProxy> RemoteAudioSourceProviderProxy::create(WebCore::MediaPlayerIdentifier identifier, Ref<IPC::Connection>&& connection, WebCore::AudioSourceProviderAVFObjC& localProvider)
 {
     auto remoteProvider = adoptRef(*new RemoteAudioSourceProviderProxy(identifier, WTFMove(connection)));
 
-    localProvider.setRingBufferCreationCallback([remoteProvider]() {
-        return remoteProvider->createRingBuffer();
+    localProvider.setConfigureAudioStorageCallback([remoteProvider](auto&&... args) {
+        return remoteProvider->configureAudioStorage(args...);
     });
     localProvider.setAudioCallback([remoteProvider](auto startFrame, auto numberOfFrames) {
         remoteProvider->newAudioSamples(startFrame, numberOfFrames);
@@ -55,31 +55,20 @@ RemoteAudioSourceProviderProxy::RemoteAudioSourceProviderProxy(WebCore::MediaPla
 
 RemoteAudioSourceProviderProxy::~RemoteAudioSourceProviderProxy() = default;
 
-UniqueRef<CARingBuffer> RemoteAudioSourceProviderProxy::createRingBuffer()
+std::unique_ptr<WebCore::CARingBuffer> RemoteAudioSourceProviderProxy::configureAudioStorage(const WebCore::CAAudioStreamDescription& format, size_t frameCount)
 {
-    return makeUniqueRef<CARingBuffer>(makeUniqueRef<SharedRingBufferStorage>([protectedThis = makeRef(*this)](SharedMemory* memory, const CAAudioStreamDescription& format, size_t frameCount) mutable {
-        protectedThis->storageChanged(memory, format, frameCount);
-    }));
+    auto result = ProducerSharedCARingBuffer::allocate(format, frameCount);
+    RELEASE_ASSERT(result); // FIXME(https://bugs.webkit.org/show_bug.cgi?id=262690): Handle allocation failure.
+    auto [ringBuffer, handle] = WTFMove(*result);
+    m_connection->send(Messages::RemoteAudioSourceProviderManager::AudioStorageChanged { m_identifier, WTFMove(handle), format }, 0);
+    // Use a redundant variable to avoid move in return position and to obtain copy elision. Clang or libc++ does not allow returning covariant of Ts from std::unique_ptr<T>s in this position.
+    std::unique_ptr<WebCore::CARingBuffer> caRingBuffer = WTFMove(ringBuffer);  // NOLINT: see above.
+    return caRingBuffer;
 }
 
 void RemoteAudioSourceProviderProxy::newAudioSamples(uint64_t startFrame, uint64_t numberOfFrames)
 {
     m_connection->send(Messages::RemoteAudioSourceProviderManager::AudioSamplesAvailable { m_identifier, startFrame, numberOfFrames }, 0);
-}
-
-void RemoteAudioSourceProviderProxy::storageChanged(SharedMemory* memory, const CAAudioStreamDescription& format, size_t frameCount)
-{
-    SharedMemory::Handle handle;
-    if (memory)
-        memory->createHandle(handle, SharedMemory::Protection::ReadOnly);
-
-    // FIXME: Send the actual data size with IPCHandle.
-#if OS(DARWIN) || OS(WINDOWS)
-    uint64_t dataSize = handle.size();
-#else
-    uint64_t dataSize = 0;
-#endif
-    m_connection->send(Messages::RemoteAudioSourceProviderManager::AudioStorageChanged { m_identifier, SharedMemory::IPCHandle { WTFMove(handle),  dataSize }, format, frameCount }, 0);
 }
 
 } // namespace WebKit

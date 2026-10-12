@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2016 Igalia S.L.
+ * Copyright (C) 2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,33 +28,47 @@
 
 #include <JavaScriptCore/ArrayBuffer.h>
 #include <JavaScriptCore/ArrayBufferView.h>
+#include <span>
+#include <variant>
 #include <wtf/RefPtr.h>
-#include <wtf/Variant.h>
+
+#if PLATFORM(COCOA) && defined(__OBJC__)
+#include <wtf/cocoa/SpanCocoa.h>
+OBJC_CLASS NSData;
+#endif
 
 namespace WebCore {
 
 class BufferSource {
 public:
-    using VariantType = WTF::Variant<RefPtr<JSC::ArrayBufferView>, RefPtr<JSC::ArrayBuffer>>;
+    using VariantType = std::variant<RefPtr<JSC::ArrayBufferView>, RefPtr<JSC::ArrayBuffer>>;
 
     BufferSource() { }
     BufferSource(VariantType&& variant)
         : m_variant(WTFMove(variant))
     { }
+    explicit BufferSource(std::span<const uint8_t> span)
+        : m_variant(JSC::ArrayBuffer::tryCreate(span)) { }
 
     const VariantType& variant() const { return m_variant; }
 
-    const uint8_t* data() const
+    size_t length() const
     {
-        return WTF::visit([](auto& buffer) -> const uint8_t* {
-            return buffer ? static_cast<const uint8_t*>(buffer->data()) : nullptr;
+        return std::visit([](auto& buffer) {
+            return buffer ? buffer->byteLength() : 0;
         }, m_variant);
     }
 
-    size_t length() const
+    std::span<const uint8_t> span() const
     {
-        return WTF::visit([](auto& buffer) -> size_t {
-            return buffer ? buffer->byteLength() : 0;
+        return std::visit([](auto& buffer) {
+            return buffer ? buffer->span() : std::span<const uint8_t> { };
+        }, m_variant);
+    }
+    std::span<uint8_t> mutableSpan()
+    {
+        return std::visit([](auto& buffer) {
+            return buffer ? buffer->mutableSpan() : std::span<uint8_t> { };
         }, m_variant);
     }
 
@@ -61,4 +76,25 @@ private:
     VariantType m_variant;
 };
 
+inline BufferSource toBufferSource(std::span<const uint8_t> data)
+{
+    return BufferSource(JSC::ArrayBuffer::tryCreate(data));
+}
+
+#if PLATFORM(COCOA) && defined(__OBJC__)
+inline BufferSource toBufferSource(NSData *data)
+{
+    return BufferSource(JSC::ArrayBuffer::tryCreate(span(data)));
+}
+
+inline RetainPtr<NSData> toNSData(const BufferSource& data)
+{
+    return WTF::toNSData(data.span());
+}
+#endif
+
 } // namespace WebCore
+
+#if PLATFORM(COCOA) && defined(__OBJC__)
+using WebCore::toNSData;
+#endif

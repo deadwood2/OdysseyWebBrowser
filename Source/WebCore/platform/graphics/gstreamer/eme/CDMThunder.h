@@ -59,7 +59,7 @@ public:
 
     virtual ~CDMFactoryThunder() = default;
 
-    std::unique_ptr<CDMPrivate> createCDM(const String&) final;
+    std::unique_ptr<CDMPrivate> createCDM(const String&, const CDMPrivateClient&) final;
     RefPtr<CDMProxy> createCDMProxy(const String&) final;
     bool supportsKeySystem(const String&) final;
     const Vector<String>& supportedKeySystems() const;
@@ -94,7 +94,6 @@ public:
     bool supportsServerCertificates() const final;
     bool supportsSessions() const final;
     bool supportsInitData(const AtomString&, const SharedBuffer&) const final;
-    RefPtr<SharedBuffer> sanitizeInitData(const AtomString& initDataType, const SharedBuffer& initData) const final;
     RefPtr<SharedBuffer> sanitizeResponse(const SharedBuffer&) const final;
     std::optional<String> sanitizeSessionId(const String&) const final;
 
@@ -127,7 +126,7 @@ class CDMInstanceSessionThunder final : public CDMInstanceSessionProxy {
 public:
     CDMInstanceSessionThunder(CDMInstanceThunder&);
 
-    void requestLicense(LicenseType, const AtomString& initDataType, Ref<SharedBuffer>&& initData, LicenseCallback&&) final;
+    void requestLicense(LicenseType, KeyGroupingStrategy, const AtomString& initDataType, Ref<SharedBuffer>&& initData, LicenseCallback&&) final;
     void updateLicense(const String&, LicenseType, Ref<SharedBuffer>&&, LicenseUpdateCallback&&) final;
     void loadSession(LicenseType, const String&, const String&, LoadSessionCallback&&) final;
     void closeSession(const String&, CloseSessionCallback&&) final;

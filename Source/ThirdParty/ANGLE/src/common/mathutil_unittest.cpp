@@ -294,9 +294,13 @@ TEST(MathUtilTest, ScanForward)
 // Test ScanReverse, which scans for the most significant 1 bit from a non-zero integer.
 TEST(MathUtilTest, ScanReverse)
 {
-    EXPECT_EQ(0ul, gl::ScanReverse(1ul));
-    EXPECT_EQ(16ul, gl::ScanReverse(0x00010030ul));
-    EXPECT_EQ(31ul, gl::ScanReverse(0x80000000ul));
+    EXPECT_EQ(0ul, gl::ScanReverse(1u));
+    EXPECT_EQ(16ul, gl::ScanReverse(static_cast<uint64_t>(0x00010030ull)));
+    EXPECT_EQ(31ul, gl::ScanReverse(static_cast<uint64_t>(0x80000000ull)));
+
+    EXPECT_EQ(32ul, gl::ScanReverse(static_cast<uint64_t>(0x100000000ull)));
+    EXPECT_EQ(48ul, gl::ScanReverse(static_cast<uint64_t>(0x0001080000000000ull)));
+    EXPECT_EQ(63ul, gl::ScanReverse(static_cast<uint64_t>(0x8000000000000000ull)));
 }
 
 // Test FindLSB, which finds the least significant 1 bit.
@@ -360,6 +364,61 @@ TEST(MathUtilTest, RangeIteration)
     EXPECT_EQ(range.length(), expected);
 }
 
+// Tests for clampForBitCount
+TEST(MathUtilTest, ClampForBitCount)
+{
+    constexpr uint64_t kUnsignedMax = std::numeric_limits<uint64_t>::max();
+    constexpr int64_t kSignedMax    = std::numeric_limits<int64_t>::max();
+    constexpr int64_t kSignedMin    = std::numeric_limits<int64_t>::min();
+    constexpr int64_t kRandomValue  = 0x4D34A0B1;
+
+    ASSERT_EQ(clampForBitCount<uint64_t>(kUnsignedMax, 64), std::numeric_limits<uint64_t>::max());
+    ASSERT_EQ(clampForBitCount<uint64_t>(kUnsignedMax, 32),
+              static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
+    ASSERT_EQ(clampForBitCount<uint64_t>(kUnsignedMax, 16),
+              static_cast<uint64_t>(std::numeric_limits<uint16_t>::max()));
+    ASSERT_EQ(clampForBitCount<uint64_t>(kUnsignedMax, 8),
+              static_cast<uint64_t>(std::numeric_limits<uint8_t>::max()));
+    ASSERT_EQ(clampForBitCount<uint64_t>(kUnsignedMax, 4), 15u);
+    ASSERT_EQ(clampForBitCount<uint64_t>(kUnsignedMax, 2), 3u);
+    ASSERT_EQ(clampForBitCount<uint64_t>(kUnsignedMax, 1), 1u);
+    ASSERT_EQ(clampForBitCount<uint64_t>(kUnsignedMax, 0), 0u);
+
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMax, 64), std::numeric_limits<int64_t>::max());
+    ASSERT_EQ(clampForBitCount<uint64_t>(static_cast<uint64_t>(kSignedMax), 64),
+              static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMax, 32),
+              static_cast<int64_t>(std::numeric_limits<int32_t>::max()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMax, 16),
+              static_cast<int64_t>(std::numeric_limits<int16_t>::max()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMax, 8),
+              static_cast<int64_t>(std::numeric_limits<int8_t>::max()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMax, 4), 7);
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMax, 2), 1);
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMax, 0), 0);
+
+    ASSERT_EQ(clampForBitCount<int64_t>(kRandomValue, 64), kRandomValue);
+    ASSERT_EQ(clampForBitCount<int64_t>(kRandomValue, 32), kRandomValue);
+    ASSERT_EQ(clampForBitCount<int64_t>(kRandomValue, 16),
+              static_cast<int64_t>(std::numeric_limits<int16_t>::max()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kRandomValue, 8),
+              static_cast<int64_t>(std::numeric_limits<int8_t>::max()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kRandomValue, 4), 7);
+    ASSERT_EQ(clampForBitCount<int64_t>(kRandomValue, 2), 1);
+    ASSERT_EQ(clampForBitCount<int64_t>(kRandomValue, 0), 0);
+
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMin, 64), std::numeric_limits<int64_t>::min());
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMin, 32),
+              static_cast<int64_t>(std::numeric_limits<int32_t>::min()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMin, 16),
+              static_cast<int64_t>(std::numeric_limits<int16_t>::min()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMin, 8),
+              static_cast<int64_t>(std::numeric_limits<int8_t>::min()));
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMin, 4), -8);
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMin, 2), -2);
+    ASSERT_EQ(clampForBitCount<int64_t>(kSignedMin, 0), 0);
+}
+
 // Tests for float32 to float16 conversion
 TEST(MathUtilTest, Float32ToFloat16)
 {
@@ -377,6 +436,325 @@ TEST(MathUtilTest, Float32ToFloat16)
     ASSERT_TRUE(nan16 > 0xFC00 || (nan16 < 0x8000 && nan16 > 0x7C00));
 
     ASSERT_EQ(float32ToFloat16(1.0f), 0x3C00);
+}
+
+// Tests the RGB float to 999E5 conversion
+TEST(MathUtilTest, convertRGBFloatsTo999E5)
+{
+    const int numTests                  = 18;
+    const float input[numTests][3]      = {// The basics
+                                      {0.0f, 0.0f, 0.0f},
+                                      {0.0f, 0.0f, 1.0f},
+                                      {0.0f, 1.0f, 0.0f},
+                                      {0.0f, 1.0f, 1.0f},
+                                      {1.0f, 0.0f, 0.0f},
+                                      {1.0f, 0.0f, 1.0f},
+                                      {1.0f, 1.0f, 0.0f},
+                                      {1.0f, 1.0f, 1.0f},
+                                      // Extended range
+                                      {0.0f, 0.0f, 1.5f},
+                                      {0.0f, 2.0f, 0.0f},
+                                      {0.0f, 2.5f, 3.0f},
+                                      {3.5f, 0.0f, 0.0f},
+                                      {4.0f, 0.0f, 4.5f},
+                                      {5.0f, 5.5f, 0.0f},
+                                      {6.0f, 6.5f, 7.0f},
+                                      // Random
+                                      {0.1f, 9.6f, 3.2f},
+                                      {2.0f, 1.7f, 8.6f},
+                                      {0.7f, 4.2f, 9.1f}};
+    const unsigned int result[numTests] = {// The basics
+                                           0x00000000, 0x84000000, 0x80020000, 0x84020000,
+                                           0x80000100, 0x84000100, 0x80020100, 0x84020100,
+                                           // Extended range
+                                           0x86000000, 0x88020000, 0x8E028000, 0x880001C0,
+                                           0x94800100, 0x9002C140, 0x97034180,
+                                           // Random
+                                           0x999A6603, 0x9C4C6C40, 0x9C8D0C16};
+
+    for (int i = 0; i < numTests; i++)
+    {
+        EXPECT_EQ(convertRGBFloatsTo999E5(input[i][0], input[i][1], input[i][2]), result[i]);
+    }
+}
+
+// Tests the 999E5 to RGB float conversion
+TEST(MathUtilTest, convert999E5toRGBFloats)
+{
+    const int numTests                 = 18;
+    const float result[numTests][3]    = {// The basics
+                                       {0.0f, 0.0f, 0.0f},
+                                       {0.0f, 0.0f, 1.0f},
+                                       {0.0f, 1.0f, 0.0f},
+                                       {0.0f, 1.0f, 1.0f},
+                                       {1.0f, 0.0f, 0.0f},
+                                       {1.0f, 0.0f, 1.0f},
+                                       {1.0f, 1.0f, 0.0f},
+                                       {1.0f, 1.0f, 1.0f},
+                                       // Extended range
+                                       {0.0f, 0.0f, 1.5f},
+                                       {0.0f, 2.0f, 0.0f},
+                                       {0.0f, 2.5f, 3.0f},
+                                       {3.5f, 0.0f, 0.0f},
+                                       {4.0f, 0.0f, 4.5f},
+                                       {5.0f, 5.5f, 0.0f},
+                                       {6.0f, 6.5f, 7.0f},
+                                       // Random
+                                       {0.1f, 9.6f, 3.2f},
+                                       {2.0f, 1.7f, 8.6f},
+                                       {0.7f, 4.2f, 9.1f}};
+    const unsigned int input[numTests] = {// The basics
+                                          0x00000000, 0x84000000, 0x80020000, 0x84020000,
+                                          0x80000100, 0x84000100, 0x80020100, 0x84020100,
+                                          // Extended range
+                                          0x86000000, 0x88020000, 0x8E028000, 0x880001C0,
+                                          0x94800100, 0x9002C140, 0x97034180,
+                                          // Random
+                                          0x999A6603, 0x9C4C6C40, 0x9C8D0C16};
+    // Note: quite a low tolerance is required
+    const float floatFaultTolerance = 0.05f;
+    float outR, outG, outB;
+
+    for (int i = 0; i < numTests; i++)
+    {
+        convert999E5toRGBFloats(input[i], &outR, &outG, &outB);
+        EXPECT_NEAR(result[i][0], outR, floatFaultTolerance);
+        EXPECT_NEAR(result[i][1], outG, floatFaultTolerance);
+        EXPECT_NEAR(result[i][2], outB, floatFaultTolerance);
+    }
+}
+
+// Test sRGB conversions
+TEST(MathUtilTest, sRGB)
+{
+    // Check simple roundtrip
+    for (size_t c = 0; c < 256; c++)
+    {
+        ASSERT_EQ(c, linearToSRGB(sRGBToLinear(c)));
+    }
+
+    // Check average of identical values
+    for (size_t c = 0; c < 256; c++)
+    {
+        ASSERT_EQ(c, linearToSRGB((sRGBToLinear(c) + sRGBToLinear(c)) * 0.5));
+    }
+
+    // Check that all average values are in range
+    for (size_t a = 0; a < 256; a++)
+    {
+        for (size_t b = 0; b < 256; b++)
+        {
+            const float avg = (sRGBToLinear(a) + sRGBToLinear(b)) * 0.5f;
+            ASSERT_GE(avg, 0.0f);
+            ASSERT_LE(avg, 1.0f);
+        }
+    }
+}
+
+// Test roundToNearest with boundary values
+TEST(MathUtilTest, RoundToNearest)
+{
+    EXPECT_EQ((roundToNearest<float, uint8_t>(0.00000000f)), 0u);
+    EXPECT_EQ((roundToNearest<float, uint8_t>(0.49999997f)), 0u);
+    EXPECT_EQ((roundToNearest<float, uint8_t>(0.50000000f)), 1u);
+
+    EXPECT_EQ((roundToNearest<float, int8_t>(-0.50000000f)), -1);
+    EXPECT_EQ((roundToNearest<float, int8_t>(-0.49999997f)), 0);
+    EXPECT_EQ((roundToNearest<float, int8_t>(-0.00000000f)), 0);
+    EXPECT_EQ((roundToNearest<float, int8_t>(+0.00000000f)), 0);
+    EXPECT_EQ((roundToNearest<float, int8_t>(+0.49999997f)), 0);
+    EXPECT_EQ((roundToNearest<float, int8_t>(+0.50000000f)), +1);
+
+    EXPECT_EQ((roundToNearest<double, uint8_t>(0.00000000000000000)), 0u);
+    EXPECT_EQ((roundToNearest<double, uint8_t>(0.49999999999999994)), 0u);
+    EXPECT_EQ((roundToNearest<double, uint8_t>(0.50000000000000000)), 1u);
+
+    EXPECT_EQ((roundToNearest<double, int8_t>(-0.50000000000000000)), -1);
+    EXPECT_EQ((roundToNearest<double, int8_t>(-0.49999999999999994)), 0);
+    EXPECT_EQ((roundToNearest<double, int8_t>(-0.00000000000000000)), 0);
+    EXPECT_EQ((roundToNearest<double, int8_t>(+0.00000000000000000)), 0);
+    EXPECT_EQ((roundToNearest<double, int8_t>(+0.49999999999999994)), 0);
+    EXPECT_EQ((roundToNearest<double, int8_t>(+0.50000000000000000)), +1);
+}
+
+// Test floatToNormalized conversions with uint8_t
+TEST(MathUtilTest, FloatToNormalizedUnorm8)
+{
+    // Check exact values
+    EXPECT_EQ(floatToNormalized<uint8_t>(0.00f), 0u);
+    EXPECT_EQ(floatToNormalized<uint8_t>(0.25f), 64u);
+    EXPECT_EQ(floatToNormalized<uint8_t>(0.75f), 191u);
+    EXPECT_EQ(floatToNormalized<uint8_t>(1.00f), 255u);
+
+    // Check near values
+    EXPECT_NEAR(floatToNormalized<uint8_t>(0.50f), 127u, 1);
+}
+
+// Test floatToNormalized conversions with int8_t
+TEST(MathUtilTest, FloatToNormalizedSnorm8)
+{
+    // Check exact values
+    EXPECT_EQ(floatToNormalized<int8_t>(-1.00f), -127);
+    EXPECT_EQ(floatToNormalized<int8_t>(-0.75f), -95);
+    EXPECT_EQ(floatToNormalized<int8_t>(-0.25f), -32);
+    EXPECT_EQ(floatToNormalized<int8_t>(+0.00f), 0);
+    EXPECT_EQ(floatToNormalized<int8_t>(+0.25f), +32);
+    EXPECT_EQ(floatToNormalized<int8_t>(+0.75f), +95);
+    EXPECT_EQ(floatToNormalized<int8_t>(+1.00f), +127);
+
+    // Check near values
+    EXPECT_NEAR(floatToNormalized<int8_t>(-0.50f), -63, 1);
+    EXPECT_NEAR(floatToNormalized<int8_t>(+0.50f), +63, 1);
+}
+
+// Test floatToNormalized conversions with uint16_t
+TEST(MathUtilTest, FloatToNormalizedUnorm16)
+{
+    // Check exact values
+    EXPECT_EQ(floatToNormalized<uint16_t>(0.00f), 0u);
+    EXPECT_EQ(floatToNormalized<uint16_t>(0.25f), 16384u);
+    EXPECT_EQ(floatToNormalized<uint16_t>(0.75f), 49151u);
+    EXPECT_EQ(floatToNormalized<uint16_t>(1.00f), 65535u);
+
+    // Check near values
+    EXPECT_NEAR(floatToNormalized<uint16_t>(0.50f), 32767u, 1);
+}
+
+// Test floatToNormalized conversions with int16_t
+TEST(MathUtilTest, FloatToNormalizedSnorm16)
+{
+    // Check exact values
+    EXPECT_EQ(floatToNormalized<int16_t>(-1.00f), -32767);
+    EXPECT_EQ(floatToNormalized<int16_t>(-0.75f), -24575);
+    EXPECT_EQ(floatToNormalized<int16_t>(-0.25f), -8192);
+    EXPECT_EQ(floatToNormalized<int16_t>(+0.00f), 0);
+    EXPECT_EQ(floatToNormalized<int16_t>(+0.25f), +8192);
+    EXPECT_EQ(floatToNormalized<int16_t>(+0.75f), +24575);
+    EXPECT_EQ(floatToNormalized<int16_t>(+1.00f), +32767);
+
+    // Check near values
+    EXPECT_NEAR(floatToNormalized<int16_t>(-0.50f), -16383, 1);
+    EXPECT_NEAR(floatToNormalized<int16_t>(+0.50f), +16383, 1);
+}
+
+// Test floatToNormalized conversions with uint32_t
+TEST(MathUtilTest, FloatToNormalizedUnorm32)
+{
+    // Check exact values
+    EXPECT_EQ(floatToNormalized<uint32_t>(0.00f), 0u);
+    EXPECT_EQ(floatToNormalized<uint32_t>(0.25f), 1073741824u);
+    EXPECT_EQ(floatToNormalized<uint32_t>(0.75f), 3221225471u);
+    EXPECT_EQ(floatToNormalized<uint32_t>(1.00f), 4294967295u);
+
+    // Check near values
+    EXPECT_NEAR(floatToNormalized<uint32_t>(0.50f), 2147483647u, 1);
+}
+
+// Test floatToNormalized conversions with int32_t
+TEST(MathUtilTest, FloatToNormalizedSnorm32)
+{
+    // Check exact values
+    EXPECT_EQ(floatToNormalized<int32_t>(-1.00f), -2147483647);
+    EXPECT_EQ(floatToNormalized<int32_t>(-0.75f), -1610612735);
+    EXPECT_EQ(floatToNormalized<int32_t>(-0.25f), -536870912);
+    EXPECT_EQ(floatToNormalized<int32_t>(+0.00f), 0);
+    EXPECT_EQ(floatToNormalized<int32_t>(+0.25f), +536870912);
+    EXPECT_EQ(floatToNormalized<int32_t>(+0.75f), +1610612735);
+    EXPECT_EQ(floatToNormalized<int32_t>(+1.00f), +2147483647);
+
+    // Check near values
+    EXPECT_NEAR(floatToNormalized<int32_t>(-0.50f), -1073741823, 1);
+    EXPECT_NEAR(floatToNormalized<int32_t>(+0.50f), +1073741823, 1);
+}
+
+// Test floatToNormalized conversions with 2-bit unsigned
+TEST(MathUtilTest, FloatToNormalizedUnorm2)
+{
+    // Check exact values
+    EXPECT_EQ((floatToNormalized<2, uint8_t>(0.00f)), 0u);
+    EXPECT_EQ((floatToNormalized<2, uint8_t>(0.25f)), 1u);
+    EXPECT_EQ((floatToNormalized<2, uint8_t>(0.75f)), 2u);
+    EXPECT_EQ((floatToNormalized<2, uint8_t>(1.00f)), 3u);
+
+    // Check near values
+    EXPECT_NEAR((floatToNormalized<2, uint8_t>(0.50f)), 1u, 1);
+}
+
+// Test floatToNormalized conversions with 2-bit signed
+TEST(MathUtilTest, FloatToNormalizedSnorm2)
+{
+    // Check exact values
+    EXPECT_EQ((floatToNormalized<2, int8_t>(-1.00f)), -1);
+    EXPECT_EQ((floatToNormalized<2, int8_t>(-0.75f)), -1);
+    EXPECT_EQ((floatToNormalized<2, int8_t>(-0.25f)), 0);
+    EXPECT_EQ((floatToNormalized<2, int8_t>(+0.00f)), 0);
+    EXPECT_EQ((floatToNormalized<2, int8_t>(+0.25f)), 0);
+    EXPECT_EQ((floatToNormalized<2, int8_t>(+0.75f)), +1);
+    EXPECT_EQ((floatToNormalized<2, int8_t>(+1.00f)), +1);
+
+    // Check near values
+    EXPECT_NEAR((floatToNormalized<2, int8_t>(-0.50f)), 0, 1);
+    EXPECT_NEAR((floatToNormalized<2, int8_t>(+0.50f)), 0, 1);
+}
+
+// Test floatToNormalized conversions with 10-bit unsigned
+TEST(MathUtilTest, FloatToNormalizedUnorm10)
+{
+    // Check exact values
+    EXPECT_EQ((floatToNormalized<10, uint16_t>(0.00f)), 0u);
+    EXPECT_EQ((floatToNormalized<10, uint16_t>(0.25f)), 256u);
+    EXPECT_EQ((floatToNormalized<10, uint16_t>(0.75f)), 767u);
+    EXPECT_EQ((floatToNormalized<10, uint16_t>(1.00f)), 1023u);
+
+    // Check near values
+    EXPECT_NEAR((floatToNormalized<10, uint16_t>(0.50f)), 511u, 1);
+}
+
+// Test floatToNormalized conversions with 10-bit signed
+TEST(MathUtilTest, FloatToNormalizedSnorm10)
+{
+    // Check exact values
+    EXPECT_EQ((floatToNormalized<10, int16_t>(-1.00f)), -511);
+    EXPECT_EQ((floatToNormalized<10, int16_t>(-0.75f)), -383);
+    EXPECT_EQ((floatToNormalized<10, int16_t>(-0.25f)), -128);
+    EXPECT_EQ((floatToNormalized<10, int16_t>(+0.00f)), 0);
+    EXPECT_EQ((floatToNormalized<10, int16_t>(+0.25f)), +128);
+    EXPECT_EQ((floatToNormalized<10, int16_t>(+0.75f)), +383);
+    EXPECT_EQ((floatToNormalized<10, int16_t>(+1.00f)), +511);
+
+    // Check near values
+    EXPECT_NEAR((floatToNormalized<10, int16_t>(-0.50f)), -255, 1);
+    EXPECT_NEAR((floatToNormalized<10, int16_t>(+0.50f)), +255, 1);
+}
+
+// Test floatToNormalized conversions with 30-bit unsigned
+TEST(MathUtilTest, FloatToNormalizedUnorm30)
+{
+    // Check exact values
+    EXPECT_EQ((floatToNormalized<30, uint32_t>(0.00f)), 0u);
+    EXPECT_EQ((floatToNormalized<30, uint32_t>(0.25f)), 268435456u);
+    EXPECT_EQ((floatToNormalized<30, uint32_t>(0.75f)), 805306367u);
+    EXPECT_EQ((floatToNormalized<30, uint32_t>(1.00f)), 1073741823u);
+
+    // Check near values
+    EXPECT_NEAR((floatToNormalized<30, uint32_t>(0.50f)), 536870911u, 1);
+}
+
+// Test floatToNormalized conversions with 30-bit signed
+TEST(MathUtilTest, FloatToNormalizedSnorm30)
+{
+    // Check exact values
+    EXPECT_EQ((floatToNormalized<30, int32_t>(-1.00f)), -536870911);
+    EXPECT_EQ((floatToNormalized<30, int32_t>(-0.75f)), -402653183);
+    EXPECT_EQ((floatToNormalized<30, int32_t>(-0.25f)), -134217728);
+    EXPECT_EQ((floatToNormalized<30, int32_t>(+0.00f)), 0);
+    EXPECT_EQ((floatToNormalized<30, int32_t>(+0.25f)), +134217728);
+    EXPECT_EQ((floatToNormalized<30, int32_t>(+0.75f)), +402653183);
+    EXPECT_EQ((floatToNormalized<30, int32_t>(+1.00f)), +536870911);
+
+    // Check near values
+    EXPECT_NEAR((floatToNormalized<30, int32_t>(-0.50f)), -268435455, 1);
+    EXPECT_NEAR((floatToNormalized<30, int32_t>(+0.50f)), +268435455, 1);
 }
 
 }  // anonymous namespace

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005, 2006, 2007 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2023 Apple Inc. All rights reserved.
  *           (C) 2007 Graham Dennis (graham.dennis@gmail.com)
  *           (C) 2007 Eric Seidel <eric@webkit.org>
  *
@@ -33,13 +33,14 @@
 
 #include "DumpRenderTree.h"
 #include "PixelDumpSupport.h"
-#include <ImageIO/CGImageDestination.h>
+#include <ImageIO/ImageIO.h>
 #include <algorithm>
 #include <ctype.h>
 #include <wtf/Assertions.h>
 #include <wtf/RefPtr.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/SHA1.h>
+#include <wtf/Vector.h>
 
 #if PLATFORM(IOS_FAMILY)
 #include <MobileCoreServices/UTCoreTypes.h>
@@ -53,15 +54,20 @@
 
 using namespace std;
 
-#if PLATFORM(WIN)
-static const CFStringRef kUTTypePNG = CFSTR("public.png");
-#endif
-
-static void printPNG(CGImageRef image, const char* checksum)
+static void printPNG(CGImageRef image, const char* checksum, double scaleFactor)
 {
-    RetainPtr<CFMutableDataRef> imageData = adoptCF(CFDataCreateMutable(0, 0));
-    RetainPtr<CGImageDestinationRef> imageDest = adoptCF(CGImageDestinationCreateWithData(imageData.get(), kUTTypePNG, 1, 0));
-    CGImageDestinationAddImage(imageDest.get(), image, 0);
+    auto imageData = adoptCF(CFDataCreateMutable(0, 0));
+    auto imageDest = adoptCF(CGImageDestinationCreateWithData(imageData.get(), kUTTypePNG, 1, 0));
+
+    auto propertiesDictionary = adoptCF(CFDictionaryCreateMutable(kCFAllocatorDefault, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    double resolutionWidth = 72.0 * scaleFactor;
+    double resolutionHeight = 72.0 * scaleFactor;
+    auto resolutionWidthNumber = adoptCF(CFNumberCreate(kCFAllocatorDefault, kCFNumberDoubleType, &resolutionWidth));
+    auto resolutionHeightNumber = adoptCF(CFNumberCreate(kCFAllocatorDefault, kCFNumberDoubleType, &resolutionHeight));
+    CFDictionarySetValue(propertiesDictionary.get(), kCGImagePropertyDPIWidth, resolutionWidthNumber.get());
+    CFDictionarySetValue(propertiesDictionary.get(), kCGImagePropertyDPIHeight, resolutionHeightNumber.get());
+
+    CGImageDestinationAddImage(imageDest.get(), image, propertiesDictionary.get());
     CGImageDestinationFinalize(imageDest.get());
 
     const UInt8* data = CFDataGetBytePtr(imageData.get());
@@ -82,20 +88,17 @@ void computeSHA1HashStringForBitmapContext(BitmapContext* context, char hashStri
     // We need to swap the bytes to ensure consistent hashes independently of endianness
     SHA1 sha1;
     unsigned char* bitmapData = static_cast<unsigned char*>(CGBitmapContextGetData(bitmapContext));
-#if PLATFORM(COCOA)
     if ((CGBitmapContextGetBitmapInfo(bitmapContext) & kCGBitmapByteOrderMask) == kCGBitmapByteOrder32Big) {
         for (unsigned row = 0; row < pixelsHigh; row++) {
-            uint32_t buffer[pixelsWide];
+            Vector<uint32_t> buffer(pixelsWide);
             for (unsigned column = 0; column < pixelsWide; column++)
                 buffer[column] = OSReadLittleInt32(bitmapData, 4 * column);
-            sha1.addBytes(reinterpret_cast<const uint8_t*>(buffer), 4 * pixelsWide);
+            sha1.addBytes(asBytes(buffer.span()));
             bitmapData += bytesPerRow;
         }
-    } else
-#endif
-    {
+    } else {
         for (unsigned row = 0; row < pixelsHigh; row++) {
-            sha1.addBytes(bitmapData, 4 * pixelsWide);
+            sha1.addBytes(std::span { bitmapData, 4 * pixelsWide });
             bitmapData += bytesPerRow;
         }
     }
@@ -110,15 +113,14 @@ void computeSHA1HashStringForBitmapContext(BitmapContext* context, char hashStri
 void dumpBitmap(BitmapContext* context, const char* checksum)
 {
     RetainPtr<CGImageRef> image = adoptCF(CGBitmapContextCreateImage(context->cgContext()));
-    printPNG(image.get(), checksum);
+    printPNG(image.get(), checksum, context->scaleFactor());
 }
 
-#if PLATFORM(COCOA)
-RefPtr<BitmapContext> createBitmapContext(size_t pixelsWide, size_t pixelsHigh, size_t& rowBytes, void*& buffer)
+RefPtr<BitmapContext> createBitmapContext(size_t pixelsWide, size_t pixelsHigh, size_t& rowBytes)
 {
     rowBytes = (4 * pixelsWide + 63) & ~63; // Use a multiple of 64 bytes to improve CG performance
 
-    buffer = calloc(pixelsHigh, rowBytes);
+    UniqueBitmapBuffer buffer { calloc(pixelsHigh, rowBytes), std::free };
     if (!buffer) {
         WTFLogAlways("DumpRenderTree: calloc(%zu, %zu) failed\n", pixelsHigh, rowBytes);
         return nullptr;
@@ -126,14 +128,11 @@ RefPtr<BitmapContext> createBitmapContext(size_t pixelsWide, size_t pixelsHigh, 
     
     // Creating this bitmap in the device color space prevents any color conversion when the image of the web view is drawn into it.
     RetainPtr<CGColorSpaceRef> colorSpace = adoptCF(CGColorSpaceCreateDeviceRGB());
-    auto context = adoptCF(CGBitmapContextCreate(buffer, pixelsWide, pixelsHigh, 8, rowBytes, colorSpace.get(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host));
+    auto context = adoptCF(CGBitmapContextCreate(buffer.get(), pixelsWide, pixelsHigh, 8, rowBytes, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Host)));
     if (!context) {
-        WTFLogAlways("DumpRenderTree: CGBitmapContextCreate(%p, %zu, %zu, 8, %zu, %p, 0x%x) failed\n", buffer, pixelsHigh, pixelsWide, rowBytes, colorSpace.get(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host);
-        free(buffer);
-        buffer = nullptr;
+        WTFLogAlways("DumpRenderTree: CGBitmapContextCreate(%p, %zu, %zu, 8, %zu, %p, 0x%x) failed\n", buffer.get(), pixelsHigh, pixelsWide, rowBytes, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedFirst) | static_cast<uint32_t>(kCGBitmapByteOrder32Host));
         return nullptr;
     }
 
-    return BitmapContext::createByAdoptingBitmapAndContext(buffer, WTFMove(context));
+    return BitmapContext::createByAdoptingBitmapAndContext(WTFMove(buffer), WTFMove(context));
 }
-#endif

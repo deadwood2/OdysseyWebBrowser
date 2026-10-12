@@ -31,8 +31,9 @@ public:
     using Base = JSDOMWrapper<TestStringifierOperationNamedToString>;
     static JSTestStringifierOperationNamedToString* create(JSC::Structure* structure, JSDOMGlobalObject* globalObject, Ref<TestStringifierOperationNamedToString>&& impl)
     {
-        JSTestStringifierOperationNamedToString* ptr = new (NotNull, JSC::allocateCell<JSTestStringifierOperationNamedToString>(globalObject->vm().heap)) JSTestStringifierOperationNamedToString(structure, *globalObject, WTFMove(impl));
-        ptr->finishCreation(globalObject->vm());
+        auto& vm = globalObject->vm();
+        JSTestStringifierOperationNamedToString* ptr = new (NotNull, JSC::allocateCell<JSTestStringifierOperationNamedToString>(vm)) JSTestStringifierOperationNamedToString(structure, *globalObject, WTFMove(impl));
+        ptr->finishCreation(vm);
         return ptr;
     }
 
@@ -49,23 +50,23 @@ public:
     }
 
     static JSC::JSValue getConstructor(JSC::VM&, const JSC::JSGlobalObject*);
-    template<typename, JSC::SubspaceAccess mode> static JSC::IsoSubspace* subspaceFor(JSC::VM& vm)
+    template<typename, JSC::SubspaceAccess mode> static JSC::GCClient::IsoSubspace* subspaceFor(JSC::VM& vm)
     {
         if constexpr (mode == JSC::SubspaceAccess::Concurrently)
             return nullptr;
         return subspaceForImpl(vm);
     }
-    static JSC::IsoSubspace* subspaceForImpl(JSC::VM& vm);
+    static JSC::GCClient::IsoSubspace* subspaceForImpl(JSC::VM& vm);
     static void analyzeHeap(JSCell*, JSC::HeapAnalyzer&);
 protected:
     JSTestStringifierOperationNamedToString(JSC::Structure*, JSDOMGlobalObject&, Ref<TestStringifierOperationNamedToString>&&);
 
-    void finishCreation(JSC::VM&);
+    DECLARE_DEFAULT_FINISH_CREATION;
 };
 
 class JSTestStringifierOperationNamedToStringOwner final : public JSC::WeakHandleOwner {
 public:
-    bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::AbstractSlotVisitor&, const char**) final;
+    bool isReachableFromOpaqueRoots(JSC::Handle<JSC::Unknown>, void* context, JSC::AbstractSlotVisitor&, ASCIILiteral*) final;
     void finalize(JSC::Handle<JSC::Unknown>, void* context) final;
 };
 

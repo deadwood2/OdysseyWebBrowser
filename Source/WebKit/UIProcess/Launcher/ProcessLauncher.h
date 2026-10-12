@@ -30,6 +30,7 @@
 #include <wtf/HashMap.h>
 #include <wtf/ProcessID.h>
 #include <wtf/RefPtr.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 #include <wtf/Threading.h>
 #include <wtf/WeakPtr.h>
 #include <wtf/text/StringHash.h>
@@ -43,6 +44,17 @@
 #include "XPCEventHandler.h"
 #endif
 
+#if USE(EXTENSIONKIT)
+#include "ExtensionProcess.h"
+OBJC_CLASS BEWebContentProcess;
+OBJC_CLASS BENetworkingProcess;
+OBJC_CLASS BERenderingProcess;
+#endif
+
+#if USE(GLIB) && OS(LINUX)
+#include <wtf/glib/GSocketMonitor.h>
+#endif
+
 namespace WebKit {
 
 #if PLATFORM(GTK) || PLATFORM(WPE)
@@ -52,7 +64,20 @@ enum class SandboxPermission {
 };
 #endif
 
-class ProcessLauncher : public ThreadSafeRefCounted<ProcessLauncher>, public CanMakeWeakPtr<ProcessLauncher> {
+#if USE(EXTENSIONKIT)
+class LaunchGrant : public ThreadSafeRefCounted<LaunchGrant> {
+public:
+    static Ref<LaunchGrant> create(ExtensionProcess&);
+    ~LaunchGrant();
+
+private:
+    explicit LaunchGrant(ExtensionProcess&);
+
+    ExtensionCapabilityGrant m_grant;
+};
+#endif
+
+class ProcessLauncher : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<ProcessLauncher> {
 public:
     class Client {
     public:
@@ -62,6 +87,8 @@ public:
         virtual bool shouldConfigureJSCForTesting() const { return false; }
         virtual bool isJITEnabled() const { return true; }
         virtual bool shouldEnableSharedArrayBuffer() const { return false; }
+        virtual bool shouldEnableLockdownMode() const { return false; }
+        virtual bool shouldDisableJITCage() const { return false; }
 #if PLATFORM(COCOA)
         virtual RefPtr<XPCEventHandler> xpcEventHandler() const { return nullptr; }
 #endif
@@ -69,18 +96,15 @@ public:
     
     enum class ProcessType {
         Web,
-#if ENABLE(NETSCAPE_PLUGIN_API)
-        Plugin,
-#endif
         Network,
 #if ENABLE(GPU_PROCESS)
         GPU,
 #endif
-#if ENABLE(WEB_AUTHN)
-        WebAuthn,
-#endif
 #if ENABLE(BUBBLEWRAP_SANDBOX)
         DBusProxy,
+#endif
+#if ENABLE(MODEL_PROCESS)
+        Model,
 #endif
     };
 
@@ -90,7 +114,6 @@ public:
         HashMap<String, String> extraInitializationData;
         bool nonValidInjectedCodeAllowed { false };
         bool shouldMakeProcessLaunchFailForTesting { false };
-        CString customWebContentServiceBundleIdentifier;
 
 #if PLATFORM(GTK) || PLATFORM(WPE)
         HashMap<CString, SandboxPermission> extraSandboxPaths;
@@ -110,24 +133,47 @@ public:
         return adoptRef(*new ProcessLauncher(client, WTFMove(launchOptions)));
     }
 
+    virtual ~ProcessLauncher();
+
     bool isLaunching() const { return m_isLaunching; }
-    ProcessID processIdentifier() const { return m_processIdentifier; }
+    ProcessID processID() const { return m_processID; }
 
     void terminateProcess();
     void invalidate();
+
+#if USE(EXTENSIONKIT)
+    const std::optional<ExtensionProcess>& extensionProcess() const { return m_process; }
+    void setIsRetryingLaunch() { m_isRetryingLaunch = true; }
+    bool isRetryingLaunch() const { return m_isRetryingLaunch; }
+    LaunchGrant* launchGrant() const { return m_launchGrant.get(); }
+    void releaseLaunchGrant() { m_launchGrant = nullptr; }
+    static bool hasExtensionsInAppBundle();
+#endif
 
 private:
     ProcessLauncher(Client*, LaunchOptions&&);
 
     void launchProcess();
+    void finishLaunchingProcess(ASCIILiteral name);
     void didFinishLaunchingProcess(ProcessID, IPC::Connection::Identifier);
 
     void platformInvalidate();
+    void platformDestroy();
+
+#if PLATFORM(COCOA)
+    void terminateXPCConnection();
+#endif
 
     Client* m_client;
 
 #if PLATFORM(COCOA)
     OSObjectPtr<xpc_connection_t> m_xpcConnection;
+#endif
+
+#if USE(EXTENSIONKIT)
+    RefPtr<LaunchGrant> m_launchGrant;
+    std::optional<ExtensionProcess> m_process;
+    bool m_isRetryingLaunch { false };
 #endif
 
 #if PLATFORM(WIN)
@@ -136,7 +182,12 @@ private:
 
     const LaunchOptions m_launchOptions;
     bool m_isLaunching { true };
-    ProcessID m_processIdentifier { 0 };
+    ProcessID m_processID { 0 };
+
+#if USE(GLIB) && OS(LINUX)
+    GSocketMonitor m_socketMonitor;
+    int m_pidServerSocket { -1 };
+#endif
 };
 
 } // namespace WebKit

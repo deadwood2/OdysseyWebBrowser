@@ -28,10 +28,15 @@
 
 #if PLATFORM(COCOA)
 
-#import "CocoaColor.h"
+#import "PasteboardUtilities.h"
 #import "PlatformUtilities.h"
+#import "Test.h"
 #import "TestWKWebView.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <WebCore/ColorCocoa.h>
+#import <WebKit/NSAttributedStringPrivate.h>
 #import <WebKit/WKPreferencesPrivate.h>
+#import <pal/spi/cocoa/NSAttributedStringSPI.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/text/WTFString.h>
 
@@ -77,15 +82,6 @@ NSString *readHTMLStringFromPasteboard()
 
 #endif
 
-static RetainPtr<TestWKWebView> createWebViewWithCustomPasteboardDataEnabled()
-{
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)]);
-    auto preferences = (__bridge WKPreferencesRef)[[webView configuration] preferences];
-    WKPreferencesSetDataTransferItemsEnabled(preferences, true);
-    WKPreferencesSetCustomPasteboardDataEnabled(preferences, true);
-    return webView;
-}
-
 TEST(CopyHTML, Sanitizes)
 {
     auto webView = createWebViewWithCustomPasteboardDataEnabled();
@@ -99,10 +95,10 @@ TEST(CopyHTML, Sanitizes)
     EXPECT_WK_STREQ("<meta content=\"secret\"><b onmouseover=\"dangerousCode()\">hello</b><!-- secret-->, world<script>dangerousCode()</script>",
         [webView stringByEvaluatingJavaScript:@"pastedHTML"]);
     String htmlInNativePasteboard = readHTMLStringFromPasteboard();
-    EXPECT_TRUE(htmlInNativePasteboard.contains("hello"));
-    EXPECT_TRUE(htmlInNativePasteboard.contains(", world"));
-    EXPECT_FALSE(htmlInNativePasteboard.contains("secret"));
-    EXPECT_FALSE(htmlInNativePasteboard.contains("dangerousCode"));
+    EXPECT_TRUE(htmlInNativePasteboard.contains("hello"_s));
+    EXPECT_TRUE(htmlInNativePasteboard.contains(", world"_s));
+    EXPECT_FALSE(htmlInNativePasteboard.contains("secret"_s));
+    EXPECT_FALSE(htmlInNativePasteboard.contains("dangerousCode"_s));
 }
 
 TEST(CopyHTML, SanitizationPreservesCharacterSetInSelectedText)
@@ -161,7 +157,7 @@ TEST(CopyHTML, SanitizationPreservesCharacterSet)
         EXPECT_WK_STREQ("我叫謝文昇", [attributedString string]);
 
         __block BOOL foundColorAttribute = NO;
-        [attributedString enumerateAttribute:NSForegroundColorAttributeName inRange:NSMakeRange(0, 5) options:0 usingBlock:^(CocoaColor *color, NSRange range, BOOL*) {
+        [attributedString enumerateAttribute:NSForegroundColorAttributeName inRange:NSMakeRange(0, 5) options:0 usingBlock:^(WebCore::CocoaColor *color, NSRange range, BOOL*) {
             CGFloat redComponent = 0;
             CGFloat greenComponent = 0;
             CGFloat blueComponent = 0;
@@ -174,6 +170,47 @@ TEST(CopyHTML, SanitizationPreservesCharacterSet)
         }];
         EXPECT_TRUE(foundColorAttribute);
     }
+}
+
+TEST(CopyHTML, SanitizationPreservesRelativeURLInAttributedString)
+{
+    auto webView = createWebViewWithCustomPasteboardDataEnabled();
+    [webView synchronouslyLoadHTMLString:@"<!DOCTYPE html>"
+        "<html>"
+        "<head><base href='https://webkit.org/' /></head>"
+        "<body><a href='/downloads'>Click</a> for downloads</body>"
+        "</html>"];
+    [webView stringByEvaluatingJavaScript:@"getSelection().selectAllChildren(document.body)"];
+    [webView copy:nil];
+    [webView waitForNextPresentationUpdate];
+
+#if PLATFORM(IOS_FAMILY)
+    RetainPtr archiveData = [UIPasteboard.generalPasteboard dataForPasteboardType:UTTypeWebArchive.identifier];
+#else
+    RetainPtr archiveData = [NSPasteboard.generalPasteboard dataForType:UTTypeWebArchive.identifier];
+#endif
+
+    __block bool done = false;
+    __block RetainPtr<NSAttributedString> resultString;
+    __block RetainPtr<NSError> resultError;
+    [NSAttributedString _loadFromHTMLWithOptions:@{ } contentLoader:^(WKWebView *loadingWebView) {
+        return [loadingWebView loadData:archiveData.get() MIMEType:UTTypeWebArchive.preferredMIMEType characterEncodingName:@"" baseURL:[NSURL URLWithString:@"about:blank"]];
+    } completionHandler:^(NSAttributedString *string, NSDictionary *, NSError *error) {
+        resultString = string;
+        resultError = error;
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+
+    auto links = adoptNS([NSMutableArray<NSURL *> new]);
+    [resultString enumerateAttribute:NSLinkAttributeName inRange:NSMakeRange(0, 5) options:0 usingBlock:^(NSURL *url, NSRange, BOOL*) {
+        [links addObject:url];
+    }];
+
+    EXPECT_NULL(resultError);
+    EXPECT_WK_STREQ("Click for downloads", [resultString string]);
+    EXPECT_EQ(1U, [links count]);
+    EXPECT_WK_STREQ("https://webkit.org/downloads", [links firstObject].absoluteString);
 }
 
 #if PLATFORM(MAC)

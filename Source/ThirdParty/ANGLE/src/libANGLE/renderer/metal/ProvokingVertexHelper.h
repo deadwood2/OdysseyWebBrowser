@@ -8,54 +8,65 @@
 //    Handles points, lines, triangles, line strips, and triangle strips.
 //    Line loops, and triangle fans should be pre-processed.
 //
-#ifndef PrimitiveRestartHelper_h
-#define PrimitiveRestartHelper_h
+#ifndef LIBANGLE_RENDERER_METAL_PROVOKINGVERTEXHELPER_H
+#define LIBANGLE_RENDERER_METAL_PROVOKINGVERTEXHELPER_H
 
 #include "libANGLE/Context.h"
 #include "libANGLE/renderer/ContextImpl.h"
 #include "libANGLE/renderer/metal/DisplayMtl.h"
 #include "libANGLE/renderer/metal/mtl_buffer_pool.h"
 #include "libANGLE/renderer/metal/mtl_command_buffer.h"
+#include "libANGLE/renderer/metal/mtl_context_device.h"
 #include "libANGLE/renderer/metal/mtl_state_cache.h"
 namespace rx
 {
 class ContextMtl;
 
-class ProvokingVertexHelper : public mtl::ProvokingVertexCacheSpecializeShaderFactory
+class ProvokingVertexHelper : angle::NonCopyable
 {
-public:
-    ProvokingVertexHelper(ContextMtl * context, mtl::CommandQueue * commandQueue, DisplayMtl *display);
-    mtl::BufferRef  preconditionIndexBuffer(ContextMtl * context,
-                                            mtl::BufferRef indexBuffer,
-                                            size_t indexCount,
-                                            size_t indexOffset,
-                                            bool primitiveRestartEnabled,
-                                            gl::PrimitiveMode primitiveMode,
-                                            gl::DrawElementsType elementsType,
-                                            size_t & outIndexcount,
-                                            gl::PrimitiveMode & outPrimitiveMode);
-    void commitPreconditionCommandBuffer(ContextMtl * context);
-    void ensureCommandBufferReady();
-    void onDestroy(ContextMtl * context);
-private:
-    id<MTLLibrary> mProvokingVertexLibrary;
-    mtl::CommandBuffer mCommandBuffer;
-    mtl::BufferPool    mIndexBuffers;
-    mtl::ProvokingVertexComputePipelineCache mPipelineCache;
-    mtl::ProvokingVertexComputePipelineDesc mCachedDesc;
-    mtl::ComputeCommandEncoder mCurrentEncoder;
+  public:
+    ProvokingVertexHelper(ContextMtl *context);
+    angle::Result preconditionIndexBuffer(ContextMtl *context,
+                                          mtl::BufferRef indexBuffer,
+                                          size_t indexCount,
+                                          size_t indexOffset,
+                                          bool primitiveRestartEnabled,
+                                          gl::PrimitiveMode primitiveMode,
+                                          gl::DrawElementsType elementsType,
+                                          size_t &outIndexCount,
+                                          size_t &outIndexOffset,
+                                          gl::PrimitiveMode &outPrimitiveMode,
+                                          mtl::BufferRef &outNewBuffer);
 
-    mtl::ComputeCommandEncoder * getComputeCommandEncoder();
-    //Program cache
-    virtual angle::Result getSpecializedShader(rx::mtl::Context *context,
-                                               gl::ShaderType shaderType,
-                                               const mtl::ProvokingVertexComputePipelineDesc &renderPipelineDesc,
-                                               id<MTLFunction> *shaderOut) override;
-    //Private command buffer
-    virtual bool hasSpecializedShader(gl::ShaderType shaderType,
-                                      const mtl::ProvokingVertexComputePipelineDesc &renderPipelineDesc) override;
-    
-    void prepareCommandEncoderForDescriptor(ContextMtl * context, mtl::ComputeCommandEncoder * encoder, mtl::ProvokingVertexComputePipelineDesc desc);
+    angle::Result generateIndexBuffer(ContextMtl *context,
+                                      size_t first,
+                                      size_t indexCount,
+                                      gl::PrimitiveMode primitiveMode,
+                                      gl::DrawElementsType elementsType,
+                                      size_t &outIndexCount,
+                                      size_t &outIndexOffset,
+                                      gl::PrimitiveMode &outPrimitiveMode,
+                                      mtl::BufferRef &outNewBuffer);
+
+    void releaseInFlightBuffers(ContextMtl *contextMtl);
+    void ensureCommandBufferReady();
+    void onDestroy(ContextMtl *context);
+    mtl::ComputeCommandEncoder *getComputeCommandEncoder();
+
+  private:
+    angle::Result getComputePipleineState(
+        ContextMtl *context,
+        const mtl::ProvokingVertexComputePipelineDesc &desc,
+        mtl::AutoObjCPtr<id<MTLComputePipelineState>> *outComputePipeline);
+
+    angle::Result prepareCommandEncoderForDescriptor(ContextMtl *context,
+                                                     mtl::ComputeCommandEncoder *encoder,
+                                                     mtl::ProvokingVertexComputePipelineDesc desc);
+
+    mtl::BufferPool mIndexBuffers;
+
+    std::unordered_map<mtl::ProvokingVertexComputePipelineDesc, mtl::AutoObjCPtr<id<MTLFunction>>>
+        mComputeFunctions;
 };
-} // namespace rx
-#endif /* PrimitiveRestartHelper_h */
+}  // namespace rx
+#endif /* LIBANGLE_RENDERER_METAL_PROVOKINGVERTEXHELPER_H */

@@ -30,7 +30,7 @@
 #import "PlatformUtilities.h"
 #import "TestInputDelegate.h"
 #import "TestWKWebView.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import "WKWebViewConfigurationExtras.h"
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/unicode/CharacterNames.h>
@@ -62,7 +62,7 @@ TEST(InsertTextAlternatives, Simple)
 
     EXPECT_WK_STREQ("hello", [[webView textInputContentView] selectedText]);
 
-    auto *alternatives = [(id<UIWKInteractionViewProtocol_Staging66646042>)[webView textInputContentView] alternativesForSelectedText];
+    auto *alternatives = [webView textInputContentView].alternativesForSelectedText;
     EXPECT_EQ(1ul, alternatives.count);
     EXPECT_WK_STREQ("hello", alternatives[0].primaryString);
     EXPECT_EQ(1ul, alternatives[0].alternativeStrings.count);

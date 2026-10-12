@@ -28,29 +28,48 @@
 
 #include "HardwareAccelerationManager.h"
 #include "WebPageProxy.h"
-#include <WebCore/CairoUtilities.h>
 #include <WebCore/PlatformDisplay.h>
+#include <gtk/gtk.h>
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/glib/GUniquePtr.h>
 
-#if PLATFORM(WAYLAND)
-#include "AcceleratedBackingStoreWayland.h"
-#endif
-
-#if PLATFORM(X11)
-#include "AcceleratedBackingStoreX11.h"
+#if PLATFORM(GTK)
+#include "AcceleratedBackingStoreDMABuf.h"
 #endif
 
 namespace WebKit {
 using namespace WebCore;
 
+#if PLATFORM(GTK)
+static bool gtkCanUseHardwareAcceleration()
+{
+    static bool canUseHardwareAcceleration;
+    static std::once_flag onceFlag;
+    std::call_once(onceFlag, [] {
+        GUniqueOutPtr<GError> error;
+#if USE(GTK4)
+        canUseHardwareAcceleration = gdk_display_prepare_gl(gdk_display_get_default(), &error.outPtr());
+#else
+        auto* window = gtk_window_new(GTK_WINDOW_POPUP);
+        gtk_widget_realize(window);
+        auto context = adoptGRef(gdk_window_create_gl_context(gtk_widget_get_window(window), &error.outPtr()));
+        canUseHardwareAcceleration = !!context;
+        gtk_widget_destroy(window);
+#endif
+        if (!canUseHardwareAcceleration)
+            g_warning("Disabled hardware acceleration because GTK failed to initialize GL: %s.", error->message);
+    });
+    return canUseHardwareAcceleration;
+}
+#endif
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(AcceleratedBackingStore);
+
 bool AcceleratedBackingStore::checkRequirements()
 {
-#if PLATFORM(WAYLAND) && USE(EGL)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::Wayland)
-        return AcceleratedBackingStoreWayland::checkRequirements();
-#endif
-#if PLATFORM(X11)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11)
-        return AcceleratedBackingStoreX11::checkRequirements();
+#if PLATFORM(GTK)
+    if (AcceleratedBackingStoreDMABuf::checkRequirements())
+        return gtkCanUseHardwareAcceleration();
 #endif
 
     return false;
@@ -61,13 +80,9 @@ std::unique_ptr<AcceleratedBackingStore> AcceleratedBackingStore::create(WebPage
     if (!HardwareAccelerationManager::singleton().canUseHardwareAcceleration())
         return nullptr;
 
-#if PLATFORM(WAYLAND) && USE(EGL)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::Wayland)
-        return AcceleratedBackingStoreWayland::create(webPage);
-#endif
-#if PLATFORM(X11)
-    if (PlatformDisplay::sharedDisplay().type() == PlatformDisplay::Type::X11)
-        return AcceleratedBackingStoreX11::create(webPage);
+#if PLATFORM(GTK)
+    if (AcceleratedBackingStoreDMABuf::checkRequirements())
+        return AcceleratedBackingStoreDMABuf::create(webPage);
 #endif
     RELEASE_ASSERT_NOT_REACHED();
     return nullptr;

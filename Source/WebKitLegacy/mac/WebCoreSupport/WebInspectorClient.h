@@ -34,6 +34,9 @@
 #import <wtf/Forward.h>
 #import <wtf/HashMap.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/TZoneMallocInlines.h>
+#import <wtf/WeakObjCPtr.h>
+#import <wtf/WeakPtr.h>
 #import <wtf/text/StringHash.h>
 #import <wtf/text/WTFString.h>
 
@@ -45,22 +48,23 @@ OBJC_CLASS WebView;
 
 namespace WebCore {
 class CertificateInfo;
-class Frame;
+class LocalFrame;
 class Page;
 }
 
 class WebInspectorFrontendClient;
 
 class WebInspectorClient final : public WebCore::InspectorClient, public Inspector::FrontendChannel {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(WebInspectorClient);
 public:
     explicit WebInspectorClient(WebView *inspectedWebView);
+    virtual ~WebInspectorClient();
 
     void inspectedPageDestroyed() override;
 
     Inspector::FrontendChannel* openLocalFrontend(WebCore::InspectorController*) override;
     void bringFrontendToFront() override;
-    void didResizeMainFrame(WebCore::Frame*) override;
+    void didResizeMainFrame(WebCore::LocalFrame*) override;
 
     void highlight() override;
     void hideHighlight() override;
@@ -100,9 +104,9 @@ public:
 private:
     std::unique_ptr<WebCore::InspectorFrontendClientLocal::Settings> createFrontendSettings();
 
-    WebView *m_inspectedWebView { nullptr };
+    WeakObjCPtr<WebView> m_inspectedWebView;
     RetainPtr<WebNodeHighlighter> m_highlighter;
-    WebCore::Page* m_frontendPage { nullptr };
+    WeakPtr<WebCore::Page> m_frontendPage;
     std::unique_ptr<WebInspectorFrontendClient> m_frontendClient;
 };
 
@@ -156,12 +160,11 @@ public:
 private:
     void updateWindowTitle() const;
 
-    bool canSave() override { return true; }
-    void save(const String& url, const String& content, bool forceSaveAs, bool base64Encoded) override;
-    void append(const String& url, const String& content) override;
+    bool canSave(WebCore::InspectorFrontendClient::SaveMode) override;
+    void save(Vector<WebCore::InspectorFrontendClient::SaveData>&&, bool base64Encoded) override;
 
 #if !PLATFORM(IOS_FAMILY)
-    WebView *m_inspectedWebView;
+    WeakObjCPtr<WebView> m_inspectedWebView;
     RetainPtr<WebInspectorWindowController> m_frontendWindowController;
     String m_inspectedURL;
     HashMap<String, RetainPtr<NSURL>> m_suggestedToActualURLMap;

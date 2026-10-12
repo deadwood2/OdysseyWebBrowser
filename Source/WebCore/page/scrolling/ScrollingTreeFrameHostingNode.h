@@ -38,13 +38,25 @@ public:
     WEBCORE_EXPORT static Ref<ScrollingTreeFrameHostingNode> create(ScrollingTree&, ScrollingNodeID);
     virtual ~ScrollingTreeFrameHostingNode();
 
+    std::optional<LayerHostingContextIdentifier> layerHostingContextIdentifier() const { return m_hostingContext; }
+    void setLayerHostingContextIdentifier(std::optional<LayerHostingContextIdentifier>);
+    bool isRootOfHostedSubtree() const final { return (bool)m_hostingContext; }
+
+    void willBeDestroyed() override;
+    void addHostedChild(RefPtr<ScrollingTreeNode> node) { m_hostedChildren.add(node); }
+    void removeHostedChildren();
+    void removeHostedChild(RefPtr<ScrollingTreeNode>);
+
 private:
     ScrollingTreeFrameHostingNode(ScrollingTree&, ScrollingNodeID);
 
-    void commitStateBeforeChildren(const ScrollingStateNode&) final;
+    bool commitStateBeforeChildren(const ScrollingStateNode&) final;
     void applyLayerPositions() final;
 
-    WEBCORE_EXPORT void dumpProperties(WTF::TextStream&, ScrollingStateTreeAsTextBehavior) const override;
+    WEBCORE_EXPORT void dumpProperties(WTF::TextStream&, OptionSet<ScrollingStateTreeAsTextBehavior>) const override;
+
+    std::optional<LayerHostingContextIdentifier> m_hostingContext;
+    HashSet<RefPtr<ScrollingTreeNode>> m_hostedChildren;
 };
 
 } // namespace WebCore

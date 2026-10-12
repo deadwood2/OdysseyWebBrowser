@@ -11,7 +11,7 @@
 @class WkWebView, OBArray, WkPrintingStatePrivate;
 
 namespace WebCore {
-	class Frame;
+	class LocalFrame;
 	class PrintContext;
 }
 
@@ -74,7 +74,7 @@ namespace WebCore {
 	WkPrintingState_Parity _parity;
 }
 
-- (id)initWithWebView:(WkWebView *)view frame:(WebCore::Frame *)frame;
+- (id)initWithWebView:(WkWebView *)view frame:(WebCore::LocalFrame *)frame;
 - (void)invalidate;
 
 - (WebCore::PrintContext *)context;

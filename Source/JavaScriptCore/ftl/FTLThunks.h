@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,7 @@
 #include "FTLSlowPathCallKey.h"
 #include "MacroAssemblerCodeRef.h"
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace JSC {
 
@@ -46,7 +47,7 @@ template<typename KeyTypeArgument>
 struct ThunkMap {
     typedef KeyTypeArgument KeyType;
     typedef HashMap<KeyType, MacroAssemblerCodeRef<JITThunkPtrTag>> ToThunkMap;
-    typedef HashMap<MacroAssemblerCodePtr<JITThunkPtrTag>, KeyType> FromThunkMap;
+    typedef HashMap<CodePtr<JITThunkPtrTag>, KeyType> FromThunkMap;
     
     ToThunkMap m_toThunk;
     FromThunkMap m_fromThunk;
@@ -67,7 +68,7 @@ MacroAssemblerCodeRef<JITThunkPtrTag> generateIfNecessary(
 }
 
 template<typename MapType>
-typename MapType::KeyType keyForThunk(MapType& map, MacroAssemblerCodePtr<JITThunkPtrTag> ptr)
+typename MapType::KeyType keyForThunk(MapType& map, CodePtr<JITThunkPtrTag> ptr)
 {
     typename MapType::FromThunkMap::iterator iter = map.m_fromThunk.find(ptr);
     RELEASE_ASSERT(iter != map.m_fromThunk.end());
@@ -75,7 +76,7 @@ typename MapType::KeyType keyForThunk(MapType& map, MacroAssemblerCodePtr<JITThu
 }
 
 class Thunks {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(Thunks);
     WTF_MAKE_NONCOPYABLE(Thunks);
 public:
     Thunks() = default;
@@ -85,7 +86,7 @@ public:
         return generateIfNecessary(vm, m_slowPathCallThunks, key, slowPathCallThunkGenerator);
     }
 
-    SlowPathCallKey keyForSlowPathCallThunk(MacroAssemblerCodePtr<JITThunkPtrTag> ptr)
+    SlowPathCallKey keyForSlowPathCallThunk(CodePtr<JITThunkPtrTag> ptr)
     {
         Locker locker { m_lock };
         return keyForThunk(m_slowPathCallThunks, ptr);

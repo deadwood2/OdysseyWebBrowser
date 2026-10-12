@@ -237,7 +237,7 @@ TEST(bmalloc, IsoMallocAndFreeFast)
 }
 
 class BisoMalloced {
-    MAKE_BISO_MALLOCED(BisoMalloced, BNOEXPORT);
+    MAKE_BISO_MALLOCED(BisoMalloced, IsoHeap, BNOEXPORT);
 public:
     BisoMalloced(int x, float y)
         : x(x)
@@ -249,7 +249,7 @@ public:
     float y;
 };
 
-MAKE_BISO_MALLOCED_IMPL(BisoMalloced);
+MAKE_BISO_MALLOCED_IMPL(BisoMalloced, IsoHeap);
 
 TEST(bmalloc, BisoMalloced)
 {
@@ -260,7 +260,7 @@ TEST(bmalloc, BisoMalloced)
 }
 
 class BisoMallocedInline {
-    MAKE_BISO_MALLOCED_INLINE(BisoMalloced);
+    MAKE_BISO_MALLOCED_INLINE(BisoMalloced, IsoHeap);
 public:
     BisoMallocedInline(int x, float y)
         : x(x)
@@ -302,7 +302,7 @@ TEST(bmalloc, ScavengedMemoryShouldBeReused)
         }
 
         // After that, allocating pointers in the upper tier.
-        for (unsigned i = 0; ;i++) {
+        for (;;) {
             void* ptr = heap.allocate();
             EXPECT_TRUE(ptr);
             ptrs.push_back(ptr);
@@ -449,7 +449,7 @@ TEST(bmalloc, IsoHeapMultipleThreads)
 
     WTF::Vector<Ref<Thread>> threads;
     for (unsigned i = 0; i < 10; ++i) {
-        threads.append(Thread::create("IsoHeapStress", [&] {
+        threads.append(Thread::create("IsoHeapStress"_s, [&] {
             void* ptr0 = heap82.allocate();
             void* ptr1 = heap96.allocate();
             void* ptr2 = heap13.allocate();
@@ -2477,7 +2477,7 @@ TEST(bmalloc, IsoHeapIsoTLSLeak)
     allocateAndDeallocate();
     auto before = pagesPerVMTag();
     for (unsigned i = 0; i < 1000; ++i) {
-        auto thread = Thread::create("IsoHeapStress", allocateAndDeallocate);
+        auto thread = Thread::create("IsoHeapStress"_s, allocateAndDeallocate);
         thread->waitForCompletion();
     }
     auto after = pagesPerVMTag();
@@ -2627,7 +2627,7 @@ TEST(bmalloc, IsoHeapMultipleThreadsWhileIterating)
 
     WTF::Vector<Ref<Thread>> threads;
     for (unsigned i = 0; i < 10; ++i) {
-        threads.append(Thread::create("IsoHeapStress", [&] {
+        threads.append(Thread::create("IsoHeapStress"_s, [&] {
             void* ptr0 = heap82.allocate();
             void* ptr1 = heap96.allocate();
             void* ptr2 = heap13.allocate();

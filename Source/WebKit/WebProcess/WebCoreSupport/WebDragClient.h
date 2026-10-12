@@ -29,13 +29,14 @@
 #if ENABLE(DRAG_SUPPORT)
 
 #include <WebCore/DragClient.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
 class WebPage;
 
 class WebDragClient : public WebCore::DragClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(WebDragClient);
 public:
     WebDragClient(WebPage* page)
         : m_page(page)
@@ -51,10 +52,10 @@ private:
     void didConcludeEditDrag() override;
 
 #if PLATFORM(COCOA)
-    void declareAndWriteDragImage(const String& pasteboardName, WebCore::Element&, const URL&, const String&, WebCore::Frame*) override;
+    void declareAndWriteDragImage(const String& pasteboardName, WebCore::Element&, const URL&, const String&, WebCore::LocalFrame*) override;
 #endif
 
-    WebPage* m_page;
+    WeakPtr<WebPage> m_page;
 };
 
 } // namespace WebKit

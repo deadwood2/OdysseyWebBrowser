@@ -32,18 +32,18 @@
 #include <wtf/RetainPtr.h>
 #include <wtf/Vector.h>
 
-#if PLATFORM(WPE)
-#include <wpe/wpe.h>
-#endif
-
 #if PLATFORM(COCOA)
 OBJC_CLASS NSEvent;
+OBJC_CLASS NSView;
 #endif
 
 namespace WTR {
 
 class TestController;
 
+#if USE(LIBWPE)
+class EventSenderProxyClient;
+#endif
 class EventSenderProxy {
     WTF_MAKE_FAST_ALLOCATED;
 public:
@@ -60,6 +60,8 @@ public:
     void mouseForceClick();
     void startAndCancelMouseForceClick();
     void mouseMoveTo(double x, double y, WKStringRef pointerType = nullptr);
+    
+    // Legacy wheel events.
     void mouseScrollBy(int x, int y);
     void mouseScrollByWithWheelAndMomentumPhases(int x, int y, int phase, int momentum);
 #if PLATFORM(GTK)
@@ -67,9 +69,26 @@ public:
 #endif
     void continuousMouseScrollBy(int x, int y, bool paged);
 
+#if PLATFORM(MAC)
+    enum class WheelEventPhase : uint8_t {
+        None,
+        Began,
+        Changed,
+        Ended,
+        Cancelled,
+        MayBegin,
+    };
+    
+    using EventTimestamp = uint64_t; // mach_absolute_time units.
+
+    void sendWheelEvent(EventTimestamp, double globalX, double globalY, double deltaX, double deltaY, WheelEventPhase, WheelEventPhase momentumPhase);
+#endif
+
     void leapForward(int milliseconds);
 
     void keyDown(WKStringRef key, WKEventModifiers, unsigned location);
+    void rawKeyDown(WKStringRef key, WKEventModifiers, unsigned location);
+    void rawKeyUp(WKStringRef key, WKEventModifiers, unsigned location);
 
 #if PLATFORM(COCOA)
     unsigned mouseButtonsCurrentlyDown() const { return m_mouseButtonsCurrentlyDown; }
@@ -90,12 +109,17 @@ public:
     void cancelTouchPoint(int index);
 #endif
 
+    // Double two-finger tap on trackpad.
+    void smartMagnify();
+
 #if ENABLE(MAC_GESTURE_EVENTS)
     // Gesture events.
     void scaleGestureStart(double scale);
     void scaleGestureChange(double scale);
     void scaleGestureEnd(double scale);
 #endif
+
+    void waitForPendingMouseEvents();
 
 private:
     TestController* m_testController;
@@ -109,12 +133,6 @@ private:
     RetainPtr<NSEvent> beginPressureEvent(int stage);
     RetainPtr<NSEvent> pressureChangeEvent(int stage, PressureChangeDirection);
     RetainPtr<NSEvent> pressureChangeEvent(int stage, float pressure, PressureChangeDirection);
-#endif
-
-#if PLATFORM(WPE)
-    Vector<struct wpe_input_touch_event_raw> getUpdatedTouchEvents();
-    void removeUpdatedTouchEvents();
-    void prepareAndDispatchTouchEvent(enum wpe_input_touch_event_type);
 #endif
 
 #if PLATFORM(WIN)
@@ -132,14 +150,14 @@ private:
     unsigned m_mouseButtonsCurrentlyDown { 0 };
 #if PLATFORM(COCOA)
     int m_eventNumber { 0 };
+    RetainPtr<NSView> m_targetView;
 #endif
 #if PLATFORM(GTK)
     bool m_hasPreciseDeltas { false };
 #endif
-#if PLATFORM(WPE)
+#if USE(LIBWPE)
+    std::unique_ptr<EventSenderProxyClient> m_client;
     uint32_t m_buttonState { 0 };
-    Vector<struct wpe_input_touch_event_raw> m_touchEvents;
-    HashSet<unsigned, DefaultHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> m_updatedTouchEvents;
 #endif
 };
 

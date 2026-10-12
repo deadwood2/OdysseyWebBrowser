@@ -25,8 +25,6 @@
 
 #pragma once
 
-#include <wtf/EnumTraits.h>
-
 namespace WebKit {
 
 enum class WebsiteDataType : uint32_t {
@@ -41,55 +39,17 @@ enum class WebsiteDataType : uint32_t {
     MediaKeys = 1 << 8,
     HSTSCache = 1 << 9,
     SearchFieldRecentSearches = 1 << 10,
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    PlugInData = 1 << 11,
-#endif
     ResourceLoadStatistics = 1 << 12,
     Credentials = 1 << 13,
-#if ENABLE(SERVICE_WORKER)
     ServiceWorkerRegistrations = 1 << 14,
-#endif
     DOMCache = 1 << 15,
     DeviceIdHashSalt = 1 << 16,
     PrivateClickMeasurements = 1 << 17,
-#if HAVE(CFNETWORK_ALTERNATIVE_SERVICE)
+#if HAVE(ALTERNATIVE_SERVICE)
     AlternativeServices = 1 << 18,
 #endif
+    FileSystem = 1 << 19,
+    BackgroundFetchStorage = 1 << 20,
 };
 
 } // namespace WebKit
-
-namespace WTF {
-
-template<> struct EnumTraits<WebKit::WebsiteDataType> {
-    using values = EnumValues<
-        WebKit::WebsiteDataType,
-        WebKit::WebsiteDataType::Cookies,
-        WebKit::WebsiteDataType::DiskCache,
-        WebKit::WebsiteDataType::MemoryCache,
-        WebKit::WebsiteDataType::OfflineWebApplicationCache,
-        WebKit::WebsiteDataType::SessionStorage,
-        WebKit::WebsiteDataType::LocalStorage,
-        WebKit::WebsiteDataType::WebSQLDatabases,
-        WebKit::WebsiteDataType::IndexedDBDatabases,
-        WebKit::WebsiteDataType::MediaKeys,
-        WebKit::WebsiteDataType::HSTSCache,
-        WebKit::WebsiteDataType::SearchFieldRecentSearches,
-#if ENABLE(NETSCAPE_PLUGIN_API)
-        WebKit::WebsiteDataType::PlugInData,
-#endif
-        WebKit::WebsiteDataType::ResourceLoadStatistics,
-        WebKit::WebsiteDataType::Credentials,
-#if ENABLE(SERVICE_WORKER)
-        WebKit::WebsiteDataType::ServiceWorkerRegistrations,
-#endif
-        WebKit::WebsiteDataType::DOMCache,
-        WebKit::WebsiteDataType::DeviceIdHashSalt,
-        WebKit::WebsiteDataType::PrivateClickMeasurements
-#if HAVE(CFNETWORK_ALTERNATIVE_SERVICE)
-        , WebKit::WebsiteDataType::AlternativeServices
-#endif
-    >;
-};
-
-} // namespace WTF

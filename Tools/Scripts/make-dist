@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright (C) 2014 Igalia S.L.
 #
 # This library is free software; you can redistribute it and/or
@@ -105,11 +105,11 @@ class Directory(object):
 
     def list_files_in_version_control(self):
         # FIXME: Only git is supported for now.
-        p = subprocess.Popen(['git', 'ls-tree', '-r', '--name-only', 'HEAD', self.source_root], stdout=subprocess.PIPE)
+        p = subprocess.Popen(['git', 'ls-tree', '-r', '--name-only', 'HEAD', self.source_root], stdout=subprocess.PIPE, text="ascii")
         out = p.communicate()[0]
         if not out:
             return []
-        return out.rstrip('\n').split('\n')
+        return frozenset(out.splitlines())
 
     def should_skip_file(self, path):
         return path not in self.files_in_version_control
@@ -233,7 +233,7 @@ class Distcheck(object):
         with closing(tarfile.open(tarball_path, 'r')) as tarball:
             tarball.extractall(self.build_root)
 
-    def configure(self, dist_dir, build_dir, install_dir, port):
+    def configure(self, dist_dir, build_dir, install_dir, port, build_unified):
         def create_dir(directory, directory_type):
             try:
                 os.mkdir(directory)
@@ -244,7 +244,9 @@ class Distcheck(object):
         create_dir(build_dir, "build")
         create_dir(install_dir, "install")
 
-        command = ['cmake', '-DPORT=%s' % port, '-DCMAKE_INSTALL_PREFIX=%s' % install_dir, '-DCMAKE_BUILD_TYPE=Release', '-DENABLE_GTKDOC=ON', '-DENABLE_MINIBROWSER=ON', dist_dir]
+        command = ['cmake', '-DPORT=%s' % port, '-DCMAKE_INSTALL_PREFIX=%s' % install_dir, '-DCMAKE_BUILD_TYPE=Release', dist_dir]
+        if not build_unified:
+            command.append('-DENABLE_UNIFIED_BUILDS=OFF')
         subprocess.check_call(command, cwd=build_dir)
 
     def build(self, build_dir):
@@ -258,8 +260,8 @@ class Distcheck(object):
 
     def check_symbols(self, build_dir):
         check_bss = os.path.join(self.source_root, 'Tools', 'Scripts', 'check-for-global-bss-symbols-in-webkitgtk-libs')
-        libjsc = os.path.join(build_dir, 'lib', 'libjavascriptcoregtk-4.1.so')
-        libwk = os.path.join(build_dir, 'lib', 'libwebkit2gtk-4.1.so')
+        libjsc = os.path.join(build_dir, 'lib', 'libjavascriptcoregtk-6.0.so')
+        libwk = os.path.join(build_dir, 'lib', 'libwebkitgtk-6.0.so')
         subprocess.check_call([check_bss, libjsc, libwk])
 
         check_version_script = os.path.join(self.source_root, 'Tools', 'Scripts', 'check-for-invalid-symbols-in-version-script')
@@ -272,14 +274,14 @@ class Distcheck(object):
     def clean(self, dist_dir):
         shutil.rmtree(dist_dir)
 
-    def check(self, tarball, port):
+    def check(self, tarball, port, build_unified):
         tarball_name, ext = os.path.splitext(os.path.basename(tarball))
         dist_dir = os.path.join(self.build_root, tarball_name)
         build_dir = os.path.join(dist_dir, self.BUILD_DIRECTORY_NAME)
         install_dir = os.path.join(dist_dir, self.INSTALL_DIRECTORY_NAME)
 
         self.extract_tarball(tarball)
-        self.configure(dist_dir, build_dir, install_dir, port)
+        self.configure(dist_dir, build_dir, install_dir, port, build_unified)
         self.build(build_dir)
         if port == 'GTK':
             self.check_symbols(build_dir)
@@ -295,9 +297,9 @@ if __name__ == "__main__":
         if arguments.version is not None:
             return
 
-        pkgconfig_file = os.path.join(arguments.build_dir, "Source/WebKit/webkit2gtk-4.1.pc")
+        pkgconfig_file = os.path.join(arguments.build_dir, "Source/WebKit/webkitgtk-6.0.pc")
         if os.path.isfile(pkgconfig_file):
-            p = subprocess.Popen(['pkg-config', '--modversion', pkgconfig_file], stdout=subprocess.PIPE)
+            p = subprocess.Popen(['pkg-config', '--modversion', pkgconfig_file], stdout=subprocess.PIPE, text="ascii")
             version = p.communicate()[0]
             if version:
                 arguments.version = version.rstrip('\n')
@@ -314,6 +316,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Build a distribution bundle.')
     parser.add_argument('-c', '--check', action='store_true',
                         help='Check the tarball')
+    parser.add_argument('-u', '--unified', action='store_true',
+                        help='Build unified when checking the tarball')
     parser.add_argument('-s', '--source-dir', type=str, action=FilePathAction, default=os.getcwd(),
                         help='The top-level directory of the source distribution. ' + \
                               'Directory for relative paths. Defaults to current directory.')
@@ -342,4 +346,4 @@ if __name__ == "__main__":
     manifest.create_tarfile(output_filename)
 
     if arguments.check:
-        Distcheck(arguments.source_dir, arguments.build_dir).check(output_filename, arguments.port)
+        Distcheck(arguments.source_dir, arguments.build_dir).check(output_filename, arguments.port, arguments.unified)

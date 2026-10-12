@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -22,6 +22,8 @@
 
 import os
 import json
+import time
+import sys
 
 from webkitcorepy import mocks
 from webkitscmpy import Commit, remote as scmremote
@@ -32,7 +34,7 @@ class BitBucket(mocks.Requests):
 
     def __init__(
         self, remote='bitbucket.example.com/projects/WEBKIT/repos/webkit', datafile=None,
-        default_branch='main', git_svn=False,
+        default_branch='main', git_svn=False, statuses=None, environment=None,
     ):
         if not scmremote.BitBucket.is_webserver('https://{}'.format(remote)):
             raise ValueError('"{}" is not a valid BitBucket remote'.format(remote))
@@ -40,13 +42,31 @@ class BitBucket(mocks.Requests):
         self.default_branch = default_branch
         self.remote = remote
         self.project = '/'.join(remote.split('/')[1:])
+        self.current_id = 1
 
         super(BitBucket, self).__init__(self.remote.split('/')[0])
+
+        prefix = self.hosts[0].replace('.', '_').upper()
+        self._environment = environment or mocks.Environment(**{
+            '{}_USERNAME'.format(prefix): 'username',
+            '{}_PASSWORD'.format(prefix): 'password',
+        })
+        self._username = self._environment.environ.get('{}_USERNAME'.format(prefix), 'timcommitter')
 
         with open(datafile or os.path.join(os.path.dirname(os.path.dirname(__file__)), 'git-repo.json')) as file:
             self.commits = json.load(file)
         for key, commits in self.commits.items():
-            self.commits[key] = [Commit(**kwargs) for kwargs in commits]
+            commit_objs = []
+            for kwargs in commits:
+                changeFiles = None
+                if 'changeFiles' in kwargs:
+                    changeFiles = kwargs['changeFiles']
+                    del kwargs['changeFiles']
+                commit = Commit(**kwargs)
+                if changeFiles:
+                    setattr(commit, '__mock__changeFiles', changeFiles)
+                commit_objs.append(commit)
+            self.commits[key] = commit_objs
             if not git_svn:
                 for commit in self.commits[key]:
                     commit.revision = None
@@ -54,8 +74,36 @@ class BitBucket(mocks.Requests):
         self.head = self.commits[self.default_branch][-1]
         self.tags = {}
         self.pull_requests = []
+        self.statuses = statuses or {}
+
+    def __enter__(self):
+        self._environment.__enter__()
+        return super(BitBucket, self).__enter__()
+
+    def __exit__(self, *args, **kwargs):
+        result = super(BitBucket, self).__exit__(*args, **kwargs)
+        self._environment.__exit__(*args, **kwargs)
+        return result
+
+    def resolve_all_commits(self, branch):
+        all_commits = self.commits[branch][:]
+        last_commit = all_commits[0]
+        while last_commit.branch != branch:
+            head_index = None
+            commits_part = self.commits[last_commit.branch]
+            for i in range(len(commits_part)):
+                if commits_part[i].hash == last_commit.hash:
+                    head_index = i
+                    break
+            all_commits = commits_part[:head_index] + all_commits
+            last_commit = all_commits[0]
+            if last_commit.branch == self.default_branch and last_commit.identifier == 1:
+                break
+        return all_commits
 
     def commit(self, ref):
+        if ref == 'HEAD':
+            ref = self.default_branch
         if ref in self.commits:
             return self.commits[ref][-1]
         if ref in self.tags:
@@ -74,11 +122,14 @@ class BitBucket(mocks.Requests):
             return None
         delta = int(delta)
 
-        if delta < commit.identifier:
-            return self.commits[commit.branch][commit.identifier - delta - 1]
-        delta -= commit.identifier
-        if commit.branch_point and delta < commit.branch_point:
-            return self.commits[self.default_branch][commit.branch_point - delta - 1]
+        all_commits = self.resolve_all_commits(commit.branch)
+        commit_index = 0
+        for i in range(len(all_commits)):
+            if all_commits[i].hash == commit.hash:
+                commit_index = i
+                break
+        if commit_index - delta >= 0:
+            return all_commits[commit_index - delta]
         return None
 
     def _branches_default(self, url):
@@ -163,6 +214,9 @@ class BitBucket(mocks.Requests):
             return mocks.Response.create404(url)
 
         stripped_url = url.split('://')[-1]
+        if stripped_url == '{}/plugins/servlet/applinks/whoami'.format(self.hosts[0]):
+            return mocks.Response.fromText(self._username)
+
         if stripped_url == '{}/rest/api/1.0/{}/branches/default'.format(self.hosts[0], self.project):
             return self._branches_default(url)
 
@@ -173,18 +227,58 @@ class BitBucket(mocks.Requests):
             return self._tags(url, params or {})
 
         if stripped_url.startswith('{}/rest/api/1.0/{}/commits/'.format(self.hosts[0], self.project)):
-            commit = self.commit(stripped_url.split('/')[-1])
+            if stripped_url.endswith('/changes'):
+                # FIXME: All mock commits have the same set of files changed with this implementation
+                return mocks.Response.fromJson(dict(
+                    values=[dict(
+                        path=dict(
+                            components=path.split('/'),
+                            toString=path,
+                        )
+                    ) for path in ('Source/main.cpp', 'Source/main.h')],
+                ))
+            commit = self.commit(stripped_url.split('/')[9])
             if not commit:
                 return mocks.Response.create404(url)
+
+            if stripped_url.split('?')[0].endswith('diff'):
+                message_lines = commit.message.splitlines()
+                return mocks.Response.fromJson(dict(
+                    fromHash=None,
+                    toHash=commit.hash,
+                    contextLines=3,
+                    whitespace='SHOW',
+                    diffs=[dict(
+                        source=None,
+                        destination=dict(toString='ChangeLog'),
+                        hunks=[dict(
+                            sourceLine=1,
+                            sourceSpan=0,
+                            destinationLine=1,
+                            destinationSpan=0,
+                            segments=[dict(
+                                type='ADDED',
+                                lines=[dict(
+                                    line=message_lines[cnt],
+                                    source=1,
+                                    destination=cnt + 1,
+                                ) for cnt in range(len(message_lines))],
+                            )],
+                        )],
+                    )],
+                ))
+
             return mocks.Response.fromJson(dict(
                 id=commit.hash,
                 displayId=commit.hash[:12],
                 author=dict(
                     emailAddress=commit.author.email,
                     displayName=commit.author.name,
+                    name=commit.author.name.lower().replace(' ', ''),
                 ), committer=dict(
                     emailAddress=commit.author.email,
                     displayName=commit.author.name,
+                    name=commit.author.name.lower().replace(' ', ''),
                 ),
                 committerTimestamp=commit.timestamp * 1000,
                 message=commit.message + ('\ngit-svn-id: https://svn.example.org/repository/webkit/{}@{} 268f45cc-cd09-0410-ab3c-d52691b4dbfc\n'.format(
@@ -207,7 +301,7 @@ class BitBucket(mocks.Requests):
                 at = (params or {}).get('at', None)
                 if at and candidate.get('fromRef', {}).get('id') != at:
                     continue
-                prs.append(candidate)
+                prs.append({key: value for key, value in candidate.items() if key not in ('commit', 'activities')})
 
             return mocks.Response.fromJson(dict(
                 size=len(prs),
@@ -217,25 +311,147 @@ class BitBucket(mocks.Requests):
 
         # Create pull-request
         if method == 'POST' and stripped_url == pr_base:
-            json['author'] = dict(user=dict(displayName='Tim Committer', emailAddress='committer@webkit.org'))
+            json['author'] = dict(user=dict(displayName='Tim Committer', emailAddress='committer@webkit.org', name='timcommitter'))
             json['participants'] = [json['author']]
             json['id'] = 1 + max([0] + [pr.get('id', 0) for pr in self.pull_requests])
-            json['fromRef']['displayId'] = json['fromRef']['id'].split('/')[-2:]
-            json['toRef']['displayId'] = json['toRef']['id'].split('/')[-2:]
+            json['fromRef']['displayId'] = '/'.join(json['fromRef']['id'].split('/')[-2:])
+            json['fromRef']['latestCommit'] = json['fromRef']['latestCommit']
+            json['toRef']['displayId'] = '/'.join(json['toRef']['id'].split('/')[-2:])
+            json['state'] = 'OPEN'
+            json['activities'] = []
             self.pull_requests.append(json)
             return mocks.Response.fromJson(json)
 
         # Update or access pull-request
         if stripped_url.startswith(pr_base):
-            number = int(stripped_url.split('/')[-1])
+            split_url = stripped_url.split('?')[0].split('/')
+            number = int(split_url[9])
             existing = None
             for i in range(len(self.pull_requests)):
                 if self.pull_requests[i].get('id') == number:
                     existing = i
             if existing is None:
                 return mocks.Response.create404(url)
+            if method == 'PUT' and split_url[-2] == 'participants':
+                slug = (json.get('user') or {}).get('name') or split_url[-1]
+                for candidate in self.pull_requests[existing]['reviewers']:
+                    name = (candidate.get('user') or {}).get('name') or ''
+                    display_name = (candidate.get('user') or {}).get('displayName') or ''
+                    if name == slug or display_name.lower().replace(' ', '') == slug:
+                        reviewer = candidate
+                        break
+                else:
+                    if not self.pull_requests[existing]['reviewers']:
+                        self.pull_requests[existing]['reviewers'] = []
+                    self.pull_requests[existing]['reviewers'].append(dict(
+                        user=json.get('user', dict(name=slug))
+                    ))
+                    reviewer = self.pull_requests[existing]['reviewers'][-1]
+                    reviewer['user']['displayName'] = reviewer['user'].get('displayName', slug)
+                reviewer['approved'] = json.get('approved', False)
+                reviewer['status'] = json.get('status', 'UNAPPROVED')
+                return mocks.Response.fromJson({})
             if method == 'PUT':
                 self.pull_requests[existing].update(json)
-            return mocks.Response.fromJson(self.pull_requests[existing])
+                self.pull_requests[existing]['fromRef']['latestCommit'] = json['fromRef']['latestCommit']
+                if 'id' in json['fromRef']:
+                    self.pull_requests[existing]['fromRef']['displayId'] = '/'.join(json['fromRef']['id'].split('/')[-2:])
+                if 'id' in json['toRef']:
+                    self.pull_requests[existing]['toRef']['displayId'] = '/'.join(json['toRef']['id'].split('/')[-2:])
+            if len(split_url) < 11:
+                return mocks.Response.fromJson({key: value for key, value in self.pull_requests[existing].items() if key not in ('commit', 'activities')})
+
+            if method == 'GET' and split_url[-1] == 'activities':
+                return mocks.Response.fromJson(dict(
+                    size=len(self.pull_requests[existing].get('activities', [])),
+                    isLastPage=True,
+                    values=self.pull_requests[existing].get('activities', []),
+                ))
+            if method == 'GET' and split_url[-1] == 'diff':
+                commit = self.pull_requests[existing].get('commit', None)
+                if not commit:
+                    return mocks.Response.create404(url)
+
+                message_lines = commit.message.splitlines()
+                return mocks.Response.fromJson(dict(
+                    fromHash=None,
+                    toHash=self.pull_requests[existing]['fromRef']['latestCommit'],
+                    contextLines=3,
+                    whitespace='SHOW',
+                    diffs=[dict(
+                        source=dict(toString='ChangeLog'),
+                        destination=dict(toString='ChangeLog'),
+                        hunks=[dict(
+                            sourceLine=1,
+                            sourceSpan=0,
+                            destinationLine=1,
+                            destinationSpan=0,
+                            segments=[dict(
+                                type='ADDED',
+                                lines=[dict(
+                                    line=message_lines[cnt],
+                                    source=1,
+                                    destination=cnt + 1,
+                                ) for cnt in range(len(message_lines))],
+                            )],
+                        )],
+                    )],
+                ))
+            if method == 'POST' and split_url[-1] == 'comments':
+                comment = dict(
+                    author=dict(displayName='Tim Committer', emailAddress='committer@webkit.org', name='timcommitter'),
+                    createdDate=int(time.time() * 1000),
+                    updatedDate=int(time.time() * 1000),
+                    comments=[],
+                    text=json.get('text', ''),
+                    id=self.current_id,
+                )
+                if json.get('parent'):
+                    parent_id = json.get('parent', {}).get('id', None)
+                    for candidate in self.pull_requests[existing]['activities']:
+                        if not parent_id or parent_id != candidate.get('comment', {}).get('id'):
+                            continue
+                        candidate['comment']['comments'].append(comment)
+                        break
+                    else:
+                        return mocks.Response.create404(url)
+                else:
+                    self.pull_requests[existing]['activities'].append(dict(
+                        comment=comment,
+                        commentAnchor=json.get('anchor'),
+                    ))
+                self.current_id += 1
+                return mocks.Response.fromJson({})
+            if method == 'POST' and split_url[-1] == 'decline':
+                self.pull_requests[existing]['open'] = False
+                self.pull_requests[existing]['closed'] = True
+                self.pull_requests[existing]['state'] = 'DECLINED'
+                return mocks.Response.fromJson({})
+            if method == 'POST' and split_url[-1] == 'reopen':
+                self.pull_requests[existing]['open'] = True
+                self.pull_requests[existing]['closed'] = False
+                self.pull_requests[existing]['state'] = 'OPEN'
+                return mocks.Response.fromJson({})
+            return mocks.Response.create404(url)
+
+        # Commit status
+        status_base = '{}/rest/build-status/1.0/commits/'.format(self.hosts[0])
+        if stripped_url.startswith(status_base):
+            ref = stripped_url.split('/')[-1]
+            return mocks.Response.fromJson(
+                dict(values=[
+                    dict(
+                        key=status['name'],
+                        name=status['name'],
+                        url=status.get('url'),
+                        state=dict(
+                            success='SUCCESSFUL',
+                            failure='FAILED',
+                            pending='INPROGRESS',
+                        ).get(status.get('status') or 'pending', 'FAILED'),
+                        description=status.get('description'),
+                    ) for status in self.statuses.get(ref[:Commit.HASH_LABEL_SIZE]) or []
+                ])
+            )
 
         return mocks.Response.create404(url)

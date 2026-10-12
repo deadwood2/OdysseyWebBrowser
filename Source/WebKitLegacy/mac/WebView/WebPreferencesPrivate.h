@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,12 +57,6 @@ typedef enum {
 typedef enum {
     WebKitJavaScriptRuntimeFlagsAllEnabled = 0
 } WebKitJavaScriptRuntimeFlags;
-
-typedef enum {
-    WebKitFrameFlatteningDisabled,
-    WebKitFrameFlatteningEnabledForNonFullScreenIFrames,
-    WebKitFrameFlatteningFullyEnabled
-} WebKitFrameFlattening;
 
 typedef enum : unsigned {
     WebKitAudioSessionCategoryAmbientSound = 'ambi',
@@ -123,27 +117,20 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic, getter=domTimersThrottlingEnabled) BOOL DOMTimersThrottlingEnabled;
 @property (nonatomic) BOOL webArchiveDebugModeEnabled;
 @property (nonatomic) BOOL localFileContentSniffingEnabled;
-@property (nonatomic) BOOL offlineWebApplicationCacheEnabled;
 @property (nonatomic) BOOL databasesEnabled;
 @property (nonatomic) BOOL localStorageEnabled;
 @property (nonatomic, getter=isWebSecurityEnabled) BOOL webSecurityEnabled;
 @property (nonatomic) BOOL allowUniversalAccessFromFileURLs;
 @property (nonatomic) BOOL allowFileAccessFromFileURLs;
 @property (nonatomic) BOOL allowTopNavigationToDataURLs;
-@property (nonatomic) BOOL allowCrossOriginSubresourcesToAskForCredentials;
 @property (nonatomic) BOOL needsStorageAccessFromFileURLsQuirk;
 @property (nonatomic) BOOL zoomsTextOnly;
 @property (nonatomic) BOOL javaScriptCanAccessClipboard;
-@property (nonatomic, getter=isXSSAuditorEnabled) BOOL XSSAuditorEnabled;
-@property (nonatomic, getter=isFrameFlatteningEnabled) BOOL frameFlatteningEnabled;
-@property (nonatomic) WebKitFrameFlattening frameFlattening;
 @property (nonatomic) BOOL asyncFrameScrollingEnabled;
 @property (nonatomic, getter=isSpatialNavigationEnabled) BOOL spatialNavigationEnabled;
 @property (nonatomic) BOOL mediaDevicesEnabled;
 @property (nonatomic) BOOL mediaStreamEnabled;
 @property (nonatomic) BOOL peerConnectionEnabled;
-@property (nonatomic) int64_t applicationCacheTotalQuota;
-@property (nonatomic) int64_t applicationCacheDefaultOriginQuota;
 @property (nonatomic) WebKitEditableLinkBehavior editableLinkBehavior;
 @property (nonatomic) WebTextDirectionSubmenuInclusionBehavior textDirectionSubmenuInclusionBehavior;
 // If site-specific spoofing is enabled, some pages that do inappropriate user-agent string checks will be
@@ -156,19 +143,15 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic, setter=_setForceFTPDirectoryListings:) BOOL _forceFTPDirectoryListings;
 @property (nonatomic, setter=_setLocalStorageDatabasePath:) NSString *_localStorageDatabasePath;
 @property (nonatomic) BOOL acceleratedDrawingEnabled;
-@property (nonatomic) BOOL displayListDrawingEnabled;
 @property (nonatomic) BOOL resourceLoadStatisticsEnabled;
 @property (nonatomic) BOOL canvasUsesAcceleratedDrawing;
 @property (nonatomic) BOOL acceleratedCompositingEnabled;
-@property (nonatomic) BOOL subpixelAntialiasedLayerTextEnabled;
 @property (nonatomic) BOOL showDebugBorders;
-@property (nonatomic) BOOL simpleLineLayoutEnabled;
 @property (nonatomic) BOOL legacyLineLayoutVisualCoverageEnabled;
 @property (nonatomic) BOOL showRepaintCounter;
 @property (nonatomic) BOOL webAudioEnabled;
 @property (nonatomic) BOOL webGLEnabled;
 @property (nonatomic, getter=forceLowPowerGPUForWebGL) BOOL forceWebGLUsesLowPower;
-@property (nonatomic) BOOL paginateDuringLayoutEnabled;
 @property (nonatomic) BOOL hyperlinkAuditingEnabled;
 @property (nonatomic) BOOL mediaPlaybackRequiresUserGesture; // Deprecated. Use videoPlaybackRequiresUserGesture and audioPlaybackRequiresUserGesture instead.
 @property (nonatomic) BOOL videoPlaybackRequiresUserGesture;
@@ -188,7 +171,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL fullScreenEnabled;
 @property (nonatomic) BOOL asynchronousSpellCheckingEnabled;
 @property (nonatomic) BOOL usePreHTML5ParserQuirks;
-@property (nonatomic) BOOL loadsSiteIconsIgnoringImageLoadingPreference;
 @property (nonatomic, getter=isAVFoundationEnabled) BOOL AVFoundationEnabled;
 @property (nonatomic, getter=isAVFoundationNSURLSessionEnabled) BOOL AVFoundationNSURLSessionEnabled;
 @property (nonatomic) BOOL backspaceKeyNavigationEnabled;
@@ -198,7 +180,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL shouldDisplayTextDescriptions;
 @property (nonatomic) BOOL notificationsEnabled;
 @property (nonatomic) BOOL shouldRespectImageOrientation;
-@property (nonatomic) BOOL requestAnimationFrameEnabled;
 @property (nonatomic) NSTimeInterval incrementalRenderingSuppressionTimeoutInSeconds;
 @property (nonatomic, readonly) NSTimeInterval _backForwardCacheExpirationInterval;
 @property (nonatomic) BOOL diagnosticLoggingEnabled;
@@ -207,7 +188,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL hiddenPageDOMTimerThrottlingEnabled;
 @property (nonatomic) BOOL hiddenPageCSSAnimationSuspensionEnabled;
 @property (nonatomic) BOOL lowPowerVideoAudioBufferSizeEnabled;
-@property (nonatomic) BOOL useLegacyTextAlignPositionedElementBehavior;
 @property (nonatomic) BOOL mediaSourceEnabled;
 @property (nonatomic) BOOL shouldConvertPositionStyleOnCopy;
 @property (nonatomic) BOOL imageControlsEnabled;
@@ -227,9 +207,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL cacheAPIEnabled;
 @property (nonatomic) BOOL downloadAttributeEnabled;
 @property (nonatomic) BOOL directoryUploadEnabled;
-@property (nonatomic) BOOL selectionAcrossShadowBoundariesEnabled;
-@property (nonatomic, getter=cssLogicalEnabled) BOOL CSSLogicalEnabled;
-@property (nonatomic) BOOL lineHeightUnitsEnabled;
 @property (nonatomic) BOOL layoutFormattingContextIntegrationEnabled;
 @property (nonatomic, getter=isInAppBrowserPrivacyEnabled) BOOL inAppBrowserPrivacyEnabled;
 @property (nonatomic) BOOL webSQLEnabled;
@@ -240,21 +217,15 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL mediaDataLoadsAutomatically;
 @property (nonatomic) BOOL attachmentElementEnabled;
 @property (nonatomic) BOOL allowsInlineMediaPlaybackAfterFullscreen;
-@property (nonatomic) BOOL menuItemElementEnabled;
-@property (nonatomic) BOOL keygenElementEnabled;
 @property (nonatomic) BOOL linkPreloadEnabled;
 @property (nonatomic) BOOL mediaUserGestureInheritsFromDocument;
 @property (nonatomic) BOOL isSecureContextAttributeEnabled;
 @property (nonatomic) BOOL legacyEncryptedMediaAPIEnabled;
 @property (nonatomic) BOOL encryptedMediaAPIEnabled;
 @property (nonatomic) BOOL pictureInPictureAPIEnabled;
-@property (nonatomic) BOOL viewportFitEnabled;
-@property (nonatomic) BOOL constantPropertiesEnabled;
 @property (nonatomic) BOOL colorFilterEnabled;
 @property (nonatomic) BOOL punchOutWhiteBackgroundsInDarkMode;
-@property (nonatomic) BOOL inspectorAdditionsEnabled;
 @property (nonatomic) BOOL allowMediaContentTypesRequiringHardwareSupportAsFallback;
-@property (nonatomic) BOOL ariaReflectionEnabled;
 @property (nonatomic) BOOL mediaCapabilitiesEnabled;
 @property (nonatomic) BOOL sourceBufferChangeTypeEnabled;
 @property (nonatomic) NSString *mediaContentTypesRequiringHardwareSupport;
@@ -285,7 +256,6 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic, setter=_setTelephoneNumberParsingEnabled:) BOOL _telephoneNumberParsingEnabled;
 @property (nonatomic, setter=_setAllowMultiElementImplicitFormSubmission:) BOOL _allowMultiElementImplicitFormSubmission;
 @property (nonatomic, setter=_setAlwaysRequestGeolocationPermission:) BOOL _alwaysRequestGeolocationPermission;
-@property (nonatomic, setter=_setAlwaysUseAcceleratedOverflowScroll:) BOOL _alwaysUseAcceleratedOverflowScroll;
 @property (nonatomic, setter=_setMaxParseDuration:) float _maxParseDuration;
 @property (nonatomic, setter=_setInterpolationQuality:) int _interpolationQuality;
 @property (nonatomic, readonly) BOOL _allowPasswordEcho;
@@ -314,7 +284,7 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @interface WebPreferences (WebPrivateTesting)
 + (void)_switchNetworkLoaderToNewTestingSession;
 + (void)_setCurrentNetworkLoaderSessionCookieAcceptPolicy:(NSHTTPCookieAcceptPolicy)cookieAcceptPolicy;
-+ (void)_clearNetworkLoaderSession;
++ (void)_clearNetworkLoaderSession:(void (^)(void))completionHandler;
 
 - (void)_setBoolPreferenceForTestingWithValue:(BOOL)value forKey:(NSString *)key;
 - (void)_setUInt32PreferenceForTestingWithValue:(uint32_t)value forKey:(NSString *)key;
@@ -328,33 +298,18 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 @property (nonatomic) BOOL requestIdleCallbackEnabled;
 @property (nonatomic) BOOL highlightAPIEnabled;
 @property (nonatomic) BOOL asyncClipboardAPIEnabled;
-@property (nonatomic) BOOL intersectionObserverEnabled;
 @property (nonatomic) BOOL visualViewportAPIEnabled;
-@property (nonatomic) BOOL syntheticEditingCommandsEnabled;
 @property (nonatomic) BOOL CSSOMViewSmoothScrollingEnabled;
 @property (nonatomic) BOOL webAnimationsCompositeOperationsEnabled;
 @property (nonatomic) BOOL webAnimationsMutableTimelinesEnabled;
-@property (nonatomic) BOOL webGL2Enabled;
-@property (nonatomic) BOOL maskWebGLStringsEnabled;
-@property (nonatomic) BOOL accessibilityObjectModelEnabled;
-@property (nonatomic) BOOL serverTimingEnabled;
-@property (nonatomic) BOOL CSSCustomPropertiesAndValuesEnabled;
-@property (nonatomic) BOOL resizeObserverEnabled;
 @property (nonatomic) BOOL privateClickMeasurementEnabled;
-@property (nonatomic) BOOL fetchAPIKeepAliveEnabled;
 @property (nonatomic) BOOL genericCueAPIEnabled;
-@property (nonatomic) BOOL aspectRatioOfImgFromWidthAndHeightEnabled;
-@property (nonatomic) BOOL referrerPolicyAttributeEnabled;
 @property (nonatomic) BOOL coreMathMLEnabled;
 @property (nonatomic) BOOL linkPreloadResponsiveImagesEnabled;
 @property (nonatomic) BOOL remotePlaybackEnabled;
-@property (nonatomic) BOOL dialogElementEnabled;
 @property (nonatomic) BOOL readableByteStreamAPIEnabled;
-@property (nonatomic) BOOL writableStreamAPIEnabled;
-@property (nonatomic) BOOL transformStreamAPIEnabled;
 @property (nonatomic) BOOL mediaRecorderEnabled;
 @property (nonatomic, setter=_setMediaRecorderEnabled:) BOOL _mediaRecorderEnabled;
-@property (nonatomic) BOOL CSSIndividualTransformPropertiesEnabled;
 @property (nonatomic) BOOL contactPickerAPIEnabled;
 @property (nonatomic, setter=_setSpeechRecognitionEnabled:) BOOL _speechRecognitionEnabled;
 @property (nonatomic, setter=_setPitchCorrectionAlgorithm:) WebKitPitchCorrectionAlgorithm _pitchCorrectionAlgorithm;
@@ -365,18 +320,42 @@ extern NSString *WebPreferencesCacheModelChangedInternalNotification WEBKIT_DEPR
 // The preferences in this category are deprecated and have no effect. They should
 // be removed when it is considered safe to do so.
 
+@property (nonatomic) BOOL constantPropertiesEnabled;
+@property (nonatomic) BOOL maskWebGLStringsEnabled;
+@property (nonatomic) BOOL CSSCustomPropertiesAndValuesEnabled;
+@property (nonatomic) BOOL syntheticEditingCommandsEnabled;
+@property (nonatomic) BOOL allowCrossOriginSubresourcesToAskForCredentials;
+@property (nonatomic) BOOL aspectRatioOfImgFromWidthAndHeightEnabled;
+@property (nonatomic) BOOL resizeObserverEnabled;
 @property (nonatomic) BOOL subpixelCSSOMElementMetricsEnabled;
 @property (nonatomic) BOOL userTimingEnabled;
+@property (nonatomic) BOOL requestAnimationFrameEnabled;
 @property (nonatomic) BOOL resourceTimingEnabled;
 @property (nonatomic, getter=cssShadowPartsEnabled) BOOL CSSShadowPartsEnabled;
 @property (nonatomic) BOOL isSecureContextAttributeEnabled;
 @property (nonatomic) BOOL fetchAPIEnabled;
+@property (nonatomic) BOOL fetchAPIKeepAliveEnabled;
+@property (nonatomic) BOOL intersectionObserverEnabled;
 @property (nonatomic) BOOL shadowDOMEnabled;
 @property (nonatomic) BOOL customElementsEnabled;
+@property (nonatomic) BOOL keygenElementEnabled;
 @property (nonatomic, getter=isVideoPluginProxyEnabled) BOOL videoPluginProxyEnabled;
 @property (nonatomic, getter=isHixie76WebSocketProtocolEnabled) BOOL hixie76WebSocketProtocolEnabled;
 @property (nonatomic) BOOL accelerated2dCanvasEnabled;
 @property (nonatomic) BOOL experimentalNotificationsEnabled;
+@property (nonatomic) BOOL selectionAcrossShadowBoundariesEnabled;
+@property (nonatomic, getter=isXSSAuditorEnabled) BOOL XSSAuditorEnabled;
+@property (nonatomic) BOOL subpixelAntialiasedLayerTextEnabled;
+@property (nonatomic) BOOL webGL2Enabled;
+@property (nonatomic) BOOL loadsSiteIconsIgnoringImageLoadingPreference;
+@property (nonatomic) BOOL displayListDrawingEnabled;
+@property (nonatomic) BOOL transformStreamAPIEnabled;
+@property (nonatomic) BOOL lineHeightUnitsEnabled;
+@property (nonatomic) BOOL CSSIndividualTransformPropertiesEnabled;
+@property (nonatomic) BOOL serverTimingEnabled;
+@property (nonatomic) BOOL offlineWebApplicationCacheEnabled;
+@property (nonatomic) int64_t applicationCacheTotalQuota;
+@property (nonatomic) int64_t applicationCacheDefaultOriginQuota;
 
 - (void)setDiskImageCacheEnabled:(BOOL)enabled;
 

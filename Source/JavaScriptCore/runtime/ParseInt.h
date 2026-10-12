@@ -31,7 +31,7 @@
 
 namespace JSC {
 
-static const double mantissaOverflowLowerBound = 9007199254740992.0;
+static constexpr double mantissaOverflowLowerBound = 9007199254740992.0;
 
 ALWAYS_INLINE static int parseDigit(unsigned short c, int radix)
 {
@@ -49,12 +49,12 @@ ALWAYS_INLINE static int parseDigit(unsigned short c, int radix)
     return digit;
 }
 
-static double parseIntOverflow(const LChar* s, unsigned length, int radix)
+static double parseIntOverflow(std::span<const LChar> s, int radix)
 {
     double number = 0.0;
     double radixMultiplier = 1.0;
 
-    for (const LChar* p = s + length - 1; p >= s; p--) {
+    for (const LChar* p = s.data() + s.size() - 1; p >= s.data(); p--) {
         if (radixMultiplier == std::numeric_limits<double>::infinity()) {
             if (*p != '0') {
                 number = std::numeric_limits<double>::infinity();
@@ -71,12 +71,12 @@ static double parseIntOverflow(const LChar* s, unsigned length, int radix)
     return number;
 }
 
-static double parseIntOverflow(const UChar* s, unsigned length, int radix)
+static double parseIntOverflow(std::span<const UChar> s, int radix)
 {
     double number = 0.0;
     double radixMultiplier = 1.0;
 
-    for (const UChar* p = s + length - 1; p >= s; p--) {
+    for (const UChar* p = s.data() + s.size() - 1; p >= s.data(); p--) {
         if (radixMultiplier == std::numeric_limits<double>::infinity()) {
             if (*p != '0') {
                 number = std::numeric_limits<double>::infinity();
@@ -91,13 +91,6 @@ static double parseIntOverflow(const UChar* s, unsigned length, int radix)
     }
 
     return number;
-}
-
-static double parseIntOverflow(StringView string, int radix)
-{
-    if (string.is8Bit())
-        return parseIntOverflow(string.characters8(), string.length(), radix);
-    return parseIntOverflow(string.characters16(), string.length(), radix);
 }
 
 ALWAYS_INLINE static bool isStrWhiteSpace(UChar c)
@@ -106,17 +99,40 @@ ALWAYS_INLINE static bool isStrWhiteSpace(UChar c)
     return Lexer<UChar>::isWhiteSpace(c) || Lexer<UChar>::isLineTerminator(c);
 }
 
+inline static std::optional<double> parseIntDouble(double n)
+{
+    // Optimized handling for numbers:
+    // If the argument is 0 or a number in range 10^-6 <= n < maxSafeInteger, then parseInt
+    // results in a truncation to integer. In the case of -0, this is converted to 0.
+    //
+    // This is also a truncation for values in the range maxSafeInteger <= n < 10^21,
+    // however these values cannot be trivially truncated to int since 10^21 exceeds
+    // even the int64_t range. Negative numbers are a little trickier, the case for
+    // values in the range -10^21 < n <= -1 are similar to those for integer, but
+    // values in the range -1 < n <= -10^-6 need to truncate to -0, not 0.
+    constexpr double tenToTheMinus6 = 0.000001;
+    if (!n)
+        return 0;
+    static_assert(maxSafeInteger() < 1e+21);
+    static_assert(maxSafeInteger() < mantissaOverflowLowerBound);
+    if (std::abs(n) <= maxSafeInteger()) {
+        if (n >= tenToTheMinus6 || n <= -1.0)
+            return std::trunc(n);
+    }
+    return std::nullopt;
+}
+
 // ES5.1 15.1.2.2
 template <typename CharType>
 ALWAYS_INLINE
-static double parseInt(StringView s, const CharType* data, int radix)
+static double parseInt(std::span<const CharType> data, int radix)
 {
     // 1. Let inputString be ToString(string).
     // 2. Let S be a newly created substring of inputString consisting of the first character that is not a
     //    StrWhiteSpaceChar and all characters following that character. (In other words, remove leading white
     //    space.) If inputString does not contain any such characters, let S be the empty string.
-    int length = s.length();
-    int p = 0;
+    size_t length = data.size();
+    size_t p = 0;
     while (p < length && isStrWhiteSpace(data[p]))
         ++p;
 
@@ -181,9 +197,9 @@ static double parseInt(StringView s, const CharType* data, int radix)
     if (number >= mantissaOverflowLowerBound) {
         if (radix == 10) {
             size_t parsedLength;
-            number = parseDouble(s.substring(firstDigitPosition, p - firstDigitPosition), parsedLength);
+            number = parseDouble(data.subspan(firstDigitPosition, p - firstDigitPosition), parsedLength);
         } else if (radix == 2 || radix == 4 || radix == 8 || radix == 16 || radix == 32)
-            number = parseIntOverflow(s.substring(firstDigitPosition, p - firstDigitPosition), radix);
+            number = parseIntOverflow(data.subspan(firstDigitPosition, p - firstDigitPosition), radix);
     }
 
     // 15. Return sign x number.
@@ -193,12 +209,12 @@ static double parseInt(StringView s, const CharType* data, int radix)
 ALWAYS_INLINE static double parseInt(StringView s, int radix)
 {
     if (s.is8Bit())
-        return parseInt(s, s.characters8(), radix);
-    return parseInt(s, s.characters16(), radix);
+        return parseInt(s.span8(), radix);
+    return parseInt(s.span16(), radix);
 }
 
 template<typename CallbackWhenNoException>
-static ALWAYS_INLINE typename std::result_of<CallbackWhenNoException(StringView)>::type toStringView(JSGlobalObject* globalObject, JSValue value, CallbackWhenNoException callback)
+static ALWAYS_INLINE typename std::invoke_result<CallbackWhenNoException, StringView>::type toStringView(JSGlobalObject* globalObject, JSValue value, CallbackWhenNoException callback)
 {
     VM& vm = getVM(globalObject);
     auto scope = DECLARE_THROW_SCOPE(vm);
@@ -206,9 +222,9 @@ static ALWAYS_INLINE typename std::result_of<CallbackWhenNoException(StringView)
     EXCEPTION_ASSERT(!!scope.exception() == !string);
     if (UNLIKELY(!string))
         return { };
-    auto viewWithString = string->viewWithUnderlyingString(globalObject);
+    auto view = string->view(globalObject);
     RETURN_IF_EXCEPTION(scope, { });
-    RELEASE_AND_RETURN(scope, callback(viewWithString.view));
+    RELEASE_AND_RETURN(scope, callback(view));
 }
 
 // Mapping from integers 0..35 to digit identifying this value, for radix 2..36.

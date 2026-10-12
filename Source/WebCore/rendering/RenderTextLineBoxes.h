@@ -52,11 +52,9 @@ public:
     void deleteAll();
 
     void dirtyAll();
-    bool dirtyRange(RenderText&, unsigned start, unsigned end, int lengthDelta);
+    bool dirtyForTextChange(RenderText&);
 
     LegacyInlineTextBox* findNext(int offset, int& position) const;
-
-    LayoutRect visualOverflowBoundingBox(const RenderText&) const;
 
 #if ASSERT_ENABLED
     ~RenderTextLineBoxes();

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,7 +27,10 @@
 #include "FontFamilySpecificationCoreText.h"
 
 #include "FontCache.h"
+#include "FontFamilySpecificationCoreTextCache.h"
 #include "FontSelector.h"
+#include "StyleFontSizeFunctions.h"
+#include "UnrealizedCoreTextFont.h"
 #include <pal/spi/cf/CoreTextSPI.h>
 #include <wtf/HashFunctions.h>
 #include <wtf/HashMap.h>
@@ -35,53 +38,6 @@
 #include <CoreText/CoreText.h>
 
 namespace WebCore {
-
-struct FontFamilySpecificationKey {
-    RetainPtr<CTFontDescriptorRef> fontDescriptor;
-    FontDescriptionKey fontDescriptionKey;
-
-    FontFamilySpecificationKey() = default;
-
-    FontFamilySpecificationKey(CTFontDescriptorRef fontDescriptor, const FontDescription& fontDescription)
-        : fontDescriptor(fontDescriptor)
-        , fontDescriptionKey(fontDescription)
-    { }
-
-    explicit FontFamilySpecificationKey(WTF::HashTableDeletedValueType deletedValue)
-        : fontDescriptionKey(deletedValue)
-    { }
-
-    bool operator==(const FontFamilySpecificationKey& other) const
-    {
-        return safeCFEqual(fontDescriptor.get(), other.fontDescriptor.get()) && fontDescriptionKey == other.fontDescriptionKey;
-    }
-
-    bool operator!=(const FontFamilySpecificationKey& other) const
-    {
-        return !(*this == other);
-    }
-
-    bool isHashTableDeletedValue() const { return fontDescriptionKey.isHashTableDeletedValue(); }
-};
-
-struct FontFamilySpecificationKeyHash {
-    static unsigned hash(const FontFamilySpecificationKey& key) { return computeHash(safeCFHash(key.fontDescriptor.get()), key.fontDescriptionKey); }
-    static bool equal(const FontFamilySpecificationKey& a, const FontFamilySpecificationKey& b) { return a == b; }
-    static const bool safeToCompareToEmptyOrDeleted = true;
-};
-
-using FontMap = HashMap<FontFamilySpecificationKey, std::unique_ptr<FontPlatformData>, FontFamilySpecificationKeyHash, SimpleClassHashTraits<FontFamilySpecificationKey>>;
-
-static FontMap& fontMap()
-{
-    static NeverDestroyed<FontMap> fontMap;
-    return fontMap;
-}
-
-void clearFontFamilySpecificationCoreTextCache()
-{
-    fontMap().clear();
-}
 
 FontFamilySpecificationCoreText::FontFamilySpecificationCoreText(CTFontDescriptorRef fontDescriptor)
     : m_fontDescriptor(fontDescriptor)
@@ -92,21 +48,22 @@ FontFamilySpecificationCoreText::~FontFamilySpecificationCoreText() = default;
 
 FontRanges FontFamilySpecificationCoreText::fontRanges(const FontDescription& fontDescription) const
 {
-    auto& fontPlatformData = fontMap().ensure(FontFamilySpecificationKey(m_fontDescriptor.get(), fontDescription), [&] () {
-        auto size = fontDescription.computedSize();
+    auto size = fontDescription.computedSize();
+    auto& originalPlatformData = FontFamilySpecificationCoreTextCache::forCurrentThread().ensure(FontFamilySpecificationKey(m_fontDescriptor.get(), fontDescription), [&]() {
+        // FIXME: Stop creating this unnecessary CTFont once rdar://problem/105508842 is fixed.
+        UnrealizedCoreTextFont unrealizedFont = { adoptCF(CTFontCreateWithFontDescriptor(m_fontDescriptor.get(), size, nullptr)) };
+        unrealizedFont.setSize(size);
 
-        auto font = adoptCF(CTFontCreateWithFontDescriptor(m_fontDescriptor.get(), size, nullptr));
+        auto font = preparePlatformFont(WTFMove(unrealizedFont), fontDescription, { }, FontTypeForPreparation::SystemFont);
 
-        font = preparePlatformFont(font.get(), fontDescription, nullptr, { });
+        auto [syntheticBold, syntheticOblique] = computeNecessarySynthesis(font.get(), fontDescription, { }, ShouldComputePhysicalTraits::Yes).boldObliquePair();
 
-        auto [syntheticBold, syntheticOblique] = computeNecessarySynthesis(font.get(), fontDescription, ShouldComputePhysicalTraits::Yes).boldObliquePair();
+        auto platformData = makeUnique<FontPlatformData>(font.get(), size, false, syntheticOblique, fontDescription.orientation(), fontDescription.widthVariant(), fontDescription.textRenderingMode());
+        platformData->updateSizeWithFontSizeAdjust(fontDescription.fontSizeAdjust(), fontDescription.computedSize());
+        return platformData;
+    });
 
-        return makeUnique<FontPlatformData>(font.get(), size, false, syntheticOblique, fontDescription.orientation(), fontDescription.widthVariant(), fontDescription.textRenderingMode());
-    }).iterator->value;
-
-    ASSERT(fontPlatformData);
-
-    return FontRanges(FontCache::singleton().fontForPlatformData(*fontPlatformData));
+    return FontRanges(FontCache::forCurrentThread().fontForPlatformData(originalPlatformData));
 }
 
 }

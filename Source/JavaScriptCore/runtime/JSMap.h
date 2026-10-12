@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,32 +25,34 @@
 
 #pragma once
 
-#include "HashMapImpl.h"
-#include "JSObject.h"
+#include "OrderedHashTable.h"
 
 namespace JSC {
 
-class JSMap final : public HashMapImpl<HashMapBucket<HashMapBucketDataKeyValue>> {
-    using Base = HashMapImpl<HashMapBucket<HashMapBucketDataKeyValue>>;
+class JSMap final : public OrderedHashMap {
+    using Base = OrderedHashMap;
 public:
 
     DECLARE_EXPORT_INFO;
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.mapSpace<mode>();
     }
 
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
+    static size_t allocationSize(Checked<size_t> inlineCapacity)
     {
-        return Structure::create(vm, globalObject, prototype, TypeInfo(JSMapType, StructureFlags), info());
+        ASSERT_UNUSED(inlineCapacity, !inlineCapacity);
+        return sizeof(JSMap);
     }
 
-    static JSMap* create(JSGlobalObject* globalObject, VM& vm, Structure* structure)
+    inline static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
+
+    static JSMap* create(VM& vm, Structure* structure)
     {
-        JSMap* instance = new (NotNull, allocateCell<JSMap>(vm.heap)) JSMap(vm, structure);
-        instance->finishCreation(globalObject, vm);
+        JSMap* instance = new (NotNull, allocateCell<JSMap>(vm)) JSMap(vm, structure);
+        instance->finishCreation(vm);
         return instance;
     }
 

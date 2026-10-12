@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2007, 2008 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,14 +34,13 @@
     For example the version 1.2.3 is returned as 0x00010203 and version 200.3.5 is returned as 0x00C80305
     A version of -1 is returned if the main executable did not link against WebKit.
 
-    Please use the current WebKit version number, available in WebKit/mac/Configurations/Version.xcconfig,
+    Please use the current WebKit version number, available in Configurations/Version.xcconfig,
     when adding a new version constant.
 */
 
 #if !PLATFORM(IOS_FAMILY)
 #define WEBKIT_FIRST_VERSION_WITH_3_0_CONTEXT_MENU_TAGS 0x020A0000 // 522.0.0
 #define WEBKIT_FIRST_VERSION_WITH_LOCAL_RESOURCE_SECURITY_RESTRICTION 0x020A0000 // 522.0.0
-#define WEBKIT_FIRST_VERSION_WITHOUT_APERTURE_QUIRK 0x020A0000 // 522.0.0
 #define WEBKIT_FIRST_VERSION_WITHOUT_QUICKBOOKS_QUIRK 0x020A0000 // 522.0.0
 #define WEBKIT_FIRST_VERSION_WITH_MAIN_THREAD_EXCEPTIONS 0x020A0000 // 522.0.0
 #define WEBKIT_FIRST_VERSION_WITHOUT_ADOBE_INSTALLER_QUIRK 0x020A0000 // 522.0.0
@@ -57,16 +56,13 @@
 #define WEBKIT_FIRST_VERSION_WITHOUT_BUMPERCAR_BACK_FORWARD_QUIRK 0x02120700 // 530.7.0
 #define WEBKIT_FIRST_VERSION_WITHOUT_CONTENT_SNIFFING_FOR_FILE_URLS 0x02120A00 // 530.10.0
 #define WEBKIT_FIRST_VERSION_WITHOUT_LINK_ELEMENT_TEXT_CSS_QUIRK 0x02130200 // 531.2.0
-#define WEBKIT_FIRST_VERSION_WITH_HTML5_PARSER 0x02160900 // 534.9.0
 #define WEBKIT_FIRST_VERSION_WITH_CSS_ATTRIBUTE_SETTERS_IGNORING_PRIORITY 0x02170D00 // 535.13.0
-#define WEBKIT_FIRST_VERSION_WITHOUT_LEGACY_BACKGROUNDSIZE_SHORTHAND_BEHAVIOR 0x02190100 // 537.1.0
 #define WEBKIT_FIRST_VERSION_WITH_INSECURE_CONTENT_BLOCKING 0x02590116 // 601.1.22
 #define WEBKIT_FIRST_VERSION_WITH_DEFAULT_ICON_LOADING 0x025C0126 // 604.1.38
 
 #else
 // <rdar://problem/6627758> Need to implement WebKitLinkedOnOrAfter
 // Actually UIKit version numbers, since applications don't link against WebKit
-#define WEBKIT_FIRST_VERSION_WITHOUT_LEGACY_BACKGROUNDSIZE_SHORTHAND_BEHAVIOR 2665 // iOS 7.0
 #define WEBKIT_FIRST_VERSION_WITH_LOADING_DURING_COMMON_RUNLOOP_MODES 2665 // iOS 7.0
 #define WEBKIT_FIRST_VERSION_WITH_INSECURE_CONTENT_BLOCKING 3454
 #define WEBKIT_FIRST_VERSION_WITH_CONTENT_SECURITY_POLICY_SOURCE_STAR_PROTOCOL_RESTRICTION 3555

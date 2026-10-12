@@ -34,9 +34,7 @@
 
 namespace JSC { namespace B3 {
 
-ConstFloatValue::~ConstFloatValue()
-{
-}
+ConstFloatValue::~ConstFloatValue() = default;
 
 Value* ConstFloatValue::negConstant(Procedure& proc) const
 {
@@ -105,7 +103,7 @@ Value* ConstFloatValue::floatToDoubleConstant(Procedure& proc) const
 
 Value* ConstFloatValue::absConstant(Procedure& proc) const
 {
-    return proc.add<ConstFloatValue>(origin(), static_cast<float>(fabs(m_value)));
+    return proc.add<ConstFloatValue>(origin(), static_cast<float>(std::abs(m_value)));
 }
 
 Value* ConstFloatValue::ceilConstant(Procedure& proc) const
@@ -128,6 +126,20 @@ Value* ConstFloatValue::divConstant(Procedure& proc, const Value* other) const
     if (!other->hasFloat())
         return nullptr;
     return proc.add<ConstFloatValue>(origin(), m_value / other->asFloat());
+}
+
+Value* ConstFloatValue::fMinConstant(Procedure& proc, const Value* other) const
+{
+    if (!other->hasFloat())
+        return nullptr;
+    return proc.add<ConstFloatValue>(origin(), Math::fMin(m_value, other->asFloat()));
+}
+
+Value* ConstFloatValue::fMaxConstant(Procedure& proc, const Value* other) const
+{
+    if (!other->hasFloat())
+        return nullptr;
+    return proc.add<ConstFloatValue>(origin(), Math::fMax(m_value, other->asFloat()));
 }
 
 TriState ConstFloatValue::equalConstant(const Value* other) const

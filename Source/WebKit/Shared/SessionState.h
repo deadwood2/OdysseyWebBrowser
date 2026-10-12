@@ -28,10 +28,11 @@
 #include "ViewSnapshotStore.h"
 #include <WebCore/BackForwardItemIdentifier.h>
 #include <WebCore/FloatRect.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/FrameLoaderTypes.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/SerializedScriptValue.h>
-#include <wtf/EnumTraits.h>
+#include <wtf/ArgumentCoder.h>
 #include <wtf/RunLoop.h>
 #include <wtf/URL.h>
 #include <wtf/Vector.h>
@@ -46,33 +47,16 @@ namespace WebKit {
 
 struct HTTPBody {
     struct Element {
-        void encode(IPC::Encoder&) const;
-        static std::optional<Element> decode(IPC::Decoder&);
-
-        enum class Type {
-            Data,
-            File,
-            Blob,
+        struct FileData {
+            String filePath;
+            int64_t fileStart;
+            std::optional<int64_t> fileLength;
+            std::optional<WallTime> expectedFileModificationTime;
         };
-
-        // FIXME: This should be a Variant. It's also unclear why we don't just use FormDataElement here.
-        Type type = Type::Data;
-
-        // Data.
-        Vector<uint8_t> data;
-
-        // File.
-        String filePath;
-        int64_t fileStart;
-        std::optional<int64_t> fileLength;
-        std::optional<WallTime> expectedFileModificationTime;
-
-        // Blob.
-        String blobURLString;
+        using BlobURLString = String;
+        using Data = std::variant<Vector<uint8_t>, FileData, BlobURLString>;
+        Data data;
     };
-
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, HTTPBody&);
 
     String contentType;
     Vector<Element> elements;
@@ -80,21 +64,26 @@ struct HTTPBody {
 
 class FrameState {
 public:
-    void encode(IPC::Encoder&) const;
-    static std::optional<FrameState> decode(IPC::Decoder&);
-
     // These are used to help debug <rdar://problem/48634553>.
     FrameState() { RELEASE_ASSERT(RunLoop::isMain()); }
     ~FrameState() { RELEASE_ASSERT(RunLoop::isMain()); }
-    const Vector<String>& documentState() const { return m_documentState; }
+    FrameState(const FrameState&) = default;
+    FrameState(FrameState&&) = default;
+    FrameState& operator=(const FrameState&) = default;
+    FrameState& operator=(FrameState&&) = default;
+
+    const Vector<AtomString>& documentState() const { return m_documentState; }
     enum class ShouldValidate : bool { No, Yes };
-    void setDocumentState(const Vector<String>&, ShouldValidate = ShouldValidate::No);
-    void validateDocumentState() const;
+    void setDocumentState(const Vector<AtomString>&, ShouldValidate = ShouldValidate::No);
+    static bool validateDocumentState(const Vector<AtomString>&);
+
+    const FrameState* stateForFrameID(WebCore::FrameIdentifier) const;
 
     String urlString;
     String originalURLString;
     String referrer;
-    String target;
+    AtomString target;
+    std::optional<WebCore::FrameIdentifier> frameID;
 
     std::optional<Vector<uint8_t>> stateObjectData;
 
@@ -120,36 +109,29 @@ public:
     Vector<FrameState> children;
 
 private:
-    Vector<String> m_documentState;
+    friend struct IPC::ArgumentCoder<FrameState, void>;
+    Vector<AtomString> m_documentState;
 };
 
 struct PageState {
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, PageState&);
-
     String title;
     FrameState mainFrameState;
     WebCore::ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy { WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow };
     RefPtr<WebCore::SerializedScriptValue> sessionStateObject;
+    bool wasCreatedByJSWithoutUserInteraction { false };
 };
 
 struct BackForwardListItemState {
-    void encode(IPC::Encoder&) const;
-    static std::optional<BackForwardListItemState> decode(IPC::Decoder&);
-
     WebCore::BackForwardItemIdentifier identifier;
 
     PageState pageState;
-#if PLATFORM(COCOA) || PLATFORM(GTK)
-    RefPtr<ViewSnapshot> snapshot;
-#endif
     bool hasCachedPage { false };
+#if PLATFORM(COCOA) || PLATFORM(GTK)
+    RefPtr<ViewSnapshot> snapshot { };
+#endif
 };
 
 struct BackForwardListState {
-    void encode(IPC::Encoder&) const;
-    static std::optional<BackForwardListState> decode(IPC::Decoder&);
-
     Vector<BackForwardListItemState> items;
     std::optional<uint32_t> currentIndex;
 };
@@ -162,16 +144,3 @@ struct SessionState {
 };
 
 } // namespace WebKit
-
-namespace WTF {
-
-template<> struct EnumTraits<WebKit::HTTPBody::Element::Type> {
-    using values = EnumValues<
-        WebKit::HTTPBody::Element::Type,
-        WebKit::HTTPBody::Element::Type::Data,
-        WebKit::HTTPBody::Element::Type::File,
-        WebKit::HTTPBody::Element::Type::Blob
-    >;
-};
-
-} // namespace WTF

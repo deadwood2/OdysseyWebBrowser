@@ -36,6 +36,7 @@
 #include <wtf/RetainPtr.h>
 #include <wtf/text/WTFString.h>
 
+OBJC_CLASS AVAssetTrack;
 OBJC_CLASS AVPlayerItem;
 OBJC_CLASS AVMediaSelectionGroup;
 OBJC_CLASS AVMediaSelectionOption;
@@ -54,6 +55,7 @@ public:
     int index() const;
 
     AVMediaSelectionOption *avMediaSelectionOption() const { return m_mediaSelectionOption.get(); }
+    AVAssetTrack *assetTrack() const;
 
 private:
     friend class MediaSelectionGroupAVFObjC;

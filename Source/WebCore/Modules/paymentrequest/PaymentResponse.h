@@ -32,19 +32,22 @@
 #include "EventTarget.h"
 #include "JSValueInWrappedObject.h"
 #include "PaymentAddress.h"
-#include "PaymentComplete.h"
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
 class Document;
 class PaymentRequest;
+
+struct PaymentCompleteDetails;
 struct PaymentValidationErrors;
+
+enum class PaymentComplete;
 
 template<typename IDLType> class DOMPromiseDeferred;
 
-class PaymentResponse final : public ActiveDOMObject, public EventTargetWithInlineData, public RefCounted<PaymentResponse> {
-    WTF_MAKE_ISO_ALLOCATED(PaymentResponse);
+class PaymentResponse final : public ActiveDOMObject, public EventTarget, public RefCounted<PaymentResponse> {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(PaymentResponse);
 public:
     using DetailsFunction = Function<JSC::Strong<JSC::JSObject>(JSC::JSGlobalObject&)>;
 
@@ -83,26 +86,26 @@ public:
     const String& payerPhone() const { return m_payerPhone; }
     void setPayerPhone(const String& payerPhone) { m_payerPhone = payerPhone; }
 
-    void complete(std::optional<PaymentComplete>&&, DOMPromiseDeferred<void>&&);
+    void complete(Document&, std::optional<PaymentComplete>&&, std::optional<PaymentCompleteDetails>&&, DOMPromiseDeferred<void>&&);
     void retry(PaymentValidationErrors&&, DOMPromiseDeferred<void>&&);
     void abortWithException(Exception&&);
     bool hasRetryPromise() const { return !!m_retryPromise; }
     void settleRetryPromise(ExceptionOr<void>&& = { });
 
-    using RefCounted<PaymentResponse>::ref;
-    using RefCounted<PaymentResponse>::deref;
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
 
 private:
     PaymentResponse(ScriptExecutionContext*, PaymentRequest&);
     void finishConstruction();
 
     // ActiveDOMObject
-    const char* activeDOMObjectName() const final { return "PaymentResponse"; }
     void stop() final;
     void suspend(ReasonForSuspension) final;
 
     // EventTarget
-    EventTargetInterface eventTargetInterface() const final { return PaymentResponseEventTargetInterfaceType; }
+    enum EventTargetInterfaceType eventTargetInterface() const final { return EventTargetInterfaceType::PaymentResponse; }
     ScriptExecutionContext* scriptExecutionContext() const final { return ActiveDOMObject::scriptExecutionContext(); }
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
@@ -113,7 +116,7 @@ private:
         Stopped,
     };
 
-    WeakPtr<PaymentRequest> m_request;
+    WeakPtr<PaymentRequest, WeakPtrImplWithEventTargetData> m_request;
     String m_requestId;
     String m_methodName;
     DetailsFunction m_detailsFunction;

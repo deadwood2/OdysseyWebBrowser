@@ -42,12 +42,6 @@ import webkitpy.port.config as config
 
 
 class ConfigTest(unittest.TestCase):
-    def setUp(self):
-        config.clear_cached_configuration()
-
-    def tearDown(self):
-        config.clear_cached_configuration()
-
     def make_config(self, output='', files=None, exit_code=0, exception=None, run_command_fn=None, stderr='', port_implementation=None):
         e = MockExecutive2(output=output, exit_code=exit_code, exception=exception, run_command_fn=run_command_fn, stderr=stderr)
         fs = MockFileSystem(files)
@@ -137,7 +131,7 @@ class ConfigTest(unittest.TestCase):
         expected = 'Debug'
 
         args = [sys.executable, script, '--mock', expected]
-        actual = e.run_command(args).rstrip()
+        actual = e.run_command(args, return_stderr=False).rstrip()
         self.assertEqual(actual, expected)
 
     def test_default_configuration__no_perl(self):

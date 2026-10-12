@@ -26,10 +26,14 @@
 #import "config.h"
 #import "PageClientImplCocoa.h"
 
+
+#import "WKTextAnimationType.h"
 #import "WKWebViewInternal.h"
 #import <WebCore/AlternativeTextUIController.h>
+#import <WebCore/TextAnimationTypes.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
+#import <pal/spi/ios/BrowserEngineKitSPI.h>
 #import <wtf/Vector.h>
 #import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/text/WTFString.h>
@@ -43,6 +47,11 @@ PageClientImplCocoa::PageClientImplCocoa(WKWebView *webView)
 }
 
 PageClientImplCocoa::~PageClientImplCocoa() = default;
+
+void PageClientImplCocoa::topContentInsetDidChange()
+{
+    [m_webView _recalculateViewportSizesWithMinimumViewportInset:[m_webView minimumViewportInset] maximumViewportInset:[m_webView maximumViewportInset] throwOnInvalidInput:NO];
+}
 
 void PageClientImplCocoa::themeColorWillChange()
 {
@@ -148,14 +157,64 @@ void PageClientImplCocoa::storeAppHighlight(const WebCore::AppHighlight &highlig
 }
 #endif // ENABLE(APP_HIGHLIGHTS)
 
+#if ENABLE(WRITING_TOOLS_UI)
+void PageClientImplCocoa::addTextAnimationForAnimationID(const WTF::UUID& uuid, const WebCore::TextAnimationData& data)
+{
+    [m_webView _addTextAnimationForAnimationID:uuid withData:data];
+}
+
+void PageClientImplCocoa::removeTextAnimationForAnimationID(const WTF::UUID& uuid)
+{
+    [m_webView _removeTextAnimationForAnimationID:uuid];
+}
+
+void PageClientImplCocoa::didEndPartialIntelligenceTextPonderingAnimation()
+{
+    [m_webView _didEndPartialIntelligenceTextPonderingAnimation];
+}
+#endif
+
 void PageClientImplCocoa::pageClosed()
 {
     m_alternativeTextUIController->clear();
 }
 
-WebCore::DictationContext PageClientImplCocoa::addDictationAlternatives(NSTextAlternatives *alternatives)
+#if ENABLE(GPU_PROCESS)
+void PageClientImplCocoa::gpuProcessDidFinishLaunching()
+{
+    [m_webView willChangeValueForKey:@"_gpuProcessIdentifier"];
+    [m_webView didChangeValueForKey:@"_gpuProcessIdentifier"];
+}
+
+void PageClientImplCocoa::gpuProcessDidExit()
+{
+    [m_webView willChangeValueForKey:@"_gpuProcessIdentifier"];
+    [m_webView didChangeValueForKey:@"_gpuProcessIdentifier"];
+}
+#endif
+
+#if ENABLE(MODEL_PROCESS)
+void PageClientImplCocoa::modelProcessDidFinishLaunching()
+{
+    [m_webView willChangeValueForKey:@"_modelProcessIdentifier"];
+    [m_webView didChangeValueForKey:@"_modelProcessIdentifier"];
+}
+
+void PageClientImplCocoa::modelProcessDidExit()
+{
+    [m_webView willChangeValueForKey:@"_modelProcessIdentifier"];
+    [m_webView didChangeValueForKey:@"_modelProcessIdentifier"];
+}
+#endif
+
+WebCore::DictationContext PageClientImplCocoa::addDictationAlternatives(PlatformTextAlternatives *alternatives)
 {
     return m_alternativeTextUIController->addAlternatives(alternatives);
+}
+
+void PageClientImplCocoa::replaceDictationAlternatives(PlatformTextAlternatives *alternatives, WebCore::DictationContext context)
+{
+    m_alternativeTextUIController->replaceAlternatives(alternatives, context);
 }
 
 void PageClientImplCocoa::removeDictationAlternatives(WebCore::DictationContext dictationContext)
@@ -168,7 +227,7 @@ Vector<String> PageClientImplCocoa::dictationAlternatives(WebCore::DictationCont
     return makeVector<String>(platformDictationAlternatives(dictationContext).alternativeStrings);
 }
 
-NSTextAlternatives *PageClientImplCocoa::platformDictationAlternatives(WebCore::DictationContext dictationContext)
+PlatformTextAlternatives *PageClientImplCocoa::platformDictationAlternatives(WebCore::DictationContext dictationContext)
 {
     return m_alternativeTextUIController->alternativesForContext(dictationContext);
 }
@@ -183,6 +242,21 @@ void PageClientImplCocoa::cameraCaptureWillChange()
     [m_webView willChangeValueForKey:@"cameraCaptureState"];
 }
 
+void PageClientImplCocoa::displayCaptureWillChange()
+{
+    [m_webView willChangeValueForKey:@"_displayCaptureState"];
+}
+
+void PageClientImplCocoa::displayCaptureSurfacesWillChange()
+{
+    [m_webView willChangeValueForKey:@"_displayCaptureSurfaces"];
+}
+
+void PageClientImplCocoa::systemAudioCaptureWillChange()
+{
+    [m_webView willChangeValueForKey:@"_systemAudioCaptureState"];
+}
+
 void PageClientImplCocoa::microphoneCaptureChanged()
 {
     [m_webView didChangeValueForKey:@"microphoneCaptureState"];
@@ -193,4 +267,90 @@ void PageClientImplCocoa::cameraCaptureChanged()
     [m_webView didChangeValueForKey:@"cameraCaptureState"];
 }
 
+void PageClientImplCocoa::displayCaptureChanged()
+{
+    [m_webView didChangeValueForKey:@"_displayCaptureState"];
 }
+
+void PageClientImplCocoa::displayCaptureSurfacesChanged()
+{
+    [m_webView didChangeValueForKey:@"_displayCaptureSurfaces"];
+}
+
+void PageClientImplCocoa::systemAudioCaptureChanged()
+{
+    [m_webView didChangeValueForKey:@"_systemAudioCaptureState"];
+}
+
+WindowKind PageClientImplCocoa::windowKind()
+{
+    auto window = [m_webView window];
+    if (!window)
+        return WindowKind::Unparented;
+    if ([window isKindOfClass:NSClassFromString(@"_SCNSnapshotWindow")])
+        return WindowKind::InProcessSnapshotting;
+    return WindowKind::Normal;
+}
+
+#if ENABLE(WRITING_TOOLS)
+void PageClientImplCocoa::proofreadingSessionShowDetailsForSuggestionWithIDRelativeToRect(const WebCore::WritingTools::TextSuggestion::ID& replacementID, WebCore::IntRect selectionBoundsInRootView)
+{
+    [m_webView _proofreadingSessionShowDetailsForSuggestionWithUUID:replacementID relativeToRect:selectionBoundsInRootView];
+}
+
+void PageClientImplCocoa::proofreadingSessionUpdateStateForSuggestionWithID(WebCore::WritingTools::TextSuggestion::State state, const WebCore::WritingTools::TextSuggestion::ID& replacementID)
+{
+    [m_webView _proofreadingSessionUpdateState:state forSuggestionWithUUID:replacementID];
+}
+
+static NSString *writingToolsActiveKey = @"writingToolsActive";
+
+void PageClientImplCocoa::writingToolsActiveWillChange()
+{
+    [m_webView willChangeValueForKey:writingToolsActiveKey];
+}
+
+void PageClientImplCocoa::writingToolsActiveDidChange()
+{
+    [m_webView didChangeValueForKey:writingToolsActiveKey];
+}
+#endif
+
+#if ENABLE(GAMEPAD)
+void PageClientImplCocoa::setGamepadsRecentlyAccessed(GamepadsRecentlyAccessed gamepadsRecentlyAccessed)
+{
+    [m_webView _setGamepadsRecentlyAccessed:(gamepadsRecentlyAccessed == GamepadsRecentlyAccessed::No) ? NO : YES];
+}
+
+#if PLATFORM(VISION)
+void PageClientImplCocoa::gamepadsConnectedStateChanged()
+{
+    [m_webView _gamepadsConnectedStateChanged];
+}
+#endif
+#endif
+
+void PageClientImplCocoa::hasActiveNowPlayingSessionChanged(bool hasActiveNowPlayingSession)
+{
+    if ([m_webView _hasActiveNowPlayingSession] == hasActiveNowPlayingSession)
+        return;
+
+    RELEASE_LOG(ViewState, "%p PageClientImplCocoa::hasActiveNowPlayingSessionChanged %d", m_webView.get().get(), hasActiveNowPlayingSession);
+
+    [m_webView willChangeValueForKey:@"_hasActiveNowPlayingSession"];
+    [m_webView _setHasActiveNowPlayingSession:hasActiveNowPlayingSession];
+    [m_webView didChangeValueForKey:@"_hasActiveNowPlayingSession"];
+}
+
+void PageClientImplCocoa::videoControlsManagerDidChange()
+{
+    [m_webView willChangeValueForKey:@"_canEnterFullscreen"];
+    [m_webView didChangeValueForKey:@"_canEnterFullscreen"];
+}
+
+CocoaWindow *PageClientImplCocoa::platformWindow() const
+{
+    return [m_webView window];
+}
+
+} // namespace WebKit

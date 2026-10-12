@@ -22,7 +22,7 @@
 
 using namespace angle;
 
-class EGLDeviceCreationTest : public ANGLETest
+class EGLDeviceCreationTest : public ANGLETest<>
 {
   protected:
     EGLDeviceCreationTest()
@@ -83,6 +83,7 @@ class EGLDeviceCreationTest : public ANGLETest
 
         if (mContext != EGL_NO_CONTEXT)
         {
+            eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             eglDestroyContext(mDisplay, mContext);
             mContext = EGL_NO_CONTEXT;
         }
@@ -104,19 +105,6 @@ class EGLDeviceCreationTest : public ANGLETest
 
         ASSERT_TRUE(SUCCEEDED(hr));
         ASSERT_GE(mFeatureLevel, D3D_FEATURE_LEVEL_9_3);
-    }
-
-    void CreateD3D11FL9_3Device()
-    {
-        ASSERT_EQ(nullptr, mDevice);
-
-        D3D_FEATURE_LEVEL fl93 = D3D_FEATURE_LEVEL_9_3;
-
-        HRESULT hr =
-            mD3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, 0, 0, &fl93, 1, D3D11_SDK_VERSION,
-                               &mDevice, &mFeatureLevel, &mDeviceContext);
-
-        ASSERT_TRUE(SUCCEEDED(hr));
     }
 
     void CreateWindowSurface()
@@ -257,68 +245,7 @@ TEST_P(EGLDeviceCreationTest, RenderingUsingD3D11Device)
 
     // Note that we must call TearDown() before we release the EGL device, since the display
     // depends on the device
-    testTearDown();
-
-    eglReleaseDeviceANGLE(eglDevice);
-}
-
-// Test that ANGLE doesn't try to recreate a D3D11 device if the inputted one is lost
-TEST_P(EGLDeviceCreationTest, D3D11DeviceRecovery)
-{
-    // Force Feature Level 9_3 so we can easily trigger a device lost later
-    CreateD3D11FL9_3Device();
-
-    EGLDeviceEXT eglDevice =
-        eglCreateDeviceANGLE(EGL_D3D11_DEVICE_ANGLE, reinterpret_cast<void *>(mDevice), nullptr);
-    ASSERT_EGL_SUCCESS();
-
-    // Create an EGLDisplay using the EGLDevice
-    mDisplay = eglGetPlatformDisplayEXT(EGL_PLATFORM_DEVICE_EXT, eglDevice, nullptr);
-    ASSERT_TRUE(mDisplay != EGL_NO_DISPLAY);
-
-    // Create a surface using the display
-    CreateWindowSurface();
-
-    // Perform some very basic rendering
-    glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    EXPECT_PIXEL_EQ(32, 32, 255, 0, 255, 255);
-    ASSERT_GL_NO_ERROR();
-
-    // ANGLE's SwapChain11::initPassThroughResources doesn't handle device lost before
-    // eglSwapBuffers, so we must call eglSwapBuffers before we lose the device.
-    ASSERT_EGL_TRUE(eglSwapBuffers(mDisplay, mSurface));
-
-    // Trigger a lost device
-    trigger9_3DeviceLost();
-
-    // Destroy the old EGL Window Surface
-    if (mSurface != EGL_NO_SURFACE)
-    {
-        eglDestroySurface(mDisplay, mSurface);
-        mSurface = EGL_NO_SURFACE;
-    }
-
-    // Try to create a new window surface. In certain configurations this will recreate the D3D11
-    // device. We want to test that it doesn't recreate the D3D11 device when EGLDeviceEXT is
-    // used. The window surface creation should fail if a new D3D11 device isn't created.
-    mSurface = eglCreateWindowSurface(mDisplay, mConfig, mOSWindow->getNativeWindow(), nullptr);
-    ASSERT_EQ(EGL_NO_SURFACE, mSurface);
-    ASSERT_EGL_ERROR(EGL_BAD_ALLOC);
-
-    // Get the D3D11 device out of the EGLDisplay again. It should be the same one as above.
-    EGLAttrib device       = 0;
-    EGLAttrib newEglDevice = 0;
-    ASSERT_EGL_TRUE(eglQueryDisplayAttribEXT(mDisplay, EGL_DEVICE_EXT, &newEglDevice));
-    ASSERT_EGL_TRUE(eglQueryDeviceAttribEXT(reinterpret_cast<EGLDeviceEXT>(newEglDevice),
-                                            EGL_D3D11_DEVICE_ANGLE, &device));
-    ID3D11Device *newDevice = reinterpret_cast<ID3D11Device *>(device);
-
-    ASSERT_EQ(reinterpret_cast<EGLDeviceEXT>(newEglDevice), eglDevice);
-    ASSERT_EQ(newDevice, mDevice);
-
-    // Note that we must call TearDown() before we release the EGL device, since the display
-    // depends on the device
+    ASSERT_EGL_TRUE(eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
     testTearDown();
 
     eglReleaseDeviceANGLE(eglDevice);
@@ -399,16 +326,13 @@ TEST_P(EGLDeviceCreationTest, AnyD3D9Device)
     EXPECT_EGL_ERROR(EGL_BAD_ATTRIBUTE);
 }
 
-class EGLDeviceQueryTest : public ANGLETest
+class EGLDeviceQueryTest : public ANGLETest<>
 {
   protected:
     EGLDeviceQueryTest() {}
 
     void testSetUp() override
     {
-        const char *extensionString =
-            static_cast<const char *>(eglQueryString(getEGLWindow()->getDisplay(), EGL_EXTENSIONS));
-
         if (!eglQueryDeviceStringEXT)
         {
             FAIL() << "ANGLE extension EGL_EXT_device_query export eglQueryDeviceStringEXT was not "
@@ -430,11 +354,13 @@ class EGLDeviceQueryTest : public ANGLETest
         EGLAttrib angleDevice = 0;
         EXPECT_EGL_TRUE(
             eglQueryDisplayAttribEXT(getEGLWindow()->getDisplay(), EGL_DEVICE_EXT, &angleDevice));
-        extensionString = static_cast<const char *>(
-            eglQueryDeviceStringEXT(reinterpret_cast<EGLDeviceEXT>(angleDevice), EGL_EXTENSIONS));
-        if (strstr(extensionString, "EGL_ANGLE_device_d3d") == nullptr)
+        if (!IsEGLDeviceExtensionEnabled(reinterpret_cast<EGLDeviceEXT>(angleDevice),
+                                         "EGL_ANGLE_device_d3d9") &&
+            !IsEGLDeviceExtensionEnabled(reinterpret_cast<EGLDeviceEXT>(angleDevice),
+                                         "EGL_ANGLE_device_d3d11"))
         {
-            FAIL() << "ANGLE extension EGL_ANGLE_device_d3d was not found";
+            FAIL() << "ANGLE extensions EGL_ANGLE_device_d3d9 or EGL_ANGLE_device_d3d11 were not "
+                      "found";
         }
     }
 };
@@ -445,27 +371,29 @@ class EGLDeviceQueryTest : public ANGLETest
 // If the test is confitured to use D3D9, then it should succeed to obtain a D3D9 device.
 TEST_P(EGLDeviceQueryTest, QueryDevice)
 {
-    EGLAttrib device      = 0;
     EGLAttrib angleDevice = 0;
-    if (getPlatformRenderer() == EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE)
+    EXPECT_EGL_TRUE(
+        eglQueryDisplayAttribEXT(getEGLWindow()->getDisplay(), EGL_DEVICE_EXT, &angleDevice));
+
+    if (IsEGLDeviceExtensionEnabled(reinterpret_cast<EGLDeviceEXT>(angleDevice),
+                                    "EGL_ANGLE_device_d3d11"))
     {
-        EXPECT_EGL_TRUE(
-            eglQueryDisplayAttribEXT(getEGLWindow()->getDisplay(), EGL_DEVICE_EXT, &angleDevice));
+        EGLAttrib device11 = 0;
         EXPECT_EGL_TRUE(eglQueryDeviceAttribEXT(reinterpret_cast<EGLDeviceEXT>(angleDevice),
-                                                EGL_D3D11_DEVICE_ANGLE, &device));
-        ID3D11Device *d3d11Device = reinterpret_cast<ID3D11Device *>(device);
+                                                EGL_D3D11_DEVICE_ANGLE, &device11));
+        ID3D11Device *d3d11Device = reinterpret_cast<ID3D11Device *>(device11);
         IDXGIDevice *dxgiDevice   = DynamicCastComObject<IDXGIDevice>(d3d11Device);
         EXPECT_TRUE(dxgiDevice != nullptr);
         SafeRelease(dxgiDevice);
     }
 
-    if (getPlatformRenderer() == EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE)
+    if (IsEGLDeviceExtensionEnabled(reinterpret_cast<EGLDeviceEXT>(angleDevice),
+                                    "EGL_ANGLE_device_d3d9"))
     {
-        EXPECT_EGL_TRUE(
-            eglQueryDisplayAttribEXT(getEGLWindow()->getDisplay(), EGL_DEVICE_EXT, &angleDevice));
+        EGLAttrib device9 = 0;
         EXPECT_EGL_TRUE(eglQueryDeviceAttribEXT(reinterpret_cast<EGLDeviceEXT>(angleDevice),
-                                                EGL_D3D9_DEVICE_ANGLE, &device));
-        IDirect3DDevice9 *d3d9Device = reinterpret_cast<IDirect3DDevice9 *>(device);
+                                                EGL_D3D9_DEVICE_ANGLE, &device9));
+        IDirect3DDevice9 *d3d9Device = reinterpret_cast<IDirect3DDevice9 *>(device9);
         IDirect3D9 *d3d9             = nullptr;
         EXPECT_EQ(S_OK, d3d9Device->GetDirect3D(&d3d9));
         EXPECT_TRUE(d3d9 != nullptr);
@@ -479,22 +407,24 @@ TEST_P(EGLDeviceQueryTest, QueryDevice)
 // If the test is confitured to use D3D9, then it should fail to obtain a D3D9 device.
 TEST_P(EGLDeviceQueryTest, QueryDeviceBadAttribute)
 {
-    EGLAttrib device      = 0;
     EGLAttrib angleDevice = 0;
-    if (getPlatformRenderer() == EGL_PLATFORM_ANGLE_TYPE_D3D11_ANGLE)
+    EXPECT_EGL_TRUE(
+        eglQueryDisplayAttribEXT(getEGLWindow()->getDisplay(), EGL_DEVICE_EXT, &angleDevice));
+
+    if (!IsEGLDeviceExtensionEnabled(reinterpret_cast<EGLDeviceEXT>(angleDevice),
+                                     "EGL_ANGLE_device_d3d11"))
     {
-        EXPECT_EGL_TRUE(
-            eglQueryDisplayAttribEXT(getEGLWindow()->getDisplay(), EGL_DEVICE_EXT, &angleDevice));
+        EGLAttrib device11 = 0;
         EXPECT_EGL_FALSE(eglQueryDeviceAttribEXT(reinterpret_cast<EGLDeviceEXT>(angleDevice),
-                                                 EGL_D3D9_DEVICE_ANGLE, &device));
+                                                 EGL_D3D11_DEVICE_ANGLE, &device11));
     }
 
-    if (getPlatformRenderer() == EGL_PLATFORM_ANGLE_TYPE_D3D9_ANGLE)
+    if (!IsEGLDeviceExtensionEnabled(reinterpret_cast<EGLDeviceEXT>(angleDevice),
+                                     "EGL_ANGLE_device_d3d9"))
     {
-        EXPECT_EGL_TRUE(
-            eglQueryDisplayAttribEXT(getEGLWindow()->getDisplay(), EGL_DEVICE_EXT, &angleDevice));
+        EGLAttrib device9 = 0;
         EXPECT_EGL_FALSE(eglQueryDeviceAttribEXT(reinterpret_cast<EGLDeviceEXT>(angleDevice),
-                                                 EGL_D3D11_DEVICE_ANGLE, &device));
+                                                 EGL_D3D9_DEVICE_ANGLE, &device9));
     }
 }
 

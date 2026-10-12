@@ -29,7 +29,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import json
-import sys
 import unittest
 
 from webkitcorepy import StringIO, OutputCapture
@@ -42,6 +41,7 @@ from webkitpy.common.host_mock import MockHost
 from webkitpy.layout_tests import run_webkit_tests
 from webkitpy.layout_tests.models.test_run_results import INTERRUPTED_EXIT_STATUS
 from webkitpy.port import test
+from webkitpy.port.image_diff import ImageDiffResult
 from webkitpy.xcode.device_type import DeviceType
 
 
@@ -169,12 +169,11 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         # A real PlatformInfo object is used here instead of a
         # MockPlatformInfo because we need to actually check for
         # Windows and Mac to skip some tests.
-        self._platform = SystemHost().platform
+        self._platform = SystemHost.get_default().platform
 
         # FIXME: Remove this when we fix test-webkitpy to work
         # properly on cygwin (bug 63846).
-        # FIXME: Multiprocessing doesn't do well when nested in Python 3 (https://bugs.webkit.org/show_bug.cgi?id=205280)
-        self.should_test_processes = not self._platform.is_win() and sys.version_info < (3, 0)
+        self.should_test_processes = not self._platform.is_win()
 
     def serial_test_basic(self):
         options, args = parse_args(tests_included=True)
@@ -187,7 +186,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         self.assertEqual(details.initial_results.total, test.TOTAL_TESTS)
         self.assertEqual(details.initial_results.expected_skips, test.TOTAL_SKIPS)
         self.assertEqual(len(details.initial_results.unexpected_results_by_name), test.UNEXPECTED_PASSES + test.UNEXPECTED_FAILURES)
-        self.assertEqual(details.exit_code, test.UNEXPECTED_FAILURES - 1)  # failures/expected/hang.html actually passes when run in the same process
+        self.assertEqual(details.exit_code, test.UNEXPECTED_FAILURES - 4)  # 4 tests succeed on retry
         self.assertEqual(details.retry_results.total, test.TOTAL_RETRIES)
 
         one_line_summary = "%d tests ran as expected, %d didn't:\n" % (
@@ -222,7 +221,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
     def test_child_processes_min(self):
         if self.should_test_processes:
             _, regular_output, _ = logging_run(
-                ['--debug-rwt-logging', '--child-processes', '2', '-i', 'passes/passes', 'passes'],
+                ['--debug-rwt-logging', '--child-processes', '2', '-i', 'passes/passes', '-i', 'platform', 'passes'],
                 tests_included=True, shared_port=False)
             self.assertTrue(any(['Running 1 ' in line for line in regular_output.getvalue().splitlines()]))
 
@@ -349,6 +348,39 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         # Now check that we don't run anything.
         self.assertEqual(get_tests_run(['--skipped=always', 'passes/skipped/skip.html']), [])
 
+    def test_ews_corner_case_failing_test(self):
+        # We should skip running tests marked as failures (or flakies) when passing '--skip-failing-tests'
+        self.assertEqual(get_tests_run(['--skip-failing-tests', 'failures/expected']), [])
+        # But if we specify the name of the individual tests, then those tests should run
+        list_of_tests_failing = ['failures/expected/timeout.html', 'failures/expected/text.html', 'failures/expected/crash.html', 'failures/expected/missing_image.html']
+        self.assertEqual(get_tests_run(['--skip-failing-tests'] + list_of_tests_failing), list_of_tests_failing)
+        # Unless we specify also '--skipped=always', then they should be skipped even when we list them individually on the command line
+        self.assertEqual(get_tests_run(['--skip-failing-tests', '--skipped=always'] + list_of_tests_failing), [])
+
+    def test_ews_corner_case_failing_directory(self):
+        # When a whole directory is is marked as failing (or flaky), then the tests inside should not run if we specify the name of the directory and we pass '--skip-failing-tests' or '--skip-flaky-tests'
+        self.assertEqual(get_tests_run(['--skip-failing-tests', 'corner-cases/ews/directory-flaky']), [])
+        # But if we specify on the command-line the name of individual tests inside that directory the tests should run (even with '--skip-failing-tests')
+        list_of_tests_failing = ['corner-cases/ews/directory-skipped/failure.html', 'corner-cases/ews/directory-skipped/timeout.html']
+        self.assertEqual(get_tests_run(['--no-retry-failures', '--skip-failing-tests'] + list_of_tests_failing), list_of_tests_failing)
+        # Unless we specify also '--skipped=always' (in combination with '--skip-failing-tests'), then they should be skipped even when we list them individually on the command line
+        self.assertEqual(get_tests_run(['--no-retry-failures',  '--skip-failing-tests', '--skipped=always'] + list_of_tests_failing), [])
+
+    def test_ews_corner_case_skipped_test(self):
+        # When we specify on the command line the name of a test skipped this test should run
+        self.assertEqual(get_tests_run(['passes/skipped/skip.html']), ['passes/skipped/skip.html'])
+        # Unless we specify also '--skipped=always', then it should be skipped even when we list it on the command line
+        self.assertEqual(get_tests_run(['--skipped=always', 'passes/skipped/skip.html']), [])
+
+    def test_ews_corner_case_skipped_directory(self):
+        # When a whole directory is skipped, then the tests inside should not run if we specify the name of the directory
+        self.assertEqual(get_tests_run(['corner-cases/ews/directory-skipped']), [])
+        # But if we specify on the command-line the name of individual tests inside that directory the tests should run
+        list_of_tests_failing = ['corner-cases/ews/directory-skipped/failure.html', 'corner-cases/ews/directory-skipped/timeout.html']
+        self.assertEqual(get_tests_run(['--no-retry-failures'] + list_of_tests_failing), list_of_tests_failing)
+        # Unless we specify also '--skipped=always', then they should be skipped even when we list them individually on the command line
+        self.assertEqual(get_tests_run(['--no-retry-failures', '--skipped=always'] + list_of_tests_failing), [])
+
     def test_iterations(self):
         tests_to_run = ['passes/image.html', 'passes/text.html']
         tests_run = get_tests_run(['--iterations', '2'] + tests_to_run)
@@ -413,7 +445,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
 
     def serial_test_run_singly_actually_runs_tests(self):
         details, _, _ = logging_run(['--run-singly'], tests_included=True)
-        self.assertEqual(details.exit_code, test.UNEXPECTED_FAILURES - 1)  # failures/expected/hang.html actually passes w/ --run-singly.
+        self.assertEqual(details.exit_code, test.UNEXPECTED_FAILURES - 3)  # 3 tests succeed on retry
 
     def test_single_file(self):
         tests_run = get_tests_run(['passes/text.html'])
@@ -517,16 +549,20 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
     def test_pixel_test_directories(self):
         host = MockHost()
 
-        """Both tests have faling checksum. We include only the first in pixel tests so only that should fail."""
+        """Both tests have failing checksum. We include only the first in pixel tests so only that should fail."""
         args = ['--pixel-tests', '--pixel-test-directory', 'failures/unexpected/pixeldir',
                 'failures/unexpected/pixeldir/image_in_pixeldir.html',
                 'failures/unexpected/image_not_in_pixeldir.html']
         details, err, _ = logging_run(extra_args=args, host=host, tests_included=True)
 
         self.assertEqual(details.exit_code, 1)
-        expected_token = '"unexpected":{"pixeldir":{"image_in_pixeldir.html":{"report":"REGRESSION","expected":"PASS","actual":"IMAGE"'
+
         json_string = host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')
-        self.assertTrue(json_string.find(expected_token) != -1)
+        json = parse_full_results(json_string)
+        test_data = json["tests"]["failures"]["unexpected"]["pixeldir"]["image_in_pixeldir.html"]
+        self.assertEqual(test_data["expected"], "PASS")
+        self.assertEqual(test_data["actual"], "IMAGE")
+        self.assertEqual(test_data["report"], "REGRESSION")
 
     def test_missing_and_unexpected_results_with_custom_exit_code(self):
         # Test that we update expectations in place. If the expectation
@@ -581,6 +617,91 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             sorted(list(expected_dictionary['tests']['failures']['unexpected'])),
             sorted(list(actual_dictionary['tests']['failures']['unexpected'])),
         )
+
+    def test_wpt_tests(self):
+        host = MockHost()
+        _, regular_output, _ = logging_run(['imported/w3c/web-platform-tests/'], tests_included=True, host=host)
+        actual_dictionary = json.loads(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')[len('ADD_RESULTS('):-2])
+        expected_dictionary = {
+            'tests': {
+                'imported': {
+                    'w3c': {
+                        'web-platform-tests': {
+                            'some': {
+                                'new.html': {
+                                    'is_missing_text': True,
+                                    'report': 'REGRESSION',
+                                    'expected': 'PASS',
+                                    'actual': 'MISSING',
+                                },
+                                'test-crash-crash.html': {
+                                    'has_stderr': True,
+                                    'report': 'REGRESSION',
+                                    'expected': 'PASS',
+                                    'actual': 'CRASH',
+                                },
+                                'test-timeout-crash.html': {
+                                    'report': 'REGRESSION',
+                                    'expected': 'PASS',
+                                    'actual': 'TIMEOUT',
+                                },
+                            },
+                            'crashtests': {
+                                'crash.html': {
+                                    'has_stderr': True,
+                                    'report': 'REGRESSION',
+                                    'expected': 'PASS',
+                                    'actual': 'CRASH',
+                                },
+                                'timeout.html': {
+                                    'report': 'REGRESSION',
+                                    'expected': 'PASS',
+                                    'actual': 'TIMEOUT',
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        self.assertEqual(
+            sorted(list(expected_dictionary['tests']['imported']['w3c']['web-platform-tests']['some'])),
+            sorted(list(actual_dictionary['tests']['imported']['w3c']['web-platform-tests']['some'])))
+        self.assertEqual(
+            sorted(list(expected_dictionary['tests']['imported']['w3c']['web-platform-tests']['some']['new.html'])),
+            sorted(list(actual_dictionary['tests']['imported']['w3c']['web-platform-tests']['some']['new.html'])))
+        self.assertEqual(
+            sorted(list(expected_dictionary['tests']['imported']['w3c']['web-platform-tests']['some']['test-crash-crash.html'])),
+            sorted(list(actual_dictionary['tests']['imported']['w3c']['web-platform-tests']['some']['test-crash-crash.html'])))
+        self.assertEqual(
+            sorted(list(expected_dictionary['tests']['imported']['w3c']['web-platform-tests']['some']['test-timeout-crash.html'])),
+            sorted(list(actual_dictionary['tests']['imported']['w3c']['web-platform-tests']['some']['test-timeout-crash.html'])))
+        self.assertTrue(host.filesystem.exists('/tmp/layout-test-results/imported/w3c/web-platform-tests/some/new-actual.txt'))
+        self.assertFalse(host.filesystem.exists('/tmp/layout-test-results/imported/w3c/web-platform-tests/some/test-pass-crash-actual.txt'))
+        self.assertFalse(host.filesystem.exists('/tmp/layout-test-results/imported/w3c/web-platform-tests/some/test-crash-crash-actual.txt'))
+        self.assertFalse(host.filesystem.exists('/tmp/layout-test-results/imported/w3c/web-platform-tests/some/test-timeout-crash-actual.txt'))
+
+    def test_wpt_tests_rebaseline(self):
+        host = MockHost()
+        mock_crash_report = None
+
+        if self._platform.is_mac() or self._platform.is_win():
+            # FIXME: Need to rewrite these tests to not be mac-specific, or move them elsewhere.
+            # Currently CrashLog uploading only works on Darwin and Windows.
+            mock_crash_report = make_mock_crash_report_darwin('WebKitTestRunner', 12345)
+            host.filesystem.write_text_file('/tmp/layout-test-results/WebKitTestRunner_2011-06-13-150719_quadzen.crash', mock_crash_report)
+
+        details, regular_output, _ = logging_run(['imported/w3c/web-platform-tests/', '--reset-results'], tests_included=True, host=host, new_results=True)
+        actual_dictionary = json.loads(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')[len('ADD_RESULTS('):-2])
+        file_list = host.filesystem.written_files.keys()
+        self.assertEqual(details.exit_code, 4)
+        self.assertTrue(host.filesystem.read_text_file('/test.checkout/LayoutTests/imported/w3c/web-platform-tests/some/new-expected.txt'), 'ok')
+        self.assertFalse(host.filesystem.exists('/test.checkout/LayoutTests/imported/w3c/web-platform-tests/some/test-pass-expected.txt'))
+        self.assertFalse(host.filesystem.exists('/test.checkout/LayoutTests/imported/w3c/web-platform-tests/some/test-crash-expected.txt'))
+        self.assertFalse(host.filesystem.exists('/test.checkout/LayoutTests/imported/w3c/web-platform-tests/some/test-timeout-expected.txt'))
+
+        if mock_crash_report:
+            self.assertEqual(host.filesystem.read_text_file('/tmp/layout-test-results/imported/w3c/web-platform-tests/some/test-crash-crash-crash-log.txt'), mock_crash_report)
 
     def test_no_image_failure_with_image_diff(self):
         host = MockHost()
@@ -698,6 +819,40 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         self.assertTrue(host.filesystem.exists('/tmp/layout-test-results/failures/flaky/text-actual.txt'))
         self.assertFalse(host.filesystem.exists('retries'))
 
+    def test_retrying_multiple_failures(self):
+        host = MockHost()
+        details, err, _ = logging_run(['--debug-rwt-logging', 'corner-cases/multiple-failures/failure-crash.html'], tests_included=True, host=host)
+        self.assertEqual(details.exit_code, 1)
+        self.assertTrue('Retrying' in err.getvalue())
+
+        actual_dictionary = json.loads(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')[len('ADD_RESULTS('):-2])
+        self.assertEqual(
+            actual_dictionary['tests'], {
+                'corner-cases': {'multiple-failures': {'failure-crash.html': {
+                    'report': 'REGRESSION',
+                    'expected': 'PASS',
+                    'actual': 'TEXT CRASH',
+                }}}
+            },
+        )
+
+    def test_retrying_multiple_failures_expected(self):
+        host = MockHost()
+        details, err, _ = logging_run(['--debug-rwt-logging', 'corner-cases/multiple-failures/failure-timeout.html'], tests_included=True, host=host)
+        self.assertEqual(details.exit_code, 0)
+        self.assertTrue('Retrying' in err.getvalue())
+
+        actual_dictionary = json.loads(host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')[len('ADD_RESULTS('):-2])
+        self.assertEqual(
+            actual_dictionary['tests'], {
+                'corner-cases': {'multiple-failures': {'failure-timeout.html': {
+                    'report': 'FLAKY',
+                    'expected': 'PASS TIMEOUT',
+                    'actual': 'TEXT TIMEOUT',
+                }}}
+            },
+        )
+
     def test_retrying_force_pixel_tests(self):
         host = MockHost()
         details, err, _ = logging_run(['--no-pixel-tests', 'failures/unexpected/text-image-checksum.html'], tests_included=True, host=host)
@@ -710,7 +865,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         json_string = host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')
         json = parse_full_results(json_string)
         self.assertEqual(json["tests"]["failures"]["unexpected"]["text-image-checksum.html"],
-            {"expected": "PASS", "actual": "TEXT IMAGE+TEXT", "image_diff_percent": 1, "report": "REGRESSION"})
+                         {"expected": "PASS", "actual": "TEXT IMAGE+TEXT", "image_diff_percent": 1, 'image_difference': {'max_difference': 10, 'total_pixels': 20}, "report": "REGRESSION"})
         self.assertFalse(json["pixel_tests_enabled"])
         self.assertEqual(details.enabled_pixel_tests_in_retry, True)
 
@@ -723,9 +878,15 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             tests_included=True, host=host)
         file_list = host.filesystem.written_files.keys()
         self.assertEqual(details.exit_code, 1)
-        expected_token = '"unexpected":{"text-image-missing.html":{"report":"REGRESSION","expected":"PASS","actual":"TEXT MISSING","is_missing_image":true}}'
         json_string = host.filesystem.read_text_file('/tmp/layout-test-results/full_results.json')
-        self.assertTrue(json_string.find(expected_token) != -1)
+
+        json = parse_full_results(json_string)
+        test_data = json["tests"]["failures"]["unexpected"]["text-image-missing.html"]
+        self.assertEqual(test_data["expected"], "PASS")
+        self.assertEqual(test_data["actual"], "TEXT MISSING")
+        self.assertEqual(test_data["report"], "REGRESSION")
+        self.assertEqual(test_data["is_missing_image"], True)
+
         self.assertTrue(json_string.find('"num_regressions":1') != -1)
         self.assertTrue(json_string.find('"num_flaky":0') != -1)
         self.assertTrue(json_string.find('"num_missing":1') != -1)
@@ -751,7 +912,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         class ImageDiffTestPort(test.TestPort):
             def diff_image(self, expected_contents, actual_contents, tolerance=None):
                 self.tolerance_used_for_diff_image = self._options.tolerance
-                return (True, 1, None)
+                return ImageDiffResult(passed=False, diff_image=b'', difference=1, fuzzy_data=None, tolerance=self._options.tolerance or 0)
 
         def get_port_for_run(args):
             options, parsed_args = run_webkit_tests.parse_args(args)
@@ -822,9 +983,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         details, _, _ = logging_run(['failures/expected/timeout.html',
                                      'failures/unexpected/timeout.html'],
                                     host=host)
-        self.assertEquals(details.initial_results.slow_tests,
+        self.assertEqual(details.initial_results.slow_tests,
                           {'failures/unexpected/timeout.html'})
-        self.assertEquals(details.retry_results.slow_tests,
+        self.assertEqual(details.retry_results.slow_tests,
                           {'failures/unexpected/timeout.html'})
 
     def serial_test_no_http_and_force(self):
@@ -849,9 +1010,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
         self.assertTrue(RunTest.has_test_of_type(batch_tests_run_http, 'http'))
         self.assertTrue(RunTest.has_test_of_type(batch_tests_run_http, 'websocket'))
 
-    def serial_test_platform_tests_are_found(self):
+    def serial_test_platform_tests_are_not_found(self):
         tests_run = get_tests_run(['--platform', 'test-mac-leopard', 'http'])
-        self.assertTrue('platform/test-mac-leopard/http/test.html' in tests_run)
+        self.assertFalse('platform/test-mac-leopard/http/test.html' in tests_run)
         self.assertFalse('platform/test-win-win7/http/test.html' in tests_run)
 
     def test_output_diffs(self):
@@ -907,11 +1068,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             run_webkit_tests.run(port, run_webkit_tests.parse_args(['--debug-rwt-logging', '-n', '--no-build', '--root', '/build'])[0], [], logging_stream=logging)
 
         for line in logging.getvalue():
-            if str(DeviceType.from_string('iPhone SE')) in line:
-                self.assertTrue('Skipping 2 tests' in line)
-            elif str(DeviceType.from_string('iPad (5th generation)')) in line:
+            if str(DeviceType.from_string('iPhone 12')) in line:
                 self.assertTrue('Skipping 1 test' in line)
-            elif str(DeviceType.from_string('iPhone 7')) in line:
+            elif str(DeviceType.from_string('iPad (9th generation)')) in line:
                 self.assertTrue('Skipping 0 tests' in line)
 
     def test_device_type_specific_listing(self):
@@ -924,7 +1083,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
 
         with OutputCapture() as captured:
             logging = StringIO()
-            run_webkit_tests._print_expectations(port, run_webkit_tests.parse_args(['--print-expectations'])[0], [], logging_stream=logging)
+            exit_code = run_webkit_tests._print_expectations(port, run_webkit_tests.parse_args(['--print-expectations'])[0], [], logging_stream=logging)
+
+        self.assertEqual(0, exit_code)
 
         current_type = None
         by_type = {}
@@ -937,10 +1098,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
                 continue
             by_type[current_type].append(line)
 
-        self.assertEqual(3, len(by_type.keys()))
-        self.assertEqual(2, len(by_type[DeviceType.from_string('iPhone SE')]))
-        self.assertEqual(1, len(by_type[DeviceType.from_string('iPad (5th generation)')]))
-        self.assertEqual(0, len(by_type[DeviceType.from_string('iPhone 7')]))
+        self.assertEqual(2, len(by_type.keys()))
+        self.assertEqual(2, len(by_type[DeviceType.from_string('iPhone 12')]))
+        self.assertEqual(1, len(by_type[DeviceType.from_string('iPad (9th generation)')]))
 
     def test_ipad_test_division(self):
         host = MockHost()
@@ -957,7 +1117,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             run_webkit_tests.run(port, run_webkit_tests.parse_args(['--debug-rwt-logging', '-n', '--no-build', '--root', '/build'])[0], [], logging_stream=logging)
 
         for line in logging.getvalue():
-            if str(DeviceType.from_string('iPad (5th generation)')) in line:
+            if str(DeviceType.from_string('iPad (9th generation)')) in line:
                 self.assertTrue('Skipping 3 test' in line)
 
     def test_ipad_listing(self):
@@ -971,7 +1131,9 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
 
         with OutputCapture() as captured:
             logging = StringIO()
-            run_webkit_tests._print_expectations(port, run_webkit_tests.parse_args(['--print-expectations'])[0], [], logging_stream=logging)
+            exit_code = run_webkit_tests._print_expectations(port, run_webkit_tests.parse_args(['--print-expectations'])[0], [], logging_stream=logging)
+
+        self.assertEqual(0, exit_code)
 
         current_type = None
         by_type = {}
@@ -985,7 +1147,7 @@ class RunTest(unittest.TestCase, StreamTestingMixin):
             by_type[current_type].append(line)
 
         self.assertEqual(1, len(by_type.keys()))
-        self.assertEqual(3, len(by_type[DeviceType.from_string('iPad (5th generation)')]))
+        self.assertEqual(3, len(by_type[DeviceType.from_string('iPad (9th generation)')]))
 
 
 class RebaselineTest(unittest.TestCase, StreamTestingMixin):
@@ -1004,19 +1166,30 @@ class RebaselineTest(unittest.TestCase, StreamTestingMixin):
         # Test that we update expectations in place. If the expectation
         # is missing, update the expected generic location.
         host = MockHost()
+        host.filesystem.clear_written_files()
         details, err, _ = logging_run(
             ['--pixel-tests', '--reset-results', 'passes/image.html', 'failures/expected/missing_image.html'],
             tests_included=True, host=host, new_results=True)
         file_list = host.filesystem.written_files.keys()
         self.assertEqual(details.exit_code, 0)
-        self.assertEqual(len(file_list), 9)
-        self.assertBaselines(file_list, "passes/image", [".txt", ".png"], err)
-        self.assertBaselines(file_list, "failures/expected/missing_image", [".txt", ".png"], err)
+        self.assertEqual(
+            {
+                "/test.checkout/LayoutTests/failures/expected/missing_image-expected.png",
+                "/test.checkout/LayoutTests/failures/expected/missing_image-expected.txt",
+                "/test.checkout/LayoutTests/passes/image-expected.png",
+                "/test.checkout/LayoutTests/passes/image-expected.txt",
+                "/tmp/layout-test-results/full_results.json",
+                "/tmp/layout-test-results/layout_test_perf_metrics.json",
+                "/tmp/layout-test-results/stats.json",
+            },
+            set(file_list),  # On Python 2 dict.keys returns a list, not a set-like object.
+        )
 
     def test_missing_results(self):
         # Test that we update expectations in place. If the expectation
         # is missing, update the expected generic location.
         host = MockHost()
+        host.filesystem.clear_written_files()
         details, err, _ = logging_run(['--no-show-results',
             'failures/unexpected/missing_text.html',
             'failures/unexpected/missing_image.html',
@@ -1025,25 +1198,43 @@ class RebaselineTest(unittest.TestCase, StreamTestingMixin):
             tests_included=True, host=host, new_results=True)
         file_list = host.filesystem.written_files.keys()
         self.assertEqual(details.exit_code, 0)
-        self.assertEqual(len(file_list), 11)
-        self.assertBaselines(file_list, "failures/unexpected/missing_text", [".txt"], err)
-        self.assertBaselines(file_list, "platform/test/failures/unexpected/missing_image", [".png"], err)
-        self.assertBaselines(file_list, "platform/test/failures/unexpected/missing_render_tree_dump", [".txt"], err)
+        self.assertEqual(
+            {
+                "/test.checkout/LayoutTests/failures/unexpected/missing_text-expected.txt",
+                "/test.checkout/LayoutTests/platform/test/failures/unexpected/missing_image-expected.png",
+                "/test.checkout/LayoutTests/platform/test/failures/unexpected/missing_render_tree_dump-expected.txt",
+                "/tmp/layout-test-results/failures/unexpected/missing_image-actual.png",
+                "/tmp/layout-test-results/failures/unexpected/missing_render_tree_dump-actual.txt",
+                "/tmp/layout-test-results/failures/unexpected/missing_text-actual.txt",
+                "/tmp/layout-test-results/full_results.json",
+                "/tmp/layout-test-results/layout_test_perf_metrics.json",
+                "/tmp/layout-test-results/stats.json",
+            },
+            set(file_list),  # On Python 2 dict.keys returns a list, not a set-like object.
+        )
 
     def test_new_baseline(self):
         # Test that we update the platform expectations in the version-specific directories
         # for both existing and new baselines.
         host = MockHost()
+        host.filesystem.clear_written_files()
         details, err, _ = logging_run(
             ['--pixel-tests', '--new-baseline', 'passes/image.html', 'failures/expected/missing_image.html'],
             tests_included=True, host=host, new_results=True)
         file_list = host.filesystem.written_files.keys()
         self.assertEqual(details.exit_code, 0)
-        self.assertEqual(len(file_list), 9)
-        self.assertBaselines(file_list,
-            "platform/test-mac-leopard/passes/image", [".txt", ".png"], err)
-        self.assertBaselines(file_list,
-            "platform/test-mac-leopard/failures/expected/missing_image", [".txt", ".png"], err)
+        self.assertEqual(
+            {
+                "/test.checkout/LayoutTests/platform/test-mac-leopard/failures/expected/missing_image-expected.png",
+                "/test.checkout/LayoutTests/platform/test-mac-leopard/failures/expected/missing_image-expected.txt",
+                "/test.checkout/LayoutTests/platform/test-mac-leopard/passes/image-expected.png",
+                "/test.checkout/LayoutTests/platform/test-mac-leopard/passes/image-expected.txt",
+                "/tmp/layout-test-results/full_results.json",
+                "/tmp/layout-test-results/layout_test_perf_metrics.json",
+                "/tmp/layout-test-results/stats.json",
+            },
+            set(file_list),  # On Python 2 dict.keys returns a list, not a set-like object.
+        )
 
 
 class PortTest(unittest.TestCase):

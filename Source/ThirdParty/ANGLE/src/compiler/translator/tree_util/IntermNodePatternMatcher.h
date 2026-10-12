@@ -51,10 +51,6 @@ class IntermNodePatternMatcher
 
         // Matches array length() method.
         kArrayLengthMethod = 1u << 6u,
-
-        // Matches a vector or matrix constructor whose arguments are scalarized by the
-        // SH_SCALARIZE_VEC_OR_MAT_CONSTRUCTOR_ARGUMENTS workaround.
-        kScalarizedVecOrMatConstructor = 1u << 7u,
     };
     IntermNodePatternMatcher(const unsigned int mask);
 

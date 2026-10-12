@@ -1,28 +1,29 @@
+#include "config.h"
 #include "MediaDescriptionMorphOS.h"
 
 #if ENABLE(VIDEO) && ENABLE(MEDIA_SOURCE)
 
 namespace WebCore {
 
-MediaDescriptionMorphOS::MediaDescriptionMorphOS(MediaDescriptionMorphOS::Type type, const AtomString &codec)
-	: m_codec(codec)
+MediaDescriptionMorphOS::MediaDescriptionMorphOS(MediaDescriptionMorphOS::Type type, String&& codec)
+	: MediaDescription(std::move(codec))
 	, m_type(type)
 {
 }
 
-RefPtr<MediaDescription> MediaDescriptionMorphOS::createVideoWithCodec(const AtomString &codec)
+RefPtr<MediaDescription> MediaDescriptionMorphOS::createVideoWithCodec(String&& codec)
 {
-	return adoptRef(*new MediaDescriptionMorphOS(Type::Video, codec));
+	return adoptRef(*new MediaDescriptionMorphOS(Type::Video, std::move(codec)));
 }
 
-RefPtr<MediaDescription> MediaDescriptionMorphOS::createAudioWithCodec(const AtomString &codec)
+RefPtr<MediaDescription> MediaDescriptionMorphOS::createAudioWithCodec(String&& codec)
 {
-	return adoptRef(*new MediaDescriptionMorphOS(Type::Audio, codec));
+	return adoptRef(*new MediaDescriptionMorphOS(Type::Audio, std::move(codec)));
 }
 
-RefPtr<MediaDescription> MediaDescriptionMorphOS::createTextWithCodec(const AtomString &codec)
+RefPtr<MediaDescription> MediaDescriptionMorphOS::createTextWithCodec(String&& codec)
 {
-	return adoptRef(*new MediaDescriptionMorphOS(Type::Text, codec));
+	return adoptRef(*new MediaDescriptionMorphOS(Type::Text, std::move(codec)));
 }
 
 }

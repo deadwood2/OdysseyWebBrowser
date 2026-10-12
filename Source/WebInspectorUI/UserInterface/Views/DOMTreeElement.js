@@ -30,7 +30,7 @@
 
 WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
 {
-    constructor(node, elementCloseTag)
+    constructor(node, elementCloseTag, {showBadges} = {})
     {
         super("", node);
 
@@ -51,7 +51,9 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         this._highlightedAttributes = new Set;
         this._recentlyModifiedAttributes = new Map;
         this._closeTagTreeElement = null;
-        this._gridBadgeElement = null;
+
+        this._showBadges = !!showBadges;
+        this._elementForBadgeType = new Map;
 
         node.addEventListener(WI.DOMNode.Event.EnabledPseudoClassesChanged, this._updatePseudoClassIndicator, this);
 
@@ -195,34 +197,30 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         if (!this._highlightResult)
             return;
 
-        function updateEntryShow(entry)
-        {
-            switch (entry.type) {
+        if (show) {
+            for (let entry of this._highlightResult) {
+                switch (entry.type) {
                 case "added":
                     entry.parent.insertBefore(entry.node, entry.nextSibling);
                     break;
                 case "changed":
                     entry.node.textContent = entry.newText;
                     break;
+                }
             }
-        }
-
-        function updateEntryHide(entry)
-        {
-            switch (entry.type) {
+        } else {
+            for (let i = this._highlightResult.length - 1; i >= 0; --i) {
+                let entry = this._highlightResult[i];
+                switch (entry.type) {
                 case "added":
                     entry.node.remove();
                     break;
                 case "changed":
                     entry.node.textContent = entry.oldText;
                     break;
+                }
             }
         }
-
-        var updater = show ? updateEntryShow : updateEntryHide;
-
-        for (var i = 0, size = this._highlightResult.length; i < size; ++i)
-            updater(this._highlightResult[i]);
     }
 
     get hovered()
@@ -444,22 +442,21 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
             this.listItemElement.addEventListener("dragstart", this);
         }
 
-        if (this.representedObject.layoutContextType === WI.DOMNode.LayoutContextType.Grid) {
-            WI.overlayManager.addEventListener(WI.OverlayManager.Event.GridOverlayShown, this._updateGridBadgeStatus, this);
-            WI.overlayManager.addEventListener(WI.OverlayManager.Event.GridOverlayHidden, this._updateGridBadgeStatus, this);
-        }
-        this.representedObject.addEventListener(WI.DOMNode.Event.LayoutContextTypeChanged, this._handleLayoutContextTypeChanged, this);
+        WI.settings.enabledDOMTreeBadgeTypes.addEventListener(WI.Setting.Event.Changed, this._handleShownDOMTreeBadgesChanged, this);
 
-        this._updateGridBadge();
+        this.representedObject.addEventListener(WI.DOMNode.Event.LayoutFlagsChanged, this._handleLayoutFlagsChanged, this);
+        this._handleLayoutFlagsChanged();
     }
 
     ondetach()
     {
-        if (this.representedObject.layoutContextType === WI.DOMNode.LayoutContextType.Grid) {
-            WI.overlayManager.removeEventListener(WI.OverlayManager.Event.GridOverlayShown, this._updateGridBadgeStatus, this);
-            WI.overlayManager.removeEventListener(WI.OverlayManager.Event.GridOverlayHidden, this._updateGridBadgeStatus, this);
+        if (this._elementForBadgeType.size) {
+            this.representedObject.removeEventListener(WI.DOMNode.Event.LayoutOverlayShown, this._updateBadges, this);
+            this.representedObject.removeEventListener(WI.DOMNode.Event.LayoutOverlayHidden, this._updateBadges, this);
         }
-        this.representedObject.removeEventListener(WI.DOMNode.Event.LayoutContextTypeChanged, this._handleLayoutContextTypeChanged, this);
+        this.representedObject.removeEventListener(WI.DOMNode.Event.LayoutFlagsChanged, this._handleLayoutFlagsChanged, this);
+
+        WI.settings.enabledDOMTreeBadgeTypes.removeEventListener(WI.Setting.Event.Changed, this._handleShownDOMTreeBadgesChanged, this);
     }
 
     onpopulate()
@@ -485,7 +482,7 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
 
     insertChildElement(child, index, closingTag)
     {
-        var newElement = new WI.DOMTreeElement(child, closingTag);
+        var newElement = new WI.DOMTreeElement(child, closingTag, {showBadges: this._showBadges});
         newElement.selectable = this.treeOutline.selectable;
         this.insertChild(newElement, index);
         return newElement;
@@ -646,6 +643,26 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         this.expandedChildrenLimit = Math.max(visibleChildren.length, this.expandedChildrenLimit + WI.DOMTreeElement.InitialChildrenLimit);
     }
 
+    reveal({skipExpandingAncestors} = {})
+    {
+        // Handle expansion specifically to make sure we also call `showChildNode` with the relevant child.
+        if (!skipExpandingAncestors) {
+            let currentElement = this;
+            while (currentElement.parent && !currentElement.parent.root) {
+                if (!currentElement.parent.expanded)
+                    currentElement.parent.expand();
+
+                // Some subclasses may hide elements by default to avoid showing too many items initially, but to reveal
+                // an element we must load that element and previous sibilings as well.
+                currentElement.parent.showChildNode(currentElement);
+
+                currentElement = currentElement.parent;
+            }
+        }
+
+        super.reveal({skipExpandingAncestors: true});
+    }
+
     onexpand()
     {
         if (this._elementCloseTag)
@@ -656,8 +673,10 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
 
         this.updateTitle();
 
-        for (let treeElement of this.children)
-            treeElement.updateSelectionArea();
+        for (let treeElement of this.children) {
+            if (treeElement instanceof WI.DOMTreeElement)
+                treeElement.updateSelectionArea();
+        }
     }
 
     oncollapse()
@@ -996,6 +1015,10 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         config.setNumberCommitHandler(this._attributeNumberEditingCommitted.bind(this));
         this._editing = WI.startEditing(attribute, config);
 
+        // There's no text content to select for value-less attributes (ex: disabled)
+        if (!elementForSelection.childNodes.length)
+            elementForSelection = attributeNameElement;
+
         window.getSelection().setBaseAndExtent(elementForSelection, 0, elementForSelection, 1);
 
         return true;
@@ -1037,8 +1060,14 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
 
         function keyupListener(event)
         {
-            if (closingTagElement)
-                closingTagElement.textContent = "</" + tagNameElement.textContent + ">";
+            if (closingTagElement) {
+                let textContent = tagNameElement.textContent.trimStart();
+                let whitespaceIndex = textContent.search(/\s/);
+                if (whitespaceIndex !== -1)
+                    textContent = textContent.slice(0, whitespaceIndex);
+
+                closingTagElement.textContent = "</" + textContent + ">";
+            }
         }
 
         function editingComitted(element, newTagName)
@@ -1252,30 +1281,57 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
             return;
         }
 
-        var treeOutline = this.treeOutline;
-        var wasExpanded = this.expanded;
+        let treeOutline = this.treeOutline;
+        let wasExpanded = this.expanded;
 
-        function changeTagNameCallback(error, nodeId)
-        {
+        let newTagName = newText;
+        let attributes = "";
+        let whitespaceIndex = newText.search(/\s/);
+        if (whitespaceIndex !== -1) {
+            newTagName = newText.slice(0, whitespaceIndex);
+            attributes = newText.slice(whitespaceIndex + 1).replace(/\s+/g, " ");
+        }
+
+        let changeTagNameCallback = (error, nodeId) => {
             if (error || !nodeId) {
                 cancel();
                 return;
             }
 
-            var node = WI.domManager.nodeForId(nodeId);
+            let node = WI.domManager.nodeForId(nodeId);
 
+            if (!attributes.length) {
+                nodeUpdatedCallback(node);
+                return;
+            }
+
+            let attributesAddedCallback = (error, nodeId) => {
+                if (error) {
+                    cancel();
+                    return;
+                }
+
+                moveDirection = "forward";
+                nodeUpdatedCallback(node);
+            }
+
+            const attributeNameToReplace = "";
+            node.setAttribute(attributeNameToReplace, attributes, attributesAddedCallback);
+        }
+
+        let nodeUpdatedCallback = (node) => {
             // Select it and expand if necessary. We force tree update so that it processes dom events and is up to date.
             treeOutline._updateModifiedNodes();
             treeOutline.selectDOMNode(node, true);
 
-            var newTreeItem = treeOutline.findTreeElement(node);
+            let newTreeItem = treeOutline.findTreeElement(node);
             if (wasExpanded)
                 newTreeItem.expand();
 
             moveToNextAttributeIfNeeded.call(newTreeItem);
         }
 
-        this.representedObject.setNodeName(newText, changeTagNameCallback);
+        this.representedObject.setNodeName(newTagName, changeTagNameCallback);
     }
 
     _textNodeEditingCommitted(element, newText)
@@ -1334,7 +1390,7 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
             this.title.appendChild(this._nodeTitleInfo().titleDOM);
             this._highlightResult = undefined;
         }
-        this._updateGridBadge();
+        this._createBadges();
 
         // Setting this.title will implicitly remove all children. Clear the
         // selection element so that we properly recreate it if necessary.
@@ -2010,30 +2066,98 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         this._animatingHighlight = false;
     }
 
-    _updateGridBadge()
+    _createBadge(badgeType)
     {
-        if (!this.listItemElement || this._elementCloseTag)
+        console.assert(!this._elementForBadgeType.has(badgeType), badgeType);
+
+        if (!badgeType || !WI.settings.enabledDOMTreeBadgeTypes.value.includes(badgeType))
             return;
 
-        if (this._gridBadgeElement) {
-            this._gridBadgeElement.remove();
-            this._gridBadgeElement = null;
+        let text = "";
+        let handleClick = null;
+
+        switch (badgeType) {
+        case WI.DOMTreeElement.BadgeType.Scrollable:
+            text = WI.UIString("Scroll", "Title for a badge applied to DOM nodes that are a scrollable container.");
+            handleClick = this._handleScrollableBadgeClicked.bind(this);
+            break;
+
+        case WI.DOMTreeElement.BadgeType.Flex:
+            console.assert(!this._elementForBadgeType.has(WI.DOMTreeElement.BadgeType.Grid));
+            text = WI.unlocalizedString("flex");
+            handleClick = this._layoutBadgeClicked.bind(this);
+            break;
+
+        case WI.DOMTreeElement.BadgeType.Grid:
+            console.assert(!this._elementForBadgeType.has(WI.DOMTreeElement.BadgeType.Flex));
+            text = WI.unlocalizedString("grid");
+            handleClick = this._layoutBadgeClicked.bind(this);
+            break;
+
+        case WI.DOMTreeElement.BadgeType.Event:
+            text = WI.UIString("Event");
+            handleClick = this._handleEventBadgeClicked.bind(this);
+            break;
         }
 
-        if (this.representedObject.layoutContextType !== WI.DOMNode.LayoutContextType.Grid)
-            return;
-
-        this._gridBadgeElement = document.createElement("span");
-        this._gridBadgeElement.className = "badge-css-grid";
-        this._gridBadgeElement.textContent = WI.unlocalizedString("grid");
-        this._updateGridBadgeStatus();
-        this.title.append(this._gridBadgeElement);
-
-        this._gridBadgeElement.addEventListener("click", this._gridBadgeClicked.bind(this), true);
-        this._gridBadgeElement.addEventListener("dblclick", this._gridBadgeDoubleClicked, true);
+        let badgeElement = this.title.appendChild(document.createElement("span"));
+        badgeElement.className = "badge";
+        badgeElement.textContent = text;
+        if (handleClick) {
+            badgeElement.addEventListener("click", handleClick, true);
+            badgeElement.addEventListener("dblclick", this._handleBadgeDoubleClicked, true);
+        }
+        this._elementForBadgeType.set(badgeType, badgeElement);
     }
 
-    _gridBadgeClicked(event)
+    _createBadges()
+    {
+        if (!this._showBadges || !this.listItemElement || this._elementCloseTag)
+            return;
+
+        let hadBadge = this._elementForBadgeType.size;
+
+        for (let badgeElement of this._elementForBadgeType.values())
+            badgeElement.remove();
+        this._elementForBadgeType.clear();
+
+        for (let layoutFlag of this.representedObject.layoutFlags) {
+            switch (layoutFlag) {
+            case WI.DOMNode.LayoutFlag.Scrollable:
+                this._createBadge(WI.DOMTreeElement.BadgeType.Scrollable);
+                break;
+
+            case WI.DOMNode.LayoutFlag.Grid:
+                this._createBadge(WI.DOMTreeElement.BadgeType.Grid);
+                break;
+
+            case WI.DOMNode.LayoutFlag.Flex:
+                this._createBadge(WI.DOMTreeElement.BadgeType.Flex);
+                break;
+
+            case WI.DOMNode.LayoutFlag.Event:
+                this._createBadge(WI.DOMTreeElement.BadgeType.Event);
+                break;
+            }
+        }
+
+        if (!this._elementForBadgeType.size) {
+            if (hadBadge) {
+                this.representedObject.removeEventListener(WI.DOMNode.Event.LayoutOverlayShown, this._updateBadges, this);
+                this.representedObject.removeEventListener(WI.DOMNode.Event.LayoutOverlayHidden, this._updateBadges, this);
+            }
+            return;
+        }
+
+        if (!hadBadge) {
+            this.representedObject.addEventListener(WI.DOMNode.Event.LayoutOverlayShown, this._updateBadges, this);
+            this.representedObject.addEventListener(WI.DOMNode.Event.LayoutOverlayHidden, this._updateBadges, this);
+        }
+
+        this._updateBadges();
+    }
+
+    _layoutBadgeClicked(event)
     {
         if (event.button !== 0 || event.ctrlKey)
             return;
@@ -2041,44 +2165,98 @@ WI.DOMTreeElement = class DOMTreeElement extends WI.TreeElement
         // Don't expand or collapse a tree element when clicking on the grid badge.
         event.stop();
 
-        WI.overlayManager.toggleGridOverlay(this.representedObject, {initiator: WI.GridOverlayDiagnosticEventRecorder.Initiator.Badge});
+        if (this.representedObject.layoutOverlayShowing)
+            this.representedObject.hideLayoutOverlay();
+        else
+            this.representedObject.showLayoutOverlay();
     }
 
-    _gridBadgeDoubleClicked(event)
+    async _handleEventBadgeClicked(event)
+    {
+        if (this._eventBadgePopover)
+            return;
+
+        let {listeners} = await this.representedObject.getEventListeners({includeAncestors: false});
+        console.assert(listeners.length, listeners);
+
+        const preferredEdges = [WI.RectEdge.MAX_X, WI.RectEdge.MAX_Y, WI.RectEdge.MIN_Y];
+        let calculateTargetFrame = () => {
+            return WI.Rect.rectFromClientRect(this._elementForBadgeType.get(WI.DOMTreeElement.BadgeType.Event).getBoundingClientRect()).pad(2);
+        };
+
+        this._eventBadgePopover = new WI.Popover(this);
+        this._eventBadgePopover.windowResizeHandler = (event) => {
+            this._eventBadgePopover.present(calculateTargetFrame(), preferredEdges, {updateContent: true, shouldAnimate: false});
+        };
+
+        let sections = WI.EventListenerSectionGroup.groupIntoSectionsByEvent(listeners, {hideTarget: true});
+        for (let section of sections) {
+            section.addEventListener(WI.DetailsSection.Event.CollapsedStateChanged, function(event) {
+                const shouldAnimate = false;
+                this.update(shouldAnimate);
+            }, this._eventBadgePopover);
+        }
+
+        const title = "";
+        let detailsSection = new WI.DetailsSection("event-listeners", title, sections);
+
+        let contentElement = document.createElement("div");
+        contentElement.className = "event-badge-popover-content";
+        contentElement.appendChild(detailsSection.element);
+
+        this._eventBadgePopover.presentNewContentWithFrame(contentElement, calculateTargetFrame(), preferredEdges);
+    }
+
+    _handleScrollableBadgeClicked(event)
+    {
+        this.representedObject.scrollIntoView();
+    }
+
+    _handleBadgeDoubleClicked(event)
     {
         event.stop();
     }
 
-    _updateGridBadgeStatus()
+    _updateBadges()
     {
-        if (!this._gridBadgeElement)
-            return;
-
-        let isGridVisible = WI.overlayManager.isGridOverlayVisible(this.representedObject);
-        this._gridBadgeElement.classList.toggle("activated", isGridVisible);
-
-        if (isGridVisible) {
-            let color = WI.overlayManager.getGridColorForNode(this.representedObject);
-            let hue = color.hsl[0];
-            this._gridBadgeElement.style.borderColor = color.toString();
-            this._gridBadgeElement.style.backgroundColor = `hsl(${hue}, 90%, 95%)`;
-            this._gridBadgeElement.style.setProperty("color", `hsl(${hue}, 55%, 40%)`);
-        } else
-            this._gridBadgeElement.removeAttribute("style");
+        for (let [badgeType, badgeElement] of this._elementForBadgeType) {
+            switch (badgeType) {
+            case WI.DOMTreeElement.BadgeType.Grid:
+            case WI.DOMTreeElement.BadgeType.Flex: {
+                let layoutOverlayShowing = this.representedObject.layoutOverlayShowing;
+                badgeElement.classList.toggle("activated", layoutOverlayShowing);
+                if (layoutOverlayShowing) {
+                    let color = this.representedObject.layoutOverlayColor;
+                    let hue = color.hsl[0];
+                    badgeElement.style.borderColor = color.toString();
+                    badgeElement.style.backgroundColor = `hsl(${hue}, 90%, 95%)`;
+                    badgeElement.style.setProperty("color", `hsl(${hue}, 55%, 40%)`);
+                } else
+                    badgeElement.removeAttribute("style");
+                break;
+            }
+            }
+        }
     }
 
-    _handleLayoutContextTypeChanged(event)
+    _handleLayoutFlagsChanged(event)
     {
-        let domNode = event.target;
-        if (domNode.layoutContextType === WI.DOMNode.LayoutContextType.Grid) {
-            WI.overlayManager.addEventListener(WI.OverlayManager.Event.GridOverlayShown, this._updateGridBadgeStatus, this);
-            WI.overlayManager.addEventListener(WI.OverlayManager.Event.GridOverlayHidden, this._updateGridBadgeStatus, this);
-        } else {
-            WI.overlayManager.removeEventListener(WI.OverlayManager.Event.GridOverlayShown, this._updateGridBadgeStatus, this);
-            WI.overlayManager.removeEventListener(WI.OverlayManager.Event.GridOverlayHidden, this._updateGridBadgeStatus, this);
-        }
+        this.listItemElement?.classList.toggle("rendered", this.representedObject.layoutFlags.includes(WI.DOMNode.LayoutFlag.Rendered));
 
-        this._updateGridBadge();
+        this._createBadges();
+    }
+
+    _handleShownDOMTreeBadgesChanged(event)
+    {
+        this._createBadges();
+    }
+
+    // Popover delegate
+
+    didDismissPopover(popover)
+    {
+        if (popover === this._eventBadgePopover)
+            this._eventBadgePopover = null;
     }
 };
 
@@ -2103,6 +2281,14 @@ WI.DOMTreeElement.BreakpointStatus = {
     Breakpoint: Symbol("breakpoint"),
     DisabledBreakpoint: Symbol("disabled-breakpoint"),
 };
+
+WI.DOMTreeElement.BadgeType = {
+    Scrollable: "scrollable",
+    Flex: "flex",
+    Grid: "grid",
+    Event: "event",
+};
+WI.settings.enabledDOMTreeBadgeTypes = new WI.Setting("enabled-dom-tree-badge-types", [WI.DOMTreeElement.BadgeType.Flex, WI.DOMTreeElement.BadgeType.Grid, WI.DOMTreeElement.BadgeType.Event, WI.DOMTreeElement.BadgeType.Scrollable]);
 
 WI.DOMTreeElement.HighlightStyleClassName = "highlight";
 WI.DOMTreeElement.SearchHighlightStyleClassName = "search-highlight";

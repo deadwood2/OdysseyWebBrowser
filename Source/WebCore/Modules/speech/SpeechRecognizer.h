@@ -31,9 +31,19 @@
 #include <wtf/UniqueRef.h>
 
 #if HAVE(SPEECHRECOGNIZER)
+#include <CoreMedia/CMTime.h>
 #include <wtf/RetainPtr.h>
 OBJC_CLASS WebSpeechRecognizerTask;
 #endif
+
+namespace WebCore {
+class SpeechRecognizer;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::SpeechRecognizer> : std::true_type { };
+}
 
 namespace WebCore {
 
@@ -82,6 +92,7 @@ private:
 
 #if HAVE(SPEECHRECOGNIZER)
     RetainPtr<WebSpeechRecognizerTask> m_task;
+    CMTime m_currentAudioSampleTime;
 #endif
 };
 

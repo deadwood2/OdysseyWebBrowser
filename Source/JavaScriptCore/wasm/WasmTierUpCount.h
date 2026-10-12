@@ -25,14 +25,16 @@
 
 #pragma once
 
-#if ENABLE(WEBASSEMBLY_B3JIT)
+#if ENABLE(WEBASSEMBLY_OMGJIT) || ENABLE(WEBASSEMBLY_BBQJIT)
 
 #include "CompilationResult.h"
 #include "ExecutionCounter.h"
 #include "Options.h"
+#include "WasmOSREntryData.h"
 #include <wtf/Atomics.h>
 #include <wtf/SegmentedVector.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace JSC { namespace Wasm {
 
@@ -44,6 +46,7 @@ class OSREntryData;
 // don't care too much if the countdown is slightly off. The tier up trigger is atomic, however,
 // so tier up will be triggered exactly once.
 class TierUpCount : public UpperTierExecutionCounter {
+    WTF_MAKE_TZONE_ALLOCATED(TierUpCount);
     WTF_MAKE_NONCOPYABLE(TierUpCount);
 public:
     enum class TriggerReason : uint8_t {
@@ -68,12 +71,13 @@ public:
     Vector<uint32_t>& outerLoops() { return m_outerLoops; }
     Lock& getLock() { return m_lock; }
 
-    OSREntryData& addOSREntryData(uint32_t functionIndex, uint32_t loopIndex);
+    OSREntryData& addOSREntryData(uint32_t functionIndex, uint32_t loopIndex, StackMap&&);
+    OSREntryData& osrEntryData(uint32_t loopIndex);
 
     void optimizeAfterWarmUp(uint32_t functionIndex)
     {
         dataLogLnIf(Options::verboseOSR(), functionIndex, ": OMG-optimizing after warm-up.");
-        setNewThreshold(Options::thresholdForOMGOptimizeAfterWarmUp(), nullptr);
+        setNewThreshold(Options::thresholdForOMGOptimizeAfterWarmUp());
     }
 
     bool checkIfOptimizationThresholdReached()
@@ -90,14 +94,14 @@ public:
     void optimizeNextInvocation(uint32_t functionIndex)
     {
         dataLogLnIf(Options::verboseOSR(), functionIndex, ": OMG-optimizing next invocation.");
-        setNewThreshold(0, nullptr);
+        setNewThreshold(0);
     }
 
     void optimizeSoon(uint32_t functionIndex)
     {
         dataLogLnIf(Options::verboseOSR(), functionIndex, ": OMG-optimizing soon.");
         // FIXME: Need adjustment once we get more information about wasm functions.
-        setNewThreshold(Options::thresholdForOMGOptimizeSoon(), nullptr);
+        setNewThreshold(Options::thresholdForOMGOptimizeSoon());
     }
 
     void setOptimizationThresholdBasedOnCompilationResult(uint32_t functionIndex, CompilationResult result)
@@ -125,9 +129,15 @@ public:
         RELEASE_ASSERT_NOT_REACHED();
     }
 
+    ALWAYS_INLINE CompilationStatus compilationStatusForOMG(MemoryMode mode) { return m_compilationStatusForOMG[static_cast<MemoryModeType>(mode)]; }
+    ALWAYS_INLINE void setCompilationStatusForOMG(MemoryMode mode, CompilationStatus status) { m_compilationStatusForOMG[static_cast<MemoryModeType>(mode)] = status; }
+
+    ALWAYS_INLINE CompilationStatus compilationStatusForOMGForOSREntry(MemoryMode mode) { return m_compilationStatusForOMGForOSREntry[static_cast<MemoryModeType>(mode)]; }
+    ALWAYS_INLINE void setCompilationStatusForOMGForOSREntry(MemoryMode mode, CompilationStatus status) { m_compilationStatusForOMGForOSREntry[static_cast<MemoryModeType>(mode)] = status; }
+
     Lock m_lock;
-    CompilationStatus m_compilationStatusForOMG { CompilationStatus::NotCompiled };
-    CompilationStatus m_compilationStatusForOMGForOSREntry { CompilationStatus::NotCompiled };
+    std::array<CompilationStatus, numberOfMemoryModes> m_compilationStatusForOMG;
+    std::array<CompilationStatus, numberOfMemoryModes> m_compilationStatusForOMGForOSREntry;
     SegmentedVector<TriggerReason, 16> m_osrEntryTriggers;
     Vector<uint32_t> m_outerLoops;
     Vector<std::unique_ptr<OSREntryData>> m_osrEntryData;
@@ -135,4 +145,4 @@ public:
     
 } } // namespace JSC::Wasm
 
-#endif // ENABLE(WEBASSEMBLY_B3JIT)
+#endif // ENABLE(WEBASSEMBLY_OMGJIT)

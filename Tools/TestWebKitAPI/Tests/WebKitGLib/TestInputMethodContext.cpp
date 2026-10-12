@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -26,7 +26,7 @@
 #if PLATFORM(GTK)
 #include <WebCore/GtkVersioning.h>
 #if USE(GTK4)
-#include <webkit2/WebKitWebViewBaseInternal.h>
+#include <webkit/WebKitWebViewBaseInternal.h>
 using PlatformEventKey = GdkEvent;
 #else
 using PlatformEventKey = GdkEventKey;
@@ -35,7 +35,7 @@ using PlatformEventKey = GdkEventKey;
 #define CONTROL_MASK GDK_CONTROL_MASK
 #define SHIFT_MASK GDK_SHIFT_MASK
 #elif PLATFORM(WPE)
-using PlatformEventKey = struct wpe_input_keyboard_event;
+using PlatformEventKey = void;
 #define KEY(x) WPE_KEY_##x
 #define CONTROL_MASK wpe_input_keyboard_modifier_control
 #define SHIFT_MASK wpe_input_keyboard_modifier_shift
@@ -112,9 +112,10 @@ static gboolean webkitInputMethodContextMockFilterKeyEvent(WebKitInputMethodCont
 #endif
     gunichar character = gdk_keyval_to_unicode(keyval);
 #elif PLATFORM(WPE)
-    uint32_t state = keyEvent->modifiers;
-    uint32_t keyval = keyEvent->key_code;
-    bool isKeyPress = keyEvent->pressed;
+    struct wpe_input_keyboard_event* wpeKeyEvent = static_cast<struct wpe_input_keyboard_event*>(keyEvent);
+    uint32_t state = wpeKeyEvent->modifiers;
+    uint32_t keyval = wpeKeyEvent->key_code;
+    bool isKeyPress = wpeKeyEvent->pressed;
     gunichar character = wpe_key_code_to_unicode(keyval);
 #endif
     bool isControl = state & CONTROL_MASK;
@@ -255,10 +256,17 @@ public:
         bool isComposing;
     };
 
-    static void imEventCallback(WebKitUserContentManager*, WebKitJavascriptResult* javascriptResult, InputMethodTest* test)
+#if ENABLE(2022_GLIB_API)
+    static void imEventCallback(WebKitUserContentManager*, JSCValue* result, InputMethodTest* test)
     {
-        test->imEvent(javascriptResult);
+        test->imEvent(result);
     }
+#else
+    static void imEventCallback(WebKitUserContentManager*, WebKitJavascriptResult* result, InputMethodTest* test)
+    {
+        test->imEvent(webkit_javascript_result_get_js_value(result));
+    }
+#endif
 
     InputMethodTest()
         : m_context(adoptGRef(static_cast<WebKitInputMethodContextMock*>(g_object_new(webkit_input_method_context_mock_get_type(), nullptr))))
@@ -275,19 +283,26 @@ public:
         webkit_web_view_set_input_method_context(m_webView, WEBKIT_INPUT_METHOD_CONTEXT(m_context.get()));
         g_assert_true(webkit_web_view_get_input_method_context(m_webView) == WEBKIT_INPUT_METHOD_CONTEXT(m_context.get()));
 
+#if !ENABLE(2022_GLIB_API)
         webkit_user_content_manager_register_script_message_handler(m_userContentManager.get(), "imEvent");
+#else
+        webkit_user_content_manager_register_script_message_handler(m_userContentManager.get(), "imEvent", nullptr);
+#endif
         g_signal_connect(m_userContentManager.get(), "script-message-received::imEvent", G_CALLBACK(imEventCallback), this);
     }
 
     ~InputMethodTest()
     {
+#if !ENABLE(2022_GLIB_API)
         webkit_user_content_manager_unregister_script_message_handler(m_userContentManager.get(), "imEvent");
+#else
+        webkit_user_content_manager_unregister_script_message_handler(m_userContentManager.get(), "imEvent", nullptr);
+#endif
         g_signal_handlers_disconnect_by_data(m_userContentManager.get(), this);
     }
 
-    void imEvent(WebKitJavascriptResult* result)
+    void imEvent(JSCValue* jsEvent)
     {
-        auto* jsEvent = webkit_javascript_result_get_js_value(result);
         g_assert_true(jsc_value_is_object(jsEvent));
 
         GRefPtr<JSCValue> value = adoptGRef(jsc_value_object_get_property(jsEvent, "type"));

@@ -25,9 +25,11 @@
 
 #pragma once
 
+#include "CompositeOperation.h"
 #include "FloatPoint.h"
 #include "FloatPoint3D.h"
 #include "IntPoint.h"
+#include "Quaternion.h"
 #include <array>
 #include <string.h> //for memcpy
 #include <wtf/FastMalloc.h>
@@ -39,6 +41,12 @@ typedef struct CATransform3D CATransform3D;
 #if USE(CG)
 typedef struct CGAffineTransform CGAffineTransform;
 #endif
+#if PLATFORM(COCOA)
+#include <simd/simd.h>
+#endif
+#if USE(SKIA)
+class SkM44;
+#endif
 
 #if PLATFORM(WIN) || (PLATFORM(GTK) && OS(WINDOWS))
 #if COMPILER(MINGW) && !COMPILER(MINGW64)
@@ -46,11 +54,6 @@ typedef struct _XFORM XFORM;
 #else
 typedef struct tagXFORM XFORM;
 #endif
-#endif
-
-#if PLATFORM(WIN)
-struct D2D_MATRIX_3X2_F;
-typedef D2D_MATRIX_3X2_F D2D1_MATRIX_3X2_F;
 #endif
 
 namespace WTF {
@@ -74,11 +77,7 @@ class TransformationMatrix {
 public:
 
 #if (PLATFORM(IOS_FAMILY) && CPU(ARM_THUMB2)) || defined(TRANSFORMATION_MATRIX_USE_X86_64_SSE2)
-#if COMPILER(MSVC)
-    __declspec(align(16)) typedef double Matrix4[4][4];
-#else
     typedef double Matrix4[4][4] __attribute__((aligned (16)));
-#endif
 #else
     typedef double Matrix4[4][4];
 #endif
@@ -103,6 +102,16 @@ public:
     {
     }
 
+    constexpr TransformationMatrix(double tx, double ty)
+        : m_matrix {
+            { 1, 0, 0, 0 },
+            { 0, 1, 0, 0 },
+            { 0, 0, 1, 0 },
+            { tx, ty, 0, 1 },
+        }
+    {
+    }
+
     constexpr TransformationMatrix(
         double m11, double m12, double m13, double m14,
         double m21, double m22, double m23, double m24,
@@ -119,13 +128,13 @@ public:
 
     WEBCORE_EXPORT TransformationMatrix(const AffineTransform&);
 
-    static TransformationMatrix fromQuaternion(double qx, double qy, double qz, double qw);
+    static TransformationMatrix fromQuaternion(const Quaternion&);
 
     // Field of view in radians
     static TransformationMatrix fromProjection(double fovUp, double fovDown, double fovLeft, double fovRight, double depthNear, double depthFar);
     static TransformationMatrix fromProjection(double fovy, double aspect, double depthNear, double depthFar);
 
-    static const TransformationMatrix identity;
+    WEBCORE_EXPORT static const TransformationMatrix identity;
 
     void setMatrix(double a, double b, double c, double d, double e, double f)
     {
@@ -253,25 +262,33 @@ public:
 
     // this = mat * this.
     WEBCORE_EXPORT TransformationMatrix& multiply(const TransformationMatrix&);
+    // Identical to multiply(TransformationMatrix&), but saving a AffineTransform -> TransformationMatrix roundtrip for identity or translation matrices.
+    TransformationMatrix& multiplyAffineTransform(const AffineTransform&);
 
     WEBCORE_EXPORT TransformationMatrix& scale(double);
     WEBCORE_EXPORT TransformationMatrix& scaleNonUniform(double sx, double sy);
     TransformationMatrix& scale3d(double sx, double sy, double sz);
 
+    enum class RotationSnapping {
+        None,
+        Snap90degRotations,
+    };
+
     // Angle is in degrees.
-    WEBCORE_EXPORT TransformationMatrix& rotate(double);
+    WEBCORE_EXPORT TransformationMatrix& rotate(double, RotationSnapping = RotationSnapping::Snap90degRotations);
+    WEBCORE_EXPORT TransformationMatrix& rotateRadians(double, RotationSnapping = RotationSnapping::Snap90degRotations);
     TransformationMatrix& rotateFromVector(double x, double y);
-    WEBCORE_EXPORT TransformationMatrix& rotate3d(double rx, double ry, double rz);
-    
+    WEBCORE_EXPORT TransformationMatrix& rotate3d(double rx, double ry, double rz, RotationSnapping = RotationSnapping::Snap90degRotations);
+
     // The vector (x,y,z) is normalized if it's not already. A vector of (0,0,0) uses a vector of (0,0,1).
-    TransformationMatrix& rotate3d(double x, double y, double z, double angle);
-    
+    TransformationMatrix& rotate3d(double x, double y, double z, double angle, RotationSnapping = RotationSnapping::Snap90degRotations);
+
     WEBCORE_EXPORT TransformationMatrix& translate(double tx, double ty);
-    TransformationMatrix& translate3d(double tx, double ty, double tz);
+    WEBCORE_EXPORT TransformationMatrix& translate3d(double tx, double ty, double tz);
 
     // translation added with a post-multiply
     TransformationMatrix& translateRight(double tx, double ty);
-    TransformationMatrix& translateRight3d(double tx, double ty, double tz);
+    WEBCORE_EXPORT TransformationMatrix& translateRight3d(double tx, double ty, double tz);
     
     WEBCORE_EXPORT TransformationMatrix& flipX();
     WEBCORE_EXPORT TransformationMatrix& flipY();
@@ -285,6 +302,16 @@ public:
     // Returns a transformation that maps a rect to a rect.
     WEBCORE_EXPORT static TransformationMatrix rectToRect(const FloatRect&, const FloatRect&);
 
+    // Changes the transform to:
+    //
+    //     scale3d(z, z, z) * mat * scale3d(1/z, 1/z, 1/z)
+    //
+    // Useful for mapping zoomed points to their zoomed transformed result:
+    //
+    //     new_mat * (scale3d(z, z, z) * x) == scale3d(z, z, z) * (mat * x)
+    //
+    TransformationMatrix& zoom(double zoomFactor);
+
     WEBCORE_EXPORT bool isInvertible() const;
     WEBCORE_EXPORT std::optional<TransformationMatrix> inverse() const;
 
@@ -295,41 +322,28 @@ public:
         double angle;
         double m11, m12, m21, m22;
         
-        bool operator==(const Decomposed2Type& other) const
-        {
-            return scaleX == other.scaleX && scaleY == other.scaleY
-                && translateX == other.translateX && translateY == other.translateY
-                && angle == other.angle
-                && m11 == other.m11 && m12 == other.m12 && m21 == other.m21 && m22 == other.m22;
-        }
+        friend bool operator==(const Decomposed2Type&, const Decomposed2Type&) = default;
     };
 
     struct Decomposed4Type {
         double scaleX, scaleY, scaleZ;
         double skewXY, skewXZ, skewYZ;
-        double quaternionX, quaternionY, quaternionZ, quaternionW;
+        Quaternion quaternion;
         double translateX, translateY, translateZ;
         double perspectiveX, perspectiveY, perspectiveZ, perspectiveW;
 
-        bool operator==(const Decomposed4Type& other) const
-        {
-            return scaleX == other.scaleX && scaleY == other.scaleY && scaleZ == other.scaleZ
-                && skewXY == other.skewXY && skewXZ == other.skewXZ && skewYZ == other.skewYZ
-                && quaternionX == other.quaternionX && quaternionY == other.quaternionY && quaternionZ == other.quaternionZ && quaternionW == other.quaternionW
-                && translateX == other.translateX && translateY == other.translateY && translateZ == other.translateZ
-                && perspectiveX == other.perspectiveX && perspectiveY == other.perspectiveY && perspectiveZ == other.perspectiveZ && perspectiveW == other.perspectiveW;
-        }
+        friend bool operator==(const Decomposed4Type&, const Decomposed4Type&) = default;
     };
     
-    bool decompose2(Decomposed2Type&) const;
+    bool decompose2(Decomposed2Type&) const WARN_UNUSED_RETURN;
     void recompose2(const Decomposed2Type&);
 
-    bool decompose4(Decomposed4Type&) const;
+    bool decompose4(Decomposed4Type&) const WARN_UNUSED_RETURN;
     void recompose4(const Decomposed4Type&);
 
-    WEBCORE_EXPORT void blend(const TransformationMatrix& from, double progress);
-    WEBCORE_EXPORT void blend2(const TransformationMatrix& from, double progress);
-    WEBCORE_EXPORT void blend4(const TransformationMatrix& from, double progress);
+    WEBCORE_EXPORT void blend(const TransformationMatrix& from, double progress, CompositeOperation = CompositeOperation::Replace);
+    WEBCORE_EXPORT void blend2(const TransformationMatrix& from, double progress, CompositeOperation = CompositeOperation::Replace);
+    WEBCORE_EXPORT void blend4(const TransformationMatrix& from, double progress, CompositeOperation = CompositeOperation::Replace);
 
     bool isAffine() const
     {
@@ -339,6 +353,11 @@ public:
 
     // Throw away the non-affine parts of the matrix (lossy!).
     WEBCORE_EXPORT void makeAffine();
+
+    // Sets the 3rd row and column to (0, 0, 1, 0).
+    // Should produce the same results as mapping points into 2d before
+    // applying the next matrix.
+    WEBCORE_EXPORT void flatten();
 
     WEBCORE_EXPORT AffineTransform toAffineTransform() const;
 
@@ -362,8 +381,6 @@ public:
                 m_matrix[3][3] == m2.m_matrix[3][3]);
     }
 
-    bool operator!=(const TransformationMatrix& other) const { return !(*this == other); }
-
     // *this = *this * t
     TransformationMatrix& operator*=(const TransformationMatrix& t)
     {
@@ -386,14 +403,17 @@ public:
     WEBCORE_EXPORT TransformationMatrix(const CGAffineTransform&);
     WEBCORE_EXPORT operator CGAffineTransform() const;
 #endif
-
-#if PLATFORM(WIN) || (PLATFORM(GTK) && OS(WINDOWS))
-    operator XFORM() const;
+#if PLATFORM(COCOA)
+    WEBCORE_EXPORT TransformationMatrix(const simd_float4x4&);
+    WEBCORE_EXPORT operator simd_float4x4() const;
+#endif
+#if USE(SKIA)
+    TransformationMatrix(const SkM44&);
+    operator SkM44() const;
 #endif
 
-#if PLATFORM(WIN)
-    TransformationMatrix(const D2D1_MATRIX_3X2_F&);
-    operator D2D1_MATRIX_3X2_F() const;
+#if PLATFORM(WIN) || (PLATFORM(GTK) && OS(WINDOWS))
+    WEBCORE_EXPORT operator XFORM() const;
 #endif
 
     bool isIdentityOrTranslation() const

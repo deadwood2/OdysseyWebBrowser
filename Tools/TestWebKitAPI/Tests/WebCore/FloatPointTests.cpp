@@ -31,13 +31,10 @@
 #include <WebCore/IntPoint.h>
 #include <WebCore/IntSize.h>
 #include <WebCore/TransformationMatrix.h>
+#include <wtf/Markable.h>
 
 #if USE(CG)
 #include <CoreGraphics/CoreGraphics.h>
-#endif
-
-#if PLATFORM(WIN)
-#include <d2d1.h>
 #endif
 
 namespace TestWebKitAPI {
@@ -579,20 +576,17 @@ TEST(FloatPoint, Casting)
     EXPECT_FLOAT_EQ(-22.3f, testCG.x());
     EXPECT_FLOAT_EQ(14.2f, testCG.y());
 #endif
+}
 
-#if PLATFORM(WIN)
-    D2D_POINT_2F d2dPoint = a;
-
-    EXPECT_FLOAT_EQ(100.4f, d2dPoint.x);
-    EXPECT_FLOAT_EQ(199.9f, d2dPoint.y);
-
-    D2D_POINT_2F d2dPoint2 = D2D1::Point2F(-22.3f, 14.2f);
-
-    WebCore::FloatPoint testD2D(d2dPoint2);
-
-    EXPECT_FLOAT_EQ(-22.3f, testD2D.x());
-    EXPECT_FLOAT_EQ(14.2f, testD2D.y());
-#endif
+TEST(FloatPoint, Markable)
+{
+    WebCore::FloatPoint point(1024.3f, 768.6f);
+    Markable<WebCore::FloatPoint, WebCore::FloatPoint::MarkableTraits> optional;
+    EXPECT_FALSE(optional) << "nullopt";
+    optional = point;
+    EXPECT_EQ((optional.value_or(WebCore::FloatPoint { })), point) << "retained";
+    optional = WebCore::FloatPoint::nanPoint();
+    EXPECT_FALSE(optional) << "nullopt";
 }
 
 }

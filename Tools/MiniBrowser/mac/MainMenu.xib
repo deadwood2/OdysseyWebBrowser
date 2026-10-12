@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="16085" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES">
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="23028.2" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES">
     <dependencies>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="16085"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="23028.2"/>
     </dependencies>
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="NSApplication">
@@ -137,6 +137,12 @@
                                 <modifierMask key="keyEquivalentModifierMask" option="YES" command="YES"/>
                                 <connections>
                                     <action selector="saveAsPDF:" target="-1" id="25T-Id-334"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Save As Image…" keyEquivalent="S" id="gmS-3Q-oLt">
+                                <modifierMask key="keyEquivalentModifierMask" shift="YES" option="YES" command="YES"/>
+                                <connections>
+                                    <action selector="saveAsImage:" target="-1" id="25T-Id-335"/>
                                 </connections>
                             </menuItem>
                             <menuItem title="Save As WebArchive..." id="112">
@@ -584,22 +590,19 @@
                                                     <menuItem title="Paragraph" enabled="NO" id="PX7-T3-iSU">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                     </menuItem>
-                                                    <menuItem id="fYp-sh-nqB">
-                                                        <string key="title">	Default</string>
+                                                    <menuItem title="    Default" id="fYp-sh-nqB">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
                                                             <action selector="makeBaseWritingDirectionNatural:" target="-1" id="z9r-Q0-zcU"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem id="7Kh-vB-DZW">
-                                                        <string key="title">	Left to Right</string>
+                                                    <menuItem title="    Left to Right" id="7Kh-vB-DZW">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
                                                             <action selector="makeBaseWritingDirectionLeftToRight:" target="-1" id="By6-Xc-sQg"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem id="Efq-zm-Iex">
-                                                        <string key="title">	Right to Left</string>
+                                                    <menuItem title="    Right to Left" id="Efq-zm-Iex">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
                                                             <action selector="makeBaseWritingDirectionRightToLeft:" target="-1" id="J4w-YN-dtS"/>
@@ -609,22 +612,19 @@
                                                     <menuItem title="Selection" enabled="NO" id="hEQ-Jh-r5g">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                     </menuItem>
-                                                    <menuItem id="m9Q-d8-VVx">
-                                                        <string key="title">	Default</string>
+                                                    <menuItem title="    Default" id="m9Q-d8-VVx">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
                                                             <action selector="makeTextWritingDirectionNatural:" target="-1" id="Ilo-c7-jCj"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem id="5Ym-OR-TV9">
-                                                        <string key="title">	Left to Right</string>
+                                                    <menuItem title="    Left to Right" id="5Ym-OR-TV9">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
                                                             <action selector="makeTextWritingDirectionLeftToRight:" target="-1" id="9ca-bt-cYl"/>
                                                         </connections>
                                                     </menuItem>
-                                                    <menuItem id="blA-MU-vkf">
-                                                        <string key="title">	Right to Left</string>
+                                                    <menuItem title="    Right to Left" id="blA-MU-vkf">
                                                         <modifierMask key="keyEquivalentModifierMask"/>
                                                         <connections>
                                                             <action selector="makeTextWritingDirectionRightToLeft:" target="-1" id="0FR-dP-o2G"/>
@@ -781,6 +781,12 @@
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Debug" id="535">
                         <items>
+                            <menuItem title="Save Accessibility Trees..." keyEquivalent="a" id="540">
+                                <modifierMask key="keyEquivalentModifierMask" option="YES" command="YES"/>
+                                <connections>
+                                    <action selector="logAccessibilityTrees:" target="-1" id="541"/>
+                                </connections>
+                            </menuItem>
                             <menuItem title="Force Repaint" keyEquivalent="r" id="545">
                                 <modifierMask key="keyEquivalentModifierMask" option="YES" command="YES"/>
                                 <connections>
@@ -803,6 +809,25 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="toggleFullWindowWebView:" target="-1" id="X6E-15-0lw"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Main Thread Stalls" id="K3K-tr-Gix">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="toggleMainThreadStalls:" target="-1" id="djY-Q4-9vO"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="7we-y7-Jht"/>
+                            <menuItem title="Toggle Picture-in-Picture" id="7bx-Lc-ODh">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="togglePictureInPicture:" target="-1" id="6NA-Zd-J8d"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Toggle In-Window Fullscreen" id="4IE-QS-EOO">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="toggleInWindowFullscreen:" target="-1" id="RKY-mx-1L8"/>
                                 </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="553"/>
@@ -914,5 +939,8 @@
             </connections>
         </customObject>
         <customObject id="420" customClass="NSFontManager"/>
+        <menuItem title="Item" id="Aoz-N4-aFP">
+            <modifierMask key="keyEquivalentModifierMask"/>
+        </menuItem>
     </objects>
 </document>

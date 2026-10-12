@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,8 +31,19 @@
 #if ENABLE(GPU_PROCESS) && PLATFORM(COCOA)
 
 #import "GPUConnectionToWebProcess.h"
+#import "GPUProcessCreationParameters.h"
+#import "Logging.h"
 #import "RemoteRenderingBackend.h"
+#import <pal/spi/cocoa/AVFoundationSPI.h>
+#import <pal/spi/cocoa/MetalSPI.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/cocoa/SpanCocoa.h>
+
+#if PLATFORM(MAC)
+#include <pal/spi/cocoa/LaunchServicesSPI.h>
+#endif
+
+#import <pal/cocoa/AVFoundationSoftLink.h>
 
 namespace WebKit {
 using namespace WebCore;
@@ -51,10 +62,7 @@ RetainPtr<NSDictionary> GPUProcess::additionalStateForDiagnosticReport() const
                 continue;
 
             auto stateInfo = adoptNS([[NSMutableDictionary alloc] initWithCapacity:backendMap.size()]);
-            for (auto& identifierAndBackend : backendMap) {
-                auto& [backendIdentifier, backend] = identifierAndBackend;
-                [stateInfo setObject:@(name(backend->lastKnownState())) forKey:backendIdentifier.loggingString()];
-            }
+            // FIXME: Log some additional diagnostic state on RemoteRenderingBackend.
             [webProcessConnectionInfo setObject:stateInfo.get() forKey:webProcessIdentifier.loggingString()];
         }
 
@@ -65,6 +73,65 @@ RetainPtr<NSDictionary> GPUProcess::additionalStateForDiagnosticReport() const
 }
 
 #endif // USE(OS_STATE)
+
+#if ENABLE(CFPREFS_DIRECT_MODE)
+void GPUProcess::dispatchSimulatedNotificationsForPreferenceChange(const String& key)
+{
+}
+#endif // ENABLE(CFPREFS_DIRECT_MODE)
+
+#if ENABLE(MEDIA_STREAM)
+void GPUProcess::ensureAVCaptureServerConnection()
+{
+    RELEASE_LOG(WebRTC, "GPUProcess::ensureAVCaptureServerConnection: Entering.");
+#if HAVE(AVCAPTUREDEVICE) && HAVE(AVSAMPLEBUFFERVIDEOOUTPUT)
+    if ([PAL::getAVCaptureDeviceClass() respondsToSelector:@selector(ensureServerConnection)]) {
+        RELEASE_LOG(WebRTC, "GPUProcess::ensureAVCaptureServerConnection: Calling [AVCaptureDevice ensureServerConnection]");
+        [PAL::getAVCaptureDeviceClass() ensureServerConnection];
+    }
+#endif
+}
+#endif
+
+void GPUProcess::platformInitializeGPUProcess(GPUProcessCreationParameters& parameters)
+{
+#if PLATFORM(MAC)
+    auto launchServicesExtension = SandboxExtension::create(WTFMove(parameters.launchServicesExtensionHandle));
+    if (launchServicesExtension) {
+        bool ok = launchServicesExtension->consume();
+        ASSERT_UNUSED(ok, ok);
+    }
+
+    // It is important to check in with launch services before setting the process name.
+    launchServicesCheckIn();
+
+    // Update process name while holding the Launch Services sandbox extension
+    updateProcessName();
+
+    // Close connection to launch services.
+#if HAVE(HAVE_LS_SERVER_CONNECTION_STATUS_RELEASE_NOTIFICATIONS_MASK)
+    _LSSetApplicationLaunchServicesServerConnectionStatus(kLSServerConnectionStatusDoNotConnectToServerMask | kLSServerConnectionStatusReleaseNotificationsMask, nullptr);
+#else
+    _LSSetApplicationLaunchServicesServerConnectionStatus(kLSServerConnectionStatusDoNotConnectToServerMask, nullptr);
+#endif
+
+    if (launchServicesExtension)
+        launchServicesExtension->revoke();
+#endif // PLATFORM(MAC)
+#if USE(SANDBOX_EXTENSIONS_FOR_CACHE_AND_TEMP_DIRECTORY_ACCESS) && USE(EXTENSIONKIT)
+    MTLSetShaderCachePath(parameters.containerCachesDirectory);
+#endif
+}
+
+#if USE(EXTENSIONKIT)
+void GPUProcess::resolveBookmarkDataForCacheDirectory(std::span<const uint8_t> bookmarkData)
+{
+    RetainPtr bookmark = toNSData(bookmarkData);
+    BOOL bookmarkIsStale = NO;
+    NSError* error = nil;
+    [NSURL URLByResolvingBookmarkData:bookmark.get() options:NSURLBookmarkResolutionWithoutUI relativeToURL:nil bookmarkDataIsStale:&bookmarkIsStale error:&error];
+}
+#endif
 
 } // namespace WebKit
 

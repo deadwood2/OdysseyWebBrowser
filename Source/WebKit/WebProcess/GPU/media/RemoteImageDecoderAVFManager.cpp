@@ -32,25 +32,25 @@
 #include "RemoteImageDecoderAVF.h"
 #include "RemoteImageDecoderAVFManagerMessages.h"
 #include "RemoteImageDecoderAVFProxyMessages.h"
-#include "SharedBufferDataReference.h"
+#include "SharedBufferReference.h"
 #include "WebProcess.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 
 using namespace WebCore;
 
-RefPtr<RemoteImageDecoderAVF> RemoteImageDecoderAVFManager::createImageDecoder(SharedBuffer& data, const String& mimeType, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
-{
-    std::optional<ImageDecoderIdentifier> imageDecoderIdentifier;
-    IPC::SharedBufferDataReference dataReference { data };
-    if (!ensureGPUProcessConnection().connection().sendSync(Messages::RemoteImageDecoderAVFProxy::CreateDecoder(dataReference, mimeType), Messages::RemoteImageDecoderAVFProxy::CreateDecoder::Reply(imageDecoderIdentifier), 0))
-        return nullptr;
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteImageDecoderAVFManager);
 
+RefPtr<RemoteImageDecoderAVF> RemoteImageDecoderAVFManager::createImageDecoder(FragmentedSharedBuffer& data, const String& mimeType, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption)
+{
+    auto sendResult = ensureGPUProcessConnection().connection().sendSync(Messages::RemoteImageDecoderAVFProxy::CreateDecoder(IPC::SharedBufferReference(data), mimeType), 0);
+    auto [imageDecoderIdentifier] = sendResult.takeReplyOr(std::nullopt);
     if (!imageDecoderIdentifier)
         return nullptr;
 
     auto remoteImageDecoder = RemoteImageDecoderAVF::create(*this, *imageDecoderIdentifier, data, mimeType);
-    m_remoteImageDecoders.add(*imageDecoderIdentifier, makeWeakPtr(remoteImageDecoder.get()));
+    m_remoteImageDecoders.add(*imageDecoderIdentifier, remoteImageDecoder);
 
     return remoteImageDecoder;
 }
@@ -58,43 +58,42 @@ RefPtr<RemoteImageDecoderAVF> RemoteImageDecoderAVFManager::createImageDecoder(S
 void RemoteImageDecoderAVFManager::deleteRemoteImageDecoder(const ImageDecoderIdentifier& identifier)
 {
     m_remoteImageDecoders.take(identifier);
-    if (m_gpuProcessConnection)
-        m_gpuProcessConnection->connection().send(Messages::RemoteImageDecoderAVFProxy::DeleteDecoder(identifier), 0);
+    if (auto gpuProcessConnection = m_gpuProcessConnection.get())
+        gpuProcessConnection->connection().send(Messages::RemoteImageDecoderAVFProxy::DeleteDecoder(identifier), 0);
 }
 
-RemoteImageDecoderAVFManager::RemoteImageDecoderAVFManager(WebProcess& process)
-    : m_process(process)
+Ref<RemoteImageDecoderAVFManager> RemoteImageDecoderAVFManager::create()
 {
+    return adoptRef(*new RemoteImageDecoderAVFManager);
 }
+
+RemoteImageDecoderAVFManager::RemoteImageDecoderAVFManager() = default;
 
 RemoteImageDecoderAVFManager::~RemoteImageDecoderAVFManager()
 {
-    if (m_gpuProcessConnection)
-        m_gpuProcessConnection->messageReceiverMap().removeMessageReceiver(Messages::RemoteImageDecoderAVFManager::messageReceiverName());
+    if (auto gpuProcessConnection = m_gpuProcessConnection.get())
+        gpuProcessConnection->messageReceiverMap().removeMessageReceiver(Messages::RemoteImageDecoderAVFManager::messageReceiverName());
 }
 
 void RemoteImageDecoderAVFManager::gpuProcessConnectionDidClose(GPUProcessConnection& connection)
 {
-    ASSERT(m_gpuProcessConnection == &connection);
-    connection.removeClient(*this);
-    m_gpuProcessConnection->messageReceiverMap().removeMessageReceiver(Messages::RemoteImageDecoderAVFManager::messageReceiverName());
+    ASSERT(m_gpuProcessConnection.get() == &connection);
+    if (auto gpuProcessConnection = m_gpuProcessConnection.get())
+        gpuProcessConnection->messageReceiverMap().removeMessageReceiver(Messages::RemoteImageDecoderAVFManager::messageReceiverName());
     m_gpuProcessConnection = nullptr;
     // FIXME: Do we need to do more when m_remoteImageDecoders is not empty to re-create them?
 }
 
-const char*  RemoteImageDecoderAVFManager::supplementName()
-{
-    return "RemoteImageDecoderAVFManager";
-}
-
 GPUProcessConnection& RemoteImageDecoderAVFManager::ensureGPUProcessConnection()
 {
-    if (!m_gpuProcessConnection) {
-        m_gpuProcessConnection = makeWeakPtr(m_process.ensureGPUProcessConnection());
-        m_gpuProcessConnection->addClient(*this);
-        m_gpuProcessConnection->messageReceiverMap().addMessageReceiver(Messages::RemoteImageDecoderAVFManager::messageReceiverName(), *this);
+    auto gpuProcessConnection = m_gpuProcessConnection.get();
+    if (!gpuProcessConnection) {
+        gpuProcessConnection = &WebProcess::singleton().ensureGPUProcessConnection();
+        m_gpuProcessConnection = gpuProcessConnection;
+        gpuProcessConnection->addClient(*this);
+        gpuProcessConnection->messageReceiverMap().addMessageReceiver(Messages::RemoteImageDecoderAVFManager::messageReceiverName(), *this);
     }
-    return *m_gpuProcessConnection;
+    return *gpuProcessConnection;
 }
 
 void RemoteImageDecoderAVFManager::setUseGPUProcess(bool useGPUProcess)
@@ -108,7 +107,7 @@ void RemoteImageDecoderAVFManager::setUseGPUProcess(bool useGPUProcess)
     ImageDecoder::installFactory({
         RemoteImageDecoderAVF::supportsMediaType,
         RemoteImageDecoderAVF::canDecodeType,
-        [this](SharedBuffer& data, const String& mimeType, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption) {
+        [this](FragmentedSharedBuffer& data, const String& mimeType, AlphaOption alphaOption, GammaAndColorProfileOption gammaAndColorProfileOption) {
             return createImageDecoder(data, mimeType, alphaOption, gammaAndColorProfileOption);
         }
     });

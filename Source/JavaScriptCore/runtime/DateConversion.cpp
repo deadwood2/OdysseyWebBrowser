@@ -25,14 +25,11 @@
 #include "config.h"
 #include "DateConversion.h"
 
+#include "JSDateMath.h"
 #include <wtf/Assertions.h>
 #include <wtf/DateMath.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/WTFString.h>
-
-#if OS(WINDOWS)
-#include <windows.h>
-#endif
 
 namespace JSC {
 
@@ -58,7 +55,7 @@ void appendNumber<2>(StringBuilder& builder, int value)
     builder.append(static_cast<char>('0' + value % 10));
 }
 
-String formatDateTime(const GregorianDateTime& t, DateTimeFormat format, bool asUTCVariant)
+String formatDateTime(const GregorianDateTime& t, DateTimeFormat format, bool asUTCVariant, DateCache& dateCache)
 {
     bool appendDate = format & DateTimeFormatDate;
     bool appendTime = format & DateTimeFormatTime;
@@ -69,7 +66,7 @@ String formatDateTime(const GregorianDateTime& t, DateTimeFormat format, bool as
         builder.append(WTF::weekdayName[(t.weekDay() + 6) % 7]);
 
         if (asUTCVariant) {
-            builder.append(", ");
+            builder.append(", "_s);
             appendNumber<2>(builder, t.monthDay());
             builder.append(' ', WTF::monthName[t.month()]);
         } else {
@@ -89,26 +86,16 @@ String formatDateTime(const GregorianDateTime& t, DateTimeFormat format, bool as
         appendNumber<2>(builder, t.minute());
         builder.append(':');
         appendNumber<2>(builder, t.second());
-        builder.append(" GMT");
+        builder.append(" GMT"_s);
 
         if (!asUTCVariant) {
-            int offset = abs(t.utcOffsetInMinute());
+            int offset = std::abs(t.utcOffsetInMinute());
             builder.append(t.utcOffsetInMinute() < 0 ? '-' : '+');
             appendNumber<2>(builder, offset / 60);
             appendNumber<2>(builder, offset % 60);
-
-#if OS(WINDOWS)
-            TIME_ZONE_INFORMATION timeZoneInformation;
-            GetTimeZoneInformation(&timeZoneInformation);
-            const WCHAR* winTimeZoneName = t.isDST() ? timeZoneInformation.DaylightName : timeZoneInformation.StandardName;
-            String timeZoneName(winTimeZoneName);
-#else
-            struct tm gtm = t;
-            char timeZoneName[70];
-            strftime(timeZoneName, sizeof(timeZoneName), "%Z", &gtm);
-#endif
-            if (timeZoneName[0])
-                builder.append(" (", timeZoneName, ')');
+            String timeZoneName = dateCache.timeZoneDisplayName(t.isDST());
+            if (!timeZoneName.isEmpty())
+                builder.append(" ("_s, timeZoneName, ')');
         }
     }
 

@@ -28,9 +28,8 @@
 
 #if ENABLE(SANDBOX_EXTENSIONS)
 
-#import "DataReference.h"
-#import "Decoder.h"
-#import "Encoder.h"
+#import "Logging.h"
+#import "WebCoreArgumentCoders.h"
 #import <string.h>
 #import <wtf/FileSystem.h>
 #import <wtf/spi/darwin/SandboxSPI.h>
@@ -38,138 +37,107 @@
 
 namespace WebKit {
 
-class SandboxExtensionImpl {
-    WTF_MAKE_FAST_ALLOCATED;
-public:
-    static std::unique_ptr<SandboxExtensionImpl> create(const char* path, SandboxExtension::Type type, std::optional<audit_token_t> auditToken = std::nullopt, OptionSet<SandboxExtension::Flags> flags = SandboxExtension::Flags::Default)
-    {
-        std::unique_ptr<SandboxExtensionImpl> impl { new SandboxExtensionImpl(path, type, auditToken, flags) };
-        if (!impl->m_token)
-            return nullptr;
-        return impl;
-    }
+std::unique_ptr<SandboxExtensionImpl> SandboxExtensionImpl::create(const char* path, SandboxExtension::Type type, std::optional<audit_token_t> auditToken, OptionSet<SandboxExtension::Flags> flags)
+{
+    std::unique_ptr<SandboxExtensionImpl> impl { new SandboxExtensionImpl(path, type, auditToken, flags) };
+    if (!impl->m_token)
+        return nullptr;
+    if (!impl->m_token[0]) // Make sure strlen is > 0 without iterating the whole string.
+        return nullptr;
+    ASSERT(strlen(impl->m_token));
+    return impl;
+}
 
-    SandboxExtensionImpl(const char* serializedFormat, size_t length)
-        : m_token { strndup(serializedFormat, length) }
-    {
-    }
+SandboxExtensionImpl::SandboxExtensionImpl(std::span<const uint8_t> serializedFormat)
+    : m_token { strndup(byteCast<char>(serializedFormat.data()), serializedFormat.size()) }
+{
+    ASSERT(!serializedFormat.empty());
+}
 
-    ~SandboxExtensionImpl()
-    {
-        if (!m_token)
-            return;
-        auto length = strlen(m_token);
-        memset_s(m_token, length, 0, length);
-        free(m_token);
-    }
+SandboxExtensionImpl::~SandboxExtensionImpl()
+{
+    if (!m_token)
+        return;
+    auto length = strlen(m_token);
+    memset_s(m_token, length, 0, length);
+    free(m_token);
+}
 
-    bool WARN_UNUSED_RETURN consume()
-    {
-        m_handle = sandbox_extension_consume(m_token);
+bool WARN_UNUSED_RETURN SandboxExtensionImpl::consume()
+{
+    m_handle = sandbox_extension_consume(m_token);
 #if PLATFORM(IOS_FAMILY_SIMULATOR)
-        return !sandbox_check(getpid(), 0, SANDBOX_FILTER_NONE);
+    return !sandbox_check(getpid(), 0, SANDBOX_FILTER_NONE);
 #else
-        if (m_handle == -1) {
-            LOG_ERROR("Could not create a sandbox extension for '%s', errno = %d", m_token, errno);
-            return false;
-        }
-        return true;
+    if (m_handle == -1) {
+        RELEASE_LOG_ERROR(Sandbox, "Could not create a sandbox extension for '%s', errno = %d", m_token, errno);
+        return false;
+    }
+    return true;
 #endif
+}
+
+bool SandboxExtensionImpl::invalidate()
+{
+    return !sandbox_extension_release(std::exchange(m_handle, 0));
+}
+
+std::span<const uint8_t> SandboxExtensionImpl::getSerializedFormat()
+{
+    ASSERT(m_token);
+    ASSERT(strlen(m_token));
+    return span8(m_token);
+}
+
+char* SandboxExtensionImpl::sandboxExtensionForType(const char* path, SandboxExtension::Type type, std::optional<audit_token_t> auditToken, OptionSet<SandboxExtension::Flags> flags)
+{
+    uint32_t extensionFlags = 0;
+    if (flags & SandboxExtension::Flags::NoReport)
+        extensionFlags |= SANDBOX_EXTENSION_NO_REPORT;
+    if (flags & SandboxExtension::Flags::DoNotCanonicalize)
+        extensionFlags |= SANDBOX_EXTENSION_CANONICAL;
+
+    switch (type) {
+    case SandboxExtension::Type::ReadOnly:
+        return sandbox_extension_issue_file(APP_SANDBOX_READ, path, extensionFlags);
+    case SandboxExtension::Type::ReadWrite:
+        return sandbox_extension_issue_file(APP_SANDBOX_READ_WRITE, path, extensionFlags);
+    case SandboxExtension::Type::Mach:
+        if (!auditToken)
+            return sandbox_extension_issue_mach("com.apple.webkit.extension.mach", path, extensionFlags);
+        return sandbox_extension_issue_mach_to_process("com.apple.webkit.extension.mach", path, extensionFlags, *auditToken);
+    case SandboxExtension::Type::IOKit:
+        if (!auditToken)
+            return sandbox_extension_issue_iokit_registry_entry_class("com.apple.webkit.extension.iokit", path, extensionFlags);
+        return sandbox_extension_issue_iokit_registry_entry_class_to_process("com.apple.webkit.extension.iokit", path, extensionFlags, *auditToken);
+    case SandboxExtension::Type::Generic:
+        return sandbox_extension_issue_generic(path, extensionFlags);
+    case SandboxExtension::Type::ReadByProcess:
+        if (!auditToken)
+            return nullptr;
+#if PLATFORM(MAC)
+        extensionFlags |= SANDBOX_EXTENSION_USER_INTENT;
+#endif
+        return sandbox_extension_issue_file_to_process(APP_SANDBOX_READ, path, extensionFlags, *auditToken);
     }
+}
 
-    bool invalidate()
-    {
-        return !sandbox_extension_release(std::exchange(m_handle, 0));
-    }
-
-    const char* WARN_UNUSED_RETURN getSerializedFormat(size_t& length)
-    {
-        length = strlen(m_token);
-        return m_token;
-    }
-
-private:
-    char* sandboxExtensionForType(const char* path, SandboxExtension::Type type, std::optional<audit_token_t> auditToken, OptionSet<SandboxExtension::Flags> flags)
-    {
-        uint32_t extensionFlags = 0;
-        if (flags & SandboxExtension::Flags::NoReport)
-            extensionFlags |= SANDBOX_EXTENSION_NO_REPORT;
-        if (flags & SandboxExtension::Flags::DoNotCanonicalize)
-            extensionFlags |= SANDBOX_EXTENSION_CANONICAL;
-
-        switch (type) {
-        case SandboxExtension::Type::ReadOnly:
-            return sandbox_extension_issue_file(APP_SANDBOX_READ, path, extensionFlags);
-        case SandboxExtension::Type::ReadWrite:
-            return sandbox_extension_issue_file(APP_SANDBOX_READ_WRITE, path, extensionFlags);
-        case SandboxExtension::Type::Mach:
-            if (!auditToken)
-                return sandbox_extension_issue_mach("com.apple.webkit.extension.mach", path, extensionFlags);
-            return sandbox_extension_issue_mach_to_process("com.apple.webkit.extension.mach", path, extensionFlags, *auditToken);
-        case SandboxExtension::Type::IOKit:
-            if (!auditToken)
-                return sandbox_extension_issue_iokit_registry_entry_class("com.apple.webkit.extension.iokit", path, extensionFlags);
-            return sandbox_extension_issue_iokit_registry_entry_class_to_process("com.apple.webkit.extension.iokit", path, extensionFlags, *auditToken);
-        case SandboxExtension::Type::Generic:
-            return sandbox_extension_issue_generic(path, extensionFlags);
-        case SandboxExtension::Type::ReadByProcess:
-            if (!auditToken)
-                return nullptr;
-            return sandbox_extension_issue_file_to_process(APP_SANDBOX_READ, path, extensionFlags, *auditToken);
-        }
-    }
-
-    SandboxExtensionImpl(const char* path, SandboxExtension::Type type, std::optional<audit_token_t> auditToken, OptionSet<SandboxExtension::Flags> flags)
-        : m_token { sandboxExtensionForType(path, type, auditToken, flags) }
-    {
-    }
-
-    char* m_token;
-    int64_t m_handle { 0 };
-};
-
-SandboxExtension::Handle::Handle()
+SandboxExtensionImpl::SandboxExtensionImpl(const char* path, SandboxExtension::Type type, std::optional<audit_token_t> auditToken, OptionSet<SandboxExtension::Flags> flags)
+    : m_token { sandboxExtensionForType(path, type, auditToken, flags) }
 {
 }
 
-SandboxExtension::Handle::Handle(Handle&&) = default;
-SandboxExtension::Handle& SandboxExtension::Handle::operator=(Handle&&) = default;
+SandboxExtensionHandle::SandboxExtensionHandle()
+{
+}
 
-SandboxExtension::Handle::~Handle()
+SandboxExtensionHandle::SandboxExtensionHandle(SandboxExtensionHandle&&) = default;
+SandboxExtensionHandle& SandboxExtensionHandle::operator=(SandboxExtensionHandle&&) = default;
+
+SandboxExtensionHandle::~SandboxExtensionHandle()
 {
     if (m_sandboxExtension)
         m_sandboxExtension->invalidate();
-}
-
-void SandboxExtension::Handle::encode(IPC::Encoder& encoder) const
-{
-    if (!m_sandboxExtension) {
-        encoder << IPC::DataReference();
-        return;
-    }
-
-    size_t length = 0;
-    const char* serializedFormat = m_sandboxExtension->getSerializedFormat(length);
-    ASSERT(serializedFormat);
-
-    encoder << IPC::DataReference(reinterpret_cast<const uint8_t*>(serializedFormat), length);
-
-    // Encoding will destroy the sandbox extension locally.
-    m_sandboxExtension = 0;
-}
-
-auto SandboxExtension::Handle::decode(IPC::Decoder& decoder) -> std::optional<Handle>
-{
-    IPC::DataReference dataReference;
-    if (!decoder.decode(dataReference))
-        return std::nullopt;
-
-    if (dataReference.isEmpty())
-        return {{ }};
-
-    Handle handle;
-    handle.m_sandboxExtension = makeUnique<SandboxExtensionImpl>(reinterpret_cast<const char*>(dataReference.data()), dataReference.size());
-    return WTFMove(handle);
 }
 
 RefPtr<SandboxExtension> SandboxExtension::create(Handle&& handle)
@@ -180,70 +148,68 @@ RefPtr<SandboxExtension> SandboxExtension::create(Handle&& handle)
     return adoptRef(new SandboxExtension(handle));
 }
 
-String stringByResolvingSymlinksInPath(const String& path)
+String stringByResolvingSymlinksInPath(StringView path)
 {
     char resolvedPath[PATH_MAX] = { 0 };
     realpath(path.utf8().data(), resolvedPath);
     return String::fromUTF8(resolvedPath);
 }
 
-String resolveAndCreateReadWriteDirectoryForSandboxExtension(const String& path)
+String resolveAndCreateReadWriteDirectoryForSandboxExtension(StringView path)
 {
     NSError *error = nil;
-    NSString *nsPath = path;
+    auto nsPath = path.createNSStringWithoutCopying();
 
-    if (![[NSFileManager defaultManager] createDirectoryAtPath:nsPath withIntermediateDirectories:YES attributes:nil error:&error]) {
-        NSLog(@"could not create directory \"%@\" for future sandbox extension, error %@", nsPath, error);
+    if (![[NSFileManager defaultManager] createDirectoryAtPath:nsPath.get() withIntermediateDirectories:YES attributes:nil error:&error]) {
+        NSLog(@"could not create directory \"%@\" for future sandbox extension, error %@", nsPath.get(), error);
         return { };
     }
 
     return resolvePathForSandboxExtension(path);
 }
 
-String resolvePathForSandboxExtension(const String& path)
+String resolvePathForSandboxExtension(StringView path)
 {
     String resolvedPath = stringByResolvingSymlinksInPath(path);
     if (resolvedPath.isNull()) {
-        LOG_ERROR("Could not create a valid file system representation for the string '%s' of length %lu", resolvedPath.utf8().data(), resolvedPath.length());
+        RELEASE_LOG_ERROR(Sandbox, "Could not create a valid file system representation for the string '%s' of length %u", resolvedPath.utf8().data(), resolvedPath.length());
         return { };
     }
 
     return resolvedPath;
 }
 
-auto SandboxExtension::createHandleWithoutResolvingPath(const String& path, Type type) -> std::optional<Handle>
+auto SandboxExtension::createHandleWithoutResolvingPath(StringView path, Type type) -> std::optional<Handle>
 {
     Handle handle;
     ASSERT(!handle.m_sandboxExtension);
 
-    handle.m_sandboxExtension = SandboxExtensionImpl::create(path.utf8().data(), type, std::nullopt, SandboxExtension::Flags::DoNotCanonicalize);
+    handle.m_sandboxExtension = SandboxExtensionImpl::create(path.utf8().data(), type, std::nullopt, Flags::DoNotCanonicalize);
     if (!handle.m_sandboxExtension) {
-        LOG_ERROR("Could not create a sandbox extension for '%s'", path.utf8().data());
+        RELEASE_LOG_ERROR(Sandbox, "Could not create a sandbox extension for '%s'", path.utf8().data());
         return std::nullopt;
     }
     return WTFMove(handle);
 }
 
-auto SandboxExtension::createHandle(const String& path, Type type) -> std::optional<Handle>
+auto SandboxExtension::createHandle(StringView path, Type type) -> std::optional<Handle>
 {
     return createHandleWithoutResolvingPath(resolvePathForSandboxExtension(path), type);
 }
 
-template <typename T>
-static Vector<SandboxExtension::Handle> createHandlesForResources(const Vector<T>& resources, Function<std::optional<SandboxExtension::Handle>(const T&)>&& createFunction)
+template<typename Collection, typename Function> static Vector<SandboxExtension::Handle> createHandlesForResources(const Collection& resources, const Function& createFunction)
 {
-    Vector<SandboxExtension::Handle> handleArray;
-    for (const auto& resource : resources) {
+    return WTF::compactMap(resources, [&](auto& resource) -> std::optional<SandboxExtension::Handle> {
         if (auto handle = createFunction(resource))
-            handleArray.append(WTFMove(*handle));
-    }
-    return handleArray;
+            return WTFMove(*handle);
+        return std::nullopt;
+    });
 }
 
 auto SandboxExtension::createReadOnlyHandlesForFiles(ASCIILiteral logLabel, const Vector<String>& paths) -> Vector<Handle>
 {
-    return createHandlesForResources<String>(paths, [&logLabel] (const String& path) {
-        auto handle = SandboxExtension::createHandle(path, SandboxExtension::Type::ReadOnly);
+    return createHandlesForResources(paths, [&logLabel] (const String& path) {
+        auto handle = createHandle(path, Type::ReadOnly);
         if (!handle) {
             // This can legitimately fail if a directory containing the file is deleted after the file was chosen.
             // We also have reports of cases where this likely fails for some unknown reason, <rdar://problem/10156710>.
@@ -254,15 +220,15 @@ auto SandboxExtension::createReadOnlyHandlesForFiles(ASCIILiteral logLabel, cons
     });
 }
 
-auto SandboxExtension::createHandleForReadWriteDirectory(const String& path) -> std::optional<Handle>
+auto SandboxExtension::createHandleForReadWriteDirectory(StringView path) -> std::optional<Handle>
 {
     String resolvedPath = resolveAndCreateReadWriteDirectoryForSandboxExtension(path);
     if (resolvedPath.isNull())
         return std::nullopt;
-    return SandboxExtension::createHandleWithoutResolvingPath(resolvedPath, SandboxExtension::Type::ReadWrite);
+    return createHandleWithoutResolvingPath(resolvedPath, Type::ReadWrite);
 }
 
-auto SandboxExtension::createHandleForTemporaryFile(const String& prefix, Type type) -> std::optional<std::pair<Handle, String>>
+auto SandboxExtension::createHandleForTemporaryFile(StringView prefix, Type type) -> std::optional<std::pair<Handle, String>>
 {
     Handle handle;
     ASSERT(!handle.m_sandboxExtension);
@@ -274,22 +240,23 @@ auto SandboxExtension::createHandleForTemporaryFile(const String& prefix, Type t
     // Shrink the vector.   
     path.shrink(strlen(path.data()));
 
-    // FIXME: Change to a runtime assertion that the path ends with a slash once <rdar://problem/23579077> is
-    // fixed in all iOS Simulator versions that we use.
-    if (path.last() != '/')
-        path.append('/');
-    
-    // Append the file name.    
-    path.append(prefix.utf8().data(), prefix.length());
+    ASSERT(path.last() == '/');
+
+    // Append the file name.
+    path.append(prefix.utf8().span());
     path.append('\0');
+
+    auto pathString = String::fromUTF8(path.data());
+    if (pathString.isNull())
+        return std::nullopt;
     
-    handle.m_sandboxExtension = SandboxExtensionImpl::create(FileSystem::fileSystemRepresentation(path.data()).data(), type);
+    handle.m_sandboxExtension = SandboxExtensionImpl::create(FileSystem::fileSystemRepresentation(pathString).data(), type);
 
     if (!handle.m_sandboxExtension) {
         WTFLogAlways("Could not create a sandbox extension for temporary file '%s'", path.data());
         return std::nullopt;
     }
-    return {{ WTFMove(handle), String(path.data()) }};
+    return { { WTFMove(handle), String::fromUTF8(path.data()) } };
 }
 
 auto SandboxExtension::createHandleForGenericExtension(ASCIILiteral extensionClass) -> std::optional<Handle>
@@ -306,6 +273,14 @@ auto SandboxExtension::createHandleForGenericExtension(ASCIILiteral extensionCla
     return WTFMove(handle);
 }
 
+auto SandboxExtension::createHandleForMachBootstrapExtension() -> Handle
+{
+    auto handle = SandboxExtension::createHandleForGenericExtension("com.apple.webkit.mach-bootstrap"_s);
+    if (handle)
+        return WTFMove(*handle);
+    return Handle();
+}
+
 auto SandboxExtension::createHandleForMachLookup(ASCIILiteral service, std::optional<audit_token_t> auditToken, OptionSet<Flags> flags) -> std::optional<Handle>
 {
     Handle handle;
@@ -320,23 +295,34 @@ auto SandboxExtension::createHandleForMachLookup(ASCIILiteral service, std::opti
     return WTFMove(handle);
 }
 
-auto SandboxExtension::createHandlesForMachLookup(const Vector<ASCIILiteral>& services, std::optional<audit_token_t> auditToken, OptionSet<Flags> flags) -> Vector<Handle>
+auto SandboxExtension::createHandlesForMachLookup(std::span<const ASCIILiteral> services, std::optional<audit_token_t> auditToken, MachBootstrapOptions machBootstrapOptions, OptionSet<Flags> flags) -> Vector<Handle>
 {
-    return createHandlesForResources<ASCIILiteral>(services, [auditToken, flags] (const ASCIILiteral& service) -> std::optional<Handle> {
-        auto handle = SandboxExtension::createHandleForMachLookup(service, auditToken, flags);
-        ASSERT(handle);
-        return handle;
+    auto handles = createHandlesForResources(services, [auditToken, flags] (ASCIILiteral service) -> std::optional<Handle> {
+        // Note that createHandleForMachLookup() may return null if the process has just crashed.
+        return createHandleForMachLookup(service, auditToken, flags);
     });
+
+#if HAVE(MACH_BOOTSTRAP_EXTENSION)
+    if (machBootstrapOptions == MachBootstrapOptions::EnableMachBootstrap)
+        handles.append(createHandleForMachBootstrapExtension());
+#endif
+
+    return handles;
 }
 
-auto SandboxExtension::createHandleForReadByAuditToken(const String& path, audit_token_t auditToken) -> std::optional<Handle>
+auto SandboxExtension::createHandlesForMachLookup(std::initializer_list<const ASCIILiteral> services, std::optional<audit_token_t> auditToken, MachBootstrapOptions machBootstrapOptions, OptionSet<Flags> flags) -> Vector<Handle>
+{
+    return createHandlesForMachLookup(std::span(services.begin(), services.size()), auditToken, machBootstrapOptions, flags);
+}
+
+auto SandboxExtension::createHandleForReadByAuditToken(StringView path, audit_token_t auditToken) -> std::optional<Handle>
 {
     Handle handle;
     ASSERT(!handle.m_sandboxExtension);
 
     handle.m_sandboxExtension = SandboxExtensionImpl::create(path.utf8().data(), Type::ReadByProcess, auditToken);
     if (!handle.m_sandboxExtension) {
-        LOG_ERROR("Could not create a sandbox extension for '%s'", path.utf8().data());
+        RELEASE_LOG_ERROR(Sandbox, "Could not create a sandbox extension for '%s'", path.utf8().data());
         return std::nullopt;
     }
     
@@ -350,17 +336,17 @@ auto SandboxExtension::createHandleForIOKitClassExtension(ASCIILiteral ioKitClas
 
     handle.m_sandboxExtension = SandboxExtensionImpl::create(ioKitClass.characters(), Type::IOKit, auditToken);
     if (!handle.m_sandboxExtension) {
-        LOG_ERROR("Could not create a sandbox extension for '%s'", ioKitClass.characters());
+        RELEASE_LOG_ERROR(Sandbox, "Could not create a sandbox extension for '%s'", ioKitClass.characters());
         return std::nullopt;
     }
 
     return WTFMove(handle);
 }
 
-auto SandboxExtension::createHandlesForIOKitClassExtensions(const Vector<ASCIILiteral>& iokitClasses, std::optional<audit_token_t> auditToken, OptionSet<Flags> flags) -> Vector<Handle>
+auto SandboxExtension::createHandlesForIOKitClassExtensions(std::span<const ASCIILiteral> iokitClasses, std::optional<audit_token_t> auditToken, OptionSet<Flags> flags) -> Vector<Handle>
 {
-    return createHandlesForResources<ASCIILiteral>(iokitClasses, [auditToken, flags] (const ASCIILiteral& iokitClass) {
-        auto handle = SandboxExtension::createHandleForIOKitClassExtension(iokitClass, auditToken, flags);
+    return createHandlesForResources(iokitClasses, [auditToken, flags] (ASCIILiteral iokitClass) {
+        auto handle = createHandleForIOKitClassExtension(iokitClass, auditToken, flags);
         ASSERT(handle);
         return handle;
     });
@@ -432,7 +418,7 @@ bool SandboxExtension::consumePermanently(const Vector<Handle>& handleArray)
         if (!handle.m_sandboxExtension)
             continue;
 
-        bool ok = SandboxExtension::consumePermanently(handle);
+        bool ok = consumePermanently(handle);
         ASSERT(ok);
         allSucceeded &= ok;
     }

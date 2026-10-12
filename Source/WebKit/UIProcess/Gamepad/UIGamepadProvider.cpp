@@ -28,6 +28,7 @@
 
 #if ENABLE(GAMEPAD)
 
+#include "APIPageConfiguration.h"
 #include "GamepadData.h"
 #include "UIGamepad.h"
 #include "WebPageProxy.h"
@@ -55,26 +56,45 @@ UIGamepadProvider::UIGamepadProvider()
 
 UIGamepadProvider::~UIGamepadProvider()
 {
-    if (!m_processPoolsUsingGamepads.isEmpty())
+    if (!m_processPoolsUsingGamepads.isEmptyIgnoringNullReferences())
         GamepadProvider::singleton().stopMonitoringGamepads(*this);
 }
 
 void UIGamepadProvider::gamepadSyncTimerFired()
 {
-    auto webPageProxy = platformWebPageProxyForGamepadInput();
-    if (!webPageProxy || !m_processPoolsUsingGamepads.contains(&webPageProxy->process().processPool()))
+    RefPtr webPageProxy = platformWebPageProxyForGamepadInput();
+    if (!webPageProxy || !m_processPoolsUsingGamepads.contains(webPageProxy->configuration().processPool()))
         return;
 
     webPageProxy->gamepadActivity(snapshotGamepads(), m_shouldMakeGamepadsVisibleOnSync ? EventMakesGamepadsVisible::Yes : EventMakesGamepadsVisible::No);
+
+#if PLATFORM(VISION)
+    webPageProxy->setGamepadsConnected(isAnyGamepadConnected());
+#endif
+
     m_shouldMakeGamepadsVisibleOnSync = false;
 }
+
+#if PLATFORM(VISION)
+bool UIGamepadProvider::isAnyGamepadConnected() const
+{
+    bool anyGamepadConnected = false;
+    for (auto it = m_gamepads.begin(); it != m_gamepads.end(); ++it) {
+        if (*it) {
+            anyGamepadConnected = true;
+            break;
+        }
+    }
+    return anyGamepadConnected;
+}
+#endif
 
 void UIGamepadProvider::scheduleGamepadStateSync()
 {
     if (!m_isMonitoringGamepads || m_gamepadSyncTimer.isActive())
         return;
 
-    if (m_gamepads.isEmpty() || m_processPoolsUsingGamepads.isEmpty()) {
+    if (m_gamepads.isEmpty() || m_processPoolsUsingGamepads.isEmptyIgnoringNullReferences()) {
         m_gamepadSyncTimer.stop();
         return;
     }
@@ -95,7 +115,7 @@ void UIGamepadProvider::platformGamepadConnected(PlatformGamepad& gamepad, Event
     scheduleGamepadStateSync();
 
     for (auto& pool : m_processPoolsUsingGamepads)
-        pool->gamepadConnected(*m_gamepads[gamepad.index()], eventVisibility);
+        pool.gamepadConnected(*m_gamepads[gamepad.index()], eventVisibility);
 }
 
 void UIGamepadProvider::platformGamepadDisconnected(PlatformGamepad& gamepad)
@@ -108,21 +128,18 @@ void UIGamepadProvider::platformGamepadDisconnected(PlatformGamepad& gamepad)
     scheduleGamepadStateSync();
 
     for (auto& pool : m_processPoolsUsingGamepads)
-        pool->gamepadDisconnected(*disconnectedGamepad);
+        pool.gamepadDisconnected(*disconnectedGamepad);
 }
 
 void UIGamepadProvider::platformGamepadInputActivity(EventMakesGamepadsVisible eventVisibility)
 {
     auto platformGamepads = GamepadProvider::singleton().platformGamepads();
-    ASSERT(platformGamepads.size() == m_gamepads.size());
 
-    for (size_t i = 0; i < platformGamepads.size(); ++i) {
-        if (!platformGamepads[i]) {
-            ASSERT(!m_gamepads[i]);
+    auto end = std::min(m_gamepads.size(), platformGamepads.size());
+    for (size_t i = 0; i < end; ++i) {
+        if (!m_gamepads[i] || !platformGamepads[i])
             continue;
-        }
 
-        ASSERT(m_gamepads[i]);
         m_gamepads[i]->updateFromPlatformGamepad(*platformGamepads[i]);
     }
 
@@ -134,8 +151,8 @@ void UIGamepadProvider::platformGamepadInputActivity(EventMakesGamepadsVisible e
 
 void UIGamepadProvider::processPoolStartedUsingGamepads(WebProcessPool& pool)
 {
-    ASSERT(!m_processPoolsUsingGamepads.contains(&pool));
-    m_processPoolsUsingGamepads.add(&pool);
+    ASSERT(!m_processPoolsUsingGamepads.contains(pool));
+    m_processPoolsUsingGamepads.add(pool);
 
     if (!m_isMonitoringGamepads && platformWebPageProxyForGamepadInput())
         startMonitoringGamepads();
@@ -143,8 +160,8 @@ void UIGamepadProvider::processPoolStartedUsingGamepads(WebProcessPool& pool)
 
 void UIGamepadProvider::processPoolStoppedUsingGamepads(WebProcessPool& pool)
 {
-    ASSERT(m_processPoolsUsingGamepads.contains(&pool));
-    m_processPoolsUsingGamepads.remove(&pool);
+    ASSERT(m_processPoolsUsingGamepads.contains(pool));
+    m_processPoolsUsingGamepads.remove(pool);
 
     if (m_isMonitoringGamepads && !platformWebPageProxyForGamepadInput())
         platformStopMonitoringInput();
@@ -152,11 +169,15 @@ void UIGamepadProvider::processPoolStoppedUsingGamepads(WebProcessPool& pool)
 
 void UIGamepadProvider::viewBecameActive(WebPageProxy& page)
 {
-    if (!m_processPoolsUsingGamepads.contains(&page.process().processPool()))
+    if (!m_processPoolsUsingGamepads.contains(page.configuration().processPool()))
         return;
 
     if (!m_isMonitoringGamepads)
         startMonitoringGamepads();
+
+#if PLATFORM(VISION)
+    page.setGamepadsConnected(isAnyGamepadConnected());
+#endif
 
     if (platformWebPageProxyForGamepadInput())
         platformStartMonitoringInput();
@@ -164,7 +185,11 @@ void UIGamepadProvider::viewBecameActive(WebPageProxy& page)
 
 void UIGamepadProvider::viewBecameInactive(WebPageProxy& page)
 {
-    auto pageForGamepadInput = platformWebPageProxyForGamepadInput();
+#if PLATFORM(VISION)
+    page.setGamepadsConnected(false);
+#endif
+
+    RefPtr pageForGamepadInput = platformWebPageProxyForGamepadInput();
     if (pageForGamepadInput == &page)
         platformStopMonitoringInput();
 }
@@ -175,7 +200,7 @@ void UIGamepadProvider::startMonitoringGamepads()
         return;
 
     m_isMonitoringGamepads = true;
-    ASSERT(!m_processPoolsUsingGamepads.isEmpty());
+    ASSERT(!m_processPoolsUsingGamepads.isEmptyIgnoringNullReferences());
     GamepadProvider::singleton().startMonitoringGamepads(*this);
 }
 
@@ -186,28 +211,20 @@ void UIGamepadProvider::stopMonitoringGamepads()
 
     m_isMonitoringGamepads = false;
 
-    ASSERT(m_processPoolsUsingGamepads.isEmpty());
+    ASSERT(m_processPoolsUsingGamepads.isEmptyIgnoringNullReferences());
     GamepadProvider::singleton().stopMonitoringGamepads(*this);
 
     m_gamepads.clear();
 }
 
-Vector<GamepadData> UIGamepadProvider::snapshotGamepads()
+Vector<std::optional<GamepadData>> UIGamepadProvider::snapshotGamepads()
 {
-    Vector<GamepadData> gamepadDatas;
-    gamepadDatas.reserveInitialCapacity(m_gamepads.size());
-
-    for (auto& gamepad : m_gamepads) {
-        if (gamepad)
-            gamepadDatas.uncheckedAppend(gamepad->gamepadData());
-        else
-            gamepadDatas.uncheckedAppend({ });
-    }
-
-    return gamepadDatas;
+    return m_gamepads.map([](auto& gamepad) {
+        return gamepad ? std::optional<GamepadData>(gamepad->gamepadData()) : std::nullopt;
+    });
 }
 
-#if !PLATFORM(COCOA) && !(USE(MANETTE) && OS(LINUX))
+#if !PLATFORM(COCOA) && !(USE(MANETTE) && OS(LINUX)) && !USE(LIBWPE)
 
 void UIGamepadProvider::platformSetDefaultGamepadProvider()
 {

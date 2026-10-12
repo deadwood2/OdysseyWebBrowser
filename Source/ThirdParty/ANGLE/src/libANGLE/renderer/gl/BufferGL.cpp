@@ -21,6 +21,33 @@
 namespace rx
 {
 
+namespace
+{
+
+bool KeepBufferShadowCopy(const gl::Context *context, gl::WebGLBufferType webglType)
+{
+    // Always keep a shadow copy if the feature is enabled. This usually means there is no other way
+    // to read back the data.
+    const angle::FeaturesGL &features = GetFeaturesGL(context);
+    if (features.keepBufferShadowCopy.enabled)
+    {
+        return true;
+    }
+
+    // Shadow WebGL index buffers when the driver is unable to provide robust access.
+    // WebGL element array buffers cannot be bound to other binding points or written to on the GPU
+    // so the shadowed data will never be invalidated.
+    if (context->isWebGL() && context->isBufferAccessValidationEnabled() &&
+        webglType == gl::WebGLBufferType::ElementArray)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+}  // namespace
+
 // Use the GL_COPY_READ_BUFFER binding when two buffers need to be bound simultaneously.
 // GL_ELEMENT_ARRAY_BUFFER is supported on more versions but can modify the state of the currently
 // bound VAO.  Two simultaneous buffer bindings are only needed for glCopyBufferSubData which also
@@ -59,26 +86,35 @@ angle::Result BufferGL::setData(const gl::Context *context,
                                 size_t size,
                                 gl::BufferUsage usage)
 {
-    ContextGL *contextGL              = GetImplAs<ContextGL>(context);
-    const FunctionsGL *functions      = GetFunctionsGL(context);
-    StateManagerGL *stateManager      = GetStateManagerGL(context);
-    const angle::FeaturesGL &features = GetFeaturesGL(context);
+    ContextGL *contextGL         = GetImplAs<ContextGL>(context);
+    const FunctionsGL *functions = GetFunctionsGL(context);
+    StateManagerGL *stateManager = GetStateManagerGL(context);
 
     stateManager->bindBuffer(DestBufferOperationTarget, mBufferID);
     ANGLE_GL_TRY(context, functions->bufferData(gl::ToGLenum(DestBufferOperationTarget), size, data,
                                                 ToGLenum(usage)));
 
-    if (features.keepBufferShadowCopy.enabled)
+    // Initialize the shadow buffer if needed. Don't delete existing shadow data. WebGL allows users
+    // to bind as an element array buffer first and then copy source/dest later (but not the other
+    // way around).
+    if (KeepBufferShadowCopy(context, mState.getWebGLType()) && !mShadowCopy.has_value())
     {
-        ANGLE_CHECK_GL_ALLOC(contextGL, mShadowCopy.resize(size));
+        mShadowCopy = angle::MemoryBuffer();
+    }
+
+    if (mShadowCopy.has_value())
+    {
+        ANGLE_CHECK_GL_ALLOC(contextGL, mShadowCopy->resize(size));
 
         if (size > 0 && data != nullptr)
         {
-            memcpy(mShadowCopy.data(), data, size);
+            memcpy(mShadowCopy->data(), data, size);
         }
     }
 
     mBufferSize = size;
+
+    contextGL->markWorkSubmitted();
 
     return angle::Result::Continue;
 }
@@ -89,18 +125,20 @@ angle::Result BufferGL::setSubData(const gl::Context *context,
                                    size_t size,
                                    size_t offset)
 {
-    const FunctionsGL *functions      = GetFunctionsGL(context);
-    StateManagerGL *stateManager      = GetStateManagerGL(context);
-    const angle::FeaturesGL &features = GetFeaturesGL(context);
+    ContextGL *contextGL         = GetImplAs<ContextGL>(context);
+    const FunctionsGL *functions = GetFunctionsGL(context);
+    StateManagerGL *stateManager = GetStateManagerGL(context);
 
     stateManager->bindBuffer(DestBufferOperationTarget, mBufferID);
     ANGLE_GL_TRY(context, functions->bufferSubData(gl::ToGLenum(DestBufferOperationTarget), offset,
                                                    size, data));
 
-    if (features.keepBufferShadowCopy.enabled && size > 0)
+    if (mShadowCopy.has_value() && size > 0)
     {
-        memcpy(mShadowCopy.data() + offset, data, size);
+        memcpy(mShadowCopy->data() + offset, data, size);
     }
+
+    contextGL->markWorkSubmitted();
 
     return angle::Result::Continue;
 }
@@ -111,9 +149,9 @@ angle::Result BufferGL::copySubData(const gl::Context *context,
                                     GLintptr destOffset,
                                     GLsizeiptr size)
 {
-    const FunctionsGL *functions      = GetFunctionsGL(context);
-    StateManagerGL *stateManager      = GetStateManagerGL(context);
-    const angle::FeaturesGL &features = GetFeaturesGL(context);
+    ContextGL *contextGL         = GetImplAs<ContextGL>(context);
+    const FunctionsGL *functions = GetFunctionsGL(context);
+    StateManagerGL *stateManager = GetStateManagerGL(context);
 
     BufferGL *sourceGL = GetAs<BufferGL>(source);
 
@@ -124,43 +162,59 @@ angle::Result BufferGL::copySubData(const gl::Context *context,
                                                        gl::ToGLenum(DestBufferOperationTarget),
                                                        sourceOffset, destOffset, size));
 
-    if (features.keepBufferShadowCopy.enabled && size > 0)
+    if (mShadowCopy.has_value() && size > 0)
     {
-        ASSERT(sourceGL->mShadowCopy.size() >= static_cast<size_t>(sourceOffset + size));
-        memcpy(mShadowCopy.data() + destOffset, sourceGL->mShadowCopy.data() + sourceOffset, size);
+        // WebGL only allows copying between buffers that are marked as the same type. Both buffers
+        // would have to be element array buffers and have shadow data.
+        ASSERT(sourceGL->mShadowCopy.has_value());
+
+        ASSERT(sourceGL->mShadowCopy->size() >= static_cast<size_t>(sourceOffset + size));
+        memcpy(mShadowCopy->data() + destOffset, sourceGL->mShadowCopy->data() + sourceOffset,
+               size);
     }
+
+    contextGL->markWorkSubmitted();
 
     return angle::Result::Continue;
 }
 
 angle::Result BufferGL::map(const gl::Context *context, GLenum access, void **mapPtr)
 {
-    const FunctionsGL *functions      = GetFunctionsGL(context);
-    StateManagerGL *stateManager      = GetStateManagerGL(context);
-    const angle::FeaturesGL &features = GetFeaturesGL(context);
+    ContextGL *contextGL         = GetImplAs<ContextGL>(context);
+    const FunctionsGL *functions = GetFunctionsGL(context);
+    StateManagerGL *stateManager = GetStateManagerGL(context);
 
-    if (features.keepBufferShadowCopy.enabled)
+    if (mShadowCopy.has_value())
     {
-        *mapPtr = mShadowCopy.data();
-    }
-    else if (functions->mapBuffer)
-    {
-        stateManager->bindBuffer(DestBufferOperationTarget, mBufferID);
-        *mapPtr = ANGLE_GL_TRY(
-            context, functions->mapBuffer(gl::ToGLenum(DestBufferOperationTarget), access));
+        *mapPtr = mShadowCopy->data();
     }
     else
     {
-        ASSERT(functions->mapBufferRange && access == GL_WRITE_ONLY_OES);
         stateManager->bindBuffer(DestBufferOperationTarget, mBufferID);
-        *mapPtr =
-            ANGLE_GL_TRY(context, functions->mapBufferRange(gl::ToGLenum(DestBufferOperationTarget),
-                                                            0, mBufferSize, GL_MAP_WRITE_BIT));
+        if (functions->mapBuffer)
+        {
+            *mapPtr = ANGLE_GL_TRY(
+                context, functions->mapBuffer(gl::ToGLenum(DestBufferOperationTarget), access));
+        }
+        else
+        {
+            ASSERT(functions->mapBufferRange && access == GL_WRITE_ONLY_OES);
+            *mapPtr = ANGLE_GL_TRY(
+                context, functions->mapBufferRange(gl::ToGLenum(DestBufferOperationTarget), 0,
+                                                   mBufferSize, GL_MAP_WRITE_BIT));
+        }
+
+        // Unbind the mapped buffer from the array buffer binding. Some drivers generate errors if
+        // any mapped buffer is bound to array buffer bindings.
+        // crbug.com/1345777
+        stateManager->bindBuffer(DestBufferOperationTarget, 0);
     }
 
     mIsMapped  = true;
     mMapOffset = 0;
     mMapSize   = mBufferSize;
+
+    contextGL->markWorkSubmitted();
 
     return angle::Result::Continue;
 }
@@ -171,13 +225,13 @@ angle::Result BufferGL::mapRange(const gl::Context *context,
                                  GLbitfield access,
                                  void **mapPtr)
 {
-    const FunctionsGL *functions      = GetFunctionsGL(context);
-    StateManagerGL *stateManager      = GetStateManagerGL(context);
-    const angle::FeaturesGL &features = GetFeaturesGL(context);
+    ContextGL *contextGL         = GetImplAs<ContextGL>(context);
+    const FunctionsGL *functions = GetFunctionsGL(context);
+    StateManagerGL *stateManager = GetStateManagerGL(context);
 
-    if (features.keepBufferShadowCopy.enabled)
+    if (mShadowCopy.has_value())
     {
-        *mapPtr = mShadowCopy.data() + offset;
+        *mapPtr = mShadowCopy->data() + offset;
     }
     else
     {
@@ -185,30 +239,37 @@ angle::Result BufferGL::mapRange(const gl::Context *context,
         *mapPtr =
             ANGLE_GL_TRY(context, functions->mapBufferRange(gl::ToGLenum(DestBufferOperationTarget),
                                                             offset, length, access));
+
+        // Unbind the mapped buffer from the array buffer binding. Some drivers generate errors if
+        // any mapped buffer is bound to array buffer bindings.
+        // crbug.com/1345777
+        stateManager->bindBuffer(DestBufferOperationTarget, 0);
     }
 
     mIsMapped  = true;
     mMapOffset = offset;
     mMapSize   = length;
 
+    contextGL->markWorkSubmitted();
+
     return angle::Result::Continue;
 }
 
 angle::Result BufferGL::unmap(const gl::Context *context, GLboolean *result)
 {
-    const FunctionsGL *functions      = GetFunctionsGL(context);
-    StateManagerGL *stateManager      = GetStateManagerGL(context);
-    const angle::FeaturesGL &features = GetFeaturesGL(context);
+    ContextGL *contextGL         = GetImplAs<ContextGL>(context);
+    const FunctionsGL *functions = GetFunctionsGL(context);
+    StateManagerGL *stateManager = GetStateManagerGL(context);
 
     ASSERT(result);
     ASSERT(mIsMapped);
 
-    if (features.keepBufferShadowCopy.enabled)
+    if (mShadowCopy.has_value())
     {
         stateManager->bindBuffer(DestBufferOperationTarget, mBufferID);
         ANGLE_GL_TRY(context,
                      functions->bufferSubData(gl::ToGLenum(DestBufferOperationTarget), mMapOffset,
-                                              mMapSize, mShadowCopy.data() + mMapOffset));
+                                              mMapSize, mShadowCopy->data() + mMapOffset));
         *result = GL_TRUE;
     }
     else
@@ -219,6 +280,9 @@ angle::Result BufferGL::unmap(const gl::Context *context, GLboolean *result)
     }
 
     mIsMapped = false;
+
+    contextGL->markWorkSubmitted();
+
     return angle::Result::Continue;
 }
 
@@ -229,15 +293,15 @@ angle::Result BufferGL::getIndexRange(const gl::Context *context,
                                       bool primitiveRestartEnabled,
                                       gl::IndexRange *outRange)
 {
-    const FunctionsGL *functions      = GetFunctionsGL(context);
-    StateManagerGL *stateManager      = GetStateManagerGL(context);
-    const angle::FeaturesGL &features = GetFeaturesGL(context);
+    ContextGL *contextGL         = GetImplAs<ContextGL>(context);
+    const FunctionsGL *functions = GetFunctionsGL(context);
+    StateManagerGL *stateManager = GetStateManagerGL(context);
 
     ASSERT(!mIsMapped);
 
-    if (features.keepBufferShadowCopy.enabled)
+    if (mShadowCopy.has_value())
     {
-        *outRange = gl::ComputeIndexRange(type, mShadowCopy.data() + offset, count,
+        *outRange = gl::ComputeIndexRange(type, mShadowCopy->data() + offset, count,
                                           primitiveRestartEnabled);
     }
     else
@@ -260,7 +324,14 @@ angle::Result BufferGL::getIndexRange(const gl::Context *context,
         }
     }
 
+    contextGL->markWorkSubmitted();
+
     return angle::Result::Continue;
+}
+
+size_t BufferGL::getBufferSize() const
+{
+    return mBufferSize;
 }
 
 GLuint BufferGL::getBufferID() const

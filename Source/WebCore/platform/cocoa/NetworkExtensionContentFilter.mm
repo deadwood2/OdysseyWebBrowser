@@ -48,24 +48,9 @@ static inline NSData *replacementDataFromDecisionInfo(NSDictionary *decisionInfo
 
 namespace WebCore {
 
-NetworkExtensionContentFilter::SandboxExtensionsState NetworkExtensionContentFilter::m_sandboxExtensionsState = SandboxExtensionsState::NotSet;
-
 bool NetworkExtensionContentFilter::enabled()
 {
-    bool enabled = false;
-    switch (m_sandboxExtensionsState) {
-    case SandboxExtensionsState::Consumed:
-        enabled = true;
-        break;
-    case SandboxExtensionsState::NotConsumed:
-        enabled = false;
-        break;
-    case SandboxExtensionsState::NotSet:
-        enabled = isRequired();
-        break;
-    }
-    LOG(ContentFiltering, "NetworkExtensionContentFilter is %s.\n", enabled ? "enabled" : "not enabled");
-    return enabled;
+    return isRequired();
 }
 
 UniqueRef<NetworkExtensionContentFilter> NetworkExtensionContentFilter::create()
@@ -117,7 +102,7 @@ void NetworkExtensionContentFilter::willSendRequest(ResourceRequest& request, co
     if (!modifiedRequestURLString)
         return;
 
-    URL modifiedRequestURL { URL(), modifiedRequestURLString.get() };
+    URL modifiedRequestURL { modifiedRequestURLString.get() };
     if (!modifiedRequestURL.isValid()) {
         LOG(ContentFiltering, "NetworkExtensionContentFilter failed to convert modified URL string %@ to a  URL.\n", modifiedRequestURLString.get());
         return;
@@ -145,12 +130,12 @@ void NetworkExtensionContentFilter::responseReceived(const ResourceResponse& res
     semaphore.wait();
 }
 
-void NetworkExtensionContentFilter::addData(const uint8_t* data, int length)
+void NetworkExtensionContentFilter::addData(const SharedBuffer& data)
 {
-    RetainPtr<NSData> copiedData { [NSData dataWithBytes:(void*)data length:length] };
+    auto nsData = data.createNSData();
 
     BinarySemaphore semaphore;
-    [m_neFilterSource receivedData:copiedData.get() decisionHandler:[this, &semaphore](NEFilterSourceStatus status, NSDictionary *decisionInfo) {
+    [m_neFilterSource receivedData:nsData.get() decisionHandler:[this, &semaphore](NEFilterSourceStatus status, NSDictionary *decisionInfo) {
         handleDecision(status, replacementDataFromDecisionInfo(decisionInfo));
         semaphore.signal();
     }];
@@ -175,7 +160,7 @@ void NetworkExtensionContentFilter::finishedAddingData()
     semaphore.wait();
 }
 
-Ref<SharedBuffer> NetworkExtensionContentFilter::replacementData() const
+Ref<FragmentedSharedBuffer> NetworkExtensionContentFilter::replacementData() const
 {
     ASSERT(didBlockData());
     return SharedBuffer::create(m_replacementData.get());
@@ -226,14 +211,6 @@ void NetworkExtensionContentFilter::handleDecision(NEFilterSourceStatus status, 
 bool NetworkExtensionContentFilter::isRequired()
 {
     return [NEFilterSource filterRequired];
-}
-
-void NetworkExtensionContentFilter::setHasConsumedSandboxExtensions(bool hasConsumedSandboxExtensions)
-{
-    if (m_sandboxExtensionsState == SandboxExtensionsState::Consumed)
-        return;
-
-    m_sandboxExtensionsState = (hasConsumedSandboxExtensions ? SandboxExtensionsState::Consumed : SandboxExtensionsState::NotConsumed);
 }
 
 } // namespace WebCore

@@ -39,6 +39,7 @@
     <script src="Base/Platform.js"></script>
     <script src="Base/Debouncer.js"></script>
     <script src="Base/DebuggableType.js"></script>
+    <script src="Base/IterableWeakSet.js"></script>
     <script src="Base/Multimap.js"></script>
     <script src="Base/Object.js"></script>
     <script src="Base/ReferencePage.js"></script>
@@ -65,6 +66,8 @@
     <script src="Base/Utilities.js"></script>
     <script src="Base/Setting.js"></script>
     <script src="Base/YieldableTask.js"></script>
+
+    <script src="Base/IDLExtensions.js"></script>
 
     <script src="Protocol/ProtocolTracer.js"></script>
     <script src="Protocol/LoggingProtocolTracer.js"></script>
@@ -132,6 +135,7 @@
     <script src="Models/CSSGrouping.js"></script>
     <script src="Models/CSSKeywordCompletions.js"></script>
     <script src="Models/CSSProperty.js"></script>
+    <script src="Models/CSSPropertyNameCompletions.js"></script>
     <script src="Models/CSSRule.js"></script>
     <script src="Models/CSSSelector.js"></script>
     <script src="Models/CSSStyleDeclaration.js"></script>
@@ -144,13 +148,17 @@
     <script src="Models/CollectionEntryPreview.js"></script>
     <script src="Models/CollectionTypes.js"></script>
     <script src="Models/Color.js"></script>
+    <script src="Models/Completions.js"></script>
     <script src="Models/ConsoleCommandResultMessage.js"></script>
+    <script src="Models/ConsoleSnippet.js"></script>
     <script src="Models/Cookie.js"></script>
     <script src="Models/CookieStorageObject.js"></script>
+    <script src="Models/CubicBezierTimingFunction.js"></script>
     <script src="Models/DOMBreakpoint.js"></script>
     <script src="Models/DOMNode.js"></script>
     <script src="Models/DOMNodeStyles.js"></script>
     <script src="Models/DOMStorageObject.js"></script>
+    <script src="Models/DOMStyleable.js"></script>
     <script src="Models/DOMTree.js"></script>
     <script src="Models/DebuggerData.js"></script>
     <script src="Models/EventBreakpoint.js"></script>
@@ -158,6 +166,7 @@
     <script src="Models/ExecutionContextList.js"></script>
     <script src="Models/FPSInstrument.js"></script>
     <script src="Models/Font.js"></script>
+    <script src="Models/FontStyles.js"></script>
     <script src="Models/FontVariationAxis.js"></script>
     <script src="Models/Frame.js"></script>
     <script src="Models/GarbageCollection.js"></script>
@@ -174,6 +183,7 @@
     <script src="Models/LayoutInstrument.js"></script>
     <script src="Models/LayoutTimelineRecord.js"></script>
     <script src="Models/LazySourceCodeLocation.js"></script>
+    <script src="Models/LinearTimingFunction.js"></script>
     <script src="Models/LocalResourceOverride.js"></script>
     <script src="Models/LoggingChannel.js"></script>
     <script src="Models/MediaInstrument.js"></script>
@@ -196,6 +206,8 @@
     <script src="Models/ProfileNodeCall.js"></script>
     <script src="Models/PropertyDescriptor.js"></script>
     <script src="Models/PropertyPreview.js"></script>
+    <script src="Models/QueryMatch.js"></script>
+    <script src="Models/QueryResult.js"></script>
     <script src="Models/Recording.js"></script>
     <script src="Models/RecordingAction.js"></script>
     <script src="Models/RecordingFrame.js"></script>
@@ -204,12 +216,13 @@
     <script src="Models/Redirect.js"></script>
     <script src="Models/RenderingFrameTimelineRecord.js"></script>
     <script src="Models/ResourceCollection.js"></script>
-    <script src="Models/ResourceQueryMatch.js"></script>
     <script src="Models/ResourceQueryResult.js"></script>
     <script src="Models/ResourceTimelineRecord.js"></script>
     <script src="Models/ResourceTimingData.js"></script>
     <script src="Models/Revision.js"></script>
     <script src="Models/ScopeChainNode.js"></script>
+    <script src="Models/ScreenshotsInstrument.js"></script>
+    <script src="Models/ScreenshotsTimelineRecord.js"></script>
     <script src="Models/ScriptInstrument.js"></script>
     <script src="Models/ScriptSyntaxTree.js"></script>
     <script src="Models/ScriptTimelineRecord.js"></script>
@@ -218,7 +231,10 @@
     <script src="Models/SourceCodeRevision.js"></script>
     <script src="Models/SourceCodeTimeline.js"></script>
     <script src="Models/SourceMap.js"></script>
+    <script src="Models/SpringTimingFunction.js"></script>
     <script src="Models/StackTrace.js"></script>
+    <script src="Models/StepsTimingFunction.js"></script>
+    <script src="Models/SymbolicBreakpoint.js"></script>
     <script src="Models/TextRange.js"></script>
     <script src="Models/TimelineMarker.js"></script>
     <script src="Models/TimelineRecording.js"></script>
@@ -244,12 +260,18 @@
     <script src="Proxies/HeapSnapshotProxy.js"></script>
     <script src="Proxies/HeapSnapshotWorkerProxy.js"></script>
 
+    <script src="Controllers/QueryController.js"></script>
+    <script src="Controllers/CodeMirrorCompletionController.js"></script>
+    <script src="Controllers/JavaScriptLogViewController.js"></script>
+    <script src="Controllers/JavaScriptRuntimeCompletionProvider.js"></script>
+
     <script src="Controllers/AnimationManager.js"></script>
     <script src="Controllers/AuditManager.js"></script>
     <script src="Controllers/ApplicationCacheManager.js"></script>
     <script src="Controllers/BreakpointLogMessageLexer.js"></script>
     <script src="Controllers/BrowserManager.js"></script>
     <script src="Controllers/CSSManager.js"></script>
+    <script src="Controllers/CSSQueryController.js"></script>
     <script src="Controllers/CanvasManager.js"></script>
     <script src="Controllers/ConsoleManager.js"></script>
     <script src="Controllers/DOMDebuggerManager.js"></script>
@@ -257,6 +279,7 @@
     <script src="Controllers/DOMStorageManager.js"></script>
     <script src="Controllers/DatabaseManager.js"></script>
     <script src="Controllers/DebuggerManager.js"></script>
+    <script src="Controllers/DeviceSettingsManager.js"></script>
     <script src="Controllers/FormatterSourceMap.js"></script>
     <script src="Controllers/HARBuilder.js"></script>
     <script src="Controllers/HeapManager.js"></script>
@@ -285,6 +308,8 @@
     <script src="Views/TableColumn.js"></script>
     <script src="Views/TreeElement.js"></script>
     <script src="Views/TreeOutline.js"></script>
+
+    <script src="Debug/DOMManager.js"></script>
 
     <script src="NonMinified/DefaultAudits.js"></script>
 

@@ -27,7 +27,9 @@
 
 #import "AppDelegate.h"
 #import "SettingsController.h"
+#import <QuartzCore/CATextLayer.h>
 #import <SecurityInterface/SFCertificateTrustPanel.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <WebKit/WKFrameInfo.h>
 #import <WebKit/WKNavigationActionPrivate.h>
 #import <WebKit/WKNavigationDelegate.h>
@@ -38,6 +40,7 @@
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
+#import <WebKit/WKWebpagePreferencesPrivate.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WebNSURLExtras.h>
 #import <WebKit/_WKIconLoadingDelegate.h>
@@ -57,12 +60,6 @@ static const int testFooterBannerHeight = 58;
 
 @implementation MiniBrowserNSTextFinder
 
-- (void)dealloc
-{
-    [_hideInterfaceCallback release];
-    [super dealloc];
-}
-
 - (void)performAction:(NSTextFinderAction)op
 {
     [super performAction:op];
@@ -73,7 +70,7 @@ static const int testFooterBannerHeight = 58;
 
 @end
 
-@interface WK2BrowserWindowController () <NSTextFinderBarContainer, WKNavigationDelegate, WKUIDelegate, _WKIconLoadingDelegate>
+@interface WK2BrowserWindowController () <NSTextFinderBarContainer, WKNavigationDelegate, WKUIDelegate, WKUIDelegatePrivate, _WKIconLoadingDelegate>
 @end
 
 @implementation WK2BrowserWindowController {
@@ -87,11 +84,14 @@ static const int testFooterBannerHeight = 58;
     MiniBrowserNSTextFinder *_textFinder;
     NSView *_textFindBarView;
     BOOL _findBarVisible;
+
+    CATextLayer *_pointerLockBanner;
 }
 
 - (void)awakeFromNib
 {
     _webView = [[WKWebView alloc] initWithFrame:[containerView bounds] configuration:_configuration];
+    _webView.inspectable = YES;
     [self didChangeSettings];
 
     _webView.allowsMagnification = YES;
@@ -107,6 +107,7 @@ static const int testFooterBannerHeight = 58;
     [_webView addObserver:self forKeyPath:@"title" options:0 context:keyValueObservingContext];
     [_webView addObserver:self forKeyPath:@"URL" options:0 context:keyValueObservingContext];
     [_webView addObserver:self forKeyPath:@"hasOnlySecureContent" options:0 context:keyValueObservingContext];
+    [_webView addObserver:self forKeyPath:@"_gpuProcessIdentifier" options:0 context:keyValueObservingContext];
 
     _webView.navigationDelegate = self;
     _webView.UIDelegate = self;
@@ -166,16 +167,10 @@ static const int testFooterBannerHeight = 58;
     [_webView removeObserver:self forKeyPath:@"title"];
     [_webView removeObserver:self forKeyPath:@"URL"];
     [_webView removeObserver:self forKeyPath:@"hasOnlySecureContent"];
+    [_webView removeObserver:self forKeyPath:@"_gpuProcessIdentifier"];
     
     [progressIndicator unbind:NSHiddenBinding];
     [progressIndicator unbind:NSValueBinding];
-
-    [_textFinder release];
-
-    [_webView release];
-    [_configuration release];
-
-    [super dealloc];
 }
 
 - (void)userAgentDidChange:(NSNotification *)notification
@@ -212,6 +207,45 @@ static const int testFooterBannerHeight = 58;
     return 1;
 }
 
+- (IBAction)togglePictureInPicture:(id)sender
+{
+    [_webView _togglePictureInPicture];
+}
+
+- (IBAction)toggleInWindowFullscreen:(id)sender
+{
+    [_webView _toggleInWindow];
+}
+
+- (void)_webView:(WKWebView *)webView requestNotificationPermissionForSecurityOrigin:(WKSecurityOrigin *)securityOrigin decisionHandler:(void (^)(BOOL))decisionHandler
+{
+    NSDictionary *permissions = [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"NotificationPermissions"];
+    NSString *originString = [NSString stringWithFormat:@"%@://%@", securityOrigin.protocol, securityOrigin.host];
+    id value = [permissions valueForKey:originString];
+    if (value) {
+        decisionHandler([(NSNumber *)value boolValue]);
+        return;
+    }
+
+    NSAlert* alert = [[NSAlert alloc] init];
+
+    [alert setMessageText:[NSString stringWithFormat:@"Allow notification permissions for %@?", originString]];
+    [alert addButtonWithTitle:@"Deny"];
+    [alert addButtonWithTitle:@"Allow"];
+
+    [alert beginSheetModalForWindow:self.window completionHandler:^void (NSModalResponse response) {
+        BOOL granted = response == NSAlertSecondButtonReturn;
+
+        NSMutableDictionary *permissions = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:@"NotificationPermissions"] mutableCopy];
+        if (!permissions)
+            permissions = [NSMutableDictionary dictionaryWithCapacity:1];
+        [permissions setValue:@(granted) forKey:originString];
+        [[NSUserDefaults standardUserDefaults] setObject:permissions forKey:@"NotificationPermissions"];
+
+        decisionHandler(granted);
+    }];
+}
+
 - (IBAction)setViewScale:(id)sender
 {
     CGFloat scale = [self viewScaleForMenuItemTag:[sender tag]];
@@ -244,6 +278,8 @@ static BOOL areEssentiallyEqual(double a, double b)
 
     if (action == @selector(saveAsPDF:))
         return YES;
+    if (action == @selector(saveAsImage:))
+        return YES;
     if (action == @selector(saveAsWebArchive:))
         return YES;
 
@@ -275,6 +311,19 @@ static BOOL areEssentiallyEqual(double a, double b)
         menuItem.state = _webView._alwaysShowsHorizontalScroller ? NSControlStateValueOn : NSControlStateValueOff;
     else if (action == @selector(toggleAlwaysShowsVerticalScroller:))
         menuItem.state = _webView._alwaysShowsVerticalScroller ? NSControlStateValueOn : NSControlStateValueOff;
+    else if (action == @selector(toggleMainThreadStalls:))
+        menuItem.state = self.mainThreadStallsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+
+    [_webView _updateMediaPlaybackControlsManager];
+    if (action == @selector(togglePictureInPicture:)) {
+        menuItem.state = _webView._isPictureInPictureActive ? NSControlStateValueOn : NSControlStateValueOff;
+        return _webView._canTogglePictureInPicture;
+    }
+
+    if (action == @selector(toggleInWindowFullscreen:)) {
+        menuItem.state = _webView._isInWindowActive ? NSControlStateValueOn : NSControlStateValueOff;
+        return _webView._canToggleInWindow;
+    }
 
     if (action == @selector(setPageScale:))
         [menuItem setState:areEssentiallyEqual([_webView _pageScale], [self pageScaleForMenuItemTag:[menuItem tag]])];
@@ -294,6 +343,22 @@ static BOOL areEssentiallyEqual(double a, double b)
 {
     if (_webView.serverTrust)
         [[SFCertificateTrustPanel sharedCertificateTrustPanel] beginSheetForWindow:self.window modalDelegate:nil didEndSelector:nil contextInfo:NULL trust:_webView.serverTrust message:@"TLS Certificate Details"];
+}
+
+- (IBAction)logAccessibilityTrees:(id)sender
+{
+    NSSavePanel *panel = [NSSavePanel savePanel];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    panel.allowedFileTypes = @[ @"axtree" ];
+#pragma clang diagnostic pop
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSInteger result) {
+        if (result == NSModalResponseOK) {
+            [self->_webView _retrieveAccessibilityTreeData:^(NSData *data, NSError *error) {
+                [data writeToURL:[panel URL] options:0 error:nil];
+            }];
+        }
+    }];
 }
 
 - (IBAction)forceRepaint:(id)sender
@@ -334,8 +399,10 @@ static BOOL areEssentiallyEqual(double a, double b)
 
     if (_zoomTextOnly)
         _webView._textZoomFactor = 1;
-    else
+    else {
         _webView.pageZoom = 1;
+        _webView.magnification = 1;
+    }
 }
 
 - (BOOL)canResetZoom
@@ -415,7 +482,6 @@ static BOOL areEssentiallyEqual(double a, double b)
 - (void)windowWillClose:(NSNotification *)notification
 {
     [[[NSApplication sharedApplication] browserAppDelegate] browserWindowWillClose:self.window];
-    [self autorelease];
 }
 
 #define DefaultMinimumZoomFactor (.5)
@@ -455,7 +521,7 @@ static BOOL areEssentiallyEqual(double a, double b)
 
 - (void)zoomOut:(id)sender
 {
-    if (!self.canZoomIn)
+    if (!self.canZoomOut)
         return;
 
     self.currentZoomFactor /= DefaultZoomFactorRatio;
@@ -474,12 +540,14 @@ static BOOL areEssentiallyEqual(double a, double b)
     preferences._legacyLineLayoutVisualCoverageEnabled = settings.legacyLineLayoutVisualCoverageEnabled;
     preferences._acceleratedDrawingEnabled = settings.acceleratedDrawingEnabled;
     preferences._resourceUsageOverlayVisible = settings.resourceUsageOverlayVisible;
-    preferences._displayListDrawingEnabled = settings.displayListDrawingEnabled;
-    preferences._subpixelAntialiasedLayerTextEnabled = settings.subpixelAntialiasedLayerTextEnabled;
     preferences._largeImageAsyncDecodingEnabled = settings.largeImageAsyncDecodingEnabled;
     preferences._animatedImageAsyncDecodingEnabled = settings.animatedImageAsyncDecodingEnabled;
     preferences._colorFilterEnabled = settings.appleColorFilterEnabled;
     preferences._punchOutWhiteBackgroundsInDarkMode = settings.punchOutWhiteBackgroundsInDarkMode;
+    preferences._mockCaptureDevicesEnabled = settings.useMockCaptureDevices;
+
+    preferences._serviceControlsEnabled = settings.dataDetectorsEnabled;
+    preferences._telephoneNumberDetectionIsEnabled = settings.dataDetectorsEnabled;
 
     _webView.configuration.websiteDataStore._resourceLoadStatisticsEnabled = settings.resourceLoadStatisticsEnabled;
 
@@ -511,26 +579,76 @@ static BOOL areEssentiallyEqual(double a, double b)
         visibleOverlayRegions |= _WKNonFastScrollableRegion;
     if (settings.wheelEventHandlerRegionOverlayVisible)
         visibleOverlayRegions |= _WKWheelEventHandlerRegion;
+    if (settings.interactionRegionOverlayVisible)
+        visibleOverlayRegions |= _WKInteractionRegion;
+    if (settings.siteIsolationOverlayEnabled)
+        visibleOverlayRegions |= _WKSiteIsolationRegion;
     
     preferences._visibleDebugOverlayRegions = visibleOverlayRegions;
 
-    [_webView _setHeaderBannerHeight:[settings isSpaceReservedForBanners] ? testHeaderBannerHeight : 0];
-    [_webView _setFooterBannerHeight:[settings isSpaceReservedForBanners] ? testFooterBannerHeight : 0];
+    int headerBannerHeight = [settings isSpaceReservedForBanners] ? testHeaderBannerHeight : 0;
+    if (!headerBannerHeight)
+        [_webView _setHeaderBannerLayer:nil];
+    else {
+        CALayer *headerBannerLayer = [[CALayer alloc] init];
+        [headerBannerLayer setBounds:CGRectMake(0, 0, 0, headerBannerHeight)];
+        [headerBannerLayer setAnchorPoint:CGPointZero];
+        [headerBannerLayer setBackgroundColor:[NSColor colorWithSRGBRed:172. / 255. green:221 / 255. blue:222. / 255. alpha:1].CGColor];
+        [_webView _setHeaderBannerLayer:headerBannerLayer];
+    }
+
+    int footerBannerHeight = [settings isSpaceReservedForBanners] ? testFooterBannerHeight : 0;
+    if (!footerBannerHeight)
+        [_webView _setFooterBannerLayer:nil];
+    else {
+        CALayer *footerBannerLayer = [[CALayer alloc] init];
+        [footerBannerLayer setBounds:CGRectMake(0, 0, 0, footerBannerHeight)];
+        [footerBannerLayer setAnchorPoint:CGPointZero];
+        [footerBannerLayer setBackgroundColor:[NSColor colorWithSRGBRed:116. / 255. green:187. / 255. blue:251. / 255. alpha:1].CGColor];
+        [_webView _setFooterBannerLayer:footerBannerLayer];
+    }
+}
+
+- (void)updateTitleForBadgeChange
+{
+    [self updateTitle:_webView.title];
 }
 
 - (void)updateTitle:(NSString *)title
 {
-    if (!title) {
+    if (!title.length) {
         NSURL *url = _webView.URL;
         title = url.lastPathComponent ?: url._web_userVisibleString;
     }
 
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= 110000
+    if (!title.length)
+        title = @"MiniBrowser";
+
+    if (BrowserAppDelegate.currentBadge)
+        title = [title stringByAppendingFormat:@" (%@)", BrowserAppDelegate.currentBadge];
+
     self.window.title = title;
-    self.window.subtitle = [NSString stringWithFormat:@"[WK2 %d]%@%@", _webView._webProcessIdentifier, _isPrivateBrowsingWindow ? @" 🙈" : @"", _webView._editable ? @" ✏️" : @""];
-#else
-    self.window.title = [NSString stringWithFormat:@"%@%@ [WK2 %d]%@", _isPrivateBrowsingWindow ? @"🙈 " : @"", title, _webView._webProcessIdentifier, _webView._editable ? @" [Editable]" : @""];
-#endif
+
+    NSMutableString *subtitle = [@"[WK2" mutableCopy];
+    __auto_type appendProcessIdentifier = ^(NSString *name, pid_t processIdentifier) {
+        if (!processIdentifier)
+            return;
+        [subtitle appendFormat:@" %@:%d", name, processIdentifier];
+    };
+
+    appendProcessIdentifier(@"web", _webView._webProcessIdentifier);
+    appendProcessIdentifier(@"net", _webView.configuration.websiteDataStore._networkProcessIdentifier);
+    appendProcessIdentifier(@"gpu", _webView._gpuProcessIdentifier);
+
+    [subtitle appendString:@"]"];
+
+    if (_isPrivateBrowsingWindow)
+        [subtitle appendString:@" 🙈"];
+
+    if (_webView._editable)
+        [subtitle appendString:@" ✏️"];
+
+    self.window.subtitle = subtitle;
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
@@ -544,6 +662,8 @@ static BOOL areEssentiallyEqual(double a, double b)
         [self updateTextFieldFromURL:_webView.URL];
     else if ([keyPath isEqualToString:@"hasOnlySecureContent"])
         [self updateLockButtonIcon:_webView.hasOnlySecureContent];
+    else if ([keyPath isEqualToString:@"_gpuProcessIdentifier"])
+        [self updateTitle:_webView.title];
 }
 
 - (nullable WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures
@@ -551,6 +671,8 @@ static BOOL areEssentiallyEqual(double a, double b)
     WK2BrowserWindowController *controller = [[WK2BrowserWindowController alloc] initWithConfiguration:configuration];
     [controller awakeFromNib];
     [controller.window makeKeyAndOrderFront:self];
+    
+    [[[NSApplication sharedApplication] browserAppDelegate] didCreateBrowserWindowController:controller];
 
     return controller->_webView;
 }
@@ -565,7 +687,6 @@ static BOOL areEssentiallyEqual(double a, double b)
 
     [alert beginSheetModalForWindow:self.window completionHandler:^void (NSModalResponse response) {
         completionHandler();
-        [alert release];
     }];
 }
 
@@ -581,7 +702,6 @@ static BOOL areEssentiallyEqual(double a, double b)
 
     [alert beginSheetModalForWindow:self.window completionHandler:^void (NSModalResponse response) {
         completionHandler(response == NSAlertFirstButtonReturn);
-        [alert release];
     }];
 }
 
@@ -602,15 +722,10 @@ static BOOL areEssentiallyEqual(double a, double b)
     [alert beginSheetModalForWindow:self.window completionHandler:^void (NSModalResponse response) {
         [input validateEditing];
         completionHandler(response == NSAlertFirstButtonReturn ? [input stringValue] : nil);
-        [alert release];
     }];
 }
 
-#if __has_feature(objc_generics)
 - (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray<NSURL *> * URLs))completionHandler
-#else
-- (void)webView:(WKWebView *)webView runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray *URLs))completionHandler
-#endif
 {
     NSOpenPanel *openPanel = [NSOpenPanel openPanel];
 
@@ -640,13 +755,18 @@ static BOOL areEssentiallyEqual(double a, double b)
 
     [alert beginSheetModalForWindow:self.window completionHandler:^void (NSModalResponse response) {
         completionHandler(response == NSAlertFirstButtonReturn);
-        [alert release];
     }];
 }
 
 - (WKDragDestinationAction)_webView:(WKWebView *)webView dragDestinationActionMaskForDraggingInfo:(id)draggingInfo
 {
     return WKDragDestinationActionAny;
+}
+
+- (void)_webView:(WKWebView *)webView printFrame:(_WKFrameHandle *)frame pdfFirstPageSize:(CGSize)size completionHandler:(void (^)(void))completionHandler
+{
+    [[_webView printOperationWithPrintInfo:[NSPrintInfo sharedPrintInfo]] runOperationModalForWindow:self.window delegate:nil didRunSelector:nil contextInfo:nil];
+    completionHandler();
 }
 
 - (void)updateTextFieldFromURL:(NSURL *)URL
@@ -663,9 +783,9 @@ static BOOL areEssentiallyEqual(double a, double b)
 - (void)updateLockButtonIcon:(BOOL)hasOnlySecureContent
 {
     if (hasOnlySecureContent)
-        [lockButton setImage:[NSImage imageNamed:NSImageNameLockLockedTemplate]];
+        [lockButton setImage:[NSImage imageWithSystemSymbolName:@"lock" accessibilityDescription:nil]];
     else
-        [lockButton setImage:[NSImage imageNamed:NSImageNameLockUnlockedTemplate]];
+        [lockButton setImage:[NSImage imageWithSystemSymbolName:@"lock.open" accessibilityDescription:nil]];
 }
 
 - (void)loadURLString:(NSString *)urlString
@@ -680,7 +800,7 @@ static BOOL areEssentiallyEqual(double a, double b)
     [_webView loadHTMLString:HTMLString baseURL:nil];
 }
 
-static NSSet *dataTypes()
+static NSSet *dataTypes(void)
 {
     return [WKWebsiteDataStore allWebsiteDataTypes];
 }
@@ -695,8 +815,8 @@ static NSSet *dataTypes()
 - (IBAction)fetchAndClearWebsiteData:(id)sender
 {
     [_configuration.websiteDataStore fetchDataRecordsOfTypes:dataTypes() completionHandler:^(NSArray *websiteDataRecords) {
-        [_configuration.websiteDataStore removeDataOfTypes:dataTypes() forDataRecords:websiteDataRecords completionHandler:^{
-            [_configuration.websiteDataStore fetchDataRecordsOfTypes:dataTypes() completionHandler:^(NSArray *websiteDataRecords) {
+        [self->_configuration.websiteDataStore removeDataOfTypes:dataTypes() forDataRecords:websiteDataRecords completionHandler:^{
+            [self->_configuration.websiteDataStore fetchDataRecordsOfTypes:dataTypes() completionHandler:^(NSArray *websiteDataRecords) {
                 NSLog(@"did clear website data, after clearing data is %@.", websiteDataRecords);
             }];
         }];
@@ -715,23 +835,42 @@ static NSSet *dataTypes()
     [[_webView printOperationWithPrintInfo:[NSPrintInfo sharedPrintInfo]] runOperationModalForWindow:self.window delegate:nil didRunSelector:nil contextInfo:nil];
 }
 
+static BOOL isJavaScriptURL(NSURL *url)
+{
+    return [url.scheme isEqualToString:@"javascript"];
+}
+
 #pragma mark WKNavigationDelegate
 
-- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences *))decisionHandler
 {
     LOG(@"decidePolicyForNavigationAction");
 
+    preferences._networkConnectionIntegrityPolicy = ^{
+        if (!NSApplication.sharedApplication.browserAppDelegate.settingsController.advancedPrivacyProtectionsEnabled)
+            return _WKWebsiteNetworkConnectionIntegrityPolicyNone;
+
+        return _WKWebsiteNetworkConnectionIntegrityPolicyEnabled
+            | _WKWebsiteNetworkConnectionIntegrityPolicyEnhancedTelemetry
+            | _WKWebsiteNetworkConnectionIntegrityPolicyRequestValidation
+            | _WKWebsiteNetworkConnectionIntegrityPolicySanitizeLookalikeCharacters;
+    }();
+
+    preferences.allowsContentJavaScript = NSApplication.sharedApplication.browserAppDelegate.settingsController.allowsContentJavascript;
+
     if (navigationAction._canHandleRequest) {
-        decisionHandler(WKNavigationActionPolicyAllow);
+        decisionHandler(WKNavigationActionPolicyAllow, preferences);
         return;
     }
 
-    if (navigationAction._userInitiatedAction && !navigationAction._userInitiatedAction.isConsumed) {
+    NSURL *url = navigationAction.request.URL;
+    
+    if (!isJavaScriptURL(url) && navigationAction._userInitiatedAction && !navigationAction._userInitiatedAction.isConsumed) {
         [navigationAction._userInitiatedAction consume];
-        [[NSWorkspace sharedWorkspace] openURL:navigationAction.request.URL];
+        [[NSWorkspace sharedWorkspace] openURL:url];
     }
 
-    decisionHandler(WKNavigationActionPolicyCancel);
+    decisionHandler(WKNavigationActionPolicyCancel, preferences);
 }
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler
@@ -771,9 +910,9 @@ static NSSet *dataTypes()
     LOG(@"didReceiveAuthenticationChallenge: %@", challenge);
     if ([challenge.protectionSpace.authenticationMethod isEqualToString:NSURLAuthenticationMethodHTTPBasic]) {
         NSAlert *alert = [[NSAlert alloc] init];
-        NSView *container = [[[NSView alloc] initWithFrame:NSMakeRect(0, 0, 200, 48)] autorelease];
-        NSTextField *userInput = [[[NSTextField alloc] initWithFrame:NSMakeRect(0, 24, 200, 24)] autorelease];
-        NSTextField *passwordInput = [[[NSSecureTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)] autorelease];
+        NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 200, 48)];
+        NSTextField *userInput = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 24, 200, 24)];
+        NSTextField *passwordInput = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
         
         [alert setMessageText:[NSString stringWithFormat:@"Log in to %@:%lu.", challenge.protectionSpace.host, challenge.protectionSpace.port]];
         [alert addButtonWithTitle:@"Log in"];
@@ -787,10 +926,9 @@ static NSSet *dataTypes()
         [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
             [userInput validateEditing];
             if (response == NSAlertFirstButtonReturn)
-                completionHandler(NSURLSessionAuthChallengeUseCredential, [[[NSURLCredential alloc] initWithUser:[userInput stringValue] password:[passwordInput stringValue] persistence:NSURLCredentialPersistenceForSession] autorelease]);
+                completionHandler(NSURLSessionAuthChallengeUseCredential, [[NSURLCredential alloc] initWithUser:[userInput stringValue] password:[passwordInput stringValue] persistence:NSURLCredentialPersistenceForSession]);
             else
                 completionHandler(NSURLSessionAuthChallengeRejectProtectionSpace, nil);
-            [alert release];
         }];
         return;
     }
@@ -848,8 +986,10 @@ static NSSet *dataTypes()
 - (void)setFindBarView:(NSView *)findBarView
 {
     _textFindBarView = findBarView;
+    _textFindBarView.autoresizingMask = NSViewMaxYMargin | NSViewWidthSizable;
+    _textFindBarView.frame = NSMakeRect(0, 0, containerView.bounds.size.width, _textFindBarView.frame.size.height);
+
     _findBarVisible = YES;
-    [_textFindBarView setFrame:NSMakeRect(0, 0, containerView.bounds.size.width, _textFindBarView.frame.size.height)];
 }
 
 - (BOOL)isFindBarVisible
@@ -878,34 +1018,67 @@ static NSSet *dataTypes()
 - (IBAction)saveAsPDF:(id)sender
 {
     NSSavePanel *panel = [NSSavePanel savePanel];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    panel.allowedFileTypes = @[ @"pdf" ];
-#pragma clang diagnostic pop
+    panel.allowedContentTypes = @[ UTTypePDF ];
+
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSInteger result) {
-        if (result == NSModalResponseOK) {
-            [_webView createPDFWithConfiguration:nil completionHandler:^(NSData *pdfSnapshotData, NSError *error) {
-                [pdfSnapshotData writeToURL:[panel URL] options:0 error:nil];
-            }];
-        }
+        if (result != NSModalResponseOK)
+            return;
+        [self->_webView createPDFWithConfiguration:nil completionHandler:^(NSData *pdfSnapshotData, NSError *error) {
+            [pdfSnapshotData writeToURL:[panel URL] options:0 error:nil];
+        }];
+    }];
+}
+
+- (IBAction)saveAsImage:(id)sender
+{
+    NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.allowedContentTypes = @[ UTTypeTIFF ];
+
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSInteger result) {
+        if (result != NSModalResponseOK)
+            return;
+        [self->_webView takeSnapshotWithConfiguration:nil completionHandler:^(NSImage *snapshot, NSError *error) {
+            [snapshot.TIFFRepresentation writeToURL:[panel URL] options:0 error:nil];
+        }];
     }];
 }
 
 - (IBAction)saveAsWebArchive:(id)sender
 {
     NSSavePanel *panel = [NSSavePanel savePanel];
+    panel.allowedContentTypes = @[ UTTypeWebArchive ];
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    panel.allowedFileTypes = @[ @"webarchive" ];
-#pragma clang diagnostic pop
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSInteger result) {
-        if (result == NSModalResponseOK) {
-            [_webView createWebArchiveDataWithCompletionHandler:^(NSData *archiveData, NSError *error) {
-                [archiveData writeToURL:[panel URL] options:0 error:nil];
-            }];
-        }
+        if (result != NSModalResponseOK)
+            return;
+        [self->_webView createWebArchiveDataWithCompletionHandler:^(NSData *archiveData, NSError *error) {
+            [archiveData writeToURL:[panel URL] options:0 error:nil];
+        }];
     }];
+}
+
+- (void)_webViewDidRequestPointerLock:(WKWebView *)webView completionHandler:(void (^)(BOOL))completionHandler
+{
+    if (!_pointerLockBanner) {
+        _pointerLockBanner = [[CATextLayer alloc] init];
+        [_pointerLockBanner setString:[[NSAttributedString alloc] initWithString:@"Your mouse pointer is hidden. Press Esc (Escape) once to reveal your mouse pointer." attributes:@{ NSFontAttributeName:[NSFont systemFontOfSize:16], NSForegroundColorAttributeName:NSColor.blackColor }]];
+        [_pointerLockBanner setBackgroundColor:NSColor.lightGrayColor.CGColor];
+        [_pointerLockBanner setWrapped:YES];
+        [_pointerLockBanner setFrame:CGRectMake(0, 0, 0, testHeaderBannerHeight)];
+        [_pointerLockBanner setContentsScale:[NSScreen mainScreen].backingScaleFactor];
+    }
+    [webView _setHeaderBannerLayer:_pointerLockBanner];
+    completionHandler(YES);
+}
+
+- (void)_webViewDidLosePointerLock:(WKWebView *)webView
+{
+    [webView _setHeaderBannerLayer:nil];
+}
+
+- (NSImage *)windowSnapshotInRect:(CGRect)rect
+{
+    return [_webView _windowSnapshotInRect:rect];
 }
 
 @end

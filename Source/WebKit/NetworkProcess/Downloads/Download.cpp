@@ -33,12 +33,14 @@
 #include "DownloadMonitor.h"
 #include "DownloadProxyMessages.h"
 #include "Logging.h"
+#include "MessageSenderInlines.h"
 #include "NetworkDataTask.h"
 #include "NetworkProcess.h"
 #include "NetworkSession.h"
 #include "SandboxExtension.h"
 #include "WebCoreArgumentCoders.h"
 #include <WebCore/NotImplemented.h>
+#include <wtf/TZoneMallocInlines.h>
 
 #if PLATFORM(COCOA)
 #include "NetworkDataTaskCocoa.h"
@@ -49,13 +51,14 @@
 namespace WebKit {
 using namespace WebCore;
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(Download);
+
 Download::Download(DownloadManager& downloadManager, DownloadID downloadID, NetworkDataTask& download, NetworkSession& session, const String& suggestedName)
     : m_downloadManager(downloadManager)
     , m_downloadID(downloadID)
     , m_client(downloadManager.client())
     , m_download(&download)
     , m_sessionID(session.sessionID())
-    , m_suggestedName(suggestedName)
     , m_testSpeedMultiplier(session.testSpeedMultiplier())
 {
     ASSERT(m_downloadID);
@@ -70,7 +73,6 @@ Download::Download(DownloadManager& downloadManager, DownloadID downloadID, NSUR
     , m_client(downloadManager.client())
     , m_downloadTask(download)
     , m_sessionID(session.sessionID())
-    , m_suggestedName(suggestedName)
     , m_testSpeedMultiplier(session.testSpeedMultiplier())
 {
     ASSERT(m_downloadID);
@@ -85,7 +87,7 @@ Download::~Download()
     m_downloadManager.didDestroyDownload();
 }
 
-void Download::cancel(CompletionHandler<void(const IPC::DataReference&)>&& completionHandler, IgnoreDidFailCallback ignoreDidFailCallback)
+void Download::cancel(CompletionHandler<void(std::span<const uint8_t>)>&& completionHandler, IgnoreDidFailCallback ignoreDidFailCallback)
 {
     RELEASE_ASSERT(isMainRunLoop());
 
@@ -94,7 +96,7 @@ void Download::cancel(CompletionHandler<void(const IPC::DataReference&)>&& compl
     // completionHandler will inform the API that the cancellation succeeded.
     m_ignoreDidFailCallback = ignoreDidFailCallback;
 
-    auto completionHandlerWrapper = [this, weakThis = makeWeakPtr(*this), completionHandler = WTFMove(completionHandler)] (const IPC::DataReference& resumeData) mutable {
+    auto completionHandlerWrapper = [this, weakThis = WeakPtr { *this }, completionHandler = WTFMove(completionHandler)] (std::span<const uint8_t> resumeData) mutable {
         completionHandler(resumeData);
         if (!weakThis || m_ignoreDidFailCallback == IgnoreDidFailCallback::No)
             return;
@@ -130,7 +132,7 @@ void Download::didCreateDestination(const String& path)
 void Download::didReceiveData(uint64_t bytesWritten, uint64_t totalBytesWritten, uint64_t totalBytesExpectedToWrite)
 {
     if (!m_hasReceivedData) {
-        DOWNLOAD_RELEASE_LOG("didReceiveData: Started receiving data (id = %" PRIu64 ")", downloadID().toUInt64());
+        DOWNLOAD_RELEASE_LOG("didReceiveData: Started receiving data (id = %" PRIu64 ", expected length = %" PRIu64 ")", downloadID().toUInt64(), totalBytesExpectedToWrite);
         m_hasReceivedData = true;
     }
     
@@ -153,7 +155,7 @@ void Download::didFinish()
     m_downloadManager.downloadFinished(*this);
 }
 
-void Download::didFail(const ResourceError& error, const IPC::DataReference& resumeData)
+void Download::didFail(const ResourceError& error, std::span<const uint8_t> resumeData)
 {
     if (m_ignoreDidFailCallback == IgnoreDidFailCallback::Yes)
         return;
@@ -181,7 +183,7 @@ uint64_t Download::messageSenderDestinationID() const
 }
 
 #if !PLATFORM(COCOA)
-void Download::platformCancelNetworkLoad(CompletionHandler<void(const IPC::DataReference&)>&& completionHandler)
+void Download::platformCancelNetworkLoad(CompletionHandler<void(std::span<const uint8_t>)>&& completionHandler)
 {
     completionHandler({ });
 }

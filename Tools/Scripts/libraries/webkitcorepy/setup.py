@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -30,7 +30,7 @@ def readme():
 
 setup(
     name='webkitcorepy',
-    version='0.9.1',
+    version='1.0.0',
     description='Library containing various Python support classes and functions.',
     long_description=readme(),
     classifiers=[
@@ -43,20 +43,23 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     keywords='python unicode',
-    url='https://svn.webkit.org/repository/webkit/trunk/Tools/Scripts/libraries/webkitcorepy',
+    url='https://github.com/WebKit/WebKit/tree/main/Tools/Scripts/libraries/webkitcorepy',
     author='Jonathan Bedard',
     author_email='jbedard@apple.com',
     license='Modified BSD',
     packages=[
         'webkitcorepy',
         'webkitcorepy.mocks',
+        'webkitcorepy.testing',
         'webkitcorepy.tests',
         'webkitcorepy.tests.mocks',
     ],
     install_requires=[
+        'inspect2',
         'mock',
         'requests',
         'six',
+        'tblib',
     ],
     include_package_data=True,
     zip_safe=False,

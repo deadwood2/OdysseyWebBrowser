@@ -51,7 +51,7 @@ namespace WebCore {
         WTF_MAKE_FAST_ALLOCATED;
     public:
         PlatformKeyboardEvent()
-            : PlatformEvent(PlatformEvent::KeyDown)
+            : PlatformEvent(PlatformEvent::Type::KeyDown)
         {
         }
 
@@ -129,7 +129,7 @@ namespace WebCore {
 #endif
 
 #if PLATFORM(WIN)
-        PlatformKeyboardEvent(HWND, WPARAM, LPARAM, Type, bool);
+        WEBCORE_EXPORT PlatformKeyboardEvent(HWND, WPARAM, LPARAM, Type, bool);
 #endif
 
 #if OS(MORPHOS)
@@ -143,7 +143,6 @@ namespace WebCore {
         static String keyIdentifierForGdkKeyCode(unsigned);
         static int windowsKeyCodeForGdkKeyCode(unsigned);
         static String singleCharacterString(unsigned);
-        static bool modifiersContainCapsLock(unsigned);
 #endif
 
 #if USE(LIBWPE)

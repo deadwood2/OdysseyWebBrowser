@@ -31,7 +31,7 @@
 #include "HIDGamepad.h"
 #include "Timer.h"
 #include <IOKit/hid/IOHIDManager.h>
-#include <pal/spi/mac/IOKitSPIMac.h>
+#include <pal/spi/cocoa/IOKitSPI.h>
 #include <wtf/Deque.h>
 #include <wtf/HashMap.h>
 #include <wtf/RetainPtr.h>
@@ -49,7 +49,9 @@ public:
 
     WEBCORE_EXPORT void startMonitoringGamepads(GamepadProviderClient&) final;
     WEBCORE_EXPORT void stopMonitoringGamepads(GamepadProviderClient&) final;
-    const Vector<PlatformGamepad*>& platformGamepads() final { return m_gamepadVector; }
+    const Vector<WeakPtr<PlatformGamepad>>& platformGamepads() final { return m_gamepadVector; }
+    void playEffect(unsigned, const String&, GamepadHapticEffectType, const GamepadEffectParameters&, CompletionHandler<void(bool)>&&) final;
+    void stopEffects(unsigned, const String&, CompletionHandler<void()>&&) final;
 
     WEBCORE_EXPORT void stopMonitoringInput();
     WEBCORE_EXPORT void startMonitoringInput();
@@ -75,7 +77,7 @@ private:
 
     unsigned indexForNewlyConnectedDevice();
 
-    Vector<PlatformGamepad*> m_gamepadVector;
+    Vector<WeakPtr<PlatformGamepad>> m_gamepadVector;
     HashMap<IOHIDDeviceRef, std::unique_ptr<HIDGamepad>> m_gamepadMap;
 
     RetainPtr<IOHIDManagerRef> m_manager;

@@ -45,30 +45,20 @@ class WinPortTest(port_testcase.PortTestCase):
     port_name = 'win-xp'
     port_maker = WinPort
 
-    def test_show_results_html_file(self):
-        port = self.make_port()
-        port._executive = MockExecutive(should_log=True)
-        with OutputCapture(level=logging.INFO) as captured:
-            port.show_results_html_file('test.html')
-
-        # We can't know for sure what path will be produced by cygpath, but we can assert about
-        # everything else.
-        self.assertTrue(captured.root.log.getvalue().startswith("MOCK run_command: ['Tools/Scripts/run-safari', '--release', '"))
-        self.assertTrue(captured.root.log.getvalue().endswith("test.html'], cwd=/mock-checkout\n"))
-
     def _assert_search_path(self, expected_search_paths, version, use_webkit2=False):
         port = self.make_port(port_name='win', os_version=version, options=MockOptions(webkit_test_runner=use_webkit2))
-        absolute_search_paths = list(map(port._webkit_baseline_path, expected_search_paths))
-        self.assertEqual(port.baseline_search_path(), absolute_search_paths)
+        platform_dir = port.host.filesystem.dirname(port._webkit_baseline_path("xxx"))
+        relative_search_paths = [port.host.filesystem.relpath(p, platform_dir) for p in port.baseline_search_path()]
+        self.assertEqual(relative_search_paths, expected_search_paths)
 
     def test_baseline_search_path(self):
-        self._assert_search_path(['win-xp', 'win-vista', 'win-7sp0', 'win-8', 'win-8.1', 'win-win10', 'win', 'mac'], Version.from_name('XP'))
-        self._assert_search_path(['win-vista', 'win-7sp0', 'win-8', 'win-8.1', 'win-win10', 'win', 'mac'], Version.from_name('Vista'))
-        self._assert_search_path(['win-7sp0', 'win-8', 'win-8.1', 'win-win10', 'win', 'mac'], Version.from_name('7sp0'))
+        self._assert_search_path(['win-xp-wk1', 'win-xp', 'win-vista-wk1', 'win-vista', 'win-7sp0-wk1', 'win-7sp0', 'win-8-wk1', 'win-8', 'win-8.1-wk1', 'win-8.1', 'win-win10-wk1', 'win-win10', 'win-wk1', 'win'], Version.from_name('XP'))
+        self._assert_search_path(['win-vista-wk1', 'win-vista', 'win-7sp0-wk1', 'win-7sp0', 'win-8-wk1', 'win-8', 'win-8.1-wk1', 'win-8.1', 'win-win10-wk1', 'win-win10', 'win-wk1', 'win'], Version.from_name('Vista'))
+        self._assert_search_path(['win-7sp0-wk1', 'win-7sp0', 'win-8-wk1', 'win-8', 'win-8.1-wk1', 'win-8.1', 'win-win10-wk1', 'win-win10', 'win-wk1', 'win'], Version.from_name('7sp0'))
 
-        self._assert_search_path(['win-wk2', 'win-xp', 'win-vista', 'win-7sp0', 'win-8', 'win-8.1', 'win-win10', 'win', 'mac-wk2', 'mac'], Version.from_name('XP'), use_webkit2=True)
-        self._assert_search_path(['win-wk2', 'win-vista', 'win-7sp0', 'win-8', 'win-8.1', 'win-win10', 'win', 'mac-wk2', 'mac'], Version.from_name('Vista'), use_webkit2=True)
-        self._assert_search_path(['win-wk2', 'win-7sp0', 'win-8', 'win-8.1', 'win-win10', 'win', 'mac-wk2', 'mac'], Version.from_name('7sp0'), use_webkit2=True)
+        self._assert_search_path(['win-xp-wk2', 'win-xp', 'win-vista-wk2', 'win-vista', 'win-7sp0-wk2', 'win-7sp0', 'win-8-wk2', 'win-8', 'win-8.1-wk2', 'win-8.1', 'win-win10-wk2', 'win-win10', 'win-wk2', 'win', 'wk2'], Version.from_name('XP'), use_webkit2=True)
+        self._assert_search_path(['win-vista-wk2', 'win-vista', 'win-7sp0-wk2', 'win-7sp0', 'win-8-wk2', 'win-8', 'win-8.1-wk2', 'win-8.1', 'win-win10-wk2', 'win-win10', 'win-wk2', 'win', 'wk2'], Version.from_name('Vista'), use_webkit2=True)
+        self._assert_search_path(['win-7sp0-wk2', 'win-7sp0', 'win-8-wk2', 'win-8', 'win-8.1-wk2', 'win-8.1', 'win-win10-wk2', 'win-win10', 'win-wk2', 'win', 'wk2'], Version.from_name('7sp0'), use_webkit2=True)
 
     def _assert_version(self, port_name, expected_version):
         host = MockSystemHost(os_name='win', os_version=expected_version)
@@ -96,8 +86,50 @@ class WinPortTest(port_testcase.PortTestCase):
         self.assertEqual('win', self.make_port().operating_system())
 
     def test_expectations_files(self):
-        self.assertEqual(len(self.make_port().expectations_files()), 3)
-        self.assertEqual(len(self.make_port(options=MockOptions(webkit_test_runner=True, configuration='Release')).expectations_files()), 5)
+        self.assertEqual(
+            self.make_port().expectations_files(),
+            [
+                "/mock-checkout/LayoutTests/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-wk1/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-win10/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-win10-wk1/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-8.1/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-8.1-wk1/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-8/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-8-wk1/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-7sp0/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-7sp0-wk1/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-vista/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-vista-wk1/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-xp/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-xp-wk1/TestExpectations",
+            ],
+        )
+
+        self.assertEqual(
+            self.make_port(
+                options=MockOptions(webkit_test_runner=True, configuration="Release")
+            ).expectations_files(),
+            [
+                "/mock-checkout/LayoutTests/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/wk2/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-wk2/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-win10/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-win10-wk2/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-8.1/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-8.1-wk2/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-8/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-8-wk2/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-7sp0/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-7sp0-wk2/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-vista/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-vista-wk2/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-xp/TestExpectations",
+                "/mock-checkout/LayoutTests/platform/win-xp-wk2/TestExpectations",
+            ],
+        )
 
     def test_get_crash_log(self):
         # Win crash logs are tested elsewhere, so here we just make sure we don't crash.
@@ -109,7 +141,16 @@ class WinPortTest(port_testcase.PortTestCase):
             time_fn=fake_time_cb(), sleep_fn=lambda delay: None)
 
     def test_layout_test_searchpath_with_apple_additions(self):
+        search_path = self.make_port().default_baseline_search_path()
         with port_testcase.bind_mock_apple_additions():
-            search_path = self.make_port().default_baseline_search_path()
-        self.assertEqual(search_path[0], '/additional_testing_path/win')
-        self.assertEqual(search_path[1], '/mock-checkout/LayoutTests/platform/win-xp')
+            additions_search_path = self.make_port().default_baseline_search_path()
+        self.assertEqual(search_path, additions_search_path)
+
+    def test_default_upload_configuration(self):
+        port = self.make_port()
+        configuration = port.configuration_for_upload()
+        self.assertEqual(configuration['architecture'], port.architecture())
+        self.assertEqual(configuration['is_simulator'], False)
+        self.assertEqual(configuration['platform'], 'win')
+        self.assertEqual(configuration['style'], 'release')
+        self.assertEqual(configuration['version_name'], 'XP')

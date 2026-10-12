@@ -44,15 +44,6 @@ using namespace WebCore;
 using namespace cbor;
 using namespace fido;
 
-namespace MockHidConnectionInternal {
-// https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-client-to-authenticator-protocol-v2.0-ps-20170927.html#mandatory-commands
-const size_t CtapChannelIdSize = 4;
-const uint8_t CtapKeepAliveStatusProcessing = 1;
-// https://fidoalliance.org/specs/fido-v2.0-ps-20170927/fido-client-to-authenticator-protocol-v2.0-ps-20170927.html#commands
-const int64_t CtapMakeCredentialRequestOptionsKey = 7;
-const int64_t CtapGetAssertionRequestOptionsKey = 5;
-}
-
 MockHidConnection::MockHidConnection(IOHIDDeviceRef device, const MockWebAuthenticationConfiguration& configuration)
     : HidConnection(device)
     , m_configuration(configuration)
@@ -84,7 +75,7 @@ auto MockHidConnection::sendSync(const Vector<uint8_t>& data) -> DataSent
 void MockHidConnection::send(Vector<uint8_t>&& data, DataSentCallback&& callback)
 {
     ASSERT(isInitialized());
-    auto task = makeBlockPtr([weakThis = makeWeakPtr(*this), data = WTFMove(data), callback = WTFMove(callback)]() mutable {
+    auto task = makeBlockPtr([weakThis = WeakPtr { *this }, data = WTFMove(data), callback = WTFMove(callback)]() mutable {
         ASSERT(!RunLoop::isMain());
         RunLoop::main().dispatch([weakThis, data = WTFMove(data), callback = WTFMove(callback)]() mutable {
             if (!weakThis) {
@@ -130,8 +121,6 @@ void MockHidConnection::assembleRequest(Vector<uint8_t>&& data)
 
 void MockHidConnection::parseRequest()
 {
-    using namespace MockHidConnectionInternal;
-
     ASSERT(m_requestMessage);
     // Set stages.
     if (m_requestMessage->cmd() == FidoHidDeviceCommand::kInit) {
@@ -162,7 +151,7 @@ void MockHidConnection::parseRequest()
             ASSERT(requestMap || cmd == CtapRequestCommand::kAuthenticatorGetNextAssertion);
 
             if (cmd == CtapRequestCommand::kAuthenticatorMakeCredential) {
-                auto it = requestMap->getMap().find(CBORValue(CtapMakeCredentialRequestOptionsKey)); // Find options.
+                auto it = requestMap->getMap().find(CBORValue(kCtapMakeCredentialRequestOptionsKey)); // Find options.
                 if (it != requestMap->getMap().end()) {
                     auto& optionMap = it->second.getMap();
 
@@ -177,7 +166,7 @@ void MockHidConnection::parseRequest()
             }
 
             if (cmd == CtapRequestCommand::kAuthenticatorGetAssertion) {
-                auto it = requestMap->getMap().find(CBORValue(CtapGetAssertionRequestOptionsKey)); // Find options.
+                auto it = requestMap->getMap().find(CBORValue(kCtapGetAssertionRequestOptionsKey)); // Find options.
                 if (it != requestMap->getMap().end()) {
                     auto& optionMap = it->second.getMap();
                     auto itr = optionMap.find(CBORValue(kUserVerificationMapKey));
@@ -202,8 +191,6 @@ void MockHidConnection::parseRequest()
 
 void MockHidConnection::feedReports()
 {
-    using namespace MockHidConnectionInternal;
-
     if (m_subStage == Mock::HidSubStage::Init) {
         Vector<uint8_t> payload;
         payload.reserveInitialCapacity(kHidInitResponseSize);
@@ -212,7 +199,7 @@ void MockHidConnection::feedReports()
         if (stagesMatch() && m_configuration.hid->error == Mock::HidError::WrongNonce)
             payload[0]--;
         payload.grow(kHidInitResponseSize);
-        cryptographicallyRandomValues(payload.data() + writePosition, CtapChannelIdSize);
+        cryptographicallyRandomValues(payload.mutableSpan().subspan(writePosition, kCtapChannelIdSize));
         auto channel = kHidBroadcastChannel;
         if (stagesMatch() && m_configuration.hid->error == Mock::HidError::WrongChannelId)
             channel--;
@@ -228,15 +215,20 @@ void MockHidConnection::feedReports()
         Vector<uint8_t> infoData;
         if (m_configuration.hid->canDowngrade)
             infoData = encodeAsCBOR(AuthenticatorGetInfoResponse({ ProtocolVersion::kCtap, ProtocolVersion::kU2f }, Vector<uint8_t>(aaguidLength, 0u)));
-        else if (m_configuration.hid->supportClientPin) {
+        else {
             AuthenticatorGetInfoResponse infoResponse({ ProtocolVersion::kCtap }, Vector<uint8_t>(aaguidLength, 0u));
-            infoResponse.setPinProtocols({ pin::kProtocolVersion });
             AuthenticatorSupportedOptions options;
-            options.setClientPinAvailability(AuthenticatorSupportedOptions::ClientPinAvailability::kSupportedAndPinSet);
+            if (m_configuration.hid->supportClientPin) {
+                infoResponse.setPinProtocols({ pin::kProtocolVersion });
+                options.setClientPinAvailability(AuthenticatorSupportedOptions::ClientPinAvailability::kSupportedAndPinSet);
+            }
+            if (m_configuration.hid->supportInternalUV)
+                options.setUserVerificationAvailability(AuthenticatorSupportedOptions::UserVerificationAvailability::kSupportedAndConfigured);
             infoResponse.setOptions(WTFMove(options));
+            infoResponse.setMaxCredentialCountInList(m_configuration.hid->maxCredentialCountInList);
+            infoResponse.setMaxCredentialIDLength(m_configuration.hid->maxCredentialIdLength);
             infoData = encodeAsCBOR(infoResponse);
-        } else
-            infoData = encodeAsCBOR(AuthenticatorGetInfoResponse({ ProtocolVersion::kCtap }, Vector<uint8_t>(aaguidLength, 0u)));
+        }
         infoData.insert(0, static_cast<uint8_t>(CtapDeviceResponseCode::kSuccess)); // Prepend status code.
         if (stagesMatch() && m_configuration.hid->error == Mock::HidError::WrongChannelId)
             message = FidoHidMessage::create(m_currentChannel - 1, FidoHidDeviceCommand::kCbor, infoData);
@@ -253,7 +245,7 @@ void MockHidConnection::feedReports()
             return;
         if (m_configuration.hid->keepAlive) {
             m_configuration.hid->keepAlive = false;
-            FidoHidInitPacket initPacket(m_currentChannel, FidoHidDeviceCommand::kKeepAlive, { CtapKeepAliveStatusProcessing }, 1);
+            FidoHidInitPacket initPacket(m_currentChannel, FidoHidDeviceCommand::kKeepAlive, { kCtapKeepAliveStatusProcessing }, 1);
             receiveReport(initPacket.getSerializedData());
             continueFeedReports();
             return;
@@ -278,7 +270,7 @@ void MockHidConnection::feedReports()
         if (!isFirst && stagesMatch() && m_configuration.hid->error == Mock::HidError::WrongChannelId)
             report = FidoHidContinuationPacket(m_currentChannel - 1, 0, { }).getSerializedData();
         // Packets are feed asynchronously to mimic actual data transmission.
-        RunLoop::main().dispatch([report = WTFMove(report), weakThis = makeWeakPtr(*this)]() mutable {
+        RunLoop::main().dispatch([report = WTFMove(report), weakThis = WeakPtr { *this }]() mutable {
             if (!weakThis)
                 return;
             weakThis->receiveReport(WTFMove(report));
@@ -304,7 +296,7 @@ void MockHidConnection::shouldContinueFeedReports()
 void MockHidConnection::continueFeedReports()
 {
     // Send actual response for the next run.
-    RunLoop::main().dispatch([weakThis = makeWeakPtr(*this)]() mutable {
+    RunLoop::main().dispatch([weakThis = WeakPtr { *this }]() mutable {
         if (!weakThis)
             return;
         weakThis->feedReports();

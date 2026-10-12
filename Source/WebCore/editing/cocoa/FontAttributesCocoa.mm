@@ -26,7 +26,9 @@
 #import "config.h"
 #import "FontAttributes.h"
 
+#import "CSSValueKeywords.h"
 #import "ColorCocoa.h"
+#import "FontCocoa.h"
 #import <pal/spi/cocoa/NSAttributedStringSPI.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
@@ -36,40 +38,37 @@
 
 namespace WebCore {
 
-static NSString *cocoaTextListMarkerName(ListStyleType style, bool ordered)
+static NSString *cocoaTextListMarkerName(ListStyleType styleType, bool ordered)
 {
-    switch (style) {
-    case ListStyleType::Disc:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueDisc))
         return NSTextListMarkerDisc;
-    case ListStyleType::Circle:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueCircle))
         return NSTextListMarkerCircle;
-    case ListStyleType::Square:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueSquare))
         return NSTextListMarkerSquare;
-    case ListStyleType::Decimal:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueDecimal))
         return NSTextListMarkerDecimal;
-    case ListStyleType::Octal:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueOctal))
         return NSTextListMarkerOctal;
-    case ListStyleType::LowerRoman:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueLowerRoman))
         return NSTextListMarkerLowercaseRoman;
-    case ListStyleType::UpperRoman:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueUpperRoman))
         return NSTextListMarkerUppercaseRoman;
-    case ListStyleType::LowerAlpha:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueLowerAlpha))
         return NSTextListMarkerLowercaseAlpha;
-    case ListStyleType::UpperAlpha:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueUpperAlpha))
         return NSTextListMarkerUppercaseAlpha;
-    case ListStyleType::LowerLatin:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueLowerLatin))
         return NSTextListMarkerLowercaseLatin;
-    case ListStyleType::UpperLatin:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueUpperLatin))
         return NSTextListMarkerUppercaseLatin;
-    case ListStyleType::LowerHexadecimal:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueLowerHexadecimal))
         return NSTextListMarkerLowercaseHexadecimal;
-    case ListStyleType::UpperHexadecimal:
+    if (styleType.type == ListStyleType::Type::CounterStyle && styleType.identifier == nameLiteral(CSSValueUpperHexadecimal))
         return NSTextListMarkerUppercaseHexadecimal;
-    default:
-        // The remaining web-exposed list style types have no Cocoa equivalents.
-        // Fall back to default styles for ordered and unordered lists.
-        return ordered ? NSTextListMarkerDecimal : NSTextListMarkerDisc;
-    }
+    // The remaining web-exposed list style types have no Cocoa equivalents.
+    // Fall back to default styles for ordered and unordered lists.
+    return ordered ? NSTextListMarkerDecimal : NSTextListMarkerDisc;
 }
 
 RetainPtr<NSTextList> TextList::createTextList() const
@@ -79,7 +78,7 @@ RetainPtr<NSTextList> TextList::createTextList() const
 #else
     Class textListClass = PAL::getNSTextListClass();
 #endif
-    auto result = adoptNS([[textListClass alloc] initWithMarkerFormat:cocoaTextListMarkerName(style, ordered) options:0]);
+    auto result = adoptNS([[textListClass alloc] initWithMarkerFormat:cocoaTextListMarkerName(styleType, ordered) options:0]);
     [result setStartingItemNumber:startingItemNumber];
     return result;
 }
@@ -87,14 +86,14 @@ RetainPtr<NSTextList> TextList::createTextList() const
 RetainPtr<NSDictionary> FontAttributes::createDictionary() const
 {
     NSMutableDictionary *attributes = [NSMutableDictionary dictionary];
-    if (font)
-        attributes[NSFontAttributeName] = font.get();
+    if (auto cocoaFont = font ? (__bridge CocoaFont *)font->getCTFont() : nil)
+        attributes[NSFontAttributeName] = cocoaFont;
 
     if (foregroundColor.isValid())
-        attributes[NSForegroundColorAttributeName] = platformColor(foregroundColor);
+        attributes[NSForegroundColorAttributeName] = cocoaColor(foregroundColor).get();
 
     if (backgroundColor.isValid())
-        attributes[NSBackgroundColorAttributeName] = platformColor(backgroundColor);
+        attributes[NSBackgroundColorAttributeName] = cocoaColor(backgroundColor).get();
 
     if (fontShadow.color.isValid() && (!fontShadow.offset.isZero() || fontShadow.blurRadius))
         attributes[NSShadowAttributeName] = fontShadow.createShadow().get();

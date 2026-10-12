@@ -1,7 +1,7 @@
 #include "PopupMenu.h"
 #include "WebPage.h"
 #include <WebCore/IntRect.h>
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrameView.h>
 #include <wtf/text/AtomString.h>
 
 extern "C" { void dprintf(const char *,...); }
@@ -23,7 +23,7 @@ PopupMenuMorphOS::~PopupMenuMorphOS()
 
 }
 
-void PopupMenuMorphOS::show(const WebCore::IntRect& rect, WebCore::FrameView* view, int)
+void PopupMenuMorphOS::show(const WebCore::IntRect& rect, WebCore::LocalFrameView& view, int)
 {
 	WTF::Vector<WTF::String> items;
 	RefPtr<PopupMenu> protectedThis(this);
@@ -33,7 +33,7 @@ void PopupMenuMorphOS::show(const WebCore::IntRect& rect, WebCore::FrameView* vi
 		for (int i =0 ; i < m_client->listSize(); i++)
 			items.append(m_client->itemText(i));
 
-    	IntRect rViewCoords(view->contentsToWindow(rect.location()), rect.size());
+    	IntRect rViewCoords(view.contentsToWindow(rect.location()), rect.size());
 
 		int selection = m_page->_fPopup(rViewCoords, items);
 

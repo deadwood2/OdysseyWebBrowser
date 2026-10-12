@@ -18,7 +18,7 @@ public:
     PopupMenuMorphOS(WebCore::PopupMenuClient* client, WebPage* page);
     ~PopupMenuMorphOS();
 
-    void show(const WebCore::IntRect&, WebCore::FrameView*, int index) override;
+    void show(const WebCore::IntRect&, WebCore::LocalFrameView&, int index) override;
     void hide() override;
     void updateFromElement() override;
     void disconnectClient() override;

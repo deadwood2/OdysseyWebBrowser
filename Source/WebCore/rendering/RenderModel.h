@@ -34,7 +34,8 @@ namespace WebCore {
 class HTMLModelElement;
 
 class RenderModel final : public RenderReplaced {
-    WTF_MAKE_ISO_ALLOCATED(RenderModel);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RenderModel);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(RenderModel);
 public:
     RenderModel(HTMLModelElement&, RenderStyle&&);
     virtual ~RenderModel();
@@ -43,8 +44,7 @@ public:
 
 private:
     void element() const = delete;
-    const char* renderName() const final { return "RenderModel"; }
-    bool isRenderModel() const final { return true; }
+    ASCIILiteral renderName() const final { return "RenderModel"_s; }
 
     bool requiresLayer() const final;
     void updateFromElement() final;

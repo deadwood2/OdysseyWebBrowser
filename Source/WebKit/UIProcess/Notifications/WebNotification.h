@@ -25,45 +25,65 @@
 
 #pragma once
 
-#include "APIObject.h"
+#include "APIDictionary.h"
 #include "APISecurityOrigin.h"
+#include "Connection.h"
+#include "WebNotificationIdentifier.h"
+#include "WebPageProxyIdentifier.h"
+#include <WebCore/NotificationData.h>
+#include <wtf/Identified.h>
+#include <wtf/ObjectIdentifier.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 enum class NotificationDirection : uint8_t;
+struct NotificationData;
 }
 
 namespace WebKit {
 
-class WebNotification : public API::ObjectImpl<API::Object::Type::Notification> {
+class WebNotification : public API::ObjectImpl<API::Object::Type::Notification>, public Identified<WebNotificationIdentifier> {
 public:
-    static Ref<WebNotification> create(const String& title, const String& body, const String& iconURL, const String& tag, const String& lang, WebCore::NotificationDirection dir, const String& originString, uint64_t notificationID)
+    static Ref<WebNotification> createNonPersistent(const WebCore::NotificationData& data, WebPageProxyIdentifier pageIdentifier, IPC::Connection& sourceConnection)
     {
-        return adoptRef(*new WebNotification(title, body, iconURL, tag, lang, dir, originString, notificationID));
+        ASSERT(!data.isPersistent());
+        return adoptRef(*new WebNotification(data, pageIdentifier, std::nullopt, &sourceConnection));
     }
 
-    const String& title() const { return m_title; }
-    const String& body() const { return m_body; }
-    const String& iconURL() const { return m_iconURL; }
-    const String& tag() const { return m_tag; }
-    const String& lang() const { return m_lang; }
-    WebCore::NotificationDirection dir() const { return m_dir; }
-    API::SecurityOrigin* origin() const { return m_origin.get(); }
-    
-    uint64_t notificationID() const { return m_notificationID; }
+    static Ref<WebNotification> createPersistent(const WebCore::NotificationData& data, const std::optional<WTF::UUID>& dataStoreIdentifier, IPC::Connection* sourceConnection)
+    {
+        ASSERT(data.isPersistent());
+        return adoptRef(*new WebNotification(data, WebPageProxyIdentifier(), dataStoreIdentifier, sourceConnection));
+    }
+
+    const String& title() const { return m_data.title; }
+    const String& body() const { return m_data.body; }
+    const String& iconURL() const { return m_data.iconURL; }
+    const String& tag() const { return m_data.tag; }
+    const String& lang() const { return m_data.language; }
+    WebCore::NotificationDirection dir() const { return m_data.direction; }
+    const WTF::UUID& coreNotificationID() const { return m_data.notificationID; }
+    const std::optional<WTF::UUID>& dataStoreIdentifier() const { return m_dataStoreIdentifier; }
+    PAL::SessionID sessionID() const { return m_data.sourceSession; }
+
+    const WebCore::NotificationData& data() const { return m_data; }
+    bool isPersistentNotification() const { return !m_data.serviceWorkerRegistrationURL.isEmpty(); }
+
+    const API::SecurityOrigin* origin() const { return m_origin.get(); }
+    API::SecurityOrigin* origin() { return m_origin.get(); }
+
+    WebPageProxyIdentifier pageIdentifier() const { return m_pageIdentifier; }
+    RefPtr<IPC::Connection> sourceConnection() const { return m_sourceConnection.get(); }
 
 private:
-    WebNotification(const String& title, const String& body, const String& iconURL, const String& tag, const String& lang, WebCore::NotificationDirection, const String& originString, uint64_t notificationID);
+    WebNotification(const WebCore::NotificationData&, WebPageProxyIdentifier, const std::optional<WTF::UUID>& dataStoreIdentifier, IPC::Connection*);
 
-    String m_title;
-    String m_body;
-    String m_iconURL;
-    String m_tag;
-    String m_lang;
-    WebCore::NotificationDirection m_dir;
+    WebCore::NotificationData m_data;
     RefPtr<API::SecurityOrigin> m_origin;
-    uint64_t m_notificationID;
+    WebPageProxyIdentifier m_pageIdentifier;
+    std::optional<WTF::UUID> m_dataStoreIdentifier;
+    ThreadSafeWeakPtr<IPC::Connection> m_sourceConnection;
 };
 
 inline bool isNotificationIDValid(uint64_t id)

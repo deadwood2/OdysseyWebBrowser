@@ -23,7 +23,9 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if ENABLE(UI_PROCESS_PDF_HUD)
+#pragma once
+
+#if ENABLE(PDF_HUD)
 
 #import "PDFPluginIdentifier.h"
 
@@ -34,12 +36,11 @@ class WebPageProxy;
 @interface WKPDFHUDView : NSView
 
 - (instancetype)initWithFrame:(NSRect)frame pluginIdentifier:(WebKit::PDFPluginIdentifier)pluginIdentifier page:(WebKit::WebPageProxy&)page;
-- (void)setFrame:(NSRect)frame;
-- (void)mouseMoved:(NSEvent *)event;
-- (void)mouseDown:(NSEvent *)event;
-- (void)mouseUp:(NSEvent *)event;
 - (void)setDeviceScaleFactor:(CGFloat)deviceScaleFactor;
+
+- (BOOL)handleMouseDown:(NSEvent *)event;
+- (BOOL)handleMouseUp:(NSEvent *)event;
 
 @end
 
-#endif // ENABLE(UI_PROCESS_PDF_HUD)
+#endif // ENABLE(PDF_HUD)

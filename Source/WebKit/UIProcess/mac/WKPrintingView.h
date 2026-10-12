@@ -25,6 +25,7 @@
 
 #if PLATFORM(MAC)
 
+#import "Connection.h"
 #import <WebCore/IntRectHash.h>
 #import <condition_variable>
 #import <wtf/Condition.h>
@@ -38,8 +39,11 @@
 @class PDFDestination;
 @class PDFDocument;
 
-namespace WebKit {
+namespace WebCore {
 class ShareableBitmap;
+}
+
+namespace WebKit {
 class WebFrameProxy;
 }
 
@@ -51,16 +55,16 @@ class WebFrameProxy;
     RefPtr<WebKit::WebFrameProxy> _webFrame;
     Vector<WebCore::IntRect> _printingPageRects;
     double _totalScaleFactorForPrinting;
-    HashMap<WebCore::IntRect, RefPtr<WebKit::ShareableBitmap>> _pagePreviews;
+    HashMap<WebCore::IntRect, RefPtr<WebCore::ShareableBitmap>> _pagePreviews;
 
     Vector<uint8_t> _printedPagesData;
     RetainPtr<PDFDocument> _printedPagesPDFDocument;
     Vector<Vector<RetainPtr<PDFDestination>>> _linkDestinationsPerPage;
 
-    uint64_t _expectedComputedPagesCallback;
-    HashMap<uint64_t, WebCore::IntRect> _expectedPreviewCallbacks;
-    uint64_t _latestExpectedPreviewCallback;
-    uint64_t _expectedPrintCallback;
+    IPC::Connection::AsyncReplyID _expectedComputedPagesCallback;
+    HashMap<IPC::Connection::AsyncReplyID, WebCore::IntRect> _expectedPreviewCallbacks;
+    IPC::Connection::AsyncReplyID _latestExpectedPreviewCallback;
+    IPC::Connection::AsyncReplyID _expectedPrintCallback;
 
     BOOL _isPrintingFromSecondaryThread;
     Lock _printingCallbackMutex;

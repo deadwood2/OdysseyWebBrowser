@@ -27,24 +27,32 @@
 
 #include "CachedResource.h"
 #include "CachedResourceRequest.h"
+#include "ScriptType.h"
+#include <wtf/WeakRef.h>
+
+namespace WebCore {
+class HTMLResourcePreloader;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::HTMLResourcePreloader> : std::true_type { };
+}
 
 namespace WebCore {
 
 class PreloadRequest {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    enum class ModuleScript {
-        Yes,
-        No,
-    };
-    PreloadRequest(const String& initiator, const String& resourceURL, const URL& baseURL, CachedResource::Type resourceType, const String& mediaAttribute, ModuleScript moduleScript, const ReferrerPolicy& referrerPolicy)
-        : m_initiator(initiator)
+    PreloadRequest(ASCIILiteral initiatorType, const String& resourceURL, const URL& baseURL, CachedResource::Type resourceType, const String& mediaAttribute, ScriptType scriptType, const ReferrerPolicy& referrerPolicy, RequestPriority fetchPriorityHint = RequestPriority::Auto)
+        : m_initiatorType(initiatorType)
         , m_resourceURL(resourceURL)
         , m_baseURL(baseURL.isolatedCopy())
         , m_resourceType(resourceType)
         , m_mediaAttribute(mediaAttribute)
-        , m_moduleScript(moduleScript)
+        , m_scriptType(scriptType)
         , m_referrerPolicy(referrerPolicy)
+        , m_fetchPriorityHint(fetchPriorityHint)
     {
     }
 
@@ -61,7 +69,7 @@ public:
 private:
     URL completeURL(Document&);
 
-    String m_initiator;
+    ASCIILiteral m_initiatorType;
     String m_resourceURL;
     URL m_baseURL;
     String m_charset;
@@ -70,8 +78,9 @@ private:
     String m_crossOriginMode;
     String m_nonceAttribute;
     bool m_scriptIsAsync { false };
-    ModuleScript m_moduleScript;
+    ScriptType m_scriptType;
     ReferrerPolicy m_referrerPolicy;
+    RequestPriority m_fetchPriorityHint;
 };
 
 typedef Vector<std::unique_ptr<PreloadRequest>> PreloadRequestStream;
@@ -88,7 +97,9 @@ public:
     void preload(std::unique_ptr<PreloadRequest>);
 
 private:
-    Document& m_document;
+    Ref<Document> protectedDocument() const { return m_document.get(); }
+
+    WeakRef<Document, WeakPtrImplWithEventTargetData> m_document;
 };
 
 } // namespace WebCore

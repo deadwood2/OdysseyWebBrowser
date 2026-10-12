@@ -29,8 +29,12 @@
 #import "APIDictionary.h"
 #import "WKSharedAPICast.h"
 #import "_WKDiagnosticLoggingDelegate.h"
+#import <WebCore/DiagnosticLoggingDomain.h>
+#import <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(DiagnosticLoggingClient);
 
 DiagnosticLoggingClient::DiagnosticLoggingClient(WKWebView *webView)
     : m_webView(webView)

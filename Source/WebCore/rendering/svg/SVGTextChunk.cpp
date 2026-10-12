@@ -1,6 +1,7 @@
 /*
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
+ * Copyright (C) 2017 Google Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -21,7 +22,10 @@
 #include "config.h"
 #include "SVGTextChunk.h"
 
-#include "SVGInlineTextBox.h"
+#include "RenderSVGInlineText.h"
+#include "RenderStyleInlines.h"
+#include "SVGInlineTextBoxInlines.h"
+#include "SVGRenderStyle.h"
 #include "SVGTextContentElement.h"
 #include "SVGTextFragment.h"
 
@@ -53,8 +57,8 @@ SVGTextChunk::SVGTextChunk(const Vector<SVGInlineTextBox*>& lineLayoutBoxes, uns
         break;
     }
 
-    if (auto* textContentElement = SVGTextContentElement::elementFromRenderer(box->renderer().parent())) {
-        SVGLengthContext lengthContext(textContentElement);
+    if (RefPtr textContentElement = SVGTextContentElement::elementFromRenderer(box->renderer().parent())) {
+        SVGLengthContext lengthContext(textContentElement.get());
         m_desiredTextLength = textContentElement->specifiedTextLength().value(lengthContext);
 
         switch (textContentElement->lengthAdjust()) {
@@ -69,8 +73,7 @@ SVGTextChunk::SVGTextChunk(const Vector<SVGInlineTextBox*>& lineLayoutBoxes, uns
         }
     }
 
-    for (unsigned i = first; i < limit; ++i)
-        m_boxes.append(lineLayoutBoxes[i]);
+    m_boxes.append(lineLayoutBoxes.subspan(first, limit - first));
 }
 
 unsigned SVGTextChunk::totalCharacters() const
@@ -141,7 +144,10 @@ void SVGTextChunk::layout(HashMap<SVGInlineTextBox*, AffineTransform>& textBoxTr
 
 void SVGTextChunk::processTextLengthSpacingCorrection() const
 {
-    float textLengthShift = (desiredTextLength() - totalLength()) / totalCharacters();
+    float textLengthShift = 0;
+    if (totalCharacters() > 1)
+        textLengthShift = (desiredTextLength() - totalLength()) / (totalCharacters() - 1);
+
     bool isVerticalText = m_chunkStyle & VerticalText;
     unsigned atCharacter = 0;
 

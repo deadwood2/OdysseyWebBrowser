@@ -26,14 +26,38 @@
 #include "config.h"
 #include "PixelBufferConformerCV.h"
 
+#include "CVUtilities.h"
 #include "GraphicsContextCG.h"
 #include "ImageBufferUtilitiesCG.h"
 #include "Logging.h"
+#include <pal/spi/cg/CoreGraphicsSPI.h>
+#include <wtf/StackTrace.h>
 
 #include "CoreVideoSoftLink.h"
 #include "VideoToolboxSoftLink.h"
 
 namespace WebCore {
+
+#if RELEASE_LOG_DISABLED
+#define RELEASE_LOG_STACKTRACE(channel) ((void)0)
+#else
+static constexpr int kDefaultFramesToShow = 31;
+static constexpr int kDefaultFramesToSkip = 2;
+
+static void logStackTrace(WTFLogChannel* channel)
+{
+    void* stack[kDefaultFramesToShow + kDefaultFramesToSkip];
+    int frames = kDefaultFramesToShow + kDefaultFramesToSkip;
+    WTFGetBacktrace(stack, &frames);
+    StackTraceSymbolResolver { { stack, static_cast<size_t>(frames) } }.forEach([&](int frameNumber, void* stackFrame, const char* name) {
+        if (name)
+            os_log(channel->osLogChannel, "%-3d %p %{public}s", frameNumber, stackFrame, name);
+        else
+            os_log(channel->osLogChannel, "%-3d %p", frameNumber, stackFrame);
+    });
+}
+#define RELEASE_LOG_STACKTRACE(channel) logStackTrace(&LOG_CHANNEL(channel))
+#endif
 
 PixelBufferConformerCV::PixelBufferConformerCV(CFDictionaryRef attributes)
 {
@@ -69,9 +93,15 @@ static const void* CVPixelBufferGetBytePointerCallback(void* refcon)
 
     ++info->lockCount;
     void* address = CVPixelBufferGetBaseAddress(info->pixelBuffer.get());
+    if (!address) {
+        RELEASE_LOG_ERROR(Media, "CVPixelBufferGetBaseAddress returned null");
+        RELEASE_LOG_STACKTRACE(Media);
+        return nullptr;
+    }
+
     size_t byteLength = CVPixelBufferGetBytesPerRow(info->pixelBuffer.get()) * CVPixelBufferGetHeight(info->pixelBuffer.get());
 
-    verifyImageBufferIsBigEnough(address, byteLength);
+    verifyImageBufferIsBigEnough({ static_cast<const uint8_t*>(address), byteLength });
     RELEASE_LOG_INFO(Media, "CVPixelBufferGetBytePointerCallback() returning bytePointer: %p, size: %zu", address, byteLength);
     return address;
 }
@@ -146,8 +176,6 @@ RetainPtr<CVPixelBufferRef> PixelBufferConformerCV::convert(CVPixelBufferRef raw
 RetainPtr<CGImageRef> PixelBufferConformerCV::createImageFromPixelBuffer(CVPixelBufferRef rawBuffer)
 {
     RetainPtr<CVPixelBufferRef> buffer { rawBuffer };
-    size_t width = CVPixelBufferGetWidth(buffer.get());
-    size_t height = CVPixelBufferGetHeight(buffer.get());
 
     if (!VTPixelBufferConformerIsConformantPixelBuffer(m_pixelConformer.get(), buffer.get())) {
         CVPixelBufferRef outputBuffer = nullptr;
@@ -157,7 +185,16 @@ RetainPtr<CGImageRef> PixelBufferConformerCV::createImageFromPixelBuffer(CVPixel
         buffer = adoptCF(outputBuffer);
     }
 
-    CGBitmapInfo bitmapInfo = kCGBitmapByteOrder32Little | kCGImageAlphaFirst;
+    auto colorSpace = createCGColorSpaceForCVPixelBuffer(rawBuffer);
+    return imageFrom32BGRAPixelBuffer(WTFMove(buffer), colorSpace.get());
+}
+
+RetainPtr<CGImageRef> PixelBufferConformerCV::imageFrom32BGRAPixelBuffer(RetainPtr<CVPixelBufferRef>&& buffer, CGColorSpaceRef colorSpace)
+{
+    size_t width = CVPixelBufferGetWidth(buffer.get());
+    size_t height = CVPixelBufferGetHeight(buffer.get());
+
+    CGBitmapInfo bitmapInfo = static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Little) | static_cast<CGBitmapInfo>(kCGImageAlphaFirst);
     size_t bytesPerRow = CVPixelBufferGetBytesPerRow(buffer.get());
     size_t byteLength = bytesPerRow * height;
 
@@ -172,7 +209,18 @@ RetainPtr<CGImageRef> PixelBufferConformerCV::createImageFromPixelBuffer(CVPixel
     CGDataProviderDirectCallbacks providerCallbacks = { 0, CVPixelBufferGetBytePointerCallback, CVPixelBufferReleaseBytePointerCallback, 0, CVPixelBufferReleaseInfoCallback };
     RetainPtr<CGDataProviderRef> provider = adoptCF(CGDataProviderCreateDirect(info, byteLength, &providerCallbacks));
 
-    return adoptCF(CGImageCreate(width, height, 8, 32, bytesPerRow, sRGBColorSpaceRef(), bitmapInfo, provider.get(), nullptr, false, kCGRenderingIntentDefault));
+    RetainPtr<CGImageRef> image = adoptCF(CGImageCreate(width, height, 8, 32, bytesPerRow, colorSpace, bitmapInfo, provider.get(), nullptr, false, kCGRenderingIntentDefault));
+
+    // For historical reasons, CoreAnimation will adjust certain video color
+    // spaces when displaying the video. If the video frame derived image we
+    // create here is drawn to an accelerated image buffer (e.g. for a canvas),
+    // CA may not do this same adjustment, resulting in the canvas pixels not
+    // matching the source video. Setting this CGImage property (despite the
+    // image not being IOSurface backed), avoids this non-adjustment of the
+    // image color space. <rdar://88804270>
+    CGImageSetProperty(image.get(), CFSTR("CA_IOSURFACE_IMAGE"), kCFBooleanTrue);
+
+    return image;
 }
 
 }

@@ -27,8 +27,8 @@
 
 #if ENABLE(WEBASSEMBLY)
 
-#include "WasmCodeBlock.h"
-#include "WasmEmbedder.h"
+#include "WasmCalleeGroup.h"
+#include "WasmJS.h"
 #include "WasmMemory.h"
 #include "WasmOps.h"
 #include <wtf/Expected.h>
@@ -36,43 +36,59 @@
 #include <wtf/SharedTask.h>
 #include <wtf/ThreadSafeRefCounted.h>
 
-namespace JSC { namespace Wasm {
+namespace JSC {
+
+class VM;
+
+namespace Wasm {
 
 class LLIntPlan;
-struct Context;
+class IPIntPlan;
 struct ModuleInformation;
+enum class BindingFailure;
 
 class Module : public ThreadSafeRefCounted<Module> {
 public:
-    using ValidationResult = Expected<RefPtr<Module>, String>;
+    using ValidationResult = Expected<Ref<Module>, String>;
     typedef void CallbackType(ValidationResult&&);
     using AsyncValidationCallback = RefPtr<SharedTask<CallbackType>>;
 
-    static ValidationResult validateSync(Context*, Vector<uint8_t>&& source);
-    static void validateAsync(Context*, Vector<uint8_t>&& source, Module::AsyncValidationCallback&&);
+    static ValidationResult validateSync(VM&, Vector<uint8_t>&& source);
+    static void validateAsync(VM&, Vector<uint8_t>&& source, Module::AsyncValidationCallback&&);
 
     static Ref<Module> create(LLIntPlan& plan)
     {
         return adoptRef(*new Module(plan));
     }
+    static Ref<Module> create(IPIntPlan& plan)
+    {
+        return adoptRef(*new Module(plan));
+    }
 
-    Wasm::SignatureIndex signatureIndexFromFunctionIndexSpace(unsigned functionIndexSpace) const;
+    Wasm::TypeIndex typeIndexFromFunctionIndexSpace(unsigned functionIndexSpace) const;
     const Wasm::ModuleInformation& moduleInformation() const { return m_moduleInformation.get(); }
 
-    Ref<CodeBlock> compileSync(Context*, MemoryMode);
-    void compileAsync(Context*, MemoryMode, CodeBlock::AsyncCompilationCallback&&);
+    Ref<CalleeGroup> compileSync(VM&, MemoryMode);
+    void compileAsync(VM&, MemoryMode, CalleeGroup::AsyncCompilationCallback&&);
 
     JS_EXPORT_PRIVATE ~Module();
 
-    CodeBlock* codeBlockFor(MemoryMode mode) { return m_codeBlocks[static_cast<uint8_t>(mode)].get(); }
+    CalleeGroup* calleeGroupFor(MemoryMode mode) { return m_calleeGroups[static_cast<uint8_t>(mode)].get(); }
+
+    void copyInitialCalleeGroupToAllMemoryModes(MemoryMode);
+
+    CodePtr<WasmEntryPtrTag> importFunctionStub(size_t importFunctionNum) { return m_wasmToJSExitStubs[importFunctionNum].code(); }
+
 private:
-    Ref<CodeBlock> getOrCreateCodeBlock(Context*, MemoryMode);
+    Ref<CalleeGroup> getOrCreateCalleeGroup(VM&, MemoryMode);
 
     Module(LLIntPlan&);
+    Module(IPIntPlan&);
     Ref<ModuleInformation> m_moduleInformation;
-    RefPtr<CodeBlock> m_codeBlocks[Wasm::NumberOfMemoryModes];
-    RefPtr<LLIntCallees> m_llintCallees;
-    MacroAssemblerCodeRef<JITCompilationPtrTag> m_llintEntryThunks;
+    RefPtr<CalleeGroup> m_calleeGroups[numberOfMemoryModes];
+    Ref<LLIntCallees> m_llintCallees;
+    Ref<IPIntCallees> m_ipintCallees;
+    FixedVector<MacroAssemblerCodeRef<WasmEntryPtrTag>> m_wasmToJSExitStubs;
     Lock m_lock;
 };
 

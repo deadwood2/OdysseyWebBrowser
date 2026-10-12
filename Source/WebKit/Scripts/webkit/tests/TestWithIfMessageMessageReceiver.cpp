@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,27 +26,31 @@
 #include "TestWithIfMessage.h"
 
 #if PLATFORM(COCOA) || PLATFORM(GTK)
-#include "ArgumentCoders.h"
+#include "ArgumentCoders.h" // NOLINT
 #endif
-#include "Decoder.h"
-#include "HandleMessage.h"
-#include "TestWithIfMessageMessages.h"
+#include "Decoder.h" // NOLINT
+#include "HandleMessage.h" // NOLINT
+#include "TestWithIfMessageMessages.h" // NOLINT
 #if PLATFORM(COCOA) || PLATFORM(GTK)
-#include <wtf/text/WTFString.h>
+#include <wtf/text/WTFString.h> // NOLINT
+#endif
+
+#if ENABLE(IPC_TESTING_API)
+#include "JSIPCBinding.h"
 #endif
 
 namespace WebKit {
 
 void TestWithIfMessage::didReceiveMessage(IPC::Connection& connection, IPC::Decoder& decoder)
 {
-    auto protectedThis = makeRef(*this);
+    Ref protectedThis { *this };
 #if PLATFORM(COCOA)
     if (decoder.messageName() == Messages::TestWithIfMessage::LoadURL::name())
-        return IPC::handleMessage<Messages::TestWithIfMessage::LoadURL>(decoder, this, &TestWithIfMessage::loadURL);
+        return IPC::handleMessage<Messages::TestWithIfMessage::LoadURL>(connection, decoder, this, &TestWithIfMessage::loadURL);
 #endif
 #if PLATFORM(GTK)
     if (decoder.messageName() == Messages::TestWithIfMessage::LoadURL::name())
-        return IPC::handleMessage<Messages::TestWithIfMessage::LoadURL>(decoder, this, &TestWithIfMessage::loadURL);
+        return IPC::handleMessage<Messages::TestWithIfMessage::LoadURL>(connection, decoder, this, &TestWithIfMessage::loadURL);
 #endif
     UNUSED_PARAM(connection);
     UNUSED_PARAM(decoder);
@@ -54,7 +58,29 @@ void TestWithIfMessage::didReceiveMessage(IPC::Connection& connection, IPC::Deco
     if (connection.ignoreInvalidMessageForTesting())
         return;
 #endif // ENABLE(IPC_TESTING_API)
-    ASSERT_NOT_REACHED_WITH_MESSAGE("Unhandled message %s to %" PRIu64, description(decoder.messageName()), decoder.destinationID());
+    ASSERT_NOT_REACHED_WITH_MESSAGE("Unhandled message %s to %" PRIu64, IPC::description(decoder.messageName()).characters(), decoder.destinationID());
 }
 
 } // namespace WebKit
+
+#if ENABLE(IPC_TESTING_API)
+
+namespace IPC {
+
+#if PLATFORM(COCOA)
+template<> std::optional<JSC::JSValue> jsValueForDecodedMessage<MessageName::TestWithIfMessage_LoadURL>(JSC::JSGlobalObject* globalObject, Decoder& decoder)
+{
+    return jsValueForDecodedArguments<Messages::TestWithIfMessage::LoadURL::Arguments>(globalObject, decoder);
+}
+#endif
+#if PLATFORM(GTK)
+template<> std::optional<JSC::JSValue> jsValueForDecodedMessage<MessageName::TestWithIfMessage_LoadURL>(JSC::JSGlobalObject* globalObject, Decoder& decoder)
+{
+    return jsValueForDecodedArguments<Messages::TestWithIfMessage::LoadURL::Arguments>(globalObject, decoder);
+}
+#endif
+
+}
+
+#endif
+

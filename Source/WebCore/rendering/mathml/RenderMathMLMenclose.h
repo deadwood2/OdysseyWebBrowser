@@ -34,12 +34,14 @@
 namespace WebCore {
 
 class RenderMathMLMenclose final : public RenderMathMLRow {
-    WTF_MAKE_ISO_ALLOCATED(RenderMathMLMenclose);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RenderMathMLMenclose);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(RenderMathMLMenclose);
 public:
     RenderMathMLMenclose(MathMLMencloseElement&, RenderStyle&&);
+    virtual ~RenderMathMLMenclose();
 
 private:
-    const char* renderName() const final { return "RenderMathMLMenclose"; }
+    ASCIILiteral renderName() const final { return "RenderMathMLMenclose"_s; }
     void computePreferredLogicalWidths() final;
     void layoutBlock(bool relayoutChildren, LayoutUnit pageLogicalHeight = 0_lu) final;
     void paint(PaintInfo&, const LayoutPoint&) final;

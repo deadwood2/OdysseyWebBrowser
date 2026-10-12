@@ -24,9 +24,19 @@
  */
 
 #import "config.h"
-#import "WKSnapshotConfiguration.h"
+#import "WKSnapshotConfigurationPrivate.h"
 
-@implementation WKSnapshotConfiguration
+#import "WKObject.h"
+
+@implementation WKSnapshotConfiguration {
+#if PLATFORM(MAC)
+    BOOL _includesSelectionHighlighting;
+    BOOL _usesContentsRect;
+#endif
+    BOOL _usesTransparentBackground;
+}
+
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
 
 - (instancetype)init
 {
@@ -35,6 +45,12 @@
 
     self.rect = CGRectNull;
     self.afterScreenUpdates = YES;
+
+#if PLATFORM(MAC)
+    self._includesSelectionHighlighting = YES;
+    self._usesContentsRect = NO;
+#endif
+
     return self;
 }
 
@@ -53,7 +69,45 @@
     snapshotConfiguration.snapshotWidth = self.snapshotWidth;
     snapshotConfiguration.afterScreenUpdates = self.afterScreenUpdates;
 
+#if PLATFORM(MAC)
+    snapshotConfiguration._includesSelectionHighlighting = self._includesSelectionHighlighting;
+#endif
+    snapshotConfiguration._usesTransparentBackground = self._usesTransparentBackground;
+
     return snapshotConfiguration;
+}
+
+#if PLATFORM(MAC)
+- (BOOL)_includesSelectionHighlighting
+{
+    return _includesSelectionHighlighting;
+}
+
+- (void)_setIncludesSelectionHighlighting:(BOOL)includesSelectionHighlighting
+{
+    _includesSelectionHighlighting = includesSelectionHighlighting;
+}
+
+- (BOOL)_usesContentsRect
+{
+    return _usesContentsRect;
+}
+
+- (void)_setUsesContentsRect:(BOOL)usesContentsRect
+{
+    _usesContentsRect = usesContentsRect;
+}
+
+#endif // PLATFORM(MAC)
+
+- (BOOL)_usesTransparentBackground
+{
+    return _usesTransparentBackground;
+}
+
+- (void)_setUsesTransparentBackground:(BOOL)usesTransparentBackground
+{
+    _usesTransparentBackground = usesTransparentBackground;
 }
 
 @end

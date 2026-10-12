@@ -63,9 +63,9 @@ my @testCases = (
     description => "Debug with GTK",
 },
 {
-    argValue => ["--debug", "--wincairo"],
+    argValue => ["--debug", "--win"],
     expectedValue => ["--debug"],
-    description => "Debug with WinCairo",
+    description => "Debug with Win",
 },
 {
     argValue => ["--clean"],
@@ -86,11 +86,6 @@ my @testCases = (
     argValue => ["--debug", "ARCHS=x86_64"],
     expectedValue => ["--debug", "ARCHS=x86_64"],
     description => "Debug 64-bit build",
-},
-{
-    argValue => ["--debug", "--ftw"],
-    expectedValue => ["--debug"],
-    description => "Debug with FTW",
 },
 );
 

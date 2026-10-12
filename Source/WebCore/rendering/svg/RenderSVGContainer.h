@@ -3,6 +3,7 @@
  * Copyright (C) 2004, 2005, 2007 Rob Buis <buis@kde.org>
  * Copyright (C) 2009 Google, Inc.  All rights reserved.
  * Copyright (C) 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2020, 2021, 2022 Igalia S.L.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -23,63 +24,53 @@
 #pragma once
 
 #include "RenderSVGModelObject.h"
+#include "SVGBoundingBoxComputation.h"
 
 namespace WebCore {
 
 class SVGElement;
 
 class RenderSVGContainer : public RenderSVGModelObject {
-    WTF_MAKE_ISO_ALLOCATED(RenderSVGContainer);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RenderSVGContainer);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(RenderSVGContainer);
 public:
     virtual ~RenderSVGContainer();
 
     void paint(PaintInfo&, const LayoutPoint&) override;
-    void setNeedsBoundariesUpdate() final { m_needsBoundariesUpdate = true; }
-    bool needsBoundariesUpdate() final { return m_needsBoundariesUpdate; }
-    virtual bool didTransformToRootUpdate() { return false; }
+
     bool isObjectBoundingBoxValid() const { return m_objectBoundingBoxValid; }
+    bool isLayoutSizeChanged() const { return m_isLayoutSizeChanged; }
+    bool didTransformToRootUpdate() const { return m_didTransformToRootUpdate; }
+
+    FloatRect objectBoundingBox() const final { return m_objectBoundingBox; }
+    FloatRect objectBoundingBoxWithoutTransformations() const final { return m_objectBoundingBoxWithoutTransformations; }
+    FloatRect strokeBoundingBox() const final;
+    FloatRect repaintRectInLocalCoordinates(RepaintRectCalculation = RepaintRectCalculation::Fast) const final { return SVGBoundingBoxComputation::computeRepaintBoundingBox(*this); }
 
 protected:
-    RenderSVGContainer(SVGElement&, RenderStyle&&);
+    RenderSVGContainer(Type, Document&, RenderStyle&&, OptionSet<SVGModelObjectFlag> = { });
+    RenderSVGContainer(Type, SVGElement&, RenderStyle&&, OptionSet<SVGModelObjectFlag> = { });
 
-    const char* renderName() const override { return "RenderSVGContainer"; }
-
+    ASCIILiteral renderName() const override { return "RenderSVGContainer"_s; }
     bool canHaveChildren() const final { return true; }
 
     void layout() override;
 
-    void addFocusRingRects(Vector<LayoutRect>&, const LayoutPoint& additionalOffset, const RenderLayerModelObject* paintContainer = 0) final;
-
-    FloatRect objectBoundingBox() const final { return m_objectBoundingBox; }
-    FloatRect strokeBoundingBox() const final { return m_strokeBoundingBox; }
-    FloatRect repaintRectInLocalCoordinates() const final { return m_repaintBoundingBox; }
-
-    bool nodeAtFloatPoint(const HitTestRequest&, HitTestResult&, const FloatPoint& pointInParent, HitTestAction) override;
-
-    // Allow RenderSVGTransformableContainer to hook in at the right time in layout()
-    virtual bool calculateLocalTransform() { return false; }
-
-    // Allow RenderSVGViewportContainer to hook in at the right times in layout(), paint() and nodeAtFloatPoint()
-    virtual void calcViewport() { }
-    virtual void applyViewportClip(PaintInfo&) { }
-    virtual bool pointIsInsideViewportClip(const FloatPoint& /*pointInParent*/) { return true; }
-
-    virtual void determineIfLayoutSizeChanged() { }
-
-    bool selfWillPaint();
-    void updateCachedBoundaries();
-
-private:
-    bool isSVGContainer() const final { return true; }
-
-    FloatRect m_objectBoundingBox;
-    FloatRect m_strokeBoundingBox;
-    FloatRect m_repaintBoundingBox;
+    virtual void layoutChildren();
+    virtual bool pointIsInsideViewportClip(const FloatPoint&) { return true; }
+    virtual bool updateLayoutSizeIfNeeded() { return false; }
+    virtual std::optional<FloatRect> overridenObjectBoundingBoxWithoutTransformations() const { return std::nullopt; }
+    bool nodeAtPoint(const HitTestRequest&, HitTestResult&, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction) override;
 
     bool m_objectBoundingBoxValid { false };
-    bool m_needsBoundariesUpdate { true };
+    bool m_isLayoutSizeChanged { false };
+    bool m_didTransformToRootUpdate { false };
+    FloatRect m_objectBoundingBox;
+    FloatRect m_objectBoundingBoxWithoutTransformations;
+    mutable Markable<FloatRect, FloatRect::MarkableTraits> m_strokeBoundingBox;
 };
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderSVGContainer, isSVGContainer())
+SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderSVGContainer, isRenderSVGContainer())
+

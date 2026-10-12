@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(SERVICE_WORKER)
-
 #include <WebCore/ServiceWorkerProvider.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -53,9 +51,8 @@ private:
     WebServiceWorkerProvider();
 
     WebCore::SWClientConnection& serviceWorkerConnection() final;
+    WebCore::SWClientConnection* existingServiceWorkerConnection() final;
     void terminateWorkerForTesting(WebCore::ServiceWorkerIdentifier, CompletionHandler<void()>&&) final;
 }; // class WebServiceWorkerProvider
 
 } // namespace WebKit
-
-#endif // ENABLE(SERVICE_WORKER)

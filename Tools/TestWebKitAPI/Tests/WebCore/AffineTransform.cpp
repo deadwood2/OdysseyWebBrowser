@@ -39,10 +39,6 @@
 #include <CoreGraphics/CoreGraphics.h>
 #endif
 
-#if PLATFORM(WIN)
-#include <d2d1.h>
-#endif
-
 namespace TestWebKitAPI {
 
 static void testGetAndSet(WebCore::AffineTransform& affineTransform)
@@ -127,19 +123,6 @@ TEST(AffineTransform, CGAffineTransformConstruction)
 {
     CGAffineTransform cgTransform = CGAffineTransformMake(6.0, 5.0, 4.0, 3.0, 2.0, 1.0);
     WebCore::AffineTransform test(cgTransform);
-
-    testValueConstruction(test);
-    testGetAndSet(test);
-
-    ASSERT_FALSE(test.isIdentity());
-}
-#endif
-
-#if PLATFORM(WIN)
-TEST(AffineTransform, D2D1MatrixConstruction)
-{
-    D2D1_MATRIX_3X2_F d2dTransform = D2D1::Matrix3x2F(6.0, 5.0, 4.0, 3.0, 2.0, 1.0);
-    WebCore::AffineTransform test(d2dTransform);
 
     testValueConstruction(test);
     testGetAndSet(test);
@@ -942,7 +925,7 @@ TEST(AffineTransform, Blend)
 
 TEST(AffineTransform, Translation)
 {
-    auto test = WebCore::AffineTransform::translation(-5.0, -7.0);
+    auto test = WebCore::AffineTransform::makeTranslation({ -5.0, -7.0 });
     EXPECT_DOUBLE_EQ(1.0, test.a());
     EXPECT_DOUBLE_EQ(0.0, test.b());
     EXPECT_DOUBLE_EQ(0.0, test.c());
@@ -972,8 +955,6 @@ TEST(AffineTransform, ToTransformationMatrix)
 
 TEST(AffineTransform, MakeMapBetweenRects)
 {
-    WebCore::AffineTransform transform;
-
     WebCore::FloatRect fromRect(10.0f, 10.0f, 100.0f, 100.0f);
     WebCore::FloatRect toRect(70.0f, 70.0f, 200.0f, 50.0f);
 
@@ -985,6 +966,14 @@ TEST(AffineTransform, MakeMapBetweenRects)
     EXPECT_DOUBLE_EQ(0.5, mapBetween.d());
     EXPECT_DOUBLE_EQ(60.0, mapBetween.e());
     EXPECT_DOUBLE_EQ(60.0, mapBetween.f());
+}
+
+TEST(AffineTransform, Constexpr)
+{
+    static constexpr WebCore::AffineTransform transform;
+    UNUSED_VARIABLE(transform);
+    static constexpr WebCore::AffineTransform transform2(1, 2, 3, 4, 5, 6);
+    UNUSED_VARIABLE(transform2);
 }
 
 #if USE(CG)
@@ -999,25 +988,6 @@ TEST(AffineTransform, CoreGraphicsCasting)
     WebCore::AffineTransform test3;
 
     ASSERT_FALSE(CGAffineTransformEqualToTransform(test, test3));
-}
-#endif
-
-#if PLATFORM(WIN)
-TEST(AffineTransform, Direct2DCasting)
-{
-    WebCore::AffineTransform transform(6.0, 5.0, 4.0, 3.0, 2.0, 1.0);
-
-    D2D1_MATRIX_3X2_F test = transform;
-    D2D1_MATRIX_3X2_F test2 = D2D1::Matrix3x2F(6.0, 5.0, 4.0, 3.0, 2.0, 1.0);
-
-    static const double epsilon = 0.0000001;
-
-    EXPECT_NEAR(test._11, test2._11, epsilon);
-    EXPECT_NEAR(test._12, test2._12, epsilon);
-    EXPECT_NEAR(test._21, test2._21, epsilon);
-    EXPECT_NEAR(test._22, test2._22, epsilon);
-    EXPECT_NEAR(test._31, test2._31, epsilon);
-    EXPECT_NEAR(test._32, test2._32, epsilon);
 }
 #endif
 

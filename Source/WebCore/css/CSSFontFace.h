@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007, 2008, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,33 +25,46 @@
 
 #pragma once
 
-#include "FontSelectionValueInlines.h"
+#include "FontSelectionAlgorithm.h"
 #include "FontTaggedSettings.h"
+#include "RenderStyleConstants.h"
 #include "Settings.h"
-#include "StyleRule.h"
 #include "TextFlags.h"
 #include <memory>
 #include <wtf/Forward.h>
 #include <wtf/HashSet.h>
+#include <wtf/WeakHashSet.h>
 #include <wtf/WeakPtr.h>
 
-namespace JSC {
-class CallFrame;
+namespace WebCore {
+class CSSFontFaceClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::CSSFontFaceClient> : std::true_type { };
 }
 
 namespace WebCore {
 
+class CSSFontFaceClient;
 class CSSFontFaceSource;
 class CSSFontSelector;
-class CSSSegmentedFontFace;
+class CSSPrimitiveValue;
 class CSSValue;
 class CSSValueList;
-class FontCache;
-class FontDescription;
+class Document;
 class Font;
+class FontDescription;
 class FontFace;
+class FontFeatureValues;
+class FontPaletteValues;
+class MutableStyleProperties;
 class ScriptExecutionContext;
-enum class ExternalResourceDownloadPolicy;
+class StyleProperties;
+class StyleRuleFontFace;
+
+enum class ExternalResourceDownloadPolicy : bool;
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(CSSFontFace);
 class CSSFontFace final : public RefCounted<CSSFontFace> {
@@ -60,15 +73,23 @@ public:
     static Ref<CSSFontFace> create(CSSFontSelector&, StyleRuleFontFace* cssConnection = nullptr, FontFace* wrapper = nullptr, bool isLocalFallback = false);
     virtual ~CSSFontFace();
 
-    // FIXME: These functions don't need to have boolean return values.
-    // Callers only call this with known-valid CSS values.
-    bool setFamilies(CSSValue&);
+    void setFamilies(CSSValueList&);
     void setStyle(CSSValue&);
     void setWeight(CSSValue&);
     void setStretch(CSSValue&);
-    bool setUnicodeRange(CSSValue&);
+    void setSizeAdjust(CSSValue&);
+    void setUnicodeRange(CSSValueList&);
     void setFeatureSettings(CSSValue&);
-    void setLoadingBehavior(CSSValue&);
+    void setDisplay(CSSPrimitiveValue&);
+
+    String family() const;
+    String style() const;
+    String weight() const;
+    String stretch() const;
+    String unicodeRange() const;
+    String featureSettings() const;
+    String display() const;
+    String sizeAdjust() const;
 
     // Pending => Loading  => TimedOut
     //              ||  \\    //  ||
@@ -80,29 +101,21 @@ public:
     //              \/  \/    \/  \/
     //             Success    Failure
     enum class Status : uint8_t { Pending, Loading, TimedOut, Success, Failure };
-    
+
     struct UnicodeRange;
-    
-    // Optional return values to represent default string for members of FontFace.h
-    const std::optional<CSSValueList*> families() const { return m_status == Status::Failure ? std::nullopt : static_cast<std::optional<CSSValueList*>>(m_families.get()); }
-    std::optional<FontSelectionRange> weight() const { return m_status == Status::Failure ? std::nullopt : static_cast<std::optional<FontSelectionRange>>(m_fontSelectionCapabilities.computeWeight()); }
-    std::optional<FontSelectionRange> stretch() const { return m_status == Status::Failure ? std::nullopt : static_cast<std::optional<FontSelectionRange>>(m_fontSelectionCapabilities.computeWidth()); }
-    std::optional<FontSelectionRange> italic() const { return m_status == Status::Failure ? std::nullopt : static_cast<std::optional<FontSelectionRange>>(m_fontSelectionCapabilities.computeSlope()); }
-    std::optional<FontSelectionCapabilities> fontSelectionCapabilities() const { return m_status == Status::Failure ? std::nullopt : static_cast<std::optional<FontSelectionCapabilities>>(m_fontSelectionCapabilities.computeFontSelectionCapabilities()); }
-    const std::optional<Vector<UnicodeRange>> ranges() const { return m_status == Status::Failure ? std::nullopt : static_cast<std::optional<Vector<UnicodeRange>>>(m_ranges); }
-    const std::optional<FontFeatureSettings> featureSettings() const { return m_status == Status::Failure ? std::nullopt : static_cast<std::optional<FontFeatureSettings>>(m_featureSettings); }
-    std::optional<FontLoadingBehavior> loadingBehavior() const { return m_status == Status::Failure ? std::nullopt :  static_cast<std::optional<FontLoadingBehavior>>(m_loadingBehavior); }
-    void setWeight(FontSelectionRange weight) { m_fontSelectionCapabilities.weight = weight; }
-    void setStretch(FontSelectionRange stretch) { m_fontSelectionCapabilities.width = stretch; }
-    void setStyle(FontSelectionRange italic) { m_fontSelectionCapabilities.slope = italic; }
+
+    RefPtr<CSSValueList> families() const;
+    std::span<const UnicodeRange> ranges() const { ASSERT(m_status != Status::Failure); return m_ranges.span(); }
+
     void setFontSelectionCapabilities(FontSelectionCapabilities capabilities) { m_fontSelectionCapabilities = capabilities; }
+    FontSelectionCapabilities fontSelectionCapabilities() const { ASSERT(m_status != Status::Failure); return m_fontSelectionCapabilities.computeFontSelectionCapabilities(); }
+
     bool isLocalFallback() const { return m_isLocalFallback; }
     Status status() const { return m_status; }
-    StyleRuleFontFace* cssConnection() const { return m_cssConnection.get(); }
+    StyleRuleFontFace* cssConnection() const;
 
-    class Client;
-    void addClient(Client&);
-    void removeClient(Client&);
+    void addClient(CSSFontFaceClient&);
+    void removeClient(CSSFontFaceClient&);
 
     bool computeFailureState() const;
 
@@ -110,34 +123,23 @@ public:
 
     void adoptSource(std::unique_ptr<CSSFontFaceSource>&&);
     void sourcesPopulated() { m_sourcesPopulated = true; }
+    size_t sourceCount() const { return m_sources.size(); }
 
     void fontLoaded(CSSFontFaceSource&);
 
     void load();
 
-    RefPtr<Font> font(const FontDescription&, bool syntheticBold, bool syntheticItalic, ExternalResourceDownloadPolicy);
+    RefPtr<Font> font(const FontDescription&, bool syntheticBold, bool syntheticItalic, ExternalResourceDownloadPolicy, const FontPaletteValues&, RefPtr<FontFeatureValues>);
 
     static void appendSources(CSSFontFace&, CSSValueList&, ScriptExecutionContext*, bool isInitiatingElementInUserAgentShadowTree);
 
-    class Client {
-    public:
-        virtual ~Client() = default;
-        virtual void fontLoaded(CSSFontFace&) { }
-        virtual void fontStateChanged(CSSFontFace&, Status /*oldState*/, Status /*newState*/) { }
-        virtual void fontPropertyChanged(CSSFontFace&, CSSValueList* /*oldFamilies*/ = nullptr) { }
-        virtual void fontStyleUpdateNeeded(CSSFontFace&) { }
-        virtual void ref() = 0;
-        virtual void deref() = 0;
-    };
-
     struct UnicodeRange {
-        UChar32 from;
-        UChar32 to;
-        bool operator==(const UnicodeRange& other) const { return from == other.from && to == other.to; }
-        bool operator!=(const UnicodeRange& other) const { return !(*this == other); }
+        char32_t from;
+        char32_t to;
+        friend bool operator==(const UnicodeRange&, const UnicodeRange&) = default;
     };
 
-    bool rangesMatchCodePoint(UChar32) const;
+    bool rangesMatchCodePoint(char32_t) const;
 
     // We don't guarantee that the FontFace wrapper will be the same every time you ask for it.
     Ref<FontFace> wrapper(ScriptExecutionContext*);
@@ -172,18 +174,22 @@ private:
     void fontLoadEventOccurred();
     void timeoutFired();
 
-    Document* document();
-    FontCache& fontCacheFallingBackToSingleton();
+    const StyleProperties& properties() const;
+    MutableStyleProperties& mutableProperties();
 
+    Document* document();
+
+    const std::variant<Ref<MutableStyleProperties>, Ref<StyleRuleFontFace>> m_propertiesOrCSSConnection;
     RefPtr<CSSValueList> m_families;
     Vector<UnicodeRange> m_ranges;
 
     FontFeatureSettings m_featureSettings;
     FontLoadingBehavior m_loadingBehavior { FontLoadingBehavior::Auto };
 
+    float m_sizeAdjust { 1.0 };
+
     Vector<std::unique_ptr<CSSFontFaceSource>, 0, CrashOnOverflow, 0> m_sources;
-    RefPtr<StyleRuleFontFace> m_cssConnection;
-    HashSet<Client*> m_clients;
+    WeakHashSet<CSSFontFaceClient> m_clients;
     WeakPtr<FontFace> m_wrapper;
     FontSelectionSpecifiedCapabilities m_fontSelectionCapabilities;
     
@@ -196,6 +202,17 @@ private:
     AllowUserInstalledFonts m_allowUserInstalledFonts { AllowUserInstalledFonts::Yes };
 
     Timer m_timeoutTimer;
+};
+
+class CSSFontFaceClient : public CanMakeWeakPtr<CSSFontFaceClient> {
+public:
+    virtual ~CSSFontFaceClient() = default;
+    virtual void fontLoaded(CSSFontFace&) { }
+    virtual void fontStateChanged(CSSFontFace&, CSSFontFace::Status /*oldState*/, CSSFontFace::Status /*newState*/) { }
+    virtual void fontPropertyChanged(CSSFontFace&, CSSValueList* /*oldFamilies*/ = nullptr) { }
+    virtual void updateStyleIfNeeded(CSSFontFace&) { }
+    virtual void ref() const = 0;
+    virtual void deref() const = 0;
 };
 
 }

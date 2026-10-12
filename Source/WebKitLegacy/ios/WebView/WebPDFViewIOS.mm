@@ -36,10 +36,10 @@
 #import <JavaScriptCore/JSContextRef.h>
 #import <JavaScriptCore/OpaqueJSString.h>
 #import <WebCore/Color.h>
-#import <WebCore/Frame.h>
 #import <WebCore/FrameLoader.h>
-#import <WebCore/FrameLoaderClient.h>
 #import <WebCore/GraphicsContext.h>
+#import <WebCore/LocalFrame.h>
+#import <WebCore/LocalFrameLoaderClient.h>
 #import <WebCore/StringWithDirection.h>
 #import <WebCore/WKGraphics.h>
 #import <WebKitLegacy/WebFrame.h>
@@ -122,7 +122,7 @@ static RetainPtr<CGColorRef> createCGColorWithDeviceWhite(CGFloat white, CGFloat
     // Draw page.
     CGContextSaveGState(context);
     CGContextSetShadowWithColor(context, CGSizeMake(0.0f, 2.0f), 3.0f, [[self class] shadowColor]);
-    CGContextSetFillColorWithColor(context, cachedCGColor(Color::white));
+    CGContextSetFillColorWithColor(context, cachedCGColor(Color::white).get());
     CGContextFillRect(context, pageRect);
     CGContextRestoreGState(context);    
     

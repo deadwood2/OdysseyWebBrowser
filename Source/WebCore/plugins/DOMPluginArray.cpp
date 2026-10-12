@@ -21,14 +21,14 @@
 #include "DOMPluginArray.h"
 
 #include "DOMPlugin.h"
-#include "Frame.h"
+#include "LocalFrame.h"
 #include "Page.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/AtomString.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(DOMPluginArray);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(DOMPluginArray);
 
 Ref<DOMPluginArray> DOMPluginArray::create(Navigator& navigator, Vector<Ref<DOMPlugin>>&& publiclyVisiblePlugins, Vector<Ref<DOMPlugin>>&& additionalWebVisibilePlugins)
 {
@@ -36,7 +36,7 @@ Ref<DOMPluginArray> DOMPluginArray::create(Navigator& navigator, Vector<Ref<DOMP
 }
 
 DOMPluginArray::DOMPluginArray(Navigator& navigator, Vector<Ref<DOMPlugin>>&& publiclyVisiblePlugins, Vector<Ref<DOMPlugin>>&& additionalWebVisibilePlugins)
-    : m_navigator(makeWeakPtr(navigator))
+    : m_navigator(navigator)
     , m_publiclyVisiblePlugins(WTFMove(publiclyVisiblePlugins))
     , m_additionalWebVisibilePlugins(WTFMove(additionalWebVisibilePlugins))
 {
@@ -71,13 +71,17 @@ RefPtr<DOMPlugin> DOMPluginArray::namedItem(const AtomString& propertyName)
     return nullptr;
 }
 
-Vector<AtomString> DOMPluginArray::supportedPropertyNames()
+bool DOMPluginArray::isSupportedPropertyName(const AtomString& propertyName) const
 {
-    Vector<AtomString> result;
-    result.reserveInitialCapacity(m_publiclyVisiblePlugins.size());
-    for (auto& plugin : m_publiclyVisiblePlugins)
-        result.uncheckedAppend(plugin->name());
-    return result;
+    return m_publiclyVisiblePlugins.containsIf([&](auto& plugin) { return plugin->name() == propertyName; })
+        || m_additionalWebVisibilePlugins.containsIf([&](auto& plugin) { return plugin->name() == propertyName; });
+}
+
+Vector<AtomString> DOMPluginArray::supportedPropertyNames() const
+{
+    return m_publiclyVisiblePlugins.map([](auto& plugin) {
+        return AtomString { plugin->name() };
+    });
 }
 
 void DOMPluginArray::refresh(bool reloadPages)

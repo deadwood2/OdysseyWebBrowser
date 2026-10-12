@@ -41,7 +41,7 @@
 
 namespace WebCore {
 
-CurlFormDataStream::CurlFormDataStream(const FormData* formData)
+CurlFormDataStream::CurlFormDataStream(const RefPtr<FormData>& formData)
 {
     ASSERT(isMainThread());
 
@@ -128,7 +128,7 @@ std::optional<size_t> CurlFormDataStream::read(char* buffer, size_t size)
                 return readFromData(bytes, bufferPosition, bufferSize);
             }, [&] (const FormDataElement::EncodedFileData& fileData) {
                 return readFromFile(fileData, bufferPosition, bufferSize);
-            }, [] (const FormDataElement::EncodedBlobData&) {
+            }, [] (const FormDataElement::EncodedBlobData&) -> std::optional<size_t> {
                 ASSERT_NOT_REACHED();
                 return std::nullopt;
             }
@@ -147,22 +147,8 @@ std::optional<size_t> CurlFormDataStream::read(char* buffer, size_t size)
 
 std::optional<size_t> CurlFormDataStream::readFromFile(const FormDataElement::EncodedFileData& fileData, char* buffer, size_t size)
 {
-     if (m_fileHandle == FileSystem::invalidPlatformFileHandle)
-    {
-        // Check if the file has been changed.
-        if (!fileData.fileModificationTimeMatchesExpectation()) {
-            return std::nullopt;
-    }
-
-    m_fileHandle = FileSystem::openFile(fileData.filename, FileSystem::FileOpenMode::Read);
-    if (FileSystem::isHandleValid(m_fileHandle)) {
-        if (-1 == FileSystem::seekFile(m_fileHandle, fileData.fileStart, FileSystem::FileSeekOrigin::Beginning)) {
-            LOG(Network, "Curl - Failed seeking in the file %s\n", fileData.filename.utf8().data());
-            FileSystem::closeFile(m_fileHandle);
-            m_fileHandle = FileSystem::invalidPlatformFileHandle;
-        }
-        }
-    }
+    if (m_fileHandle == FileSystem::invalidPlatformFileHandle)
+        m_fileHandle = FileSystem::openFile(fileData.filename, FileSystem::FileOpenMode::Read);
 
     if (!FileSystem::isHandleValid(m_fileHandle)) {
         LOG(Network, "Curl - Failed while trying to open %s for upload\n", fileData.filename.utf8().data());
@@ -170,25 +156,18 @@ std::optional<size_t> CurlFormDataStream::readFromFile(const FormDataElement::En
         return std::nullopt;
     }
 
-    if (fileData.fileLength > 0 && fileData.fileLength - m_dataOffset < size)
-        size = fileData.fileLength - m_dataOffset;
-
-    auto readBytes = FileSystem::readFromFile(m_fileHandle, buffer, size);
+    auto readBytes = FileSystem::readFromFile(m_fileHandle, { byteCast<uint8_t>(buffer), size });
     if (readBytes < 0) {
         LOG(Network, "Curl - Failed while trying to read %s for upload\n", fileData.filename.utf8().data());
         FileSystem::closeFile(m_fileHandle);
         m_fileHandle = FileSystem::invalidPlatformFileHandle;
         return std::nullopt;
     }
-    else {
-        m_dataOffset += readBytes;
-    }
 
-    if (!readBytes || (m_dataOffset == fileData.fileLength)) {
+    if (!readBytes) {
         FileSystem::closeFile(m_fileHandle);
         m_fileHandle = FileSystem::invalidPlatformFileHandle;
         m_elementPosition++;
-        m_dataOffset = 0;
     }
 
     return readBytes;

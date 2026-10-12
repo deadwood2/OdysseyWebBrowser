@@ -1,4 +1,6 @@
 /*
+ *  Copyright (C) 2016 Igalia S.L.
+ *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
  *  License as published by the Free Software Foundation; either
@@ -33,16 +35,18 @@ bool DragData::containsColor() const
 
 bool DragData::containsFiles() const
 {
-    return m_platformDragData->hasFilenames();
+    return !m_disallowFileAccess && m_platformDragData->hasFilenames();
 }
 
 unsigned DragData::numberOfFiles() const
 {
-    return m_platformDragData->filenames().size();
+    return !m_disallowFileAccess ? m_platformDragData->filenames().size() : 0;
 }
 
 Vector<String> DragData::asFilenames() const
 {
+    if (m_disallowFileAccess)
+        return { };
     return m_platformDragData->filenames();
 }
 
@@ -76,13 +80,18 @@ String DragData::asURL(FilenameConversionPolicy filenamePolicy, String* title) c
     if (!m_platformDragData->hasURL())
         return String();
     if (filenamePolicy != ConvertFilenames) {
-        if (m_platformDragData->url().isLocalFile())
+        if (m_platformDragData->url().protocolIsFile())
             return { };
     }
 
     if (title)
         *title = m_platformDragData->urlLabel();
     return m_platformDragData->url().string();
+}
+
+bool DragData::shouldMatchStyleOnDrop() const
+{
+    return false;
 }
 
 }

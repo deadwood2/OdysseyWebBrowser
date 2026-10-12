@@ -29,11 +29,12 @@
 #include "ContainerNode.h"
 #include "JSNode.h"
 #include "Text.h"
-#include <wtf/IsoMallocInlines.h>
+#include "WebCoreOpaqueRootInlines.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(StaticRange);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(StaticRange);
 
 StaticRange::StaticRange(SimpleRange&& range)
     : SimpleRange(WTFMove(range))
@@ -47,8 +48,7 @@ Ref<StaticRange> StaticRange::create(SimpleRange&& range)
 
 Ref<StaticRange> StaticRange::create(const SimpleRange& range)
 {
-    auto copiedRange = range;
-    return create(WTFMove(copiedRange));
+    return create(SimpleRange { range });
 }
 
 static bool isDocumentTypeOrAttr(Node& node)
@@ -72,14 +72,29 @@ ExceptionOr<Ref<StaticRange>> StaticRange::create(Init&& init)
     ASSERT(init.startContainer);
     ASSERT(init.endContainer);
     if (isDocumentTypeOrAttr(*init.startContainer) || isDocumentTypeOrAttr(*init.endContainer))
-        return Exception { InvalidNodeTypeError };
+        return Exception { ExceptionCode::InvalidNodeTypeError };
     return create({ { init.startContainer.releaseNonNull(), init.startOffset }, { init.endContainer.releaseNonNull(), init.endOffset } });
 }
 
 void StaticRange::visitNodesConcurrently(JSC::AbstractSlotVisitor& visitor) const
 {
-    visitor.addOpaqueRoot(root(start.container.get()));
-    visitor.addOpaqueRoot(root(end.container.get()));
+    addWebCoreOpaqueRoot(visitor, start.container.get());
+    addWebCoreOpaqueRoot(visitor, end.container.get());
 }
 
+bool StaticRange::computeValidity() const
+{
+    Node& startContainer = this->startContainer();
+    Node& endContainer = this->endContainer();
+
+    if (!connectedInSameTreeScope(&startContainer.rootNode(), &endContainer.rootNode()))
+        return false;
+    if (startOffset() > startContainer.length())
+        return false;
+    if (endOffset() > endContainer.length())
+        return false;
+    if (&startContainer == &endContainer)
+        return endOffset() > startOffset();
+    return !is_gt(treeOrder<ComposedTree>(startContainer, endContainer));
 }
+} // namespace WebCore

@@ -55,11 +55,10 @@ class StandardQueryGL : public QueryGL
 
   private:
     angle::Result flush(const gl::Context *context, bool force);
+    void clearInternalQueries();
 
     template <typename T>
     angle::Result getResultBase(const gl::Context *context, T *params);
-
-    gl::QueryType mType;
 
     const FunctionsGL *mFunctions;
     StateManagerGL *mStateManager;

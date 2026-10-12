@@ -101,6 +101,7 @@ static bool setOpt(PlatformSocketType socket, int optname, const void* optval, i
 {
     int error = ::setsockopt(socket, SOL_SOCKET, optname, static_cast<const char*>(optval), optlen);
     if (error < 0) {
+        UNUSED_PARAM(debug);
         LOG_ERROR("setsockopt(%s) failed (errno = %d)", debug, WSAGetLastError());
         return false;
     }
@@ -162,7 +163,17 @@ std::optional<PlatformSocketType> connect(const char* serverAddress, uint16_t se
     struct sockaddr_in address = { };
 
     address.sin_family = AF_INET;
-    ::inet_pton(AF_INET, serverAddress, &address.sin_addr);
+    int ret = ::inet_pton(AF_INET, serverAddress, &address.sin_addr);
+    if (ret != 1) {
+        struct addrinfo hints = { };
+        struct addrinfo* res;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_family = AF_INET;
+        if (!getaddrinfo(serverAddress, 0, &hints, &res)) {
+            address.sin_addr = reinterpret_cast<struct sockaddr_in*>(res->ai_addr)->sin_addr;
+            freeaddrinfo(res);
+        }
+    }
     address.sin_port = htons(serverPort);
 
     auto socket = connectTo(address);

@@ -27,14 +27,13 @@
 
 #if TARGET_OS_IPHONE
 
-#import <WebKit/WKBase.h>
 #import <WebKit/_WKActivatedElementInfo.h>
 
 @class UIAction;
 @class UIImage;
 
 typedef NSString *UIActionIdentifier;
-WK_EXPORT extern UIActionIdentifier const WKElementActionTypeToggleShowLinkPreviewsIdentifier;
+WK_EXTERN UIActionIdentifier const WKElementActionTypeToggleShowLinkPreviewsIdentifier;
 
 typedef void (^WKElementActionHandler)(_WKActivatedElementInfo *);
 typedef BOOL (^WKElementActionDismissalHandler)(void);
@@ -44,7 +43,7 @@ typedef NS_ENUM(NSInteger, _WKElementActionType) {
     _WKElementActionTypeOpen,
     _WKElementActionTypeCopy,
     _WKElementActionTypeSaveImage,
-#if !defined(TARGET_OS_IOS) || TARGET_OS_IOS
+#if TARGET_OS_IOS || (defined(TARGET_OS_VISION) && TARGET_OS_VISION)
     _WKElementActionTypeAddToReadingList,
     _WKElementActionTypeOpenInDefaultBrowser WK_API_AVAILABLE(ios(9.0)),
     _WKElementActionTypeOpenInExternalApplication WK_API_AVAILABLE(ios(9.0)),
@@ -56,6 +55,12 @@ typedef NS_ENUM(NSInteger, _WKElementActionType) {
     _WKElementActionToggleShowLinkPreviews WK_API_AVAILABLE(macos(10.15), ios(13.0)),
     _WKElementActionTypeImageExtraction WK_API_AVAILABLE(ios(15.0)),
     _WKElementActionTypeRevealImage WK_API_AVAILABLE(ios(15.0)),
+    _WKElementActionTypeCopyCroppedImage WK_API_AVAILABLE(ios(16.0)),
+#if defined(TARGET_OS_VISION) && TARGET_OS_VISION && __VISION_OS_VERSION_MIN_REQUIRED >= 20000
+    _WKElementActionTypeViewSpatial WK_API_AVAILABLE(visionos(WK_XROS_TBA)),
+#endif
+    _WKElementActionPlayAnimation,
+    _WKElementActionPauseAnimation,
 } WK_API_AVAILABLE(macos(10.10), ios(8.0));
 
 WK_CLASS_AVAILABLE(macos(10.10), ios(8.0))
@@ -74,6 +79,7 @@ WK_CLASS_AVAILABLE(macos(10.10), ios(8.0))
 
 @property (nonatomic, readonly) _WKElementActionType type;
 @property (nonatomic, readonly) NSString* title;
+@property (nonatomic, readonly) BOOL disabled;
 @property (nonatomic, copy) WKElementActionDismissalHandler dismissalHandler;
 
 @end

@@ -60,8 +60,6 @@ class Kind {
 public:
     Kind(Opcode opcode)
         : m_opcode(opcode)
-        , m_isChill(false)
-        , m_traps(false)
     {
     }
     
@@ -148,6 +146,58 @@ public:
         ASSERT(hasTraps());
         m_traps = traps;
     }
+
+    static constexpr bool hasIsSensitiveToNaN(Opcode opcode)
+    {
+        switch (opcode) {
+        case Add:
+        case Sub:
+        case Mul:
+        case Div:
+        case Mod:
+        case DoubleToFloat:
+        case FloatToDouble:
+            return true;
+        default:
+            return false;
+        }
+    }
+    bool hasIsSensitiveToNaN() const
+    {
+        return hasIsSensitiveToNaN(m_opcode);
+    }
+    bool isSensitiveToNaN() const
+    {
+        return m_isSensitiveToNaN;
+    }
+    void setIsSensitiveToNaN(bool isSensitiveToNaN)
+    {
+        ASSERT(hasIsSensitiveToNaN());
+        m_isSensitiveToNaN = isSensitiveToNaN;
+    }
+
+    static constexpr bool hasCloningForbidden(Opcode opcode)
+    {
+        switch (opcode) {
+        case Patchpoint:
+            return true;
+        default:
+            return false;
+        }
+    }
+    bool hasCloningForbidden() const
+    {
+        return hasCloningForbidden(m_opcode);
+    }
+    bool isCloningForbidden() const
+    {
+        return m_cloningForbidden;
+    }
+    void setIsCloningForbidden(bool isCloningForbidden)
+    {
+        ASSERT(hasCloningForbidden());
+        m_cloningForbidden = isCloningForbidden;
+    }
     
     // Rules for adding new properties:
     // - Put the accessors here.
@@ -157,17 +207,7 @@ public:
     // - Try not to increase the size of Kind too much. But it wouldn't be the end of the
     //   world if it bloated to 64 bits.
     
-    bool operator==(const Kind& other) const
-    {
-        return m_opcode == other.m_opcode
-            && m_isChill == other.m_isChill
-            && m_traps == other.m_traps;
-    }
-    
-    bool operator!=(const Kind& other) const
-    {
-        return !(*this == other);
-    }
+    friend bool operator==(const Kind&, const Kind&) = default;
     
     void dump(PrintStream&) const;
     
@@ -175,13 +215,12 @@ public:
     {
         // It's almost certainly more important that this hash function is cheap to compute than
         // anything else. We can live with some kind hash collisions.
-        return m_opcode + (static_cast<unsigned>(m_isChill) << 16) + (static_cast<unsigned>(m_traps) << 7);
+        return m_opcode + (static_cast<unsigned>(m_isChill) << 16) + (static_cast<unsigned>(m_traps) << 7) + (static_cast<unsigned>(m_isSensitiveToNaN) << 24) + (static_cast<unsigned>(m_cloningForbidden) << 13);
     }
     
     Kind(WTF::HashTableDeletedValueType)
         : m_opcode(Oops)
         , m_isChill(true)
-        , m_traps(false)
     {
     }
     
@@ -192,8 +231,10 @@ public:
     
 private:
     Opcode m_opcode;
-    bool m_isChill : 1;
-    bool m_traps : 1;
+    bool m_isChill : 1 { false };
+    bool m_traps : 1 { false };
+    bool m_isSensitiveToNaN : 1 { false };
+    bool m_cloningForbidden : 1 { false };
 };
 
 // For every flag 'foo' you add, it's customary to create a Kind B3::foo(Kind) function that makes
@@ -213,6 +254,18 @@ inline Kind chill(Kind kind)
 inline Kind trapping(Kind kind)
 {
     kind.setTraps(true);
+    return kind;
+}
+
+inline Kind sensitiveToNaN(Kind kind)
+{
+    kind.setIsSensitiveToNaN(true);
+    return kind;
+}
+
+inline Kind cloningForbidden(Kind kind)
+{
+    kind.setIsCloningForbidden(true);
     return kind;
 }
 

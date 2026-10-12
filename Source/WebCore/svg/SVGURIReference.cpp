@@ -25,8 +25,10 @@
 #include "Document.h"
 #include "Element.h"
 #include "SVGElement.h"
-#include <wtf/URL.h>
+#include "SVGElementTypeHelpers.h"
+#include "SVGUseElement.h"
 #include "XLinkNames.h"
+#include <wtf/URL.h>
 
 namespace WebCore {
 
@@ -58,23 +60,23 @@ void SVGURIReference::parseAttribute(const QualifiedName& name, const AtomString
         m_href->setBaseValInternal(value);
 }
 
-String SVGURIReference::fragmentIdentifierFromIRIString(const String& url, const Document& document)
+AtomString SVGURIReference::fragmentIdentifierFromIRIString(const String& url, const Document& document)
 {
     size_t start = url.find('#');
     if (start == notFound)
-        return emptyString();
+        return emptyAtom();
 
     if (!start)
-        return url.substring(1);
+        return StringView(url).substring(1).toAtomString();
 
-    URL base = URL(document.baseURL(), url.substring(0, start));
+    URL base = URL(document.baseURL(), url.left(start));
     String fragmentIdentifier = url.substring(start);
-    URL kurl(base, fragmentIdentifier);
-    if (equalIgnoringFragmentIdentifier(kurl, document.url()))
-        return fragmentIdentifier.substring(1);
+    URL urlWithFragment(base, fragmentIdentifier);
+    if (equalIgnoringFragmentIdentifier(urlWithFragment, document.url()))
+        return StringView(fragmentIdentifier).substring(1).toAtomString();
 
     // The url doesn't have any fragment identifier.
-    return emptyString();
+    return emptyAtom();
 }
 
 auto SVGURIReference::targetElementFromIRIString(const String& iri, const TreeScope& treeScope, RefPtr<Document> externalDocument) -> TargetElementResult
@@ -85,12 +87,12 @@ auto SVGURIReference::targetElementFromIRIString(const String& iri, const TreeSc
         return { };
 
     // Exclude the '#' character when determining the fragmentIdentifier.
-    auto id = iri.substring(startOfFragmentIdentifier + 1);
+    auto id = StringView(iri).substring(startOfFragmentIdentifier + 1).toAtomString();
     if (id.isEmpty())
         return { };
 
-    auto& document = treeScope.documentScope();
-    auto url = document.completeURL(iri);
+    Ref document = treeScope.documentScope();
+    auto url = document->completeURL(iri);
     if (externalDocument) {
         // Enforce that the referenced url matches the url of the document that we've loaded for it!
         ASSERT(equalIgnoringFragmentIdentifier(url, externalDocument->url()));
@@ -101,12 +103,16 @@ auto SVGURIReference::targetElementFromIRIString(const String& iri, const TreeSc
     if (isExternalURIReference(iri, document))
         return { nullptr, WTFMove(id) };
 
+    RefPtr shadowHost = treeScope.rootNode().shadowHost();
+    if (is<SVGUseElement>(shadowHost))
+        return { shadowHost->treeScope().getElementById(id), WTFMove(id) };
+
     return { treeScope.getElementById(id), WTFMove(id) };
 }
 
 bool SVGURIReference::haveLoadedRequiredResources() const
 {
-    if (href().isEmpty() || !isExternalURIReference(href(), contextElement().document()))
+    if (href().isEmpty() || !isExternalURIReference(href(), contextElement().protectedDocument()))
         return true;
     return errorOccurred() || haveFiredLoadEvent();
 }

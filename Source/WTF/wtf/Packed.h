@@ -110,6 +110,7 @@ template<typename T, size_t passedAlignment>
 class PackedAlignedPtr {
     WTF_MAKE_FAST_ALLOCATED;
 public:
+    static_assert(::allowCompactPointers<T*>());
     static_assert(hasOneBitSet(passedAlignment), "Alignment needs to be power-of-two");
     static constexpr size_t alignment = passedAlignment;
     static constexpr bool isPackedType = true;
@@ -186,7 +187,10 @@ public:
     }
 
     T* operator->() const { return get(); }
-    T& operator*() const { return *get(); }
+
+    template <typename U = T>
+    typename std::enable_if<!std::is_void_v<U>, U&>::type operator*() const { return *get(); }
+
     bool operator!() const { return !get(); }
 
     // This conversion operator allows implicit conversion to bool but not to other integer types.
@@ -238,6 +242,7 @@ private:
 template<typename T>
 class Packed<T*> : public PackedAlignedPtr<T, 1> {
 public:
+    static_assert(::allowCompactPointers<T*>());
     using Base = PackedAlignedPtr<T, 1>;
     using Base::Base;
 
@@ -252,13 +257,33 @@ using PackedPtr = Packed<T*>;
 template <typename T>
 struct GetPtrHelper<PackedPtr<T>> {
     using PtrType = T*;
+    using UnderlyingType = T;
     static T* getPtr(const PackedPtr<T>& p) { return const_cast<T*>(p.get()); }
 };
 
 template <typename T>
 struct IsSmartPtr<PackedPtr<T>> {
     static constexpr bool value = true;
+    static constexpr bool isNullable = true;
 };
+
+template<typename T, typename U>
+inline bool operator==(const PackedPtr<T>& a, const PackedPtr<U>& b)
+{
+    return a.get() == b.get();
+}
+
+template<typename T, typename U>
+inline bool operator==(const PackedPtr<T>& a, U* b)
+{
+    return a.get() == b;
+}
+
+template<typename T, typename U>
+inline bool operator==(T* a, const PackedPtr<U>& b)
+{
+    return a == b.get();
+}
 
 template<typename T>
 struct PackedPtrTraits {

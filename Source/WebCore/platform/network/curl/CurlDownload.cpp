@@ -40,6 +40,7 @@
 #include "NetworkStorageSession.h"
 #include "CookieJar.h"
 #include "SameSiteInfo.h"
+#include "SecurityOrigin.h"
 
 namespace WebCore {
 
@@ -140,8 +141,8 @@ Ref<CurlRequest> CurlDownload::createCurlRequest(ResourceRequest& request)
     if (m_context)
     {
         auto& storageSession = *m_context->storageSession();
-        auto includeSecureCookies = request.url().protocolIs("https") ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
-        String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), std::nullopt, std::nullopt, includeSecureCookies, ShouldAskITP::Yes, ShouldRelaxThirdPartyCookieBlocking::No).first;
+        auto includeSecureCookies = request.url().protocolIs("https"_s) ? IncludeSecureCookies::Yes : IncludeSecureCookies::No;
+        String cookieHeaderField = storageSession.cookieRequestHeaderFieldValue(request.firstPartyForCookies(), SameSiteInfo::create(request), request.url(), std::nullopt, std::nullopt, includeSecureCookies, ApplyTrackingPrevention::No, ShouldRelaxThirdPartyCookieBlocking::No).first;
         if (!cookieHeaderField.isEmpty())
             request.addHTTPHeaderField(HTTPHeaderName::Cookie, cookieHeaderField);
     }
@@ -172,7 +173,7 @@ void CurlDownload::curlDidReceiveResponse(CurlRequest& request, CurlResponse&& r
 }
 
 
-void CurlDownload::curlDidReceiveBuffer(CurlRequest&, Ref<SharedBuffer>&& buffer)
+void CurlDownload::curlDidReceiveData(CurlRequest&, Ref<SharedBuffer>&& buffer)
 {
     ASSERT(isMainThread());
 
@@ -217,7 +218,7 @@ void CurlDownload::curlDidFailWithError(CurlRequest& request, ResourceError&&err
 
 bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool crossOrigin)
 {
-    if ((request.httpMethod() == "GET") || (request.httpMethod() == "HEAD"))
+    if ((request.httpMethod() == "GET"_s) || (request.httpMethod() == "HEAD"_s))
         return false;
 
     if (!request.url().protocolIsInHTTPFamily())
@@ -226,10 +227,10 @@ bool CurlDownload::shouldRedirectAsGET(const ResourceRequest& request, bool cros
     if (m_response.isSeeOther())
         return true;
 
-    if ((m_response.isMovedPermanently() || m_response.isFound()) && (request.httpMethod() == "POST"))
+    if ((m_response.isMovedPermanently() || m_response.isFound()) && (request.httpMethod() == "POST"_s))
         return true;
 
-    if (crossOrigin && (request.httpMethod() == "DELETE"))
+    if (crossOrigin && (request.httpMethod() == "DELETE"_s))
         return true;
 
     return false;
@@ -243,7 +244,7 @@ void CurlDownload::willSendRequest()
 
     if (m_redirectCount++ > maxRedirects) {
         if (m_listener)
-            m_listener->didFail(ResourceError::httpError(CURLE_TOO_MANY_REDIRECTS, m_request.url()));
+            m_listener->didFail(ResourceError(CURLE_TOO_MANY_REDIRECTS, m_request.url()));
         return;
     }
 
@@ -255,7 +256,7 @@ void CurlDownload::willSendRequest()
     newRequest.setURL(newURL);
 
     if (shouldRedirectAsGET(newRequest, crossOrigin)) {
-        newRequest.setHTTPMethod("GET");
+        newRequest.setHTTPMethod("GET"_s);
         newRequest.setHTTPBody(nullptr);
         newRequest.clearHTTPContentType();
     }

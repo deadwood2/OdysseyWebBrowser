@@ -23,7 +23,7 @@
 
 #include "OpenXRExtensions.h"
 #include "PlatformXROpenXR.h"
-
+#include <wtf/NeverDestroyed.h>
 #include <wtf/Scope.h>
 
 using namespace WebCore;
@@ -47,7 +47,7 @@ private:
 };
 
 Instance::Impl::Impl()
-    : m_workQueue(WorkQueue::create("OpenXR queue"))
+    : m_workQueue(WorkQueue::create("OpenXR queue"_s))
 {
     m_workQueue->dispatch([this]() {
         LOG(XR, "OpenXR: initializing\n");
@@ -56,7 +56,7 @@ Instance::Impl::Impl()
         if (!m_extensions)
             return;
 
-        static const char* s_applicationName = "WebXR (WebKit)";
+        static constexpr auto s_applicationName = "WebXR (WebKit)"_s;
         static const uint32_t s_applicationVersion = 1;
 
         const char* const enabledExtensions[] = {
@@ -66,11 +66,11 @@ Instance::Impl::Impl()
 
         auto createInfo = createStructure<XrInstanceCreateInfo, XR_TYPE_INSTANCE_CREATE_INFO>();
         createInfo.createFlags = 0;
-        std::memcpy(createInfo.applicationInfo.applicationName, s_applicationName, XR_MAX_APPLICATION_NAME_SIZE);
+        std::memcpy(createInfo.applicationInfo.applicationName, s_applicationName.characters(), XR_MAX_APPLICATION_NAME_SIZE);
         createInfo.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
         createInfo.applicationInfo.applicationVersion = s_applicationVersion;
         createInfo.enabledApiLayerCount = 0;
-        createInfo.enabledExtensionCount = WTF_ARRAY_LENGTH(enabledExtensions);
+        createInfo.enabledExtensionCount = std::size(enabledExtensions);
         createInfo.enabledExtensionNames = enabledExtensions;
 
         XrResult result = xrCreateInstance(&createInfo, &m_instance);

@@ -31,22 +31,35 @@
 #import "FloatRect.h"
 #import "SimpleRange.h"
 #import <wtf/OptionSet.h>
+
 #import <wtf/RetainPtr.h>
 
+#if HAVE(SECURE_ACTION_CONTEXT)
+OBJC_CLASS DDSecureActionContext;
+using WKDDActionContext = DDSecureActionContext;
+#else
 OBJC_CLASS DDActionContext;
+using WKDDActionContext = DDActionContext;
+#endif
 OBJC_CLASS NSArray;
 OBJC_CLASS NSDictionary;
+
+typedef struct __DDResult *DDResultRef;
+typedef struct __DDScanQuery *DDScanQueryRef;
+typedef struct __DDScanner *DDScannerRef;
 
 namespace WebCore {
 
 class Document;
 class HTMLDivElement;
+class HTMLElement;
 class HitTestResult;
 class QualifiedName;
+class LocalFrame;
 struct TextRecognitionDataDetector;
 
 struct DetectedItem {
-    RetainPtr<DDActionContext> actionContext;
+    RetainPtr<WKDDActionContext> actionContext;
     FloatRect boundingBox;
     SimpleRange range;
 };
@@ -56,7 +69,9 @@ public:
 #if PLATFORM(MAC)
     WEBCORE_EXPORT static std::optional<DetectedItem> detectItemAroundHitTestResult(const HitTestResult&);
 #endif
-    WEBCORE_EXPORT static NSArray *detectContentInRange(const SimpleRange&, OptionSet<DataDetectorType>, NSDictionary *context);
+    WEBCORE_EXPORT static void detectContentInFrame(LocalFrame*, OptionSet<DataDetectorType>, std::optional<double>, CompletionHandler<void(NSArray *)>&&);
+    WEBCORE_EXPORT static NSArray * detectContentInRange(const SimpleRange&, OptionSet<DataDetectorType>, std::optional<double> referenceDate);
+    WEBCORE_EXPORT static std::optional<double> extractReferenceDate(NSDictionary *);
     WEBCORE_EXPORT static void removeDataDetectedLinksInDocument(Document&);
 #if PLATFORM(IOS_FAMILY)
     WEBCORE_EXPORT static bool canBePresentedByDataDetectors(const URL&);
@@ -65,6 +80,7 @@ public:
     WEBCORE_EXPORT static bool canPresentDataDetectorsUIForElement(Element&);
     WEBCORE_EXPORT static bool requiresExtendedContext(Element&);
 #endif
+    WEBCORE_EXPORT static std::optional<std::pair<Ref<HTMLElement>, IntRect>> findDataDetectionResultElementInImageOverlay(const FloatPoint& location, const HTMLElement& imageOverlayHost);
 
 #if ENABLE(IMAGE_ANALYSIS)
     static Ref<HTMLDivElement> createElementForImageOverlay(Document&, const TextRecognitionDataDetector&);

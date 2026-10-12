@@ -20,10 +20,15 @@
 #include "config.h"
 #include "WebKitWebView.h"
 
+#include "PageClientImpl.h"
+#include "WebInspectorUIProxy.h"
 #include "WebKitColorPrivate.h"
 #include "WebKitScriptDialogPrivate.h"
 #include "WebKitWebViewPrivate.h"
 
+#if ENABLE(WPE_PLATFORM)
+#include <wpe/wpe-platform.h>
+#endif
 
 gboolean webkitWebViewAuthenticate(WebKitWebView*, WebKitAuthenticationRequest*)
 {
@@ -62,19 +67,27 @@ void webkitWebViewRestoreWindow(WebKitWebView*, CompletionHandler<void()>&& comp
 
 /**
  * webkit_web_view_new:
- * @backend: (transfer full): a #WebKitWebViewBackend
+ * @backend: (transfer full) (nullable): wrapped WPE view backend which
+ *    will determine the behaviour of the new [class@WebView], or %NULL to use the WPE platform API.
  *
- * Creates a new #WebKitWebView with the default #WebKitWebContext and
- * no #WebKitUserContentManager associated with it.
- * See also webkit_web_view_new_with_context(),
- * webkit_web_view_new_with_user_content_manager(), and
- * webkit_web_view_new_with_settings().
+ * Creates a new web view with a default configuration.
  *
- * Returns: The newly created #WebKitWebView
+ * The new view will use the default [class@WebContext] and will not
+ * have an associated [class@UserContentManager].
+ *
+ * See also [id@webkit_web_view_new_with_context],
+ * [id@webkit_web_view_new_with_user_content_manager]), and
+ * [id@webkit_web_view_new_with_settings].
+ *
+ * Returns: The newly created web view.
  */
 WebKitWebView* webkit_web_view_new(WebKitWebViewBackend* backend)
 {
+#if ENABLE(WPE_PLATFORM)
+    g_return_val_if_fail(!backend || !g_type_class_peek(WPE_TYPE_DISPLAY), nullptr);
+#else
     g_return_val_if_fail(backend, nullptr);
+#endif
 
     return WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
         "backend", backend,
@@ -82,17 +95,22 @@ WebKitWebView* webkit_web_view_new(WebKitWebViewBackend* backend)
         nullptr));
 }
 
+#if !ENABLE(2022_GLIB_API)
 /**
  * webkit_web_view_new_with_context:
- * @backend: (transfer full): a #WebKitWebViewBackend
- * @context: the #WebKitWebContext to be used by the #WebKitWebView
+ * @backend: (transfer full) (not nullable): wrapped WPE view backend which
+ *    will determine the behaviour of the new [class@WebView].
+ * @context: the web context the new [class@WebView] will use.
  *
- * Creates a new #WebKitWebView with the given #WebKitWebContext and
- * no #WebKitUserContentManager associated with it.
- * See also webkit_web_view_new_with_user_content_manager() and
- * webkit_web_view_new_with_settings().
+ * Creates a new web view with a given context.
  *
- * Returns: The newly created #WebKitWebView
+ * The new web view will use the given [class@WebContext] and will not have
+ * an associated [class@UserContentManager].
+ *
+ * See also [id@webkit_web_view_new_with_user_content_manager] and
+ * [id@webkit_web_view_new_with_settings].
+ *
+ * Returns: The newly created web view.
  */
 WebKitWebView* webkit_web_view_new_with_context(WebKitWebViewBackend* backend, WebKitWebContext* context)
 {
@@ -101,28 +119,30 @@ WebKitWebView* webkit_web_view_new_with_context(WebKitWebViewBackend* backend, W
 
     return WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
         "backend", backend,
+#if !ENABLE(2022_GLIB_API)
         "is-ephemeral", webkit_web_context_is_ephemeral(context),
+#endif
         "web-context", context,
         nullptr));
 }
+#endif
 
+#if !ENABLE(2022_GLIB_API)
 /**
  * webkit_web_view_new_with_related_view: (constructor)
- * @backend: (transfer full): a #WebKitWebViewBackend
- * @web_view: the related #WebKitWebView
+ * @backend: (transfer full) (not nullable): wrapped WPE view backend which
+ *    will determine the behaviour of the new [class@WebView].
+ * @web_view: the related web view.
  *
- * Creates a new #WebKitWebView sharing the same web process with @web_view.
- * This method doesn't have any effect when %WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS
- * process model is used, because a single web process is shared for all the web views in the
- * same #WebKitWebContext. When using %WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES process model,
- * this method should always be used when creating the #WebKitWebView in the #WebKitWebView::create signal.
- * You can also use this method to implement other process models based on %WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES,
- * like for example, sharing the same web process for all the views in the same security domain.
+ * Creates a new web view sharing the same configuration and web process as another.
  *
- * The newly created #WebKitWebView will also have the same #WebKitUserContentManager
- * and #WebKitSettings as @web_view.
+ * A related view should always be set when creating a [class@WebView] in a handler
+ * for the [signal@WebView::create] signal.
  *
- * Returns: (transfer full): The newly created #WebKitWebView
+ * The new view will also have the same [class@UserContentManager] and
+ * [class@Settings] as the related @web_view.
+ *
+ * Returns: (transfer full): The newly created web view.
  *
  * Since: 2.4
  */
@@ -141,14 +161,16 @@ WebKitWebView* webkit_web_view_new_with_related_view(WebKitWebViewBackend* backe
 
 /**
  * webkit_web_view_new_with_settings:
- * @backend: (nullable) (transfer full): a #WebKitWebViewBackend, or %NULL to use the default
- * @settings: a #WebKitSettings
+ * @backend: (transfer full) (not nullable): wrapped WPE view backend which
+ *    will determine the behaviour of the new [class@WebView].
+ * @settings: settings for the new view.
  *
- * Creates a new #WebKitWebView with the given #WebKitSettings.
- * See also webkit_web_view_new_with_context(), and
- * webkit_web_view_new_with_user_content_manager().
+ * Creates a new web view with the given settings.
  *
- * Returns: The newly created #WebKitWebView
+ * See also [id@webkit_web_view_new_with_context], and
+ * [id@webkit_web_view_new_with_user_content_manager].
+ *
+ * Returns: (transfer full): The newly created web view.
  *
  * Since: 2.6
  */
@@ -165,14 +187,16 @@ WebKitWebView* webkit_web_view_new_with_settings(WebKitWebViewBackend* backend, 
 
 /**
  * webkit_web_view_new_with_user_content_manager:
- * @backend: (transfer full): a #WebKitWebViewBackend
- * @user_content_manager: a #WebKitUserContentManager.
+ * @backend: (transfer full) (not nullable): wrapped WPE view backend which
+ *    will determine the behaviour of the new [class@WebView].
+ * @user_content_manager: the user content manager for the new view.
  *
- * Creates a new #WebKitWebView with the given #WebKitUserContentManager.
- * The content loaded in the view may be affected by the content injected
- * in the view by the user content manager.
+ * Creates a new web view with the given user content manager.
  *
- * Returns: The newly created #WebKitWebView
+ * The content loaded in the new [class@WebView] may be affected by the
+ * configuration of the given [class@UserContentManager].
+ *
+ * Returns: (transfer full): The newly created web view.
  *
  * Since: 2.6
  */
@@ -186,11 +210,12 @@ WebKitWebView* webkit_web_view_new_with_user_content_manager(WebKitWebViewBacken
         "user-content-manager", userContentManager,
         nullptr));
 }
+#endif
 
 /**
  * webkit_web_view_set_background_color:
  * @web_view: a #WebKitWebView
- * @backgroundColor: a #WebKitColor
+ * @color: a #WebKitColor
  *
  * Sets the color that will be used to draw the @web_view background before
  * the actual contents are rendered. Note that if the web page loaded in @web_view
@@ -205,13 +230,23 @@ void webkit_web_view_set_background_color(WebKitWebView* webView, WebKitColor* b
     g_return_if_fail(backgroundColor);
 
     auto& page = webkitWebViewGetPage(webView);
-    page.setBackgroundColor(webkitColorToWebCoreColor(backgroundColor));
+    auto color = webkitColorToWebCoreColor(backgroundColor);
+    page.setBackgroundColor(color);
+#if ENABLE(WPE_PLATFORM)
+    if (auto* view = static_cast<WebKit::PageClientImpl&>(page.pageClient()).wpeView()) {
+        if (color.isOpaque()) {
+            WPERectangle rect { 0, 0, wpe_view_get_width(view), wpe_view_get_height(view) };
+            wpe_view_set_opaque_rectangles(view, &rect, 1);
+        } else
+            wpe_view_set_opaque_rectangles(view, nullptr, 0);
+    }
+#endif
 }
 
 /**
  * webkit_web_view_get_background_color:
  * @web_view: a #WebKitWebView
- * @rgba: (out): a #WebKitColor to fill in with the background color
+ * @color: (out): a #WebKitColor to fill in with the background color
  *
  * Gets the color that is used to draw the @web_view background before the
  * actual contents are rendered. For more information see also
@@ -259,3 +294,35 @@ guint createShowOptionMenuSignal(WebKitWebViewClass* webViewClass)
         WEBKIT_TYPE_OPTION_MENU,
         WEBKIT_TYPE_RECTANGLE | G_SIGNAL_TYPE_STATIC_SCOPE);
 }
+
+#if ENABLE(WPE_PLATFORM)
+/**
+ * webkit_web_view_toggle_inspector:
+ * @web_view: a #WebKitWebView
+ *
+ * Show or hide the web inspector of @web_view
+ * Note that local inspector is only supported by
+ * WPEWebKit when using WPE Platform API.
+ *
+ * Since: 2.46
+ */
+void webkit_web_view_toggle_inspector(WebKitWebView* webView)
+{
+    g_return_if_fail(WEBKIT_IS_WEB_VIEW(webView));
+
+    auto& page = webkitWebViewGetPage(webView);
+    if (!page.wpeView()) {
+        g_warning("Local inspector is only supported by WPEWebKit when using WPE Platform API");
+        return;
+    }
+
+    auto* inspector = page.inspector();
+    if (!inspector)
+        return;
+
+    if (inspector->isVisible())
+        inspector->close();
+    else
+        inspector->show();
+}
+#endif

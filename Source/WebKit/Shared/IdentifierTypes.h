@@ -30,22 +30,22 @@
 
 namespace WebKit {
 
-enum FormSubmitListenerIdentifierType { };
-using FormSubmitListenerIdentifier = ObjectIdentifier<FormSubmitListenerIdentifierType>;
+struct AuthenticationChallengeIdentifierType;
+using AuthenticationChallengeIdentifier = LegacyNullableObjectIdentifier<AuthenticationChallengeIdentifierType>;
 
-enum PageGroupIdentifierType { };
-using PageGroupIdentifier = ObjectIdentifier<PageGroupIdentifierType>;
+struct PageGroupIdentifierType;
+using PageGroupIdentifier = LegacyNullableObjectIdentifier<PageGroupIdentifierType>;
 
-enum TapIdentifierType { };
-using TapIdentifier = ObjectIdentifier<TapIdentifierType>;
+struct TapIdentifierType;
+using TapIdentifier = LegacyNullableObjectIdentifier<TapIdentifierType>;
 
-enum TextCheckerRequestType { };
-using TextCheckerRequestID = ObjectIdentifier<TextCheckerRequestType>;
+struct TextCheckerRequestType;
+using TextCheckerRequestID = LegacyNullableObjectIdentifier<TextCheckerRequestType>;
 
-enum EditorStateIdentifierType { };
+struct EditorStateIdentifierType;
 using EditorStateIdentifier = MonotonicObjectIdentifier<EditorStateIdentifierType>;
 
-enum FocusedElementInformationIdentifierType { };
+struct FocusedElementInformationIdentifierType;
 using FocusedElementInformationIdentifier = MonotonicObjectIdentifier<FocusedElementInformationIdentifierType>;
 
 } // namespace WebKit

@@ -12,12 +12,13 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "common/angleutils.h"
 #include "common/debug.h"
-#include "common/third_party/smhasher/src/PMurHash.h"
 #include "compiler/translator/PoolAlloc.h"
 
 namespace sh
@@ -36,15 +37,31 @@ constexpr TSourceLoc kNoSourceLoc{-1, -1, -1, -1};
 //
 // Put POOL_ALLOCATOR_NEW_DELETE in base classes to make them use this scheme.
 //
-#define POOL_ALLOCATOR_NEW_DELETE                                                    \
-    void *operator new(size_t s) { return GetGlobalPoolAllocator()->allocate(s); }   \
-    void *operator new(size_t, void *_Where) { return (_Where); }                    \
-    void operator delete(void *) {}                                                  \
-    void operator delete(void *, void *) {}                                          \
-    void *operator new[](size_t s) { return GetGlobalPoolAllocator()->allocate(s); } \
-    void *operator new[](size_t, void *_Where) { return (_Where); }                  \
-    void operator delete[](void *) {}                                                \
-    void operator delete[](void *, void *) {}
+#define POOL_ALLOCATOR_NEW_DELETE                     \
+    void *operator new(size_t s)                      \
+    {                                                 \
+        return GetGlobalPoolAllocator()->allocate(s); \
+    }                                                 \
+    void *operator new(size_t, void *_Where)          \
+    {                                                 \
+        return (_Where);                              \
+    }                                                 \
+    void operator delete(void *)                      \
+    {}                                                \
+    void operator delete(void *, void *)              \
+    {}                                                \
+    void *operator new[](size_t s)                    \
+    {                                                 \
+        return GetGlobalPoolAllocator()->allocate(s); \
+    }                                                 \
+    void *operator new[](size_t, void *_Where)        \
+    {                                                 \
+        return (_Where);                              \
+    }                                                 \
+    void operator delete[](void *)                    \
+    {}                                                \
+    void operator delete[](void *, void *)            \
+    {}
 
 //
 // Pool version of string.
@@ -54,11 +71,10 @@ typedef std::basic_string<char, std::char_traits<char>, TStringAllocator> TStrin
 typedef std::basic_ostringstream<char, std::char_traits<char>, TStringAllocator> TStringStream;
 
 //
-// Persistent string memory.  Should only be used for strings that survive
-// across compiles.
+// Persistent memory.  Should only be used for strings that survive across compiles.
 //
-#define TPersistString std::string
-#define TPersistStringStream std::ostringstream
+using TPersistString       = std::string;
+using TPersistStringStream = std::ostringstream;
 
 //
 // Pool allocator versions of vectors, lists, and maps
@@ -92,6 +108,22 @@ class TUnorderedMap : public std::unordered_map<K, D, H, CMP, pool_allocator<std
     TUnorderedMap(const tAllocator &a)
         : std::unordered_map<K, D, H, CMP, tAllocator>(
               std::unordered_map<K, D, H, CMP, tAllocator>::key_compare(),
+              a)
+    {}
+};
+
+template <class K, class H = std::hash<K>, class CMP = std::equal_to<K>>
+class TUnorderedSet : public std::unordered_set<K, H, CMP, pool_allocator<K>>
+{
+  public:
+    POOL_ALLOCATOR_NEW_DELETE
+    typedef pool_allocator<K> tAllocator;
+
+    TUnorderedSet() : std::unordered_set<K, H, CMP, tAllocator>() {}
+    // use correct two-stage name lookup supported in gcc 3.4 and above
+    TUnorderedSet(const tAllocator &a)
+        : std::unordered_set<K, H, CMP, tAllocator>(
+              std::unordered_set<K, H, CMP, tAllocator>::key_compare(),
               a)
     {}
 };
@@ -249,7 +281,8 @@ struct hash<sh::TString>
 {
     size_t operator()(const sh::TString &s) const
     {
-        return angle::PMurHash32(0, s.data(), static_cast<int>(s.length()));
+        auto v = std::string_view(s.data(), static_cast<int>(s.length()));
+        return std::hash<std::string_view>{}(v);
     }
 };
 }  // namespace std

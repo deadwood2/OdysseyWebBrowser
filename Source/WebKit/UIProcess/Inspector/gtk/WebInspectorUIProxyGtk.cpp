@@ -31,6 +31,7 @@
 
 #include "APINavigation.h"
 #include "APINavigationAction.h"
+#include "WKAPICast.h"
 #include "WKArray.h"
 #include "WKContextMenuItem.h"
 #include "WKMutableArray.h"
@@ -39,6 +40,7 @@
 #include "WebInspectorUIProxyClient.h"
 #include "WebKitInspectorWindow.h"
 #include "WebKitWebViewBasePrivate.h"
+#include "WebOpenPanelResultListenerProxy.h"
 #include "WebPageGroup.h"
 #include "WebProcessPool.h"
 #include "WebProcessProxy.h"
@@ -72,12 +74,38 @@ void WebInspectorUIProxy::setClient(std::unique_ptr<WebInspectorUIProxyClient>&&
 void WebInspectorUIProxy::updateInspectorWindowTitle() const
 {
     ASSERT(m_inspectorWindow);
-    webkitInspectorWindowSetSubtitle(WEBKIT_INSPECTOR_WINDOW(m_inspectorWindow), !m_inspectedURLString.isEmpty() ? m_inspectedURLString.utf8().data() : nullptr);
+    webkitInspectorWindowSetSubtitle(WEBKIT_INSPECTOR_WINDOW(m_inspectorWindow.get()), !m_inspectedURLString.isEmpty() ? m_inspectedURLString.utf8().data() : nullptr);
 }
 
 static unsigned long long exceededDatabaseQuota(WKPageRef, WKFrameRef, WKSecurityOriginRef, WKStringRef, WKStringRef, unsigned long long, unsigned long long, unsigned long long currentDatabaseUsage, unsigned long long expectedUsage, const void*)
 {
     return std::max<unsigned long long>(expectedUsage, currentDatabaseUsage * 1.25);
+}
+
+static void runOpenPanel(WKPageRef pageRef, WKFrameRef, WKOpenPanelParametersRef, WKOpenPanelResultListenerRef openPanelListener, const void *clientInfo)
+{
+    WebInspectorUIProxy* inspector = static_cast<WebInspectorUIProxy*>(const_cast<void*>(clientInfo));
+
+    GtkWidget* parent = gtk_widget_get_toplevel(gtk_widget_get_toplevel(inspector->inspectorView()));
+    if (!WebCore::widgetIsOnscreenToplevelWindow(parent))
+        return;
+
+    GRefPtr<GtkFileChooserNative> dialog = adoptGRef(gtk_file_chooser_native_new("Load File",
+        GTK_WINDOW(parent), GTK_FILE_CHOOSER_ACTION_OPEN, "Load", "Cancel"));
+
+    GtkFileChooser* chooser = GTK_FILE_CHOOSER(dialog.get());
+#if !USE(GTK4)
+    gtk_file_chooser_set_do_overwrite_confirmation(chooser, TRUE);
+#endif
+
+    if (gtk_native_dialog_run(GTK_NATIVE_DIALOG(dialog.get())) != GTK_RESPONSE_ACCEPT)
+        return;
+
+    GRefPtr<GFile> file = adoptGRef(gtk_file_chooser_get_file(chooser));
+    Vector<String> paths;
+    paths.append(String::fromUTF8(g_file_peek_path(file.get())));
+
+    toImpl(openPanelListener)->chooseFiles(paths);
 }
 
 static void webProcessDidCrash(WKPageRef, const void* clientInfo)
@@ -140,21 +168,11 @@ static void getContextMenuFromProposedMenu(WKPageRef pageRef, WKArrayRef propose
 
 static Ref<WebsiteDataStore> inspectorWebsiteDataStore()
 {
-    static const char* versionedDirectory = "webkitgtk-" WEBKITGTK_API_VERSION_STRING G_DIR_SEPARATOR_S "WebInspector" G_DIR_SEPARATOR_S;
-    String baseCacheDirectory = FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(g_get_user_cache_dir()), versionedDirectory);
-    String baseDataDirectory = FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(g_get_user_data_dir()), versionedDirectory);
+    static constexpr auto versionedDirectory = "webkitgtk-" WEBKITGTK_API_VERSION G_DIR_SEPARATOR_S "WebInspector" G_DIR_SEPARATOR_S ""_s;
+    String baseCacheDirectory = FileSystem::pathByAppendingComponent(FileSystem::userCacheDirectory(), versionedDirectory);
+    String baseDataDirectory = FileSystem::pathByAppendingComponent(FileSystem::userDataDirectory(), versionedDirectory);
 
-    auto configuration = WebsiteDataStoreConfiguration::create(IsPersistent::Yes, WillCopyPathsFromExistingConfiguration::Yes);
-    configuration->setNetworkCacheDirectory(FileSystem::pathByAppendingComponent(baseCacheDirectory, "WebKitCache"));
-    configuration->setApplicationCacheDirectory(FileSystem::pathByAppendingComponent(baseCacheDirectory, "applications"));
-    configuration->setHSTSStorageDirectory(String(baseCacheDirectory));
-    configuration->setCacheStorageDirectory(FileSystem::pathByAppendingComponent(baseCacheDirectory, "CacheStorage"));
-    configuration->setLocalStorageDirectory(FileSystem::pathByAppendingComponent(baseDataDirectory, "localstorage"));
-    configuration->setIndexedDBDatabaseDirectory(FileSystem::pathByAppendingComponent(baseDataDirectory, "indexeddb"));
-    configuration->setWebSQLDatabaseDirectory(FileSystem::pathByAppendingComponent(baseDataDirectory, "databases"));
-    configuration->setResourceLoadStatisticsDirectory(FileSystem::pathByAppendingComponent(baseDataDirectory, "itp"));
-    configuration->setServiceWorkerRegistrationDirectory(FileSystem::pathByAppendingComponent(baseDataDirectory, "serviceworkers"));
-    configuration->setDeviceIdHashSaltsStorageDirectory(FileSystem::pathByAppendingComponent(baseDataDirectory, "deviceidhashsalts"));
+    auto configuration = WebsiteDataStoreConfiguration::createWithBaseDirectories(baseCacheDirectory, baseDataDirectory);
     return WebsiteDataStore::create(WTFMove(configuration), PAL::SessionID::generatePersistentSessionID());
 }
 
@@ -163,7 +181,7 @@ WebPageProxy* WebInspectorUIProxy::platformCreateFrontendPage()
     ASSERT(inspectedPage());
     ASSERT(!m_inspectorView);
 
-    auto preferences = WebPreferences::create(String(), "WebKit2.", "WebKit2.");
+    auto preferences = WebPreferences::create(String(), "WebKit2."_s, "WebKit2."_s);
 #if ENABLE(DEVELOPER_MODE)
     // Allow developers to inspect the Web Inspector in debug builds without changing settings.
     preferences->setDeveloperExtrasEnabled(true);
@@ -174,7 +192,11 @@ WebPageProxy* WebInspectorUIProxy::platformCreateFrontendPage()
     });
     if (m_underTest)
         preferences->setHiddenPageDOMTimerThrottlingEnabled(false);
-    auto pageGroup = WebPageGroup::create(WebKit::defaultInspectorPageGroupIdentifierForPage(inspectedPage()));
+    const auto& inspectedPagePreferences = inspectedPage()->preferences();
+    preferences->setAcceleratedCompositingEnabled(inspectedPagePreferences.acceleratedCompositingEnabled());
+    preferences->setForceCompositingMode(inspectedPagePreferences.forceCompositingMode());
+    preferences->setThreadedScrollingEnabled(inspectedPagePreferences.threadedScrollingEnabled());
+    auto pageGroup = WebPageGroup::create(WebKit::defaultInspectorPageGroupIdentifierForPage(inspectedPage().get()));
     auto websiteDataStore = inspectorWebsiteDataStore();
     auto& processPool = WebKit::defaultInspectorProcessPool(inspectionLevel());
 
@@ -183,9 +205,8 @@ WebPageProxy* WebInspectorUIProxy::platformCreateFrontendPage()
     pageConfiguration->setPreferences(preferences.ptr());
     pageConfiguration->setPageGroup(pageGroup.ptr());
     pageConfiguration->setWebsiteDataStore(websiteDataStore.ptr());
-    m_inspectorView = GTK_WIDGET(webkitWebViewBaseCreate(*pageConfiguration.ptr()));
-    g_object_add_weak_pointer(G_OBJECT(m_inspectorView), reinterpret_cast<void**>(&m_inspectorView));
-    g_signal_connect(m_inspectorView, "destroy", G_CALLBACK(inspectorViewDestroyed), this);
+    m_inspectorView.reset(GTK_WIDGET(webkitWebViewBaseCreate(*pageConfiguration.ptr())));
+    g_signal_connect(m_inspectorView.get(), "destroy", G_CALLBACK(inspectorViewDestroyed), this);
 
     WKPageUIClientV2 uiClient = {
         { 2, this },
@@ -217,7 +238,7 @@ WebPageProxy* WebInspectorUIProxy::platformCreateFrontendPage()
         nullptr, // didDraw
         nullptr, // pageDidScroll
         exceededDatabaseQuota,
-        nullptr, // runOpenPanel,
+        runOpenPanel,
         nullptr, // decidePolicyForGeolocationPermissionRequest
         nullptr, // headerHeight
         nullptr, // footerHeight
@@ -273,7 +294,7 @@ WebPageProxy* WebInspectorUIProxy::platformCreateFrontendPage()
         nullptr, // hideContextMenu
     };
 
-    WebPageProxy* inspectorPage = webkitWebViewBaseGetPage(WEBKIT_WEB_VIEW_BASE(m_inspectorView));
+    WebPageProxy* inspectorPage = webkitWebViewBaseGetPage(WEBKIT_WEB_VIEW_BASE(m_inspectorView.get()));
     ASSERT(inspectorPage);
 
     WKPageSetPageUIClient(toAPI(inspectorPage), &uiClient.base);
@@ -289,25 +310,24 @@ void WebInspectorUIProxy::platformCreateFrontendWindow()
         return;
 
     ASSERT(!m_inspectorWindow);
-    m_inspectorWindow = webkitInspectorWindowNew();
+    m_inspectorWindow.reset(webkitInspectorWindowNew());
 #if USE(GTK4)
-    gtk_window_set_child(GTK_WINDOW(m_inspectorWindow), m_inspectorView);
+    gtk_window_set_child(GTK_WINDOW(m_inspectorWindow.get()), m_inspectorView.get());
 #else
-    gtk_container_add(GTK_CONTAINER(m_inspectorWindow), m_inspectorView);
-    gtk_widget_show(m_inspectorView);
+    gtk_container_add(GTK_CONTAINER(m_inspectorWindow.get()), m_inspectorView.get());
+    gtk_widget_show(m_inspectorView.get());
 #endif
 
     if (!m_inspectedURLString.isEmpty())
         updateInspectorWindowTitle();
 
-    g_object_add_weak_pointer(G_OBJECT(m_inspectorWindow), reinterpret_cast<void**>(&m_inspectorWindow));
-    gtk_window_present(GTK_WINDOW(m_inspectorWindow));
+    gtk_window_present(GTK_WINDOW(m_inspectorWindow.get()));
 }
 
 void WebInspectorUIProxy::platformCloseFrontendPageAndWindow()
 {
     if (m_inspectorView) {
-        g_signal_handlers_disconnect_by_func(m_inspectorView, reinterpret_cast<void*>(inspectorViewDestroyed), this);
+        g_signal_handlers_disconnect_by_func(m_inspectorView.get(), reinterpret_cast<void*>(inspectorViewDestroyed), this);
         m_inspectorView = nullptr;
     }
 
@@ -315,7 +335,7 @@ void WebInspectorUIProxy::platformCloseFrontendPageAndWindow()
         m_client->didClose(*this);
 
     if (m_inspectorWindow) {
-        gtk_widget_destroy(m_inspectorWindow);
+        gtk_widget_destroy(m_inspectorWindow.get());
         m_inspectorWindow = nullptr;
     }
 }
@@ -345,7 +365,7 @@ void WebInspectorUIProxy::platformBringToFront()
     if (m_client && m_client->bringToFront(*this))
         return;
 
-    GtkWidget* parent = gtk_widget_get_toplevel(m_inspectorView);
+    GtkWidget* parent = gtk_widget_get_toplevel(m_inspectorView.get());
     if (WebCore::widgetIsOnscreenToplevelWindow(parent))
         gtk_window_present(GTK_WINDOW(parent));
 }
@@ -357,13 +377,18 @@ void WebInspectorUIProxy::platformBringInspectedPageToFront()
 
 bool WebInspectorUIProxy::platformIsFront()
 {
-    GtkWidget* parent = gtk_widget_get_toplevel(m_inspectorView);
+    GtkWidget* parent = gtk_widget_get_toplevel(m_inspectorView.get());
     if (WebCore::widgetIsOnscreenToplevelWindow(parent))
         return m_isVisible && gtk_window_is_active(GTK_WINDOW(parent));
     return false;
 }
 
 void WebInspectorUIProxy::platformSetForcedAppearance(WebCore::InspectorFrontendClient::Appearance)
+{
+    notImplemented();
+}
+
+void WebInspectorUIProxy::platformRevealFileExternally(const String&)
 {
     notImplemented();
 }
@@ -401,26 +426,16 @@ DebuggableInfoData WebInspectorUIProxy::infoForLocalDebuggable()
     return data;
 }
 
-unsigned WebInspectorUIProxy::platformInspectedWindowHeight()
-{
-    return gtk_widget_get_allocated_height(inspectedPage()->viewWidget());
-}
-
-unsigned WebInspectorUIProxy::platformInspectedWindowWidth()
-{
-    return gtk_widget_get_allocated_width(inspectedPage()->viewWidget());
-}
-
 void WebInspectorUIProxy::platformAttach()
 {
-    GRefPtr<GtkWidget> inspectorView = m_inspectorView;
+    GRefPtr<GtkWidget> inspectorView = m_inspectorView.get();
     if (m_inspectorWindow) {
 #if USE(GTK4)
-        gtk_window_set_child(GTK_WINDOW(m_inspectorWindow), nullptr);
+        gtk_window_set_child(GTK_WINDOW(m_inspectorWindow.get()), nullptr);
 #else
-        gtk_container_remove(GTK_CONTAINER(m_inspectorWindow), m_inspectorView);
+        gtk_container_remove(GTK_CONTAINER(m_inspectorWindow.get()), m_inspectorView.get());
 #endif
-        gtk_widget_destroy(m_inspectorWindow);
+        gtk_widget_destroy(m_inspectorWindow.get());
         m_inspectorWindow = nullptr;
     }
 
@@ -430,18 +445,20 @@ void WebInspectorUIProxy::platformAttach()
     static const unsigned minimumAttachedHeight = 250;
 
     if (m_attachmentSide == AttachmentSide::Bottom) {
-        unsigned maximumAttachedHeight = platformInspectedWindowHeight() * 3 / 4;
+        unsigned inspectedWindowHeight = gtk_widget_get_allocated_height(inspectedPage()->viewWidget());
+        unsigned maximumAttachedHeight = inspectedWindowHeight * 3 / 4;
         platformSetAttachedWindowHeight(std::max(minimumAttachedHeight, std::min(defaultAttachedSize, maximumAttachedHeight)));
     } else {
-        unsigned maximumAttachedWidth = platformInspectedWindowWidth() * 3 / 4;
+        unsigned inspectedWindowWidth = gtk_widget_get_allocated_width(inspectedPage()->viewWidget());
+        unsigned maximumAttachedWidth = inspectedWindowWidth * 3 / 4;
         platformSetAttachedWindowWidth(std::max(minimumAttachedWidth, std::min(defaultAttachedSize, maximumAttachedWidth)));
     }
 
     if (m_client && m_client->attach(*this))
         return;
 
-    webkitWebViewBaseAddWebInspector(WEBKIT_WEB_VIEW_BASE(inspectedPage()->viewWidget()), m_inspectorView, m_attachmentSide);
-    gtk_widget_show(m_inspectorView);
+    webkitWebViewBaseAddWebInspector(WEBKIT_WEB_VIEW_BASE(inspectedPage()->viewWidget()), m_inspectorView.get(), m_attachmentSide);
+    gtk_widget_show(m_inspectorView.get());
 }
 
 void WebInspectorUIProxy::platformDetach()
@@ -449,13 +466,13 @@ void WebInspectorUIProxy::platformDetach()
     if (!inspectedPage()->hasRunningProcess())
         return;
 
-    GRefPtr<GtkWidget> inspectorView = m_inspectorView;
+    GRefPtr<GtkWidget> inspectorView = m_inspectorView.get();
     if (!m_client || !m_client->detach(*this)) {
         // Detach is called when m_isAttached is true, but it could called before
         // the inspector is opened if the inspector is shown/closed quickly. So,
         // we might not have a parent yet.
-        if (GtkWidget* parent = gtk_widget_get_parent(m_inspectorView))
-            webkitWebViewBaseRemoveWebInspector(WEBKIT_WEB_VIEW_BASE(parent), m_inspectorView);
+        if (GtkWidget* parent = gtk_widget_get_parent(m_inspectorView.get()))
+            webkitWebViewBaseRemoveWebInspector(WEBKIT_WEB_VIEW_BASE(parent), m_inspectorView.get());
     }
 
     // Return early if we are not visible. This means the inspector was closed while attached
@@ -463,7 +480,7 @@ void WebInspectorUIProxy::platformDetach()
     if (!m_isVisible) {
         // The inspector view will be destroyed, but we don't need to notify the web process to close the
         // inspector in this case, since it's already closed.
-        g_signal_handlers_disconnect_by_func(m_inspectorView, reinterpret_cast<void*>(inspectorViewDestroyed), this);
+        g_signal_handlers_disconnect_by_func(m_inspectorView.get(), reinterpret_cast<void*>(inspectorViewDestroyed), this);
         m_inspectorView = nullptr;
         return;
     }
@@ -504,19 +521,15 @@ void WebInspectorUIProxy::platformStartWindowDrag()
 static void fileReplaceContentsCallback(GObject* sourceObject, GAsyncResult* result, gpointer userData)
 {
     GFile* file = G_FILE(sourceObject);
-    if (!g_file_replace_contents_finish(file, result, nullptr, nullptr))
-        return;
-
-    auto* page = static_cast<WebPageProxy*>(userData);
-    GUniquePtr<char> path(g_file_get_path(file));
-    page->send(Messages::WebInspectorUI::DidSave(path.get()));
+    g_file_replace_contents_finish(file, result, nullptr, nullptr);
 }
 
-void WebInspectorUIProxy::platformSave(const String& suggestedURL, const String& content, bool base64Encoded, bool forceSaveDialog)
+void WebInspectorUIProxy::platformSave(Vector<WebCore::InspectorFrontendClient::SaveData>&& saveDatas, bool forceSaveAs)
 {
-    UNUSED_PARAM(forceSaveDialog);
+    ASSERT(saveDatas.size() == 1);
+    UNUSED_PARAM(forceSaveAs);
 
-    GtkWidget* parent = gtk_widget_get_toplevel(m_inspectorView);
+    GtkWidget* parent = gtk_widget_get_toplevel(m_inspectorView.get());
     if (!WebCore::widgetIsOnscreenToplevelWindow(parent))
         return;
 
@@ -531,7 +544,7 @@ void WebInspectorUIProxy::platformSave(const String& suggestedURL, const String&
     // Some inspector views (Audits for instance) use a custom URI scheme, such
     // as web-inspector. So we can't rely on the URL being a valid file:/// URL
     // unfortunately.
-    URL url(URL(), suggestedURL);
+    URL url { saveDatas[0].url };
     // Strip leading / character.
     gtk_file_chooser_set_current_name(chooser, url.path().substring(1).utf8().data());
 
@@ -540,26 +553,33 @@ void WebInspectorUIProxy::platformSave(const String& suggestedURL, const String&
 
     Vector<uint8_t> dataVector;
     CString dataString;
-    if (base64Encoded) {
-        auto decodedData = base64Decode(content, Base64DecodeOptions::ValidatePadding);
+    if (saveDatas[0].base64Encoded) {
+        auto decodedData = base64Decode(saveDatas[0].content, { Base64DecodeOption::ValidatePadding });
         if (!decodedData)
             return;
         decodedData->shrinkToFit();
         dataVector = WTFMove(*decodedData);
     } else
-        dataString = content.utf8();
+        dataString = saveDatas[0].content.utf8();
 
     const char* data = !dataString.isNull() ? dataString.data() : reinterpret_cast<char*>(dataVector.data());
     size_t dataLength = !dataString.isNull() ? dataString.length() : dataVector.size();
     GRefPtr<GFile> file = adoptGRef(gtk_file_chooser_get_file(chooser));
     GUniquePtr<char> path(g_file_get_path(file.get()));
     g_file_replace_contents_async(file.get(), data, dataLength, nullptr, false,
-        G_FILE_CREATE_REPLACE_DESTINATION, nullptr, fileReplaceContentsCallback, m_inspectorPage);
+        G_FILE_CREATE_REPLACE_DESTINATION, nullptr, fileReplaceContentsCallback, inspectorPage().get());
 }
 
-void WebInspectorUIProxy::platformAppend(const String&, const String&)
+void WebInspectorUIProxy::platformLoad(const String&, CompletionHandler<void(const String&)>&& completionHandler)
 {
     notImplemented();
+    completionHandler(nullString());
+}
+
+void WebInspectorUIProxy::platformPickColorFromScreen(CompletionHandler<void(const std::optional<WebCore::Color>&)>&& completionHandler)
+{
+    notImplemented();
+    completionHandler({ });
 }
 
 void WebInspectorUIProxy::platformAttachAvailabilityChanged(bool available)

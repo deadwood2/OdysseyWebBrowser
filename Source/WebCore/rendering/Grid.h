@@ -33,7 +33,7 @@
 
 namespace WebCore {
 
-typedef Vector<WeakPtr<RenderBox>, 1> GridCell;
+typedef Vector<SingleThreadWeakPtr<RenderBox>, 1> GridCell;
 typedef Vector<Vector<GridCell>> GridAsMatrix;
 typedef ListHashSet<size_t> OrderedTrackIndexSet;
 
@@ -48,7 +48,7 @@ public:
     unsigned numTracks(GridTrackSizingDirection) const;
 
     void ensureGridSize(unsigned maximumRowSize, unsigned maximumColumnSize);
-    void insert(RenderBox&, const GridArea&);
+    GridArea insert(RenderBox&, const GridArea&);
 
     // Note that each in flow child of a grid container becomes a grid item. This means that
     // this method will return false for a grid container with only out of flow children.
@@ -58,14 +58,19 @@ public:
     void setGridItemArea(const RenderBox& item, GridArea);
 
     GridSpan gridItemSpan(const RenderBox&, GridTrackSizingDirection) const;
+    GridSpan gridItemSpanIgnoringCollapsedTracks(const RenderBox&, GridTrackSizingDirection) const;
 
-    const GridCell& cell(unsigned row, unsigned column) const { return m_grid[row][column]; }
+    const GridCell& cell(unsigned row, unsigned column) const;
 
     unsigned explicitGridStart(GridTrackSizingDirection) const;
     void setExplicitGridStart(unsigned rowStart, unsigned columnStart);
 
     unsigned autoRepeatTracks(GridTrackSizingDirection) const;
     void setAutoRepeatTracks(unsigned autoRepeatRows, unsigned autoRepeatColumns);
+
+    void setClampingForSubgrid(unsigned maxRows, unsigned maxColumns);
+
+    void clampAreaToSubgridIfNeeded(GridArea&);
 
     void setAutoRepeatEmptyColumns(std::unique_ptr<OrderedTrackIndexSet>);
     void setAutoRepeatEmptyRows(std::unique_ptr<OrderedTrackIndexSet>);
@@ -81,8 +86,11 @@ public:
     void setNeedsItemsPlacement(bool);
     bool needsItemsPlacement() const { return m_needsItemsPlacement; };
 
+    void setupGridForMasonryLayout();
+    unsigned maxRows() const { return m_maxRows; }
+    unsigned maxColumns() const { return m_maxColumns; }
 private:
-    friend class GridIterator;
+    void ensureStorageForRow(unsigned row);
 
     OrderIterator m_orderIterator;
 
@@ -92,11 +100,14 @@ private:
     unsigned m_autoRepeatColumns { 0 };
     unsigned m_autoRepeatRows { 0 };
 
+    unsigned m_maxColumns { 0 };
+    unsigned m_maxRows { 0 };
+
     bool m_needsItemsPlacement { true };
 
     GridAsMatrix m_grid;
 
-    HashMap<const RenderBox*, GridArea> m_gridItemArea;
+    HashMap<SingleThreadWeakRef<const RenderBox>, GridArea> m_gridItemArea;
 
     std::unique_ptr<OrderedTrackIndexSet> m_autoRepeatEmptyColumns;
     std::unique_ptr<OrderedTrackIndexSet> m_autoRepeatEmptyRows;
@@ -109,16 +120,23 @@ public:
     // GridIterator(m_grid, ForColumns, 1) will walk over the rows of the 2nd column.
     GridIterator(const Grid&, GridTrackSizingDirection, unsigned fixedTrackIndex, unsigned varyingTrackIndex = 0);
 
+    static GridIterator createForSubgrid(const RenderGrid& subgrid, const GridIterator& outer, GridSpan subgridSpanInOuter);
+
     RenderBox* nextGridItem();
     bool isEmptyAreaEnough(unsigned rowSpan, unsigned columnSpan) const;
-    std::unique_ptr<GridArea> nextEmptyGridArea(unsigned fixedTrackSpan, unsigned varyingTrackSpan);
+    std::optional<GridArea> nextEmptyGridArea(unsigned fixedTrackSpan, unsigned varyingTrackSpan);
+
+    GridTrackSizingDirection direction() const
+    {
+        return m_direction;
+    }
 
 private:
-    const GridAsMatrix& m_grid;
+    const Grid& m_grid;
     GridTrackSizingDirection m_direction;
     unsigned m_rowIndex;
     unsigned m_columnIndex;
-    unsigned m_childIndex;
+    unsigned m_gridItemIndex;
 };
 
 } // namespace WebCore

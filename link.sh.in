@@ -1,4 +1,4 @@
-/gg/bin/ppc-morphos-g++-10 -Wl,--relax -g1 -feliminate-unused-debug-symbols -Wl,--compress-debug-sections=zlib -noixemul -mlongcall -Wno-ignored-attributes -O3 -DNDEBUG -o MiniBrowser.db -Wl,--whole-archive \
+/gg/bin/ppc-morphos-g++-11 -Wl,--relax -g1 -feliminate-unused-debug-symbols -Wl,--compress-debug-sections=zlib -noixemul -mlongcall -Wno-ignored-attributes -O3 -DNDEBUG -o MiniBrowser.db -Wl,--whole-archive \
 ../../lib/libWebKit.a \
 ../../lib/libWebCore.a \
 ../../lib/libPAL.a \
@@ -25,6 +25,7 @@ _IN_ROOTPATH/gen/host/libnix/lib/libnghttp2.a \
 _IN_ROOTPATH/lib/libjpeg/libjpeg.a \
 _IN_ROOTPATH/gen/host/libnix/lib/libpsl.a \
 _IN_ROOTPATH/gen/host/libnix/libpng16/lib/libpng16.a  \
+_IN_ROOTPATH/gen/host/libnix/lib/liblcms2.a \
 _IN_ROOTPATH/gen/host/libnix/lib/libhyphen.a \
 _IN_ROOTPATH/gen/host/libnix/lib/libcrypto.a \
 _IN_ROOTPATH/lib/libicu67/instdir/lib/libicui18n.a \

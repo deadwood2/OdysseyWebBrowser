@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,7 +30,12 @@
 
 #import "APIUIClient.h"
 #import "ApplePayPaymentSetupFeaturesWebKit.h"
+#import "AutomaticReloadPaymentRequest.h"
+#import "DeferredPaymentRequest.h"
+#import "DisbursementRequest.h"
 #import "PaymentSetupConfigurationWebKit.h"
+#import "PaymentTokenContext.h"
+#import "RecurringPaymentRequest.h"
 #import "WKPaymentAuthorizationDelegate.h"
 #import "WebPageProxy.h"
 #import "WebPaymentCoordinatorProxy.h"
@@ -41,29 +46,20 @@
 #import <WebCore/ApplePayShippingContactUpdate.h>
 #import <WebCore/ApplePayShippingMethod.h>
 #import <WebCore/ApplePayShippingMethodUpdate.h>
-#import <WebCore/PaymentAuthorizationStatus.h>
 #import <WebCore/PaymentHeaders.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/RunLoop.h>
 #import <wtf/URL.h>
 #import <wtf/cocoa/VectorCocoa.h>
+#import <wtf/text/StringToIntegerConversion.h>
 
 #import <pal/cocoa/PassKitSoftLink.h>
-
-#if USE(APPLE_INTERNAL_SDK)
-#include <WebKitAdditions/WebPaymentCoordinatorProxyCocoaAdditions.mm>
-#endif
-
-// FIXME: We don't support any platforms without -setThumbnailURLs:, so this can be removed.
-@interface PKPaymentRequest ()
-@property (nonatomic, strong) NSURL *thumbnailURL;
-@end
 
 namespace WebKit {
 
 WebPaymentCoordinatorProxy::WebPaymentCoordinatorProxy(WebPaymentCoordinatorProxy::Client& client)
     : m_client(client)
-    , m_canMakePaymentsQueue(WorkQueue::create("com.apple.WebKit.CanMakePayments"))
+    , m_canMakePaymentsQueue(WorkQueue::create("com.apple.WebKit.CanMakePayments"_s))
 {
     m_client.paymentCoordinatorAddMessageReceiver(*this, Messages::WebPaymentCoordinatorProxy::messageReceiverName(), *this);
 }
@@ -79,7 +75,7 @@ WebPaymentCoordinatorProxy::~WebPaymentCoordinatorProxy()
 void WebPaymentCoordinatorProxy::platformCanMakePaymentsWithActiveCard(const String& merchantIdentifier, const String& domainName, WTF::Function<void(bool)>&& completionHandler)
 {
 #if PLATFORM(MAC)
-    if (!PAL::isPassKitFrameworkAvailable())
+    if (!PAL::isPassKitCoreFrameworkAvailable())
         return completionHandler(false);
 #endif
 
@@ -96,7 +92,7 @@ void WebPaymentCoordinatorProxy::platformCanMakePaymentsWithActiveCard(const Str
 void WebPaymentCoordinatorProxy::platformOpenPaymentSetup(const String& merchantIdentifier, const String& domainName, WTF::Function<void(bool)>&& completionHandler)
 {
 #if PLATFORM(MAC)
-    if (!PAL::isPassKitFrameworkAvailable())
+    if (!PAL::isPassKitCoreFrameworkAvailable())
         return completionHandler(false);
 #endif
 
@@ -113,27 +109,20 @@ static RetainPtr<NSSet> toPKContactFields(const WebCore::ApplePaySessionPaymentR
     Vector<NSString *> result;
 
     if (contactFields.postalAddress)
-        result.append(PAL::get_PassKit_PKContactFieldPostalAddress());
+        result.append(PKContactFieldPostalAddress);
     if (contactFields.phone)
-        result.append(PAL::get_PassKit_PKContactFieldPhoneNumber());
+        result.append(PKContactFieldPhoneNumber);
     if (contactFields.email)
-        result.append(PAL::get_PassKit_PKContactFieldEmailAddress());
+        result.append(PKContactFieldEmailAddress);
     if (contactFields.name)
-        result.append(PAL::get_PassKit_PKContactFieldName());
+        result.append(PKContactFieldName);
     if (contactFields.phoneticName)
-        result.append(PAL::get_PassKit_PKContactFieldPhoneticName());
+        result.append(PKContactFieldPhoneticName);
 
     return adoptNS([[NSSet alloc] initWithObjects:result.data() count:result.size()]);
 }
 
-NSDecimalNumber *toDecimalNumber(const String& amount)
-{
-    if (!amount)
-        return [NSDecimalNumber zero];
-    return [NSDecimalNumber decimalNumberWithString:amount locale:@{ NSLocaleDecimalSeparator : @"." }];
-}
-
-static PKMerchantCapability toPKMerchantCapabilities(const WebCore::ApplePaySessionPaymentRequest::MerchantCapabilities& merchantCapabilities)
+PKMerchantCapability toPKMerchantCapabilities(const WebCore::ApplePaySessionPaymentRequest::MerchantCapabilities& merchantCapabilities)
 {
     PKMerchantCapability result = 0;
     if (merchantCapabilities.supports3DS)
@@ -144,6 +133,10 @@ static PKMerchantCapability toPKMerchantCapabilities(const WebCore::ApplePaySess
         result |= PKMerchantCapabilityCredit;
     if (merchantCapabilities.supportsDebit)
         result |= PKMerchantCapabilityDebit;
+#if HAVE(PASSKIT_DISBURSEMENTS)
+    if (merchantCapabilities.supportsInstantFundsOut)
+        result |= PKMerchantCapabilityInstantFundsOut;
+#endif // HAVE(PASSKIT_DISBURSEMENTS)
 
     return result;
 }
@@ -191,7 +184,7 @@ static RetainPtr<PKDateComponentsRange> toPKDateComponentsRange(const WebCore::A
 
 PKShippingMethod *toPKShippingMethod(const WebCore::ApplePayShippingMethod& shippingMethod)
 {
-    PKShippingMethod *result = [PAL::getPKShippingMethodClass() summaryItemWithLabel:shippingMethod.label amount:toDecimalNumber(shippingMethod.amount)];
+    PKShippingMethod *result = [PAL::getPKShippingMethodClass() summaryItemWithLabel:shippingMethod.label amount:WebCore::toDecimalNumber(shippingMethod.amount)];
     [result setIdentifier:shippingMethod.identifier];
     [result setDetail:shippingMethod.detail];
 #if HAVE(PASSKIT_SHIPPING_METHOD_DATE_COMPONENTS_RANGE)
@@ -201,23 +194,79 @@ PKShippingMethod *toPKShippingMethod(const WebCore::ApplePayShippingMethod& ship
     return result;
 }
 
+#if HAVE(PASSKIT_DEFAULT_SHIPPING_METHOD)
+
+PKShippingMethods *toPKShippingMethods(const Vector<WebCore::ApplePayShippingMethod>& webShippingMethods)
+{
+    RetainPtr<PKShippingMethod> defaultMethod;
+    auto methods = createNSArray(webShippingMethods, [&defaultMethod] (const auto& webShippingMethod) {
+        auto pkShippingMethod = toPKShippingMethod(webShippingMethod);
+        if (webShippingMethod.selected)
+            defaultMethod = pkShippingMethod;
+        return pkShippingMethod;
+    });
+    return adoptNS([PAL::allocPKShippingMethodsInstance() initWithMethods:methods.get() defaultMethod:defaultMethod.get()]).autorelease();
+}
+
+#endif // HAVE(PASSKIT_DEFAULT_SHIPPING_METHOD)
+
 #if HAVE(PASSKIT_SHIPPING_CONTACT_EDITING_MODE)
 
 static PKShippingContactEditingMode toPKShippingContactEditingMode(WebCore::ApplePayShippingContactEditingMode shippingContactEditingMode)
 {
     switch (shippingContactEditingMode) {
+    case WebCore::ApplePayShippingContactEditingMode::Available:
     case WebCore::ApplePayShippingContactEditingMode::Enabled:
+#if USE(PKSHIPPINGCONTACTEDITINGMODEENABLED)
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         return PKShippingContactEditingModeEnabled;
+ALLOW_DEPRECATED_DECLARATIONS_END
+#else
+        return PKShippingContactEditingModeAvailable;
+#endif
 
     case WebCore::ApplePayShippingContactEditingMode::StorePickup:
         return PKShippingContactEditingModeStorePickup;
     }
 
     ASSERT_NOT_REACHED();
+#if USE(PKSHIPPINGCONTACTEDITINGMODEENABLED)
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     return PKShippingContactEditingModeEnabled;
+ALLOW_DEPRECATED_DECLARATIONS_END
+#else
+    return PKShippingContactEditingModeAvailable;
+#endif
 }
 
 #endif // HAVE(PASSKIT_SHIPPING_CONTACT_EDITING_MODE)
+
+#if HAVE(PASSKIT_APPLE_PAY_LATER_AVAILABILITY)
+
+static PKApplePayLaterAvailability toPKApplePayLaterAvailability(WebCore::ApplePayLaterAvailability applePayLaterAvailability)
+{
+    switch (applePayLaterAvailability) {
+    case WebCore::ApplePayLaterAvailability::Available:
+        return PKApplePayLaterAvailable;
+
+    case WebCore::ApplePayLaterAvailability::UnavailableItemIneligible:
+        return PKApplePayLaterUnavailableItemIneligible;
+
+    case WebCore::ApplePayLaterAvailability::UnavailableRecurringTransaction:
+        return PKApplePayLaterUnavailableRecurringTransaction;
+    }
+}
+
+#endif // HAVE(PASSKIT_APPLE_PAY_LATER_AVAILABILITY)
+
+#if HAVE(PASSKIT_MERCHANT_CATEGORY_CODE)
+
+static PKMerchantCategoryCode toPKMerchantCategoryCode(const String& merchantCategoryCode)
+{
+    return parseInteger<int16_t>(merchantCategoryCode).value_or(PKMerchantCategoryCodeNone);
+}
+
+#endif // HAVE(PASSKIT_MERCHANT_CATEGORY_CODE)
 
 static RetainPtr<NSSet> toNSSet(const Vector<String>& strings)
 {
@@ -253,8 +302,8 @@ RetainPtr<PKPaymentRequest> WebPaymentCoordinatorProxy::platformPaymentRequest(c
 
     [result setCountryCode:paymentRequest.countryCode()];
     [result setCurrencyCode:paymentRequest.currencyCode()];
-    [result setBillingContact:paymentRequest.billingContact().pkContact()];
-    [result setShippingContact:paymentRequest.shippingContact().pkContact()];
+    [result setBillingContact:paymentRequest.billingContact().pkContact().get()];
+    [result setShippingContact:paymentRequest.shippingContact().pkContact().get()];
     [result setRequiredBillingContactFields:toPKContactFields(paymentRequest.requiredBillingContactFields()).get()];
     [result setRequiredShippingContactFields:toPKContactFields(paymentRequest.requiredShippingContactFields()).get()];
 
@@ -263,15 +312,19 @@ RetainPtr<PKPaymentRequest> WebPaymentCoordinatorProxy::platformPaymentRequest(c
 
     [result setShippingType:toPKShippingType(paymentRequest.shippingType())];
 
+#if HAVE(PASSKIT_DEFAULT_SHIPPING_METHOD)
+    [result setAvailableShippingMethods:toPKShippingMethods(paymentRequest.shippingMethods())];
+#else
     [result setShippingMethods:createNSArray(paymentRequest.shippingMethods(), [] (auto& method) {
         return toPKShippingMethod(method);
     }).get()];
+#endif
 
     [result setPaymentSummaryItems:WebCore::platformSummaryItems(paymentRequest.total(), paymentRequest.lineItems())];
 
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [result setExpectsMerchantSession:YES];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     if (!paymentRequest.applicationData().isNull()) {
         auto applicationData = adoptNS([[NSData alloc] initWithBase64EncodedString:paymentRequest.applicationData() options:0]);
@@ -280,11 +333,9 @@ RetainPtr<PKPaymentRequest> WebPaymentCoordinatorProxy::platformPaymentRequest(c
 
     [result setSupportedCountries:toNSSet(paymentRequest.supportedCountries()).get()];
 
-#if HAVE(PASSKIT_BOUND_INTERFACE_IDENTIFIER)
     auto& boundInterfaceIdentifier = m_client.paymentCoordinatorBoundInterfaceIdentifier(*this);
     if (!boundInterfaceIdentifier.isEmpty())
         [result setBoundInterfaceIdentifier:boundInterfaceIdentifier];
-#endif
 
     // FIXME: Instead of using respondsToSelector, this should use a proper #if version check.
     auto& bundleIdentifier = m_client.paymentCoordinatorSourceApplicationBundleIdentifier(*this);
@@ -302,8 +353,8 @@ RetainPtr<PKPaymentRequest> WebPaymentCoordinatorProxy::platformPaymentRequest(c
 #endif
 
 #if HAVE(PASSKIT_INSTALLMENTS)
-    if (PKPaymentInstallmentConfiguration *configuration = paymentRequest.installmentConfiguration().platformConfiguration()) {
-        [result setInstallmentConfiguration:configuration];
+    if (auto configuration = paymentRequest.installmentConfiguration().platformConfiguration()) {
+        [result setInstallmentConfiguration:configuration.get()];
         [result setRequestType:PKPaymentRequestTypeInstallment];
     }
 #endif
@@ -321,16 +372,53 @@ RetainPtr<PKPaymentRequest> WebPaymentCoordinatorProxy::platformPaymentRequest(c
         [result setShippingContactEditingMode:toPKShippingContactEditingMode(*shippingContactEditingMode)];
 #endif
 
-#if defined(WebPaymentCoordinatorProxyCocoaAdditions_platformPaymentRequest)
-    WebPaymentCoordinatorProxyCocoaAdditions_platformPaymentRequest
+#if HAVE(PASSKIT_APPLE_PAY_LATER_AVAILABILITY)
+    if (auto& applePayLaterAvailability = paymentRequest.applePayLaterAvailability()) {
+        [result setApplePayLaterAvailability:toPKApplePayLaterAvailability(*applePayLaterAvailability)];
+    }
+#endif
+
+#if HAVE(PASSKIT_RECURRING_PAYMENTS)
+    if (auto& recurringPaymentRequest = paymentRequest.recurringPaymentRequest())
+        [result setRecurringPaymentRequest:platformRecurringPaymentRequest(*recurringPaymentRequest).get()];
+#endif
+
+#if HAVE(PASSKIT_AUTOMATIC_RELOAD_PAYMENTS)
+    if (auto& automaticReloadPaymentRequest = paymentRequest.automaticReloadPaymentRequest())
+        [result setAutomaticReloadPaymentRequest:platformAutomaticReloadPaymentRequest(*automaticReloadPaymentRequest).get()];
+#endif
+
+#if HAVE(PASSKIT_MULTI_MERCHANT_PAYMENTS)
+    if (auto& multiTokenContexts = paymentRequest.multiTokenContexts())
+        [result setMultiTokenContexts:platformPaymentTokenContexts(*multiTokenContexts).get()];
+#endif
+
+#if HAVE(PASSKIT_DEFERRED_PAYMENTS)
+    if (auto& deferredPaymentRequest = paymentRequest.deferredPaymentRequest())
+        [result setDeferredPaymentRequest:platformDeferredPaymentRequest(*deferredPaymentRequest).get()];
+#endif
+
+#if HAVE(PASSKIT_MERCHANT_CATEGORY_CODE)
+    if (auto& merchantCategoryCode = paymentRequest.merchantCategoryCode(); !merchantCategoryCode.isNull())
+        [result setMerchantCategoryCode:toPKMerchantCategoryCode(merchantCategoryCode)];
 #endif
 
     return result;
 }
 
-void WebPaymentCoordinatorProxy::platformCompletePaymentSession(const std::optional<WebCore::PaymentAuthorizationResult>& result)
+void WebPaymentCoordinatorProxy::platformSetPaymentRequestUserAgent(PKPaymentRequest *paymentRequest, const String& userAgent)
 {
-    m_authorizationPresenter->completePaymentSession(result);
+#if HAVE(PKPAYMENTREQUEST_USERAGENT)
+    [paymentRequest setUserAgent:userAgent];
+#else
+    UNUSED_PARAM(paymentRequest);
+    UNUSED_PARAM(userAgent);
+#endif // HAVE(PKPAYMENTREQUEST_USERAGENT)
+}
+
+void WebPaymentCoordinatorProxy::platformCompletePaymentSession(WebCore::ApplePayPaymentAuthorizationResult&& result)
+{
+    m_authorizationPresenter->completePaymentSession(WTFMove(result));
 }
 
 void WebPaymentCoordinatorProxy::platformCompleteMerchantValidation(const WebCore::PaymentMerchantSession& paymentMerchantSession)
@@ -362,7 +450,7 @@ void WebPaymentCoordinatorProxy::platformCompleteCouponCodeChange(std::optional<
 
 #endif // ENABLE(APPLE_PAY_COUPON_CODE)
 
-void WebPaymentCoordinatorProxy::getSetupFeatures(const PaymentSetupConfiguration& configuration, Messages::WebPaymentCoordinatorProxy::GetSetupFeatures::AsyncReply&& reply)
+void WebPaymentCoordinatorProxy::getSetupFeatures(const PaymentSetupConfiguration& configuration, CompletionHandler<void(PaymentSetupFeatures&&)>&& reply)
 {
 #if PLATFORM(MAC)
     if (!PAL::getPKPaymentSetupControllerClass()) {
@@ -378,11 +466,11 @@ void WebPaymentCoordinatorProxy::getSetupFeatures(const PaymentSetupConfiguratio
     });
 
 ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
-    [PAL::getPKPaymentSetupControllerClass() paymentSetupFeaturesForConfiguration:configuration.platformConfiguration() completion:completion.get()];
+    [PAL::getPKPaymentSetupControllerClass() paymentSetupFeaturesForConfiguration:configuration.platformConfiguration().get() completion:completion.get()];
 ALLOW_NEW_API_WITHOUT_GUARDS_END
 }
 
-void WebPaymentCoordinatorProxy::beginApplePaySetup(const PaymentSetupConfiguration& configuration, const PaymentSetupFeatures& features, Messages::WebPaymentCoordinatorProxy::BeginApplePaySetup::AsyncReply&& reply)
+void WebPaymentCoordinatorProxy::beginApplePaySetup(const PaymentSetupConfiguration& configuration, const PaymentSetupFeatures& features, CompletionHandler<void(bool)>&& reply)
 {
     platformBeginApplePaySetup(configuration, features, WTFMove(reply));
 }
@@ -392,9 +480,11 @@ void WebPaymentCoordinatorProxy::endApplePaySetup()
     platformEndApplePaySetup();
 }
 
+#if ENABLE(APPLE_PAY_SETUP)
+
 #if PLATFORM(MAC)
 
-void WebPaymentCoordinatorProxy::platformBeginApplePaySetup(const PaymentSetupConfiguration& configuration, const PaymentSetupFeatures& features, Messages::WebPaymentCoordinatorProxy::BeginApplePaySetup::AsyncReply&& reply)
+void WebPaymentCoordinatorProxy::platformBeginApplePaySetup(const PaymentSetupConfiguration& configuration, const PaymentSetupFeatures& features, CompletionHandler<void(bool)>&& reply)
 {
     if (!PAL::getPKPaymentSetupRequestClass()) {
         reply(false);
@@ -402,7 +492,7 @@ void WebPaymentCoordinatorProxy::platformBeginApplePaySetup(const PaymentSetupCo
     }
 
     auto request = adoptNS([PAL::allocPKPaymentSetupRequestInstance() init]);
-    [request setConfiguration:configuration.platformConfiguration()];
+    [request setConfiguration:configuration.platformConfiguration().get()];
     [request setPaymentSetupFeatures:features.platformFeatures()];
 
     auto completion = makeBlockPtr([reply = WTFMove(reply)](BOOL success) mutable {
@@ -422,9 +512,9 @@ void WebPaymentCoordinatorProxy::platformEndApplePaySetup()
 {
 }
 
-#else // PLATFORM(MAC)
+#else
 
-void WebPaymentCoordinatorProxy::platformBeginApplePaySetup(const PaymentSetupConfiguration& configuration, const PaymentSetupFeatures& features, Messages::WebPaymentCoordinatorProxy::BeginApplePaySetup::AsyncReply&& reply)
+void WebPaymentCoordinatorProxy::platformBeginApplePaySetup(const PaymentSetupConfiguration& configuration, const PaymentSetupFeatures& features, CompletionHandler<void(bool)>&& reply)
 {
     UIViewController *presentingViewController = m_client.paymentCoordinatorPresentingViewController(*this);
     if (!presentingViewController) {
@@ -433,7 +523,7 @@ void WebPaymentCoordinatorProxy::platformBeginApplePaySetup(const PaymentSetupCo
     }
 
     auto request = adoptNS([PAL::allocPKPaymentSetupRequestInstance() init]);
-    [request setConfiguration:configuration.platformConfiguration()];
+    [request setConfiguration:configuration.platformConfiguration().get()];
     [request setPaymentSetupFeatures:features.platformFeatures()];
 
     auto paymentSetupViewController = adoptNS([PAL::allocPKPaymentSetupViewControllerInstance() initWithPaymentSetupRequest:request.get()]);
@@ -459,7 +549,20 @@ void WebPaymentCoordinatorProxy::platformEndApplePaySetup()
     m_paymentSetupViewController = nil;
 }
 
-#endif // PLATFORM(MAC)
+#endif
+
+#else
+
+void WebPaymentCoordinatorProxy::platformBeginApplePaySetup(const PaymentSetupConfiguration& configuration, const PaymentSetupFeatures& features, CompletionHandler<void(bool)>&& reply)
+{
+    reply(false);
+}
+
+void WebPaymentCoordinatorProxy::platformEndApplePaySetup()
+{
+}
+
+#endif // ENABLE(APPLE_PAY_SETUP)
 
 } // namespace WebKit
 

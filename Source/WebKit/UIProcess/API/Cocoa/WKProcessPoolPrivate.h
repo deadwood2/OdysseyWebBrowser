@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,6 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#import <WebKit/WKBase.h>
 #import <WebKit/WKProcessPool.h>
 #import <WebKit/WKSecurityOrigin.h>
 
@@ -35,6 +36,40 @@
 @protocol _WKAutomationDelegate;
 @protocol _WKDownloadDelegate;
 @protocol _WKGeolocationCoreLocationProvider;
+
+#define HAVE_WK_PROCESS_STATE 1
+
+typedef NS_ENUM(NSInteger, _WKProcessState) {
+    _WKProcessStateForeground,
+    _WKProcessStateBackground,
+    _WKProcessStateSuspended,
+} WK_API_AVAILABLE(macos(14.5), ios(17.5), visionos(1.2));
+
+typedef NS_ENUM(NSInteger, _WKWebContentProcessState) {
+    _WKWebContentProcessStatePrewarmed,
+    _WKWebContentProcessStateCached,
+    _WKWebContentProcessStateActive,
+} WK_API_AVAILABLE(macos(14.5), ios(17.5), visionos(1.2));
+
+WK_CLASS_AVAILABLE(macos(14.5), ios(17.5), visionos(1.2))
+@interface _WKProcessInfo : NSObject
+@property (nonatomic, readonly) pid_t pid;
+@property (nonatomic, readonly) _WKProcessState state;
+@property (nonatomic, readonly) NSTimeInterval totalUserCPUTime;
+@property (nonatomic, readonly) NSTimeInterval totalSystemCPUTime;
+@property (nonatomic, readonly) size_t physicalFootprint;
+@end
+
+WK_CLASS_AVAILABLE(macos(14.5), ios(17.5), visionos(1.2))
+@interface _WKWebContentProcessInfo : _WKProcessInfo
+@property (nonatomic, readonly) _WKWebContentProcessState webContentState;
+@property (nonatomic, readonly) NSArray<WKWebView *> *webViews;
+@property (nonatomic, readonly) BOOL runningServiceWorkers;
+@property (nonatomic, readonly) BOOL runningSharedWorkers;
+@property (nonatomic, readonly) NSTimeInterval totalForegroundTime;
+@property (nonatomic, readonly) NSTimeInterval totalBackgroundTime;
+@property (nonatomic, readonly) NSTimeInterval totalSuspendedTime;
+@end
 
 @interface WKProcessPool ()
 - (instancetype)_initWithConfiguration:(_WKProcessPoolConfiguration *)configuration __attribute__((objc_method_family(init))) NS_DESIGNATED_INITIALIZER;
@@ -50,7 +85,6 @@
 
 - (void)_setAllowsSpecificHTTPSCertificate:(NSArray *)certificateChain forHost:(NSString *)host WK_API_DEPRECATED_WITH_REPLACEMENT("WKWebsiteDataStore._allowTLSCertificateChain:forHost:", macos(10.10, 12.0), ios(8.0, 15.0));
 - (void)_setCanHandleHTTPSServerTrustEvaluation:(BOOL)value WK_API_DEPRECATED_WITH_REPLACEMENT("_WKWebsiteDataStoreConfiguration.fastServerTrustEvaluationEnabled", macos(10.11, 10.15.4), ios(9.0, 13.4));
-- (void)_setCookieAcceptPolicy:(NSHTTPCookieAcceptPolicy)policy WK_API_DEPRECATED_WITH_REPLACEMENT("WKHTTPCookieStore._setCookieAcceptPolicy:completionHandler:", macos(10.10, 12.0), ios(8.0, 15.0));
 
 - (id)_objectForBundleParameter:(NSString *)parameter;
 - (void)_setObject:(id <NSCopying, NSSecureCoding>)object forBundleParameter:(NSString *)parameter;
@@ -72,6 +106,8 @@
 + (NSURL *)_websiteDataURLForContainerWithURL:(NSURL *)containerURL;
 + (NSURL *)_websiteDataURLForContainerWithURL:(NSURL *)containerURL bundleIdentifierIfNotInContainer:(NSString *)bundleIdentifier;
 
++ (void)_setWebProcessCountLimit:(unsigned)limit WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
 - (void)_warmInitialProcess WK_API_AVAILABLE(macos(10.12), ios(10.0));
 - (void)_automationCapabilitiesDidChange WK_API_AVAILABLE(macos(10.12), ios(10.0));
 - (void)_setAutomationSession:(_WKAutomationSession *)automationSession WK_API_AVAILABLE(macos(10.12), ios(10.0));
@@ -89,11 +125,15 @@
 - (_WKDownload *)_downloadURLRequest:(NSURLRequest *)request websiteDataStore:(WKWebsiteDataStore *)dataStore originatingWebView:(WKWebView *)webView WK_API_DEPRECATED_WITH_REPLACEMENT("WKWebView _downloadRequest", macos(10.10, 12.0), ios(8.0, 15.0));
 - (_WKDownload *)_resumeDownloadFromData:(NSData *)resumeData websiteDataStore:(WKWebsiteDataStore *)dataStore  path:(NSString *)path originatingWebView:(WKWebView *)webView WK_API_DEPRECATED_WITH_REPLACEMENT("WKWebView.resumeDownloadFromResumeData:completionHandler:", macos(10.10, 12.0), ios(8.0, 15.0));
 
++ (void)_setLinkedOnOrAfterEverything WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
 // Test only. Should be called only while no web content processes are running.
 - (void)_terminateServiceWorkers WK_API_AVAILABLE(macos(10.14), ios(12.0));
 
 // Test only.
 - (pid_t)_prewarmedProcessIdentifier WK_API_AVAILABLE(macos(10.15), ios(13.0));
+
+- (void)_terminateAllWebContentProcesses;
 
 // Test only.
 - (size_t)_webProcessCount WK_API_AVAILABLE(macos(10.13), ios(11.0));
@@ -102,7 +142,7 @@
 - (size_t)_webProcessCountIgnoringPrewarmedAndCached WK_API_AVAILABLE(macos(10.14.4), ios(12.2));
 - (size_t)_pluginProcessCount WK_API_AVAILABLE(macos(10.13.4), ios(11.3));
 - (size_t)_serviceWorkerProcessCount WK_API_AVAILABLE(macos(10.14), ios(12.0));
-- (void)_syncNetworkProcessCookies WK_API_DEPRECATED_WITH_REPLACEMENT("WKHTTPCookieStore._flushCookiesToDiskWithCompletionHandler:", macos(10.13, 12.0), ios(11.0, 15.0));
+- (void)_isJITDisabledInAllRemoteWorkerProcesses:(void(^)(BOOL))completionHandler;
 - (void)_makeNextWebProcessLaunchFailForTesting WK_API_AVAILABLE(macos(10.14), ios(12.0));
 - (NSUInteger)_maximumSuspendedPageCount WK_API_AVAILABLE(macos(10.14.4), ios(12.2));
 - (NSUInteger)_processCacheCapacity WK_API_AVAILABLE(macos(10.14.4), ios(12.2));
@@ -110,7 +150,9 @@
 - (void)_clearWebProcessCache WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
 - (void)_setUseSeparateServiceWorkerProcess:(BOOL)forceServiceWorkerProcess WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
 - (pid_t)_gpuProcessIdentifier WK_API_AVAILABLE(macos(12.0), ios(15.0));
+- (BOOL)_hasAudibleMediaActivity WK_API_AVAILABLE(macos(13.0), ios(16.0));
 - (BOOL)_requestWebProcessTermination:(pid_t)pid WK_API_AVAILABLE(macos(12.0), ios(15.0));
+- (BOOL)_isWebProcessSuspended:(pid_t)pid;
 
 // Test only. Returns web processes running web pages (does not include web processes running service workers)
 - (size_t)_webPageContentProcessCount WK_API_AVAILABLE(macos(10.13.4), ios(11.3));
@@ -119,6 +161,9 @@
 + (void)_forceGameControllerFramework WK_API_AVAILABLE(macos(10.13), ios(11.0));
 + (void)_setLinkedOnOrAfterEverythingForTesting WK_API_AVAILABLE(macos(12.0), ios(15.0));
 + (void)_setLinkedOnOrBeforeEverythingForTesting WK_API_AVAILABLE(macos(12.0), ios(15.0));
++ (void)_setCaptivePortalModeEnabledGloballyForTesting:(BOOL)isEnabled WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (void)_clearCaptivePortalModeEnabledGloballyForTesting WK_API_AVAILABLE(macos(13.0), ios(16.0));
++ (BOOL)_lockdownModeEnabledGloballyForTesting WK_API_AVAILABLE(macos(13.0), ios(16.0));
 
 - (void)_preconnectToServer:(NSURL *)serverURL WK_API_DEPRECATED_WITH_REPLACEMENT("WKWebView._preconnectToServer", macos(10.13.4, 10.15.4), ios(11.3, 13.4));
 
@@ -128,6 +173,8 @@
 
 @property (nonatomic, getter=_isCookieStoragePartitioningEnabled, setter=_setCookieStoragePartitioningEnabled:) BOOL _cookieStoragePartitioningEnabled WK_API_DEPRECATED("Partitioned cookies are no longer supported", macos(10.12.3, 10.14.4), ios(10.3, 12.2));
 
+- (WKNotificationManagerRef)_notificationManagerForTesting;
+
 // Test only.
 - (void)_seedResourceLoadStatisticsForTestingWithFirstParty:(NSURL *)firstPartyURL thirdParty:(NSURL *)thirdPartyURL shouldScheduleNotification:(BOOL)shouldScheduleNotification completionHandler:(void(^)(void))completionHandler  WK_API_AVAILABLE(macos(10.15.4), ios(13.4));
 - (void)_garbageCollectJavaScriptObjectsForTesting WK_API_AVAILABLE(macos(11.0), ios(14.0));
@@ -135,4 +182,8 @@
 - (size_t)_numberOfConnectedHIDGamepadsForTesting WK_API_AVAILABLE(macos(11.0), ios(15.0));
 - (size_t)_numberOfConnectedGameControllerFrameworkGamepadsForTesting WK_API_AVAILABLE(macos(11.0), ios(14.0));
 - (void)_setUsesOnlyHIDGamepadProviderForTesting:(BOOL)usesHIDProvider WK_API_AVAILABLE(macos(11.0), ios(14.0));
+
++ (_WKProcessInfo *)_gpuProcessInfo WK_API_AVAILABLE(macos(14.5));
++ (NSArray<_WKProcessInfo *> *)_networkingProcessInfo WK_API_AVAILABLE(macos(14.5));
++ (NSArray<_WKProcessInfo *> *)_webContentProcessInfo WK_API_AVAILABLE(macos(14.5));
 @end

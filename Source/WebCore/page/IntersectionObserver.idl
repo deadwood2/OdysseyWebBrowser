@@ -26,18 +26,15 @@
 // https://wicg.github.io/IntersectionObserver/
 
 [
-    Conditional=INTERSECTION_OBSERVER,
-    EnabledBySetting=IntersectionObserver,
     Exposed=Window,
     JSCustomMarkFunction,
     CustomIsReachable,
-    ImplementationLacksVTable
 ] interface IntersectionObserver {
-    [CallWith=Document] constructor(IntersectionObserverCallback callback, optional IntersectionObserverInit options);
+    [CallWith=CurrentDocument] constructor(IntersectionObserverCallback callback, optional IntersectionObserverInit options);
 
     readonly attribute Node? root;
     readonly attribute DOMString rootMargin;
-    readonly attribute sequence<double> thresholds;
+    readonly attribute FrozenArray<double> thresholds;
 
     undefined observe(Element target);
     undefined unobserve(Element target);
@@ -45,10 +42,6 @@
     [ResultField=records] sequence<IntersectionObserverEntry> takeRecords();
 };
 
-[
-    Conditional=INTERSECTION_OBSERVER,
-    EnabledBySetting=IntersectionObserver
-]
 dictionary IntersectionObserverInit {
     (Element or Document)? root = null;
     DOMString rootMargin = "0px";

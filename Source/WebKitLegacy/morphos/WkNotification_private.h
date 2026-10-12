@@ -5,17 +5,18 @@
 #import "WebKit.h"
 #import <wtf/CompletionHandler.h>
 #import <WebCore/Notification.h>
+#import <WebCore/NotificationData.h>
 #import <WebCore/NotificationClient.h>
 #import <WebCore/NotificationPermissionCallback.h>
 #define __OBJC__
 
 @interface WkNotificationPrivate : WkNotification
 {
-	RefPtr<WebCore::Notification> _notification;
+	std::optional<WebCore::NotificationData> _notification;
 }
 
-- (id)initWithNotification:(RefPtr<WebCore::Notification>)notification;
-+ (id)notificationForNotification:(WebCore::Notification *)notification;
+- (id)initWithNotification:(WebCore::NotificationData&&)notification;
++ (id)notificationForNotification:(WebCore::NotificationData&&)notification;
 
 - (void)cancel;
 

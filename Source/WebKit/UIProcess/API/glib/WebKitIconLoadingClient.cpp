@@ -22,11 +22,13 @@
 
 #include "APIIconLoadingClient.h"
 #include "WebKitWebViewPrivate.h"
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/glib/GWeakPtr.h>
 
 using namespace WebKit;
 
 class IconLoadingClient : public API::IconLoadingClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(IconLoadingClient);
 public:
     explicit IconLoadingClient(WebKitWebView* webView)
         : m_webView(webView)
@@ -43,16 +45,16 @@ private:
         }
 
         WebCore::LinkIcon copiedIcon = icon;
-        webkitWebViewGetLoadDecisionForIcon(m_webView, icon, [protectedWebView = GRefPtr<WebKitWebView>(m_webView), icon = WTFMove(copiedIcon), completionHandler = WTFMove(completionHandler)] (bool loadIcon) mutable {
-            if (!loadIcon) {
+        webkitWebViewGetLoadDecisionForIcon(m_webView, icon, [weakWebView = GWeakPtr<WebKitWebView>(m_webView), icon = WTFMove(copiedIcon), completionHandler = WTFMove(completionHandler)] (bool loadIcon) mutable {
+            if (!weakWebView || !loadIcon) {
                 completionHandler(nullptr);
                 return;
             }
 
-            completionHandler([protectedWebView = WTFMove(protectedWebView), icon = WTFMove(icon)] (API::Data* iconData) {
-                if (!iconData)
+            completionHandler([weakWebView = WTFMove(weakWebView), icon = WTFMove(icon)] (API::Data* iconData) {
+                if (!weakWebView || !iconData)
                     return;
-                webkitWebViewSetIcon(protectedWebView.get(), icon, *iconData);
+                webkitWebViewSetIcon(weakWebView.get(), icon, *iconData);
             });
         });
     }

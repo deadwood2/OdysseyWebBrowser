@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,14 +34,14 @@
 
 namespace WebCore {
 
-class MediaPlaybackTargetPickerMac final : public MediaPlaybackTargetPicker, public AVPlaybackTargetPicker::Client {
+class MediaPlaybackTargetPickerMac final : public MediaPlaybackTargetPicker, public AVPlaybackTargetPickerClient {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(MediaPlaybackTargetPickerMac);
 public:
     explicit MediaPlaybackTargetPickerMac(MediaPlaybackTargetPicker::Client&);
     virtual ~MediaPlaybackTargetPickerMac();
 
-    void showPlaybackTargetPicker(PlatformView*, const FloatRect&, bool checkActiveRoute, bool useDarkAppearance, bool useiTunesAVOutputContext) final;
+    void showPlaybackTargetPicker(PlatformView*, const FloatRect&, bool checkActiveRoute, bool useDarkAppearance) final;
     void startingMonitoringPlaybackTargets() final;
     void stopMonitoringPlaybackTargets() final;
     void invalidatePlaybackTargets() final;
@@ -50,7 +50,7 @@ private:
     bool externalOutputDeviceAvailable() final;
     Ref<MediaPlaybackTarget> playbackTarget() final;
 
-    // AVPlaybackTargetPicker::Client
+    // AVPlaybackTargetPickerClient
     void pickerWasDismissed() final;
     void availableDevicesChanged() final;
     void currentDeviceChanged() final;

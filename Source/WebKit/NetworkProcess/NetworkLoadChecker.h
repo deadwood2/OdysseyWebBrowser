@@ -27,22 +27,32 @@
 
 #include "UserContentControllerIdentifier.h"
 #include "WebPageProxyIdentifier.h"
-#include <WebCore/ContentExtensionActions.h>
 #include <WebCore/ContentSecurityPolicyResponseHeaders.h>
 #include <WebCore/CrossOriginEmbedderPolicy.h>
 #include <WebCore/FetchOptions.h>
 #include <WebCore/NetworkLoadInformation.h>
-#include <WebCore/ResourceError.h>
 #include <pal/SessionID.h>
-#include <wtf/CompletionHandler.h>
-#include <wtf/Expected.h>
-#include <wtf/Variant.h>
+#include <variant>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class NetworkLoadChecker;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::NetworkLoadChecker> : std::true_type { };
+}
 
 namespace WebCore {
 class ContentSecurityPolicy;
+class OriginAccessPatterns;
+struct ContentRuleListResults;
 struct ContentSecurityPolicyClient;
+class ResourceError;
 class SecurityOrigin;
+enum class AdvancedPrivacyProtections : uint16_t;
 enum class PreflightPolicy : uint8_t;
 enum class StoredCredentialsPolicy : uint8_t;
 }
@@ -57,11 +67,11 @@ class NetworkSchemeRegistry;
 using DocumentURL = URL;
 
 class NetworkLoadChecker : public CanMakeWeakPtr<NetworkLoadChecker> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(NetworkLoadChecker);
 public:
     enum class LoadType : bool { MainFrame, Other };
 
-    NetworkLoadChecker(NetworkProcess&, NetworkResourceLoader*, NetworkSchemeRegistry*, WebCore::FetchOptions&&, PAL::SessionID, WebPageProxyIdentifier, WebCore::HTTPHeaderMap&&, URL&&, DocumentURL&&,  RefPtr<WebCore::SecurityOrigin>&&, RefPtr<WebCore::SecurityOrigin>&& topOrigin, RefPtr<WebCore::SecurityOrigin>&& parentOrigin, WebCore::PreflightPolicy, String&& referrer, bool shouldCaptureExtraNetworkLoadMetrics = false, LoadType requestLoadType = LoadType::Other);
+    NetworkLoadChecker(NetworkProcess&, NetworkResourceLoader*, NetworkSchemeRegistry*, WebCore::FetchOptions&&, PAL::SessionID, WebPageProxyIdentifier, WebCore::HTTPHeaderMap&&, URL&&, DocumentURL&&,  RefPtr<WebCore::SecurityOrigin>&&, RefPtr<WebCore::SecurityOrigin>&& topOrigin, RefPtr<WebCore::SecurityOrigin>&& parentOrigin, WebCore::PreflightPolicy, String&& referrer, bool allowPrivacyProxy, OptionSet<WebCore::AdvancedPrivacyProtections>, bool shouldCaptureExtraNetworkLoadMetrics = false, LoadType requestLoadType = LoadType::Other);
     ~NetworkLoadChecker();
 
     struct RedirectionTriplet {
@@ -70,7 +80,7 @@ public:
         WebCore::ResourceResponse redirectResponse;
     };
 
-    using RequestOrRedirectionTripletOrError = Variant<WebCore::ResourceRequest, RedirectionTriplet, WebCore::ResourceError>;
+    using RequestOrRedirectionTripletOrError = std::variant<WebCore::ResourceRequest, RedirectionTriplet, WebCore::ResourceError>;
     using ValidationHandler = CompletionHandler<void(RequestOrRedirectionTripletOrError&&)>;
     void check(WebCore::ResourceRequest&&, WebCore::ContentSecurityPolicyClient*, ValidationHandler&&);
 
@@ -84,9 +94,10 @@ public:
     void setParentCrossOriginEmbedderPolicy(const WebCore::CrossOriginEmbedderPolicy& parentCrossOriginEmbedderPolicy) { m_parentCrossOriginEmbedderPolicy = parentCrossOriginEmbedderPolicy; }
     void setCrossOriginEmbedderPolicy(const WebCore::CrossOriginEmbedderPolicy& crossOriginEmbedderPolicy) { m_crossOriginEmbedderPolicy = crossOriginEmbedderPolicy; }
 #if ENABLE(CONTENT_EXTENSIONS)
-    void setContentExtensionController(URL&& mainDocumentURL, std::optional<UserContentControllerIdentifier> identifier)
+    void setContentExtensionController(URL&& mainDocumentURL, URL&& frameURL, std::optional<UserContentControllerIdentifier> identifier)
     {
         m_mainDocumentURL = WTFMove(mainDocumentURL);
+        m_frameURL = WTFMove(frameURL);
         m_userContentControllerIdentifier = identifier;
     }
 #endif
@@ -101,14 +112,23 @@ public:
 
     void enableContentExtensionsCheck() { m_checkContentExtensions = true; }
 
+    RefPtr<WebCore::SecurityOrigin> origin() const { return m_origin; }
+    RefPtr<WebCore::SecurityOrigin> topOrigin() const { return m_topOrigin; }
+
+    const WebCore::FetchOptions& options() const { return m_options; }
+
+    bool timingAllowFailedFlag() const { return m_timingAllowFailedFlag; }
+
 private:
     WebCore::ContentSecurityPolicy* contentSecurityPolicy();
+    const WebCore::OriginAccessPatterns& originAccessPatterns() const;
+    bool isSameOrigin(const URL&, const WebCore::SecurityOrigin*) const;
     bool isChecking() const { return !!m_corsPreflightChecker; }
     bool isRedirected() const { return m_redirectCount; }
 
-    void checkRequest(WebCore::ResourceRequest&&, WebCore::ContentSecurityPolicyClient*, const URL&, ValidationHandler&&);
+    void checkRequest(WebCore::ResourceRequest&&, WebCore::ContentSecurityPolicyClient*, ValidationHandler&&);
 
-    bool isAllowedByContentSecurityPolicy(const WebCore::ResourceRequest&, WebCore::ContentSecurityPolicyClient*, const URL& preRedirectURL = URL());
+    bool isAllowedByContentSecurityPolicy(const WebCore::ResourceRequest&, WebCore::ContentSecurityPolicyClient*);
 
     void continueCheckingRequest(WebCore::ResourceRequest&&, ValidationHandler&&);
     void continueCheckingRequestOrDoSyntheticRedirect(WebCore::ResourceRequest&& originalRequest, WebCore::ResourceRequest&& currentRequest, ValidationHandler&&);
@@ -130,8 +150,14 @@ private:
     void processContentRuleListsForLoad(WebCore::ResourceRequest&&, ContentExtensionCallback&&);
 #endif
 
+    RefPtr<WebCore::SecurityOrigin> parentOrigin() const { return m_parentOrigin; }
+
+    bool checkTAO(const WebCore::ResourceResponse&);
+
     WebCore::FetchOptions m_options;
     WebCore::StoredCredentialsPolicy m_storedCredentialsPolicy;
+    bool m_allowPrivacyProxy;
+    OptionSet<WebCore::AdvancedPrivacyProtections> m_advancedPrivacyProtections;
     PAL::SessionID m_sessionID;
     Ref<NetworkProcess> m_networkProcess;
     WebPageProxyIdentifier m_webPageProxyID;
@@ -147,6 +173,7 @@ private:
     WebCore::CrossOriginEmbedderPolicy m_crossOriginEmbedderPolicy;
 #if ENABLE(CONTENT_EXTENSIONS)
     URL m_mainDocumentURL;
+    URL m_frameURL;
     std::optional<UserContentControllerIdentifier> m_userContentControllerIdentifier;
 #endif
 
@@ -166,6 +193,8 @@ private:
     LoadType m_requestLoadType;
     RefPtr<NetworkSchemeRegistry> m_schemeRegistry;
     WeakPtr<NetworkResourceLoader> m_networkResourceLoader;
+
+    bool m_timingAllowFailedFlag { false };
 };
 
 }

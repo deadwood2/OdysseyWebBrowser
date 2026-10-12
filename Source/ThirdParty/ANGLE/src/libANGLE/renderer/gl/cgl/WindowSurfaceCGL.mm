@@ -6,25 +6,27 @@
 
 // WindowSurfaceCGL.cpp: CGL implementation of egl::Surface for windows
 
-#include "common/platform.h"
+#import "libANGLE/renderer/gl/cgl/WindowSurfaceCGL.h"
 
-#if defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)
+#import <Cocoa/Cocoa.h>
+#import <OpenGL/OpenGL.h>
+#import <QuartzCore/QuartzCore.h>
 
-#    include "libANGLE/renderer/gl/cgl/WindowSurfaceCGL.h"
+#import "common/debug.h"
+#import "common/gl/cgl/FunctionsCGL.h"
+#import "libANGLE/Context.h"
+#import "libANGLE/renderer/gl/FramebufferGL.h"
+#import "libANGLE/renderer/gl/RendererGL.h"
+#import "libANGLE/renderer/gl/StateManagerGL.h"
+#import "libANGLE/renderer/gl/cgl/DisplayCGL.h"
 
-#    import <Cocoa/Cocoa.h>
-#    include <OpenGL/OpenGL.h>
-#    import <QuartzCore/QuartzCore.h>
+#ifdef ANGLE_OUTSIDE_WEBKIT
+#    define SWAP_CGL_LAYER_NAME ANGLESwapCGLLayer
+#else
+#    define SWAP_CGL_LAYER_NAME WebSwapCGLLayer
+#endif
 
-#    include "common/debug.h"
-#    include "common/gl/cgl/FunctionsCGL.h"
-#    include "libANGLE/Context.h"
-#    include "libANGLE/renderer/gl/FramebufferGL.h"
-#    include "libANGLE/renderer/gl/RendererGL.h"
-#    include "libANGLE/renderer/gl/StateManagerGL.h"
-#    include "libANGLE/renderer/gl/cgl/DisplayCGL.h"
-
-@interface WebSwapLayerCGL : CAOpenGLLayer {
+@interface SWAP_CGL_LAYER_NAME : CAOpenGLLayer {
     CGLContextObj mDisplayContext;
 
     bool initialized;
@@ -38,7 +40,7 @@
             withFunctions:(const rx::FunctionsGL *)functions;
 @end
 
-@implementation WebSwapLayerCGL
+@implementation SWAP_CGL_LAYER_NAME
 - (id)initWithSharedState:(rx::SharedSwapState *)swapState
               withContext:(CGLContextObj)displayContext
             withFunctions:(const rx::FunctionsGL *)functions
@@ -158,7 +160,8 @@ WindowSurfaceCGL::WindowSurfaceCGL(const egl::SurfaceState &state,
       mContext(context),
       mFunctions(renderer->getFunctions()),
       mStateManager(renderer->getStateManager()),
-      mDSRenderbuffer(0)
+      mDSRenderbuffer(0),
+      mFramebufferID(0)
 {
     pthread_mutex_init(&mSwapState.mutex, nullptr);
 }
@@ -168,6 +171,12 @@ WindowSurfaceCGL::~WindowSurfaceCGL()
     EnsureCGLContextIsCurrent ensureContextCurrent(mContext);
 
     pthread_mutex_destroy(&mSwapState.mutex);
+
+    if (mFramebufferID != 0)
+    {
+        mStateManager->deleteFramebuffer(mFramebufferID);
+        mFramebufferID = 0;
+    }
 
     if (mDSRenderbuffer != 0)
     {
@@ -213,9 +222,9 @@ egl::Error WindowSurfaceCGL::initialize(const egl::Display *display)
     mSwapState.lastRendered   = &mSwapState.textures[1];
     mSwapState.beingPresented = &mSwapState.textures[2];
 
-    mSwapLayer = [[WebSwapLayerCGL alloc] initWithSharedState:&mSwapState
-                                                  withContext:mContext
-                                                withFunctions:mFunctions];
+    mSwapLayer = [[SWAP_CGL_LAYER_NAME alloc] initWithSharedState:&mSwapState
+                                                      withContext:mContext
+                                                    withFunctions:mFunctions];
     [mLayer addSublayer:mSwapLayer];
     [mSwapLayer setContentsScale:[mLayer contentsScale]];
 
@@ -262,8 +271,9 @@ egl::Error WindowSurfaceCGL::swap(const gl::Context *context)
         texture.height = height;
     }
 
-    FramebufferGL *framebufferGL = GetImplAs<FramebufferGL>(context->getFramebuffer({0}));
-    stateManager->bindFramebuffer(GL_FRAMEBUFFER, framebufferGL->getFramebufferID());
+    ASSERT(mFramebufferID ==
+           GetImplAs<FramebufferGL>(context->getFramebuffer({0}))->getFramebufferID());
+    stateManager->bindFramebuffer(GL_FRAMEBUFFER, mFramebufferID);
     functions->framebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
                                     mSwapState.beingRendered->texture, 0);
 
@@ -326,23 +336,34 @@ EGLint WindowSurfaceCGL::getSwapBehavior() const
     return EGL_BUFFER_DESTROYED;
 }
 
-FramebufferImpl *WindowSurfaceCGL::createDefaultFramebuffer(const gl::Context *context,
-                                                            const gl::FramebufferState &state)
+egl::Error WindowSurfaceCGL::attachToFramebuffer(const gl::Context *context,
+                                                 gl::Framebuffer *framebuffer)
 {
-    const FunctionsGL *functions = GetFunctionsGL(context);
-    StateManagerGL *stateManager = GetStateManagerGL(context);
+    FramebufferGL *framebufferGL = GetImplAs<FramebufferGL>(framebuffer);
+    ASSERT(framebufferGL->getFramebufferID() == 0);
 
-    GLuint framebuffer = 0;
-    functions->genFramebuffers(1, &framebuffer);
-    stateManager->bindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    functions->framebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                                    mSwapState.beingRendered->texture, 0);
-    functions->framebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER,
-                                       mDSRenderbuffer);
+    if (mFramebufferID == 0)
+    {
+        GLuint framebufferID = 0;
+        mFunctions->genFramebuffers(1, &framebufferID);
+        mStateManager->bindFramebuffer(GL_FRAMEBUFFER, framebufferID);
+        mFunctions->framebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                                         mSwapState.beingRendered->texture, 0);
+        mFunctions->framebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                                            GL_RENDERBUFFER, mDSRenderbuffer);
+        mFramebufferID = framebufferID;
+    }
+    framebufferGL->setFramebufferID(mFramebufferID);
+    return egl::NoError();
+}
 
-    return new FramebufferGL(state, framebuffer, true, false);
+egl::Error WindowSurfaceCGL::detachFromFramebuffer(const gl::Context *context,
+                                                   gl::Framebuffer *framebuffer)
+{
+    FramebufferGL *framebufferGL = GetImplAs<FramebufferGL>(framebuffer);
+    ASSERT(framebufferGL->getFramebufferID() == mFramebufferID);
+    framebufferGL->setFramebufferID(0);
+    return egl::NoError();
 }
 
 }  // namespace rx
-
-#endif  // defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)

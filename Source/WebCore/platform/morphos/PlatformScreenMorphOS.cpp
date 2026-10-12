@@ -26,6 +26,8 @@
 #include "config.h"
 #include "PlatformScreen.h"
 #include "Widget.h"
+#include "FrameView.h"
+#include "Page.h"
 
 #include "FloatRect.h"
 #include "NotImplemented.h"
@@ -39,26 +41,11 @@ namespace WebCore {
 
 int screenDepth(Widget* widget)
 {
-	Boopsiobject *area = static_cast<Boopsiobject *>(widget->platformWidget());
-
-	if (area && muiRenderInfo(area))
-	{
-		Boopsiobject *screen = reinterpret_cast<Boopsiobject *>(muiRenderInfo(area)->mri_Screen);
-		if (screen)
-		{
-			ULONG depth = 32;
-			DoMethod(screen, OM_GET, SA_Depth, &depth);
-			return depth;
-		}
-	}
-
-    notImplemented();
-    return 32;
+    return 24;
 }
 
 int screenDepthPerComponent(Widget*)
 {
-    notImplemented();
     return 8;
 }
 
@@ -72,25 +59,7 @@ bool screenHasInvertedColors()
     return false;
 }
 
-FloatRect screenRect(Widget* widget)
-{
-	Boopsiobject *area = static_cast<Boopsiobject *>(widget->platformWidget());
-
-	if (area && muiRenderInfo(area))
-	{
-		Boopsiobject *screen = reinterpret_cast<Boopsiobject *>(muiRenderInfo(area)->mri_Screen);
-		if (screen)
-		{
-			ULONG w = 1920, h = 1080;
-			DoMethod(screen, OM_GET, SA_Width, &w);
-			DoMethod(screen, OM_GET, SA_Height, &h);
-			return { 0, 0, w, h };
-		}
-	}
-	
-    notImplemented();
-	return { 0, 0, 1920, 1080 };
-}
+// FloatRect screenRect(Widget* widget) moved to WebPage.cpp
 
 FloatRect screenAvailableRect(Widget* widget)
 {

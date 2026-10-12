@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(CSS_TYPED_OM)
-
 #include "CSSStyleValue.h"
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
@@ -37,13 +35,14 @@ template<typename> class ExceptionOr;
 class CSSUnparsedValue;
 
 class CSSOMVariableReferenceValue : public RefCounted<CSSOMVariableReferenceValue> {
-    WTF_MAKE_ISO_ALLOCATED(CSSOMVariableReferenceValue);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(CSSOMVariableReferenceValue);
 public:
     static ExceptionOr<Ref<CSSOMVariableReferenceValue>> create(String&&, RefPtr<CSSUnparsedValue>&& fallback = { });
     
     ExceptionOr<void> setVariable(String&&);
     String toString() const;
-    
+    void serialize(StringBuilder&, OptionSet<SerializationArguments>) const;
+
     const String& variable() const { return m_variable; }
     CSSUnparsedValue* fallback() { return m_fallback.get(); }
     
@@ -57,5 +56,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif

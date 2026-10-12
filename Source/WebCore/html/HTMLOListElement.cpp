@@ -27,8 +27,9 @@
 #include "CSSValueKeywords.h"
 #include "HTMLNames.h"
 #include "HTMLParserIdioms.h"
+#include "NodeName.h"
 #include "RenderListItem.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 // FIXME: There should be a standard way to turn a std::expected into a Optional.
 // Maybe we should put this into the header file for Expected and give it a better name.
@@ -39,7 +40,7 @@ template<typename T, typename E> inline std::optional<T> optionalValue(Expected<
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(HTMLOListElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(HTMLOListElement);
 
 using namespace HTMLNames;
 
@@ -69,36 +70,43 @@ bool HTMLOListElement::hasPresentationalHintsForAttribute(const QualifiedName& n
 void HTMLOListElement::collectPresentationalHintsForAttribute(const QualifiedName& name, const AtomString& value, MutableStyleProperties& style)
 {
     if (name == typeAttr) {
-        if (value == "a")
+        if (value == "a"_s)
             addPropertyToPresentationalHintStyle(style, CSSPropertyListStyleType, CSSValueLowerAlpha);
-        else if (value == "A")
+        else if (value == "A"_s)
             addPropertyToPresentationalHintStyle(style, CSSPropertyListStyleType, CSSValueUpperAlpha);
-        else if (value == "i")
+        else if (value == "i"_s)
             addPropertyToPresentationalHintStyle(style, CSSPropertyListStyleType, CSSValueLowerRoman);
-        else if (value == "I")
+        else if (value == "I"_s)
             addPropertyToPresentationalHintStyle(style, CSSPropertyListStyleType, CSSValueUpperRoman);
-        else if (value == "1")
+        else if (value == "1"_s)
             addPropertyToPresentationalHintStyle(style, CSSPropertyListStyleType, CSSValueDecimal);
     } else
         HTMLElement::collectPresentationalHintsForAttribute(name, value, style);
 }
 
-void HTMLOListElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void HTMLOListElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
-    if (name == startAttr) {
+    switch (name.nodeName()) {
+    case AttributeNames::startAttr: {
         int oldStart = start();
-        m_start = optionalValue(parseHTMLInteger(value));
+        m_start = optionalValue(parseHTMLInteger(newValue));
         if (oldStart == start())
             return;
         RenderListItem::updateItemValuesForOrderedList(*this);
-    } else if (name == reversedAttr) {
-        bool reversed = !value.isNull();
+        break;
+    }
+    case AttributeNames::reversedAttr: {
+        bool reversed = !newValue.isNull();
         if (reversed == m_isReversed)
             return;
         m_isReversed = reversed;
         RenderListItem::updateItemValuesForOrderedList(*this);
-    } else
-        HTMLElement::parseAttribute(name, value);
+        break;
+    }
+    default:
+        HTMLElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
+        break;
+    }
 }
 
 void HTMLOListElement::setStartForBindings(int start)

@@ -24,9 +24,10 @@
 #include "DOMObjectCache.h"
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
-#include "GObjectEventListener.h"
+#include <WebCore/ElementInlines.h>
 #include <WebCore/HTMLNames.h>
 #include <WebCore/JSExecState.h>
+#include "GObjectEventListener.h"
 #include "WebKitDOMEventPrivate.h"
 #include "WebKitDOMEventTarget.h"
 #include "WebKitDOMHTMLBRElementPrivate.h"
@@ -165,8 +166,7 @@ void webkit_dom_html_br_element_set_clear(WebKitDOMHTMLBRElement* self, const gc
     g_return_if_fail(WEBKIT_DOM_IS_HTML_BR_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLBRElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::clearAttr, convertedValue);
+    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::clearAttr, WTF::AtomString::fromUTF8(value));
 }
 
 G_GNUC_END_IGNORE_DEPRECATIONS;

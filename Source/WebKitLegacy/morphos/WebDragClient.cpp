@@ -1,5 +1,6 @@
 #include "WebDragClient.h"
 #include "WebPage.h"
+#include <WebCore/LocalFrame.h>
 
 extern "C" { void dprintf(const char *,...); }
 
@@ -24,8 +25,13 @@ OptionSet<WebCore::DragSourceAction> WebDragClient::dragSourceActionMaskForPoint
 
 void WebDragClient::startDrag(DragItem item, DataTransfer& transfer, Frame& frame)
 {
+    auto* localFrame = dynamicDowncast<LocalFrame>(frame);
+    if (!localFrame)
+        return;
 //	dprintf("%s\n", __PRETTY_FUNCTION__);
-	m_page->startDrag(WTFMove(item), transfer, frame);
+    auto page = m_page.get();
+    if (page)
+        page->startDrag(WTFMove(item), transfer, *localFrame);
 }
 
 void WebDragClient::didConcludeEditDrag()

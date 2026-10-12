@@ -31,6 +31,7 @@
 #include <wtf/HashSet.h>
 #include <wtf/RunLoop.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakHashSet.h>
 
 namespace WebKit {
 
@@ -55,7 +56,7 @@ public:
     static void setUsesGameControllerFramework();
 #endif
 
-    Vector<GamepadData> snapshotGamepads();
+    Vector<std::optional<GamepadData>> snapshotGamepads();
 
     size_t numberOfConnectedGamepads() const { return m_gamepads.size(); }
 
@@ -79,11 +80,15 @@ private:
     void scheduleGamepadStateSync();
     void gamepadSyncTimerFired();
 
-    HashSet<WebProcessPool*> m_processPoolsUsingGamepads;
+#if PLATFORM(VISION)
+    bool isAnyGamepadConnected() const;
+#endif
+
+    WeakHashSet<WebProcessPool> m_processPoolsUsingGamepads;
 
     Vector<std::unique_ptr<UIGamepad>> m_gamepads;
 
-    RunLoop::Timer<UIGamepadProvider> m_gamepadSyncTimer;
+    RunLoop::Timer m_gamepadSyncTimer;
 
     bool m_isMonitoringGamepads { false };
     bool m_shouldMakeGamepadsVisibleOnSync { false };

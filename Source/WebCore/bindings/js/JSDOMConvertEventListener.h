@@ -31,17 +31,20 @@
 namespace WebCore {
 
 template<typename T> struct Converter<IDLEventListener<T>> : DefaultConverter<IDLEventListener<T>> {
-    using ReturnType = RefPtr<T>;
+    using Result = ConversionResult<IDLEventListener<T>>;
 
-    static ReturnType convert(JSC::JSGlobalObject& lexicalGlobalObject, JSC::JSValue value, JSC::JSObject& thisObject)
+    template<typename ExceptionThrower = DefaultExceptionThrower>
+    static Result convert(JSC::JSGlobalObject& lexicalGlobalObject, JSC::JSValue value, JSC::JSObject& thisObject, ExceptionThrower&& exceptionThrower = ExceptionThrower())
     {
         auto scope = DECLARE_THROW_SCOPE(JSC::getVM(&lexicalGlobalObject));
 
-        auto listener = T::create(value, thisObject, false, currentWorld(lexicalGlobalObject));
-        if (!listener)
-            throwTypeError(&lexicalGlobalObject, scope);
-    
-        return listener;
+        if (UNLIKELY(!value.isObject())) {
+            exceptionThrower(lexicalGlobalObject, scope);
+            return Result::exception();
+        }
+
+        constexpr bool isAttribute = false;
+        return Result { T::create(*asObject(value), thisObject, isAttribute, currentWorld(lexicalGlobalObject)) };
     }
 };
 

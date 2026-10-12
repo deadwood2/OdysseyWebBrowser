@@ -20,33 +20,51 @@
 #pragma once
 
 #include "RenderBlockFlow.h"
-#include "SVGGraphicsElement.h"
 
 namespace WebCore {
 
 class SVGElement;
+class SVGGraphicsElement;
 
 class RenderSVGBlock : public RenderBlockFlow {
-    WTF_MAKE_ISO_ALLOCATED(RenderSVGBlock);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RenderSVGBlock);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(RenderSVGBlock);
 public:
-    SVGGraphicsElement& graphicsElement() const { return downcast<SVGGraphicsElement>(nodeForNonAnonymous()); }
+    inline SVGGraphicsElement& graphicsElement() const;
+    inline Ref<SVGGraphicsElement> protectedGraphicsElement() const;
 
 protected:
-    RenderSVGBlock(SVGGraphicsElement&, RenderStyle&&);
+    RenderSVGBlock(Type, SVGGraphicsElement&, RenderStyle&&);
+    virtual ~RenderSVGBlock();
+
     void willBeDestroyed() override;
 
     void computeOverflow(LayoutUnit oldClientAfterEdge, bool recomputeFloats = false) override;
 
+    void updateFromStyle() override;
+    bool needsHasSVGTransformFlags() const override;
+    void styleDidChange(StyleDifference, const RenderStyle* oldStyle) override;
+
 private:
     void element() const = delete;
 
-    void updateFromStyle() final;
+    void boundingRects(Vector<LayoutRect>&, const LayoutPoint& accumulatedOffset) const override;
+    void absoluteQuads(Vector<FloatQuad>&, bool* wasFixed) const override;
 
-    bool isRenderSVGBlock() const final { return true; }
+    LayoutPoint currentSVGLayoutLocation() const final { return location(); }
+    void setCurrentSVGLayoutLocation(const LayoutPoint& location) final { setLocation(location); }
 
-    void absoluteRects(Vector<IntRect>&, const LayoutPoint& accumulatedOffset) const override;
+    FloatRect referenceBoxRect(CSSBoxType) const final;
 
-    void styleDidChange(StyleDifference, const RenderStyle* oldStyle) final;
+    LayoutRect clippedOverflowRect(const RenderLayerModelObject* repaintContainer, VisibleRectContext) const final;
+    RepaintRects rectsForRepaintingAfterLayout(const RenderLayerModelObject* repaintContainer, RepaintOutlineBounds) const final;
+
+    std::optional<FloatRect> computeFloatVisibleRectInContainer(const FloatRect&, const RenderLayerModelObject* container, VisibleRectContext) const final;
+    std::optional<RepaintRects> computeVisibleRectsInContainer(const RepaintRects&, const RenderLayerModelObject* container, VisibleRectContext) const final;
+
+    void mapLocalToContainer(const RenderLayerModelObject* ancestorContainer, TransformState&, OptionSet<MapCoordinatesMode>, bool* wasFixed) const final;
+    const RenderObject* pushMappingToContainer(const RenderLayerModelObject* ancestorToStopAt, RenderGeometryMap&) const final;
+    LayoutSize offsetFromContainer(RenderElement&, const LayoutPoint&, bool* offsetDependsOnPoint = nullptr) const override;
 };
 
 } // namespace WebCore

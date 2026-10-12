@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2018-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,18 @@
 #if PLATFORM(IOS_FAMILY)
 
 #import "UIKitSPI.h"
-#import <WebCore/GraphicsLayer.h>
+#import "WKBaseScrollView.h"
+#import <wtf/OptionSet.h>
+
+OBJC_CLASS UIScrollView;
+
+namespace WebCore {
+class FloatRect;
+class IntPoint;
+
+enum class EventListenerRegionType : uint8_t;
+enum class TouchAction : uint8_t;
+}
 
 namespace WebKit {
 class RemoteLayerTreeHost;
@@ -45,7 +56,7 @@ class WebPageProxy;
 @interface WKTransformView : WKCompositingView
 @end
 
-@interface WKSimpleBackdropView : WKCompositingView
+@interface WKBackdropView : WKCompositingView
 @end
 
 @interface WKShapeView : WKCompositingView
@@ -60,10 +71,7 @@ class WebPageProxy;
 @interface WKUIRemoteView : _UIRemoteView <WKContentControlled>
 @end
 
-@interface WKBackdropView : _UIBackdropView <WKContentControlled>
-@end
-
-@interface WKChildScrollView : UIScrollView <WKContentControlled>
+@interface WKChildScrollView : WKBaseScrollView <WKContentControlled>
 @end
 
 #if USE(APPLE_INTERNAL_SDK)

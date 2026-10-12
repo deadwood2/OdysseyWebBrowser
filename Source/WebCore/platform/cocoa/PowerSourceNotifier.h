@@ -29,11 +29,20 @@
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
+class PowerSourceNotifier;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::PowerSourceNotifier> : std::true_type { };
+}
+
+namespace WebCore {
 
 class PowerSourceNotifier : public CanMakeWeakPtr<PowerSourceNotifier> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    using PowerSourceNotifierCallback = WTF::Function<void(bool hasAC)>;
+    using PowerSourceNotifierCallback = Function<void(bool hasAC)>;
     WEBCORE_EXPORT explicit PowerSourceNotifier(PowerSourceNotifierCallback&&);
     WEBCORE_EXPORT ~PowerSourceNotifier();
 

@@ -82,4 +82,6 @@
 
 - (id)initWithURL:(OBString *)url codecs:(OBString *)codecs fps:(int)fps bitrate:(int)br width:(int)width height:(int)height;
 
+- (LONG)compareByHeightAndBitRate:(WkHLSStreamPrivate *)other;
+
 @end

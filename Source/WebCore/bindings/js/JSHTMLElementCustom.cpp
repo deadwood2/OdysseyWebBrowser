@@ -27,12 +27,15 @@
 #include "JSHTMLElement.h"
 
 #include "CustomElementRegistry.h"
-#include "DOMWindow.h"
 #include "Document.h"
+#include "FormAssociatedElement.h"
+#include "HTMLFormControlElement.h"
 #include "HTMLFormElement.h"
 #include "JSCustomElementInterface.h"
 #include "JSDOMConstructorBase.h"
+#include "JSHTMLElementWrapperFactory.h"
 #include "JSNodeCustom.h"
+#include "LocalDOMWindow.h"
 #include "ScriptExecutionContext.h"
 #include <JavaScriptCore/InternalFunction.h>
 #include <JavaScriptCore/JSWithScope.h>
@@ -51,7 +54,7 @@ EncodedJSValue constructJSHTMLElement(JSGlobalObject* lexicalGlobalObject, CallF
 
     auto* context = jsConstructor->scriptExecutionContext();
     if (!context)
-        return throwConstructorScriptExecutionContextUnavailableError(*lexicalGlobalObject, scope, "HTMLElement");
+        return throwConstructorScriptExecutionContextUnavailableError(*lexicalGlobalObject, scope, "HTMLElement"_s);
     ASSERT(context->isDocument());
 
     auto* newTarget = callFrame.newTarget().getObject();
@@ -62,17 +65,17 @@ EncodedJSValue constructJSHTMLElement(JSGlobalObject* lexicalGlobalObject, CallF
     if (newTarget == htmlElementConstructorValue)
         return throwVMTypeError(lexicalGlobalObject, scope, "new.target is not a valid custom element constructor"_s);
 
-    auto& document = downcast<Document>(*context);
+    Ref document = downcast<Document>(*context);
 
-    auto* window = document.domWindow();
+    RefPtr window = document->domWindow();
     if (!window)
         return throwVMTypeError(lexicalGlobalObject, scope, "new.target is not a valid custom element constructor"_s);
 
-    auto* registry = window->customElementRegistry();
+    RefPtr registry = window->customElementRegistry();
     if (!registry)
         return throwVMTypeError(lexicalGlobalObject, scope, "new.target is not a valid custom element constructor"_s);
 
-    auto* elementInterface = registry->findInterface(newTarget);
+    RefPtr elementInterface = registry->findInterface(newTarget);
     if (!elementInterface)
         return throwVMTypeError(lexicalGlobalObject, scope, "new.target does not define a custom element"_s);
 
@@ -81,14 +84,14 @@ EncodedJSValue constructJSHTMLElement(JSGlobalObject* lexicalGlobalObject, CallF
         auto* newElementStructure = InternalFunction::createSubclassStructure(lexicalGlobalObject, newTarget, baseStructure);
         RETURN_IF_EXCEPTION(scope, { });
 
-        Ref<HTMLElement> element = HTMLElement::create(elementInterface->name(), document);
+        Ref element = elementInterface->createElement(document);
         element->setIsDefinedCustomElement(*elementInterface);
         auto* jsElement = JSHTMLElement::create(newElementStructure, newTargetGlobalObject, element.get());
         cacheWrapper(newTargetGlobalObject->world(), element.ptr(), jsElement);
         return JSValue::encode(jsElement);
     }
 
-    Element* elementToUpgrade = elementInterface->lastElementInConstructionStack();
+    RefPtr elementToUpgrade = elementInterface->lastElementInConstructionStack();
     if (!elementToUpgrade) {
         throwTypeError(lexicalGlobalObject, scope, "Cannot instantiate a custom element inside its own constructor during upgrades"_s);
         return JSValue::encode(jsUndefined());
@@ -123,11 +126,32 @@ JSScope* JSHTMLElement::pushEventHandlerScope(JSGlobalObject* lexicalGlobalObjec
     scope = JSWithScope::create(vm, lexicalGlobalObject, scope, asObject(toJS(lexicalGlobalObject, globalObject(), element.document())));
 
     // The form is next, searched before the document, but after the element itself.
-    if (HTMLFormElement* form = element.form())
-        scope = JSWithScope::create(vm, lexicalGlobalObject, scope, asObject(toJS(lexicalGlobalObject, globalObject(), *form)));
+    if (auto* formAssociated = element.asFormAssociatedElement()) {
+        if (RefPtr form = formAssociated->form())
+            scope = JSWithScope::create(vm, lexicalGlobalObject, scope, asObject(toJS(lexicalGlobalObject, globalObject(), *form)));
+    }
 
     // The element is on top, searched first.
     return JSWithScope::create(vm, lexicalGlobalObject, scope, asObject(toJS(lexicalGlobalObject, globalObject(), element)));
+}
+
+JSValue toJS(JSGlobalObject*, JSDOMGlobalObject* globalObject, HTMLElement& element)
+{
+    if (auto* wrapper = getCachedWrapper(globalObject->world(), element))
+        return wrapper;
+    return createJSHTMLWrapper(globalObject, element);
+}
+
+JSValue toJSNewlyCreated(JSGlobalObject*, JSDOMGlobalObject* globalObject, Ref<HTMLElement>&& element)
+{
+    if (element->isDefinedCustomElement()) {
+        JSValue result = getCachedWrapper(globalObject->world(), element);
+        if (result)
+            return result;
+        ASSERT(!globalObject->vm().exceptionForInspection());
+    }
+    ASSERT(!getCachedWrapper(globalObject->world(), element));
+    return createJSHTMLWrapper(globalObject, WTFMove(element));
 }
 
 } // namespace WebCore

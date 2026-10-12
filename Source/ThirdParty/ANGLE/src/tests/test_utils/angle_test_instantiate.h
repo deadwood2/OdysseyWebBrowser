@@ -12,7 +12,7 @@
 
 #include <gtest/gtest.h>
 
-#include "common/platform.h"
+#include "common/platform_helpers.h"
 
 namespace angle
 {
@@ -20,54 +20,39 @@ struct SystemInfo;
 struct PlatformParameters;
 
 // Operating systems
-bool IsAndroid();
-bool IsLinux();
-bool IsOSX();
 bool IsOzone();
-bool IsWindows();
-bool IsWindows7();
-bool IsFuchsia();
 
 // CPU architectures
 bool IsARM64();
 
 // Android devices
 bool IsNexus5X();
-bool IsNexus6P();
 bool IsNexus9();
 bool IsPixelXL();
 bool IsPixel2();
 bool IsPixel2XL();
+bool IsPixel4();
+bool IsPixel4XL();
+bool IsPixel6();
+bool IsGalaxyS22();
 bool IsNVIDIAShield();
+
+// Android versions
+bool IsAndroid14OrNewer();
 
 // GPU vendors.
 bool IsIntel();
 bool IsAMD();
+bool IsAppleGPU();
 bool IsARM();
 bool IsNVIDIA();
+bool IsQualcomm();
 
 // GPU devices.
 bool IsSwiftshaderDevice();
 bool IsIntelUHD630Mobile();
 
-// Compiler configs.
-inline bool IsASan()
-{
-#if defined(ANGLE_WITH_ASAN)
-    return true;
-#else
-    return false;
-#endif  // defined(ANGLE_WITH_ASAN)
-}
-
-inline bool IsTSan()
-{
-#if defined(THREAD_SANITIZER)
-    return true;
-#else
-    return false;
-#endif  // defined(THREAD_SANITIZER)
-}
+bool HasMesa();
 
 bool IsPlatformAvailable(const PlatformParameters &param);
 
@@ -124,30 +109,73 @@ struct CombinedPrintToStringParamName
 
 // Instantiate the test once for each extra argument. The types of all the
 // arguments must match, and getRenderer must be implemented for that type.
-#define ANGLE_INSTANTIATE_TEST(testName, first, ...)                                 \
-    const decltype(first) testName##params[] = {first, ##__VA_ARGS__};               \
-    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName), \
+#define ANGLE_INSTANTIATE_TEST(testName, first, ...)                                         \
+    const std::remove_reference<decltype(first)>::type testName##params[] = {first,          \
+                                                                             ##__VA_ARGS__}; \
+    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),         \
                              testing::PrintToStringParamName())
 
 #define ANGLE_INSTANTIATE_TEST_ARRAY(testName, valuesin)                                         \
     INSTANTIATE_TEST_SUITE_P(, testName, testing::ValuesIn(::angle::FilterTestParams(valuesin)), \
                              testing::PrintToStringParamName())
 
+#if !defined(ANGLE_TEST_ENABLE_SYSTEM_EGL)
+#    define ANGLE_TEST_PLATFORMS_ES1_SYSTEM_EGL
+#    define ANGLE_TEST_PLATFORMS_ES2_SYSTEM_EGL
+#    define ANGLE_TEST_PLATFORMS_ES3_SYSTEM_EGL
+#    define ANGLE_TEST_PLATFORMS_ES31_SYSTEM_EGL
+#    define ANGLE_TEST_PLATFORMS_ES32_SYSTEM_EGL
+#else
+#    define ANGLE_TEST_PLATFORMS_ES1_SYSTEM_EGL ES1_EGL(),
+#    define ANGLE_TEST_PLATFORMS_ES2_SYSTEM_EGL ES2_EGL(),
+#    define ANGLE_TEST_PLATFORMS_ES3_SYSTEM_EGL ES3_EGL(),
+#    define ANGLE_TEST_PLATFORMS_ES31_SYSTEM_EGL ES31_EGL(),
+#    define ANGLE_TEST_PLATFORMS_ES32_SYSTEM_EGL ES32_EGL(),
+#endif
+
 #define ANGLE_ALL_TEST_PLATFORMS_ES1                                                   \
+    ANGLE_TEST_PLATFORMS_ES1_SYSTEM_EGL                                                \
     ES1_D3D11(), ES1_OPENGL(), ES1_OPENGLES(), ES1_VULKAN(), ES1_VULKAN_SWIFTSHADER(), \
-        WithAsyncCommandQueueFeatureVulkan(ES1_VULKAN())
+        ES1_VULKAN().enable(Feature::AsyncCommandQueue),                               \
+        ES1_VULKAN().enable(Feature::EnableParallelCompileAndLink)
 
 #define ANGLE_ALL_TEST_PLATFORMS_ES2                                                               \
+    ANGLE_TEST_PLATFORMS_ES2_SYSTEM_EGL                                                            \
     ES2_D3D9(), ES2_D3D11(), ES2_OPENGL(), ES2_OPENGLES(), ES2_VULKAN(), ES2_VULKAN_SWIFTSHADER(), \
-        ES2_METAL(), WithAsyncCommandQueueFeatureVulkan(ES2_VULKAN())
+        ES2_METAL(), ES2_VULKAN().enable(Feature::AsyncCommandQueue),                              \
+        ES2_VULKAN_SWIFTSHADER().enable(Feature::EnableParallelCompileAndLink),                    \
+        ES2_VULKAN_SWIFTSHADER()                                                                   \
+            .enable(Feature::EnableParallelCompileAndLink)                                         \
+            .enable(Feature::AsyncCommandQueue)                                                    \
+            .disable(Feature::SupportsGraphicsPipelineLibrary)
 
 #define ANGLE_ALL_TEST_PLATFORMS_ES3                                                   \
+    ANGLE_TEST_PLATFORMS_ES3_SYSTEM_EGL                                                \
     ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES(), ES3_VULKAN(), ES3_VULKAN_SWIFTSHADER(), \
-        ES3_METAL(), WithAsyncCommandQueueFeatureVulkan(ES3_VULKAN())
+        ES3_METAL(), ES3_VULKAN().enable(Feature::AsyncCommandQueue),                  \
+        ES3_VULKAN().enable(Feature::EnableParallelCompileAndLink),                    \
+        ES3_VULKAN_SWIFTSHADER()                                                       \
+            .enable(Feature::EnableParallelCompileAndLink)                             \
+            .enable(Feature::AsyncCommandQueue)                                        \
+            .disable(Feature::SupportsGraphicsPipelineLibrary)
 
 #define ANGLE_ALL_TEST_PLATFORMS_ES31                                                       \
+    ANGLE_TEST_PLATFORMS_ES31_SYSTEM_EGL                                                    \
     ES31_D3D11(), ES31_OPENGL(), ES31_OPENGLES(), ES31_VULKAN(), ES31_VULKAN_SWIFTSHADER(), \
-        WithAsyncCommandQueueFeatureVulkan(ES31_VULKAN())
+        ES31_VULKAN().enable(Feature::AsyncCommandQueue),                                   \
+        ES31_VULKAN_SWIFTSHADER()                                                           \
+            .enable(Feature::EnableParallelCompileAndLink)                                  \
+            .enable(Feature::AsyncCommandQueue)                                             \
+            .disable(Feature::SupportsGraphicsPipelineLibrary)
+
+#define ANGLE_ALL_TEST_PLATFORMS_ES32                                \
+    ANGLE_TEST_PLATFORMS_ES32_SYSTEM_EGL                             \
+    ES32_VULKAN(), ES32_VULKAN().enable(Feature::AsyncCommandQueue), \
+        ES32_VULKAN()                                                \
+            .enable(Feature::AsyncCommandQueue)                      \
+            .enable(Feature::EnableParallelCompileAndLink)
+
+#define ANGLE_ALL_TEST_PLATFORMS_GL32_CORE GL32_CORE_VULKAN(), GL32_CORE_VULKAN_SWIFTSHADER()
 
 #define ANGLE_ALL_TEST_PLATFORMS_NULL ES2_NULL(), ES3_NULL(), ES31_NULL()
 
@@ -161,6 +189,11 @@ struct CombinedPrintToStringParamName
 #define ANGLE_INSTANTIATE_TEST_ES2(testName)                                         \
     const PlatformParameters testName##params[] = {ANGLE_ALL_TEST_PLATFORMS_ES2};    \
     INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName), \
+                             testing::PrintToStringParamName())
+
+#define ANGLE_INSTANTIATE_TEST_ES2_AND(testName, ...)                                          \
+    const PlatformParameters testName##params[] = {ANGLE_ALL_TEST_PLATFORMS_ES2, __VA_ARGS__}; \
+    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),           \
                              testing::PrintToStringParamName())
 
 // Instantiate the test once for each GLES3 platform
@@ -185,6 +218,29 @@ struct CombinedPrintToStringParamName
     INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),            \
                              testing::PrintToStringParamName())
 
+// Instantiate the test once for each GLES32 platform
+#define ANGLE_INSTANTIATE_TEST_ES32(testName)                                        \
+    const PlatformParameters testName##params[] = {ANGLE_ALL_TEST_PLATFORMS_ES32};   \
+    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName), \
+                             testing::PrintToStringParamName())
+
+#define ANGLE_INSTANTIATE_TEST_ES32_AND(testName, ...)                                          \
+    const PlatformParameters testName##params[] = {ANGLE_ALL_TEST_PLATFORMS_ES32, __VA_ARGS__}; \
+    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),            \
+                             testing::PrintToStringParamName())
+
+// Instantiate the test once for each desktop GL 3.2 core platform
+#define ANGLE_INSTANTIATE_TEST_GL32_CORE(testName)                                      \
+    const PlatformParameters testName##params[] = {ANGLE_ALL_TEST_PLATFORMS_GL32_CORE}; \
+    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),    \
+                             testing::PrintToStringParamName())
+
+#define ANGLE_INSTANTIATE_TEST_GL32_CORE_AND(testName, ...)                            \
+    const PlatformParameters testName##params[] = {ANGLE_ALL_TEST_PLATFORMS_GL32_CORE, \
+                                                   __VA_ARGS__};                       \
+    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),   \
+                             testing::PrintToStringParamName())
+
 // Multiple ES Version macros
 #define ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(testName)                                 \
     const PlatformParameters testName##params[] = {ANGLE_ALL_TEST_PLATFORMS_ES2,     \
@@ -205,10 +261,24 @@ struct CombinedPrintToStringParamName
     INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName), \
                              testing::PrintToStringParamName())
 
+#define ANGLE_INSTANTIATE_TEST_ES2_AND_ES3_AND_ES31_AND(testName, ...)                          \
+    const PlatformParameters testName##params[] = {ANGLE_ALL_TEST_PLATFORMS_ES2,                \
+                                                   ANGLE_ALL_TEST_PLATFORMS_ES3,                \
+                                                   ANGLE_ALL_TEST_PLATFORMS_ES31, __VA_ARGS__}; \
+    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),            \
+                             testing::PrintToStringParamName())
+
 #define ANGLE_INSTANTIATE_TEST_ES2_AND_ES3_AND_ES31_AND_NULL(testName)                             \
     const PlatformParameters testName##params[] = {                                                \
         ANGLE_ALL_TEST_PLATFORMS_ES2, ANGLE_ALL_TEST_PLATFORMS_ES3, ANGLE_ALL_TEST_PLATFORMS_ES31, \
         ANGLE_ALL_TEST_PLATFORMS_NULL};                                                            \
+    INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),               \
+                             testing::PrintToStringParamName())
+
+#define ANGLE_INSTANTIATE_TEST_ES2_AND_ES3_AND_ES31_AND_NULL_AND(testName, ...)                    \
+    const PlatformParameters testName##params[] = {                                                \
+        ANGLE_ALL_TEST_PLATFORMS_ES2, ANGLE_ALL_TEST_PLATFORMS_ES3, ANGLE_ALL_TEST_PLATFORMS_ES31, \
+        ANGLE_ALL_TEST_PLATFORMS_NULL, __VA_ARGS__};                                               \
     INSTANTIATE_TEST_SUITE_P(, testName, ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),               \
                              testing::PrintToStringParamName())
 
@@ -228,24 +298,44 @@ struct CombinedPrintToStringParamName
 // enumeration of platforms in the extra args, similar to
 // ANGLE_INSTANTIATE_TEST.  The macros are defined only for the Ns
 // currently in use, and can be expanded as necessary.
-#define ANGLE_INSTANTIATE_TEST_COMBINE_1(testName, print, combine1, first, ...) \
-    const decltype(first) testName##params[] = {first, ##__VA_ARGS__};          \
-    INSTANTIATE_TEST_SUITE_P(                                                   \
+#define ANGLE_INSTANTIATE_TEST_COMBINE_1(testName, print, combine1, first, ...)              \
+    const std::remove_reference<decltype(first)>::type testName##params[] = {first,          \
+                                                                             ##__VA_ARGS__}; \
+    INSTANTIATE_TEST_SUITE_P(                                                                \
         , testName, testing::Combine(ANGLE_INSTANTIATE_TEST_PLATFORMS(testName), combine1), print)
+#define ANGLE_INSTANTIATE_TEST_COMBINE_3(testName, print, combine1, combine2, combine3, first, \
+                                         ...)                                                  \
+    const std::remove_reference<decltype(first)>::type testName##params[] = {first,            \
+                                                                             ##__VA_ARGS__};   \
+    INSTANTIATE_TEST_SUITE_P(, testName,                                                       \
+                             testing::Combine(ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),      \
+                                              combine1, combine2, combine3),                   \
+                             print)
 #define ANGLE_INSTANTIATE_TEST_COMBINE_4(testName, print, combine1, combine2, combine3, combine4, \
                                          first, ...)                                              \
-    const decltype(first) testName##params[] = {first, ##__VA_ARGS__};                            \
+    const std::remove_reference<decltype(first)>::type testName##params[] = {first,               \
+                                                                             ##__VA_ARGS__};      \
     INSTANTIATE_TEST_SUITE_P(, testName,                                                          \
                              testing::Combine(ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),         \
                                               combine1, combine2, combine3, combine4),            \
                              print)
 #define ANGLE_INSTANTIATE_TEST_COMBINE_5(testName, print, combine1, combine2, combine3, combine4, \
                                          combine5, first, ...)                                    \
-    const decltype(first) testName##params[] = {first, ##__VA_ARGS__};                            \
+    const std::remove_reference<decltype(first)>::type testName##params[] = {first,               \
+                                                                             ##__VA_ARGS__};      \
     INSTANTIATE_TEST_SUITE_P(, testName,                                                          \
                              testing::Combine(ANGLE_INSTANTIATE_TEST_PLATFORMS(testName),         \
                                               combine1, combine2, combine3, combine4, combine5),  \
                              print)
+#define ANGLE_INSTANTIATE_TEST_COMBINE_6(testName, print, combine1, combine2, combine3, combine4,  \
+                                         combine5, combine6, first, ...)                           \
+    const std::remove_reference<decltype(first)>::type testName##params[] = {first,                \
+                                                                             ##__VA_ARGS__};       \
+    INSTANTIATE_TEST_SUITE_P(                                                                      \
+        , testName,                                                                                \
+        testing::Combine(ANGLE_INSTANTIATE_TEST_PLATFORMS(testName), combine1, combine2, combine3, \
+                         combine4, combine5, combine6),                                            \
+        print)
 
 // Checks if a config is expected to be supported by checking a system-based allow list.
 bool IsConfigAllowlisted(const SystemInfo &systemInfo, const PlatformParameters &param);
@@ -268,6 +358,9 @@ bool IsConfigSelected();
 
 // Check whether texture swizzle is natively supported on Metal device.
 bool IsMetalTextureSwizzleAvailable();
+
+// Check whether TEXTURE_3D target is supported for compressed formats on Metal device.
+bool IsMetalCompressedTexture3DAvailable();
 
 extern bool gEnableANGLEPerTestCaptureLabel;
 
@@ -338,14 +431,14 @@ std::vector<ParamT> FilterWithFunc(const std::vector<ParamT> &in, FilterFunc fil
 }
 }  // namespace angle
 
-#define ANGLE_SKIP_TEST_IF(COND)                                  \
-    do                                                            \
-    {                                                             \
-        if (COND)                                                 \
-        {                                                         \
-            std::cout << "Test skipped: " #COND "." << std::endl; \
-            return;                                               \
-        }                                                         \
+#define ANGLE_SKIP_TEST_IF(COND)                        \
+    do                                                  \
+    {                                                   \
+        if (COND)                                       \
+        {                                               \
+            GTEST_SKIP() << "Test skipped: " #COND "."; \
+            return;                                     \
+        }                                               \
     } while (0)
 
 #endif  // ANGLE_TEST_INSTANTIATE_H_

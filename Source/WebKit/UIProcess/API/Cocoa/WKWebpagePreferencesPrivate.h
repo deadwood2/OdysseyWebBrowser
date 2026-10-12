@@ -62,6 +62,31 @@ typedef NS_OPTIONS(NSUInteger, _WKWebsiteMouseEventPolicy) {
 #endif
 } WK_API_AVAILABLE(macos(11.0), ios(14.0));
 
+typedef NS_OPTIONS(NSUInteger, _WKWebsiteModalContainerObservationPolicy) {
+    _WKWebsiteModalContainerObservationPolicyDisabled,
+    _WKWebsiteModalContainerObservationPolicyPrompt,
+} WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
+// Allow overriding the system color-scheme with a per-website preference.
+typedef NS_OPTIONS(NSUInteger, _WKWebsiteColorSchemePreference) {
+    _WKWebsiteColorSchemePreferenceNoPreference,
+    _WKWebsiteColorSchemePreferenceLight,
+    _WKWebsiteColorSchemePreferenceDark,
+} WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
+typedef NS_OPTIONS(NSUInteger, _WKWebsiteNetworkConnectionIntegrityPolicy) {
+    _WKWebsiteNetworkConnectionIntegrityPolicyNone = 0,
+    _WKWebsiteNetworkConnectionIntegrityPolicyEnabled = 1 << 0,
+    _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSFirst = 1 << 1,
+    _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnly = 1 << 2,
+    _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnlyExplicitlyBypassedForDomain = 1 << 3,
+    _WKWebsiteNetworkConnectionIntegrityPolicyFailClosed = 1 << 4,
+    _WKWebsiteNetworkConnectionIntegrityPolicyWebSearchContent WK_API_AVAILABLE(macos(14.0), ios(17.0)) = 1 << 5,
+    _WKWebsiteNetworkConnectionIntegrityPolicyEnhancedTelemetry WK_API_AVAILABLE(macos(14.0), ios(17.0)) = 1 << 6,
+    _WKWebsiteNetworkConnectionIntegrityPolicyRequestValidation WK_API_AVAILABLE(macos(14.0), ios(17.0)) = 1 << 7,
+    _WKWebsiteNetworkConnectionIntegrityPolicySanitizeLookalikeCharacters WK_API_AVAILABLE(macos(14.0), ios(17.0)) = 1 << 8,
+} WK_API_AVAILABLE(macos(13.3), ios(16.4));
+
 @class _WKCustomHeaderFields;
 @class WKUserContentController;
 @class WKWebsiteDataStore;
@@ -69,6 +94,7 @@ typedef NS_OPTIONS(NSUInteger, _WKWebsiteMouseEventPolicy) {
 @interface WKWebpagePreferences (WKPrivate)
 
 @property (nonatomic, setter=_setContentBlockersEnabled:) BOOL _contentBlockersEnabled;
+@property (nonatomic, copy, setter=_setActiveContentRuleListActionPatterns:) NSDictionary<NSString *, NSSet<NSString *> *> *_activeContentRuleListActionPatterns WK_API_AVAILABLE(macos(13.0), ios(16.0));
 @property (nonatomic, setter=_setAllowedAutoplayQuirks:) _WKWebsiteAutoplayQuirk _allowedAutoplayQuirks;
 @property (nonatomic, setter=_setAutoplayPolicy:) _WKWebsiteAutoplayPolicy _autoplayPolicy;
 @property (nonatomic, copy, setter=_setCustomHeaderFields:) NSArray<_WKCustomHeaderFields *> *_customHeaderFields;
@@ -84,5 +110,19 @@ typedef NS_OPTIONS(NSUInteger, _WKWebsiteMouseEventPolicy) {
 @property (nonatomic, copy, setter=_setApplicationNameForUserAgentWithModernCompatibility:) NSString *_applicationNameForUserAgentWithModernCompatibility;
 
 @property (nonatomic, setter=_setMouseEventPolicy:) _WKWebsiteMouseEventPolicy _mouseEventPolicy WK_API_AVAILABLE(macos(11.0), ios(14.0));
+@property (nonatomic, setter=_setModalContainerObservationPolicy:) _WKWebsiteModalContainerObservationPolicy _modalContainerObservationPolicy WK_API_AVAILABLE(macos(13.0), ios(16.0));
+
+@property (nonatomic, setter=_setCaptivePortalModeEnabled:) BOOL _captivePortalModeEnabled WK_API_AVAILABLE(macos(13.0), ios(16.0));
+@property (nonatomic, setter=_setAllowPrivacyProxy:) BOOL _allowPrivacyProxy WK_API_AVAILABLE(macos(13.1), ios(16.2));
+
+@property (nonatomic, setter=_setColorSchemePreference:) _WKWebsiteColorSchemePreference _colorSchemePreference;
+
+@property (nonatomic, setter=_setNetworkConnectionIntegrityEnabled:) BOOL _networkConnectionIntegrityEnabled WK_API_AVAILABLE(macos(13.3), ios(16.4));
+@property (nonatomic, setter=_setNetworkConnectionIntegrityPolicy:) _WKWebsiteNetworkConnectionIntegrityPolicy _networkConnectionIntegrityPolicy WK_API_AVAILABLE(macos(13.3), ios(16.4));
+
+@property (nonatomic, copy, setter=_setVisibilityAdjustmentSelectorsIncludingShadowHosts:) NSArray<NSArray<NSSet<NSString *> *> *> *_visibilityAdjustmentSelectorsIncludingShadowHosts WK_API_AVAILABLE(macos(15.0), ios(18.0), visionos(2.0));
+@property (nonatomic, copy, setter=_setVisibilityAdjustmentSelectors:) NSSet<NSString *> *_visibilityAdjustmentSelectors WK_API_AVAILABLE(macos(15.0), ios(18.0), visionos(2.0));
+
+- (void)_setContentRuleListsEnabled:(BOOL)enabled exceptions:(NSSet<NSString *> *)exceptions WK_API_AVAILABLE(macos(14.0), ios(17.0));
 
 @end

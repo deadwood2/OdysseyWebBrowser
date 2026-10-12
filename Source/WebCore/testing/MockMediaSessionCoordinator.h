@@ -46,7 +46,7 @@ public:
 private:
     MockMediaSessionCoordinator(ScriptExecutionContext&, RefPtr<StringCallback>&&);
 
-    String identifier() const final { return "Mock Coordinator"; }
+    String identifier() const final { return "Mock Coordinator"_s; }
 
     void join(CompletionHandler<void(std::optional<Exception>&&)>&&) final;
     void leave() final;
@@ -61,7 +61,7 @@ private:
     void playbackStateChanged(MediaSessionPlaybackState) final;
     void trackIdentifierChanged(const String&) final;
 
-    const char* logClassName() const { return "MockMediaSessionCoordinator"; }
+    ASCIILiteral logClassName() const { return "MockMediaSessionCoordinator"_s; }
     WTFLogChannel& logChannel() const;
 
     std::optional<Exception> result() const;

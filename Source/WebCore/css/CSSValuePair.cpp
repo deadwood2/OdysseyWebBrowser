@@ -26,22 +26,62 @@
 #include "config.h"
 #include "CSSValuePair.h"
 
-#include <wtf/text/StringBuilder.h>
+#include <wtf/Hasher.h>
+#include <wtf/text/MakeString.h>
+#include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
+CSSValuePair::CSSValuePair(ValueSeparator separator, Ref<CSSValue> first, Ref<CSSValue> second, IdenticalValueSerialization serialization)
+    : CSSValue(ValuePairClass)
+    , m_coalesceIdenticalValues(serialization != IdenticalValueSerialization::DoNotCoalesce)
+    , m_first(WTFMove(first))
+    , m_second(WTFMove(second))
+{
+    m_valueSeparator = separator;
+}
+
+Ref<CSSValuePair> CSSValuePair::create(Ref<CSSValue> first, Ref<CSSValue> second)
+{
+    return adoptRef(*new CSSValuePair(SpaceSeparator, WTFMove(first), WTFMove(second), IdenticalValueSerialization::Coalesce));
+}
+
+Ref<CSSValuePair> CSSValuePair::createSlashSeparated(Ref<CSSValue> first, Ref<CSSValue> second)
+{
+    return adoptRef(*new CSSValuePair(SlashSeparator, WTFMove(first), WTFMove(second), IdenticalValueSerialization::DoNotCoalesce));
+}
+
+Ref<CSSValuePair> CSSValuePair::createNoncoalescing(Ref<CSSValue> first, Ref<CSSValue> second)
+{
+    return adoptRef(*new CSSValuePair(SpaceSeparator, WTFMove(first), WTFMove(second), IdenticalValueSerialization::DoNotCoalesce));
+}
+
+bool CSSValuePair::canBeCoalesced() const
+{
+    return m_coalesceIdenticalValues && m_first->equals(m_second);
+}
+
 String CSSValuePair::customCSSText() const
 {
-    String first = this->first()->cssText();
-    String second = this->second()->cssText();
-    if (m_encoding == IdenticalValueEncoding::Coalesce && first == second)
+    String first = m_first->cssText();
+    String second = m_second->cssText();
+    if (m_coalesceIdenticalValues && first == second)
         return first;
     return makeString(first, separatorCSSText(), second);
 }
 
-bool CSSValuePair::equals(const CSSValuePair &other) const
+bool CSSValuePair::equals(const CSSValuePair& other) const
 {
-    return m_valueSeparator == other.m_valueSeparator && m_first.get().equals(other.m_first) && m_second.get().equals(other.m_second);
+    return m_valueSeparator == other.m_valueSeparator
+        && m_coalesceIdenticalValues == other.m_coalesceIdenticalValues
+        && m_first->equals(other.m_first)
+        && m_second->equals(other.m_second);
+}
+
+bool CSSValuePair::addDerivedHash(Hasher& hasher) const
+{
+    add(hasher, m_valueSeparator, m_coalesceIdenticalValues);
+    return m_first->addHash(hasher) && m_second->addHash(hasher);
 }
 
 } // namespace WebCore

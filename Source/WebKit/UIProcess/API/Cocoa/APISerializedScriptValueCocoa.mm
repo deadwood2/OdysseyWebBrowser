@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015, 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,58 +30,80 @@
 #import <JavaScriptCore/JSContextPrivate.h>
 #import <JavaScriptCore/JSGlobalObjectInlines.h>
 #import <JavaScriptCore/JSRemoteInspector.h>
+#import <JavaScriptCore/JSRetainPtr.h>
 #import <JavaScriptCore/JSValue.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/RunLoop.h>
 
 namespace API {
 
+static constexpr auto sharedJSContextMaxIdleTime = 10_s;
+
 class SharedJSContext {
 public:
     SharedJSContext()
-        : m_timer(RunLoop::main(), this, &SharedJSContext::releaseContext)
+        : m_timer(RunLoop::main(), this, &SharedJSContext::releaseContextIfNecessary)
     {
     }
 
-    JSContext* ensureContext()
+    RetainPtr<JSContext> ensureContext()
     {
+        m_lastUseTime = MonotonicTime::now();
         if (!m_context) {
+            bool inspectionPreviouslyFollowedInternalPolicies = JSRemoteInspectorGetInspectionFollowsInternalPolicies();
+            JSRemoteInspectorSetInspectionFollowsInternalPolicies(false);
+
+            // FIXME: rdar://100738357 Remote Web Inspector: Remove use of JSRemoteInspectorGetInspectionEnabledByDefault
+            // and JSRemoteInspectorSetInspectionEnabledByDefault once the default state is always false.
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             bool previous = JSRemoteInspectorGetInspectionEnabledByDefault();
             JSRemoteInspectorSetInspectionEnabledByDefault(false);
             m_context = adoptNS([[JSContext alloc] init]);
             JSRemoteInspectorSetInspectionEnabledByDefault(previous);
+ALLOW_DEPRECATED_DECLARATIONS_END
 
-            m_timer.startOneShot(1_s);
+            JSRemoteInspectorSetInspectionFollowsInternalPolicies(inspectionPreviouslyFollowedInternalPolicies);
+
+            m_timer.startOneShot(sharedJSContextMaxIdleTime);
         }
-        return m_context.get();
+        return m_context;
     }
 
-    void releaseContext()
+    void releaseContextIfNecessary()
     {
+        auto idleTime = MonotonicTime::now() - m_lastUseTime;
+        if (idleTime < sharedJSContextMaxIdleTime) {
+            // We lazily restart the timer if needed every 10 seconds instead of doing so every time ensureContext()
+            // is called, for performance reasons.
+            m_timer.startOneShot(sharedJSContextMaxIdleTime - idleTime);
+            return;
+        }
         m_context.clear();
     }
 
 private:
     RetainPtr<JSContext> m_context;
-    RunLoop::Timer<SharedJSContext> m_timer;
+    RunLoop::Timer m_timer;
+    MonotonicTime m_lastUseTime;
 };
 
 static SharedJSContext& sharedContext()
 {
-    static NeverDestroyed<SharedJSContext> sharedContext;
+    static MainThreadNeverDestroyed<SharedJSContext> sharedContext;
     return sharedContext.get();
 }
 
-id SerializedScriptValue::deserialize(WebCore::SerializedScriptValue& serializedScriptValue, JSValueRef* exception)
+id SerializedScriptValue::deserialize(WebCore::SerializedScriptValue& serializedScriptValue)
 {
     ASSERT(RunLoop::isMain());
-    JSContext* context = sharedContext().ensureContext();
+    RetainPtr context = sharedContext().ensureContext();
+    JSRetainPtr globalContextRef = [context JSGlobalContextRef];
 
-    JSValueRef valueRef = serializedScriptValue.deserialize([context JSGlobalContextRef], exception);
+    JSValueRef valueRef = serializedScriptValue.deserialize(globalContextRef.get(), nullptr);
     if (!valueRef)
         return nil;
 
-    JSValue *value = [JSValue valueWithJSValueRef:valueRef inContext:context];
+    JSValue *value = [JSValue valueWithJSValueRef:valueRef inContext:context.get()];
     return value.toObject;
 }
 
@@ -125,12 +147,13 @@ static RefPtr<WebCore::SerializedScriptValue> coreValueFromNSObject(id object)
         return nullptr;
 
     ASSERT(RunLoop::isMain());
-    JSContext* context = sharedContext().ensureContext();
-    JSValue *value = [JSValue valueWithObject:object inContext:context];
+    RetainPtr context = sharedContext().ensureContext();
+    JSValue *value = [JSValue valueWithObject:object inContext:context.get()];
     if (!value)
         return nullptr;
 
-    auto globalObject = toJS([context JSGlobalContextRef]);
+    JSRetainPtr globalContextRef = [context JSGlobalContextRef];
+    auto globalObject = toJS(globalContextRef.get());
     ASSERT(globalObject);
     JSC::JSLockHolder lock(globalObject);
 

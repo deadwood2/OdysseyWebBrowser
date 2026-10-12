@@ -1,4 +1,4 @@
-# Copyright (C) 2021 Apple Inc. All rights reserved.
+# Copyright (C) 2021-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -22,8 +22,9 @@
 
 import sys
 
+from .branch import Branch
 from .command import Command
-from .pull_request import PullRequest
+from webkitcorepy import arguments
 from webkitscmpy import local
 
 
@@ -33,12 +34,33 @@ class Pull(Command):
     help = 'Update the current checkout, synchronize git-svn if configured'
 
     @classmethod
+    def parser(cls, parser, loggers=None):
+        parser.add_argument(
+            '--prune', '--no-prune',
+            dest='prune', default=None,
+            help='Prune deleted branches on the tracking remote when fetching',
+            action=arguments.NoAction,
+        )
+
+    @classmethod
     def main(cls, args, repository, **kwargs):
+        if not repository:
+            sys.stderr.write('No repository provided\n')
+            return 1
         if not repository.path:
             sys.stderr.write('Cannot update remote repository\n')
             return 1
 
         if isinstance(repository, local.Git):
-            branch_point = PullRequest.branch_point(args, repository, **kwargs)
-            return repository.pull(rebase=True, branch=branch_point.branch)
+            branch_point = repository.branch_point()
+            bp_remotes = set(repository.branches_for(hash=branch_point.hash, remote=None).keys())
+            remote = None
+            for rmt in repository.source_remotes():
+                if rmt in bp_remotes:
+                    remote = rmt
+                    break
+            return repository.pull(rebase=True, branch=branch_point.branch, remote=remote, prune=args.prune)
+        if args.prune is not None:
+            sys.stderr.write("'prune' arguments only valid for 'git' checkouts\n")
+            return 1
         return repository.pull()

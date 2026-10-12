@@ -1,6 +1,7 @@
 #import <mui/MUIArea.h>
 
 @class WkWebView;
+@class WkWebInspectorView;
 @class WkWebViewPrivate;
 @class WkMutableNetworkRequest;
 @class WkBackForwardList;
@@ -78,6 +79,8 @@
 
 - (void)webViewRequestedPrinting:(WkWebView *)view;
 
+- (void)webView:(WkWebView *)view createdNewInspectorView:(WkWebInspectorView *)newInspector;
+
 @end
 
 @protocol WkWebViewBackForwardListDelegate <OBObject>
@@ -103,7 +106,13 @@ typedef enum {
 
 @protocol WkWebViewAllRequestsHandlerDelegate <OBObject>
 
-- (BOOL)webView:(WkWebView *)view wantsToNavigateToURL:(OBURL *)url;
+typedef enum {
+    WkWebViewAllRequestsHandlerTarget_MainFrame,
+    WkWebViewAllRequestsHandlerTarget_NewWindow,
+    WkWebViewAllRequestsHandlerTarget_SubFrame
+} WkWebViewAllRequestsHandlerTarget;
+
+- (BOOL)webView:(WkWebView *)view wantsToNavigateToURL:(OBURL *)url intoTarget:(WkWebViewAllRequestsHandlerTarget)target;
 
 @end
 
@@ -147,6 +156,21 @@ typedef enum {
 @protocol WkWebViewEditorDelegate <OBObject>
 
 - (void)webViewUpdatedUndoRedoList:(WkWebView *)view;
+- (void)webViewDidEditText:(WkWebView *)view;
+
+@end
+
+@protocol WkWebViewStorageHandler <OBObject>
+
+- (OBString *)localStorageValueForKey:(OBString *)key;
+- (void)setLocalStorageValue:(OBString *)value forKey:(OBString *)key;
+
+@end
+
+@protocol WkWebViewStorageDelegate <OBObject>
+
+- (BOOL)webViewShouldCreateLocalStorageHandler:(WkWebView *)view;
+- (void)webView:(WkWebView *)view createdLocalStorageHandler:(id<WkWebViewStorageHandler>)handler;
 
 @end
 
@@ -223,6 +247,7 @@ typedef enum {
 - (void)setAllRequestsHandlerDelegate:(id<WkWebViewAllRequestsHandlerDelegate>)delegate;
 - (void)setMediaDelegate:(id<WkWebViewMediaDelegate>)delegate;
 - (void)setNotificationDelegate:(id<WkNotificationDelegate>)delegate;
+- (void)setStorageDelegate:(id<WkWebViewStorageDelegate>)delegate;
 
 - (void)setCustomProtocolHandler:(id<WkWebViewNetworkProtocolHandlerDelegate>)delegate forProtocol:(OBString *)protocol;
 
@@ -234,6 +259,8 @@ typedef enum {
 - (int)visibleHeight;
 
 - (BOOL)screenShotRectAtX:(int)x y:(int)y intoRastPort:(struct RastPort *)rp withWidth:(ULONG)width height:(ULONG)height;
+- (BOOL)screenShotPageToFile:(OBString *)path;
+
 - (void)primeLayoutForWidth:(int)width height:(int)height;
 
 - (WkPrintingState *)beginPrinting;
@@ -259,5 +286,8 @@ typedef enum {
 
 - (void)setQuiet:(BOOL)quiet;
 - (BOOL)quiet;
+
+- (BOOL)developerToolsEnabled;
+- (void)setDeveloperToolsEnabled:(BOOL)enabled;
 
 @end

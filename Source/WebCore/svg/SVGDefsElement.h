@@ -26,7 +26,8 @@
 namespace WebCore {
 
 class SVGDefsElement final : public SVGGraphicsElement {
-    WTF_MAKE_ISO_ALLOCATED(SVGDefsElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGDefsElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGDefsElement);
 public:
     static Ref<SVGDefsElement> create(const QualifiedName&, Document&);
 
@@ -34,14 +35,11 @@ private:
     SVGDefsElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGDefsElement, SVGGraphicsElement>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
     bool isValid() const final;
     bool supportsFocus() const final { return false; }
 
     RenderPtr<RenderElement> createElementRenderer(RenderStyle&&, const RenderTreePosition&) final;
-
-    PropertyRegistry m_propertyRegistry { *this };
 };
 
 } // namespace WebCore

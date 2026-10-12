@@ -73,7 +73,21 @@ def join(list, conjunction='and'):
         return 'Nothing'
     if len(list) == 1:
         return list[0]
-    return '{} {} {}'.format(', '.join(list[:-1]), conjunction, list[-1])
+    conjunctionWithSerialCommaIfNeeded = f'{"," if len(list) > 2 else ""} {conjunction} '
+    return '{}{}{}'.format(', '.join(list[:-1]), conjunctionWithSerialCommaIfNeeded, list[-1])
+
+
+def split(string, conjunctions=None):
+    conjunctions = ['and', 'or']
+    if not string:
+        return []
+
+    result = [string]
+    for conjunction in conjunctions:
+        conjunction = ' {} '.format(conjunction)
+        result = [clause.strip() for phrase in result for clause in phrase.split(conjunction) if clause.strip()]
+
+    return [word.strip() for clause in result for word in clause.split(',') if word.strip()]
 
 
 def out_of(number, base):

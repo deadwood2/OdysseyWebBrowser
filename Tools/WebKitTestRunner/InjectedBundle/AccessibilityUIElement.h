@@ -34,6 +34,7 @@
 #include <JavaScriptCore/JSObjectRef.h>
 #include <JavaScriptCore/JSRetainPtr.h>
 #include <WebKit/WKBundleFrame.h>
+#include <WebKit/WKBundlePage.h>
 #include <wtf/Platform.h>
 #include <wtf/Vector.h>
 
@@ -41,12 +42,13 @@
 OBJC_CLASS NSArray;
 OBJC_CLASS NSString;
 #include <wtf/RetainPtr.h>
+#include <wtf/WeakObjCPtr.h>
 using PlatformUIElement = id;
-#elif HAVE(ACCESSIBILITY) && USE(ATK)
-#include "AccessibilityNotificationHandlerAtk.h"
-#include <atk/atk.h>
-#include <wtf/glib/GRefPtr.h>
-typedef GRefPtr<AtkObject> PlatformUIElement;
+#elif USE(ATSPI)
+namespace WebCore {
+class AccessibilityObjectAtspi;
+}
+typedef WebCore::AccessibilityObjectAtspi* PlatformUIElement;
 #else
 typedef void* PlatformUIElement;
 #endif
@@ -54,12 +56,14 @@ typedef void* PlatformUIElement;
 namespace WTR {
 
 class AccessibilityController;
+#if USE(ATSPI)
+class AccessibilityNotificationHandler;
+#endif
 
 class AccessibilityUIElement : public JSWrappable {
 #if PLATFORM(COCOA)
     // Helper functions that dispatch the corresponding AccessibilityObjectWrapper method to the AX secondary thread when appropriate.
     friend RetainPtr<NSArray> supportedAttributes(id);
-    friend id attributeValue(id, NSString *);
     friend void setAttributeValue(id, NSString *, id, bool synchronous);
 #endif
 
@@ -70,7 +74,9 @@ public:
     ~AccessibilityUIElement();
 
 #if PLATFORM(COCOA)
-    id platformUIElement() { return m_element.get(); }
+    id platformUIElement() { return m_element.getAutoreleased(); }
+#elif USE(ATSPI)
+    PlatformUIElement platformUIElement() { return m_element.get(); }
 #else
     PlatformUIElement platformUIElement() { return m_element; }
 #endif
@@ -83,10 +89,10 @@ public:
     JSRetainPtr<JSStringRef> domIdentifier() const;
 
     RefPtr<AccessibilityUIElement> elementAtPoint(int x, int y);
-    JSValueRef children() const;
+    JSValueRef children(JSContextRef);
     RefPtr<AccessibilityUIElement> childAtIndex(unsigned);
     unsigned indexOfChild(AccessibilityUIElement*);
-    int childrenCount();
+    unsigned childrenCount();
     RefPtr<AccessibilityUIElement> titleUIElement();
     RefPtr<AccessibilityUIElement> parentElement();
 
@@ -112,23 +118,32 @@ public:
     void syncPress();
     void asyncIncrement();
     void asyncDecrement();
+    RefPtr<AccessibilityUIElement> focusableAncestor();
+    RefPtr<AccessibilityUIElement> editableAncestor();
+    RefPtr<AccessibilityUIElement> highestEditableAncestor();
 #else
     void syncPress() { press(); }
     void asyncIncrement() { }
     void asyncDecrement() { };
+    RefPtr<AccessibilityUIElement> focusableAncestor() { return nullptr; }
+    RefPtr<AccessibilityUIElement> editableAncestor() { return nullptr; }
+    RefPtr<AccessibilityUIElement> highestEditableAncestor() { return nullptr; }
 #endif
 
     // Attributes - platform-independent implementations
     JSRetainPtr<JSStringRef> stringDescriptionOfAttributeValue(JSStringRef attribute);
     JSRetainPtr<JSStringRef> stringAttributeValue(JSStringRef attribute);
     double numberAttributeValue(JSStringRef attribute);
-    JSValueRef uiElementArrayAttributeValue(JSStringRef attribute) const;
+    JSValueRef uiElementArrayAttributeValue(JSContextRef, JSStringRef attribute);
     RefPtr<AccessibilityUIElement> uiElementAttributeValue(JSStringRef attribute) const;
     bool boolAttributeValue(JSStringRef attribute);
 #if PLATFORM(MAC)
-    void attributeValueAsync(JSStringRef attribute, JSValueRef callback);
+    RetainPtr<id> attributeValue(NSString *) const;
+    void attributeValueAsync(JSContextRef, JSStringRef attribute, JSValueRef callback);
+    NSArray *actionNames() const;
+    void performAction(NSString *) const;
 #else
-    void attributeValueAsync(JSStringRef attribute, JSValueRef callback) { }
+    void attributeValueAsync(JSContextRef, JSStringRef attribute, JSValueRef callback) { }
 #endif
     void setBoolAttributeValue(JSStringRef attribute, bool value);
     bool isAttributeSupported(JSStringRef attribute);
@@ -145,24 +160,35 @@ public:
     JSRetainPtr<JSStringRef> description();
     JSRetainPtr<JSStringRef> language();
     JSRetainPtr<JSStringRef> stringValue();
+    JSRetainPtr<JSStringRef> dateValue();
     JSRetainPtr<JSStringRef> accessibilityValue() const;
     JSRetainPtr<JSStringRef> helpText() const;
     JSRetainPtr<JSStringRef> orientation() const;
+    JSRetainPtr<JSStringRef> liveRegionRelevant() const;
+    JSRetainPtr<JSStringRef> liveRegionStatus() const;
     double x();
     double y();
     double width();
     double height();
     JSRetainPtr<JSStringRef> lineRectsAndText() const;
+    JSRetainPtr<JSStringRef> brailleLabel() const;
+    JSRetainPtr<JSStringRef> brailleRoleDescription() const;
 
     double intValue() const;
     double minValue();
     double maxValue();
     JSRetainPtr<JSStringRef> valueDescription();
+    unsigned numberOfCharacters() const;
     int insertionPointLineNumber();
     JSRetainPtr<JSStringRef> selectedTextRange();
+    JSRetainPtr<JSStringRef> intersectionWithSelectionRange();
+    JSRetainPtr<JSStringRef> textInputMarkedRange() const;
+    bool isAtomicLiveRegion() const;
+    bool isBusy() const;
     bool isEnabled();
     bool isRequired() const;
-    
+
+    RefPtr<AccessibilityUIElement> focusedElement() const;
     bool isFocused() const;
     bool isFocusable() const;
     bool isSelected() const;
@@ -173,11 +199,14 @@ public:
     void setSelectedChildAtIndex(unsigned) const;
     void removeSelectionAtIndex(unsigned) const;
     void clearSelectedChildren() const;
+    RefPtr<AccessibilityUIElement> activeElement() const;
+    JSValueRef selectedChildren(JSContextRef);
     unsigned selectedChildrenCount() const;
     RefPtr<AccessibilityUIElement> selectedChildAtIndex(unsigned) const;
-    
+
     bool isValid() const;
     bool isExpanded() const;
+    bool supportsExpanded() const;
     bool isChecked() const;
     JSRetainPtr<JSStringRef> currentStateValue() const;
     JSRetainPtr<JSStringRef> sortDirection() const;
@@ -194,12 +223,10 @@ public:
     int hierarchicalLevel() const;
     double clickPointX();
     double clickPointY();
-    JSRetainPtr<JSStringRef> documentEncoding();
-    JSRetainPtr<JSStringRef> documentURI();
     JSRetainPtr<JSStringRef> url();
     JSRetainPtr<JSStringRef> classList() const;
     JSRetainPtr<JSStringRef> embeddedImageDescription() const;
-    JSValueRef imageOverlayElements() const;
+    JSValueRef imageOverlayElements(JSContextRef);
 
     // CSS3-speech properties.
     JSRetainPtr<JSStringRef> speakAs();
@@ -208,10 +235,11 @@ public:
     JSRetainPtr<JSStringRef> attributesOfColumnHeaders();
     JSRetainPtr<JSStringRef> attributesOfRowHeaders();
     JSRetainPtr<JSStringRef> attributesOfColumns();
+    JSValueRef columns(JSContextRef);
     JSRetainPtr<JSStringRef> attributesOfRows();
     JSRetainPtr<JSStringRef> attributesOfVisibleCells();
     JSRetainPtr<JSStringRef> attributesOfHeader();
-    bool isInTableCell() const;
+    bool isInCell() const;
     bool isInTable() const;
     bool isInList() const;
     bool isInLandmark() const;
@@ -220,8 +248,10 @@ public:
     JSRetainPtr<JSStringRef> columnIndexRange();
     int rowCount();
     int columnCount();
-    JSValueRef rowHeaders() const;
-    JSValueRef columnHeaders() const;
+    JSValueRef rowHeaders(JSContextRef);
+    JSValueRef columnHeaders(JSContextRef);
+    JSRetainPtr<JSStringRef> customContent() const;
+    JSValueRef selectedCells(JSContextRef);
 
     // Tree/Outline specific attributes
     RefPtr<AccessibilityUIElement> selectedRowAtIndex(unsigned);
@@ -229,41 +259,24 @@ public:
     RefPtr<AccessibilityUIElement> disclosedRowAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> rowAtIndex(unsigned);
 
-    JSValueRef detailsElements() const;
-    JSValueRef errorMessageElements() const;
-    // ARIA specific
-    RefPtr<AccessibilityUIElement> ariaOwnsElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaFlowToElementAtIndex(unsigned);
+    // Relationships.
+    // FIXME: replace all ***AtIndex methods with ones that return an array and make the naming consistent.
+    RefPtr<AccessibilityUIElement> controllerElementAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> ariaControlsElementAtIndex(unsigned);
-#if PLATFORM(COCOA) || USE(ATK)
-    RefPtr<AccessibilityUIElement> ariaDetailsElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaErrorMessageElementAtIndex(unsigned);
-#else
-    RefPtr<AccessibilityUIElement> ariaDetailsElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaErrorMessageElementAtIndex(unsigned) { return nullptr; }
-#endif
-
-#if USE(ATK)
-    RefPtr<AccessibilityUIElement> ariaLabelledByElementAtIndex(unsigned);
     RefPtr<AccessibilityUIElement> ariaDescribedByElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaOwnsReferencingElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaFlowToReferencingElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaControlsReferencingElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaLabelledByReferencingElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaDescribedByReferencingElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaDetailsReferencingElementAtIndex(unsigned);
-    RefPtr<AccessibilityUIElement> ariaErrorMessageReferencingElementAtIndex(unsigned);
-#else
-    RefPtr<AccessibilityUIElement> ariaLabelledByElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaDescribedByElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaOwnsReferencingElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaFlowToReferencingElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaControlsReferencingElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaLabelledByReferencingElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaDescribedByReferencingElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaDetailsReferencingElementAtIndex(unsigned) { return nullptr; }
-    RefPtr<AccessibilityUIElement> ariaErrorMessageReferencingElementAtIndex(unsigned) { return nullptr; }
-#endif
+    RefPtr<AccessibilityUIElement> descriptionForElementAtIndex(unsigned);
+    JSValueRef detailsElements(JSContextRef);
+    RefPtr<AccessibilityUIElement> ariaDetailsElementAtIndex(unsigned);
+    RefPtr<AccessibilityUIElement> detailsForElementAtIndex(unsigned);
+    JSValueRef errorMessageElements(JSContextRef);
+    RefPtr<AccessibilityUIElement> ariaErrorMessageElementAtIndex(unsigned);
+    RefPtr<AccessibilityUIElement> errorMessageForElementAtIndex(unsigned);
+    RefPtr<AccessibilityUIElement> flowFromElementAtIndex(unsigned);
+    RefPtr<AccessibilityUIElement> ariaFlowToElementAtIndex(unsigned);
+    RefPtr<AccessibilityUIElement> ariaLabelledByElementAtIndex(unsigned);
+    RefPtr<AccessibilityUIElement> labelForElementAtIndex(unsigned);
+    RefPtr<AccessibilityUIElement> ownerElementAtIndex(unsigned);
+    RefPtr<AccessibilityUIElement> ariaOwnsElementAtIndex(unsigned);
 
     // ARIA Drag and Drop
     bool ariaIsGrabbed() const;
@@ -302,18 +315,25 @@ public:
     void scrollToMakeVisible();
     void scrollToGlobalPoint(int x, int y);
     void scrollToMakeVisibleWithSubFocus(int x, int y, int width, int height);
-    
+
     // Text markers.
     RefPtr<AccessibilityTextMarkerRange> lineTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarkerRange> rightLineTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarkerRange> leftLineTextMarkerRangeForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarker> previousLineStartTextMarkerForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarker> nextLineEndTextMarkerForTextMarker(AccessibilityTextMarker*);
     int lineIndexForTextMarker(AccessibilityTextMarker*) const;
+    RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForSearchPredicate(JSContextRef, AccessibilityTextMarkerRange* startRange, bool forward, JSValueRef searchKey, JSStringRef searchText, bool visibleOnly, bool immediateDescendantsOnly);
     RefPtr<AccessibilityTextMarkerRange> misspellingTextMarkerRange(AccessibilityTextMarkerRange* start, bool forward);
     RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForElement(AccessibilityUIElement*);
-    RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForMarkers(AccessibilityTextMarker* startMarker, AccessibilityTextMarker* endMarker);
+    RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForMarkers(AccessibilityTextMarker*, AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForUnorderedMarkers(AccessibilityTextMarker*, AccessibilityTextMarker*);
     RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForRange(unsigned location, unsigned length);
     RefPtr<AccessibilityTextMarkerRange> selectedTextMarkerRange();
     void resetSelectedTextMarkerRange();
     bool replaceTextInRange(JSStringRef, int position, int length);
     bool insertText(JSStringRef);
+    RefPtr<AccessibilityTextMarkerRange> textInputMarkedTextMarkerRange() const;
     RefPtr<AccessibilityTextMarker> startTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange*);
     RefPtr<AccessibilityTextMarker> endTextMarkerForTextMarkerRange(AccessibilityTextMarkerRange*);
     RefPtr<AccessibilityTextMarker> endTextMarkerForBounds(int x, int y, int width, int height);
@@ -322,6 +342,7 @@ public:
     RefPtr<AccessibilityTextMarker> previousTextMarker(AccessibilityTextMarker*);
     RefPtr<AccessibilityTextMarker> nextTextMarker(AccessibilityTextMarker*);
     RefPtr<AccessibilityUIElement> accessibilityElementForTextMarker(AccessibilityTextMarker*);
+    RefPtr<AccessibilityTextMarkerRange> textMarkerRangeForLine(long);
     JSRetainPtr<JSStringRef> stringForTextMarkerRange(AccessibilityTextMarkerRange*);
     JSRetainPtr<JSStringRef> rectsForTextMarkerRange(AccessibilityTextMarkerRange*, JSStringRef);
     JSRetainPtr<JSStringRef> attributedStringForTextMarkerRange(AccessibilityTextMarkerRange*);
@@ -330,6 +351,8 @@ public:
     bool attributedStringForTextMarkerRangeContainsAttribute(JSStringRef, AccessibilityTextMarkerRange*);
     int indexForTextMarker(AccessibilityTextMarker*);
     bool isTextMarkerValid(AccessibilityTextMarker*);
+    bool isTextMarkerRangeValid(AccessibilityTextMarkerRange*);
+    bool isTextMarkerNull(AccessibilityTextMarker*);
     RefPtr<AccessibilityTextMarker> textMarkerForIndex(int);
     RefPtr<AccessibilityTextMarker> startTextMarker();
     RefPtr<AccessibilityTextMarker> endTextMarker();
@@ -350,12 +373,13 @@ public:
     JSRetainPtr<JSStringRef> supportedActions() const;
     JSRetainPtr<JSStringRef> mathPostscriptsDescription() const;
     JSRetainPtr<JSStringRef> mathPrescriptsDescription() const;
+    JSValueRef mathRootRadicand(JSContextRef);
 
     JSRetainPtr<JSStringRef> pathDescription() const;
     
     // Notifications
     // Function callback should take one argument, the name of the notification.
-    bool addNotificationListener(JSValueRef functionCallback);
+    bool addNotificationListener(JSContextRef, JSValueRef functionCallback);
     // Make sure you call remove, because you can't rely on objects being deallocated in a timely fashion.
     bool removeNotificationListener();
     
@@ -364,39 +388,57 @@ public:
     int elementTextPosition();
     int elementTextLength();
     JSRetainPtr<JSStringRef> stringForSelection();
-    JSValueRef elementsForRange(unsigned location, unsigned length);
     void increaseTextSelection();
     void decreaseTextSelection();
     RefPtr<AccessibilityUIElement> linkedElement();
     RefPtr<AccessibilityUIElement> headerElementAtIndex(unsigned index);
     void assistiveTechnologySimulatedFocus();
     bool isSearchField() const;
+    bool isSwitch() const;
     bool isTextArea() const;
-    bool isInDefinitionListDefinition() const;
-    bool isInDefinitionListTerm() const;
 
     bool scrollPageUp();
     bool scrollPageDown();
     bool scrollPageLeft();
     bool scrollPageRight();
     
-    // Fieldset
-    bool hasContainedByFieldsetTrait();
+    bool hasDocumentRoleAncestor() const;
+    bool hasWebApplicationAncestor() const;
+    bool isInDescriptionListDetail() const;
+    bool isInDescriptionListTerm() const;
+
+    bool hasTextEntryTrait();
+    bool hasTabBarTrait();
+    bool hasMenuItemTrait();
     RefPtr<AccessibilityUIElement> fieldsetAncestorElement();
 
-    bool isIsolatedObject() const;
+    bool isInsertion() const;
+    bool isDeletion() const;
+    bool isFirstItemInSuggestion() const;
+    bool isLastItemInSuggestion() const;
+    
+    bool isMarkAnnotation() const;
 private:
     AccessibilityUIElement(PlatformUIElement);
     AccessibilityUIElement(const AccessibilityUIElement&);
 
-#if !PLATFORM(COCOA)
+#if PLATFORM(MAC)
+    RetainPtr<id> attributeValueForParameter(NSString *, id) const;
+    unsigned arrayAttributeCount(NSString *) const;
+    RetainPtr<NSString> descriptionOfValue(id valueObject) const;
+    bool boolAttributeValueNS(NSString *attribute) const;
+    JSRetainPtr<JSStringRef> stringAttributeValueNS(NSString *attribute) const;
+    double numberAttributeValueNS(NSString *attribute) const;
+    bool isAttributeSettableNS(NSString *) const;
+#endif
+
+#if !PLATFORM(COCOA) && !USE(ATSPI)
     PlatformUIElement m_element;
 #endif
 
     // A retained, platform specific object used to help manage notifications for this object.
-#if HAVE(ACCESSIBILITY)
 #if PLATFORM(COCOA)
-    RetainPtr<id> m_element;
+    WeakObjCPtr<id> m_element;
     RetainPtr<id> m_notificationHandler;
     static RefPtr<AccessibilityController> s_controller;
 
@@ -408,27 +450,25 @@ private:
     void getUIElementsWithAttribute(JSStringRef, Vector<RefPtr<AccessibilityUIElement> >&) const;
 #endif
 
-    void getChildren(Vector<RefPtr<AccessibilityUIElement> >&);
-    void getChildrenWithRange(Vector<RefPtr<AccessibilityUIElement> >&, unsigned location, unsigned length);
+    Vector<RefPtr<AccessibilityUIElement>> getChildren() const;
+    Vector<RefPtr<AccessibilityUIElement>> getChildrenInRange(unsigned location, unsigned length) const;
 
-#if USE(ATK)
-    RefPtr<AccessibilityNotificationHandler> m_notificationHandler;
-#endif
+#if USE(ATSPI)
+    static RefPtr<AccessibilityController> s_controller;
+    RefPtr<WebCore::AccessibilityObjectAtspi> m_element;
+    std::unique_ptr<AccessibilityNotificationHandler> m_notificationHandler;
 #endif
 };
 
 #ifdef __OBJC__
 inline std::optional<RefPtr<AccessibilityUIElement>> makeVectorElement(const RefPtr<AccessibilityUIElement>*, id element) { return { { AccessibilityUIElement::create(element) } }; }
 
-JSObjectRef makeJSArray(NSArray *);
+JSObjectRef makeJSArray(JSContextRef, NSArray *);
 #endif
 
 template<typename T>
-JSObjectRef makeJSArray(const Vector<T>& elements)
+JSObjectRef makeJSArray(JSContextRef context, const Vector<T>& elements)
 {
-    WKBundleFrameRef mainFrame = WKBundlePageGetMainFrame(InjectedBundle::singleton().page()->page());
-    JSContextRef context = WKBundleFrameGetJavaScriptContext(mainFrame);
-
     auto array = JSObjectMakeArray(context, 0, nullptr, nullptr);
     size_t size = elements.size();
     for (size_t i = 0; i < size; ++i)

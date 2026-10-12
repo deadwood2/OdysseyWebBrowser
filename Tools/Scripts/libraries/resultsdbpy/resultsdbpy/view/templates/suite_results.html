@@ -33,7 +33,8 @@
 import {CommitBank} from '/assets/js/commit.js';
 import {deepCompare, ErrorDisplay, queryToParams, paramsToQuery, escapeHTML} from '/assets/js/common.js';
 import {Configuration} from '/assets/js/configuration.js';
-import {Drawer, BranchSelector, ConfigurationSelectors, LimitSlider, CommitRepresentation} from '/assets/js/drawer.js';
+import {SUITES_LIMITS} from '/assets/js/constants.js';
+import {Drawer, BranchSelector, ConfigurationSelectors, LimitSlider, CommitRepresentation, CommitSearchBar} from '/assets/js/drawer.js';
 import {InvestigateDrawer} from '/assets/js/investigate.js';
 import {Legend, TimelineFromEndpoint} from '/assets/js/timeline.js';
 import {ToolTip} from '/assets/js/tooltip.js';
@@ -41,6 +42,7 @@ import {DOM, REF, EventStream} from '/library/js/Ref.js';
 
 const DEFAULT_LIMIT = 100;
 const SUITES = JSON.parse('{{ suites|safe }}');
+const onCommitSearch = new EventStream();
 
 class MainView {
     constructor() {    
@@ -68,7 +70,10 @@ class MainView {
         this.children = {};
 
         SUITES.forEach((suite) => {
-            this.children[suite] = new TimelineFromEndpoint('api/results/' + suite, suite);
+            this.children[suite] = new TimelineFromEndpoint('api/results/' + suite, {
+                suite,
+                searchEvent: onCommitSearch
+            });
         });
     }
     unpackSuites(suitesJson) {
@@ -86,7 +91,10 @@ class MainView {
         Object.keys(this.children).forEach(key => {this.children[key].teardown();});
         this.children = {};
         sortedSuites.forEach((suite) => {
-            this.children[suite] = new TimelineFromEndpoint('api/results/' + suite, suite);
+            this.children[suite] = new TimelineFromEndpoint('api/results/' + suite, {
+                suite,
+                searchEvent: onCommitSearch
+            });
         });
         return sortedSuites;
     }
@@ -123,6 +131,7 @@ class MainView {
         });
         if (params.branch)
             suiteParams.branch = params.branch;
+        suiteParams['suite'] = SUITES;
         let query = paramsToQuery(suiteParams);
         fetch(query ? 'api/suites?' + query: 'api/suites').then(response => {
             response.json().then(json => {
@@ -167,16 +176,16 @@ const onLayoutChange = new EventStream();
 onLayoutChange.action(() => {
     view.notifyTimelinesRender();
 });
-
 DOM.inject(document.getElementById('app'), `${ToolTip}
 ${InvestigateDrawer}
 ${Drawer([
+    CommitSearchBar((searchValue) => onCommitSearch.add(searchValue)),
     Legend(() => {
         for (let suite in view.children) {
             view.children[suite].update();
         }
-    }, true, true),
-    LimitSlider(() => {view.reload()}),
+    }, true, true, false, true),
+    LimitSlider(() => {view.reload()}, SUITES_LIMITS.max, SUITES_LIMITS.default),
     BranchSelector(() => {
         CommitBank.reload();
         view.reload();

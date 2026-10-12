@@ -28,18 +28,23 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#import "Logging.h"
 #import "UIKitSPI.h"
+#import "UIKitUtilities.h"
+#import "WKBrowserEngineDefinitions.h"
 #import "WKDeferringGestureRecognizer.h"
 #import "WKWebViewIOS.h"
-#import <WebCore/VersionChecks.h>
+#import "WebPage.h"
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <wtf/WeakObjCPtr.h>
+#import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#import <wtf/cocoa/VectorCocoa.h>
 
 #if HAVE(PEPPER_UI_CORE)
 #import "PepperUICoreSPI.h"
 #endif
 
-@interface WKScrollViewDelegateForwarder : NSObject <UIScrollViewDelegate>
+@interface WKScrollViewDelegateForwarder : NSObject <WKBEScrollViewDelegate>
 
 - (instancetype)initWithInternalDelegate:(WKWebView *)internalDelegate externalDelegate:(id <UIScrollViewDelegate>)externalDelegate;
 
@@ -50,7 +55,7 @@
     WeakObjCPtr<id <UIScrollViewDelegate>> _externalDelegate;
 }
 
-- (instancetype)initWithInternalDelegate:(WKWebView <UIScrollViewDelegate> *)internalDelegate externalDelegate:(id <UIScrollViewDelegate>)externalDelegate
+- (instancetype)initWithInternalDelegate:(WKWebView<WKBEScrollViewDelegate> *)internalDelegate externalDelegate:(id<UIScrollViewDelegate>)externalDelegate
 {
     self = [super init];
     if (!self)
@@ -67,7 +72,7 @@
     if (!signature)
         signature = [(NSObject *)_internalDelegate methodSignatureForSelector:aSelector];
     if (!signature)
-        signature = [(NSObject *)externalDelegate methodSignatureForSelector:aSelector];
+        signature = [(NSObject *)externalDelegate.get() methodSignatureForSelector:aSelector];
     return signature;
 }
 
@@ -127,8 +132,11 @@ static BOOL shouldForwardScrollViewDelegateMethodToExternalDelegate(SEL selector
     WeakObjCPtr<id <UIScrollViewDelegate>> _externalDelegate;
     RetainPtr<WKScrollViewDelegateForwarder> _delegateForwarder;
 
-// FIXME: Likely we can remove this special case for watchOS and tvOS.
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+    BOOL _backgroundColorSetByClient;
+    BOOL _indicatorStyleSetByClient;
+    BOOL _decelerationRateSetByClient;
+// FIXME: Likely we can remove this special case for watchOS.
+#if !PLATFORM(WATCHOS)
     BOOL _contentInsetAdjustmentBehaviorWasExternallyOverridden;
 #endif
     BOOL _contentInsetWasExternallyOverridden;
@@ -137,11 +145,17 @@ static BOOL shouldForwardScrollViewDelegateMethodToExternalDelegate(SEL selector
     BOOL _scrollEnabledInternal;
     BOOL _zoomEnabledByClient;
     BOOL _zoomEnabledInternal;
+    BOOL _bouncesSetByClient;
+    BOOL _bouncesHorizontalInternal;
+    BOOL _bouncesVerticalInternal;
     std::optional<UIEdgeInsets> _contentScrollInsetFromClient;
     std::optional<UIEdgeInsets> _contentScrollInsetInternal;
+#if ENABLE(OVERLAY_REGIONS_IN_EVENT_REGION)
+    Vector<CGRect> _overlayRegions;
+#endif
 }
 
-- (id)initWithFrame:(CGRect)frame
+- (instancetype)initWithFrame:(CGRect)frame
 {
     self = [super initWithFrame:frame];
 
@@ -152,13 +166,23 @@ static BOOL shouldForwardScrollViewDelegateMethodToExternalDelegate(SEL selector
     _scrollEnabledInternal = YES;
     _zoomEnabledByClient = YES;
     _zoomEnabledInternal = YES;
+    _bouncesSetByClient = YES;
+    _bouncesHorizontalInternal = YES;
+    _bouncesVerticalInternal = YES;
 
     self.alwaysBounceVertical = YES;
     self.directionalLockEnabled = YES;
-    [self _setIndicatorInsetAdjustmentBehavior:UIScrollViewIndicatorInsetAdjustmentAlways];
+    self.automaticallyAdjustsScrollIndicatorInsets = YES;
 
-// FIXME: Likely we can remove this special case for watchOS and tvOS.
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+#if HAVE(UISCROLLVIEW_ALLOWS_KEYBOARD_SCROLLING)
+    // In iOS 17, the default value of `-[UIScrollView allowsKeyboardScrolling]` is `NO`.
+    // To maintain existing behavior of WKScrollView, this property must be initially set to `YES`.
+    self.allowsKeyboardScrolling = YES;
+#endif
+
+
+// FIXME: Likely we can remove this special case for watchOS.
+#if !PLATFORM(WATCHOS)
     _contentInsetAdjustmentBehaviorWasExternallyOverridden = (self.contentInsetAdjustmentBehavior != UIScrollViewContentInsetAdjustmentAutomatic);
 #endif
     
@@ -213,59 +237,70 @@ static BOOL shouldForwardScrollViewDelegateMethodToExternalDelegate(SEL selector
     if (!externalDelegate)
         [super setDelegate:_internalDelegate];
     else if (!_internalDelegate)
-        [super setDelegate:externalDelegate.get()];
+        [super setDelegate:(id<WKBEScrollViewDelegate>)externalDelegate.get()];
     else {
         _delegateForwarder = adoptNS([[WKScrollViewDelegateForwarder alloc] initWithInternalDelegate:_internalDelegate externalDelegate:externalDelegate.get()]);
         [super setDelegate:_delegateForwarder.get()];
     }
 }
 
+- (void)setBackgroundColor:(UIColor *)backgroundColor
+{
+    _backgroundColorSetByClient = !!backgroundColor;
+
+    super.backgroundColor = backgroundColor;
+
+    if (!_backgroundColorSetByClient) {
+        [_internalDelegate _resetCachedScrollViewBackgroundColor];
+        [_internalDelegate _updateScrollViewBackground];
+    }
+}
+
+- (void)_setBackgroundColorInternal:(UIColor *)backgroundColor
+{
+    if (_backgroundColorSetByClient)
+        return;
+
+    super.backgroundColor = backgroundColor;
+
+    [_internalDelegate _resetCachedScrollViewBackgroundColor];
+}
+
+- (void)setIndicatorStyle:(UIScrollViewIndicatorStyle)indicatorStyle
+{
+    _indicatorStyleSetByClient = indicatorStyle != UIScrollViewIndicatorStyleDefault;
+
+    super.indicatorStyle = indicatorStyle;
+
+    if (!_indicatorStyleSetByClient)
+        [_internalDelegate _updateScrollViewIndicatorStyle];
+}
+
+- (void)_setIndicatorStyleInternal:(UIScrollViewIndicatorStyle)indicatorStyle
+{
+    if (_indicatorStyleSetByClient)
+        return;
+
+    super.indicatorStyle = indicatorStyle;
+}
+
+- (void)setDecelerationRate:(UIScrollViewDecelerationRate)rate
+{
+    _decelerationRateSetByClient = YES;
+    super.decelerationRate = rate;
+}
+
+- (void)_setDecelerationRateInternal:(UIScrollViewDecelerationRate)rate
+{
+    if (_decelerationRateSetByClient)
+        return;
+
+    super.decelerationRate = rate;
+}
+
 static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
 {
     return CGFAbs(a - b) < 1;
-}
-
-- (CGFloat)_rubberBandOffsetForOffset:(CGFloat)newOffset maxOffset:(CGFloat)maxOffset minOffset:(CGFloat)minOffset range:(CGFloat)range outside:(BOOL *)outside
-{
-    UIEdgeInsets contentInsets = self.contentInset;
-    CGSize contentSize = self.contentSize;
-    CGRect bounds = self.bounds;
-
-    CGFloat minimalHorizontalRange = bounds.size.width - contentInsets.left - contentInsets.right;
-    CGFloat contentWidthAtMinimumScale = contentSize.width * (self.minimumZoomScale / self.zoomScale);
-    if (contentWidthAtMinimumScale < minimalHorizontalRange) {
-        CGFloat unobscuredEmptyHorizontalMarginAtMinimumScale = minimalHorizontalRange - contentWidthAtMinimumScale;
-        minimalHorizontalRange -= unobscuredEmptyHorizontalMarginAtMinimumScale;
-    }
-    if (contentSize.width < minimalHorizontalRange) {
-        if (valuesAreWithinOnePixel(minOffset, -contentInsets.left)
-            && valuesAreWithinOnePixel(maxOffset, contentSize.width + contentInsets.right - bounds.size.width)
-            && valuesAreWithinOnePixel(range, bounds.size.width)) {
-
-            CGFloat emptyHorizontalMargin = (minimalHorizontalRange - contentSize.width) / 2;
-            minOffset -= emptyHorizontalMargin;
-            maxOffset = minOffset;
-        }
-    }
-
-    CGFloat minimalVerticalRange = bounds.size.height - contentInsets.top - contentInsets.bottom;
-    CGFloat contentHeightAtMinimumScale = contentSize.height * (self.minimumZoomScale / self.zoomScale);
-    if (contentHeightAtMinimumScale < minimalVerticalRange) {
-        CGFloat unobscuredEmptyVerticalMarginAtMinimumScale = minimalVerticalRange - contentHeightAtMinimumScale;
-        minimalVerticalRange -= unobscuredEmptyVerticalMarginAtMinimumScale;
-    }
-    if (contentSize.height < minimalVerticalRange) {
-        if (valuesAreWithinOnePixel(minOffset, -contentInsets.top)
-            && valuesAreWithinOnePixel(maxOffset, contentSize.height + contentInsets.bottom - bounds.size.height)
-            && valuesAreWithinOnePixel(range, bounds.size.height)) {
-
-            CGFloat emptyVerticalMargin = (minimalVerticalRange - contentSize.height) / 2;
-            minOffset -= emptyVerticalMargin;
-            maxOffset = minOffset;
-        }
-    }
-
-    return [super _rubberBandOffsetForOffset:newOffset maxOffset:maxOffset minOffset:minOffset range:range outside:outside];
 }
 
 - (void)setContentInset:(UIEdgeInsets)contentInset
@@ -283,8 +318,19 @@ static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
     [_internalDelegate _scheduleVisibleContentRectUpdate];
 }
 
-// FIXME: Likely we can remove this special case for watchOS and tvOS.
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+- (BOOL)_contentInsetWasExternallyOverridden
+{
+    return _contentInsetWasExternallyOverridden;
+}
+
+- (void)_resetContentInset
+{
+    super.contentInset = UIEdgeInsetsZero;
+    [_internalDelegate _scheduleVisibleContentRectUpdate];
+}
+
+// FIXME: Likely we can remove this special case for watchOS.
+#if !PLATFORM(WATCHOS)
 
 - (BOOL)_contentInsetAdjustmentBehaviorWasExternallyOverridden
 {
@@ -308,6 +354,12 @@ static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
         return;
 
     [super setContentInsetAdjustmentBehavior:insetAdjustmentBehavior];
+}
+
+- (void)_resetContentInsetAdjustmentBehavior
+{
+    _contentInsetAdjustmentBehaviorWasExternallyOverridden = NO;
+    [self _setContentInsetAdjustmentBehaviorInternal:UIScrollViewContentInsetAdjustmentAutomatic];
 }
 
 #endif
@@ -346,9 +398,8 @@ static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
 - (void)_setContentSizePreservingContentOffsetDuringRubberband:(CGSize)contentSize
 {
     CGSize currentContentSize = [self contentSize];
-
-    BOOL mightBeRubberbanding = self.isDragging || self.isVerticalBouncing || self.isHorizontalBouncing || self.refreshControl;
-    if (!mightBeRubberbanding || CGSizeEqualToSize(currentContentSize, CGSizeZero) || CGSizeEqualToSize(currentContentSize, contentSize) || self.zoomScale < self.minimumZoomScale) {
+    BOOL mightBeRubberbanding = self.isDragging || (self.scrollEnabled && self._wk_isScrolledBeyondExtents) || self.refreshControl;
+    if (!mightBeRubberbanding || CGSizeEqualToSize(currentContentSize, CGSizeZero) || CGSizeEqualToSize(currentContentSize, contentSize) || ((self.zoomScale < self.minimumZoomScale) && !WebKit::scalesAreEssentiallyEqual(self.zoomScale, self.minimumZoomScale))) {
         // FIXME: rdar://problem/65277759 Find out why iOS Mail needs this call even when the contentSize has not changed.
         [self setContentSize:contentSize];
         return;
@@ -382,10 +433,17 @@ static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
     // to include keyboard insets in the systemContentInset. We always want
     // keyboard insets applied, even when web content has chosen to disable automatic
     // safe area inset adjustment.
-    if (linkedOnOrAfter(WebCore::SDKVersion::FirstWhereUIScrollViewDoesNotApplyKeyboardInsetsUnconditionally) && self.contentInsetAdjustmentBehavior == UIScrollViewContentInsetAdjustmentNever)
+    if (linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::UIScrollViewDoesNotApplyKeyboardInsetsUnconditionally) && self.contentInsetAdjustmentBehavior == UIScrollViewContentInsetAdjustmentNever)
         systemContentInset.bottom += _keyboardBottomInsetAdjustment;
 
     return systemContentInset;
+}
+
+- (BOOL)isScrollEnabled
+{
+    if (!self.panGestureRecognizer.allowedTouchTypes.count)
+        return NO;
+    return [super isScrollEnabled];
 }
 
 - (void)setScrollEnabled:(BOOL)value
@@ -403,6 +461,25 @@ static inline bool valuesAreWithinOnePixel(CGFloat a, CGFloat b)
 - (void)_updateScrollability
 {
     [super setScrollEnabled:(_scrollEnabledByClient && _scrollEnabledInternal)];
+}
+
+- (void)setBounces:(BOOL)value
+{
+    _bouncesSetByClient = value;
+    [self _updateBouncability];
+}
+
+- (void)_setBouncesInternal:(BOOL)horizontal vertical:(BOOL)vertical
+{
+    _bouncesHorizontalInternal = horizontal;
+    _bouncesVerticalInternal = vertical;
+    [self _updateBouncability];
+}
+
+- (void)_updateBouncability
+{
+    [super setBouncesHorizontally:(_bouncesSetByClient && _bouncesHorizontalInternal)];
+    [super setBouncesVertically:(_bouncesSetByClient && _bouncesVerticalInternal)];
 }
 
 - (void)setZoomEnabled:(BOOL)value

@@ -47,8 +47,7 @@ sub defaultItemFactory
 {
     return (
         'interfaceName' => 0,
-        'conditional' => 0,
-        'runtimeEnabled' => 0
+        'conditional' => 0
     );
 }
 
@@ -99,12 +98,18 @@ sub generateImplementation()
     if ($factoryFunction eq "toNewlyCreated") {
         print F "JSC::JSValue toJSNewlyCreated(JSC::JSGlobalObject*, JSDOMGlobalObject* globalObject, Ref<${namespace}>&& impl)\n";
         print F "{\n";
-        print F "    switch (impl->${interfaceMethodName}()) {\n";
+        print F "    switch (impl->interfaceType()) {\n";
+        print F "    case EventInterfaceType::Invalid:\n";
+        print F "        ASSERT_NOT_REACHED();\n";
+        print F "        break;\n";
     } else {
         print F "JSC::JSValue toJS(JSC::JSGlobalObject* state, JSDOMGlobalObject* globalObject, ${namespace}& impl)\n";
         print F "{\n";
         print F "    switch (impl.${interfaceMethodName}()) {\n";
-        print F "    case EventTargetInterfaceType:\n";
+        print F "    case ${namespace}InterfaceType::Invalid:\n";
+        print F "        ASSERT_NOT_REACHED();\n";
+        print F "        break;\n";
+        print F "    case ${namespace}InterfaceType::${namespace}:\n";
         print F "        break;\n";
     }
 
@@ -112,7 +117,6 @@ sub generateImplementation()
 
     for my $eventName (sort keys %parsedEvents) {
         my $conditional = $parsedEvents{$eventName}{"conditional"};
-        my $runtimeEnabled = $parsedEvents{$eventName}{"runtimeEnabled"};
         my $interfaceName = $InCompiler->interfaceForItem($eventName);
 
         next if $generatedInterfaceNames{$interfaceName};
@@ -123,15 +127,15 @@ sub generateImplementation()
             $suffix = $namespace . $suffix;
         }
 
-        # FIXME: This should pay attention to $runtimeConditional so it can support RuntimeEnabledFeatures.
         if ($conditional) {
             my $conditionals = "#if ENABLE(" . join(") || ENABLE(", split("\\|", $conditional)) . ")";
             print F "$conditionals\n";
         }
-        print F "    case ${interfaceName}${suffix}InterfaceType:\n";
         if ($factoryFunction eq "toNewlyCreated") {
+            print F "    case ${namespace}InterfaceType::${interfaceName}:\n";
             print F "        return createWrapper<$interfaceName$suffix>(globalObject, WTFMove(impl));\n";
         } else {
+            print F "    case ${namespace}InterfaceType::${interfaceName}:\n";
             print F "        return toJS(state, globalObject, static_cast<$interfaceName&>(impl));\n";
         }
         print F "#endif\n" if $conditional;

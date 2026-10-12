@@ -25,11 +25,79 @@
 
 #pragma once
 
-#include <wtf/ObjectIdentifier.h>
+#include "ProcessQualified.h"
+#include <wtf/Forward.h>
+#include <wtf/UUID.h>
 
 namespace WebCore {
 
-enum ScriptExecutionContextIdentifierType { };
-using ScriptExecutionContextIdentifier = ObjectIdentifier<ScriptExecutionContextIdentifierType>;
+template <>
+class ProcessQualified<WTF::UUID> {
+public:
+    static ProcessQualified generate() { return { WTF::UUID::createVersion4Weak(), Process::identifier() }; }
+
+    ProcessQualified()
+        : m_object(WTF::UUID::emptyValue)
+    {
+    }
+
+    ProcessQualified(WTF::UUID object, ProcessIdentifier processIdentifier)
+        : m_object(WTFMove(object))
+        , m_processIdentifier(processIdentifier)
+    {
+    }
+
+    ProcessQualified(WTF::HashTableDeletedValueType)
+        : m_object(WTF::HashTableDeletedValue)
+        , m_processIdentifier(WTF::HashTableDeletedValue)
+    {
+    }
+
+    operator bool() const { return !!m_object; }
+
+    const WTF::UUID& object() const { return m_object; }
+    ProcessIdentifier processIdentifier() const { return m_processIdentifier; }
+
+    bool isHashTableDeletedValue() const { return m_processIdentifier.isHashTableDeletedValue(); }
+
+    friend bool operator==(const ProcessQualified&, const ProcessQualified&) = default;
+
+    String toString() const { return m_object.toString(); }
+
+    template<typename Encoder> void encode(Encoder& encoder) const { encoder << m_object << m_processIdentifier; }
+    template<typename Decoder> static std::optional<ProcessQualified> decode(Decoder&);
+
+private:
+    WTF::UUID m_object;
+    ProcessIdentifier m_processIdentifier;
+};
+
+inline void add(Hasher& hasher, const ProcessQualified<WTF::UUID>& uuid)
+{
+    // Since UUIDs are unique on their own, optimize by not hashing the process identifier.
+    add(hasher, uuid.object());
+}
+
+template<typename Decoder> std::optional<ProcessQualified<WTF::UUID>> ProcessQualified<WTF::UUID>::decode(Decoder& decoder)
+{
+    std::optional<WTF::UUID> object;
+    decoder >> object;
+    if (!object)
+        return std::nullopt;
+    std::optional<ProcessIdentifier> processIdentifier;
+    decoder >> processIdentifier;
+    if (!processIdentifier)
+        return std::nullopt;
+    return { { *object, *processIdentifier } };
+}
+
+template <>
+inline TextStream& operator<<(TextStream& ts, const ProcessQualified<WTF::UUID>& processQualified)
+{
+    ts << "ProcessQualified(" << processQualified.processIdentifier().toUInt64() << '-' << processQualified.object().toString() << ')';
+    return ts;
+}
+
+using ScriptExecutionContextIdentifier = ProcessQualified<WTF::UUID>;
 
 }

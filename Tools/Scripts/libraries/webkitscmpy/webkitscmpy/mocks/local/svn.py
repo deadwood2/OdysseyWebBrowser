@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -25,7 +25,6 @@ import os
 import re
 
 from datetime import datetime
-from mock import patch
 
 from webkitcorepy import mocks
 from webkitscmpy import local
@@ -150,6 +149,10 @@ class Svn(mocks.Subprocess):
                 cwd=self.path,
                 completion=mocks.ProcessCompletion(returncode=0),
             ), mocks.Subprocess.Route(
+                self.executable, 'revert', '-R',
+                cwd=self.path,
+                completion=mocks.ProcessCompletion(returncode=0),
+            ), mocks.Subprocess.Route(
                 self.executable,
                 cwd=self.path,
                 completion=mocks.ProcessCompletion(
@@ -166,9 +169,10 @@ class Svn(mocks.Subprocess):
         )
 
     def __enter__(self):
-        # TODO: Use shutil directly when Python 2.7 is removed
-        from whichcraft import which
-        self.patches.append(patch('whichcraft.which', lambda cmd: dict(svn=self.executable).get(cmd, which(cmd))))
+        from mock import patch
+        from shutil import which
+
+        self.patches.append(patch('shutil.which', lambda cmd: dict(svn=self.executable).get(cmd, which(cmd))))
         return super(Svn, self).__enter__()
 
     @property

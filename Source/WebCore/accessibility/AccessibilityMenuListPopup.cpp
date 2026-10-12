@@ -68,12 +68,29 @@ bool AccessibilityMenuListPopup::computeAccessibilityIsIgnored() const
     return accessibilityIsIgnoredByDefault();
 }
 
+std::optional<AXCoreObject::AccessibilityChildrenVector> AccessibilityMenuListPopup::selectedChildren()
+{
+    if (!canHaveSelectedChildren())
+        return { };
+
+    if (!childrenInitialized())
+        addChildren();
+
+    AccessibilityChildrenVector result;
+    for (const auto& child : m_children) {
+        auto* liveChild = dynamicDowncast<AccessibilityObject>(child.get());
+        if (liveChild && liveChild->isMenuListOption() && liveChild->isSelected())
+            result.append(child.get());
+    }
+    return result;
+}
+
 AccessibilityMenuListOption* AccessibilityMenuListPopup::menuListOptionAccessibilityObject(HTMLElement* element) const
 {
     if (!element || !element->inRenderedDocument())
         return nullptr;
 
-    return downcast<AccessibilityMenuListOption>(document()->axObjectCache()->getOrCreate(element));
+    return dynamicDowncast<AccessibilityMenuListOption>(document()->axObjectCache()->getOrCreate(*element));
 }
 
 bool AccessibilityMenuListPopup::press()
@@ -89,33 +106,37 @@ void AccessibilityMenuListPopup::addChildren()
 {
     if (!m_parent)
         return;
-    
-    Node* selectNode = m_parent->node();
-    if (!selectNode)
+
+    RefPtr select = dynamicDowncast<HTMLSelectElement>(m_parent->node());
+    if (!select)
         return;
 
-    m_haveChildren = true;
+    m_childrenInitialized = true;
 
-    for (const auto& listItem : downcast<HTMLSelectElement>(*selectNode).listItems()) {
-        // FIXME: Why does AccessibilityListBox::addChildren check accessibilityIsIgnored but this does not?
-        if (auto option = menuListOptionAccessibilityObject(listItem))
-            m_children.append(option);
+    for (const auto& listItem : select->listItems()) {
+        if (auto* menuListOptionObject = menuListOptionAccessibilityObject(listItem.get())) {
+            menuListOptionObject->setParent(this);
+            addChild(menuListOptionObject, DescendIfIgnored::No);
+        }
     }
 }
 
-void AccessibilityMenuListPopup::childrenChanged()
+void AccessibilityMenuListPopup::handleChildrenChanged()
 {
-    AXObjectCache* cache = axObjectCache();
+    auto* cache = axObjectCache();
+    if (!cache)
+        return;
+
     for (size_t i = m_children.size(); i > 0 ; --i) {
-        AXCoreObject* child = m_children[i - 1].get();
+        auto* child = m_children[i - 1].get();
         if (child->actionElement() && !child->actionElement()->inRenderedDocument()) {
             child->detachFromParent();
             cache->remove(child->objectID());
         }
     }
-    
+
     m_children.clear();
-    m_haveChildren = false;
+    m_childrenInitialized = false;
     addChildren();
 }
 
@@ -124,12 +145,13 @@ void AccessibilityMenuListPopup::didUpdateActiveOption(int optionIndex)
     ASSERT_ARG(optionIndex, optionIndex >= 0);
     ASSERT_ARG(optionIndex, optionIndex < static_cast<int>(m_children.size()));
 
-    RefPtr<AXCoreObject> child = m_children[optionIndex].get();
+    auto* cache = axObjectCache();
+    if (!cache)
+        return;
 
-    if (auto* cache = axObjectCache()) {
-        cache->postNotification(child.get(), document(), AXObjectCache::AXFocusedUIElementChanged);
-        cache->postNotification(child.get(), document(), AXObjectCache::AXMenuListItemSelected);
-    }
+    RefPtr child = downcast<AccessibilityObject>(m_children[optionIndex].get());
+    cache->postNotification(child.get(), document(), AXObjectCache::AXFocusedUIElementChanged);
+    cache->postNotification(child.get(), document(), AXObjectCache::AXMenuListItemSelected);
 }
 
 } // namespace WebCore

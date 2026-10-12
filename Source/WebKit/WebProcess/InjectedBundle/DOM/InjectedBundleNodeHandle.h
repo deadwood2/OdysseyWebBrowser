@@ -31,6 +31,7 @@
 #include <WebCore/ActiveDOMObject.h>
 #include <wtf/Forward.h>
 #include <wtf/RefPtr.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 class IntRect;
@@ -45,7 +46,7 @@ class InjectedBundleScriptWorld;
 class WebFrame;
 class WebImage;
 
-class InjectedBundleNodeHandle : public API::ObjectImpl<API::Object::Type::BundleNodeHandle>, public WebCore::ActiveDOMObject {
+class InjectedBundleNodeHandle : public API::ObjectImpl<API::Object::Type::BundleNodeHandle>, public WebCore::ActiveDOMObject, public CanMakeWeakPtr<InjectedBundleNodeHandle> {
 public:
     static RefPtr<InjectedBundleNodeHandle> getOrCreate(JSContextRef, JSObjectRef);
     static RefPtr<InjectedBundleNodeHandle> getOrCreate(WebCore::Node*);
@@ -61,15 +62,17 @@ public:
     // Additional DOM Operations
     // Note: These should only be operations that are not exposed to JavaScript.
     WebCore::IntRect elementBounds();
-    WebCore::IntRect renderRect(bool*);
+    WebCore::IntRect absoluteBoundingRect(bool*);
     RefPtr<WebImage> renderedImage(SnapshotOptions, bool shouldExcludeOverflow, const std::optional<float>& bitmapWidth = std::nullopt);
     RefPtr<InjectedBundleRangeHandle> visibleRange();
     void setHTMLInputElementValueForUser(const String&);
     void setHTMLInputElementSpellcheckEnabled(bool);
     bool isHTMLInputElementAutoFilled() const;
     bool isHTMLInputElementAutoFilledAndViewable() const;
+    bool isHTMLInputElementAutoFilledAndObscured() const;
     void setHTMLInputElementAutoFilled(bool);
     void setHTMLInputElementAutoFilledAndViewable(bool);
+    void setHTMLInputElementAutoFilledAndObscured(bool);
     bool isHTMLInputElementAutoFillButtonEnabled() const;
     void setHTMLInputElementAutoFillButtonEnabled(WebCore::AutoFillButtonType);
     WebCore::AutoFillButtonType htmlInputElementAutoFillButtonType() const;
@@ -86,8 +89,11 @@ public:
     RefPtr<InjectedBundleNodeHandle> htmlTableCellElementCellAbove();
 
     RefPtr<WebFrame> documentFrame();
-    RefPtr<WebFrame> htmlFrameElementContentFrame();
     RefPtr<WebFrame> htmlIFrameElementContentFrame();
+
+    // ActiveDOMObject.
+    void ref() const final { API::ObjectImpl<API::Object::Type::BundleNodeHandle>::ref(); }
+    void deref() const final { API::ObjectImpl<API::Object::Type::BundleNodeHandle>::deref(); }
 
 private:
     static Ref<InjectedBundleNodeHandle> create(WebCore::Node&);
@@ -95,7 +101,6 @@ private:
 
     // ActiveDOMObject.
     void stop() final;
-    const char* activeDOMObjectName() const final;
 
     RefPtr<WebCore::Node> m_node;
 };

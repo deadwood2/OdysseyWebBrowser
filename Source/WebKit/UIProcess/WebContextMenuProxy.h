@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,10 +33,7 @@
 #include <wtf/RefCounted.h>
 #include <wtf/WeakPtr.h>
 
-#if PLATFORM(COCOA)
-#include "QuickLookPreviewActivity.h"
-#endif
-
+OBJC_CLASS NSArray;
 OBJC_CLASS NSMenu;
 
 namespace WebKit {
@@ -44,7 +41,7 @@ namespace WebKit {
 class WebContextMenuItem;
 class WebPageProxy;
 
-class WebContextMenuProxy : public RefCounted<WebContextMenuProxy>, public WebContextMenuListenerProxy::Client {
+class WebContextMenuProxy : public RefCounted<WebContextMenuProxy>, public WebContextMenuListenerProxyClient {
 public:
     virtual ~WebContextMenuProxy();
 
@@ -55,16 +52,19 @@ public:
 #if PLATFORM(COCOA)
     virtual NSMenu *platformMenu() const = 0;
     virtual NSArray *platformData() const = 0;
-    virtual QuickLookPreviewActivity quickLookPreviewActivity() const { return QuickLookPreviewActivity::None; };
 #endif // PLATFORM(COCOA)
+
+#if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
+    virtual RetainPtr<CGImageRef> imageForCopySubject() const { return { }; }
+#endif
 
 protected:
     WebContextMenuProxy(WebPageProxy&, ContextMenuContextData&&, const UserData&);
 
-    // WebContextMenuListenerProxy::Client
+    // WebContextMenuListenerProxyClient
     void useContextMenuItems(Vector<Ref<WebContextMenuItem>>&&) override;
 
-    const ContextMenuContextData m_context;
+    ContextMenuContextData m_context;
     const UserData m_userData;
 
 private:

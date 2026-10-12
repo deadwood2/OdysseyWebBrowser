@@ -142,6 +142,24 @@ const char *getBasicString(TBasicType t)
             return "atomic_uint";
         case EbtSamplerVideoWEBGL:
             return "samplerVideoWEBGL";
+        case EbtPixelLocalANGLE:
+            return "pixelLocalANGLE";
+        case EbtIPixelLocalANGLE:
+            return "ipixelLocalANGLE";
+        case EbtUPixelLocalANGLE:
+            return "upixelLocalANGLE";
+        case EbtSubpassInput:
+            return "subpassInput";
+        case EbtISubpassInput:
+            return "isubpassInput";
+        case EbtUSubpassInput:
+            return "usubpassInput";
+        case EbtSubpassInputMS:
+            return "subpassInputMS";
+        case EbtISubpassInputMS:
+            return "isubpassInputMS";
+        case EbtUSubpassInputMS:
+            return "usubpassInputMS";
         default:
             UNREACHABLE();
             return "unknown type";
@@ -151,11 +169,9 @@ const char *getBasicString(TBasicType t)
 // TType implementation.
 TType::TType() : TType(EbtVoid, 0, 0) {}
 
-TType::TType(TBasicType t, unsigned char ps, unsigned char ss)
-    : TType(t, EbpUndefined, EvqGlobal, ps, ss)
-{}
+TType::TType(TBasicType t, uint8_t ps, uint8_t ss) : TType(t, EbpUndefined, EvqGlobal, ps, ss) {}
 
-TType::TType(TBasicType t, TPrecision p, TQualifier q, unsigned char ps, unsigned char ss)
+TType::TType(TBasicType t, TPrecision p, TQualifier q, uint8_t ps, uint8_t ss)
     : TType(t, p, q, ps, ss, TSpan<const unsigned int>(), nullptr)
 {}
 
@@ -165,6 +181,7 @@ TType::TType(const TPublicType &p)
       qualifier(p.qualifier),
       invariant(p.invariant),
       precise(p.precise),
+      interpolant(false),
       memoryQualifier(p.memoryQualifier),
       layoutQualifier(p.layoutQualifier),
       primarySize(p.getPrimarySize()),
@@ -173,6 +190,7 @@ TType::TType(const TPublicType &p)
       mInterfaceBlock(nullptr),
       mStructure(nullptr),
       mIsStructSpecifier(false),
+      mInterfaceBlockFieldIndex(0),
       mMangledName(nullptr)
 {
     ASSERT(primarySize <= 4);
@@ -211,20 +229,22 @@ TType::TType(const TType &t)
 
 TType &TType::operator=(const TType &t)
 {
-    type               = t.type;
-    precision          = t.precision;
-    qualifier          = t.qualifier;
-    invariant          = t.invariant;
-    precise            = t.precise;
-    memoryQualifier    = t.memoryQualifier;
-    layoutQualifier    = t.layoutQualifier;
-    primarySize        = t.primarySize;
-    secondarySize      = t.secondarySize;
-    mArraySizesStorage = nullptr;
-    mInterfaceBlock    = t.mInterfaceBlock;
-    mStructure         = t.mStructure;
-    mIsStructSpecifier = t.mIsStructSpecifier;
-    mMangledName       = t.mMangledName;
+    type                      = t.type;
+    precision                 = t.precision;
+    qualifier                 = t.qualifier;
+    invariant                 = t.invariant;
+    precise                   = t.precise;
+    interpolant               = t.interpolant;
+    memoryQualifier           = t.memoryQualifier;
+    layoutQualifier           = t.layoutQualifier;
+    primarySize               = t.primarySize;
+    secondarySize             = t.secondarySize;
+    mArraySizesStorage        = nullptr;
+    mInterfaceBlock           = t.mInterfaceBlock;
+    mStructure                = t.mStructure;
+    mIsStructSpecifier        = t.mIsStructSpecifier;
+    mInterfaceBlockFieldIndex = t.mInterfaceBlockFieldIndex;
+    mMangledName              = t.mMangledName;
 
     if (t.mArraySizesStorage)
     {
@@ -400,6 +420,11 @@ bool TType::isStructureContainingType(TBasicType t) const
 bool TType::isStructureContainingSamplers() const
 {
     return mStructure ? mStructure->containsSamplers() : false;
+}
+
+bool TType::isInterfaceBlockContainingType(TBasicType t) const
+{
+    return isInterfaceBlock() ? mInterfaceBlock->containsType(t) : false;
 }
 
 bool TType::canReplaceWithConstantUnion() const
@@ -613,7 +638,7 @@ void TType::setBasicType(TBasicType t)
     }
 }
 
-void TType::setPrimarySize(unsigned char ps)
+void TType::setPrimarySize(uint8_t ps)
 {
     if (primarySize != ps)
     {
@@ -623,7 +648,7 @@ void TType::setPrimarySize(unsigned char ps)
     }
 }
 
-void TType::setSecondarySize(unsigned char ss)
+void TType::setSecondarySize(uint8_t ss)
 {
     if (secondarySize != ss)
     {
@@ -686,6 +711,21 @@ void TType::toArrayBaseType()
     onArrayDimensionsChange(TSpan<const unsigned int>());
 }
 
+void TType::toMatrixColumnType()
+{
+    ASSERT(isMatrix());
+    primarySize   = secondarySize;
+    secondarySize = 1;
+    invalidateMangledName();
+}
+
+void TType::toComponentType()
+{
+    primarySize   = 1;
+    secondarySize = 1;
+    invalidateMangledName();
+}
+
 void TType::setInterfaceBlock(const TInterfaceBlock *interfaceBlockIn)
 {
     if (mInterfaceBlock != interfaceBlockIn)
@@ -693,6 +733,12 @@ void TType::setInterfaceBlock(const TInterfaceBlock *interfaceBlockIn)
         mInterfaceBlock = interfaceBlockIn;
         invalidateMangledName();
     }
+}
+
+void TType::setInterfaceBlockField(const TInterfaceBlock *interfaceBlockIn, size_t fieldIndex)
+{
+    setInterfaceBlock(interfaceBlockIn);
+    mInterfaceBlockFieldIndex = fieldIndex;
 }
 
 const char *TType::getMangledName() const

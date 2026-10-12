@@ -46,40 +46,41 @@ static const NSInteger InvalidAttachmentErrorCode = 2;
 @end
 
 @implementation _WKAttachmentInfo {
-    RetainPtr<NSFileWrapper> _fileWrapper;
+    RefPtr<const API::Attachment> _attachment;
     RetainPtr<NSString> _mimeType;
     RetainPtr<NSString> _utiType;
     RetainPtr<NSString> _filePath;
 }
 
-- (instancetype)initWithFileWrapper:(NSFileWrapper *)fileWrapper filePath:(NSString *)filePath mimeType:(NSString *)mimeType utiType:(NSString *)utiType
+- (instancetype)initWithAttachment:(const API::Attachment&)attachment
 {
     if (!(self = [super init]))
         return nil;
 
-    _fileWrapper = fileWrapper;
-    _filePath = filePath;
-    _mimeType = mimeType;
-    _utiType = utiType;
+    _attachment = &attachment;
+    _filePath = attachment.filePath();
+    _mimeType = attachment.mimeType();
+    _utiType = attachment.utiType();
     return self;
 }
 
 - (NSData *)data
 {
-    if (![_fileWrapper isRegularFile]) {
+    NSData *result = nil;
+    _attachment->doWithFileWrapper([&](NSFileWrapper *fileWrapper) {
         // FIXME: Handle attachments backed by NSFileWrappers that represent directories.
-        return nil;
-    }
-
-    return [_fileWrapper regularFileContents];
+        result = fileWrapper.isRegularFile ? fileWrapper.regularFileContents : nil;
+    });
+    return result;
 }
 
 - (NSString *)name
 {
-    if ([_fileWrapper filename].length)
-        return [_fileWrapper filename];
-
-    return [_fileWrapper preferredFilename];
+    NSString *result = nil;
+    _attachment->doWithFileWrapper([&](NSFileWrapper *fileWrapper) {
+        result = fileWrapper.filename.length ? fileWrapper.filename : fileWrapper.preferredFilename;
+    });
+    return result;
 }
 
 - (NSString *)filePath
@@ -89,7 +90,15 @@ static const NSInteger InvalidAttachmentErrorCode = 2;
 
 - (NSFileWrapper *)fileWrapper
 {
-    return _fileWrapper.get();
+    // FIXME: This API is potentially unsafe for WebKit clients, since the file wrapper that's
+    // returned could be simultaneously accessed from a background thread, due to QuickLook
+    // thumbnailing. This should be replaced with a method that instead takes a callback, and
+    // invokes with callback with a file wrapper in a way that guarantees thread safety.
+    NSFileWrapper *result = nil;
+    _attachment->doWithFileWrapper([&](NSFileWrapper *fileWrapper) {
+        result = fileWrapper;
+    });
+    return result;
 }
 
 - (NSString *)contentType
@@ -98,6 +107,11 @@ static const NSInteger InvalidAttachmentErrorCode = 2;
         return _mimeType.get();
 
     return _utiType.get();
+}
+
+- (BOOL)shouldPreserveFidelity
+{
+    return _attachment->associatedElementType() == WebCore::AttachmentAssociatedElementType::Source;
 }
 
 @end
@@ -124,7 +138,7 @@ static const NSInteger InvalidAttachmentErrorCode = 2;
     if (!_attachment->isValid())
         return nil;
 
-    return adoptNS([[_WKAttachmentInfo alloc] initWithFileWrapper:_attachment->fileWrapper() filePath:_attachment->filePath() mimeType:_attachment->mimeType() utiType:_attachment->utiType()]).autorelease();
+    return adoptNS([[_WKAttachmentInfo alloc] initWithAttachment:*_attachment]).autorelease();
 }
 
 - (void)requestInfo:(void(^)(_WKAttachmentInfo *, NSError *))completionHandler
@@ -148,6 +162,12 @@ static const NSInteger InvalidAttachmentErrorCode = 2;
         if (capturedBlock)
             capturedBlock(nil);
     });
+}
+
+- (void)setData:(NSData *)data newContentType:(NSString *)newContentType
+{
+    auto fileWrapper = adoptNS([[NSFileWrapper alloc] initRegularFileWithContents:data]);
+    [self setFileWrapper:fileWrapper.get() contentType:newContentType completion:nil];
 }
 
 - (void)setData:(NSData *)data newContentType:(NSString *)newContentType newFilename:(NSString *)newFilename completion:(void(^)(NSError *))completionHandler

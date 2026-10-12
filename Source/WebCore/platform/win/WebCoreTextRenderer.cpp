@@ -26,14 +26,10 @@
 #include "WebCoreTextRenderer.h"
 
 #include "FontCascade.h"
-#include "FontDescription.h"
 #include "GraphicsContext.h"
-#include "StringTruncator.h"
 #include "TextRun.h"
 
 namespace WebCore {
-
-static bool shouldUseFontSmoothing = true;
 
 static bool isOneLeftToRightRun(const TextRun& run)
 {
@@ -60,7 +56,7 @@ static void doDrawTextAtPoint(GraphicsContext& context, const String& text, cons
 
         int beforeWidth;
         if (underlinedIndex > 0) {
-            TextRun beforeRun(StringView(text).substring(0, underlinedIndex));
+            TextRun beforeRun(StringView(text).left(underlinedIndex));
             beforeWidth = font.width(beforeRun);
         } else
             beforeWidth = 0;
@@ -87,31 +83,6 @@ void WebCoreDrawDoubledTextAtPoint(GraphicsContext& context, const String& text,
     doDrawTextAtPoint(context, text, textPos, font, topColor, underlinedIndex);
 
     context.restore();
-}
-
-float WebCoreTextFloatWidth(const String& text, const FontCascade& font)
-{
-    return StringTruncator::width(text, font);
-}
-
-void WebCoreSetShouldUseFontSmoothing(bool smooth)
-{
-    shouldUseFontSmoothing = smooth;
-}
-
-bool WebCoreShouldUseFontSmoothing()
-{
-    return shouldUseFontSmoothing;
-}
-
-void WebCoreSetAlwaysUsesComplexTextCodePath(bool complex)
-{
-    FontCascade::setCodePath(complex ? FontCascade::CodePath::Complex : FontCascade::CodePath::Auto);
-}
-
-bool WebCoreAlwaysUsesComplexTextCodePath()
-{
-    return FontCascade::codePath() == FontCascade::CodePath::Complex;
 }
 
 } // namespace WebCore

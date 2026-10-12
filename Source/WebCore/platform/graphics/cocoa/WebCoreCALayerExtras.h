@@ -25,14 +25,37 @@
 
 #import <QuartzCore/QuartzCore.h>
 
+#ifdef __cplusplus
+#import "FloatPoint.h"
+#import <wtf/Vector.h>
+#endif
+
 @interface CALayer (WebCoreCALayerExtras)
 
-+ (CALayer *)_web_renderLayerWithContextID:(uint32_t)contextID;
++ (CALayer *)_web_renderLayerWithContextID:(uint32_t)contextID shouldPreserveFlip:(BOOL)preservesFlip;
 
 - (void)web_disableAllActions;
 - (void)_web_setLayerBoundsOrigin:(CGPoint)origin;
 - (void)_web_setLayerTopLeftPosition:(CGPoint)position;
 - (BOOL)_web_maskContainsPoint:(CGPoint)point;
 - (BOOL)_web_maskMayIntersectRect:(CGRect)rect;
+- (void)_web_clearContents;
+
+#if ENABLE(RE_DYNAMIC_CONTENT_SCALING)
+- (void)_web_clearDynamicContentScalingDisplayListIfNeeded;
+#endif
 
 @end
+
+#ifdef __cplusplus
+
+namespace WebCore {
+
+using LayerAndPoint = std::pair<CALayer *, FloatPoint>;
+WEBCORE_EXPORT void collectDescendantLayersAtPoint(Vector<LayerAndPoint, 16>& layersAtPoint, CALayer *parent, CGPoint, const std::function<bool(CALayer *, CGPoint localPoint)>& pointInLayerFunction = { });
+
+WEBCORE_EXPORT Vector<LayerAndPoint, 16> layersAtPointToCheckForScrolling(std::function<bool(CALayer*, CGPoint)> layerEventRegionContainsPoint, std::function<uint64_t(CALayer*)> scrollingNodeIDForLayer, CALayer*, const FloatPoint&, bool& hasAnyNonInteractiveScrollingLayers);
+
+} // namespace WebCore
+
+#endif // __cplusplus

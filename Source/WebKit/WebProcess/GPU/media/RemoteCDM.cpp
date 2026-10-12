@@ -55,6 +55,14 @@ RemoteCDM::RemoteCDM(WeakPtr<RemoteCDMFactory>&& factory, RemoteCDMIdentifier&& 
 {
 }
 
+#if !RELEASE_LOG_DISABLED
+void RemoteCDM::setLogIdentifier(const void* logIdentifier)
+{
+    if (m_factory)
+        m_factory->gpuProcessConnection().connection().send(Messages::RemoteCDMProxy::SetLogIdentifier(reinterpret_cast<uint64_t>(logIdentifier)), m_identifier);
+}
+#endif
+
 void RemoteCDM::getSupportedConfiguration(CDMKeySystemConfiguration&& configuration, LocalStorageAccess access, SupportedConfigurationCallback&& callback)
 {
     if (!m_factory) {
@@ -64,7 +72,6 @@ void RemoteCDM::getSupportedConfiguration(CDMKeySystemConfiguration&& configurat
 
     m_factory->gpuProcessConnection().connection().sendWithAsyncReply(Messages::RemoteCDMProxy::GetSupportedConfiguration(WTFMove(configuration), access), WTFMove(callback), m_identifier);
 }
-
 
 bool RemoteCDM::supportsConfiguration(const CDMKeySystemConfiguration&) const
 {
@@ -113,12 +120,11 @@ RefPtr<CDMInstance> RemoteCDM::createInstance()
     if (!m_factory)
         return nullptr;
 
-    RemoteCDMInstanceIdentifier identifier;
-    RemoteCDMInstanceConfiguration configuration;
-    m_factory->gpuProcessConnection().connection().sendSync(Messages::RemoteCDMProxy::CreateInstance(), Messages::RemoteCDMProxy::CreateInstance::Reply(identifier, configuration), m_identifier);
+    auto sendResult = m_factory->gpuProcessConnection().connection().sendSync(Messages::RemoteCDMProxy::CreateInstance(), m_identifier);
+    auto [identifier, configuration] = sendResult.takeReplyOr(RemoteCDMInstanceIdentifier { }, RemoteCDMInstanceConfiguration { });
     if (!identifier)
         return nullptr;
-    return RemoteCDMInstance::create(makeWeakPtr(m_factory.get()), WTFMove(identifier), WTFMove(configuration));
+    return RemoteCDMInstance::create(m_factory.get(), WTFMove(identifier), WTFMove(configuration));
 }
 
 void RemoteCDM::loadAndInitialize()
@@ -132,7 +138,7 @@ void RemoteCDM::loadAndInitialize()
 RefPtr<SharedBuffer> RemoteCDM::sanitizeResponse(const SharedBuffer& response) const
 {
     // This check will be done, later, inside RemoteCDMInstanceSessionProxy::updateLicense().
-    return response.copy();
+    return response.makeContiguous();
 }
 
 std::optional<String> RemoteCDM::sanitizeSessionId(const String& sessionId) const

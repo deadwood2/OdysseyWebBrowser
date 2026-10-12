@@ -24,9 +24,11 @@
 import {ArchiveRouter} from '/assets/js/archiveRouter.js';
 import {CommitBank} from '/assets/js/commit.js';
 import {Configuration} from '/assets/js/configuration.js';
-import {deepCompare, ErrorDisplay, escapeHTML, paramsToQuery, queryToParams, linkify} from '/assets/js/common.js';
+import {deepCompare, ErrorDisplay, escapeHTML, paramsToQuery, queryToParams, linkify, escapeEndpoint} from '/assets/js/common.js';
+import {Dashboard} from '/assets/js/dashboard.js';
 import {Expectations} from '/assets/js/expectations.js';
 import {InvestigateDrawer} from '/assets/js/investigate.js';
+import {TypeForSuite} from '/assets/js/suites.js';
 import {ToolTip} from '/assets/js/tooltip.js';
 import {Timeline} from '/library/js/components/TimelineComponents.js';
 import {DOM, EventStream, REF, FP} from '/library/js/Ref.js';
@@ -36,6 +38,13 @@ const DEFAULT_LIMIT = 100;
 
 let willFilterExpected = false;
 let showTestTimes = false;
+let showTestFlakiness = false;
+let showNumberOfFlakyTests = false;
+
+const BUG_TRACKER_COLORS = {
+    radar: 'var(--purple)',
+    bugzilla: 'var(--blue)'
+} 
 
 function minimumUuidForResults(results, limit) {
     const now = Math.floor(Date.now() / 10);
@@ -179,12 +188,13 @@ function xAxisFromScale(scale, repository, updatesArray, isTop=false, viewport=n
         if (!params.branch)
             delete params.branch;
         const query = paramsToQuery(params);
-        window.open(`/commit?${query}`, '_blank');
+        window.open(`/commit/info?${query}`, '_blank');
     }
 
     return Timeline.CanvasXAxisComponent(scaleForRepository(scale), {
         isTop: isTop,
         height: 130,
+        compareFunc: (a, b) => {return b.uuid - a.uuid;},
         onScaleClick: onScaleClick,
         onScaleEnter: (node, event, canvas) => {
             const scrollDelta = document.documentElement.scrollTop || document.body.scrollTop;
@@ -194,6 +204,9 @@ function xAxisFromScale(scale, repository, updatesArray, isTop=false, viewport=n
                     ${node.label.author ? `<br>Author: ${escapeHTML(node.label.author.name)}
                             &#60<a href="mailto:${escapeHTML(node.label.author.emails[0])}">${escapeHTML(node.label.author.emails[0])}</a>&#62` : ''}
                     ${node.label.message ? `<br><div>${linkify(escapeHTML(node.label.message.split('\n')[0]))}</div>` : ''}
+                    ${node.label.bugUrls || node.label.radarUrls ? '<hr>' : ''}
+                    ${node.label.bugUrls ? `<div>${linkify(escapeHTML(node.label.bugUrls.join('\n').split('\n')[0]))}</div>` : ''}
+                    ${node.label.radarUrls ? `<div>${linkify(escapeHTML(node.label.radarUrls.join('\n').split('\n')[0]))}</div>` : ''}
                 </div>`,
                 node.tipPoints.map((point) => {
                     return {x: canvas.x + point.x, y: canvas.y + scrollDelta + point.y};
@@ -209,6 +222,11 @@ function xAxisFromScale(scale, repository, updatesArray, isTop=false, viewport=n
         },
         getLabelFunc: (commit) => {return commit && commit.label ? commit.label() : '?';},
         getScaleFunc: (commit) => commit.uuid,
+        getDotScaleFunc: (value) => {
+            if (value && value.uuid)
+                return {uuid: value.uuid};
+            return {};
+        },
         exporter: (updateFunction) => {
             updatesArray.push((scale) => {updateFunction(scaleForRepository(scale));});
         },
@@ -344,12 +362,13 @@ function combineResults() {
 }
 
 class TimelineFromEndpoint {
-    constructor(endpoint, suite = null, test = null, viewport = null) {
+    constructor(endpoint, {suite = null, test = null, viewport = null, searchEvent = null}) {
         this.endpoint = endpoint;
         this.displayAllCommits = true;
 
         this.configurations = Configuration.fromQuery();
         this.results = {};
+        this.selectedDots = new Map();
 
         // Suite and test can often be implied by the endpoint, but doing so is more confusing then helpful
         this.suite = suite;
@@ -365,6 +384,8 @@ class TimelineFromEndpoint {
         const self = this;
 
         this.latestDispatch = Date.now();
+        searchEvent.action( (val) => this.onSearch(val));
+
         this.ref = REF.createRef({
             state: {},
             onStateUpdate: (element, state) => {
@@ -376,7 +397,6 @@ class TimelineFromEndpoint {
                     element.innerHTML = this.placeholder();
             }
         });
-
         this.commit_callback = () => {
             self.update();
         };
@@ -390,9 +410,11 @@ class TimelineFromEndpoint {
         });
     }
     update() {
+        if (this.selectedDotsButtonGroupRef)
+            this.selectedDotsButtonGroupRef.setState({show: false});
         const params = queryToParams(document.URL.split('?')[1]);
         const commits = commitsForResults(this.results, params.limit ? parseInt(params.limit[params.limit.length - 1]) : DEFAULT_LIMIT, this.allCommits);
-        const scale = scaleForCommits(commits);
+        this.scale = scaleForCommits(commits);
 
         const newRepositories = repositoriesForCommits(commits);
         let haveNewRepos = this.repositories.length !== newRepositories.length;
@@ -404,7 +426,7 @@ class TimelineFromEndpoint {
             let components = [];
 
             newRepositories.forEach(repository => {
-                components.push(xAxisFromScale(scale, repository, this.xaxisUpdates, top, this.viewport));
+                components.push(xAxisFromScale(this.scale, repository, this.xaxisUpdates, top, this.viewport));
                 top = false;
             });
 
@@ -412,8 +434,8 @@ class TimelineFromEndpoint {
             this.repositories = newRepositories;
         }
 
-        this.updates.forEach(func => {func(scale);})
-        this.xaxisUpdates.forEach(func => {func(scale);});
+        this.updates.forEach(func => {func(this.scale);})
+        this.xaxisUpdates.forEach(func => {func(this.scale);});
     }
     rerender() {
         const params = queryToParams(document.URL.split('?')[1]);
@@ -448,10 +470,17 @@ class TimelineFromEndpoint {
                 params[key] = sharedParams[key];
             const query = paramsToQuery(params);
 
-            fetch(query ? this.endpoint + '?' + query : this.endpoint).then(response => {
+            fetch(query ? escapeEndpoint(this.endpoint) + '?' + query : escapeEndpoint(this.endpoint)).then(response => {
                 response.json().then(json => {
                     if (myDispatch !== this.latestDispatch)
                         return;
+                    else if (json.length === 0) {
+                        this.ref.setState({
+                            error: "No results found for the requested test under the selected configuration.",
+                            description: "This could be because the selected configuration is not tested (check test expectations), no builds were completed, or the test does not exist."
+                        });
+                        return;
+                    }
 
                     let oldestUuid = Date.now() / 10;
                     let newestUuid = 0;
@@ -475,6 +504,12 @@ class TimelineFromEndpoint {
                         CommitBank.add(oldestUuid, newestUuid);
 
                     self.ref.setState(params.limit ? parseInt(params.limit[params.limit.length - 1]) : DEFAULT_LIMIT);
+                }).catch(error => {
+                    const bugsLink = '<a href="https://bugs.webkit.org/enter_bug.cgi?product=WebKit&component=Tools%20%2F%20Tests&version=Other">file a bug</a>';
+                    this.ref.setState({
+                        error: "Error: unexpected data format.",
+                        description: `This could be due to too large of a request or a server error.<br>If this error persists, please ${bugsLink}.`
+                    });
                 });
             }).catch(error => {
                 if (myDispatch === this.latestDispatch)
@@ -500,14 +535,199 @@ class TimelineFromEndpoint {
             }
         });
 
-        return `<div class="content" ref="${this.ref}"></div>`;
+        return `
+        <div style="position:relative">
+            <div class="content" ref="${this.ref}"></div>
+        </div>`;
     }
+
+    getTestResultStatus(data, willFilterExpected=false) {
+        let failureType = null;
+        let failureNumber = null;
+        if (data.stats) {
+            if (data.start_time)
+                failureNumber = data.stats[`tests${willFilterExpected ? '_unexpected_' : '_'}failed`];
+            else
+                failureNumber = data.stats[`worst_tests${willFilterExpected ? '_unexpected_' : '_'}failed`];
+            if (data.stats.worst_tests_run <= 1)
+                failureNumber = null;
+
+            Expectations.failureTypes.forEach(type => {
+                if (data.stats[`tests${willFilterExpected ? '_unexpected_' : '_'}${type}`] > 0) {
+                    failureType = type;
+                }
+            });
+        } else {
+            let resultId = Expectations.stringToStateId(data.actual);
+            if (willFilterExpected)
+                resultId = Expectations.stringToStateId(Expectations.unexpectedResults(data.actual, data.expected));
+            Expectations.failureTypes.forEach(type => {
+                if (Expectations.stringToStateId(Expectations.failureTypeMap[type]) >= resultId) {
+                    failureType = type;
+                }
+            });
+        }
+        return {failureType, failureNumber};
+    }
+
+    getTestResultUrl(config, data) {
+        const buildParams = config.toParams();
+        buildParams['suite'] = [this.suite];
+        buildParams['uuid'] = [data.uuid];
+        buildParams['after_time'] = [data.start_time];
+        buildParams['before_time'] = [data.start_time];
+        return `${window.location.protocol}//${window.location.host}/urls/build?${paramsToQuery(buildParams)}`;
+    }
+
+    _renderSelectedDotsButtonGroup(element) {
+        DOM.inject(element, 
+            `<div class="row">
+                ${this.bugTrackers.map(bugTracker => {
+                    const buttonText = `${bugTracker[0].toUpperCase()}${bugTracker.substring(1)}`;
+                    const buttonRef = REF.createRef({
+                        state: {
+                            loading: false
+                        },
+                        onStateUpdate: (element, stateDiff) => {
+                            if (stateDiff.loading)
+                                element.innerText = 'Waiting...';
+                            else
+                                element.innerText = buttonText;
+                        }
+                    });
+        
+                    buttonRef.fromEvent('click').action(e => {
+                        const requestPayload = {
+                            selectedRows: [],
+                            willFilterExpected: InvestigateDrawer.willFilterExpected,
+                            repositories: this.repositories,
+                            suite: this.suite,
+                            test: this.test
+                        };
+                        Array.from(this.selectedDots.keys()).forEach(config => {
+                            const dots = this.selectedDots.get(config);
+                            requestPayload.selectedRows.push({
+                                config,
+                                results: dots
+                            });
+                        });
+                        buttonRef.setState({loading: true});
+                        fetch(`api/bug-trackers/${bugTracker}/create-bug`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(requestPayload)
+                        }).then(res => {
+                            if (res.ok)
+                                return res.json()
+                            return res.json().then((data) => {
+                                throw new Error(data.description);
+                            });
+                        }).then(data => {
+                            const bugLinkElement = document.createElement('a');
+                            if (data['newWindow'])
+                                bugLinkElement.setAttribute('target', '_blank');
+                            bugLinkElement.setAttribute('href', data['url']);
+                            bugLinkElement.click();
+                        }).catch(e => {
+                            alert(e);
+                        }).finally(() => {
+                            buttonRef.setState({loading: false});
+                        });
+                        
+                    });
+                    return `
+                        <button class="button tiny" style="background: ${BUG_TRACKER_COLORS[bugTracker]}; color: var(--white)" ref="${buttonRef}">
+                            ${buttonText}
+                        </button>`;
+                }).join('')}
+            </div>`);
+    }
+
+    onSearch(searchValue) {
+        if (!searchValue || !searchValue.length) {
+            this.searchScale(null);
+        }
+        let found = false;
+        for (let currentScale of this.scale) {
+            for (let repo of this.repositories) {
+                if (!currentScale[repo]) {
+                    continue;
+                }
+                if (currentScale[repo].hash && currentScale[repo].hash.indexOf(searchValue) === 0 || 
+                    currentScale[repo].identifier && currentScale[repo].identifier.indexOf(searchValue) === 0) {
+                    found = true;
+                    this.searchScale(currentScale[repo]);
+                    break;
+                }
+            }
+            if (found)
+                break;
+        }
+        if (!found)
+            this.searchScale(null);
+    };
 
     render(limit) {
         const branch = queryToParams(document.URL.split('?')[1]).branch;
         const self = this;
         const commits = commitsForResults(this.results, limit, this.allCommits);
-        const scale = scaleForCommits(commits);
+        this.scale = scaleForCommits(commits);
+        this.repositories = repositoriesForCommits(commits);
+
+        this.selectedDotsButtonGroupRef = REF.createRef({
+            state: {
+                show: false,
+                top: 0,
+                left: 0,
+            },
+            onElementMount: (element) => {
+                if (this.bugTrackers)
+                    this._renderSelectedDotsButtonGroup(element);
+                fetch('api/bug-trackers').then(res => res.json()).then(bugTrackers => {
+                    this.bugTrackers = bugTrackers;
+                    this._renderSelectedDotsButtonGroup(element);
+                })
+            },
+            onStateUpdate: (element, stateDiff) => {
+                if ('show' in stateDiff) {
+                    if (stateDiff.show)
+                        element.style.display = 'block';
+                    else
+                        element.style.display = 'none';
+                }
+                if ('top' in stateDiff)
+                    element.style.top = `${stateDiff.top}px`;
+                if ('left' in stateDiff) {
+                    const rect = element.getBoundingClientRect();
+                    element.style.left = `${stateDiff.left - rect.width}px`;
+                }
+            }
+        });
+
+        this.radarButtonRef = REF.createRef({
+            state: {
+                show: false,
+                top: 0,
+                left: 0,
+                loading: false,
+            },
+            onStateUpdate: (element, stateDiff) => {
+                if ('show' in stateDiff) {
+                    if (stateDiff.show)
+                        element.style.display = 'block';
+                    else
+                        element.style.display = 'none';
+                }
+                if ('top' in stateDiff)
+                    element.style.top = `${stateDiff.top}px`;
+                if ('left' in stateDiff) {
+                    const rect = element.getBoundingClientRect();
+                    element.style.left = `${stateDiff.left - rect.width}px`;
+                }
+            }
+        });
 
         const colorMap = Expectations.colorMap();
         this.updates = [];
@@ -518,20 +738,27 @@ class TimelineFromEndpoint {
                 return {};
             },
             compareFunc: (a, b) => {return b.uuid - a.uuid;},
+            shouldHighLightFunc: (myScale, commit) => {
+                return this.repositories.filter(repo_id => myScale[repo_id].uuid === commit.uuid).length >= 1;
+            },
             renderFactory: (drawDot) => (data, context, x, y) => {
                 if (!data)
                     return drawDot(context, x, y, true);
 
-                let tag = null;
+                let tag = [];
+                let pushTag = (value, prefix='', suffix='') => {
+                    if (value)
+                        tag.push(prefix + value + suffix);
+                };
                 let color = colorMap.success;
                 let symbol = Expectations.symbolMap.success;
                 if (data.stats) {
                     if (data.start_time)
-                        tag = data.stats[`tests${willFilterExpected ? '_unexpected_' : '_'}failed`];
+                        pushTag(data.stats[`tests${willFilterExpected ? '_unexpected_' : '_'}failed`]);
                     else
-                        tag = data.stats[`worst_tests${willFilterExpected ? '_unexpected_' : '_'}failed`];
+                        pushTag(data.stats[`worst_tests${willFilterExpected ? '_unexpected_' : '_'}failed`]);
                     if (data.stats.worst_tests_run <= 1)
-                        tag = null;
+                        tag = [];
 
                     Expectations.failureTypes.forEach(type => {
                         if (data.stats[`tests${willFilterExpected ? '_unexpected_' : '_'}${type}`] > 0) {
@@ -552,9 +779,16 @@ class TimelineFromEndpoint {
                 }
                 const time = data.time ? Math.round(data.time / 1000) : 0;
                 if (time && showTestTimes)
-                    tag = time;
+                    pushTag(time);
+                if (showTestFlakiness && data.flakiness_num_passes && data.flakiness_num_tries) {
+                    let flakiness = 1 - (data.flakiness_num_passes / data.flakiness_num_tries);
+                    pushTag((100 * flakiness).toFixed(), '', '%');
+                }
+                if (showNumberOfFlakyTests && data.details && data.details.number_of_flaky_tests){
+                    pushTag(data.details.number_of_flaky_tests, 'fl');
+                }
 
-                return drawDot(context, x, y, false, tag ? tag : null, symbol, false, color);
+                return drawDot(context, x, y, false, tag.length ? tag.join('/') : null, symbol, false, color);
             },
         };
 
@@ -641,9 +875,10 @@ class TimelineFromEndpoint {
                 if (branch)
                     buildParams['branch'] = branch;
 
+                const typ = TypeForSuite(self.suite);
                 ToolTip.set(
                     `<div class="content">
-                        ${data.start_time ? `<a href="/urls/build?${paramsToQuery(buildParams)}" target="_blank">Test run</a> @ ${new Date(data.start_time * 1000).toLocaleString()}<br>` : ''}
+                        ${data.start_time ? `<a href="/urls/build?${paramsToQuery(buildParams)}" target="_blank">${typ.runDescription}</a> @ ${new Date(data.start_time * 1000).toLocaleString()}<br>` : ''}
                         ${data.start_time && ArchiveRouter.hasArchive(self.suite, data.actual) ? `<a href="/archive/${ArchiveRouter.pathFor(self.suite, data.actual, self.test)}?${paramsToQuery(buildParams)}" target="_blank">${ArchiveRouter.labelFor(self.suite, data.actual)}</a><br>` : ''}
                         Commits: ${CommitBank.commitsDuring(data.uuid).map((commit) => {
                             let params = {
@@ -684,6 +919,7 @@ class TimelineFromEndpoint {
         }
 
         let children = [];
+        let allConfigResults = [];
         this.configurations.forEach(configuration => {
             if (!this.results[configuration.toKey()] || Object.keys(this.results[configuration.toKey()]).length === 0)
                 return;
@@ -725,14 +961,21 @@ class TimelineFromEndpoint {
                     queueParams['branch'];
                 let myTimeline = Timeline.SeriesWithHeaderComponent(
                     `${childrenConfigsBySDK[config.toKey()].length > 1 ? ' | ' : ''}<a href="/urls/queue?${paramsToQuery(queueParams)}" target="_blank">${config}</a>`,
-                    Timeline.CanvasSeriesComponent(resultsForConfig, scale, {
+                    Timeline.CanvasSeriesComponent(resultsForConfig, this.scale, {
                         getScaleFunc: options.getScaleFunc,
                         compareFunc: options.compareFunc,
+                        shouldHighLightFunc: options.shouldHighLightFunc,
                         renderFactory: options.renderFactory,
                         exporter: options.exporter,
                         onDotClick: onDotClickFactory(config),
                         onDotEnter: onDotEnterFactory(config),
                         onDotLeave: onDotLeave,
+                        onDotsSelected: dots => {
+                            if (dots.length)
+                                this.selectedDots.set(config, dots);
+                            else
+                                this.selectedDots.delete(config);
+                        },
                         exporter: exporterFactory(resultsForConfig),
                     }));
 
@@ -741,14 +984,21 @@ class TimelineFromEndpoint {
                     childrenConfigsBySDK[config.toKey()].forEach(sdkConfig => {
                         timelinesBySDK.push(
                             Timeline.SeriesWithHeaderComponent(`${Configuration.integerToVersion(sdkConfig.version)} (${sdkConfig.sdk})`,
-                                Timeline.CanvasSeriesComponent(resultsByKey[sdkConfig.toKey()], scale, {
+                                Timeline.CanvasSeriesComponent(resultsByKey[sdkConfig.toKey()], this.scale, {
                                     getScaleFunc: options.getScaleFunc,
                                     compareFunc: options.compareFunc,
+                                    shouldHighLightFunc: options.shouldHighLightFunc,
                                     renderFactory: options.renderFactory,
                                     exporter: options.exporter,
                                     onDotClick: onDotClickFactory(sdkConfig),
                                     onDotEnter: onDotEnterFactory(sdkConfig),
                                     onDotLeave: onDotLeave,
+                                    onDotsSelected: dots => {
+                                        if (dots.length)
+                                            this.selectedDots.set(sdkConfig, dots);
+                                        else
+                                            this.selectedDots.delete(sdkConfig);
+                                    },
                                     exporter: exporterFactory(resultsByKey[sdkConfig.toKey()]),
                                 })));
                     });
@@ -766,16 +1016,24 @@ class TimelineFromEndpoint {
                 return;
             }
 
+            allConfigResults = combineResults(allConfigResults, allResults);
             children.push(
                 Timeline.ExpandableSeriesWithHeaderExpanderComponent(
                 Timeline.SeriesWithHeaderComponent(` ${configuration}`,
-                    Timeline.CanvasSeriesComponent(allResults, scale, {
+                    Timeline.CanvasSeriesComponent(allResults, this.scale, {
                         getScaleFunc: options.getScaleFunc,
                         compareFunc: options.compareFunc,
+                        shouldHighLightFunc: options.shouldHighLightFunc,
                         renderFactory: options.renderFactory,
                         onDotClick: onDotClickFactory(configuration),
                         onDotEnter: onDotEnterFactory(configuration),
                         onDotLeave: onDotLeave,
+                        onDotsSelected: dots => {
+                            if (dots.length)
+                                this.selectedDots.set(configuration, dots);
+                            else
+                                this.selectedDots.delete(configuration);
+                        },
                         exporter: exporterFactory(allResults),
                     })),
                 {expanded: this.configurations.length <= 1},
@@ -787,15 +1045,16 @@ class TimelineFromEndpoint {
         self.xaxisUpdates = [];
         this.repositories = repositoriesForCommits(commits);
         this.repositories.forEach(repository => {
-            const xAxisComponent = xAxisFromScale(scale, repository, self.xaxisUpdates, top, self.viewport);
+            const xAxisComponent = xAxisFromScale(this.scale, repository, self.xaxisUpdates, top, self.viewport);
             if (top)
                 children.unshift(xAxisComponent);
             else
                 children.push(xAxisComponent);
             top = false;
         });
-
-        const composer = FP.composer(FP.currying((updateTimeline, notifyRerender) => {
+        this.searchScale = null;
+        let searchDot = null;
+        const composer = FP.composer(FP.currying((updateTimeline, notifyRerender, exportedSearchScale, exportedSearchDot) => {
             self.timelineUpdate = (xAxises) => {
                 children.splice(0, 1);
                 if (self.repositories.length > 1)
@@ -812,8 +1071,194 @@ class TimelineFromEndpoint {
                 updateTimeline(children);
             };
             self.notifyRerender = notifyRerender;
+            this.searchScale = exportedSearchScale;
+            searchDot = exportedSearchDot;
         }));
-        return Timeline.CanvasContainer(composer, ...children);
+
+        let currentResultIndex = 0;
+        let regressPoints = [];
+        let currentRegressPointIndex = -1;
+        const jumpNextRegressPoint = () => {
+            if (currentRegressPointIndex === regressPoints.length - 1) {
+                const lastResultStatus = this.getTestResultStatus(allConfigResults[currentResultIndex], InvestigateDrawer.willFilterExpected);
+                for(let i = currentResultIndex + 1; i < allConfigResults.length; i++) {
+                    const currentTestStatus = this.getTestResultStatus(allConfigResults[i], InvestigateDrawer.willFilterExpected);
+                    if (currentTestStatus.failureType !== lastResultStatus.failureType || currentTestStatus.failureNumber !== lastResultStatus.failureNumber) {
+                        currentResultIndex = i;
+                        regressPoints.push(allConfigResults[i]);
+                        currentRegressPointIndex = regressPoints.length - 1;
+                        searchDot(allConfigResults[i]);
+                        if (currentRegressPointIndex > 0)
+                            previousRegressButtonRef.setState({disabled: false});
+                        break;
+                    }
+                }
+            } else if (currentRegressPointIndex < regressPoints.length - 1) {
+                currentRegressPointIndex += 1;
+                if (currentRegressPointIndex > 0)
+                    previousRegressButtonRef.setState({disabled: false});
+                searchDot(regressPoints[currentRegressPointIndex]);
+            }
+        };
+
+        const jumpPreviousRegressPoint = () => {
+            if (0 < currentRegressPointIndex && currentRegressPointIndex < regressPoints.length) {
+                currentRegressPointIndex -= 1;
+                searchDot(regressPoints[currentRegressPointIndex]);
+                if (currentRegressPointIndex === 0)
+                    previousRegressButtonRef.setState({disabled: true});
+            }
+        };
+
+        const hideableRefOptionFactory = (initShow) => {
+            return {
+                state: {
+                    show: initShow,
+                },
+                onStateUpdate: (element, stateDiff) => {
+                    if ('show' in stateDiff) {
+                        if (stateDiff.show) {
+                            element.style.display = 'block';
+                        } else {
+                            element.style.display = 'none';
+                        }
+                    }
+                }
+            }
+        }
+
+        const findRegressButtonRef = REF.createRef(hideableRefOptionFactory(true));
+        findRegressButtonRef.fromEvent("click").action(e => {
+            findRegressPannelRef.setState({show: true});
+            findRegressButtonRef.setState({show: false});
+            jumpNextRegressPoint();
+        });
+
+        const findRegressPannelRef = REF.createRef(hideableRefOptionFactory(false));
+
+        const closeRegressButtonRef = REF.createRef({});
+        closeRegressButtonRef.fromEvent("click").action(e => {
+            findRegressPannelRef.setState({show: false});
+            findRegressButtonRef.setState({show: true});
+            currentRegressPointIndex = -1;
+            previousRegressButtonRef.setState({disabled: true});
+            searchDot(null);
+        });
+
+        const nextRegressButtonRef = REF.createRef({});
+        const nextRegressButtonClickEventStream = nextRegressButtonRef.fromEvent("click");
+        nextRegressButtonClickEventStream.action((e) => {
+            jumpNextRegressPoint();
+        });
+
+        const previousRegressButtonRef = REF.createRef({
+            state: {
+                disabled: true,
+            },
+            onStateUpdate: (element, stateDiff) => {
+                if ("disabled" in stateDiff) {
+                    if (stateDiff.disabled) {
+                        element.setAttribute('disabled', true);
+                    } else {
+                        element.removeAttribute('disabled');
+                    }
+                }
+            }
+        });
+
+        previousRegressButtonRef.fromEvent("click").action(e => {
+            jumpPreviousRegressPoint();
+        });
+
+        const searchBarRef = REF.createRef({
+            state: {
+                float: false
+            },
+            onStateUpdate: (element, stateDiff, state) => {
+                if (stateDiff.float === state.float)
+                    return;
+                const float = ("float" in stateDiff) ? stateDiff.float : state.float;
+                if (float !== false) {
+                    element.style.position = "fixed";
+                    element.style.top = `60px`;
+                } else {
+                    element.style.removeProperty("position");
+                    element.style.removeProperty("top");   
+                }
+            }
+        });
+        const placeHolderRef = REF.createRef({
+            state: {
+                show: false
+            },
+            onStateUpdate: (element, stateDiff, state) => {
+                const show = ("show" in stateDiff) ? stateDiff.show : state.show;
+                if (show)
+                    element.style.display = "block";
+                else
+                    element.style.display = "none";
+            }
+        });
+
+        const onScrollAction = (e) => {
+            const rect = containnerRef.element.getBoundingClientRect();
+            if (rect.top < 60 && 0 - rect.top < rect.height - 120) {
+                searchBarRef.setState({float: true});
+                placeHolderRef.setState({show: true});
+            } else {
+                searchBarRef.setState({float: false});
+                placeHolderRef.setState({show: false});
+            }
+        };
+        const onResizeAction = (e) => {
+            searchBarRef.element.style.width = `${containnerRef.element.getBoundingClientRect().width}px`;
+        };
+        const containnerRef = REF.createRef({
+            onElementMount: (element) => {
+                window.addEventListener("scroll", onScrollAction);
+                window.addEventListener("resize", onResizeAction);
+                onResizeAction();
+            },
+            onElementUnmount: (element) => {
+                window.removeEventListener("scroll", onScrollAction);
+                window.addEventListener("resize", onResizeAction);
+            }
+        });
+        return `<div ref="${containnerRef}" style="position: relative">
+            <div ref="${searchBarRef}" class="next-regress-bar">
+                <button class="button" ref="${findRegressButtonRef}">
+                    Find Regression Point
+                </button>
+                <div ref="${findRegressPannelRef}">
+                    <button class="button" ref="${previousRegressButtonRef}">
+                        Previous Regression Point
+                    </button>
+                    <button class="button" ref="${nextRegressButtonRef}">
+                        Next Regression Point
+                    </button>
+                    <button class="button" ref="${closeRegressButtonRef}">
+                        Close
+                    </button>
+                </div>
+            </div>
+            <div class="row" ref="${placeHolderRef}">
+                <div class="col-12" style="height: 40px; padding: 0"></div>
+            </div>
+            ${Timeline.CanvasContainer({
+                customizedLayer: `<div style="position:absolute" ref="${this.selectedDotsButtonGroupRef}"></div>`,
+                onSelecting: (e) => {
+                    this.selectedDotsButtonGroupRef.setState({show: false});
+                },
+                onSelect: (dots, selectedDotRect, seriesRect, e) => {
+                    // this api will called with selected dots for each series once, and compose the selectedDotRect during the call
+                    this.selectedDotsButtonGroupRef.setState({show: true, top: selectedDotRect.bottom, left: selectedDotRect.right});
+                },
+                onSelectionScroll: (dots, selectedDotRect) => {
+                    // this api will called with selected dots for each series once, and compose the selectedDotRect during the call
+                    this.selectedDotsButtonGroupRef.setState({top: selectedDotRect.bottom, left: selectedDotRect.right});
+                },
+            }, composer, ...children)}
+        </div>`;
     }
 }
 
@@ -830,7 +1275,7 @@ function LegendLabel(eventStream, filterExpectedText, filterUnexpectedText) {
     return `<div class="label" style="font-size: var(--smallSize)" ref="${ref}"></div>`;
 } 
 
-function Legend(callback=null, plural=false, defaultWillFilterExpected=false) {
+function Legend(callback=null, plural=false, defaultWillFilterExpected=false, flakinessSwitch=false, numberOfFlakySwitch=false) {
     willFilterExpected = defaultWillFilterExpected;
     InvestigateDrawer.willFilterExpected = willFilterExpected;
     let updateLabelEvents = new EventStream();
@@ -897,6 +1342,7 @@ function Legend(callback=null, plural=false, defaultWillFilterExpected=false) {
                     InvestigateDrawer.dispatch();
                     InvestigateDrawer.select(InvestigateDrawer.selected);
                     callback(willFilterExpected);
+                    Dashboard.setWillFilterExpected(willFilterExpected);
                 };
             },
         });
@@ -911,7 +1357,28 @@ function Legend(callback=null, plural=false, defaultWillFilterExpected=false) {
                 };
             },
         });
-
+        const showTestFlakinessSwitch = REF.createRef({
+            onElementMount: (element) => {
+                element.onchange = () => {
+                    if (element.checked)
+                        showTestFlakiness = true;
+                    else
+                        showTestFlakiness = false;
+                    callback();
+                };
+            },
+        });
+        const showNumberOfFlakyTestsSwitch = REF.createRef({
+            onElementMount: (element) => {
+                element.onchange = () => {
+                    if (element.checked)
+                        showNumberOfFlakyTests = true;
+                    else
+                        showNumberOfFlakyTests = false;
+                    callback();
+                };
+            },
+        });
         result += `<div class="input">
             <label>Filter expected results</label>
             <label class="switch">
@@ -927,9 +1394,26 @@ function Legend(callback=null, plural=false, defaultWillFilterExpected=false) {
                     <span class="slider"></span>
                 </label>
             </div>`;
+        if (flakinessSwitch)
+            result += `<div class="input">
+                <label>Show test flakiness</label>
+                <label class="switch">
+                    <input type="checkbox"${showTestFlakiness ? ' checked': ''} ref="${showTestFlakinessSwitch}">
+                    <span class="slider"></span>
+                </label>
+            </div>`;
+        if (numberOfFlakySwitch)
+            result += `<div class="input">
+                <label>Number of flakes</label>
+                <label class="switch">
+                    <input type="checkbox"${showNumberOfFlakyTests ? ' checked': ''} ref="${showNumberOfFlakyTestsSwitch}">
+                    <span class="slider"></span>
+                </label>
+            </div>`;
     }
 
     return `${result}`;
 }
 
 export {Legend, TimelineFromEndpoint, Expectations};
+

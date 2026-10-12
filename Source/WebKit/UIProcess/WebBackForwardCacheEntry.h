@@ -29,6 +29,7 @@
 #include <WebCore/ProcessIdentifier.h>
 #include <wtf/Forward.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
@@ -37,9 +38,9 @@ class WebBackForwardCache;
 class WebProcessProxy;
 
 class WebBackForwardCacheEntry {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(WebBackForwardCacheEntry);
 public:
-    WebBackForwardCacheEntry(WebBackForwardCache&, WebCore::BackForwardItemIdentifier, WebCore::ProcessIdentifier, std::unique_ptr<SuspendedPageProxy>&& = nullptr);
+    WebBackForwardCacheEntry(WebBackForwardCache&, WebCore::BackForwardItemIdentifier, WebCore::ProcessIdentifier, std::unique_ptr<SuspendedPageProxy>&&);
     ~WebBackForwardCacheEntry();
 
     WebBackForwardCache& backForwardCache() const { return m_backForwardCache; }
@@ -47,7 +48,7 @@ public:
     SuspendedPageProxy* suspendedPage() const { return m_suspendedPage.get(); }
     std::unique_ptr<SuspendedPageProxy> takeSuspendedPage();
     WebCore::ProcessIdentifier processIdentifier() const { return m_processIdentifier; }
-    WebProcessProxy& process() const;
+    RefPtr<WebProcessProxy> process() const;
 
 private:
     void expirationTimerFired();
@@ -56,7 +57,7 @@ private:
     WebCore::ProcessIdentifier m_processIdentifier;
     WebCore::BackForwardItemIdentifier m_backForwardItemID;
     std::unique_ptr<SuspendedPageProxy> m_suspendedPage;
-    RunLoop::Timer<WebBackForwardCacheEntry> m_expirationTimer;
+    RunLoop::Timer m_expirationTimer;
 };
 
 } // namespace WebKit

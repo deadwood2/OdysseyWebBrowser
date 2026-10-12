@@ -30,6 +30,12 @@
 #include "RemoteCommandListenerCocoa.h"
 #endif
 
+#if USE(GLIB)
+#include "RemoteCommandListenerGLib.h"
+#endif
+
+#include <wtf/NeverDestroyed.h>
+
 namespace WebCore {
 
 static RemoteCommandListener::CreationFunction& remoteCommandListenerCreationFunction()
@@ -45,16 +51,19 @@ void RemoteCommandListener::setCreationFunction(CreationFunction&& function)
 
 void RemoteCommandListener::resetCreationFunction()
 {
-    remoteCommandListenerCreationFunction() = [] (RemoteCommandListenerClient& client) {
+    remoteCommandListenerCreationFunction() = [] (RemoteCommandListenerClient& client) -> RefPtr<RemoteCommandListener> {
 #if PLATFORM(COCOA)
         return RemoteCommandListenerCocoa::create(client);
+#elif USE(GLIB) && ENABLE(MEDIA_SESSION)
+        return RemoteCommandListenerGLib::create(client);
 #else
-        return RemoteCommandListener::create(client);
+        UNUSED_PARAM(client);
+        return nullptr;
 #endif
     };
 }
 
-std::unique_ptr<RemoteCommandListener> RemoteCommandListener::create(RemoteCommandListenerClient& client)
+RefPtr<RemoteCommandListener> RemoteCommandListener::create(RemoteCommandListenerClient& client)
 {
     if (!remoteCommandListenerCreationFunction())
         resetCreationFunction();

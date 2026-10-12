@@ -4,7 +4,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2,1 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -21,7 +21,12 @@
 
 #include "WebViewTest.h"
 #include <gtk/gtk.h>
+
+#if USE(GTK4)
+#include <webkit/webkit.h>
+#else
 #include <webkit2/webkit2.h>
+#endif
 
 static const char* testHTML = "<html id='root'><head><title>DOMNodeTreeWalker</title></head>"
     "<body><input type='button' name='push' value='push'><input type='button' name='clear' value='clear'><br></body></html>";
@@ -38,6 +43,8 @@ static void testWebKitDOMNodeFilterNodeIterator(WebViewTest* test, gconstpointer
 
 void beforeAll()
 {
+    Test::shouldInitializeWebProcessExtensions = true;
+
     WebViewTest::add("WebKitDOMNodeFilter", "tree-walker", testWebKitDOMNodeFilterTreeWalker);
     WebViewTest::add("WebKitDOMNodeFilter", "node-iterator", testWebKitDOMNodeFilterNodeIterator);
 }

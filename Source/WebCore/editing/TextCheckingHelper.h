@@ -27,7 +27,7 @@
 namespace WebCore {
 
 class EditorClient;
-class Frame;
+class LocalFrame;
 class Position;
 class TextCheckerClient;
 class VisibleSelection;
@@ -94,7 +94,7 @@ public:
 
     MisspelledWord findFirstMisspelledWord() const;
     UngrammaticalPhrase findFirstUngrammaticalPhrase() const;
-    Variant<MisspelledWord, UngrammaticalPhrase> findFirstMisspelledWordOrUngrammaticalPhrase(bool checkGrammar) const;
+    std::variant<MisspelledWord, UngrammaticalPhrase> findFirstMisspelledWordOrUngrammaticalPhrase(bool checkGrammar) const;
 
     std::optional<SimpleRange> markAllMisspelledWords() const; // Returns the range of the first misspelled word.
     void markAllUngrammaticalPhrases() const;
@@ -114,7 +114,8 @@ private:
 
 void checkTextOfParagraph(TextCheckerClient&, StringView, OptionSet<TextCheckingType>, Vector<TextCheckingResult>&, const VisibleSelection& currentSelection);
 
-bool unifiedTextCheckerEnabled(const Frame*);
+bool unifiedTextCheckerEnabled(const LocalFrame*);
 bool platformDrivenTextCheckerEnabled();
+bool platformOrClientDrivenTextCheckerEnabled();
 
 } // namespace WebCore

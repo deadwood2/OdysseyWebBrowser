@@ -30,10 +30,19 @@
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
+struct PreviewConverterClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::PreviewConverterClient> : std::true_type { };
+}
+
+namespace WebCore {
 
 class PreviewConverter;
 class ResourceError;
-class SharedBuffer;
+class FragmentedSharedBuffer;
 
 struct PreviewConverterClient : CanMakeWeakPtr<PreviewConverterClient> {
     virtual ~PreviewConverterClient() = default;
@@ -42,7 +51,7 @@ struct PreviewConverterClient : CanMakeWeakPtr<PreviewConverterClient> {
     virtual void previewConverterDidFinishUpdating(PreviewConverter&) = 0;
     virtual void previewConverterDidFailUpdating(PreviewConverter&) = 0;
     virtual void previewConverterDidStartConverting(PreviewConverter&) = 0;
-    virtual void previewConverterDidReceiveData(PreviewConverter&, const SharedBuffer& newData) = 0;
+    virtual void previewConverterDidReceiveData(PreviewConverter&, const FragmentedSharedBuffer& newData) = 0;
     virtual void previewConverterDidFinishConverting(PreviewConverter&) = 0;
     virtual void previewConverterDidFailConverting(PreviewConverter&) = 0;
 };

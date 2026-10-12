@@ -79,6 +79,14 @@ void EventSenderProxy::keyDown(WKStringRef key, WKEventModifiers modifiers, unsi
 {
 }
 
+void EventSenderProxy::rawKeyDown(WKStringRef key, WKEventModifiers modifiers, unsigned keyLocation)
+{
+}
+
+void EventSenderProxy::rawKeyUp(WKStringRef key, WKEventModifiers modifiers, unsigned keyLocation)
+{
+}
+
 void EventSenderProxy::mouseScrollBy(int x, int y)
 {
 }
@@ -138,5 +146,9 @@ void EventSenderProxy::cancelTouchPoint(int index)
 }
 
 #endif
+
+void EventSenderProxy::waitForPendingMouseEvents()
+{
+}
 
 } // namespace WTR

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006, 2010-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2008 Nokia Corporation and/or its subsidiary(-ies)
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,14 +32,16 @@
 
 #if PLATFORM(MAC)
 
+#import "MessageSenderInlines.h"
 #import "WebPage.h"
 #import "WebPageProxyMessages.h"
 #import "WebProcess.h"
 #import <WebCore/Editor.h>
 #import <WebCore/FocusController.h>
-#import <WebCore/Frame.h>
 #import <WebCore/KeyboardEvent.h>
+#import <WebCore/LocalFrame.h>
 #import <WebCore/NotImplemented.h>
+#import <WebCore/Page.h>
 #import <wtf/cocoa/NSURLExtras.h>
 
 namespace WebKit {
@@ -65,33 +67,35 @@ void WebEditorClient::setInsertionPasteboard(const String&)
 
 static void changeWordCase(WebPage* page, NSString *(*changeCase)(NSString *))
 {
-    Frame& frame = page->corePage()->focusController().focusedOrMainFrame();
-    if (!frame.editor().canEdit())
+    RefPtr frame = page->corePage()->checkedFocusController()->focusedOrMainFrame();
+    if (!frame)
+        return;
+    if (!frame->editor().canEdit())
         return;
 
-    frame.editor().command("selectWord").execute();
+    frame->editor().command("selectWord"_s).execute();
 
-    NSString *selectedString = frame.displayStringModifiedByEncoding(frame.editor().selectedText());
-    page->replaceSelectionWithText(&frame, changeCase(selectedString));
+    NSString *selectedString = frame->displayStringModifiedByEncoding(frame->editor().selectedText());
+    page->replaceSelectionWithText(frame.get(), changeCase(selectedString));
 }
 
 void WebEditorClient::uppercaseWord()
 {
-    changeWordCase(m_page, [] (NSString *string) {
+    changeWordCase(RefPtr { m_page.get() }.get(), [] (NSString *string) {
         return [string uppercaseString];
     });
 }
 
 void WebEditorClient::lowercaseWord()
 {
-    changeWordCase(m_page, [] (NSString *string) {
+    changeWordCase(RefPtr { m_page.get() }.get(), [] (NSString *string) {
         return [string lowercaseString];
     });
 }
 
 void WebEditorClient::capitalizeWord()
 {
-    changeWordCase(m_page, [] (NSString *string) {
+    changeWordCase(RefPtr { m_page.get() }.get(), [] (NSString *string) {
         return [string capitalizedString];
     });
 }
@@ -105,19 +109,19 @@ void WebEditorClient::showSubstitutionsPanel(bool)
 
 bool WebEditorClient::substitutionsPanelIsShowing()
 {
-    bool isShowing { false };
-    m_page->sendSync(Messages::WebPageProxy::SubstitutionsPanelIsShowing(), Messages::WebPageProxy::SubstitutionsPanelIsShowing::Reply(isShowing));
+    auto sendResult = Ref { *m_page }->sendSync(Messages::WebPageProxy::SubstitutionsPanelIsShowing());
+    auto [isShowing] = sendResult.takeReplyOr(false);
     return isShowing;
 }
 
 void WebEditorClient::toggleSmartInsertDelete()
 {
-    m_page->send(Messages::WebPageProxy::toggleSmartInsertDelete());
+    Ref { *m_page }->send(Messages::WebPageProxy::toggleSmartInsertDelete());
 }
 
 bool WebEditorClient::isAutomaticQuoteSubstitutionEnabled()
 {
-    if (m_page->isControlledByAutomation())
+    if (Ref { *m_page }->isControlledByAutomation())
         return false;
 
     return WebProcess::singleton().textCheckerState().isAutomaticQuoteSubstitutionEnabled;
@@ -125,7 +129,7 @@ bool WebEditorClient::isAutomaticQuoteSubstitutionEnabled()
 
 void WebEditorClient::toggleAutomaticQuoteSubstitution()
 {
-    m_page->send(Messages::WebPageProxy::toggleAutomaticQuoteSubstitution());
+    Ref { *m_page }->send(Messages::WebPageProxy::toggleAutomaticQuoteSubstitution());
 }
 
 bool WebEditorClient::isAutomaticLinkDetectionEnabled()
@@ -135,7 +139,7 @@ bool WebEditorClient::isAutomaticLinkDetectionEnabled()
 
 void WebEditorClient::toggleAutomaticLinkDetection()
 {
-    m_page->send(Messages::WebPageProxy::toggleAutomaticLinkDetection());
+    Ref { *m_page }->send(Messages::WebPageProxy::toggleAutomaticLinkDetection());
 }
 
 bool WebEditorClient::isAutomaticDashSubstitutionEnabled()
@@ -148,7 +152,7 @@ bool WebEditorClient::isAutomaticDashSubstitutionEnabled()
 
 void WebEditorClient::toggleAutomaticDashSubstitution()
 {
-    m_page->send(Messages::WebPageProxy::toggleAutomaticDashSubstitution());
+    Ref { *m_page }->send(Messages::WebPageProxy::toggleAutomaticDashSubstitution());
 }
 
 bool WebEditorClient::isAutomaticTextReplacementEnabled()
@@ -161,7 +165,7 @@ bool WebEditorClient::isAutomaticTextReplacementEnabled()
 
 void WebEditorClient::toggleAutomaticTextReplacement()
 {
-    m_page->send(Messages::WebPageProxy::toggleAutomaticTextReplacement());
+    Ref { *m_page }->send(Messages::WebPageProxy::toggleAutomaticTextReplacement());
 }
 
 bool WebEditorClient::isAutomaticSpellingCorrectionEnabled()

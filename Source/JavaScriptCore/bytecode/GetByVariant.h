@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,7 @@
 #include "PropertyOffset.h"
 #include "StructureSet.h"
 #include <wtf/Box.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace JSC {
 namespace DOMJIT {
@@ -42,15 +43,15 @@ class GetByStatus;
 struct DumpContext;
 
 class GetByVariant {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(GetByVariant);
 public:
     GetByVariant(
         CacheableIdentifier,
-        const StructureSet& = StructureSet(), PropertyOffset = invalidOffset,
+        const StructureSet& = StructureSet(), bool viaGlobalProxy = false, PropertyOffset = invalidOffset,
         const ObjectPropertyConditionSet& = ObjectPropertyConditionSet(),
         std::unique_ptr<CallLinkStatus> = nullptr,
         JSFunction* = nullptr,
-        FunctionPtr<CustomAccessorPtrTag> customAccessorGetter = nullptr,
+        CodePtr<CustomAccessorPtrTag> customAccessorGetter = nullptr,
         std::unique_ptr<DOMAttributeAnnotation> = nullptr);
 
     ~GetByVariant();
@@ -70,7 +71,7 @@ public:
     CallLinkStatus* callLinkStatus() const { return m_callLinkStatus.get(); }
     JSFunction* intrinsicFunction() const { return m_intrinsicFunction; }
     Intrinsic intrinsic() const { return m_intrinsicFunction ? m_intrinsicFunction->intrinsic() : NoIntrinsic; }
-    FunctionPtr<CustomAccessorPtrTag> customAccessorGetter() const { return m_customAccessorGetter; }
+    CodePtr<CustomAccessorPtrTag> customAccessorGetter() const { return m_customAccessorGetter; }
     DOMAttributeAnnotation* domAttribute() const { return m_domAttribute.get(); }
 
     bool isPropertyUnset() const { return offset() == invalidOffset; }
@@ -88,6 +89,8 @@ public:
 
     bool overlaps(const GetByVariant& other)
     {
+        if (m_viaGlobalProxy != other.m_viaGlobalProxy)
+            return true;
         if (!!m_identifier != !!other.m_identifier)
             return true;
         if (m_identifier) {
@@ -96,7 +99,9 @@ public:
         }
         return structureSet().overlaps(other.structureSet());
     }
-    
+
+    bool viaGlobalProxy() const { return m_viaGlobalProxy; }
+
 private:
     friend class GetByStatus;
 
@@ -104,10 +109,11 @@ private:
     
     StructureSet m_structureSet;
     ObjectPropertyConditionSet m_conditionSet;
+    bool m_viaGlobalProxy { false };
     PropertyOffset m_offset;
     std::unique_ptr<CallLinkStatus> m_callLinkStatus;
     JSFunction* m_intrinsicFunction;
-    FunctionPtr<CustomAccessorPtrTag> m_customAccessorGetter;
+    CodePtr<CustomAccessorPtrTag> m_customAccessorGetter;
     std::unique_ptr<DOMAttributeAnnotation> m_domAttribute;
     CacheableIdentifier m_identifier;
 };

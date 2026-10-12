@@ -68,7 +68,7 @@ void CurlRequestScheduler::cancel(CurlRequestSchedulerClient* client)
     cancelTransfer(client);
 }
 
-void CurlRequestScheduler::callOnWorkerThread(WTF::Function<void()>&& task)
+void CurlRequestScheduler::callOnWorkerThread(Function<void()>&& task)
 {
     {
         Locker locker { m_mutex };
@@ -103,14 +103,7 @@ void CurlRequestScheduler::startOrWakeUpThread()
         m_runThread = true;
     }
 
-    m_thread = Thread::create("curlThread", [this] {
-#if OS(MORPHOS)
-        // Run curlThread with lower priority vs the main app.
-        // Without this the curlThread would starve the application
-        // since it's rescheduled like mad all the time. - Piru
-        Thread::current().changePriority(-1);
-        SetTaskPri(FindTask(0), -1);
-#endif
+    m_thread = Thread::create("curlThread"_s, [this] {
         workerThread();
     }, ThreadType::Network);
 }
@@ -162,7 +155,7 @@ void CurlRequestScheduler::executeTasks()
 {
     ASSERT(!isMainThread());
 
-    Vector<WTF::Function<void()>> taskQueue;
+    Vector<Function<void()>> taskQueue;
 
     {
         Locker locker { m_mutex };
@@ -195,14 +188,16 @@ void CurlRequestScheduler::workerThread()
         executeTasks();
 
 #if 1
-        const int selectTimeoutMS = INT_MAX;
+        const int selectTimeoutMS = 500;
         CURLMcode mc = m_curlMultiHandle->poll({ }, selectTimeoutMS);
-        if (mc != CURLM_OK)
+        if (mc != CURLM_OK && mc != CURLM_UNRECOVERABLE_POLL) {
             break;
+        }
         int activeCount = 0;
         mc = m_curlMultiHandle->perform(activeCount);
-        if (mc != CURLM_OK)
+        if (mc != CURLM_OK) {
             break;
+        }
 #else
         int activeCount = 0;
         CURLMcode mc = m_curlMultiHandle->perform(activeCount);
@@ -233,6 +228,7 @@ void CurlRequestScheduler::workerThread()
     {
         Locker locker { m_multiHandleMutex };
         m_curlMultiHandle.reset();
+        m_runThread = false;
     }
 }
 

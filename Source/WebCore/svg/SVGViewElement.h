@@ -30,7 +30,8 @@
 namespace WebCore {
 
 class SVGViewElement final : public SVGElement, public SVGFitToViewBox, public SVGZoomAndPan {
-    WTF_MAKE_ISO_ALLOCATED(SVGViewElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGViewElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGViewElement);
 public:
     static Ref<SVGViewElement> create(const QualifiedName&, Document&);
 
@@ -38,22 +39,20 @@ public:
     using SVGElement::deref;
 
     const SVGSVGElement* targetElement() const { return m_targetElement.get(); }
-    void setTargetElement(const SVGSVGElement& targetElement) { m_targetElement = makeWeakPtr(targetElement); }
+    void setTargetElement(const SVGSVGElement& targetElement) { m_targetElement = targetElement; }
     void resetTargetElement() { m_targetElement = nullptr; }
 
 private:
     SVGViewElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGViewElement, SVGElement, SVGFitToViewBox>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     void svgAttributeChanged(const QualifiedName&) override;
 
     bool rendererIsNeeded(const RenderStyle&) final { return false; }
 
-    PropertyRegistry m_propertyRegistry { *this };
-    WeakPtr<SVGSVGElement> m_targetElement { nullptr };
+    WeakPtr<SVGSVGElement, WeakPtrImplWithEventTargetData> m_targetElement;
 };
 
 } // namespace WebCore

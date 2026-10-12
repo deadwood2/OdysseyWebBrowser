@@ -27,14 +27,21 @@
 #import <WebKit/WKWebpagePreferences.h>
 
 #import "APICustomHeaderFields.h"
+#import "LockdownModeObserver.h"
 #import "WKUserContentControllerInternal.h"
 #import "WKWebpagePreferencesInternal.h"
 #import "WKWebsiteDataStoreInternal.h"
 #import "WebContentMode.h"
+#import "WebProcessPool.h"
 #import "_WKCustomHeaderFieldsInternal.h"
 #import <WebCore/DocumentLoader.h>
+#import <WebCore/ElementTargetingTypes.h>
 #import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/RetainPtr.h>
+
+#if PLATFORM(IOS_FAMILY)
+#import <wtf/cocoa/Entitlements.h>
+#endif
 
 namespace WebKit {
 
@@ -98,9 +105,35 @@ static WebCore::MouseEventPolicy coreMouseEventPolicy(_WKWebsiteMouseEventPolicy
     return WebCore::MouseEventPolicy::Default;
 }
 
+static _WKWebsiteModalContainerObservationPolicy modalContainerObservationPolicy(WebCore::ModalContainerObservationPolicy policy)
+{
+    switch (policy) {
+    case WebCore::ModalContainerObservationPolicy::Disabled:
+        return _WKWebsiteModalContainerObservationPolicyDisabled;
+    case WebCore::ModalContainerObservationPolicy::Prompt:
+        return _WKWebsiteModalContainerObservationPolicyPrompt;
+    }
+    ASSERT_NOT_REACHED();
+    return _WKWebsiteModalContainerObservationPolicyDisabled;
+}
+
+static WebCore::ModalContainerObservationPolicy coreModalContainerObservationPolicy(_WKWebsiteModalContainerObservationPolicy policy)
+{
+    switch (policy) {
+    case _WKWebsiteModalContainerObservationPolicyDisabled:
+        return WebCore::ModalContainerObservationPolicy::Disabled;
+    case _WKWebsiteModalContainerObservationPolicyPrompt:
+        return WebCore::ModalContainerObservationPolicy::Prompt;
+    }
+    ASSERT_NOT_REACHED();
+    return WebCore::ModalContainerObservationPolicy::Disabled;
+}
+
 } // namespace WebKit
 
 @implementation WKWebpagePreferences
+
+WK_OBJECT_DISABLE_DISABLE_KVC_IVAR_ACCESS;
 
 + (instancetype)defaultPreferences
 {
@@ -129,12 +162,51 @@ static WebCore::MouseEventPolicy coreMouseEventPolicy(_WKWebsiteMouseEventPolicy
 
 - (void)_setContentBlockersEnabled:(BOOL)contentBlockersEnabled
 {
-    _websitePolicies->setContentBlockersEnabled(contentBlockersEnabled);
+    auto defaultEnablement = contentBlockersEnabled ? WebCore::ContentExtensionDefaultEnablement::Enabled : WebCore::ContentExtensionDefaultEnablement::Disabled;
+    _websitePolicies->setContentExtensionEnablement({ defaultEnablement, { } });
 }
 
 - (BOOL)_contentBlockersEnabled
 {
-    return _websitePolicies->contentBlockersEnabled();
+    // Note that this only reports default state, and ignores exceptions. This should be turned into a no-op and
+    // eventually removed, once no more internal clients rely on it.
+    return _websitePolicies->contentExtensionEnablement().first == WebCore::ContentExtensionDefaultEnablement::Enabled;
+}
+
+- (void)_setContentRuleListsEnabled:(BOOL)enabled exceptions:(NSSet<NSString *> *)identifiers
+{
+    HashSet<String> exceptions;
+    exceptions.reserveInitialCapacity(identifiers.count);
+    for (NSString *identifier in identifiers)
+        exceptions.add(identifier);
+
+    auto defaultEnablement = enabled ? WebCore::ContentExtensionDefaultEnablement::Enabled : WebCore::ContentExtensionDefaultEnablement::Disabled;
+    _websitePolicies->setContentExtensionEnablement({ defaultEnablement, WTFMove(exceptions) });
+}
+
+- (void)_setActiveContentRuleListActionPatterns:(NSDictionary<NSString *, NSSet<NSString *> *> *)patterns
+{
+    __block HashMap<String, Vector<String>> map;
+    [patterns enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSSet<NSString *> *value, BOOL *) {
+        Vector<String> vector;
+        vector.reserveInitialCapacity(value.count);
+        for (NSString *pattern in value)
+            vector.append(pattern);
+        map.add(key, WTFMove(vector));
+    }];
+    _websitePolicies->setActiveContentRuleListActionPatterns(WTFMove(map));
+}
+
+- (NSDictionary<NSString *, NSSet<NSString *> *> *)_activeContentRuleListActionPatterns
+{
+    NSMutableDictionary<NSString *, NSSet<NSString *> *> *dictionary = [NSMutableDictionary dictionary];
+    for (const auto& pair : _websitePolicies->activeContentRuleListActionPatterns()) {
+        NSMutableSet<NSString *> *set = [NSMutableSet set];
+        for (const auto& pattern : pair.value)
+            [set addObject:pattern];
+        [dictionary setObject:set forKey:pair.key];
+    }
+    return dictionary;
 }
 
 - (void)_setAllowedAutoplayQuirks:(_WKWebsiteAutoplayQuirk)allowedQuirks
@@ -290,10 +362,10 @@ static _WKWebsiteDeviceOrientationAndMotionAccessPolicy toWKWebsiteDeviceOrienta
 
 - (void)_setCustomHeaderFields:(NSArray<_WKCustomHeaderFields *> *)fields
 {
-    Vector<WebCore::CustomHeaderFields> vector;
-    vector.reserveInitialCapacity(fields.count);
-    for (_WKCustomHeaderFields *element in fields)
-        vector.uncheckedAppend(static_cast<API::CustomHeaderFields&>([element _apiObject]).coreFields());
+    Vector<WebCore::CustomHeaderFields> vector(fields.count, [fields](size_t i) {
+        _WKCustomHeaderFields *element = fields[i];
+        return static_cast<API::CustomHeaderFields&>([element _apiObject]).coreFields();
+    });
     _websitePolicies->setCustomHeaderFields(WTFMove(vector));
 }
 
@@ -387,6 +459,59 @@ static _WKWebsiteDeviceOrientationAndMotionAccessPolicy toWKWebsiteDeviceOrienta
     }
 }
 
+- (void)_setCaptivePortalModeEnabled:(BOOL)enabled
+{
+#if PLATFORM(IOS_FAMILY)
+    // On iOS, the web browser entitlement is required to disable Lockdown mode.
+    if (!enabled && !WTF::processHasEntitlement("com.apple.developer.web-browser"_s) && !WTF::processHasEntitlement("com.apple.private.allow-ldm-exempt-webview"_s))
+        [NSException raise:NSInternalInconsistencyException format:@"The 'com.apple.developer.web-browser' restricted entitlement is required to disable Lockdown mode"];
+#endif
+
+    _websitePolicies->setLockdownModeEnabled(!!enabled);
+}
+
+- (BOOL)_captivePortalModeEnabled
+{
+    return _websitePolicies->lockdownModeEnabled();
+}
+
+- (void)_setAllowPrivacyProxy:(BOOL)allow
+{
+    _websitePolicies->setAllowPrivacyProxy(allow);
+}
+
+- (BOOL)_allowPrivacyProxy
+{
+    return _websitePolicies->allowPrivacyProxy();
+}
+
+- (_WKWebsiteColorSchemePreference)_colorSchemePreference
+{
+    switch (_websitePolicies->colorSchemePreference()) {
+    case WebCore::ColorSchemePreference::NoPreference:
+        return _WKWebsiteColorSchemePreferenceNoPreference;
+    case WebCore::ColorSchemePreference::Light:
+        return _WKWebsiteColorSchemePreferenceLight;
+    case WebCore::ColorSchemePreference::Dark:
+        return _WKWebsiteColorSchemePreferenceDark;
+    }
+}
+
+- (void)_setColorSchemePreference:(_WKWebsiteColorSchemePreference)value
+{
+    switch (value) {
+    case _WKWebsiteColorSchemePreferenceNoPreference:
+        _websitePolicies->setColorSchemePreference(WebCore::ColorSchemePreference::NoPreference);
+        break;
+    case _WKWebsiteColorSchemePreferenceLight:
+        _websitePolicies->setColorSchemePreference(WebCore::ColorSchemePreference::Light);
+        break;
+    case _WKWebsiteColorSchemePreferenceDark:
+        _websitePolicies->setColorSchemePreference(WebCore::ColorSchemePreference::Dark);
+        break;
+    }
+}
+
 #if PLATFORM(IOS_FAMILY)
 
 - (void)setPreferredContentMode:(WKContentMode)contentMode
@@ -409,6 +534,185 @@ static _WKWebsiteDeviceOrientationAndMotionAccessPolicy toWKWebsiteDeviceOrienta
 - (_WKWebsiteMouseEventPolicy)_mouseEventPolicy
 {
     return WebKit::mouseEventPolicy(_websitePolicies->mouseEventPolicy());
+}
+
+- (void)_setModalContainerObservationPolicy:(_WKWebsiteModalContainerObservationPolicy)policy
+{
+    _websitePolicies->setModalContainerObservationPolicy(WebKit::coreModalContainerObservationPolicy(policy));
+}
+
+- (_WKWebsiteModalContainerObservationPolicy)_modalContainerObservationPolicy
+{
+    return WebKit::modalContainerObservationPolicy(_websitePolicies->modalContainerObservationPolicy());
+}
+
+- (BOOL)isLockdownModeEnabled
+{
+#if ENABLE(LOCKDOWN_MODE_API)
+    return _websitePolicies->lockdownModeEnabled();
+#else
+    return NO;
+#endif
+}
+
+- (void)setLockdownModeEnabled:(BOOL)lockdownModeEnabled
+{
+#if ENABLE(LOCKDOWN_MODE_API)
+#if PLATFORM(IOS_FAMILY)
+    // On iOS, the web browser entitlement is required to disable lockdown mode.
+    if (!lockdownModeEnabled && !WTF::processHasEntitlement("com.apple.developer.web-browser"_s) && !WTF::processHasEntitlement("com.apple.private.allow-ldm-exempt-webview"_s))
+        [NSException raise:NSInternalInconsistencyException format:@"The 'com.apple.developer.web-browser' restricted entitlement is required to disable lockdown mode"];
+#endif
+
+    _websitePolicies->setLockdownModeEnabled(!!lockdownModeEnabled);
+#endif
+}
+
+- (BOOL)_networkConnectionIntegrityEnabled
+{
+    return _websitePolicies->advancedPrivacyProtections().containsAll({
+        WebCore::AdvancedPrivacyProtections::BaselineProtections,
+        WebCore::AdvancedPrivacyProtections::FingerprintingProtections,
+        WebCore::AdvancedPrivacyProtections::EnhancedNetworkPrivacy,
+        WebCore::AdvancedPrivacyProtections::LinkDecorationFiltering,
+    });
+}
+
+- (void)_setNetworkConnectionIntegrityEnabled:(BOOL)enabled
+{
+    auto webCorePolicy = _websitePolicies->advancedPrivacyProtections();
+    webCorePolicy.set(WebCore::AdvancedPrivacyProtections::BaselineProtections, enabled);
+    webCorePolicy.set(WebCore::AdvancedPrivacyProtections::FingerprintingProtections, enabled);
+    webCorePolicy.set(WebCore::AdvancedPrivacyProtections::EnhancedNetworkPrivacy, enabled);
+    webCorePolicy.set(WebCore::AdvancedPrivacyProtections::LinkDecorationFiltering, enabled);
+    _websitePolicies->setAdvancedPrivacyProtections(webCorePolicy);
+}
+
+- (_WKWebsiteNetworkConnectionIntegrityPolicy)_networkConnectionIntegrityPolicy
+{
+    _WKWebsiteNetworkConnectionIntegrityPolicy policy = _WKWebsiteNetworkConnectionIntegrityPolicyNone;
+    auto webCorePolicy = _websitePolicies->advancedPrivacyProtections();
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::BaselineProtections))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyEnabled;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::HTTPSFirst))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSFirst;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::HTTPSOnly))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnly;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::HTTPSOnlyExplicitlyBypassedForDomain))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnlyExplicitlyBypassedForDomain;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::FailClosed))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyFailClosed;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::WebSearchContent))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyWebSearchContent;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::FingerprintingProtections))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyEnhancedTelemetry;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::EnhancedNetworkPrivacy))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicyRequestValidation;
+
+    if (webCorePolicy.contains(WebCore::AdvancedPrivacyProtections::LinkDecorationFiltering))
+        policy |= _WKWebsiteNetworkConnectionIntegrityPolicySanitizeLookalikeCharacters;
+
+    return policy;
+}
+
+- (void)_setNetworkConnectionIntegrityPolicy:(_WKWebsiteNetworkConnectionIntegrityPolicy)advancedPrivacyProtections
+{
+    OptionSet<WebCore::AdvancedPrivacyProtections> webCorePolicy;
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyEnabled)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::BaselineProtections);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSFirst)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::HTTPSFirst);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnly)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::HTTPSOnly);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyHTTPSOnlyExplicitlyBypassedForDomain)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::HTTPSOnlyExplicitlyBypassedForDomain);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyFailClosed)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::FailClosed);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyWebSearchContent)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::WebSearchContent);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyEnhancedTelemetry)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::FingerprintingProtections);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicyRequestValidation)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::EnhancedNetworkPrivacy);
+
+    if (advancedPrivacyProtections & _WKWebsiteNetworkConnectionIntegrityPolicySanitizeLookalikeCharacters)
+        webCorePolicy.add(WebCore::AdvancedPrivacyProtections::LinkDecorationFiltering);
+
+    _websitePolicies->setAdvancedPrivacyProtections(webCorePolicy);
+}
+
+- (void)_setVisibilityAdjustmentSelectorsIncludingShadowHosts:(NSArray<NSArray<NSSet<NSString *> *> *> *)elements
+{
+    Vector<WebCore::TargetedElementSelectors> result;
+    result.reserveInitialCapacity(elements.count);
+    for (NSArray<NSSet<NSString *> *> *nsSelectorsForElement in elements) {
+        WebCore::TargetedElementSelectors selectorsForElement;
+        selectorsForElement.reserveInitialCapacity(nsSelectorsForElement.count);
+        for (NSSet<NSString *> *nsSelectors in nsSelectorsForElement) {
+            HashSet<String> selectors;
+            selectors.reserveInitialCapacity(nsSelectors.count);
+            for (NSString *selector in nsSelectors)
+                selectors.add(selector);
+            selectorsForElement.append(WTFMove(selectors));
+        }
+        result.append(WTFMove(selectorsForElement));
+    }
+    _websitePolicies->setVisibilityAdjustmentSelectors(WTFMove(result));
+}
+
+- (NSArray<NSArray<NSSet<NSString *> *> *> *)_visibilityAdjustmentSelectorsIncludingShadowHosts
+{
+    RetainPtr result = adoptNS([[NSMutableArray alloc] initWithCapacity:_websitePolicies->visibilityAdjustmentSelectors().size()]);
+    for (auto& selectorsForElement : _websitePolicies->visibilityAdjustmentSelectors()) {
+        RetainPtr nsSelectorsForElement = adoptNS([[NSMutableArray alloc] initWithCapacity:selectorsForElement.size()]);
+        for (auto& selectors : selectorsForElement) {
+            RetainPtr nsSelectors = adoptNS([[NSMutableSet alloc] initWithCapacity:selectors.size()]);
+            for (auto& selector : selectors)
+                [nsSelectors addObject:selector];
+            [nsSelectorsForElement addObject:nsSelectors.get()];
+        }
+        [result addObject:nsSelectorsForElement.get()];
+    }
+    return result.autorelease();
+}
+
+- (void)_setVisibilityAdjustmentSelectors:(NSSet<NSString *> *)nsSelectors
+{
+    RetainPtr elements = adoptNS([[NSMutableArray alloc] initWithCapacity:nsSelectors.count]);
+    for (NSString *selector : nsSelectors)
+        [elements addObject:@[ [NSSet setWithObject:selector] ]];
+    self._visibilityAdjustmentSelectorsIncludingShadowHosts = elements.get();
+}
+
+- (NSSet<NSString *> *)_visibilityAdjustmentSelectors
+{
+    RetainPtr selectors = adoptNS([[NSMutableSet alloc] init]);
+    for (auto& elementSelectors : _websitePolicies->visibilityAdjustmentSelectors()) {
+        if (elementSelectors.size() != 1) {
+            // Ignore shadow roots for compatibility with this soon-to-be deprecated method.
+            continue;
+        }
+
+        for (auto& selector : elementSelectors.first())
+            [selectors addObject:selector];
+    }
+    return selectors.autorelease();
 }
 
 @end

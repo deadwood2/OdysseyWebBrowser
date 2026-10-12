@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,10 +25,10 @@
 
 #pragma once
 
+#include "CPU.h"
 #include "JSCConfig.h"
 #include "JSExportMacros.h"
 #include <stdint.h>
-#include <stdio.h>
 #include <wtf/ForbidHeapAllocation.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/PrintStream.h>
@@ -73,6 +73,7 @@ public:
         OptionRange,
         OptionString,
         GCLogLevel,
+        OSLogType,
     };
 
     class AllowUnfinalizedAccessScope {
@@ -105,23 +106,23 @@ public:
     JS_EXPORT_PRIVATE static void initialize();
     static void finalize();
 
+    JS_EXPORT_PRIVATE static bool setAllJITCodeValidations(const char* arg);
+
     // Parses a string of options where each option is of the format "--<optionName>=<value>"
     // and are separated by a space. The leading "--" is optional and will be ignored.
     JS_EXPORT_PRIVATE static bool setOptions(const char* optionsList);
 
     // Parses a single command line option in the format "<optionName>=<value>"
     // (no spaces allowed) and set the specified option if appropriate.
-    JS_EXPORT_PRIVATE static bool setOption(const char* arg);
+    JS_EXPORT_PRIVATE static bool setOption(const char* arg, bool verify = true);
 
-    JS_EXPORT_PRIVATE static void dumpAllOptions(FILE*, DumpLevel, const char* title = nullptr);
+    JS_EXPORT_PRIVATE static void executeDumpOptions();
     JS_EXPORT_PRIVATE static void dumpAllOptionsInALine(StringBuilder&);
 
-    JS_EXPORT_PRIVATE static void ensureOptionsAreCoherent();
-    static void recomputeDependentOptions();
+    JS_EXPORT_PRIVATE static void assertOptionsAreCoherent();
+    JS_EXPORT_PRIVATE static void notifyOptionsChanged();
 
 #define DECLARE_OPTION_ACCESSORS(type_, name_, defaultValue_, availability_, description_) \
-private: \
-    ALWAYS_INLINE static OptionsStorage::type_& name_##Default() { return g_jscConfig.options.name_##Default; } \
 public: \
     ALWAYS_INLINE static OptionsStorage::type_& name_() \
     { \
@@ -140,37 +141,31 @@ public: \
     static bool isAvailable(ID, Availability);
 
 private:
-    struct ConstMetaData {
-        const char* name;
-        const char* description;
-        Type type;
-        Availability availability;
-        uint16_t offsetOfOption;
-        uint16_t offsetOfOptionDefault;
-    };
-
     Options();
 
     enum DumpDefaultsOption {
         DontDumpDefaults,
         DumpDefaults
     };
-    static void dumpOptionsIfNeeded();
-    static void dumpAllOptions(StringBuilder&, DumpLevel, const char* title,
-        const char* separator, const char* optionHeader, const char* optionFooter, DumpDefaultsOption);
+    static void dumpAllOptions(DumpLevel, ASCIILiteral title = { });
+    static void dumpAllOptions(StringBuilder&, DumpLevel, ASCIILiteral title,
+        ASCIILiteral separator, ASCIILiteral optionHeader, ASCIILiteral optionFooter, DumpDefaultsOption);
     static void dumpOption(StringBuilder&, DumpLevel, ID,
-        const char* optionHeader, const char* optionFooter, DumpDefaultsOption);
+        ASCIILiteral optionHeader, ASCIILiteral optionFooter, DumpDefaultsOption);
 
-    static bool setOptionWithoutAlias(const char* arg);
-    static bool setAliasedOption(const char* arg);
+    static bool setOptionWithoutAlias(const char* arg, bool verify = true);
+    static bool setAliasedOption(const char* arg, bool verify = true);
+#if !PLATFORM(COCOA)
     static bool overrideAliasedOptionWithHeuristic(const char* name);
+#endif
 
-    inline static void* addressOfOption(Options::ID);
-    inline static void* addressOfOptionDefault(Options::ID);
+    static void setAllJITCodeValidations(bool);
 
-    static const ConstMetaData s_constMetaData[NumberOfOptions];
-
-    friend struct OptionReader;
+    static bool defaultTCSMValue();
+    static unsigned computeNumberOfGCMarkers(unsigned maxNumberOfGCMarkers);
+    static unsigned computeNumberOfWorkerThreads(int maxNumberOfWorkerThreads, int minimum = 1);
+    static int32_t computePriorityDeltaOfWorkerThreads(int32_t twoCorePriorityDelta, int32_t multiCorePriorityDelta);
+    static constexpr bool jitEnabledByDefault() { return is32Bit() || isAddress64Bit(); }
 };
 
 } // namespace JSC

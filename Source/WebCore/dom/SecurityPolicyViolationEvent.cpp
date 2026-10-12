@@ -26,10 +26,27 @@
 #include "config.h"
 #include "SecurityPolicyViolationEvent.h"
 
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SecurityPolicyViolationEvent);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SecurityPolicyViolationEvent);
+
+SecurityPolicyViolationEventInit::SecurityPolicyViolationEventInit(EventInit&& eventInit, String&& documentURI, String&& referrer, String&& blockedURI, String&& violatedDirective, String&& effectiveDirective, String&& originalPolicy, String&& sourceFile, String&& sample, SecurityPolicyViolationEventDisposition disposition, unsigned short statusCode, unsigned lineNumber, unsigned columnNumber)
+    : EventInit(WTFMove(eventInit))
+    , documentURI(WTFMove(documentURI))
+    , referrer(WTFMove(referrer))
+    , blockedURI(WTFMove(blockedURI))
+    , violatedDirective(WTFMove(violatedDirective))
+    , effectiveDirective(WTFMove(effectiveDirective))
+    , originalPolicy(WTFMove(originalPolicy))
+    , sourceFile(WTFMove(sourceFile))
+    , sample(WTFMove(sample))
+    , disposition(disposition)
+    , statusCode(statusCode)
+    , lineNumber(lineNumber)
+    , columnNumber(columnNumber)
+{
+}
 
 }

@@ -1,4 +1,4 @@
-# Copyright (C) 2020-2021 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -35,12 +35,23 @@ class TestCanonicalize(testing.PathTestCase):
         os.mkdir(os.path.join(self.path, '.git'))
         os.mkdir(os.path.join(self.path, '.svn'))
 
-    def test_invalid(self):
-        with OutputCapture(), mocks.local.Git(), mocks.local.Svn(self.path), MockTime:
+    def test_invalid_svn(self):
+        with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(self.path), MockTime:
             self.assertEqual(1, program.main(
                 args=('canonicalize',),
                 path=self.path,
             ))
+
+        self.assertEqual(captured.stderr.getvalue(), 'Commits can only be canonicalized on a Git repository\n')
+
+    def test_invalid_None(self):
+        with OutputCapture() as captured, mocks.local.Git(), mocks.local.Svn(), MockTime:
+            self.assertEqual(1, program.main(
+                args=('canonicalize',),
+                path=self.path,
+            ))
+
+        self.assertEqual(captured.stderr.getvalue(), 'No repository provided\n')
 
     def test_no_commits(self):
         with OutputCapture() as captured, mocks.local.Git(self.path), mocks.local.Svn(), MockTime:
@@ -74,7 +85,7 @@ class TestCanonicalize(testing.PathTestCase):
 
             commit = local.Git(self.path).commit(branch=mock.default_branch)
             self.assertEqual(commit.author, contirbutors['zdobersek@igalia.com'])
-            self.assertEqual(commit.message, 'New commit\nCanonical link: https://commits.webkit.org/6@main')
+            self.assertEqual(commit.message, 'New commit\n\nCanonical link: https://commits.webkit.org/6@main')
 
         self.assertEqual(
             captured.stdout.getvalue(),
@@ -94,7 +105,7 @@ class TestCanonicalize(testing.PathTestCase):
                 author=Contributor('Jonathan Bedard', emails=['jbedard@apple.com']),
                 identifier=mock.commits[mock.default_branch][-1].identifier + 1,
                 timestamp=1601668000,
-                message='New commit\nIdentifier: {}@{}'.format(
+                message='New commit\n\nIdentifier: {}@{}'.format(
                     mock.commits[mock.default_branch][-1].identifier + 1,
                     mock.default_branch,
                 ),
@@ -108,7 +119,7 @@ class TestCanonicalize(testing.PathTestCase):
 
             commit = local.Git(self.path).commit(branch=mock.default_branch)
             self.assertEqual(commit.author, contirbutors['jbedard@apple.com'])
-            self.assertEqual(commit.message, 'New commit\nIdentifier: 6@main')
+            self.assertEqual(commit.message, 'New commit\n\nIdentifier: 6@main')
 
         self.assertEqual(
             captured.stdout.getvalue(),
@@ -142,7 +153,90 @@ class TestCanonicalize(testing.PathTestCase):
             self.assertEqual(commit.author, contirbutors['jbedard@apple.com'])
             self.assertEqual(
                 commit.message,
-                'New commit\n'
+                'New commit\n\n'
+                'Identifier: 6@main\n'
+                'git-svn-id: https://svn.example.org/repository/repository/trunk@9 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
+            )
+
+        self.assertEqual(
+            captured.stdout.getvalue(),
+            'Rewrite 766609276fe201e7ce2c69994e113d979d2148ac (1/1) (--- seconds passed, remaining --- predicted)\n'
+            'Overwriting 766609276fe201e7ce2c69994e113d979d2148ac\n'
+            '    GIT_AUTHOR_NAME=Jonathan Bedard\n'
+            '    GIT_AUTHOR_EMAIL=jbedard@apple.com\n'
+            '    GIT_COMMITTER_NAME=Jonathan Bedard\n'
+            '    GIT_COMMITTER_EMAIL=jbedard@apple.com\n'
+            '1 commit successfully canonicalized!\n',
+        )
+
+    def test_git_svn_existing(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True) as mock, mocks.local.Svn(), MockTime:
+            contirbutors = Contributor.Mapping()
+            contirbutors.create('Jonathan Bedard', 'jbedard@apple.com')
+
+            mock.commits[mock.default_branch].append(Commit(
+                hash='766609276fe201e7ce2c69994e113d979d2148ac',
+                branch=mock.default_branch,
+                author=Contributor('jbedard@apple.com', emails=['jbedard@apple.com']),
+                identifier=mock.commits[mock.default_branch][-1].identifier + 1,
+                timestamp=1601668000,
+                revision=9,
+                message='New commit\nIdentifier: 6@main\n\n',
+            ))
+
+            self.assertEqual(0, program.main(
+                args=('canonicalize', '-vv'),
+                path=self.path,
+                contributors=contirbutors,
+            ))
+
+            commit = local.Git(self.path).commit(branch=mock.default_branch)
+            self.assertEqual(commit.author, contirbutors['jbedard@apple.com'])
+            self.assertEqual(
+                commit.message,
+                'New commit\n\n'
+                'Identifier: 6@main\n'
+                'git-svn-id: https://svn.example.org/repository/repository/trunk@9 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
+            )
+
+        self.assertEqual(
+            captured.stdout.getvalue(),
+            'Rewrite 766609276fe201e7ce2c69994e113d979d2148ac (1/1) (--- seconds passed, remaining --- predicted)\n'
+            'Overwriting 766609276fe201e7ce2c69994e113d979d2148ac\n'
+            '    GIT_AUTHOR_NAME=Jonathan Bedard\n'
+            '    GIT_AUTHOR_EMAIL=jbedard@apple.com\n'
+            '    GIT_COMMITTER_NAME=Jonathan Bedard\n'
+            '    GIT_COMMITTER_EMAIL=jbedard@apple.com\n'
+            '1 commit successfully canonicalized!\n',
+        )
+
+    def test_git_svn_existing_merge_queue(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path, git_svn=True) as mock, mocks.local.Svn(), MockTime:
+            contirbutors = Contributor.Mapping()
+            contirbutors.create('Jonathan Bedard', 'jbedard@apple.com')
+
+            mock.commits[mock.default_branch].append(Commit(
+                hash='766609276fe201e7ce2c69994e113d979d2148ac',
+                branch=mock.default_branch,
+                author=Contributor('jbedard@apple.com', emails=['jbedard@apple.com']),
+                identifier=mock.commits[mock.default_branch][-1].identifier + 1,
+                timestamp=1601668000,
+                revision=9,
+                message='New commit\nIdentifier: 6@main\n\n\ngit-svn-id: https://svn.example.org/repository/repository/trunk@9 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
+            ))
+
+            self.assertEqual(0, program.main(
+                args=('canonicalize', '-vv'),
+                path=self.path,
+                contributors=contirbutors,
+            ))
+
+            commit = local.Git(self.path).commit(branch=mock.default_branch)
+            self.assertEqual(commit.author, contirbutors['jbedard@apple.com'])
+
+            self.assertEqual(
+                commit.message,
+                'New commit\n\n'
                 'Identifier: 6@main\n'
                 'git-svn-id: https://svn.example.org/repository/repository/trunk@9 268f45cc-cd09-0410-ab3c-d52691b4dbfc',
             )
@@ -191,11 +285,11 @@ class TestCanonicalize(testing.PathTestCase):
 
             commit_a = local.Git(self.path).commit(branch='branch-a~1')
             self.assertEqual(commit_a.author, contirbutors['jbedard@apple.com'])
-            self.assertEqual(commit_a.message, 'New commit 1\nIdentifier: 2.3@branch-a')
+            self.assertEqual(commit_a.message, 'New commit 1\n\nIdentifier: 2.3@branch-a')
 
             commit_b = local.Git(self.path).commit(branch='branch-a')
             self.assertEqual(commit_b.author, contirbutors['jbedard@apple.com'])
-            self.assertEqual(commit_b.message, 'New commit 2\nIdentifier: 2.4@branch-a')
+            self.assertEqual(commit_b.message, 'New commit 2\n\nIdentifier: 2.4@branch-a')
 
         self.assertEqual(
             captured.stdout.getvalue(),
@@ -215,9 +309,9 @@ class TestCanonicalize(testing.PathTestCase):
                 contributors=contirbutors,
             ))
 
-            self.assertEqual(local.Git(self.path).commit(identifier='5@main').message, 'Patch Series\nIdentifier: 5@main')
-            self.assertEqual(local.Git(self.path).commit(identifier='4@main').message, '8th commit\nIdentifier: 4@main')
-            self.assertEqual(local.Git(self.path).commit(identifier='3@main').message, '4th commit\nIdentifier: 3@main')
+            self.assertEqual(local.Git(self.path).commit(identifier='5@main').message, 'Patch Series\n\nIdentifier: 5@main')
+            self.assertEqual(local.Git(self.path).commit(identifier='4@main').message, '8th commit\n\nIdentifier: 4@main')
+            self.assertEqual(local.Git(self.path).commit(identifier='3@main').message, '4th commit\n\nIdentifier: 3@main')
 
         self.assertEqual(
             captured.stdout.getvalue(),
@@ -225,4 +319,44 @@ class TestCanonicalize(testing.PathTestCase):
             'Rewrite bae5d1e90999d4f916a8a15810ccfa43f37a2fd6 (2/3) (--- seconds passed, remaining --- predicted)\n'
             'Rewrite d8bce26fa65c6fc8f39c17927abb77f69fab82fc (3/3) (--- seconds passed, remaining --- predicted)\n'
             '3 commits successfully canonicalized!\n',
+        )
+
+    def test_alternate_trailer(self):
+        with OutputCapture() as captured, mocks.local.Git(self.path) as mock, mocks.local.Svn(), MockTime:
+            contirbutors = Contributor.Mapping()
+            contirbutors.create('Jonathan Bedard', 'jbedard@apple.com')
+
+            mock.commits[mock.default_branch].append(Commit(
+                hash='766609276fe201e7ce2c69994e113d979d2148ac',
+                branch=mock.default_branch,
+                author=Contributor('jbedard@apple.com', emails=['jbedard@apple.com']),
+                identifier=mock.commits[mock.default_branch][-1].identifier + 1,
+                timestamp=1601668000,
+                message='New commit\n\ntrailer: some metadata\n',
+            ))
+
+            self.assertEqual(0, program.main(
+                args=('canonicalize', '-vv'),
+                path=self.path,
+                contributors=contirbutors,
+            ))
+
+            commit = local.Git(self.path).commit(branch=mock.default_branch)
+            self.assertEqual(commit.author, contirbutors['jbedard@apple.com'])
+            self.assertEqual(
+                commit.message,
+                'New commit\n\n'
+                'trailer: some metadata\n'
+                'Identifier: 6@main',
+            )
+
+        self.assertEqual(
+            captured.stdout.getvalue(),
+            'Rewrite 766609276fe201e7ce2c69994e113d979d2148ac (1/1) (--- seconds passed, remaining --- predicted)\n'
+            'Overwriting 766609276fe201e7ce2c69994e113d979d2148ac\n'
+            '    GIT_AUTHOR_NAME=Jonathan Bedard\n'
+            '    GIT_AUTHOR_EMAIL=jbedard@apple.com\n'
+            '    GIT_COMMITTER_NAME=Jonathan Bedard\n'
+            '    GIT_COMMITTER_EMAIL=jbedard@apple.com\n'
+            '1 commit successfully canonicalized!\n',
         )

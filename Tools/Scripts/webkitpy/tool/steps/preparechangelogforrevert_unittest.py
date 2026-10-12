@@ -30,7 +30,6 @@ import unittest
 
 # Do not import changelog_unittest.ChangeLogTest directly as that will cause it to be run again.
 from webkitpy.common.checkout import changelog_unittest
-
 from webkitpy.common.checkout.changelog import ChangeLog
 from webkitpy.common.system.filesystem_mock import MockFileSystem
 from webkitpy.tool.steps.preparechangelogforrevert import *
@@ -63,7 +62,7 @@ class UpdateChangeLogsForRevertTest(unittest.TestCase):
 
     _multiple_revert_entry = '''2009-08-19  Eric Seidel  <eric@webkit.org>
 
-        Unreviewed, reverting r12345, r12346 and r12347.
+        Unreviewed, reverting r12345, r12346, and r12347.
 
         Reason
 
@@ -84,7 +83,7 @@ class UpdateChangeLogsForRevertTest(unittest.TestCase):
 
     _multiple_revert_entry_with_missing_bug_urls_and_descriptions = '''2009-08-19  Eric Seidel  <eric@webkit.org>
 
-        Unreviewed, reverting r12345, r12346 and r12347.
+        Unreviewed, reverting r12345, r12346, and r12347.
 
         Reason
 
@@ -99,7 +98,7 @@ class UpdateChangeLogsForRevertTest(unittest.TestCase):
 
     _multiple_revert_entry_with_a_missing_bug_url_and_description = '''2009-08-19  Eric Seidel  <eric@webkit.org>
 
-        Unreviewed, reverting r12345, r12346 and r12347.
+        Unreviewed, reverting r12345, r12346, and r12347.
 
         Reason
 
@@ -135,7 +134,7 @@ class UpdateChangeLogsForRevertTest(unittest.TestCase):
 
     _multiple_revert_entry_with_revert_bug_url = '''2009-08-19  Eric Seidel  <eric@webkit.org>
 
-        Unreviewed, reverting r12345, r12346 and r12347.
+        Unreviewed, reverting r12345, r12346, and r12347.
         http://revert.example.com/56789
 
         Reason

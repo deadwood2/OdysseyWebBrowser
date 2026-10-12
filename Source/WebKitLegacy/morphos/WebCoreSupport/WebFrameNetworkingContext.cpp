@@ -23,6 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "WebKit.h"
 #include "WebFrameNetworkingContext.h"
 
 #include "NetworkStorageSessionMap.h"

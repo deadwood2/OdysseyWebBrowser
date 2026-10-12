@@ -26,16 +26,16 @@
 #import "config.h"
 #import "Download.h"
 
-#import "DataReference.h"
 #import "NetworkSessionCocoa.h"
 #import "WKDownloadProgress.h"
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <pal/spi/cocoa/NSProgressSPI.h>
 #import <wtf/BlockPtr.h>
+#import <wtf/cocoa/SpanCocoa.h>
 
 namespace WebKit {
 
-void Download::resume(const IPC::DataReference& resumeData, const String& path, SandboxExtension::Handle&& sandboxExtensionHandle)
+void Download::resume(std::span<const uint8_t> resumeData, const String& path, SandboxExtension::Handle&& sandboxExtensionHandle)
 {
     m_sandboxExtension = SandboxExtension::create(WTFMove(sandboxExtensionHandle));
     if (m_sandboxExtension)
@@ -47,29 +47,11 @@ void Download::resume(const IPC::DataReference& resumeData, const String& path, 
         return;
     }
     auto& cocoaSession = static_cast<NetworkSessionCocoa&>(*networkSession);
-    auto nsData = adoptNS([[NSData alloc] initWithBytes:resumeData.data() length:resumeData.size()]);
+    RetainPtr nsData = toNSData(resumeData);
 
-    // FIXME: This is a temporary workaround for <rdar://problem/34745171>. Fixed in iOS 13 and macOS 10.15, but we still need to support macOS 10.14 for now.
-#if USE(LEGACY_CFNETWORK_DOWNLOADS)
-    static NeverDestroyed<RetainPtr<NSSet<Class>>> plistClasses;
-    static dispatch_once_t onceToken;
-
-    dispatch_once(&onceToken, ^{
-        plistClasses.get() = [NSSet setWithObjects:[NSDictionary class], [NSArray class], [NSString class], [NSNumber class], [NSData class], [NSURL class], [NSURLRequest class], nil];
-    });
-    auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:nsData.get() error:nil]);
-    [unarchiver setDecodingFailurePolicy:NSDecodingFailurePolicyRaiseException];
-    auto dictionary = adoptNS(static_cast<NSMutableDictionary *>([[unarchiver decodeObjectOfClasses:plistClasses.get().get() forKey:@"NSKeyedArchiveRootObjectKey"] mutableCopy]));
-    [unarchiver finishDecoding];
-    [dictionary setObject:static_cast<NSString*>(path) forKey:@"NSURLSessionResumeInfoLocalPath"];
-    auto encoder = adoptNS([[NSKeyedArchiver alloc] initRequiringSecureCoding:YES]);
-    [encoder encodeObject:dictionary.get() forKey:@"NSKeyedArchiveRootObjectKey"];
-    NSData *updatedData = [encoder encodedData];
-#else
     NSMutableDictionary *dictionary = [NSPropertyListSerialization propertyListWithData:nsData.get() options:NSPropertyListMutableContainersAndLeaves format:0 error:nullptr];
     [dictionary setObject:static_cast<NSString*>(path) forKey:@"NSURLSessionResumeInfoLocalPath"];
     NSData *updatedData = [NSPropertyListSerialization dataWithPropertyList:dictionary format:NSPropertyListXMLFormat_v1_0 options:0 error:nullptr];
-#endif
 
     // FIXME: Use nsData instead of updatedData once we've migrated from _WKDownload to WKDownload
     // because there's no reason to set the local path we got from the data back into the data.
@@ -82,40 +64,57 @@ void Download::resume(const IPC::DataReference& resumeData, const String& path, 
     [m_downloadTask resume];
 }
     
-void Download::platformCancelNetworkLoad(CompletionHandler<void(const IPC::DataReference&)>&& completionHandler)
+void Download::platformCancelNetworkLoad(CompletionHandler<void(std::span<const uint8_t>)>&& completionHandler)
 {
+    ASSERT(isMainRunLoop());
     ASSERT(m_downloadTask);
-    [m_downloadTask cancelByProducingResumeData:makeBlockPtr([path = retainPtr(m_downloadTask.get()._pathToDownloadTaskFile), completionHandler = WTFMove(completionHandler)] (NSData *resumeData) mutable {
-#if USE(LEGACY_CFNETWORK_DOWNLOADS)
-        if (resumeData) {
-            // Mojave does not include the download location in the resume data from CFNetwork. Add it from the task.
-            auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:resumeData error:nil]);
-            [unarchiver setDecodingFailurePolicy:NSDecodingFailurePolicyRaiseException];
-            auto dictionary = adoptNS(static_cast<NSMutableDictionary *>([[unarchiver decodeObjectOfClasses:[NSSet setWithObjects:[NSDictionary class], [NSArray class], [NSString class], [NSNumber class], [NSData class], [NSURL class], [NSURLRequest class], nil] forKey:@"NSKeyedArchiveRootObjectKey"] mutableCopy]));
-            [unarchiver finishDecoding];
-            [dictionary setObject:path.get() forKey:@"NSURLSessionResumeInfoLocalPath"];
-            auto encoder = adoptNS([[NSKeyedArchiver alloc] initRequiringSecureCoding:YES]);
-            [encoder encodeObject:dictionary.get() forKey:@"NSKeyedArchiveRootObjectKey"];
-            resumeData = [encoder encodedData];
-        }
-#else
-        UNUSED_PARAM(path);
-#endif
-        auto resumeDataReference = resumeData ? IPC::DataReference { static_cast<const uint8_t*>(resumeData.bytes), resumeData.length } : IPC::DataReference { };
-        completionHandler(resumeDataReference);
+    [m_downloadTask cancelByProducingResumeData:makeBlockPtr([completionHandler = WTFMove(completionHandler)] (NSData *resumeData) mutable {
+        ensureOnMainRunLoop([resumeData = retainPtr(resumeData), completionHandler = WTFMove(completionHandler)] () mutable  {
+            completionHandler(span(resumeData.get()));
+        });
     }).get()];
 }
 
 void Download::platformDestroyDownload()
 {
     if (m_progress)
-#if HAVE(NSPROGRESS_PUBLISHING_SPI)
+#if HAVE(NSPROGRESS_PUBLISHING_SPI) && !HAVE(MODERN_DOWNLOADPROGRESS)
         [m_progress _unpublish];
 #else
         [m_progress unpublish];
 #endif
+#if HAVE(MODERN_DOWNLOADPROGRESS)
+    m_bookmarkURL = nil;
+#endif
 }
 
+#if HAVE(MODERN_DOWNLOADPROGRESS)
+void Download::publishProgress(const URL& url, std::span<const uint8_t> bookmarkData)
+{
+    RetainPtr bookmark = toNSData(bookmarkData);
+    m_bookmarkData = bookmark;
+
+    BOOL bookmarkIsStale = NO;
+    NSError* error = nil;
+    m_bookmarkURL = adoptNS([NSURL URLByResolvingBookmarkData:m_bookmarkData.get() options:NSURLBookmarkResolutionWithoutUI relativeToURL:nil bookmarkDataIsStale:&bookmarkIsStale error:&error]);
+    if (!m_bookmarkURL)
+        NSLog(@"Unable to create bookmark URL, error = %@", error);
+
+    bool shouldEnableModernDownloadProgress = CFPreferencesGetAppBooleanValue(CFSTR("EnableModernDownloadProgress"), CFSTR("com.apple.WebKit"), NULL);
+
+    if (shouldEnableModernDownloadProgress) {
+        m_progress = adoptNS([[WKModernDownloadProgress alloc] initWithDownloadTask:m_downloadTask.get() download:*this URL:(NSURL *)url]);
+        [m_progress publish];
+    } else {
+        m_progress = adoptNS([[WKDownloadProgress alloc] initWithDownloadTask:m_downloadTask.get() download:*this URL:(NSURL *)url sandboxExtension:nullptr]);
+#if HAVE(NSPROGRESS_PUBLISHING_SPI)
+        [m_progress _publish];
+#else
+        [m_progress publish];
+#endif
+    }
+}
+#else
 void Download::publishProgress(const URL& url, SandboxExtension::Handle&& sandboxExtensionHandle)
 {
     ASSERT(!m_progress);
@@ -134,5 +133,6 @@ void Download::publishProgress(const URL& url, SandboxExtension::Handle&& sandbo
     [m_progress publish];
 #endif
 }
+#endif
 
 }

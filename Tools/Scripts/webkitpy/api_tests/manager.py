@@ -30,6 +30,7 @@ from webkitpy.common.iteration_compatibility import iteritems
 from webkitpy.common.system.executive import ScriptError
 from webkitpy.results.upload import Upload
 from webkitpy.xcode.simulated_device import DeviceRequest, SimulatedDeviceManager
+from webkitpy.xcode.device_type import DeviceType
 
 _log = logging.getLogger(__name__)
 
@@ -105,14 +106,23 @@ class Manager(object):
         for canonicalized_binary, path in self._port.path_to_api_test_binaries().items():
             if canonicalized_binary not in specified_binaries:
                 continue
+
+            to_be_listed = path
+            if not self._port.host.platform.is_win():
+                to_be_listed = self.host.filesystem.join(self.host.filesystem.dirname(path), 'ToBeListed')
+                self.host.filesystem.copyfile(path, to_be_listed)
+                self.host.filesystem.copymode(path, to_be_listed)
             try:
                 output = self.host.executive.run_command(
-                    Runner.command_for_port(self._port, [path, '--gtest_list_tests']),
+                    Runner.command_for_port(self._port, [to_be_listed, '--gtest_list_tests']),
                     env=self._port.environment_for_api_tests())
                 available_tests += Manager._test_list_from_output(output, '{}.'.format(canonicalized_binary))
             except ScriptError:
                 _log.error('Failed to list {} tests'.format(canonicalized_binary))
                 raise
+            finally:
+                if not self._port.host.platform.is_win():
+                    self.host.filesystem.remove(to_be_listed)
 
         if len(args) == 0:
             return sorted(available_tests)
@@ -142,7 +152,7 @@ class Manager(object):
 
     def _initialize_devices(self):
         if 'simulator' in self._port.port_name:
-            SimulatedDeviceManager.initialize_devices(DeviceRequest(self._port.DEVICE_TYPE, allow_incomplete_match=True), self.host, simulator_ui=False)
+            SimulatedDeviceManager.initialize_devices(DeviceRequest(self._port.supported_device_types()[0], allow_incomplete_match=True), self.host, simulator_ui=False)
         elif 'device' in self._port.port_name:
             raise RuntimeError('Running api tests on {} is not supported'.format(self._port.port_name))
 
@@ -280,9 +290,12 @@ class Manager(object):
                     start_time=start_time,
                     end_time=end_time,
                     tests_skipped=len(result_dictionary['Skipped']),
-                ),
-                results={test: Upload.create_test_result(actual=status_to_test_result[result[0]])
-                         for test, result in iteritems(runner.results) if result[0] in status_to_test_result},
+                ), results={
+                    test: Upload.create_test_result(
+                        actual=status_to_test_result[result[0]],
+                        time=int(result[2] * 1000),
+                    ) for test, result in iteritems(runner.results) if result[0] in status_to_test_result
+                },
             )
             for url in self._options.report_urls:
                 self._stream.write_update('Uploading to {} ...'.format(url))

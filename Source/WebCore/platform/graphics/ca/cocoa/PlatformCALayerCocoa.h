@@ -47,6 +47,7 @@ public:
 
     void setNeedsDisplay() override;
     void setNeedsDisplayInRect(const FloatRect& dirtyRect) override;
+    bool needsDisplay() const override;
 
     void copyContentsFromLayer(PlatformCALayer*) override;
 
@@ -67,7 +68,7 @@ public:
     void animationStarted(const String& key, MonotonicTime beginTime) override;
     void animationEnded(const String& key) override;
 
-    void setMask(PlatformCALayer*) override;
+    void setMaskLayer(RefPtr<WebCore::PlatformCALayer>&&) override;
 
     bool isOpaque() const override;
     void setOpaque(bool) override;
@@ -87,6 +88,10 @@ public:
     TransformationMatrix sublayerTransform() const override;
     void setSublayerTransform(const TransformationMatrix&) override;
 
+    void setIsBackdropRoot(bool) final;
+    bool backdropRootIsOpaque() const final;
+    void setBackdropRootIsOpaque(bool) final;
+
     bool isHidden() const override;
     void setHidden(bool) override;
 
@@ -98,6 +103,10 @@ public:
 
     void setBackingStoreAttached(bool) override;
     bool backingStoreAttached() const override;
+
+#if ENABLE(INTERACTION_REGIONS_IN_EVENT_REGION)
+    void setVisibleRect(const FloatRect&) override;
+#endif
 
     bool geometryFlipped() const override;
     WEBCORE_EXPORT void setGeometryFlipped(bool) override;
@@ -114,12 +123,11 @@ public:
     bool wantsDeepColorBackingStore() const override;
     void setWantsDeepColorBackingStore(bool) override;
 
-    bool supportsSubpixelAntialiasedText() const override;
-    void setSupportsSubpixelAntialiasedText(bool) override;
-
     bool hasContents() const override;
     CFTypeRef contents() const override;
     void setContents(CFTypeRef) override;
+    void clearContents() override;
+    void setDelegatedContents(const PlatformCALayerInProcessDelegatedContents&) override;
 
     void setContentsRect(const FloatRect&) override;
 
@@ -139,9 +147,7 @@ public:
     WEBCORE_EXPORT static bool filtersCanBeComposited(const FilterOperations&);
     void copyFiltersFrom(const PlatformCALayer&) override;
 
-#if ENABLE(CSS_COMPOSITING)
     void setBlendMode(BlendMode) override;
-#endif
 
     void setName(const String&) override;
 
@@ -155,7 +161,10 @@ public:
     float cornerRadius() const override;
     void setCornerRadius(float) override;
 
-    void setEdgeAntialiasingMask(unsigned) override;
+    void setAntialiasesEdges(bool) override;
+
+    MediaPlayerVideoGravity videoGravity() const override;
+    void setVideoGravity(MediaPlayerVideoGravity) override;
 
     FloatRoundedRect shapeRoundedRect() const override;
     void setShapeRoundedRect(const FloatRoundedRect&) override;
@@ -206,7 +215,7 @@ private:
 
     void commonInit();
 
-    bool isPlatformCALayerCocoa() const override { return true; }
+    Type type() const final { return Type::Cocoa; }
 
     bool requiresCustomAppearanceUpdateOnBoundsChange() const;
 
@@ -219,14 +228,14 @@ private:
     GraphicsLayer::CustomAppearance m_customAppearance { GraphicsLayer::CustomAppearance::None };
     std::unique_ptr<FloatRoundedRect> m_shapeRoundedRect;
 #if ENABLE(SCROLLING_THREAD)
-    ScrollingNodeID m_scrollingNodeID { 0 };
+    ScrollingNodeID m_scrollingNodeID;
 #endif
     EventRegion m_eventRegion;
     bool m_wantsDeepColorBackingStore { false };
-    bool m_supportsSubpixelAntialiasedText { false };
     bool m_backingStoreAttached { true };
+    bool m_backdropRootIsOpaque { false };
 };
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_PLATFORM_CALAYER(WebCore::PlatformCALayerCocoa, isPlatformCALayerCocoa())
+SPECIALIZE_TYPE_TRAITS_PLATFORM_CALAYER(WebCore::PlatformCALayerCocoa, type() == WebCore::PlatformCALayer::Type::Cocoa)

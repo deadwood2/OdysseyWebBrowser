@@ -20,18 +20,20 @@
 
 #include "config.h"
 
-#if ENABLE(VIDEO) && USE(GSTREAMER) && USE(TEXTURE_MAPPER_GL)
+#if ENABLE(VIDEO) && USE(GSTREAMER) && USE(TEXTURE_MAPPER)
 #include "GStreamerVideoFrameHolder.h"
 
-#include "BitmapTextureGL.h"
+#include "BitmapTexture.h"
 #include "BitmapTexturePool.h"
-#include "TextureMapperContextAttributes.h"
-#include "TextureMapperGL.h"
+#include "TextureMapperFlags.h"
 
 namespace WebCore {
 
-GstVideoFrameHolder::GstVideoFrameHolder(GstSample* sample, std::optional<GstVideoDecoderPlatform> videoDecoderPlatform, TextureMapperGL::Flags flags, bool gstGLEnabled)
+GstVideoFrameHolder::GstVideoFrameHolder(GstSample* sample, std::optional<GstVideoDecoderPlatform> videoDecoderPlatform, OptionSet<TextureMapperFlags> flags, bool gstGLEnabled)
     : m_videoDecoderPlatform(videoDecoderPlatform)
+#if USE(GSTREAMER_GL)
+    , m_flags(flags)
+#endif
 {
     RELEASE_ASSERT(GST_IS_SAMPLE(sample));
 
@@ -46,39 +48,12 @@ GstVideoFrameHolder::GstVideoFrameHolder(GstSample* sample, std::optional<GstVid
         return;
 
 #if USE(GSTREAMER_GL)
-    m_flags = flags | (m_hasAlphaChannel ? TextureMapperGL::ShouldBlend | TextureMapperGL::ShouldPremultiply : 0);
+    if (m_hasAlphaChannel)
+        m_flags.add({ TextureMapperFlags::ShouldBlend, TextureMapperFlags::ShouldPremultiply });
 
     GstMemory* memory = gst_buffer_peek_memory(m_buffer.get(), 0);
     if (gst_is_gl_memory(memory))
         m_textureTarget = gst_gl_memory_get_texture_target(GST_GL_MEMORY_CAST(memory));
-
-#if USE(WPE_VIDEO_PLANE_DISPLAY_DMABUF)
-    m_dmabufFD = -1;
-    gsize offset;
-    if (gst_is_gl_memory_egl(memory)) {
-        GstGLMemoryEGL* eglMemory = (GstGLMemoryEGL*) memory;
-        gst_egl_image_export_dmabuf(eglMemory->image, &m_dmabufFD, &m_dmabufStride, &offset);
-    } else if (gst_is_gl_memory(memory)) {
-        GRefPtr<GstEGLImage> eglImage = adoptGRef(gst_egl_image_from_texture(GST_GL_BASE_MEMORY_CAST(memory)->context, GST_GL_MEMORY_CAST(memory), nullptr));
-
-        if (eglImage)
-            gst_egl_image_export_dmabuf(eglImage.get(), &m_dmabufFD, &m_dmabufStride, &offset);
-    }
-
-    if (hasDMABuf() && m_dmabufStride == -1) {
-        m_isMapped = gst_video_frame_map(&m_videoFrame, &videoInfo, m_buffer.get(), GST_MAP_READ);
-        if (m_isMapped)
-            m_dmabufStride = GST_VIDEO_INFO_PLANE_STRIDE(&m_videoFrame.info, 0);
-    }
-
-    if (hasDMABuf() && m_dmabufStride)
-        return;
-
-    static std::once_flag s_onceFlag;
-    std::call_once(s_onceFlag, [] {
-        GST_WARNING("Texture export to DMABuf failed, falling back to internal rendering");
-    });
-#endif // USE(WPE_VIDEO_PLANE_DISPLAY_DMABUF)
 
     if (gstGLEnabled) {
         m_isMapped = gst_video_frame_map(&m_videoFrame, &videoInfo, m_buffer.get(), static_cast<GstMapFlags>(GST_MAP_READ | GST_MAP_GL));
@@ -110,21 +85,6 @@ GstVideoFrameHolder::~GstVideoFrameHolder()
     gst_video_frame_unmap(&m_videoFrame);
 }
 
-#if USE(WPE_VIDEO_PLANE_DISPLAY_DMABUF)
-void GstVideoFrameHolder::handoffVideoDmaBuf(struct wpe_video_plane_display_dmabuf_source* videoPlaneDisplayDmaBufSource, const IntRect& rect)
-{
-    if (m_dmabufFD <= 0)
-        return;
-
-    wpe_video_plane_display_dmabuf_source_update(videoPlaneDisplayDmaBufSource, m_dmabufFD, rect.x(), rect.y(), m_size.width(), m_size.height(), m_dmabufStride, [](void* data) {
-        gst_buffer_unref(GST_BUFFER_CAST(data));
-    }, gst_buffer_ref(m_buffer.get()));
-
-    close(m_dmabufFD);
-    m_dmabufFD = 0;
-}
-#endif
-
 #if USE(GSTREAMER_GL)
 void GstVideoFrameHolder::waitForCPUSync()
 {
@@ -141,7 +101,7 @@ void GstVideoFrameHolder::waitForCPUSync()
 }
 #endif // USE(GSTREAMER_GL)
 
-void GstVideoFrameHolder::updateTexture(BitmapTextureGL& texture)
+void GstVideoFrameHolder::updateTexture(BitmapTexture& texture)
 {
     ASSERT(!m_textureID);
     GstVideoGLTextureUploadMeta* meta;
@@ -203,19 +163,21 @@ std::unique_ptr<TextureMapperPlatformLayerBuffer> GstVideoFrameHolder::platformL
             yuvPlaneOffset[i] = GST_VIDEO_INFO_COMP_POFFSET(&m_videoFrame.info, i);
         }
 
-        std::array<GLfloat, 9> yuvToRgb;
+        std::array<GLfloat, 16> yuvToRgb;
         if (gst_video_colorimetry_matches(&GST_VIDEO_INFO_COLORIMETRY(&m_videoFrame.info), GST_VIDEO_COLORIMETRY_BT709)) {
             yuvToRgb = {
-                1.164f,  0.0f,    1.787f,
-                1.164f, -0.213f, -0.531f,
-                1.164f,  2.112f,  0.0f
+                1.164383561643836f, -0.0f,                1.792741071428571f, -0.972945075016308f,
+                1.164383561643836f, -0.213248614273739f, -0.532909328559444f,  0.301482665475862f,
+                1.164383561643836f,  2.112401785714286f, -0.0f,               -1.133402217873451f,
+                0.0f,                0.0f,                0.0f,                1.0f,
             };
         } else {
             // Default to bt601. This is the same behaviour as GStreamer's glcolorconvert element.
             yuvToRgb = {
-                1.164f,  0.0f,    1.596f,
-                1.164f, -0.391f, -0.813f,
-                1.164f,  2.018f,  0.0f
+                1.164383561643836f,  0.0f,                1.596026785714286f, -0.874202217873451f,
+                1.164383561643836f, -0.391762290094914f, -0.812967647237771f,  0.531667823499146f,
+                1.164383561643836f,  2.017232142857143f, -0.0f,               -1.085630789302022f,
+                0.0f,                0.0f,                0.0f,                1.0f,
             };
         }
 

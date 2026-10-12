@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2003-2017 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2023 Apple Inc. All rights reserved.
  *  Copyright (C) 2007 Eric Seidel <eric@webkit.org>
  *  Copyright (C) 2009 Acision BV. All rights reserved.
  *
@@ -27,8 +27,11 @@
 #include <wtf/BitVector.h>
 #include <wtf/PageBlock.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(MachineThreads);
 
 MachineThreads::MachineThreads()
     : m_threadGroup(ThreadGroup::create())
@@ -50,7 +53,6 @@ void MachineThreads::gatherFromCurrentThread(ConservativeRoots& conservativeRoot
 static inline int osRedZoneAdjustment()
 {
     int redZoneAdjustment = 0;
-#if !OS(WINDOWS)
 #if CPU(X86_64)
     // See http://people.freebsd.org/~obrien/amd64-elf-abi.pdf Section 3.2.2.
     redZoneAdjustment = -128;
@@ -58,7 +60,6 @@ static inline int osRedZoneAdjustment()
     // See https://developer.apple.com/library/ios/documentation/Xcode/Conceptual/iPhoneOSABIReference/Articles/ARM64FunctionCallingConventions.html#//apple_ref/doc/uid/TP40013702-SW7
     redZoneAdjustment = -128;
 #endif
-#endif // !OS(WINDOWS)
     return redZoneAdjustment;
 }
 
@@ -105,10 +106,10 @@ static void copyMemory(void* dst, const void* src, size_t size)
 // significant performance loss as tryCopyOtherThreadStack is only called as part of an O(heapsize)
 // operation. As the heap is generally much larger than the stack the performance hit is minimal.
 // See: https://bugs.webkit.org/show_bug.cgi?id=146297
-void MachineThreads::tryCopyOtherThreadStack(Thread& thread, void* buffer, size_t capacity, size_t* size)
+void MachineThreads::tryCopyOtherThreadStack(const ThreadSuspendLocker& locker, Thread& thread, void* buffer, size_t capacity, size_t* size)
 {
     PlatformRegisters registers;
-    size_t registersSize = thread.getRegisters(registers);
+    size_t registersSize = thread.getRegisters(locker, registers);
 
     // This is a workaround for <rdar://problem/27607384>. libdispatch recycles work
     // queue threads without running pthread exit destructors. This can cause us to scan a
@@ -145,42 +146,45 @@ bool MachineThreads::tryCopyOtherThreadStacks(const AbstractLocker& locker, void
     BitVector isSuspended(threads.size());
 
     {
-        unsigned index = 0;
-        for (const Ref<Thread>& thread : threads) {
-            if (thread.ptr() != &currentThread
-                && thread.ptr() != &currentThreadForGC) {
-                auto result = thread->suspend();
-                if (result)
-                    isSuspended.set(index);
-                else {
+        ThreadSuspendLocker threadSuspendLocker;
+        {
+            unsigned index = 0;
+            for (const Ref<Thread>& thread : threads) {
+                if (thread.ptr() != &currentThread
+                    && thread.ptr() != &currentThreadForGC) {
+                    auto result = thread->suspend(threadSuspendLocker);
+                    if (result)
+                        isSuspended.set(index);
+                    else {
 #if OS(DARWIN)
-                    // These threads will be removed from the ThreadGroup. Thus, we do not do anything here except for reporting.
-                    ASSERT(result.error() != KERN_SUCCESS);
-                    WTFReportError(__FILE__, __LINE__, WTF_PRETTY_FUNCTION,
-                        "JavaScript garbage collection encountered an invalid thread (err 0x%x): Thread [%d/%d: %p].",
-                        result.error(), index, threads.size(), thread.ptr());
+                        // These threads will be removed from the ThreadGroup. Thus, we do not do anything here except for reporting.
+                        ASSERT(result.error() != KERN_SUCCESS);
+                        WTFReportError(__FILE__, __LINE__, WTF_PRETTY_FUNCTION,
+                            "JavaScript garbage collection encountered an invalid thread (err 0x%x): Thread [%d/%d: %p].",
+                            result.error(), index, threads.size(), thread.ptr());
 #endif
+                    }
                 }
+                ++index;
             }
-            ++index;
         }
-    }
 
-    {
-        unsigned index = 0;
-        for (auto& thread : threads) {
-            if (isSuspended.get(index))
-                tryCopyOtherThreadStack(thread.get(), buffer, capacity, size);
-            ++index;
+        {
+            unsigned index = 0;
+            for (auto& thread : threads) {
+                if (isSuspended.get(index))
+                    tryCopyOtherThreadStack(threadSuspendLocker, thread.get(), buffer, capacity, size);
+                ++index;
+            }
         }
-    }
 
-    {
-        unsigned index = 0;
-        for (auto& thread : threads) {
-            if (isSuspended.get(index))
-                thread->resume();
-            ++index;
+        {
+            unsigned index = 0;
+            for (auto& thread : threads) {
+                if (isSuspended.get(index))
+                    thread->resume(threadSuspendLocker);
+                ++index;
+            }
         }
     }
 

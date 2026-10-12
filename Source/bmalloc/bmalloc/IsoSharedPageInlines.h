@@ -29,13 +29,15 @@
 #include "StdLibExtras.h"
 #include "VMAllocate.h"
 
+#if !BUSE(LIBPAS)
+
 namespace bmalloc {
 
 // IsoSharedPage never becomes empty state again after we allocate some cells from IsoSharedPage. This makes IsoSharedPage management super simple.
 // This is because empty IsoSharedPage is still split into various different objects that should keep some part of virtual memory region dedicated.
 // We cannot set up bump allocation for such a page. Not freeing IsoSharedPages are OK since IsoSharedPage is only used for the lower tier of IsoHeap.
 template<typename Config, typename Type>
-void IsoSharedPage::free(const LockHolder&, api::IsoHeap<Type>& handle, void* ptr)
+void IsoSharedPage::free(const LockHolder&, api::IsoHeapBase<Type>& handle, void* ptr)
 {
     auto& heapImpl = handle.impl();
     uint8_t index = *indexSlotFor<Config>(ptr) & IsoHeapImplBase::maxAllocationFromSharedMask;
@@ -71,3 +73,4 @@ inline void IsoSharedPage::stopAllocating(const LockHolder&)
 
 } // namespace bmalloc
 
+#endif

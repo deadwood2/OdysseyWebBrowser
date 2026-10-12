@@ -41,6 +41,8 @@ extern const NSTimeInterval RBSProcessTimeLimitationNone;
 
 #else
 
+#import <mach/message.h>
+
 NS_ASSUME_NONNULL_BEGIN
 
 @interface RBSAttribute : NSObject
@@ -52,6 +54,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface RBSTarget : NSObject
 + (RBSTarget *)targetWithPid:(pid_t)pid;
++ (RBSTarget *)targetWithPid:(pid_t)pid environmentIdentifier:(NSString *)environment;
 + (RBSTarget *)currentProcess;
 @end
 
@@ -104,6 +107,8 @@ extern const NSTimeInterval RBSProcessTimeLimitationNone;
 @property (nonatomic, readonly, assign) pid_t pid;
 @property (nonatomic, readonly, strong) RBSProcessState *currentState;
 @property (nonatomic, readonly, strong) RBSProcessLimitations *activeLimitations;
+@property (nonatomic, readonly, strong, nullable) RBSProcessHandle *hostProcess;
+@property (nonatomic, readonly, assign) audit_token_t auditToken;
 @end
 
 @interface RBSProcessStateUpdate : NSObject
@@ -131,14 +136,24 @@ typedef void (^RBSProcessUpdateHandler)(RBSProcessMonitor *monitor, RBSProcessHa
 
 @interface RBSProcessMonitor : NSObject <NSCopying>
 + (instancetype)monitorWithConfiguration:(NS_NOESCAPE RBSProcessMonitorConfigurator)block;
+- (void)invalidate;
 @end
 
 @interface RBSProcessPredicate : NSObject <RBSProcessMatching>
 + (RBSProcessPredicate *)predicateMatchingHandle:(RBSProcessHandle *)process;
+typedef NS_OPTIONS(NSUInteger, RBSProcessStateValues) {
+    RBSProcessStateValueNone                    = 0,
+    RBSProcessStateValueTaskState               = (1 << 0),
+    RBSProcessStateValueTags                    = (1 << 1),
+    RBSProcessStateValueTerminationResistance   = (1 << 2),
+    RBSProcessStateValueLegacyAssertions        = (1 << 3),
+    RBSProcessStateValueModernAssertions        = (1 << 4),
+};
 @end
 
 @interface RBSProcessStateDescriptor : NSObject <NSCopying>
 + (instancetype)descriptor;
+@property (nonatomic, readwrite, assign) RBSProcessStateValues values;
 @property (nonatomic, readwrite, copy, nullable) NSArray<NSString *> *endowmentNamespaces;
 @end
 

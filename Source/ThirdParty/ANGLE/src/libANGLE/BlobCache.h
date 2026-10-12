@@ -13,11 +13,10 @@
 #include <array>
 #include <cstring>
 
-#include <anglebase/sha1.h>
-#include "common/MemoryBuffer.h"
-#include "common/hash_utils.h"
+#include "common/SimpleMutex.h"
 #include "libANGLE/Error.h"
 #include "libANGLE/SizedMRUCache.h"
+#include "libANGLE/angletypes.h"
 
 namespace gl
 {
@@ -26,56 +25,27 @@ class Context;
 
 namespace egl
 {
-// 160-bit SHA-1 hash key used for hasing a program.  BlobCache opts in using fixed keys for
-// simplicity and efficiency.
-static constexpr size_t kBlobCacheKeyLength = angle::base::kSHA1Length;
-using BlobCacheKey                          = std::array<uint8_t, kBlobCacheKeyLength>;
-}  // namespace egl
 
-namespace std
+// Used by MemoryProgramCache and MemoryShaderCache, this result indicates whether program/shader
+// cache load from blob was successful.
+enum class CacheGetResult
 {
-template <>
-struct hash<egl::BlobCacheKey>
-{
-    // Simple routine to hash four ints.
-    size_t operator()(const egl::BlobCacheKey &key) const
-    {
-        return angle::ComputeGenericHash(key.data(), key.size());
-    }
+    // Binary blob was found and is valid
+    Success,
+    // Binary blob was not found
+    NotFound,
+    // Binary blob was found, but was rejected due to errors (corruption, version mismatch, etc)
+    Rejected,
 };
-}  // namespace std
-
-namespace egl
-{
 
 class BlobCache final : angle::NonCopyable
 {
   public:
     // 160-bit SHA-1 hash key used for hasing a program.  BlobCache opts in using fixed keys for
     // simplicity and efficiency.
-    static constexpr size_t kKeyLength = kBlobCacheKeyLength;
-    using Key                          = BlobCacheKey;
-    class Value
-    {
-      public:
-        Value() : mPtr(nullptr), mSize(0) {}
-        Value(const uint8_t *ptr, size_t sz) : mPtr(ptr), mSize(sz) {}
-
-        // A very basic struct to hold the pointer and size together.  The objects of this class
-        // don't own the memory.
-        const uint8_t *data() { return mPtr; }
-        size_t size() { return mSize; }
-
-        const uint8_t &operator[](size_t pos) const
-        {
-            ASSERT(pos < mSize);
-            return mPtr[pos];
-        }
-
-      private:
-        const uint8_t *mPtr;
-        size_t mSize;
-    };
+    static constexpr size_t kKeyLength = angle::kBlobCacheKeyLength;
+    using Key                          = angle::BlobCacheKey;
+    using Value                        = angle::BlobCacheValue;
     enum class CacheSource
     {
         Memory,
@@ -89,6 +59,12 @@ class BlobCache final : angle::NonCopyable
     // will be used.  Otherwise the value is cached in this object.
     void put(const BlobCache::Key &key, angle::MemoryBuffer &&value);
 
+    // Store a key-blob pair in the cache, but compress the blob before insertion. Returns false if
+    // compression fails, returns true otherwise.
+    bool compressAndPut(const BlobCache::Key &key,
+                        angle::MemoryBuffer &&uncompressedValue,
+                        size_t *compressedSize);
+
     // Store a key-blob pair in the application cache, only if application callbacks are set.
     void putApplication(const BlobCache::Key &key, const angle::MemoryBuffer &value);
 
@@ -100,15 +76,26 @@ class BlobCache final : angle::NonCopyable
 
     // Check if the cache contains the blob corresponding to this key.  If application callbacks are
     // set, those will be used.  Otherwise they key is looked up in this object's cache.
-    ANGLE_NO_DISCARD bool get(angle::ScratchBuffer *scratchBuffer,
-                              const BlobCache::Key &key,
-                              BlobCache::Value *valueOut,
-                              size_t *bufferSizeOut);
+    [[nodiscard]] bool get(angle::ScratchBuffer *scratchBuffer,
+                           const BlobCache::Key &key,
+                           BlobCache::Value *valueOut);
 
     // For querying the contents of the cache.
-    ANGLE_NO_DISCARD bool getAt(size_t index,
-                                const BlobCache::Key **keyOut,
-                                BlobCache::Value *valueOut);
+    [[nodiscard]] bool getAt(size_t index,
+                             const BlobCache::Key **keyOut,
+                             BlobCache::Value *valueOut);
+
+    enum class GetAndDecompressResult
+    {
+        Success,
+        NotFound,
+        DecompressFailure,
+    };
+    [[nodiscard]] GetAndDecompressResult getAndDecompress(
+        angle::ScratchBuffer *scratchBuffer,
+        const BlobCache::Key &key,
+        size_t maxUncompressedDataSize,
+        angle::MemoryBuffer *uncompressedValueOut);
 
     // Evict a blob from the binary cache.
     void remove(const BlobCache::Key &key);
@@ -140,9 +127,13 @@ class BlobCache final : angle::NonCopyable
 
     bool isCachingEnabled() const { return areBlobCacheFuncsSet() || maxSize() > 0; }
 
+    angle::SimpleMutex &getMutex() { return mBlobCacheMutex; }
+
   private:
     // This internal cache is used only if the application is not providing caching callbacks
     using CacheEntry = std::pair<angle::MemoryBuffer, CacheSource>;
+
+    mutable angle::SimpleMutex mBlobCacheMutex;
     angle::SizedMRUCache<BlobCache::Key, CacheEntry> mBlobCache;
 
     EGLSetBlobFuncANDROID mSetBlobFunc;

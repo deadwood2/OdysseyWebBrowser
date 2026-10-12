@@ -27,6 +27,9 @@
 
 #if ENABLE(WEB_AUTHN)
 
+#include "Document.h"
+#include "IDLTypes.h"
+#include "JSDOMPromiseDeferredForward.h"
 #include <wtf/RefCounted.h>
 #include <wtf/TypeCasts.h>
 #include <wtf/text/WTFString.h>
@@ -36,6 +39,7 @@ namespace WebCore {
 class BasicCredential : public RefCounted<BasicCredential> {
 public:
     enum class Type {
+        DigitalCredential,
         PublicKey,
     };
 
@@ -52,6 +56,8 @@ public:
     const String& id() const { return m_id; }
     String type() const;
     Discovery discovery() const { return m_discovery; }
+
+    static void isConditionalMediationAvailable(Document&, DOMPromiseDeferred<IDLBoolean>&&);
 
 private:
     String m_id;

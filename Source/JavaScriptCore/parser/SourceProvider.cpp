@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,35 +26,47 @@
 #include "config.h"
 #include "SourceProvider.h"
 
-#include <wtf/Lock.h>
-
 namespace JSC {
 
 DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(StringSourceProvider);
 
-SourceProvider::SourceProvider(const SourceOrigin& sourceOrigin, String&& sourceURL, const TextPosition& startPosition, SourceProviderSourceType sourceType)
+SourceProvider::SourceProvider(const SourceOrigin& sourceOrigin, String&& sourceURL, String&& preRedirectURL, SourceTaintedOrigin taintedness, const TextPosition& startPosition, SourceProviderSourceType sourceType)
     : m_sourceType(sourceType)
     , m_sourceOrigin(sourceOrigin)
     , m_sourceURL(WTFMove(sourceURL))
+    , m_preRedirectURL(WTFMove(preRedirectURL))
     , m_startPosition(startPosition)
+    , m_taintedness(taintedness)
 {
 }
 
-SourceProvider::~SourceProvider()
-{
-}
-
-static Lock providerIdLock;
+SourceProvider::~SourceProvider() = default;
 
 void SourceProvider::getID()
 {
-    Locker locker { providerIdLock };
     if (!m_id) {
-        static intptr_t nextProviderID = 0;
+        static std::atomic<SourceID> nextProviderID = nullID;
         m_id = ++nextProviderID;
         RELEASE_ASSERT(m_id);
     }
 }
+
+const String& SourceProvider::sourceURLStripped()
+{
+    if (UNLIKELY(m_sourceURL.isNull()))
+        return m_sourceURLStripped;
+    if (LIKELY(!m_sourceURLStripped.isNull()))
+        return m_sourceURLStripped;
+    m_sourceURLStripped = URL(m_sourceURL).strippedForUseAsReport();
+    return m_sourceURLStripped;
+}
+
+#if ENABLE(WEBASSEMBLY)
+BaseWebAssemblySourceProvider::BaseWebAssemblySourceProvider(const SourceOrigin& sourceOrigin, String&& sourceURL)
+    : SourceProvider(sourceOrigin, WTFMove(sourceURL), String(), SourceTaintedOrigin::Untainted, TextPosition(), SourceProviderSourceType::WebAssembly)
+{
+}
+#endif
 
 } // namespace JSC
 

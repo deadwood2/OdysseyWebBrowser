@@ -1,4 +1,5 @@
 # Copyright (C) 2009 Google Inc. All rights reserved.
+# Copyright (c) 2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -30,6 +31,9 @@
 
 import logging
 import re
+import sys
+
+from webkitcorepy import string_utils
 
 _log = logging.getLogger(__name__)
 
@@ -84,6 +88,11 @@ def get_diff_converter(lines):
              converter from git to SVN.
     """
     for i, line in enumerate(lines[:-1]):
+        try:
+            line = string_utils.decode(line)
+        except UnicodeDecodeError:
+            line = string_utils.decode(line, encoding='iso-8859-1')
+
         # Stop when we find the first patch
         if line[:3] == "+++" and lines[i + 1] == "---":
             break
@@ -135,6 +144,8 @@ class DiffParser(object):
     a DiffFile object.
     """
 
+    VERSION_RE = re.compile(r'^\d+.\d+.\d+ \(\S+ Git-\d+\)$')
+
     def __init__(self, diff_input):
         """Parses a diff.
 
@@ -152,7 +163,7 @@ class DiffParser(object):
         new_diff_line = None
         transform_line = get_diff_converter(diff_input)
         for line in diff_input:
-            line = line.rstrip("\n")
+            line = string_utils.decode(line, errors='replace').rstrip("\n")
             line = transform_line(line)
 
             file_declaration = match(r"^Index: (?P<FilePath>.+)", line)
@@ -184,10 +195,15 @@ class DiffParser(object):
                     current_file.add_unchanged_line(old_diff_line, new_diff_line, line[1:])
                     old_diff_line += 1
                     new_diff_line += 1
-                elif line == '\\ No newline at end of file':
+                elif line == '\\ No newline at end of file' or not line or self.VERSION_RE.match(line):
                     # Nothing to do.  We may still have some added lines.
                     pass
                 else:
+                    line_repr = repr(line)
+                    if sys.version_info < (3,):
+                        assert isinstance(line, unicode)
+                        assert line_repr[0] == "u"
+                        line_repr = line_repr[1:]
                     _log.error('Unexpected diff format when parsing a '
-                               'chunk: %r' % line)
+                               'chunk: %s' % line_repr)
         return files

@@ -29,6 +29,7 @@
 #import "DOMNodeInternal.h"
 #import "DOMNodeListInternal.h"
 #import "ExceptionHandlers.h"
+#import <WebCore/ElementInlines.h>
 #import <WebCore/HTMLTextAreaElement.h>
 #import <WebCore/JSExecState.h>
 #import <WebCore/NodeList.h>
@@ -308,13 +309,13 @@ DOMHTMLTextAreaElement *kit(WebCore::HTMLTextAreaElement* value)
 - (void)setRangeText:(NSString *)replacement
 {
     WebCore::JSMainThreadNullState state;
-    raiseOnDOMError(unwrap(*self).setRangeText(replacement));
+    raiseOnDOMError(unwrap(*self).setRangeText(String { replacement }));
 }
 
 - (void)setRangeText:(NSString *)replacement start:(unsigned)start end:(unsigned)end selectionMode:(NSString *)selectionMode
 {
     WebCore::JSMainThreadNullState state;
-    raiseOnDOMError(unwrap(*self).setRangeText(replacement, start, end, selectionMode));
+    raiseOnDOMError(unwrap(*self).setRangeText(String { replacement }, start, end, selectionMode));
 }
 
 - (void)setSelectionRange:(int)start end:(int)end

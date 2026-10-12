@@ -214,7 +214,7 @@ WebCore::ResourceRequest WkMutableNetworkRequestPrivateTranslator::fromNetworkRe
 	OBData *body = [request HTTPBody];
 	if ([body length])
 	{
-		out.setHTTPBody(WebCore::FormData::create([body bytes], [body length]));
+		out.setHTTPBody(WebCore::FormData::create(std::span(static_cast<const uint8_t *>([body bytes]), [body length])));
 	}
 
 	OBDictionary *headers = [request allHTTPHeaderFields];
@@ -264,7 +264,7 @@ public:
 	WkMutableNetworkRequestClient(WkMutableNetworkRequestHandlerImpl *parent, const WebCore::ResourceRequest& request)
 		: m_parent([parent retain])
 	{
-		m_handle = WebCore::ResourceHandle::create(WebKit::WebProcess::singleton().networkingContext().get(), request, this, false, false, true, nullptr, false);
+		m_handle = WebCore::ResourceHandle::create(WebKit::WebProcess::singleton().networkingContext().get(), request, this, false, false, WebCore::ContentEncodingSniffingPolicy::Default, nullptr, false);
 		if (nullptr == m_handle)
 		{
 			[m_parent onError:[WkError errorWithURL:nil errorType:WkErrorType_Cancellation code:0] withData:nil];
@@ -279,45 +279,47 @@ public:
 		m_handle = nullptr;
 	}
 private:
-    void didReceiveBuffer(WebCore::ResourceHandle*, Ref<WebCore::SharedBuffer>&&buffer, int encodedDataLength) final {
-    	if (m_resourceData)
-    		m_resourceData->append(buffer);
-		else
-			m_resourceData = &buffer.get();
+    void didReceiveBuffer(WebCore::ResourceHandle*, const WebCore::FragmentedSharedBuffer& buffer, int encodedDataLength) final {
+   		m_resourceData.append(buffer);
 	}
 	
     void didFinishLoading(WebCore::ResourceHandle*, const WebCore::NetworkLoadMetrics&) final {
     	OBData *resp = nil;
-    	if (m_resourceData && m_resourceData->size())
+    	if (m_resourceData && m_resourceData.size())
     	{
-    		resp = [OBData dataWithBytes:m_resourceData->data() length:m_resourceData->size()];
+            auto buffer = m_resourceData.takeAsContiguous();
+    		resp = [OBData dataWithBytes:buffer->span().data() length:buffer->span().size()];
 		}
 		m_handle = nullptr;
 		[m_parent onFinishWithData:resp];
     	[m_parent autorelease];
     	m_parent = nil;
 	}
+    
     void didFail(WebCore::ResourceHandle*, const WebCore::ResourceError&error) final {
     	OBData *resp = nil;
-    	if (m_resourceData && m_resourceData->size())
+    	if (m_resourceData && m_resourceData.size())
     	{
-    		resp = [OBData dataWithBytes:m_resourceData->data() length:m_resourceData->size()];
+            auto buffer = m_resourceData.takeAsContiguous();
+    		resp = [OBData dataWithBytes:buffer->span().data() length:buffer->span().size()];
 		}
 		m_handle = nullptr;
 		[m_parent onError:[WkError errorWithResourceError:error] withData:resp];
     	[m_parent autorelease];
     	m_parent = nil;
 	}
+    
     void willSendRequestAsync(WebCore::ResourceHandle*, WebCore::ResourceRequest&& request, WebCore::ResourceResponse&&, CompletionHandler<void(WebCore::ResourceRequest&&)>&& completion) final {
 		m_currentRequest = WTFMove(request);
 		completion(WebCore::ResourceRequest { m_currentRequest });
 	}
+    
     void didReceiveResponseAsync(WebCore::ResourceHandle*, WebCore::ResourceResponse&&, CompletionHandler<void()>&& completion) {
     	completion();
 	}
 private:
 	WkMutableNetworkRequestHandlerImpl *m_parent = nil;
-    RefPtr<WebCore::SharedBuffer> m_resourceData;
+    WebCore::SharedBufferBuilder m_resourceData;
     RefPtr<WebCore::ResourceHandle> m_handle;
     WebCore::ResourceRequest m_currentRequest;
 };

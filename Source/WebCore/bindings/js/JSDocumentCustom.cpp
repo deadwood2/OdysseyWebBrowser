@@ -20,11 +20,16 @@
 #include "config.h"
 #include "JSDocument.h"
 
-#include "Frame.h"
+#include "FrameDestructionObserverInlines.h"
+#include "JSCSSStyleSheet.h"
+#include "JSDOMConvert.h"
+#include "JSDOMGlobalObjectInlines.h"
 #include "JSDOMWindowCustom.h"
 #include "JSHTMLDocument.h"
 #include "JSXMLDocument.h"
+#include "LocalFrame.h"
 #include "NodeTraversal.h"
+#include "WebCoreOpaqueRootInlines.h"
 #include <JavaScriptCore/HeapAnalyzer.h>
 
 namespace WebCore {
@@ -91,10 +96,29 @@ JSValue toJS(JSGlobalObject* lexicalGlobalObject, JSDOMGlobalObject* globalObjec
     return toJSNewlyCreated(lexicalGlobalObject, globalObject, Ref<Document>(document));
 }
 
+void setAdoptedStyleSheetsOnTreeScope(TreeScope& treeScope, JSC::JSGlobalObject& lexicalGlobalObject, JSC::JSValue value)
+{
+    auto& vm = JSC::getVM(&lexicalGlobalObject);
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+
+    auto nativeValue = convert<IDLFrozenArray<IDLInterface<CSSStyleSheet>>>(lexicalGlobalObject, value);
+    if (UNLIKELY(nativeValue.hasException(throwScope)))
+        return;
+
+    auto result = treeScope.setAdoptedStyleSheets(nativeValue.releaseReturnValue());
+    if (UNLIKELY(result.hasException()))
+        propagateException(lexicalGlobalObject, throwScope, result.releaseException());
+}
+
+void JSDocument::setAdoptedStyleSheets(JSC::JSGlobalObject& lexicalGlobalObject, JSC::JSValue value)
+{
+    setAdoptedStyleSheetsOnTreeScope(wrapped(), lexicalGlobalObject, value);
+}
+
 template<typename Visitor>
 void JSDocument::visitAdditionalChildren(Visitor& visitor)
 {
-    visitor.addOpaqueRoot(static_cast<ScriptExecutionContext*>(&wrapped()));
+    addWebCoreOpaqueRoot(visitor, static_cast<ScriptExecutionContext&>(wrapped()));
 }
 
 DEFINE_VISIT_ADDITIONAL_CHILDREN(JSDocument);

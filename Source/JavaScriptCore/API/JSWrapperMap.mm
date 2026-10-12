@@ -50,11 +50,6 @@
 #if PLATFORM(APPLETV)
 #else
 static constexpr int32_t firstJavaScriptCoreVersionWithInitConstructorSupport = 0x21A0400; // 538.4.0
-#if PLATFORM(IOS_FAMILY)
-static constexpr uint32_t firstSDKVersionWithInitConstructorSupport = DYLD_IOS_VERSION_10_0;
-#elif PLATFORM(MAC)
-static constexpr uint32_t firstSDKVersionWithInitConstructorSupport = 0xA0A00; // OSX 10.10.0
-#endif
 #endif
 
 @class JSObjCClassInfo;
@@ -202,7 +197,7 @@ inline void putNonEnumerable(JSContext *context, JSValue *base, NSString *proper
     descriptor.setConfigurable(true);
     descriptor.setWritable(true);
     bool shouldThrow = false;
-    baseObject->methodTable(vm)->defineOwnProperty(baseObject, globalObject, name->identifier(&vm), descriptor, shouldThrow);
+    baseObject->methodTable()->defineOwnProperty(baseObject, globalObject, name->identifier(&vm), descriptor, shouldThrow);
 
     JSValueRef exception = 0;
     if (handleExceptionIfNeeded(scope, [context JSGlobalContextRef], &exception) == ExceptionStatus::DidThrow)
@@ -280,7 +275,7 @@ static void copyMethodsToObject(JSContext *context, Class objcClass, Protocol *p
             // to override normal builtins e.g. "toString" we check if
             // the existing value on the prototype chain is an ObjC
             // callback already.
-            if ([existingMethod isObject] && JSC::jsDynamicCast<JSC::ObjCCallbackFunction*>(globalObject->vm(), toJS(globalObject, [existingMethod JSValueRef])))
+            if ([existingMethod isObject] && JSC::jsDynamicCast<JSC::ObjCCallbackFunction*>(toJS(globalObject, [existingMethod JSValueRef])))
                 return;
             JSObjectRef method = objCCallbackFunctionForMethod(context, objcClass, protocol, isInstanceMethod, sel, types);
             if (method)
@@ -443,7 +438,7 @@ static JSC::JSObject* allocateConstructorForCustomClass(JSContext *context, cons
                 const char* name = sel_getName(selector);
                 if (!isInitFamilyMethod(@(name)))
                     return;
-                initTable.set(name, (__bridge CFTypeRef)protocol);
+                initTable.set(String::fromLatin1(name), (__bridge CFTypeRef)protocol);
             });
         });
     }
@@ -456,7 +451,7 @@ static JSC::JSObject* allocateConstructorForCustomClass(JSContext *context, cons
         forEachMethodInClass(currentClass, ^(Method method) {
             SEL selector = method_getName(method);
             const char* name = sel_getName(selector);
-            auto iter = initTable.find(name);
+            auto iter = initTable.find(String::fromLatin1(name));
 
             if (iter == initTable.end())
                 return;
@@ -682,10 +677,9 @@ id tryUnwrapObjcObject(JSGlobalContextRef context, JSValueRef value)
     JSObjectRef object = JSValueToObject(context, value, &exception);
     ASSERT(!exception);
     JSC::JSLockHolder locker(toJS(context));
-    JSC::VM& vm = toJS(context)->vm();
-    if (toJS(object)->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperObject>>(vm))
+    if (toJS(object)->inherits<JSC::JSCallbackObject<JSC::JSAPIWrapperObject>>())
         return (__bridge id)JSC::jsCast<JSC::JSAPIWrapperObject*>(toJS(object))->wrappedObject();
-    if (id target = tryUnwrapConstructor(&vm, object))
+    if (id target = tryUnwrapConstructor(object))
         return target;
     return nil;
 }
@@ -702,21 +696,17 @@ bool supportsInitMethodConstructors()
     // There are no old clients on Apple TV, so there's no need for backwards compatibility.
     return true;
 #else
-    // First check to see the version of JavaScriptCore we directly linked against.
-    static int32_t versionOfLinkTimeJavaScriptCore = 0;
-    if (!versionOfLinkTimeJavaScriptCore)
-        versionOfLinkTimeJavaScriptCore = NSVersionOfLinkTimeLibrary("JavaScriptCore");
-    // Only do the link time version comparison if we linked directly with JavaScriptCore
-    if (versionOfLinkTimeJavaScriptCore != -1)
-        return versionOfLinkTimeJavaScriptCore >= firstJavaScriptCoreVersionWithInitConstructorSupport;
+    static const bool supportsInitMethodConstructors = []() -> bool {
+        // First check to see the version of JavaScriptCore we directly linked against.
+        int32_t versionOfLinkTimeJavaScriptCore = NSVersionOfLinkTimeLibrary("JavaScriptCore");
 
-    // If we didn't link directly with JavaScriptCore,
-    // base our check on what SDK was used to build the application.
-    static uint32_t programSDKVersion = 0;
-    if (!programSDKVersion)
-        programSDKVersion = applicationSDKVersion();
+        // Only do the link time version comparison if we linked directly with JavaScriptCore
+        if (versionOfLinkTimeJavaScriptCore != -1)
+            return versionOfLinkTimeJavaScriptCore >= firstJavaScriptCoreVersionWithInitConstructorSupport;
 
-    return programSDKVersion >= firstSDKVersionWithInitConstructorSupport;
+        return linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::SupportsInitConstructors);
+    }();
+    return supportsInitMethodConstructors;
 #endif
 }
 

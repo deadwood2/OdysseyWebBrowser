@@ -22,28 +22,30 @@
 #pragma once
 
 #include "FEComponentTransfer.h"
+#include "NodeName.h"
 #include "SVGElement.h"
+#include <wtf/SortedArrayMap.h>
 
 namespace WebCore {
 
 template<>
 struct SVGPropertyTraits<ComponentTransferType> {
-    static unsigned highestEnumValue() { return FECOMPONENTTRANSFER_TYPE_GAMMA; }
+    static unsigned highestEnumValue() { return enumToUnderlyingType(ComponentTransferType::FECOMPONENTTRANSFER_TYPE_GAMMA); }
 
     static String toString(ComponentTransferType type)
     {
         switch (type) {
-        case FECOMPONENTTRANSFER_TYPE_UNKNOWN:
+        case ComponentTransferType::FECOMPONENTTRANSFER_TYPE_UNKNOWN:
             return emptyString();
-        case FECOMPONENTTRANSFER_TYPE_IDENTITY:
+        case ComponentTransferType::FECOMPONENTTRANSFER_TYPE_IDENTITY:
             return "identity"_s;
-        case FECOMPONENTTRANSFER_TYPE_TABLE:
+        case ComponentTransferType::FECOMPONENTTRANSFER_TYPE_TABLE:
             return "table"_s;
-        case FECOMPONENTTRANSFER_TYPE_DISCRETE:
+        case ComponentTransferType::FECOMPONENTTRANSFER_TYPE_DISCRETE:
             return "discrete"_s;
-        case FECOMPONENTTRANSFER_TYPE_LINEAR:
+        case ComponentTransferType::FECOMPONENTTRANSFER_TYPE_LINEAR:
             return "linear"_s;
-        case FECOMPONENTTRANSFER_TYPE_GAMMA:
+        case ComponentTransferType::FECOMPONENTTRANSFER_TYPE_GAMMA:
             return "gamma"_s;
         }
 
@@ -53,23 +55,23 @@ struct SVGPropertyTraits<ComponentTransferType> {
 
     static ComponentTransferType fromString(const String& value)
     {
-        if (value == "identity")
-            return FECOMPONENTTRANSFER_TYPE_IDENTITY;
-        if (value == "table")
-            return FECOMPONENTTRANSFER_TYPE_TABLE;
-        if (value == "discrete")
-            return FECOMPONENTTRANSFER_TYPE_DISCRETE;
-        if (value == "linear")
-            return FECOMPONENTTRANSFER_TYPE_LINEAR;
-        if (value == "gamma")
-            return FECOMPONENTTRANSFER_TYPE_GAMMA;
-        return FECOMPONENTTRANSFER_TYPE_UNKNOWN;
+        static constexpr std::pair<PackedASCIILiteral<uint64_t>, ComponentTransferType> mappings[] = {
+            { "discrete", ComponentTransferType::FECOMPONENTTRANSFER_TYPE_DISCRETE },
+            { "gamma", ComponentTransferType::FECOMPONENTTRANSFER_TYPE_GAMMA },
+            { "identity", ComponentTransferType::FECOMPONENTTRANSFER_TYPE_IDENTITY },
+            { "linear", ComponentTransferType::FECOMPONENTTRANSFER_TYPE_LINEAR },
+            { "table", ComponentTransferType::FECOMPONENTTRANSFER_TYPE_TABLE }
+        };
+        static constexpr SortedArrayMap map { mappings };
+        return map.get(value, ComponentTransferType::FECOMPONENTTRANSFER_TYPE_UNKNOWN);
     }
 };
 
 class SVGComponentTransferFunctionElement : public SVGElement {
-    WTF_MAKE_ISO_ALLOCATED(SVGComponentTransferFunctionElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGComponentTransferFunctionElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGComponentTransferFunctionElement);
 public:
+    virtual ComponentTransferChannel channel() const = 0;
     ComponentTransferFunction transferFunction() const;
 
     ComponentTransferType type() const { return m_type->currentValue<ComponentTransferType>(); }
@@ -92,16 +94,14 @@ protected:
     SVGComponentTransferFunctionElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGComponentTransferFunctionElement, SVGElement>;
-    const SVGPropertyRegistry& propertyRegistry() const override { return m_propertyRegistry; }
 
-    void parseAttribute(const QualifiedName&, const AtomString&) override;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) override;
     void svgAttributeChanged(const QualifiedName&) override;
 
     bool rendererIsNeeded(const RenderStyle&) override { return false; }
     
 private:
-    PropertyRegistry m_propertyRegistry { *this };
-    Ref<SVGAnimatedEnumeration> m_type { SVGAnimatedEnumeration::create(this, FECOMPONENTTRANSFER_TYPE_IDENTITY) };
+    Ref<SVGAnimatedEnumeration> m_type { SVGAnimatedEnumeration::create(this, ComponentTransferType::FECOMPONENTTRANSFER_TYPE_IDENTITY) };
     Ref<SVGAnimatedNumberList> m_tableValues { SVGAnimatedNumberList::create(this) };
     Ref<SVGAnimatedNumber> m_slope { SVGAnimatedNumber::create(this, 1) };
     Ref<SVGAnimatedNumber> m_intercept { SVGAnimatedNumber::create(this) };

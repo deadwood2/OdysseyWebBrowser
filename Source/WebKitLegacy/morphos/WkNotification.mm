@@ -4,16 +4,16 @@
 #import <WebCore/UserGestureIndicator.h>
 #define __OBJC__
 
-static WTF::HashMap<WebCore::Notification *, id> _notificationLookup;
+static WTF::HashMap<WTF::UUID, id> _notificationLookup;
 
 @implementation WkNotificationPrivate
 
-- (id)initWithNotification:(RefPtr<WebCore::Notification>)notification
+- (id)initWithNotification:(WebCore::NotificationData&&)notification
 {
 	if ((self = [super init]))
 	{
-		_notification = notification;
-		_notificationLookup.add(notification.get(), self);
+		_notification = WTFMove(notification);
+		_notificationLookup.add(_notification->notificationID, self);
 	}
 	
 	return self;
@@ -27,14 +27,14 @@ static WTF::HashMap<WebCore::Notification *, id> _notificationLookup;
 
 - (void)cancel
 {
-	if (_notification.get())
-		_notificationLookup.remove(_notification.get());
-	_notification = nullptr;
+	auto it = _notificationLookup.find(_notification->notificationID);
+	if (it != _notificationLookup.end())
+    	_notificationLookup.remove(_notification->notificationID);
 }
 
-+ (id)notificationForNotification:(WebCore::Notification *)notification
++ (id)notificationForNotification:(WebCore::NotificationData&&)notification
 {
-	auto it = _notificationLookup.find(notification);
+	auto it = _notificationLookup.find(notification.notificationID);
 	if (it != _notificationLookup.end())
 		return it->value;
 	return nil;
@@ -42,86 +42,85 @@ static WTF::HashMap<WebCore::Notification *, id> _notificationLookup;
 
 - (OBString *)title
 {
-	if (_notification.get())
-	{
-		auto utitle = _notification->title().utf8();
-		return [OBString stringWithUTF8String:utitle.data()];
-	}
-	return nil;
+    auto utitle = _notification->title.utf8();
+    return [OBString stringWithUTF8String:utitle.data()];
 }
 
 - (OBString *)body
 {
-	if (_notification.get())
-	{
-		auto ubody = _notification->body().utf8();
-		return [OBString stringWithUTF8String:ubody.data()];
-	}
-	return nil;
+    auto ubody = _notification->body.utf8();
+    return [OBString stringWithUTF8String:ubody.data()];
 }
 
 - (OBString *)language
 {
-	if (_notification.get())
-	{
-		auto ulanguage = _notification->lang().utf8();
-		return [OBString stringWithUTF8String:ulanguage.data()];
-	}
-	return nil;
+    auto ulanguage = _notification->language.utf8();
+    return [OBString stringWithUTF8String:ulanguage.data()];
 }
 
 - (OBString *)tag
 {
-	if (_notification.get())
-	{
-		auto utag = _notification->tag().utf8();
-		return [OBString stringWithUTF8String:utag.data()];
-	}
-	return nil;
+    auto utag = _notification->tag.utf8();
+    return [OBString stringWithUTF8String:utag.data()];
 }
 
 - (OBURL *)icon
 {
-	if (_notification.get())
-	{
-		auto uurl = _notification->icon().string().utf8();
-		return [OBURL URLWithString:[OBString stringWithUTF8String:uurl.data()]];
-	}
-	return nil;
+    auto uurl = _notification->iconURL.utf8();
+    return [OBURL URLWithString:[OBString stringWithUTF8String:uurl.data()]];
 }
 
 - (BOOL)isCancelled
 {
-	return _notification.get() == nullptr;
+	auto it = _notificationLookup.find(_notification->notificationID);
+	if (it == _notificationLookup.end())
+        return YES;
+    return NO;
 }
 
 // Report state to the website
 - (void)notificationShown
 {
-	if (_notification.get())
+	if (![self isCancelled])
 	{
-		// Indicate that this event is being dispatched in reaction to a user's interaction with a platform notification.
-		WebCore::UserGestureIndicator indicator(WebCore::ProcessingUserGesture);
-		_notification->dispatchShowEvent();
-	}
+        WebCore::Notification::ensureOnNotificationThread(*_notification, [](auto* notification) {
+            if (notification)
+                notification->dispatchShowEvent();
+        });
+    }
 }
 
 - (void)notificationClosed
 {
-	if (_notification.get())
-		_notification->dispatchCloseEvent();
+	if (![self isCancelled])
+	{
+        WebCore::Notification::ensureOnNotificationThread(*_notification, [](auto* notification) {
+            if (notification)
+                notification->dispatchCloseEvent();
+        });
+    }
 }
 
 - (void)notificationClicked
 {
-	if (_notification.get())
-		_notification->dispatchClickEvent();
+	if (![self isCancelled])
+	{
+        WebCore::Notification::ensureOnNotificationThread(*_notification, [](auto* notification) {
+            if (notification)
+                notification->dispatchClickEvent();
+        });
+    }
 }
 
 - (void)notificationNotShownDueToError
 {
-	if (_notification.get())
-		_notification->dispatchErrorEvent();
+	if (![self isCancelled])
+	{
+        WebCore::Notification::ensureOnNotificationThread(*_notification, [](auto* notification) {
+            if (notification)
+                notification->dispatchErrorEvent();
+        });
+    }
 }
 
 @end

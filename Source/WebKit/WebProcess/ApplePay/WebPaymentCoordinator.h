@@ -34,6 +34,8 @@
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
+#include <wtf/MonotonicTime.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/text/StringHash.h>
 
 namespace WebCore {
@@ -49,7 +51,7 @@ class NetworkProcessConnection;
 class WebPage;
 
 class WebPaymentCoordinator final : public WebCore::PaymentCoordinatorClient, private IPC::MessageReceiver, private IPC::MessageSender {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(WebPaymentCoordinator);
 public:
     friend class NetworkProcessConnection;
     explicit WebPaymentCoordinator(WebPage&);
@@ -59,7 +61,7 @@ public:
 
 private:
     // WebCore::PaymentCoordinatorClient.
-    std::optional<String> validatedPaymentNetwork(const String&) override;
+    std::optional<String> validatedPaymentNetwork(const String&) const override;
     bool canMakePayments() override;
     void canMakePaymentsWithActiveCard(const String& merchantIdentifier, const String& domainName, CompletionHandler<void(bool)>&&) override;
     void openPaymentSetup(const String& merchantIdentifier, const String& domainName, CompletionHandler<void(bool)>&&) override;
@@ -71,21 +73,15 @@ private:
 #if ENABLE(APPLE_PAY_COUPON_CODE)
     void completeCouponCodeChange(std::optional<WebCore::ApplePayCouponCodeUpdate>&&) override;
 #endif
-    void completePaymentSession(std::optional<WebCore::PaymentAuthorizationResult>&&) override;
+    void completePaymentSession(WebCore::ApplePayPaymentAuthorizationResult&&) override;
 
     void abortPaymentSession() override;
     void cancelPaymentSession() override;
 
-    void paymentCoordinatorDestroyed() override;
-
     bool isWebPaymentCoordinator() const override { return true; }
 
-    bool supportsUnrestrictedApplePay() const override;
-
-    String userAgentScriptsBlockedErrorMessage() const final;
-
     void getSetupFeatures(const WebCore::ApplePaySetupConfiguration&, const URL&, CompletionHandler<void(Vector<Ref<WebCore::ApplePaySetupFeature>>&&)>&&) final;
-    void beginApplePaySetup(const WebCore::ApplePaySetupConfiguration&, const URL&, Vector<RefPtr<WebCore::ApplePaySetupFeature>>&&, CompletionHandler<void(bool)>&&) final;
+    void beginApplePaySetup(const WebCore::ApplePaySetupConfiguration&, const URL&, Vector<Ref<WebCore::ApplePaySetupFeature>>&&, CompletionHandler<void(bool)>&&) final;
     void endApplePaySetup() final;
 
     // IPC::MessageReceiver.
@@ -108,16 +104,15 @@ private:
 
     WebCore::PaymentCoordinator& paymentCoordinator();
 
-#if ENABLE(APPLE_PAY_REMOTE_UI)
-    bool remoteUIEnabled() const;
-#endif
-
     using AvailablePaymentNetworksSet = HashSet<String, ASCIICaseInsensitiveHash>;
     static AvailablePaymentNetworksSet platformAvailablePaymentNetworks();
 
     WebPage& m_webPage;
 
-    std::optional<AvailablePaymentNetworksSet> m_availablePaymentNetworks;
+    mutable std::optional<AvailablePaymentNetworksSet> m_availablePaymentNetworks;
+
+    MonotonicTime m_timestampOfLastCanMakePaymentsRequest;
+    std::optional<bool> m_lastCanMakePaymentsResult;
 };
 
 } // namespace WebKit

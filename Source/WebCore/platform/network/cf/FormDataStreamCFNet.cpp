@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2005-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -44,13 +44,9 @@
 
 static const SInt32 fileNotFoundError = -43;
 
-#if PLATFORM(COCOA)
 extern "C" void CFURLRequestSetHTTPRequestBody(CFMutableURLRequestRef mutableHTTPRequest, CFDataRef httpBody);
 extern "C" void CFURLRequestSetHTTPHeaderFieldValue(CFMutableURLRequestRef mutableHTTPRequest, CFStringRef httpHeaderField, CFStringRef httpHeaderFieldValue);
 extern "C" void CFURLRequestSetHTTPRequestBodyStream(CFMutableURLRequestRef req, CFReadStreamRef bodyStream);
-#elif PLATFORM(WIN)
-#include <CFNetwork/CFURLRequest.h>
-#endif
 
 typedef struct {
     CFIndex version; /* == 1 */
@@ -70,11 +66,7 @@ typedef struct {
     void (*unschedule)(CFReadStreamRef stream, CFRunLoopRef runLoop, CFStringRef runLoopMode, void *info);
 } CFReadStreamCallBacksV1;
 
-#if PLATFORM(WIN)
-#define EXTERN extern "C" __declspec(dllimport)
-#else
 #define EXTERN extern "C"
-#endif
 
 EXTERN void CFReadStreamSignalEvent(CFReadStreamRef stream, CFStreamEventType event, const void *error);
 EXTERN CFReadStreamRef CFReadStreamCreate(CFAllocatorRef alloc, const void *callbacks, void *info);
@@ -104,7 +96,7 @@ struct FormStreamFields {
     Vector<FormDataElement> remainingElements; // in reverse order
     RetainPtr<CFReadStreamRef> currentStream;
     long long currentStreamRangeLength { BlobDataItem::toEndOfFile };
-    MallocPtr<uint8_t, WTF::VectorMalloc> currentData;
+    MallocPtr<uint8_t, WTF::VectorBufferMalloc> currentData;
     CFReadStreamRef formStream { nullptr };
     unsigned long long streamLength { 0 };
     unsigned long long bytesSent { 0 };
@@ -137,10 +129,10 @@ static bool advanceCurrentStream(FormStreamFields* form)
     // Create the new stream.
     FormDataElement& nextInput = form->remainingElements.last();
 
-    bool success = switchOn(nextInput.data,
+    bool success = WTF::switchOn(nextInput.data,
         [form] (Vector<uint8_t>& bytes) {
             size_t size = bytes.size();
-            MallocPtr<uint8_t, WTF::VectorMalloc> data = bytes.releaseBuffer();
+            MallocPtr<uint8_t, WTF::VectorBufferMalloc> data = bytes.releaseBuffer();
             form->currentStream = adoptCF(CFReadStreamCreateWithBytesNoCopy(0, data.get(), size, kCFAllocatorNull));
             form->currentData = WTFMove(data);
             return true;
@@ -215,10 +207,11 @@ static void* formCreate(CFReadStreamRef stream, void* context)
     });
 
     // Append in reverse order since we remove elements from the end.
-    size_t size = newInfo->data.data().elements().size();
-    newInfo->remainingElements.reserveInitialCapacity(size);
-    for (size_t i = 0; i < size; ++i)
-        newInfo->remainingElements.uncheckedAppend(newInfo->data.data().elements()[size - i - 1]);
+    auto& elements = newInfo->data.data().elements();
+    size_t size = elements.size();
+    newInfo->remainingElements = Vector<FormDataElement>(size, [&](size_t i) {
+        return elements[size - i - 1];
+    });
 
     return newInfo;
 }
@@ -244,12 +237,7 @@ static Boolean formOpen(CFReadStreamRef, CFStreamError* error, Boolean* openComp
     bool opened = openNextStream(form);
 
     *openComplete = opened;
-    error->error = opened ? 0 :
-#if PLATFORM(WIN)
-        ENOENT;
-#else
-        fileNotFoundError;
-#endif
+    error->error = opened ? 0 : fileNotFoundError;
     return opened;
 }
 
@@ -389,7 +377,7 @@ RetainPtr<CFReadStreamRef> createHTTPBodyCFReadStream(FormData& formData)
     return adoptCF(CFReadStreamCreate(nullptr, static_cast<const void*>(&callBacks), formContext));
 }
 
-void setHTTPBody(CFMutableURLRequestRef request, FormData* formData)
+void setHTTPBody(CFMutableURLRequestRef request, const RefPtr<FormData>& formData)
 {
     if (!formData)
         return;
@@ -397,7 +385,7 @@ void setHTTPBody(CFMutableURLRequestRef request, FormData* formData)
     // Handle the common special case of one piece of form data, with no files.
     auto& elements = formData->elements();
     if (elements.size() == 1 && !formData->alwaysStream()) {
-        if (auto* vector = WTF::get_if<Vector<uint8_t>>(elements[0].data)) {
+        if (auto* vector = std::get_if<Vector<uint8_t>>(&elements[0].data)) {
             auto data = adoptCF(CFDataCreate(nullptr, vector->data(), vector->size()));
             CFURLRequestSetHTTPRequestBody(request, data.get());
             return;

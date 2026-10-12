@@ -57,13 +57,13 @@ static inline RTCDtlsTransportState toRTCDtlsTransportState(webrtc::DtlsTranspor
 
 class LibWebRTCDtlsTransportBackendObserver final : public ThreadSafeRefCounted<LibWebRTCDtlsTransportBackendObserver>, public webrtc::DtlsTransportObserverInterface {
 public:
-    static Ref<LibWebRTCDtlsTransportBackendObserver> create(RTCDtlsTransportBackend::Client& client, rtc::scoped_refptr<webrtc::DtlsTransportInterface>& backend) { return adoptRef(*new LibWebRTCDtlsTransportBackendObserver(client, backend)); }
+    static Ref<LibWebRTCDtlsTransportBackendObserver> create(RTCDtlsTransportBackendClient& client, rtc::scoped_refptr<webrtc::DtlsTransportInterface>& backend) { return adoptRef(*new LibWebRTCDtlsTransportBackendObserver(client, backend)); }
 
     void start();
     void stop();
 
 private:
-    LibWebRTCDtlsTransportBackendObserver(RTCDtlsTransportBackend::Client&, rtc::scoped_refptr<webrtc::DtlsTransportInterface>&);
+    LibWebRTCDtlsTransportBackendObserver(RTCDtlsTransportBackendClient&, rtc::scoped_refptr<webrtc::DtlsTransportInterface>&);
 
     void OnStateChange(webrtc::DtlsTransportInformation) final;
     void OnError(webrtc::RTCError) final;
@@ -71,12 +71,12 @@ private:
     void updateState(webrtc::DtlsTransportInformation&&);
 
     rtc::scoped_refptr<webrtc::DtlsTransportInterface> m_backend;
-    WeakPtr<RTCDtlsTransportBackend::Client> m_client;
+    WeakPtr<RTCDtlsTransportBackendClient> m_client;
 };
 
-LibWebRTCDtlsTransportBackendObserver::LibWebRTCDtlsTransportBackendObserver(RTCDtlsTransportBackend::Client& client, rtc::scoped_refptr<webrtc::DtlsTransportInterface>& backend)
+LibWebRTCDtlsTransportBackendObserver::LibWebRTCDtlsTransportBackendObserver(RTCDtlsTransportBackendClient& client, rtc::scoped_refptr<webrtc::DtlsTransportInterface>& backend)
     : m_backend(backend)
-    , m_client(makeWeakPtr(client))
+    , m_client(client)
 {
     ASSERT(m_backend);
 }
@@ -95,13 +95,13 @@ void LibWebRTCDtlsTransportBackendObserver::updateState(webrtc::DtlsTransportInf
         }
     }
     m_client->onStateChanged(toRTCDtlsTransportState(info.state()), map(certificates, [](auto& certificate) -> Ref<JSC::ArrayBuffer> {
-        return JSC::ArrayBuffer::create(certificate.data(), certificate.size());
+        return JSC::ArrayBuffer::create(certificate);
     }));
 }
 
 void LibWebRTCDtlsTransportBackendObserver::start()
 {
-    LibWebRTCProvider::callOnWebRTCNetworkThread([this, protectedThis = makeRef(*this)]() mutable {
+    LibWebRTCProvider::callOnWebRTCNetworkThread([this, protectedThis = Ref { *this }]() mutable {
         m_backend->RegisterObserver(this);
         callOnMainThread([protectedThis = WTFMove(protectedThis), info = m_backend->Information()]() mutable {
             protectedThis->updateState(WTFMove(info));
@@ -112,21 +112,21 @@ void LibWebRTCDtlsTransportBackendObserver::start()
 void LibWebRTCDtlsTransportBackendObserver::stop()
 {
     m_client = nullptr;
-    LibWebRTCProvider::callOnWebRTCNetworkThread([protectedThis = makeRef(*this)] {
+    LibWebRTCProvider::callOnWebRTCNetworkThread([protectedThis = Ref { *this }] {
         protectedThis->m_backend->UnregisterObserver();
     });
 }
 
 void LibWebRTCDtlsTransportBackendObserver::OnStateChange(webrtc::DtlsTransportInformation info)
 {
-    callOnMainThread([protectedThis = makeRef(*this), info = WTFMove(info)]() mutable {
+    callOnMainThread([protectedThis = Ref { *this }, info = WTFMove(info)]() mutable {
         protectedThis->updateState(WTFMove(info));
     });
 }
 
 void LibWebRTCDtlsTransportBackendObserver::OnError(webrtc::RTCError)
 {
-    callOnMainThread([protectedThis = makeRef(*this)] {
+    callOnMainThread([protectedThis = Ref { *this }] {
         if (protectedThis->m_client)
             protectedThis->m_client->onError();
     });
@@ -149,7 +149,7 @@ UniqueRef<RTCIceTransportBackend> LibWebRTCDtlsTransportBackend::iceTransportBac
     return makeUniqueRef<LibWebRTCIceTransportBackend>(m_backend->ice_transport());
 }
 
-void LibWebRTCDtlsTransportBackend::registerClient(Client& client)
+void LibWebRTCDtlsTransportBackend::registerClient(RTCDtlsTransportBackendClient& client)
 {
     ASSERT(!m_observer);
     m_observer = LibWebRTCDtlsTransportBackendObserver::create(client, m_backend);

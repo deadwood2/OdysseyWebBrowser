@@ -16,7 +16,6 @@
 #include "libANGLE/Surface.h"
 #include "libANGLE/Thread.h"
 #include "libANGLE/histogram_macros.h"
-#include "libANGLE/renderer/d3d/DeviceD3D.h"
 #include "libANGLE/renderer/d3d/EGLImageD3D.h"
 #include "libANGLE/renderer/d3d/RendererD3D.h"
 #include "libANGLE/renderer/d3d/SurfaceD3D.h"
@@ -113,7 +112,7 @@ egl::Error CreateRendererD3D(egl::Display *display, RendererD3D **outRenderer)
     else if (display->getPlatform() == EGL_PLATFORM_DEVICE_EXT)
     {
 #if defined(ANGLE_ENABLE_D3D11)
-        if (display->getDevice()->getType() == EGL_D3D11_DEVICE_ANGLE)
+        if (display->getDevice()->getExtensions().deviceD3D11)
         {
             rendererCreationFunctions.push_back(CreateRenderer11);
         }
@@ -235,9 +234,9 @@ ExternalImageSiblingImpl *DisplayD3D::createExternalImageSibling(const gl::Conte
     return mRenderer->createExternalImageSibling(context, target, buffer, attribs);
 }
 
-ShareGroupImpl *DisplayD3D::createShareGroup()
+ShareGroupImpl *DisplayD3D::createShareGroup(const egl::ShareGroupState &state)
 {
-    return new ShareGroupD3D();
+    return new ShareGroupD3D(state);
 }
 
 egl::Error DisplayD3D::makeCurrent(egl::Display *display,
@@ -280,10 +279,10 @@ bool DisplayD3D::testDeviceLost()
 egl::Error DisplayD3D::restoreLostDevice(const egl::Display *display)
 {
     // Release surface resources to make the Reset() succeed
-    for (egl::Surface *surface : mState.surfaceSet)
+    for (auto surface : mState.surfaceMap)
     {
-        ASSERT(!surface->getBoundTexture());
-        SurfaceD3D *surfaceD3D = GetImplAs<SurfaceD3D>(surface);
+        ASSERT(!surface.second->getBoundTexture());
+        SurfaceD3D *surfaceD3D = GetImplAs<SurfaceD3D>(surface.second);
         surfaceD3D->releaseSwapChain();
     }
 
@@ -293,9 +292,9 @@ egl::Error DisplayD3D::restoreLostDevice(const egl::Display *display)
     }
 
     // Restore any surfaces that may have been lost
-    for (const egl::Surface *surface : mState.surfaceSet)
+    for (auto surface : mState.surfaceMap)
     {
-        SurfaceD3D *surfaceD3D = GetImplAs<SurfaceD3D>(surface);
+        SurfaceD3D *surfaceD3D = GetImplAs<SurfaceD3D>(surface.second);
 
         ANGLE_TRY(surfaceD3D->resetSwapChain(display));
     }
@@ -322,7 +321,7 @@ egl::Error DisplayD3D::validateClientBuffer(const egl::Config *config,
         case EGL_D3D_TEXTURE_ANGLE:
             return mRenderer->getD3DTextureInfo(config, static_cast<IUnknown *>(clientBuffer),
                                                 attribs, nullptr, nullptr, nullptr, nullptr,
-                                                nullptr);
+                                                nullptr, nullptr);
 
         default:
             return DisplayImpl::validateClientBuffer(config, buftype, clientBuffer, attribs);
@@ -340,7 +339,7 @@ egl::Error DisplayD3D::validateImageClientBuffer(const gl::Context *context,
         {
             return mRenderer->getD3DTextureInfo(nullptr, static_cast<IUnknown *>(clientBuffer),
                                                 attribs, nullptr, nullptr, nullptr, nullptr,
-                                                nullptr);
+                                                nullptr, nullptr);
         }
 
         default:
@@ -353,15 +352,31 @@ void DisplayD3D::generateExtensions(egl::DisplayExtensions *outExtensions) const
     mRenderer->generateDisplayExtensions(outExtensions);
 }
 
-std::string DisplayD3D::getVendorString() const
+std::string DisplayD3D::getRendererDescription()
 {
-    std::string vendorString = "Google Inc.";
     if (mRenderer)
     {
-        vendorString += " " + mRenderer->getVendorString();
+        return mRenderer->getRendererDescription();
     }
+    return std::string();
+}
 
-    return vendorString;
+std::string DisplayD3D::getVendorString()
+{
+    if (mRenderer)
+    {
+        return mRenderer->getVendorString();
+    }
+    return std::string();
+}
+
+std::string DisplayD3D::getVersionString(bool includeFullVersion)
+{
+    if (mRenderer)
+    {
+        return mRenderer->getVersionString(includeFullVersion);
+    }
+    return std::string();
 }
 
 void DisplayD3D::generateCaps(egl::Caps *outCaps) const
@@ -369,14 +384,14 @@ void DisplayD3D::generateCaps(egl::Caps *outCaps) const
     // Display must be initialized to generate caps
     ASSERT(mRenderer != nullptr);
 
-    outCaps->textureNPOT = mRenderer->getNativeExtensions().textureNPOTOES;
+    outCaps->textureNPOT = mRenderer->getNativeExtensions().textureNpotOES;
 }
 
 egl::Error DisplayD3D::waitClient(const gl::Context *context)
 {
-    for (egl::Surface *surface : mState.surfaceSet)
+    for (auto surface : mState.surfaceMap)
     {
-        SurfaceD3D *surfaceD3D = GetImplAs<SurfaceD3D>(surface);
+        SurfaceD3D *surfaceD3D = GetImplAs<SurfaceD3D>(surface.second);
         ANGLE_TRY(surfaceD3D->checkForOutOfDateSwapChain(this));
     }
 
@@ -413,6 +428,11 @@ gl::Version DisplayD3D::getMaxConformantESVersion() const
     return mRenderer->getMaxConformantESVersion();
 }
 
+Optional<gl::Version> DisplayD3D::getMaxSupportedDesktopVersion() const
+{
+    return Optional<gl::Version>::Invalid();
+}
+
 void DisplayD3D::handleResult(HRESULT hr,
                               const char *message,
                               const char *file,
@@ -426,6 +446,11 @@ void DisplayD3D::handleResult(HRESULT hr,
                 << ":" << line << ". " << message;
 
     mStoredErrorString = errorStream.str();
+}
+
+void DisplayD3D::initializeFrontendFeatures(angle::FrontendFeatures *features) const
+{
+    mRenderer->initializeFrontendFeatures(features);
 }
 
 void DisplayD3D::populateFeatureList(angle::FeatureList *features)

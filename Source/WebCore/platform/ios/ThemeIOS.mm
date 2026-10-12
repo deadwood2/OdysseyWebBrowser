@@ -31,8 +31,6 @@
 #import <pal/ios/UIKitSoftLink.h>
 #import <wtf/NeverDestroyed.h>
 
-using namespace std;
-
 namespace WebCore {
 
 Theme& Theme::singleton()
@@ -41,14 +39,19 @@ Theme& Theme::singleton()
     return theme;
 }
 
+bool ThemeIOS::userPrefersContrast() const
+{
+    return PAL::softLink_UIKit_UIAccessibilityDarkerSystemColorsEnabled();
+}
+
 bool ThemeIOS::userPrefersReducedMotion() const
 {
     return PAL::softLink_UIKit_UIAccessibilityIsReduceMotionEnabled();
 }
 
-bool ThemeIOS::userPrefersContrast() const
+bool ThemeIOS::userPrefersOnOffLabels() const
 {
-    return PAL::softLink_UIKit_UIAccessibilityDarkerSystemColorsEnabled();
+    return PAL::softLink_UIKit_UIAccessibilityIsOnOffSwitchLabelsEnabled();
 }
 
 }

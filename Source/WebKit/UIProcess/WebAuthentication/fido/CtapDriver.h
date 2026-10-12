@@ -27,16 +27,27 @@
 
 #if ENABLE(WEB_AUTHN)
 
+#include <WebCore/AuthenticatorTransport.h>
 #include <WebCore/FidoConstants.h>
 #include <wtf/Forward.h>
 #include <wtf/Function.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class CtapDriver;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::CtapDriver> : std::true_type { };
+}
 
 namespace WebKit {
 
 class CtapDriver : public CanMakeWeakPtr<CtapDriver> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(CtapDriver);
     WTF_MAKE_NONCOPYABLE(CtapDriver);
 public:
     using ResponseCallback = Function<void(Vector<uint8_t>&&)>;
@@ -45,15 +56,19 @@ public:
 
     void setProtocol(fido::ProtocolVersion protocol) { m_protocol = protocol; }
 
+    WebCore::AuthenticatorTransport transport() const { return m_transport; }
+    fido::ProtocolVersion protocol() const { return m_protocol; }
+
     virtual void transact(Vector<uint8_t>&& data, ResponseCallback&&) = 0;
     virtual void cancel() { };
 
 protected:
-    CtapDriver() = default;
-    fido::ProtocolVersion protocol() const { return m_protocol; }
+    CtapDriver(WebCore::AuthenticatorTransport transport)
+        : m_transport(transport) { }
 
 private:
     fido::ProtocolVersion m_protocol { fido::ProtocolVersion::kCtap };
+    WebCore::AuthenticatorTransport m_transport;
 };
 
 } // namespace WebKit

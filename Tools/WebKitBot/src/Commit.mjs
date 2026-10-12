@@ -42,9 +42,9 @@ function cleanUpChange(change, contributors)
         if (!entry.nicks)
             continue;
 
-        let nameWithNicks = `${entry.fullName} (@${entry.nicks[0]})`;
-        if (change.includes(entry.fullName)) {
-            change = replaceAll(entry.fullName, nameWithNicks, change);
+        let nameWithNicks = `${entry.name} (@${entry.nicks[0]})`;
+        if (change.includes(entry.name)) {
+            change = replaceAll(entry.name, nameWithNicks, change);
             for (let email of entry.emails)
                 change = replaceAll(`<${email}>`, "", change);
         } else {
@@ -78,8 +78,12 @@ export default class Commit {
             this._author = this._email;
             if (this._email) {
                 let entry = contributors.queryWithEmail(this._email);
-                if (entry && entry.nicks && entry.nicks[0])
-                    this._author = `${entry.fullName} (@${entry.nicks[0]})`;
+                if (entry) {
+                    if (entry.nicks && entry.nicks[0])
+                        this._author = `${entry.name} (@${entry.nicks[0]})`;
+                    if (entry.slackId)
+                        this._authorSlackId = entry.slackId;
+                }
             }
         }
         if (this._revert) {
@@ -107,13 +111,17 @@ export default class Commit {
     get radar() { return this._radar; }
     get title() { return this._title; }
     get author() { return this._author; }
+    get authorSlackId() { return this._authorSlackId; }
     get url() { return this._url; }
 
     message()
     {
         let results = [];
         results.push(escapeForSlackText(`${this._title}`));
-        results.push(escapeForSlackText(`${this._url} by ${this._author}`));
+        if (!this._authorSlackId)
+            results.push(escapeForSlackText(`${this._url} by ${this._author}`));
+        else
+            results.push(`${escapeForSlackText(this._url)} by <@${this._authorSlackId}>`);
         let urls = [];
         if (this._bugzilla !== null)
             urls.push(escapeForSlackText(`https://webkit.org/b/${this._bugzilla}`));

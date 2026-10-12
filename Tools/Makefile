@@ -1,3 +1,14 @@
+ifeq ($(MAKECMDGOALS),installsrc)
+USE_WORKSPACE = NO
+endif
+
+ifneq ($(USE_WORKSPACE),NO)
+
+include ../Makefile.shared
+SCHEME = All WebKit Tools
+
+else
+
 MODULES = DumpRenderTree WebKitTestRunner MiniBrowser ../Source/ThirdParty/gtest/xcode TestWebKitAPI
 
 TO_LOWER = $(shell echo $(1) | tr [:upper:] [:lower:])
@@ -52,4 +63,11 @@ clean:
 	@$(build_target_for_each_module)
 
 installsrc:
+ifeq ($(FORCE_TOOL_INSTALL),YES)
+	@$(build_target_for_each_module)
+	ditto TestRunnerShared "$(SRCROOT)/Tools/TestRunnerShared"
+else
 	@true
+endif
+
+endif # USE_WORKSPACE

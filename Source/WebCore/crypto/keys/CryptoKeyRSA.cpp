@@ -30,13 +30,11 @@
 #include "JsonWebKey.h"
 #include <wtf/text/Base64.h>
 
-#if ENABLE(WEB_CRYPTO)
-
 namespace WebCore {
 
 RefPtr<CryptoKeyRSA> CryptoKeyRSA::importJwk(CryptoAlgorithmIdentifier algorithm, std::optional<CryptoAlgorithmIdentifier> hash, JsonWebKey&& keyData, bool extractable, CryptoKeyUsageBitmap usages)
 {
-    if (keyData.kty != "RSA")
+    if (keyData.kty != "RSA"_s)
         return nullptr;
     if (keyData.key_ops && ((keyData.usages & usages) != usages))
         return nullptr;
@@ -133,7 +131,7 @@ RefPtr<CryptoKeyRSA> CryptoKeyRSA::importJwk(CryptoAlgorithmIdentifier algorithm
 JsonWebKey CryptoKeyRSA::exportJwk() const
 {
     JsonWebKey result;
-    result.kty = "RSA";
+    result.kty = "RSA"_s;
     result.key_ops = usages();
     result.ext = extractable();
 
@@ -174,5 +172,3 @@ JsonWebKey CryptoKeyRSA::exportJwk() const
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(WEB_CRYPTO)

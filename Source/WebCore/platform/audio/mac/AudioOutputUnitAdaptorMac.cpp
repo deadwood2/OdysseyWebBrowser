@@ -54,7 +54,7 @@ void AudioOutputUnitAdaptor::configure(float hardwareSampleRate, unsigned number
     ASSERT(comp);
 
     OSStatus result = PAL::AudioComponentInstanceNew(comp, &m_outputUnit);
-    ASSERT(!result);
+    ASSERT_UNUSED(result, !result);
 
     result = PAL::AudioUnitInitialize(m_outputUnit);
     ASSERT(!result);
@@ -73,7 +73,7 @@ void AudioOutputUnitAdaptor::configure(float hardwareSampleRate, unsigned number
     AudioStreamBasicDescription streamFormat;
     streamFormat.mSampleRate = hardwareSampleRate;
     streamFormat.mFormatID = kAudioFormatLinearPCM;
-    streamFormat.mFormatFlags = kAudioFormatFlagsNativeFloatPacked | kAudioFormatFlagIsNonInterleaved;
+    streamFormat.mFormatFlags = static_cast<AudioFormatFlags>(kAudioFormatFlagsNativeFloatPacked) | static_cast<AudioFormatFlags>(kAudioFormatFlagIsNonInterleaved);
     streamFormat.mBytesPerPacket = bytesPerFloat;
     streamFormat.mFramesPerPacket = 1;
     streamFormat.mBytesPerFrame = bytesPerFloat;

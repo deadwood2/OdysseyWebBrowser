@@ -20,25 +20,33 @@
 
 #include "config.h"
 #include <wtf/dtoa.h>
+#include <wtf/dragonbox/dragonbox_to_chars.h>
 
 namespace WTF {
 
 const char* numberToString(float number, NumberToStringBuffer& buffer)
 {
     double_conversion::StringBuilder builder(&buffer[0], sizeof(buffer));
-    double_conversion::DoubleToStringConverter::EcmaScriptConverter().ToShortestSingle(number, &builder);
+    dragonbox::ToShortest(number, &builder);
     return builder.Finalize();
 }
 
 const char* numberToString(double d, NumberToStringBuffer& buffer)
 {
     double_conversion::StringBuilder builder(&buffer[0], sizeof(buffer));
-    auto& converter = double_conversion::DoubleToStringConverter::EcmaScriptConverter();
+    dragonbox::ToShortest(d, &builder);
+    return builder.Finalize();
+}
+
+const char* numberToStringWithTrailingPoint(double d, NumberToStringBuffer& buffer)
+{
+    double_conversion::StringBuilder builder(&buffer[0], sizeof(buffer));
+    auto& converter = double_conversion::DoubleToStringConverter::EcmaScriptConverterWithTrailingPoint();
     converter.ToShortest(d, &builder);
     return builder.Finalize();
 }
 
-static inline void truncateTrailingZeros(NumberToStringBuffer& buffer, double_conversion::StringBuilder& builder)
+static inline void truncateTrailingZeros(const char* buffer, double_conversion::StringBuilder& builder)
 {
     size_t length = builder.position();
     size_t decimalPointPosition = 0;
@@ -93,7 +101,7 @@ const char* numberToFixedPrecisionString(double d, unsigned significantFigures, 
     auto& converter = double_conversion::DoubleToStringConverter::EcmaScriptConverter();
     converter.ToPrecision(d, significantFigures, &builder);
     if (shouldTruncateTrailingZeros)
-        truncateTrailingZeros(buffer, builder);
+        truncateTrailingZeros(buffer.data(), builder);
     return builder.Finalize();
 }
 
@@ -119,16 +127,23 @@ const char* numberToFixedWidthString(double d, unsigned decimalPlaces, NumberToS
     return builder.Finalize();
 }
 
-namespace Internal {
-
-double parseDoubleFromLongString(const UChar* string, size_t length, size_t& parsedLength)
+const char* numberToCSSString(double d, NumberToCSSStringBuffer& buffer)
 {
-    Vector<LChar> conversionBuffer(length);
-    for (size_t i = 0; i < length; ++i)
-        conversionBuffer[i] = isASCII(string[i]) ? string[i] : 0;
-    return parseDouble(conversionBuffer.data(), length, parsedLength);
+    // Mimic sprintf("%.[precision]f", ...).
+    // "f": Signed value having the form [ – ]dddd.dddd, where dddd is one or more decimal digits.
+    // The number of digits before the decimal point depends on the magnitude of the number, and
+    // the number of digits after the decimal point depends on the requested precision.
+    // "precision": The precision value specifies the number of digits after the decimal point.
+    // If a decimal point appears, at least one digit appears before it.
+    // The value is rounded to the appropriate number of digits.
+    double_conversion::StringBuilder builder(&buffer[0], sizeof(buffer));
+    auto& converter = double_conversion::DoubleToStringConverter::CSSConverter();
+    converter.ToFixedUncapped(d, 6, &builder);
+    truncateTrailingZeros(buffer.data(), builder);
+    // If we've truncated the trailing zeros and a trailing decimal, we may have a -0. Remove the negative sign in this case.
+    if (builder.position() == 2 && buffer[0] == '-' && buffer[1] == '0')
+        builder.RemoveCharacters(0, 1);
+    return builder.Finalize();
 }
-
-} // namespace Internal
 
 } // namespace WTF

@@ -33,7 +33,7 @@
 #include <functional>
 #include <wtf/HashSet.h>
 #include <wtf/RefPtr.h>
-#include <wtf/text/StringConcatenateNumbers.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringHash.h>
 
 namespace TestWebKitAPI {
@@ -304,7 +304,7 @@ struct DerefObserver {
 
 TEST(WTF_HashSet, RefPtrNotZeroedBeforeDeref)
 {
-    auto observer = makeUnique<DerefObserver>();
+    auto observer = makeUniqueWithoutRefCountedCheck<DerefObserver>();
 
     HashSet<RefPtr<DerefObserver>> set;
     set.add(adoptRef(observer.get()));
@@ -530,23 +530,23 @@ TEST(WTF_HashSet, ReserveInitialCapacity)
     EXPECT_EQ(32768u, set.capacity());
 
     for (int i = 0; i < 9999; ++i)
-        set.add(makeString("foo", i));
+        set.add(makeString("foo"_s, i));
     EXPECT_EQ(9999u, set.size());
     EXPECT_EQ(32768u, set.capacity());
     EXPECT_TRUE(set.contains("foo3"_str));
 
     for (int i = 0; i < 9999; ++i)
-        set.add(makeString("excess", i));
+        set.add(makeString("excess"_s, i));
     EXPECT_EQ(9999u + 9999u, set.size());
     EXPECT_EQ(32768u + 32768u, set.capacity());
 
     for (int i = 0; i < 9999; ++i)
-        EXPECT_TRUE(set.remove(makeString("foo", i)));
+        EXPECT_TRUE(set.remove(makeString("foo"_s, i)));
     EXPECT_EQ(9999u, set.size());
     EXPECT_EQ(32768u, set.capacity());
 
     for (int i = 0; i < 9999; ++i)
-        EXPECT_TRUE(set.remove(makeString("excess", i)));
+        EXPECT_TRUE(set.remove(makeString("excess"_s, i)));
     EXPECT_EQ(0u, set.size());
     EXPECT_EQ(8u, set.capacity());
 
@@ -555,14 +555,299 @@ TEST(WTF_HashSet, ReserveInitialCapacity)
     EXPECT_FALSE(set2.remove("foo1"_s));
 
     for (int i = 0; i < 2000; ++i)
-        set2.add(makeString("foo", i));
+        set2.add(makeString("foo"_s, i));
     EXPECT_EQ(2000u, set2.size());
     EXPECT_EQ(32768u, set2.capacity());
 
     for (int i = 0; i < 2000; ++i)
-        EXPECT_TRUE(set2.remove(makeString("foo", i)));
+        EXPECT_TRUE(set2.remove(makeString("foo"_s, i)));
     EXPECT_EQ(0u, set2.size());
     EXPECT_EQ(8u, set2.capacity());
+}
+
+TEST(WTF_HashSet, UnionWith)
+{
+    HashSet<int> emptySet;
+    HashSet<int> set1 { 1, 2, 3 };
+    HashSet<int> set2 { 2, 3, 4 };
+    HashSet<int> set3 { 1, 2, 3, 4 };
+    Vector<int> sequence { 2, 3, 4 };
+
+    {
+        auto result = emptySet.unionWith(set1);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = set1.unionWith(emptySet);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = emptySet.unionWith(emptySet);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1.unionWith(set1);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = set1.unionWith(set2);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set2.unionWith(set1);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set1.unionWith(sequence);
+        EXPECT_EQ(result, set3);
+    }
+}
+
+TEST(WTF_HashSet, FormUnion)
+{
+    HashSet<int> emptySet;
+    HashSet<int> set1 { 1, 2, 3 };
+    HashSet<int> set2 { 2, 3, 4 };
+    HashSet<int> set3 { 1, 2, 3, 4 };
+    Vector<int> sequence { 2, 3, 4 };
+
+    {
+        auto result = emptySet;
+        result.formUnion(set1);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = set1;
+        result.formUnion(emptySet);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = emptySet;
+        result.formUnion(emptySet);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1;
+        result.formUnion(set1);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = set1;
+        result.formUnion(set2);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set2;
+        result.formUnion(set1);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set1;
+        result.formUnion(sequence);
+        EXPECT_EQ(result, set3);
+    }
+}
+
+TEST(WTF_HashSet, IntersectionWith)
+{
+    HashSet<int> emptySet;
+    HashSet<int> set1 { 1, 2, 3 };
+    HashSet<int> set2 { 2, 3, 4 };
+    HashSet<int> set3 { 2, 3 };
+    Vector<int> sequence { 2, 3, 4 };
+
+    {
+        auto result = emptySet.intersectionWith(set1);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1.intersectionWith(emptySet);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = emptySet.intersectionWith(emptySet);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1.intersectionWith(set1);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = set1.intersectionWith(set2);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set2.intersectionWith(set1);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set1.intersectionWith(sequence);
+        EXPECT_EQ(result, set3);
+    }
+}
+
+TEST(WTF_HashSet, FormIntersection)
+{
+    HashSet<int> emptySet;
+    HashSet<int> set1 { 1, 2, 3 };
+    HashSet<int> set2 { 2, 3, 4 };
+    HashSet<int> set3 { 2, 3 };
+    Vector<int> sequence { 2, 3, 4 };
+
+    {
+        auto result = emptySet;
+        result.formIntersection(set1);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1;
+        result.formIntersection(emptySet);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = emptySet;
+        result.formIntersection(emptySet);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1;
+        result.formIntersection(set1);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = set1;
+        result.formIntersection(set2);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set2;
+        result.formIntersection(set1);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set1;
+        result.formIntersection(sequence);
+        EXPECT_EQ(result, set3);
+    }
+}
+
+TEST(WTF_HashSet, SymmetricDifferenceWith)
+{
+    HashSet<int> emptySet;
+    HashSet<int> set1 { 1, 2, 3 };
+    HashSet<int> set2 { 2, 3, 4 };
+    HashSet<int> set3 { 1, 4 };
+    Vector<int> sequence { 2, 3, 4 };
+
+    {
+        auto result = emptySet.symmetricDifferenceWith(set1);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = set1.symmetricDifferenceWith(emptySet);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = emptySet.symmetricDifferenceWith(emptySet);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1.symmetricDifferenceWith(set1);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1.symmetricDifferenceWith(set2);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set2.symmetricDifferenceWith(set1);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set1.symmetricDifferenceWith(sequence);
+        EXPECT_EQ(result, set3);
+    }
+}
+
+TEST(WTF_HashSet, FormSymmetricDifference)
+{
+    HashSet<int> emptySet;
+    HashSet<int> set1 { 1, 2, 3 };
+    HashSet<int> set2 { 2, 3, 4 };
+    HashSet<int> set3 { 1, 4 };
+    Vector<int> sequence { 2, 3, 4 };
+
+    {
+        auto result = emptySet;
+        result.formSymmetricDifference(set1);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = set1;
+        result.formSymmetricDifference(emptySet);
+        EXPECT_EQ(result, set1);
+    }
+
+    {
+        auto result = emptySet;
+        result.formSymmetricDifference(emptySet);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1;
+        result.formSymmetricDifference(set1);
+        EXPECT_EQ(result, emptySet);
+    }
+
+    {
+        auto result = set1;
+        result.formSymmetricDifference(set2);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set2;
+        result.formSymmetricDifference(set1);
+        EXPECT_EQ(result, set3);
+    }
+
+    {
+        auto result = set1;
+        result.formSymmetricDifference(sequence);
+        EXPECT_EQ(result, set3);
+    }
 }
 
 } // namespace TestWebKitAPI

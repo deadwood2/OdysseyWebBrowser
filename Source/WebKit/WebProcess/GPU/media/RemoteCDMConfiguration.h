@@ -36,46 +36,7 @@ struct RemoteCDMConfiguration {
     Vector<AtomString> supportedRobustnesses;
     bool supportsServerCertificates;
     bool supportsSessions;
-
-    template<class Encoder>
-    void encode(Encoder& encoder) const
-    {
-        encoder << supportedInitDataTypes;
-        encoder << supportedRobustnesses;
-        encoder << supportsServerCertificates;
-        encoder << supportsSessions;
-    }
-
-    template <class Decoder>
-    static std::optional<RemoteCDMConfiguration> decode(Decoder& decoder)
-    {
-        std::optional<Vector<AtomString>> supportedInitDataTypes;
-        decoder >> supportedInitDataTypes;
-        if (!supportedInitDataTypes)
-            return std::nullopt;
-
-        std::optional<Vector<AtomString>> supportedRobustnesses;
-        decoder >> supportedRobustnesses;
-        if (!supportedRobustnesses)
-            return std::nullopt;
-
-        std::optional<bool> supportsServerCertificates;
-        decoder >> supportsServerCertificates;
-        if (!supportsServerCertificates)
-            return std::nullopt;
-
-        std::optional<bool> supportsSessions;
-        decoder >> supportsSessions;
-        if (!supportsSessions)
-            return std::nullopt;
-
-        return {{
-            WTFMove(*supportedInitDataTypes),
-            WTFMove(*supportedRobustnesses),
-            *supportsServerCertificates,
-            *supportsSessions,
-        }};
-    }
+    uint64_t logIdentifier { 0 };
 };
 
 } // namespace WebKit

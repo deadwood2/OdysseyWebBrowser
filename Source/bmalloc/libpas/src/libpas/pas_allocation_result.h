@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Apple Inc. All rights reserved.
+ * Copyright (c) 2018-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,6 +26,8 @@
 #ifndef PAS_ALLOCATION_RESULT_H
 #define PAS_ALLOCATION_RESULT_H
 
+#include <errno.h>
+#include "pas_internal_config.h"
 #include "pas_utils.h"
 #include "pas_zero_mode.h"
 
@@ -38,10 +40,12 @@ typedef struct pas_allocation_result pas_allocation_result;
    to separate out the allocation result status from the pointer to make compiler transformations
    on the allocation fast path work. */
 struct pas_allocation_result {
+    uintptr_t begin;
     bool did_succeed;
     pas_zero_mode zero_mode;
-    uintptr_t begin;
 };
+
+typedef pas_allocation_result (*pas_allocation_result_filter)(pas_allocation_result result);
 
 static inline pas_allocation_result pas_allocation_result_create_failure(void)
 {
@@ -69,8 +73,48 @@ static inline pas_allocation_result pas_allocation_result_create_success(uintptr
         begin, pas_zero_mode_may_have_non_zero);
 }
 
-PAS_API void pas_allocation_result_zero(pas_allocation_result* result,
-                                        size_t size);
+static PAS_ALWAYS_INLINE pas_allocation_result
+pas_allocation_result_identity(pas_allocation_result result)
+{
+    return result;
+}
+
+PAS_API pas_allocation_result pas_allocation_result_zero_large_slow(pas_allocation_result result, size_t size);
+
+static PAS_ALWAYS_INLINE pas_allocation_result
+pas_allocation_result_zero(pas_allocation_result result,
+                           size_t size)
+{
+    if (PAS_UNLIKELY(!result.did_succeed))
+        return result;
+    if (result.zero_mode == pas_zero_mode_is_all_zero)
+        return result;
+
+    if (size >= (1ULL << PAS_VA_BASED_ZERO_MEMORY_SHIFT))
+        return pas_allocation_result_zero_large_slow(result, size);
+
+    PAS_PROFILE(ZERO_ALLOCATION_RESULT, result.begin);
+    void* memory = (void*)result.begin;
+    pas_zero_memory(memory, size);
+
+    return pas_allocation_result_create_success_with_zero_mode(result.begin, pas_zero_mode_is_all_zero);
+}
+
+static PAS_ALWAYS_INLINE pas_allocation_result
+pas_allocation_result_set_errno(pas_allocation_result result)
+{
+    if (!result.did_succeed)
+        errno = ENOMEM;
+    return result;
+}
+
+static PAS_ALWAYS_INLINE pas_allocation_result
+pas_allocation_result_crash_on_error(pas_allocation_result result)
+{
+    if (PAS_UNLIKELY(!result.did_succeed))
+        pas_panic_on_out_of_memory_error();
+    return result;
+}
 
 PAS_END_EXTERN_C;
 

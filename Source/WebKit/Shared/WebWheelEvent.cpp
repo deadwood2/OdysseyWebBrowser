@@ -32,20 +32,20 @@ namespace WebKit {
 
 using namespace WebCore;
 
-WebWheelEvent::WebWheelEvent(Type type, const IntPoint& position, const IntPoint& globalPosition, const FloatSize& delta, const FloatSize& wheelTicks, Granularity granularity, OptionSet<Modifier> modifiers, WallTime timestamp)
-    : WebEvent(type, modifiers, timestamp)
+WebWheelEvent::WebWheelEvent(WebEvent&& event, const IntPoint& position, const IntPoint& globalPosition, const FloatSize& delta, const FloatSize& wheelTicks, Granularity granularity)
+    : WebEvent(WTFMove(event))
     , m_position(position)
     , m_globalPosition(globalPosition)
     , m_delta(delta)
     , m_wheelTicks(wheelTicks)
     , m_granularity(granularity)
 {
-    ASSERT(isWheelEventType(type));
+    ASSERT(isWheelEventType(type()));
 }
 
 #if PLATFORM(COCOA)
-WebWheelEvent::WebWheelEvent(Type type, const IntPoint& position, const IntPoint& globalPosition, const FloatSize& delta, const FloatSize& wheelTicks, Granularity granularity, bool directionInvertedFromDevice, Phase phase, Phase momentumPhase, bool hasPreciseScrollingDeltas, uint32_t scrollCount, const WebCore::FloatSize& unacceleratedScrollingDelta, OptionSet<Modifier> modifiers, WallTime timestamp)
-    : WebEvent(type, modifiers, timestamp)
+WebWheelEvent::WebWheelEvent(WebEvent&& event, const IntPoint& position, const IntPoint& globalPosition, const FloatSize& delta, const FloatSize& wheelTicks, Granularity granularity, bool directionInvertedFromDevice, Phase phase, Phase momentumPhase, bool hasPreciseScrollingDeltas, uint32_t scrollCount, const WebCore::FloatSize& unacceleratedScrollingDelta, WallTime ioHIDEventTimestamp, std::optional<WebCore::FloatSize> rawPlatformDelta, MomentumEndType momentumEndType)
+    : WebEvent(WTFMove(event))
     , m_position(position)
     , m_globalPosition(globalPosition)
     , m_delta(delta)
@@ -53,16 +53,19 @@ WebWheelEvent::WebWheelEvent(Type type, const IntPoint& position, const IntPoint
     , m_granularity(granularity)
     , m_phase(phase)
     , m_momentumPhase(momentumPhase)
+    , m_momentumEndType(momentumEndType)
     , m_directionInvertedFromDevice(directionInvertedFromDevice)
     , m_hasPreciseScrollingDeltas(hasPreciseScrollingDeltas)
+    , m_ioHIDEventTimestamp(ioHIDEventTimestamp)
+    , m_rawPlatformDelta(rawPlatformDelta)
     , m_scrollCount(scrollCount)
     , m_unacceleratedScrollingDelta(unacceleratedScrollingDelta)
 {
-    ASSERT(isWheelEventType(type));
+    ASSERT(isWheelEventType(type()));
 }
 #elif PLATFORM(GTK) || USE(LIBWPE)
-WebWheelEvent::WebWheelEvent(Type type, const IntPoint& position, const IntPoint& globalPosition, const FloatSize& delta, const FloatSize& wheelTicks, Phase phase, Phase momentumPhase, Granularity granularity, bool hasPreciseScrollingDeltas, OptionSet<Modifier> modifiers, WallTime timestamp)
-    : WebEvent(type, modifiers, timestamp)
+WebWheelEvent::WebWheelEvent(WebEvent&& event, const IntPoint& position, const IntPoint& globalPosition, const FloatSize& delta, const FloatSize& wheelTicks, Granularity granularity, Phase phase, Phase momentumPhase, bool hasPreciseScrollingDeltas)
+    : WebEvent(WTFMove(event))
     , m_position(position)
     , m_globalPosition(globalPosition)
     , m_delta(delta)
@@ -72,67 +75,13 @@ WebWheelEvent::WebWheelEvent(Type type, const IntPoint& position, const IntPoint
     , m_momentumPhase(momentumPhase)
     , m_hasPreciseScrollingDeltas(hasPreciseScrollingDeltas)
 {
-    ASSERT(isWheelEventType(type));
+    ASSERT(isWheelEventType(type()));
 }
 #endif
 
-void WebWheelEvent::encode(IPC::Encoder& encoder) const
+bool WebWheelEvent::isWheelEventType(WebEventType type)
 {
-    WebEvent::encode(encoder);
-
-    encoder << m_position;
-    encoder << m_globalPosition;
-    encoder << m_delta;
-    encoder << m_wheelTicks;
-    encoder << m_granularity;
-    encoder << m_directionInvertedFromDevice;
-#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE)
-    encoder << m_phase;
-    encoder << m_momentumPhase;
-    encoder << m_hasPreciseScrollingDeltas;
-#endif
-#if PLATFORM(COCOA)
-    encoder << m_scrollCount;
-    encoder << m_unacceleratedScrollingDelta;
-#endif
-}
-
-bool WebWheelEvent::decode(IPC::Decoder& decoder, WebWheelEvent& t)
-{
-    if (!WebEvent::decode(decoder, t))
-        return false;
-    if (!decoder.decode(t.m_position))
-        return false;
-    if (!decoder.decode(t.m_globalPosition))
-        return false;
-    if (!decoder.decode(t.m_delta))
-        return false;
-    if (!decoder.decode(t.m_wheelTicks))
-        return false;
-    if (!decoder.decode(t.m_granularity))
-        return false;
-    if (!decoder.decode(t.m_directionInvertedFromDevice))
-        return false;
-#if PLATFORM(COCOA) || PLATFORM(GTK) || USE(LIBWPE)
-    if (!decoder.decode(t.m_phase))
-        return false;
-    if (!decoder.decode(t.m_momentumPhase))
-        return false;
-    if (!decoder.decode(t.m_hasPreciseScrollingDeltas))
-        return false;
-#endif
-#if PLATFORM(COCOA)
-    if (!decoder.decode(t.m_scrollCount))
-        return false;
-    if (!decoder.decode(t.m_unacceleratedScrollingDelta))
-        return false;
-#endif
-    return true;
-}
-
-bool WebWheelEvent::isWheelEventType(Type type)
-{
-    return type == Wheel;
+    return type == WebEventType::Wheel;
 }
 
 } // namespace WebKit

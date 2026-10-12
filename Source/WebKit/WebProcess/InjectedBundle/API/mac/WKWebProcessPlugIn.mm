@@ -27,7 +27,6 @@
 #import "WKWebProcessPlugInInternal.h"
 
 #import "APIArray.h"
-#import "WKConnectionInternal.h"
 #import "WKBundle.h"
 #import "WKBundleAPICast.h"
 #import "WKRetainPtr.h"
@@ -93,13 +92,6 @@ static void setUpBundleClient(WKWebProcessPlugInController *plugInController, We
     setUpBundleClient(self, *_bundle);
 }
 
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-- (WKConnection *)connection
-{
-    return wrapper(*_bundle->webConnectionToUIProcess());
-}
-ALLOW_DEPRECATED_DECLARATIONS_END
-
 - (id)parameters
 {
     return _bundle->bundleParameters();
@@ -113,7 +105,7 @@ static Ref<API::Array> createWKArray(NSArray *array)
     
     for (id entry in array) {
         if ([entry isKindOfClass:[NSString class]])
-            strings.uncheckedAppend(adoptRef(WebKit::toImpl(WKStringCreateWithCFString((__bridge CFStringRef)entry))));
+            strings.append(adoptRef(WebKit::toImpl(WKStringCreateWithCFString((__bridge CFStringRef)entry))));
     }
     
     return API::Array::create(WTFMove(strings));

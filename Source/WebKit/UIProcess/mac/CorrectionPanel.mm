@@ -30,42 +30,27 @@
 
 #import "WebPageProxy.h"
 #import "WebViewImpl.h"
+#import <WebCore/CorrectionIndicator.h>
+#import <pal/SessionID.h>
 #import <wtf/cocoa/VectorCocoa.h>
-
-static inline NSCorrectionIndicatorType correctionIndicatorType(WebCore::AlternativeTextType alternativeTextType)
-{
-    switch (alternativeTextType) {
-    case WebCore::AlternativeTextTypeCorrection:
-        return NSCorrectionIndicatorTypeDefault;
-    case WebCore::AlternativeTextTypeReversion:
-        return NSCorrectionIndicatorTypeReversion;
-    case WebCore::AlternativeTextTypeSpellingSuggestions:
-        return NSCorrectionIndicatorTypeGuesses;
-    case WebCore::AlternativeTextTypeDictationAlternatives:
-        ASSERT_NOT_REACHED();
-        break;
-    }
-    ASSERT_NOT_REACHED();
-    return NSCorrectionIndicatorTypeDefault;
-}
 
 namespace WebKit {
 using namespace WebCore;
 
 CorrectionPanel::CorrectionPanel()
     : m_wasDismissedExternally(false)
-    , m_reasonForDismissing(ReasonForDismissingAlternativeTextIgnored)
+    , m_reasonForDismissing(ReasonForDismissingAlternativeText::Ignored)
 {
 }
 
 CorrectionPanel::~CorrectionPanel()
 {
-    dismissInternal(ReasonForDismissingAlternativeTextIgnored, false);
+    dismissInternal(ReasonForDismissingAlternativeText::Ignored, false);
 }
 
 void CorrectionPanel::show(NSView *view, WebViewImpl& webViewImpl, AlternativeTextType type, const FloatRect& boundingBoxOfReplacedString, const String& replacedString, const String& replacementString, const Vector<String>& alternativeReplacementStrings)
 {
-    dismissInternal(ReasonForDismissingAlternativeTextIgnored, false);
+    dismissInternal(ReasonForDismissingAlternativeText::Ignored, false);
 
     if (!view)
         return;
@@ -78,7 +63,7 @@ void CorrectionPanel::show(NSView *view, WebViewImpl& webViewImpl, AlternativeTe
     m_view = view;
     m_spellCheckerDocumentTag = spellCheckerDocumentTag;
     NSCorrectionIndicatorType indicatorType = correctionIndicatorType(type);
-    
+
     RetainPtr<NSArray> alternativeStrings;
     if (!alternativeReplacementStrings.isEmpty())
         alternativeStrings = createNSArray(alternativeReplacementStrings);
@@ -124,7 +109,7 @@ void CorrectionPanel::handleAcceptedReplacement(WebViewImpl& webViewImpl, NSStri
         if (acceptedReplacement)
             recordAutocorrectionResponse(webViewImpl, m_spellCheckerDocumentTag, NSCorrectionResponseAccepted, replaced, acceptedReplacement);
         else {
-            if (!m_wasDismissedExternally || m_reasonForDismissing == ReasonForDismissingAlternativeTextCancelled)
+            if (!m_wasDismissedExternally || m_reasonForDismissing == ReasonForDismissingAlternativeText::Cancelled)
                 recordAutocorrectionResponse(webViewImpl, m_spellCheckerDocumentTag, NSCorrectionResponseRejected, replaced, proposedReplacement);
             else
                 recordAutocorrectionResponse(webViewImpl, m_spellCheckerDocumentTag, NSCorrectionResponseIgnored, replaced, proposedReplacement);

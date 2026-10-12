@@ -30,7 +30,9 @@
 #include "MessageReceiver.h"
 #include "MessageSender.h"
 #include "SandboxExtension.h"
+#include <WebCore/PageIdentifier.h>
 #include <WebCore/RealtimeMediaSourceIdentifier.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 class CaptureDevice;
@@ -39,21 +41,17 @@ class CaptureDevice;
 namespace WebKit {
 
 class SpeechRecognitionRealtimeMediaSourceManager final : public IPC::MessageReceiver, private IPC::MessageSender {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(SpeechRecognitionRealtimeMediaSourceManager);
 public:
     explicit SpeechRecognitionRealtimeMediaSourceManager(Ref<IPC::Connection>&&);
     ~SpeechRecognitionRealtimeMediaSourceManager();
 
 private:
     // Messages::SpeechRecognitionRealtimeMediaSourceManager
-    void createSource(WebCore::RealtimeMediaSourceIdentifier, const WebCore::CaptureDevice&);
+    void createSource(WebCore::RealtimeMediaSourceIdentifier, const WebCore::CaptureDevice&, WebCore::PageIdentifier);
     void deleteSource(WebCore::RealtimeMediaSourceIdentifier);
     void start(WebCore::RealtimeMediaSourceIdentifier);
     void stop(WebCore::RealtimeMediaSourceIdentifier);
-#if ENABLE(SANDBOX_EXTENSIONS)
-    void grantSandboxExtensions(SandboxExtension::Handle&&, SandboxExtension::Handle&&);
-    void revokeSandboxExtensions();
-#endif
 
     // IPC::MessageReceiver.
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
@@ -69,6 +67,7 @@ private:
     HashMap<WebCore::RealtimeMediaSourceIdentifier, std::unique_ptr<Source>> m_sources;
 
 #if ENABLE(SANDBOX_EXTENSIONS)
+    RefPtr<SandboxExtension> m_machBootstrapExtension;
     RefPtr<SandboxExtension> m_sandboxExtensionForTCCD;
     RefPtr<SandboxExtension> m_sandboxExtensionForMicrophone;
 #endif

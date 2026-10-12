@@ -34,6 +34,7 @@ class AccessibilityMenuListOption;
 class HTMLElement;
 
 class AccessibilityMenuListPopup final : public AccessibilityMockObject {
+    friend class AXObjectCache;
 public:
     static Ref<AccessibilityMenuListPopup> create() { return adoptRef(*new AccessibilityMenuListPopup); }
 
@@ -45,20 +46,28 @@ public:
 private:
     AccessibilityMenuListPopup();
 
-    bool isMenuListPopup() const override { return true; }
+    bool isMenuListPopup() const final { return true; }
 
-    LayoutRect elementRect() const override { return LayoutRect(); }
-    AccessibilityRole roleValue() const override { return AccessibilityRole::MenuListPopup; }
+    LayoutRect elementRect() const final { return LayoutRect(); }
+    AccessibilityRole determineAccessibilityRole() final { return AccessibilityRole::MenuListPopup; }
 
     bool isVisible() const override;
     bool press() override;
     void addChildren() override;
-    void childrenChanged() override;
+    void handleChildrenChanged();
     bool computeAccessibilityIsIgnored() const override;
+    std::optional<AccessibilityChildrenVector> selectedChildren() final;
 
     AccessibilityMenuListOption* menuListOptionAccessibilityObject(HTMLElement*) const;
 };
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_ACCESSIBILITY(AccessibilityMenuListPopup, isMenuListPopup())
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::AccessibilityMenuListPopup)
+    static bool isType(const WebCore::AccessibilityObject& object) { return object.isMenuListPopup(); }
+    static bool isType(const WebCore::AXCoreObject& object)
+    {
+        auto* accessibilityObject = dynamicDowncast<WebCore::AccessibilityObject>(object);
+        return accessibilityObject && accessibilityObject->isMenuListPopup();
+    }
+SPECIALIZE_TYPE_TRAITS_END()

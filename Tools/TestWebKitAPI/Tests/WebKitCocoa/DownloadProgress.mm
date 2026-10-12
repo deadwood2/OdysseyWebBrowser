@@ -35,6 +35,7 @@
 #import <WebKit/_WKDownload.h>
 #import <WebKit/_WKDownloadDelegate.h>
 #import <pal/spi/cocoa/NSProgressSPI.h>
+#import <sys/xattr.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/FileSystem.h>
 #import <wtf/RetainPtr.h>
@@ -136,6 +137,7 @@ static void* progressObservingContext = &progressObservingContext;
 
     NSString *fileName = [NSString stringWithFormat:@"download-progress-%@", [NSUUID UUID].UUIDString];
     m_progressURL = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:fileName] isDirectory:NO];
+    [NSFileManager.defaultManager createFileAtPath:m_progressURL.get().path contents:nil attributes:nil];
 
     currentTestRunner = self;
 
@@ -144,6 +146,13 @@ static void* progressObservingContext = &progressObservingContext;
     }).get();
 
     return self;
+}
+
+- (void)dealloc
+{
+    [NSFileManager.defaultManager removeItemAtURL:m_progressURL.get() error:nil];
+
+    [super dealloc];
 }
 
 - (_WKDownload *)download
@@ -303,6 +312,11 @@ static void* progressObservingContext = &progressObservingContext;
     TestWebKitAPI::Util::run(&m_downloadFailed);
 }
 
+- (NSURL *)progressURL
+{
+    return m_progressURL.get();
+}
+
 - (int64_t)waitForUpdatedCompletedUnitCount
 {
     TestWebKitAPI::Util::run(&m_hasUpdatedCompletedUnitCount);
@@ -378,10 +392,8 @@ static void* progressObservingContext = &progressObservingContext;
 {
     EXPECT_EQ(download, m_download.get());
 
-    FileSystem::PlatformFileHandle fileHandle;
-    RetainPtr<NSString> path = (NSString *)FileSystem::openTemporaryFile("TestWebKitAPI", fileHandle);
-    EXPECT_TRUE(fileHandle != FileSystem::invalidPlatformFileHandle);
-    FileSystem::closeFile(fileHandle);
+    RetainPtr<NSString> path = (NSString *)FileSystem::createTemporaryFile("TestWebKitAPI"_s);
+    EXPECT_TRUE(path && [path.get() length]);
 
     completionHandler(YES, path.get());
 }
@@ -571,6 +583,28 @@ TEST(DownloadProgress, PublishProgressOnPartialDownload)
     [testRunner.get() finishDownloadTask];
     [testRunner.get() waitForDownloadFinished];
     [testRunner.get() waitToLoseProgress];
+
+    [testRunner.get() tearDown];
+}
+
+TEST(DownloadProgress, ProgressExtendedAttributeSetAfterPartialDownloadStops)
+{
+    auto testRunner = adoptNS([[DownloadProgressTestRunner alloc] init]);
+
+    [testRunner.get() startDownload:DownloadStartType::ConvertLoadToDownload expectedLength:100];
+    [testRunner.get() publishProgress];
+    [testRunner.get() subscribeAndWaitForProgress];
+    [testRunner.get() receiveData:60];
+    [testRunner.get() waitForUpdatedCompletedUnitCount];
+    [testRunner.get().download cancel];
+    [testRunner.get() waitForDownloadCanceled];
+    [testRunner.get() waitToLoseProgress];
+
+    char xattrValue[10] = { 0 };
+    auto size = getxattr(testRunner.get().progressURL.fileSystemRepresentation, "com.apple.progress.fractionCompleted", xattrValue, sizeof(xattrValue), 0, 0);
+
+    EXPECT_EQ(size, 5);
+    EXPECT_STREQ(xattrValue, "0.600");
 
     [testRunner.get() tearDown];
 }

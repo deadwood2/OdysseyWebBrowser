@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -36,19 +36,22 @@ _log = logging.getLogger(__name__)
 class WatchSimulatorPort(WatchPort):
     port_name = 'watchos-simulator'
 
-    ARCHITECTURES = ['i386']
+    ARCHITECTURES = ['i386', 'arm64_32']
     DEFAULT_ARCHITECTURE = 'i386'
 
     DEVICE_MANAGER = SimulatedDeviceManager
 
-    DEFAULT_DEVICE_TYPES = [DeviceType(hardware_family='Apple Watch', hardware_type='Series 3 - 42mm')]
+    DEFAULT_DEVICE_TYPES = [DeviceType(hardware_family='Apple Watch', hardware_type='Series 9 - 45mm')]
     SDK = apple_additions().get_sdk('watchsimulator') if apple_additions() else 'watchsimulator'
 
     def architecture(self):
+        result = self.get_option('architecture') or self.host.platform.architecture()
+        if result in ('arm64', 'arm64e'):
+            return 'arm64_32'
         return self.DEFAULT_ARCHITECTURE
 
-    # This supports the mapping of a port name such as watchos-simulator-5 to the construction of a port
-    # using watchOS 5.
+    # This supports the mapping of a port name such as watchos-simulator-9 to the construction of a port
+    # using watchOS 9.
     @staticmethod
     def _version_from_name(name):
         if len(name.split('-')) > 2 and name.split('-')[2].isdigit():
@@ -92,9 +95,3 @@ class WatchSimulatorPort(WatchPort):
     @memoized
     def developer_dir(self):
         return self._executive.run_command(['xcode-select', '--print-path']).rstrip()
-
-    def logging_patterns_to_strip(self):
-        return []
-
-    def stderr_patterns_to_strip(self):
-        return []

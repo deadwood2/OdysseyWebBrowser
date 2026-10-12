@@ -29,8 +29,6 @@
 #include "ExceptionOr.h"
 #include <wtf/Function.h>
 
-#if ENABLE(WEB_CRYPTO)
-
 #if OS(DARWIN) && !PLATFORM(GTK)
 #include "CommonCryptoUtilities.h"
 
@@ -78,8 +76,8 @@ public:
 
     size_t keySizeInBits() const;
 
-    using KeyPairCallback = WTF::Function<void(CryptoKeyPair&&)>;
-    using VoidCallback = WTF::Function<void()>;
+    using KeyPairCallback = Function<void(CryptoKeyPair&&)>;
+    using VoidCallback = Function<void()>;
     static void generatePair(CryptoAlgorithmIdentifier, CryptoAlgorithmIdentifier hash, bool hasHash, unsigned modulusLength, const Vector<uint8_t>& publicExponent, bool extractable, CryptoKeyUsageBitmap, KeyPairCallback&&, VoidCallback&& failureCallback, ScriptExecutionContext*);
     static RefPtr<CryptoKeyRSA> importJwk(CryptoAlgorithmIdentifier, std::optional<CryptoAlgorithmIdentifier> hash, JsonWebKey&&, bool extractable, CryptoKeyUsageBitmap);
     static RefPtr<CryptoKeyRSA> importSpki(CryptoAlgorithmIdentifier, std::optional<CryptoAlgorithmIdentifier> hash, Vector<uint8_t>&&, bool extractable, CryptoKeyUsageBitmap);
@@ -110,5 +108,3 @@ private:
 } // namespace WebCore
 
 SPECIALIZE_TYPE_TRAITS_CRYPTO_KEY(CryptoKeyRSA, CryptoKeyClass::RSA)
-
-#endif // ENABLE(WEB_CRYPTO)

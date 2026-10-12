@@ -26,7 +26,7 @@
 #import "config.h"
 #import "TestPDFDocument.h"
 
-#if HAVE(PDFKIT)
+#if USE(PDFKIT_FOR_TESTING)
 
 #import <WebCore/ColorMac.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
@@ -95,7 +95,7 @@ size_t TestPDFPage::characterCount() const
     return text().length();
 }
 
-inline bool shouldStrip(UChar character)
+inline bool shouldTrim(UChar character)
 {
     // This is a list of trailing and leading white space characters we've seen in PDF generation.
     // It can be expanded if we see more popup.
@@ -105,7 +105,7 @@ inline bool shouldStrip(UChar character)
 String TestPDFPage::text() const
 {
     if (!m_textWithoutSurroundingWhitespace)
-        m_textWithoutSurroundingWhitespace = String(m_page.get().string).stripLeadingAndTrailingCharacters(shouldStrip);
+        m_textWithoutSurroundingWhitespace = String(m_page.get().string).trim(shouldTrim);
 
     return *m_textWithoutSurroundingWhitespace;
 }
@@ -130,7 +130,7 @@ WebCore::Color TestPDFPage::colorAtPoint(int x, int y) const
 {
     auto boundsRect = bounds();
     auto colorSpace = adoptCF(CGColorSpaceCreateWithName(kCGColorSpaceSRGB));
-    auto context = adoptCF(CGBitmapContextCreate(NULL, boundsRect.size.width, boundsRect.size.height, 8, 0, colorSpace.get(), kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big));
+    auto context = adoptCF(CGBitmapContextCreate(NULL, boundsRect.size.width, boundsRect.size.height, 8, 0, colorSpace.get(), static_cast<uint32_t>(kCGImageAlphaPremultipliedLast) | static_cast<uint32_t>(kCGBitmapByteOrder32Big)));
 
     auto cgPage = m_page.get().pageRef;
     CGContextDrawPDFPageWithAnnotations(context.get(), cgPage, nullptr);
@@ -177,4 +177,4 @@ TestPDFPage* TestPDFDocument::page(size_t index)
 
 } // namespace TestWebKitAPI
 
-#endif // HAVE(PDFKIT)
+#endif // USE(PDFKIT_FOR_TESTING)

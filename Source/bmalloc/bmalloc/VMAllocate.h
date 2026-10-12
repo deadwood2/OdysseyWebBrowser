@@ -23,30 +23,20 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
  */
 
-#ifndef VMAllocate_h
-#define VMAllocate_h
+#pragma once
 
 #include "BAssert.h"
+#include "BSyscall.h"
 #include "BVMTags.h"
 #include "Logging.h"
 #include "Range.h"
 #include "Sizes.h"
-#include "Syscall.h"
 #include <algorithm>
 #include <sys/mman.h>
-#if BOS(MORPHOS)
-#define PROTO_SOCKET_H   /* Avoid conflict due to bind/connect etc defines */
-#define _SELECT_DECLARED /* Make sys/select.h not fail due to missing WaitSelect proto */
-#endif
 #include <unistd.h>
 
 #if BOS(DARWIN)
 #include <mach/vm_page_size.h>
-#endif
-
-#if BOS(MORPHOS)
-#include <exec/system.h>
-#include <stdlib.h>
 #endif
 
 namespace bmalloc {
@@ -65,14 +55,9 @@ inline size_t vmPageSize()
 {
     static size_t cached;
     if (!cached) {
-#if BOS(MORPHOS)
-        long pageSize = 32;
-        NewGetSystemAttrsA(&pageSize, sizeof(pageSize), SYSTEMINFOTYPE_PPC_DCACHEL1LINESIZE, NULL);
-#else
         long pageSize = sysconf(_SC_PAGESIZE);
         if (pageSize < 0)
             BCRASH();
-#endif
         cached = pageSize;
     }
     return cached;
@@ -111,8 +96,6 @@ inline size_t vmPageSizePhysical()
 {
 #if BOS(DARWIN) && (BCPU(ARM64) || BCPU(ARM))
     return vm_kernel_page_size;
-#elif BOS(MORPHOS)
-    return vmPageSize();
 #else
     static size_t cached;
     if (!cached)
@@ -140,17 +123,9 @@ inline void vmValidatePhysical(void* p, size_t vmSize)
 inline void* tryVMAllocate(size_t vmSize, VMTag usage = VMTag::Malloc)
 {
     vmValidate(vmSize);
-#if BOS(MORPHOS)
-	(void)usage;
-    void* result = memalign(vmPageSize(), vmSize);
-    if (result == NULL)
-        return nullptr;
-    memset(result, 0, vmSize);
-#else
     void* result = mmap(0, vmSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | BMALLOC_NORESERVE, static_cast<int>(usage), 0);
     if (result == MAP_FAILED)
         return nullptr;
-#endif
     return result;
 }
 
@@ -164,19 +139,13 @@ inline void* vmAllocate(size_t vmSize, VMTag usage = VMTag::Malloc)
 inline void vmDeallocate(void* p, size_t vmSize)
 {
     vmValidate(p, vmSize);
-#if BOS(MORPHOS)
-    free(p);
-#else
     munmap(p, vmSize);
-#endif
 }
 
 inline void vmRevokePermissions(void* p, size_t vmSize)
 {
     vmValidate(p, vmSize);
-#if !BOS(MORPHOS)
     mprotect(p, vmSize, PROT_NONE);
-#endif
 }
 
 inline void vmZeroAndPurge(void* p, size_t vmSize, VMTag usage = VMTag::Malloc)
@@ -184,14 +153,8 @@ inline void vmZeroAndPurge(void* p, size_t vmSize, VMTag usage = VMTag::Malloc)
     vmValidate(p, vmSize);
     // MAP_ANON guarantees the memory is zeroed. This will also cause
     // page faults on accesses to this range following this call.
-#if BOS(MORPHOS)
-	(void)usage;
-    if (p)
-        memset(p, 0, vmSize);
-#else
     void* result = mmap(p, vmSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED | BMALLOC_NORESERVE, static_cast<int>(usage), 0);
     RELEASE_BASSERT(result == p);
-#endif
 }
 
 // Allocates vmSize bytes at a specified power-of-two alignment.
@@ -202,10 +165,6 @@ inline void* tryVMAllocate(size_t vmAlignment, size_t vmSize, VMTag usage = VMTa
     vmValidate(vmSize);
     vmValidate(vmAlignment);
 
-#if BOS(MORPHOS)
-	(void)usage;
-    char* aligned = static_cast<char*>(memalign(vmAlignment, vmSize));
-#else
     size_t mappedSize = vmAlignment + vmSize;
     if (mappedSize < vmAlignment || mappedSize < vmSize) // Check for overflow
         return nullptr;
@@ -225,7 +184,6 @@ inline void* tryVMAllocate(size_t vmAlignment, size_t vmSize, VMTag usage = VMTa
     
     if (size_t rightExtra = mappedEnd - alignedEnd)
         vmDeallocate(alignedEnd, rightExtra);
-#endif
 
     return aligned;
 }
@@ -244,8 +202,6 @@ inline void vmDeallocatePhysicalPages(void* p, size_t vmSize)
     SYSCALL(madvise(p, vmSize, MADV_FREE_REUSABLE));
 #elif BOS(FREEBSD)
     SYSCALL(madvise(p, vmSize, MADV_FREE));
-#elif BOS(MORPHOS)
-    // do nothing
 #else
     SYSCALL(madvise(p, vmSize, MADV_DONTNEED));
 #if BOS(LINUX)
@@ -308,5 +264,3 @@ inline void vmAllocatePhysicalPagesSloppy(void* p, size_t size)
 }
 
 } // namespace bmalloc
-
-#endif // VMAllocate_h

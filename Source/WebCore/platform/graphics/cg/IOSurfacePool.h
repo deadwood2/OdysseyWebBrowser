@@ -36,23 +36,28 @@
 #include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
+#include <wtf/StdLibExtras.h>
+#include <wtf/ThreadSafeRefCounted.h>
 
 namespace WebCore {
 
 class DestinatationColorSpace;
 
-class IOSurfacePool {
+class IOSurfacePool : public ThreadSafeRefCounted<IOSurfacePool> {
     WTF_MAKE_NONCOPYABLE(IOSurfacePool);
     WTF_MAKE_FAST_ALLOCATED;
     friend class LazyNeverDestroyed<IOSurfacePool>;
 
 public:
     WEBCORE_EXPORT static IOSurfacePool& sharedPool();
+    WEBCORE_EXPORT static Ref<IOSurfacePool> create();
+
+    WEBCORE_EXPORT ~IOSurfacePool();
 
     std::unique_ptr<IOSurface> takeSurface(IntSize, const DestinationColorSpace&, IOSurface::Format);
-    WEBCORE_EXPORT void addSurface(std::unique_ptr<IOSurface>);
+    WEBCORE_EXPORT void addSurface(std::unique_ptr<IOSurface>&&);
 
-    void discardAllSurfaces();
+    WEBCORE_EXPORT void discardAllSurfaces();
 
     WEBCORE_EXPORT void setPoolSize(size_t);
 
@@ -74,7 +79,11 @@ private:
     typedef HashMap<IntSize, CachedSurfaceQueue> CachedSurfaceMap;
     typedef HashMap<IOSurface*, CachedSurfaceDetails> CachedSurfaceDetailsMap;
 
-    static constexpr size_t defaultMaximumBytesCached { 1024 * 1024 * 64 };
+#if PLATFORM(MAC)
+    static constexpr size_t defaultMaximumBytesCached { 256 * MB };
+#else
+    static constexpr size_t defaultMaximumBytesCached { 64 * MB };
+#endif
 
     // We'll never allow more than 1/2 of the cache to be filled with in-use surfaces, because
     // they can't be immediately returned when requested (but will be freed up in the future).
@@ -101,10 +110,10 @@ private:
 
     void discardAllSurfacesInternal() WTF_REQUIRES_LOCK(m_lock);
 
-    void showPoolStatistics(const char*);
+    String poolStatistics() const WTF_REQUIRES_LOCK(m_lock);
 
     Lock m_lock;
-    RunLoop::Timer<IOSurfacePool> m_collectionTimer WTF_GUARDED_BY_LOCK(m_lock);
+    RunLoop::Timer m_collectionTimer WTF_GUARDED_BY_LOCK(m_lock);
     CachedSurfaceMap m_cachedSurfaces WTF_GUARDED_BY_LOCK(m_lock);
     CachedSurfaceQueue m_inUseSurfaces WTF_GUARDED_BY_LOCK(m_lock);
     CachedSurfaceDetailsMap m_surfaceDetails WTF_GUARDED_BY_LOCK(m_lock);

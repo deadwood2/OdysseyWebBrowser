@@ -33,6 +33,7 @@
 #import "PlatformUtilities.h"
 #import "TestWKWebView.h"
 #import <WebKit/PreferenceObserver.h>
+#import <WebKit/WKWebViewPrivate.h>
 
 #import <wtf/ObjCRuntimeExtras.h>
 
@@ -62,6 +63,9 @@ static const CFStringRef testDomain = CFSTR("com.apple.avfoundation");
     CFPreferencesSetValue(TEST_KEY(), nil, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost); \
     CFPreferencesSetAppValue(TEST_KEY(), nil, testDomain); \
 }
+
+static constexpr unsigned preferenceQueryMaxCount = 10;
+static constexpr Seconds preferenceQuerySleepTime = 1_s;
 
 static void waitForPreferenceSynchronization()
 {
@@ -151,8 +155,46 @@ TEST(WebKit, PreferenceChanges)
     CLEAR_DEFAULTS();
 }
 
-// FIXME: Re-enable these tests once webkit.org/b/221848  is resolved.
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 110000
+TEST(WebKit, PreferenceChangesWithSuspendedProcess)
+{
+    CLEAR_DEFAULTS();
+
+    CFPreferencesSetAppValue(TEST_KEY(), CFSTR("0"), testDomain);
+
+    auto observer = adoptNS([[WKTestPreferenceObserver alloc] init]);
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    WKRetainPtr<WKContextRef> context = adoptWK(TestWebKitAPI::Util::createContextForInjectedBundleTest("InternalsInjectedBundleTest"));
+    [configuration setProcessPool:(WKProcessPool *)context.get()];
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 300, 300) configuration:configuration.get() addToWindow:YES]);
+    [webView synchronouslyLoadTestPageNamed:@"simple"];
+
+    auto webView2 = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 300, 300) configuration:configuration.get() addToWindow:NO]);
+    [webView2 synchronouslyLoadTestPageNamed:@"simple"];
+
+    unsigned attempts = 0;
+    while (![webView2 _isSuspended] && ++attempts < 5)
+        TestWebKitAPI::Util::runFor(1_s);
+
+    receivedPreferenceNotification = false;
+
+    CFPreferencesSetAppValue(TEST_KEY(), CFSTR("1"), testDomain);
+
+    EXPECT_EQ(1, CFPreferencesGetAppIntegerValue(TEST_KEY(), testDomain, nullptr));
+
+    TestWebKitAPI::Util::run(&receivedPreferenceNotification);
+
+    auto preferenceValue = [&] {
+        waitForPreferenceSynchronization();
+        NSString *js = [NSString stringWithFormat:@"window.internals.readPreferenceInteger(\"%@\",\"%@\")", (NSString *)testDomain, (NSString *)TEST_KEY()];
+        return [webView stringByEvaluatingJavaScript:js].intValue;
+    };
+
+    EXPECT_EQ(preferenceValue(), 1);
+
+    CLEAR_DEFAULTS();
+}
+
 TEST(WebKit, GlobalPreferenceChangesUsingDefaultsWrite)
 {
     CLEAR_DEFAULTS();
@@ -181,13 +223,71 @@ TEST(WebKit, GlobalPreferenceChangesUsingDefaultsWrite)
         return [webView stringByEvaluatingJavaScript:js].intValue;
     };
 
-    EXPECT_EQ(preferenceValue(), 1);
+    preferenceValue();
 
     receivedPreferenceNotification = false;
 
     system([NSString stringWithFormat:@"defaults write %@ %@ 2", (__bridge id)globalDomain, (__bridge id)TEST_KEY()].UTF8String);
 
     TestWebKitAPI::Util::run(&receivedPreferenceNotification);
+
+    for (unsigned i = 0; i < preferenceQueryMaxCount && preferenceValue() != 2; i++) {
+        TestWebKitAPI::Util::spinRunLoop();
+        TestWebKitAPI::Util::runFor(preferenceQuerySleepTime);
+    }
+
+    EXPECT_EQ(preferenceValue(), 2);
+
+    CLEAR_DEFAULTS();
+}
+
+
+TEST(WebKit, GlobalPreferenceChangesUsingDefaultsWriteWithSuspendedProcess)
+{
+    CLEAR_DEFAULTS();
+
+    system([NSString stringWithFormat:@"defaults write %@ %@ 0", (__bridge id)globalDomain, (__bridge id)TEST_KEY()].UTF8String);
+
+    auto observer = adoptNS([[WKTestPreferenceObserver alloc] init]);
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    WKRetainPtr<WKContextRef> context = adoptWK(TestWebKitAPI::Util::createContextForInjectedBundleTest("InternalsInjectedBundleTest"));
+    [configuration setProcessPool:(WKProcessPool *)context.get()];
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 300, 300) configuration:configuration.get() addToWindow:YES]);
+    [webView synchronouslyLoadTestPageNamed:@"simple"];
+
+    auto webView2 = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 300, 300) configuration:configuration.get() addToWindow:NO]);
+    [webView2 synchronouslyLoadTestPageNamed:@"simple"];
+    unsigned attempts = 0;
+    while (![webView2 _isSuspended] && ++attempts < 5)
+        TestWebKitAPI::Util::runFor(1_s);
+
+    receivedPreferenceNotification = false;
+
+    system([NSString stringWithFormat:@"defaults write %@ %@ 1", (__bridge id)globalDomain, (__bridge id)TEST_KEY()].UTF8String);
+
+    EXPECT_EQ(1, CFPreferencesGetAppIntegerValue(TEST_KEY(), globalDomain, nullptr));
+
+    TestWebKitAPI::Util::run(&receivedPreferenceNotification);
+
+    auto preferenceValue = [&] {
+        waitForPreferenceSynchronization();
+        NSString *js = [NSString stringWithFormat:@"window.internals.readPreferenceInteger(\"%@\",\"%@\")", (NSString *)globalDomain, (NSString *)TEST_KEY()];
+        return [webView stringByEvaluatingJavaScript:js].intValue;
+    };
+
+    preferenceValue();
+
+    receivedPreferenceNotification = false;
+
+    system([NSString stringWithFormat:@"defaults write %@ %@ 2", (__bridge id)globalDomain, (__bridge id)TEST_KEY()].UTF8String);
+
+    TestWebKitAPI::Util::run(&receivedPreferenceNotification);
+
+    for (unsigned i = 0; i < preferenceQueryMaxCount && preferenceValue() != 2; i++) {
+        TestWebKitAPI::Util::spinRunLoop();
+        TestWebKitAPI::Util::runFor(preferenceQuerySleepTime);
+    }
 
     EXPECT_EQ(preferenceValue(), 2);
 
@@ -221,13 +321,17 @@ TEST(WebKit, PreferenceChangesArray)
     NSArray *changedArray = @[@3, @2, @1];
     [userDefaults setObject:changedArray forKey:(NSString *)TEST_KEY()];
 
-    auto encodedString = preferenceValue();
-    auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:encodedString options:0]);
-    ASSERT_TRUE(encodedData);
-    NSError *err = nil;
-    auto object = retainPtr([NSKeyedUnarchiver unarchivedObjectOfClass:[NSObject class] fromData:encodedData.get() error:&err]);
-    ASSERT_TRUE(!err);
-    ASSERT_TRUE(object);
+    RetainPtr<NSObject> object;
+    for (unsigned i = 0; i < preferenceQueryMaxCount && ![object isEqual:changedArray]; i++) {
+        auto encodedString = preferenceValue();
+        auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:encodedString options:0]);
+        ASSERT_TRUE(encodedData);
+        NSError *err = nil;
+        object = retainPtr([NSKeyedUnarchiver unarchivedObjectOfClass:[NSObject class] fromData:encodedData.get() error:&err]);
+        TestWebKitAPI::Util::spinRunLoop();
+        TestWebKitAPI::Util::runFor(preferenceQuerySleepTime);
+    }
+
     ASSERT_TRUE([object isEqual:changedArray]);
 
     CLEAR_DEFAULTS();
@@ -267,13 +371,17 @@ TEST(WebKit, PreferenceChangesDictionary)
     };
     [userDefaults setObject:changedDict forKey:(NSString *)TEST_KEY()];
 
-    auto encodedString = preferenceValue();
-    auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:encodedString options:0]);
-    ASSERT_TRUE(encodedData);
-    NSError *err = nil;
-    auto object = retainPtr([NSKeyedUnarchiver unarchivedObjectOfClass:[NSObject class] fromData:encodedData.get() error:&err]);
-    ASSERT_TRUE(!err);
-    ASSERT_TRUE(object);
+    RetainPtr<NSObject> object;
+    for (unsigned i = 0; i < preferenceQueryMaxCount && ![object isEqual:changedDict]; i++) {
+        auto encodedString = preferenceValue();
+        auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:encodedString options:0]);
+        ASSERT_TRUE(encodedData);
+        NSError *err = nil;
+        object = retainPtr([NSKeyedUnarchiver unarchivedObjectOfClass:[NSObject class] fromData:encodedData.get() error:&err]);
+        TestWebKitAPI::Util::spinRunLoop();
+        TestWebKitAPI::Util::runFor(preferenceQuerySleepTime);
+    }
+    
     ASSERT_TRUE([object isEqual:changedDict]);
 
     CLEAR_DEFAULTS();
@@ -306,13 +414,17 @@ TEST(WebKit, PreferenceChangesData)
     NSData *changedData = [NSData dataWithBytes:"abcd" length:4];
     [userDefaults setObject:changedData forKey:(NSString *)TEST_KEY()];
 
-    auto encodedString = preferenceValue();
-    auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:encodedString options:0]);
-    ASSERT_TRUE(encodedData);
-    NSError *err = nil;
-    auto object = retainPtr([NSKeyedUnarchiver unarchivedObjectOfClass:[NSObject class] fromData:encodedData.get() error:&err]);
-    ASSERT_TRUE(!err);
-    ASSERT_TRUE(object);
+    RetainPtr<NSObject> object;
+    for (unsigned i = 0; i < preferenceQueryMaxCount && ![object isEqual:changedData]; i++) {
+        auto encodedString = preferenceValue();
+        auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:encodedString options:0]);
+        ASSERT_TRUE(encodedData);
+        NSError *err = nil;
+        object = retainPtr([NSKeyedUnarchiver unarchivedObjectOfClass:[NSObject class] fromData:encodedData.get() error:&err]);
+        TestWebKitAPI::Util::spinRunLoop();
+        TestWebKitAPI::Util::runFor(preferenceQuerySleepTime);
+    }
+    
     ASSERT_TRUE([object isEqual:changedData]);
 
     CLEAR_DEFAULTS();
@@ -345,13 +457,17 @@ TEST(WebKit, PreferenceChangesDate)
     NSDate *changedDate = [NSDate dateWithTimeIntervalSinceNow:10];
     [userDefaults setObject:changedDate forKey:(NSString *)TEST_KEY()];
 
-    auto encodedString = preferenceValue();
-    auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:encodedString options:0]);
-    ASSERT_TRUE(encodedData);
-    NSError *err = nil;
-    auto object = retainPtr([NSKeyedUnarchiver unarchivedObjectOfClass:[NSObject class] fromData:encodedData.get() error:&err]);
-    ASSERT_TRUE(!err);
-    ASSERT_TRUE(object);
+    RetainPtr<NSObject> object;
+    for (unsigned i = 0; i < preferenceQueryMaxCount && ![object isEqual:changedDate]; i++) {
+        auto encodedString = preferenceValue();
+        auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:encodedString options:0]);
+        ASSERT_TRUE(encodedData);
+        NSError *err = nil;
+        object = retainPtr([NSKeyedUnarchiver unarchivedObjectOfClass:[NSObject class] fromData:encodedData.get() error:&err]);
+        TestWebKitAPI::Util::spinRunLoop();
+        TestWebKitAPI::Util::runFor(preferenceQuerySleepTime);
+    }
+    
     ASSERT_TRUE([object isEqual:changedDate]);
 
     CLEAR_DEFAULTS();
@@ -382,11 +498,15 @@ TEST(WebKit, PreferenceChangesNil)
 
     [userDefaults setObject:nil forKey:(NSString *)TEST_KEY()];
 
+    for (unsigned i = 0; i < preferenceQueryMaxCount && preferenceValue(); i++) {
+        TestWebKitAPI::Util::spinRunLoop();
+        TestWebKitAPI::Util::runFor(preferenceQuerySleepTime);
+    }
+    
     EXPECT_EQ(0, preferenceValue());
 
     CLEAR_DEFAULTS();
 }
-#endif // PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 110000
 
 #if ENABLE(CFPREFS_DIRECT_MODE)
 static IMP sharedInstanceMethodOriginal = nil;

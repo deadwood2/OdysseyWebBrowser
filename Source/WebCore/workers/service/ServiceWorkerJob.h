@@ -25,14 +25,15 @@
 
 #pragma once
 
-#if ENABLE(SERVICE_WORKER)
-
+#include "ResourceLoaderIdentifier.h"
 #include "ResourceResponse.h"
+#include "ScriptExecutionContextIdentifier.h"
 #include "ServiceWorkerJobClient.h"
 #include "ServiceWorkerJobData.h"
 #include "ServiceWorkerTypes.h"
 #include "WorkerScriptLoader.h"
 #include "WorkerScriptLoaderClient.h"
+#include <wtf/CompletionHandler.h>
 #include <wtf/RefPtr.h>
 #include <wtf/RunLoop.h>
 #include <wtf/ThreadSafeRefCounted.h>
@@ -43,7 +44,7 @@ namespace WebCore {
 class DeferredPromise;
 class Exception;
 class ScriptExecutionContext;
-enum class ServiceWorkerJobType;
+enum class ServiceWorkerJobType : uint8_t;
 struct ServiceWorkerRegistrationData;
 
 class ServiceWorkerJob : public WorkerScriptLoaderClient {
@@ -66,7 +67,7 @@ public:
 
     void fetchScriptWithContext(ScriptExecutionContext&, FetchOptions::Cache);
 
-    const DocumentOrWorkerIdentifier& contextIdentifier() { return m_contextIdentifier; }
+    const ServiceWorkerOrClientIdentifier& contextIdentifier() { return m_contextIdentifier; }
 
     bool cancelPendingLoad();
 
@@ -74,8 +75,8 @@ public:
 
 private:
     // WorkerScriptLoaderClient
-    void didReceiveResponse(unsigned long identifier, const ResourceResponse&) final;
-    void notifyFinished() final;
+    void didReceiveResponse(ScriptExecutionContextIdentifier, ResourceLoaderIdentifier, const ResourceResponse&) final;
+    void notifyFinished(ScriptExecutionContextIdentifier) final;
 
     ServiceWorkerJobClient& m_client;
     ServiceWorkerJobData m_jobData;
@@ -83,7 +84,7 @@ private:
 
     bool m_completed { false };
 
-    DocumentOrWorkerIdentifier m_contextIdentifier;
+    ServiceWorkerOrClientIdentifier m_contextIdentifier;
     RefPtr<WorkerScriptLoader> m_scriptLoader;
 
 #if ASSERT_ENABLED
@@ -92,6 +93,3 @@ private:
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(SERVICE_WORKER)
-

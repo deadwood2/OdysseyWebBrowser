@@ -29,6 +29,7 @@
 #if PLATFORM(MAC) && ENABLE(VIDEO_PRESENTATION_MODE)
 
 #import "IntRect.h"
+#import "Logging.h"
 #import "MediaSelectionOption.h"
 #import "PlaybackSessionModel.h"
 #import "TimeRanges.h"
@@ -52,7 +53,7 @@ Ref<PlaybackSessionInterfaceMac> PlaybackSessionInterfaceMac::create(PlaybackSes
 }
 
 PlaybackSessionInterfaceMac::PlaybackSessionInterfaceMac(PlaybackSessionModel& model)
-    : m_playbackSessionModel(makeWeakPtr(model))
+    : m_playbackSessionModel(model)
 {
 }
 
@@ -64,6 +65,23 @@ PlaybackSessionInterfaceMac::~PlaybackSessionInterfaceMac()
 PlaybackSessionModel* PlaybackSessionInterfaceMac::playbackSessionModel() const
 {
     return m_playbackSessionModel.get();
+}
+
+bool PlaybackSessionInterfaceMac::isInWindowFullscreenActive() const
+{
+    return m_playbackSessionModel && m_playbackSessionModel->isInWindowFullscreenActive();
+}
+
+void PlaybackSessionInterfaceMac::enterInWindowFullscreen()
+{
+    if (m_playbackSessionModel)
+        m_playbackSessionModel->enterInWindowFullscreen();
+}
+
+void PlaybackSessionInterfaceMac::exitInWindowFullscreen()
+{
+    if (m_playbackSessionModel)
+        m_playbackSessionModel->exitInWindowFullscreen();
 }
 
 void PlaybackSessionInterfaceMac::durationChanged(double duration)
@@ -246,6 +264,8 @@ void PlaybackSessionInterfaceMac::setPlayBackControlsManager(WebPlaybackControls
     manager.playing = m_playbackSessionModel->isPlaying();
     [manager setAudioMediaSelectionOptions:m_playbackSessionModel->audioMediaSelectionOptions() withSelectedIndex:static_cast<NSUInteger>(m_playbackSessionModel->audioMediaSelectedIndex())];
     [manager setLegibleMediaSelectionOptions:m_playbackSessionModel->legibleMediaSelectionOptions() withSelectedIndex:static_cast<NSUInteger>(m_playbackSessionModel->legibleMediaSelectedIndex())];
+
+    updatePlaybackControlsManagerCanTogglePictureInPicture();
 }
 
 void PlaybackSessionInterfaceMac::updatePlaybackControlsManagerCanTogglePictureInPicture()
@@ -280,7 +300,45 @@ void PlaybackSessionInterfaceMac::updatePlaybackControlsManagerTiming(double cur
     manager.timing = [getAVValueTimingClass() valueTimingWithAnchorValue:currentTime anchorTimeStamp:effectiveAnchorTime rate:effectivePlaybackRate];
 }
 
+uint32_t PlaybackSessionInterfaceMac::ptrCount() const
+{
+    return CanMakeCheckedPtr::ptrCount();
+}
+
+uint32_t PlaybackSessionInterfaceMac::ptrCountWithoutThreadCheck() const
+{
+    return CanMakeCheckedPtr::ptrCountWithoutThreadCheck();
+}
+
+void PlaybackSessionInterfaceMac::incrementPtrCount() const
+{
+    CanMakeCheckedPtr::incrementPtrCount();
+}
+
+void PlaybackSessionInterfaceMac::decrementPtrCount() const
+{
+    CanMakeCheckedPtr::decrementPtrCount();
+}
+
 #endif // ENABLE(WEB_PLAYBACK_CONTROLS_MANAGER)
+
+#if !RELEASE_LOG_DISABLED
+const void* PlaybackSessionInterfaceMac::logIdentifier() const
+{
+    return m_playbackSessionModel ? m_playbackSessionModel->logIdentifier() : nullptr;
+}
+
+const Logger* PlaybackSessionInterfaceMac::loggerPtr() const
+{
+    return m_playbackSessionModel ? m_playbackSessionModel->loggerPtr() : nullptr;
+}
+
+WTFLogChannel& PlaybackSessionInterfaceMac::logChannel() const
+{
+    return LogMedia;
+}
+
+#endif
 
 }
 

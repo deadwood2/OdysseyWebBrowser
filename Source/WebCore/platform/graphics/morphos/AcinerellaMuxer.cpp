@@ -1,3 +1,5 @@
+#include "config.h"
+
 #include "AcinerellaBuffer.h"
 #include "MediaPlayerMorphOS.h"
 
@@ -9,9 +11,10 @@
 #include <queue>
 #include "AcinerellaDecoder.h"
 #include "AcinerellaHLS.h"
+#include "AcinerellaClient.h"
 
 #define D(x) 
-#define DPUSH(x)
+#define DPUSH(x) 
 #define DF(x)
 
 namespace WebCore {
@@ -50,12 +53,12 @@ void AcinerellaMuxedBuffer::push(RefPtr<AcinerellaPackage> &package)
 			{
 				m_queueCompleteOrError = false;
 				forValidDecoders([&](AcinerellaPackageQueue& queue, BinarySemaphore&) {
-					queue.emplace(package);
+					queue.append(package);
 				});
 			}
 			else if (isDecoderValid(index))
 			{
-				m_packages[index].emplace(package);
+				m_packages[index].append(package);
 				m_bytes[index] += ac_get_package_size(package->package());
 				DPUSH(dprintf("%s: pushing into packages queue @ index %d, size %d type %s\n", __PRETTY_FUNCTION__, index, m_packages[index].size(), (m_audioDecoderMask & (1UL << index)) ? "audio" : "video"));
 			}
@@ -92,7 +95,7 @@ void AcinerellaMuxedBuffer::push(RefPtr<AcinerellaPackage> &package, int index)
 
 			if (isDecoderValid(index))
 			{
-				m_packages[index].emplace(package);
+				m_packages[index].append(package);
 				m_bytes[index] += package->isFlushPackage() ? 0 : ac_get_package_size(package->package());
 				DPUSH(dprintf("%s: pushing into packages queue @ index %d, size %d type %s\n", __PRETTY_FUNCTION__, index, m_packages[index].size(), (m_audioDecoderMask & (1UL << index)) ? "audio" : "video"));
 			}
@@ -114,8 +117,7 @@ void AcinerellaMuxedBuffer::flush()
 		m_queueCompleteOrError = false;
 		forValidDecoders([](AcinerellaPackageQueue& queue, BinarySemaphore&) {
 			DF(dprintf("[Mux]Flushing queue %p size %d\n", &queue, queue.size()));
-			while (!queue.empty())
-				queue.pop();
+            queue.clear();
 		});
 	}
 }
@@ -125,8 +127,7 @@ void AcinerellaMuxedBuffer::flush(int decoderIndex)
 	{
 		auto lock = Locker(m_lock);
 		m_queueCompleteOrError = false;
-		while (!m_packages[decoderIndex].empty())
-			m_packages[decoderIndex].pop();
+        m_packages[decoderIndex].clear();
 		m_bytes[decoderIndex] = 0;
 	}
 }
@@ -164,11 +165,11 @@ RefPtr<AcinerellaPackage> AcinerellaMuxedBuffer::nextPackage(AcinerellaDecoder &
 		{
 			auto lock = Locker(m_lock);
 			D(dprintf("%s: packages %d complete %d\n", __func__, m_packages[index].size(), m_queueCompleteOrError));
-			if (!m_packages[index].empty())
+			if (!m_packages[index].isEmpty())
 			{
-				hasPackage = m_packages[index].front();
+				hasPackage = m_packages[index].first();
 				m_bytes[index] -= ac_get_package_size(hasPackage->package());
-				m_packages[index].pop();
+				m_packages[index].removeFirst();
 				sizeLeft = m_packages[index].size();
 				bytes = m_bytes[index];
 				requestMore = sizeLeft < queueReadAheadSize;

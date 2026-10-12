@@ -33,8 +33,17 @@
 #include <wtf/WeakPtr.h>
 
 namespace WebKit {
+class WebSQLiteDatabaseTracker;
+}
 
-// Use eager initialization for the WeakPtrFactory since we call makeWeakPtr() from a non-main thread.
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::WebSQLiteDatabaseTracker> : std::true_type { };
+}
+
+namespace WebKit {
+
+// Use eager initialization for the WeakPtrFactory since we construct WeakPtrs from a non-main thread.
 class WebSQLiteDatabaseTracker final : public WebCore::SQLiteDatabaseTrackerClient, public CanMakeWeakPtr<WebSQLiteDatabaseTracker, WeakPtrFactoryInitialization::Eager> {
     WTF_MAKE_NONCOPYABLE(WebSQLiteDatabaseTracker)
 public:

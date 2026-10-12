@@ -26,10 +26,12 @@
 #pragma once
 
 #include "WebFrameLoaderClient.h"
+#include <WebCore/LocalFrameLoaderClient.h>
 #include <JavaScriptCore/ConsoleTypes.h>
 #include <JavaScriptCore/JSBase.h>
 #include <WebCore/FrameLoaderClient.h>
 #include <WebCore/FrameLoaderTypes.h>
+#include <WebCore/FrameIdentifier.h>
 #include <wtf/Forward.h>
 #include <wtf/HashMap.h>
 #include <wtf/RefPtr.h>
@@ -42,6 +44,7 @@ class SessionID;
 namespace WebCore {
 class CertificateInfo;
 class Frame;
+class LocalFrame;
 class HTMLFrameOwnerElement;
 class IntPoint;
 class IntRect;
@@ -50,14 +53,12 @@ class IntRect;
 namespace WebKit {
 
 class WebPage;
-struct FrameInfoData;
 struct WebsitePoliciesData;
 
 class WebFrame : public WTF::RefCounted<WebFrame> {
 public:
 	static Ref<WebFrame> create() { return adoptRef(*new WebFrame); }
-    static Ref<WebFrame> createWithCoreMainFrame(WebPage*, WebCore::Frame*);
-    static Ref<WebFrame> createSubframe(WebPage*, const String& frameName, WebCore::HTMLFrameOwnerElement*);
+    static Ref<WebFrame> createSubframe(WebPage*, const WTF::AtomString& name, WebCore::HTMLFrameOwnerElement*);
     ~WebFrame();
 
 	void initWithCoreMainFrame(WebPage&, WebCore::Frame&);
@@ -67,21 +68,11 @@ public:
 
     WebPage* page() const;
 
-    static WebFrame* fromCoreFrame(const WebCore::Frame&);
-    WebCore::Frame* coreFrame() const { return m_coreFrame; }
+    static WebFrame* fromCoreFrame(const WebCore::LocalFrame&);
+    static WebFrame* fromCoreFrame(const WebCore::LocalFrame*);
+    WebCore::LocalFrame* coreFrame() const { return m_coreFrame; }
 
-    FrameInfoData info() const;
     WebCore::FrameIdentifier frameID() const { return m_frameID; }
-
-#if 0
-    enum class ForNavigationAction { No, Yes };
-    uint64_t setUpPolicyListener(WebCore::PolicyCheckIdentifier, WebCore::FramePolicyFunction&&, ForNavigationAction);
-    void invalidatePolicyListener();
-    void didReceivePolicyDecision(uint64_t listenerID, WebCore::PolicyCheckIdentifier, WebCore::PolicyAction, uint64_t navigationID, DownloadID, std::optional<WebsitePoliciesData>&&);
-
-    uint64_t setUpWillSubmitFormListener(CompletionHandler<void()>&&);
-    void continueWillSubmitForm(uint64_t);
-#endif
 
     void startDownload(const WebCore::ResourceRequest&, const String& suggestedName = { });
     void startDownload(const WTF::URL &, const String& suggestedName = { });
@@ -112,7 +103,6 @@ public:
     WebCore::IntSize scrollOffset() const;
     bool hasHorizontalScrollbar() const;
     bool hasVerticalScrollbar() const;
-    bool getDocumentBackgroundColor(double* red, double* green, double* blue, double* alpha);
     bool containsAnyFormElements() const;
     bool containsAnyFormControls() const;
     void stopLoading();
@@ -121,11 +111,6 @@ public:
     void setAccessibleName(const String&);
 
     static WebFrame* frameForContext(JSContextRef);
-
-#if 0
-    JSValueRef jsWrapperForWorld(InjectedBundleNodeHandle*, InjectedBundleScriptWorld*);
-    JSValueRef jsWrapperForWorld(InjectedBundleRangeHandle*, InjectedBundleScriptWorld*);
-#endif
 
     static String counterValue(JSObjectRef element);
 
@@ -146,17 +131,9 @@ public:
 private:
     WebFrame();
 
-    WebCore::Frame* m_coreFrame { nullptr };
-
-    uint64_t m_policyListenerID { 0 };
-    std::optional<WebCore::PolicyCheckIdentifier> m_policyIdentifier;
-    WebCore::FramePolicyFunction m_policyFunction;
-//    ForNavigationAction m_policyFunctionForNavigationAction { ForNavigationAction::No };
+    WebCore::LocalFrame* m_coreFrame { nullptr };
     HashMap<uint64_t, CompletionHandler<void()>> m_willSubmitFormCompletionHandlers;
-//    DownloadID m_policyDownloadID { 0 };
-
-//    LoadListener* m_loadListener { nullptr };
-    
+   
     WebCore::FrameIdentifier m_frameID;
 };
 

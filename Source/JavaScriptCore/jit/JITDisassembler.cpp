@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,11 +31,15 @@
 #include "CodeBlock.h"
 #include "CodeBlockWithJITType.h"
 #include "Disassembler.h"
+#include "JSCellInlines.h"
 #include "LinkBuffer.h"
 #include "ProfilerCompilation.h"
 #include <wtf/StringPrintStream.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(JITDisassembler);
 
 JITDisassembler::JITDisassembler(CodeBlock *codeBlock)
     : m_codeBlock(codeBlock)
@@ -44,12 +48,13 @@ JITDisassembler::JITDisassembler(CodeBlock *codeBlock)
 {
 }
 
-JITDisassembler::~JITDisassembler()
-{
-}
+JITDisassembler::~JITDisassembler() = default;
 
 void JITDisassembler::dump(PrintStream& out, LinkBuffer& linkBuffer)
 {
+    m_codeStart = linkBuffer.entrypoint<DisassemblyPtrTag>().untaggedPtr();
+    m_codeEnd = bitwise_cast<uint8_t*>(m_codeStart) + linkBuffer.size();
+
     dumpHeader(out, linkBuffer);
     dumpDisassembly(out, linkBuffer, m_startOfCode, m_labelForBytecodeIndexInMainPath[0]);
     
@@ -161,7 +166,7 @@ void JITDisassembler::dumpDisassembly(PrintStream& out, LinkBuffer& linkBuffer, 
 {
     CodeLocationLabel<DisassemblyPtrTag> fromLocation = linkBuffer.locationOf<DisassemblyPtrTag>(from);
     CodeLocationLabel<DisassemblyPtrTag> toLocation = linkBuffer.locationOf<DisassemblyPtrTag>(to);
-    disassemble(fromLocation, toLocation.dataLocation<uintptr_t>() - fromLocation.dataLocation<uintptr_t>(), "        ", out);
+    disassemble(fromLocation, toLocation.dataLocation<uintptr_t>() - fromLocation.dataLocation<uintptr_t>(), m_codeStart, m_codeEnd, "        ", out);
 }
 
 } // namespace JSC

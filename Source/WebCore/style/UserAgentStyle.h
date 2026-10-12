@@ -40,23 +40,31 @@ public:
 
     static StyleSheetContents* defaultStyleSheet;
     static StyleSheetContents* quirksStyleSheet;
-    static StyleSheetContents* dialogStyleSheet;
     static StyleSheetContents* svgStyleSheet;
     static StyleSheetContents* mathMLStyleSheet;
     static StyleSheetContents* mediaControlsStyleSheet;
-    static StyleSheetContents* fullscreenStyleSheet;
+    static StyleSheetContents* mediaQueryStyleSheet;
+    static StyleSheetContents* horizontalFormControlsStyleSheet;
+    static StyleSheetContents* htmlSwitchControlStyleSheet;
     static StyleSheetContents* plugInsStyleSheet;
+    static StyleSheetContents* popoverStyleSheet;
+    static StyleSheetContents* counterStylesStyleSheet;
+    static StyleSheetContents* viewTransitionsStyleSheet;
+#if ENABLE(FULLSCREEN_API)
+    static StyleSheetContents* fullscreenStyleSheet;
+#endif
+#if ENABLE(SERVICE_CONTROLS)
+    static StyleSheetContents* imageControlsStyleSheet;
+#endif
+#if ENABLE(ATTACHMENT_ELEMENT)
+    static StyleSheetContents* attachmentStyleSheet;
+#endif
 #if ENABLE(DATALIST_ELEMENT)
     static StyleSheetContents* dataListStyleSheet;
 #endif
 #if ENABLE(INPUT_TYPE_COLOR)
     static StyleSheetContents* colorInputStyleSheet;
 #endif
-#if ENABLE(IOS_FORM_CONTROL_REFRESH)
-    static StyleSheetContents* legacyFormControlsIOSStyleSheet;
-#endif
-
-    static StyleSheetContents* mediaQueryStyleSheet;
 
     static void initDefaultStyleSheet();
     static void ensureDefaultStyleSheetsForElement(const Element&);

@@ -24,9 +24,10 @@
 #include "DOMObjectCache.h"
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
-#include "GObjectEventListener.h"
+#include <WebCore/ElementInlines.h>
 #include <WebCore/HTMLNames.h>
 #include <WebCore/JSExecState.h>
+#include "GObjectEventListener.h"
 #include "WebKitDOMEventPrivate.h"
 #include "WebKitDOMEventTarget.h"
 #include "WebKitDOMHTMLCollectionPrivate.h"
@@ -312,8 +313,7 @@ void webkit_dom_html_form_element_set_accept_charset(WebKitDOMHTMLFormElement* s
     g_return_if_fail(WEBKIT_DOM_IS_HTML_FORM_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLFormElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::accept_charsetAttr, convertedValue);
+    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::accept_charsetAttr, WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_form_element_get_action(WebKitDOMHTMLFormElement* self)
@@ -331,8 +331,7 @@ void webkit_dom_html_form_element_set_action(WebKitDOMHTMLFormElement* self, con
     g_return_if_fail(WEBKIT_DOM_IS_HTML_FORM_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLFormElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::actionAttr, convertedValue);
+    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::actionAttr, WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_form_element_get_enctype(WebKitDOMHTMLFormElement* self)
@@ -350,8 +349,7 @@ void webkit_dom_html_form_element_set_enctype(WebKitDOMHTMLFormElement* self, co
     g_return_if_fail(WEBKIT_DOM_IS_HTML_FORM_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLFormElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setEnctype(convertedValue);
+    item->setEnctype(WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_form_element_get_encoding(WebKitDOMHTMLFormElement* self)
@@ -369,8 +367,7 @@ void webkit_dom_html_form_element_set_encoding(WebKitDOMHTMLFormElement* self, c
     g_return_if_fail(WEBKIT_DOM_IS_HTML_FORM_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLFormElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setEnctype(convertedValue);
+    item->setEnctype(WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_form_element_get_method(WebKitDOMHTMLFormElement* self)
@@ -388,8 +385,7 @@ void webkit_dom_html_form_element_set_method(WebKitDOMHTMLFormElement* self, con
     g_return_if_fail(WEBKIT_DOM_IS_HTML_FORM_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLFormElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setMethod(convertedValue);
+    item->setMethod(WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_form_element_get_name(WebKitDOMHTMLFormElement* self)
@@ -407,8 +403,7 @@ void webkit_dom_html_form_element_set_name(WebKitDOMHTMLFormElement* self, const
     g_return_if_fail(WEBKIT_DOM_IS_HTML_FORM_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLFormElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::nameAttr, convertedValue);
+    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::nameAttr, WTF::AtomString::fromUTF8(value));
 }
 
 gchar* webkit_dom_html_form_element_get_target(WebKitDOMHTMLFormElement* self)
@@ -426,8 +421,7 @@ void webkit_dom_html_form_element_set_target(WebKitDOMHTMLFormElement* self, con
     g_return_if_fail(WEBKIT_DOM_IS_HTML_FORM_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLFormElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::targetAttr, convertedValue);
+    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::targetAttr, WTF::AtomString::fromUTF8(value));
 }
 
 WebKitDOMHTMLCollection* webkit_dom_html_form_element_get_elements(WebKitDOMHTMLFormElement* self)

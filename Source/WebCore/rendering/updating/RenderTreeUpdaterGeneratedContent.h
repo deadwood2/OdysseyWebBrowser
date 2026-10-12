@@ -38,9 +38,11 @@ class RenderTreeUpdater::GeneratedContent {
 public:
     GeneratedContent(RenderTreeUpdater&);
 
-    void updateBackdropRenderer(RenderElement&);
-    void updatePseudoElement(Element&, const Style::ElementUpdates&, PseudoId);
+    void updateBackdropRenderer(RenderElement&, StyleDifference minimalStyleDifference);
+    void updatePseudoElement(Element&, const Style::ElementUpdate&, PseudoId);
     void updateRemainingQuotes();
+    void updateCounters();
+    void updateWritingSuggestionsRenderer(RenderElement&, StyleDifference minimalStyleDifference);
 
     static void removeBeforePseudoElement(Element&, RenderTreeBuilder&);
     static void removeAfterPseudoElement(Element&, RenderTreeBuilder&);
@@ -48,10 +50,10 @@ public:
 private:
     void updateQuotesUpTo(RenderQuote*);
     
-    bool needsPseudoElement(const Style::ElementUpdate*);
+    bool needsPseudoElement(const RenderStyle*);
 
     RenderTreeUpdater& m_updater;
-    WeakPtr<RenderQuote> m_previousUpdatedQuote;
+    SingleThreadWeakPtr<RenderQuote> m_previousUpdatedQuote;
 };
 
 }

@@ -31,7 +31,8 @@ class HTMLInputElement;
 // associated with it to receive click/hover events.
 
 class RenderFileUploadControl final : public RenderBlockFlow {
-    WTF_MAKE_ISO_ALLOCATED(RenderFileUploadControl);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RenderFileUploadControl);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(RenderFileUploadControl);
 public:
     RenderFileUploadControl(HTMLInputElement&, RenderStyle&&);
     virtual ~RenderFileUploadControl();
@@ -44,18 +45,17 @@ public:
 private:
     void element() const = delete;
 
-    bool isFileUploadControl() const override { return true; }
-
-    const char* renderName() const override { return "RenderFileUploadControl"; }
+    ASCIILiteral renderName() const override { return "RenderFileUploadControl"_s; }
 
     void updateFromElement() override;
     void computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const override;
     void computePreferredLogicalWidths() override;
     void paintObject(PaintInfo&, const LayoutPoint&) override;
+    void paintControl(PaintInfo&, const LayoutPoint&);
 
-    int maxFilenameWidth() const;
-    
-    VisiblePosition positionForPoint(const LayoutPoint&, const RenderFragmentContainer*) override;
+    int maxFilenameLogicalWidth() const;
+
+    VisiblePosition positionForPoint(const LayoutPoint&, HitTestSource, const RenderFragmentContainer*) override;
 
     HTMLInputElement* uploadButton() const;
 
@@ -64,4 +64,4 @@ private:
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderFileUploadControl, isFileUploadControl())
+SPECIALIZE_TYPE_TRAITS_RENDER_OBJECT(RenderFileUploadControl, isRenderFileUploadControl())

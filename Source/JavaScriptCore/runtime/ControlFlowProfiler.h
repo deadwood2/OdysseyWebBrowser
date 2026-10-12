@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2014 Saam Barati. <saambarati1@gmail.com>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,7 +27,9 @@
 #pragma once
 
 #include "BasicBlockLocation.h"
+#include "SourceID.h"
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace JSC {
 
@@ -50,7 +52,7 @@ struct BasicBlockKey {
     { }
 
     bool isHashTableDeletedValue() const { return m_startOffset == -2 && m_endOffset == -2; }
-    bool operator==(const BasicBlockKey& other) const { return m_startOffset == other.m_startOffset && m_endOffset == other.m_endOffset; }
+    friend bool operator==(const BasicBlockKey&, const BasicBlockKey&) = default;
     unsigned hash() const { return m_startOffset + m_endOffset + 1; }
 
     int m_startOffset;
@@ -87,20 +89,20 @@ struct BasicBlockRange {
 };
 
 class ControlFlowProfiler {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(ControlFlowProfiler);
 public:
     ControlFlowProfiler();
     ~ControlFlowProfiler();
-    BasicBlockLocation* getBasicBlockLocation(intptr_t sourceID, int startOffset, int endOffset);
+    BasicBlockLocation* getBasicBlockLocation(SourceID, int startOffset, int endOffset);
     JS_EXPORT_PRIVATE void dumpData() const;
-    Vector<BasicBlockRange> getBasicBlocksForSourceID(intptr_t sourceID, VM&) const;
+    Vector<BasicBlockRange> getBasicBlocksForSourceID(SourceID, VM&) const;
     BasicBlockLocation* dummyBasicBlock() { return &m_dummyBasicBlock; }
-    JS_EXPORT_PRIVATE bool hasBasicBlockAtTextOffsetBeenExecuted(int, intptr_t, VM&);  // This function exists for testing.
-    JS_EXPORT_PRIVATE size_t basicBlockExecutionCountAtTextOffset(int, intptr_t, VM&); // This function exists for testing.
+    JS_EXPORT_PRIVATE bool hasBasicBlockAtTextOffsetBeenExecuted(int, SourceID, VM&); // This function exists for testing.
+    JS_EXPORT_PRIVATE size_t basicBlockExecutionCountAtTextOffset(int, SourceID, VM&); // This function exists for testing.
 
 private:
     typedef HashMap<BasicBlockKey, BasicBlockLocation*> BlockLocationCache;
-    typedef HashMap<intptr_t, BlockLocationCache> SourceIDBuckets;
+    typedef HashMap<SourceID, BlockLocationCache> SourceIDBuckets;
 
     SourceIDBuckets m_sourceIDBuckets;
     BasicBlockLocation m_dummyBasicBlock;

@@ -27,6 +27,10 @@
 
 #include "PlatformCALayerRemote.h"
 
+namespace WebCore {
+class PlatformCALayerClient;
+}
+
 namespace WebKit {
 
 class LayerHostingContext;
@@ -36,6 +40,10 @@ class PlatformCALayerRemoteCustom final : public PlatformCALayerRemote {
     friend class PlatformCALayerRemote;
 public:
     static Ref<PlatformCALayerRemote> create(PlatformLayer *, WebCore::PlatformCALayerClient*, RemoteLayerTreeContext&);
+    static Ref<PlatformCALayerRemote> create(LayerHostingContextID, WebCore::PlatformCALayerClient*, RemoteLayerTreeContext&);
+#if HAVE(AVKIT)
+    static Ref<PlatformCALayerRemote> create(WebCore::HTMLVideoElement&, WebCore::PlatformCALayerClient* owner, RemoteLayerTreeContext&);
+#endif
 
     virtual ~PlatformCALayerRemoteCustom();
 
@@ -46,23 +54,27 @@ public:
     void setNeedsDisplayInRect(const WebCore::FloatRect& dirtyRect) override;
     void setNeedsDisplay() override;
 
+    bool hasVideo() const { return m_hasVideo; }
+
 private:
     PlatformCALayerRemoteCustom(WebCore::PlatformCALayer::LayerType, PlatformLayer *, WebCore::PlatformCALayerClient* owner, RemoteLayerTreeContext&);
+    PlatformCALayerRemoteCustom(WebCore::PlatformCALayer::LayerType, LayerHostingContextID, WebCore::PlatformCALayerClient* owner, RemoteLayerTreeContext&);
+    PlatformCALayerRemoteCustom(WebCore::HTMLVideoElement&, WebCore::PlatformCALayerClient* owner, RemoteLayerTreeContext&);
 
     Ref<WebCore::PlatformCALayer> clone(WebCore::PlatformCALayerClient* owner) const override;
     
     void populateCreationProperties(RemoteLayerTreeTransaction::LayerCreationProperties&, const RemoteLayerTreeContext&, WebCore::PlatformCALayer::LayerType) override;
 
-    bool isPlatformCALayerRemoteCustom() const override { return true; }
+    Type type() const final { return Type::RemoteCustom; }
 
     CFTypeRef contents() const override;
     void setContents(CFTypeRef) override;
 
+    bool m_hasVideo { false };
     std::unique_ptr<LayerHostingContext> m_layerHostingContext;
     RetainPtr<PlatformLayer> m_platformLayer;
-    bool m_providesContents;
 };
 
 } // namespace WebKit
 
-SPECIALIZE_TYPE_TRAITS_PLATFORM_CALAYER(WebKit::PlatformCALayerRemoteCustom, isPlatformCALayerRemote())
+SPECIALIZE_TYPE_TRAITS_PLATFORM_CALAYER(WebKit::PlatformCALayerRemoteCustom, type() == WebCore::PlatformCALayer::Type::RemoteCustom)

@@ -29,12 +29,9 @@
 
 #include "NativeWebKeyboardEvent.h"
 #include "PageClientImpl.h"
+#include "WebPageProxyInternals.h"
 #include <WebCore/SearchPopupMenuDB.h>
 #include <WebCore/UserAgent.h>
-
-#if USE(DIRECT2D)
-#include <d3d11_1.h>
-#endif
 
 namespace WebKit {
 
@@ -52,7 +49,7 @@ String WebPageProxy::standardUserAgent(const String& applicationNameForUserAgent
     return WebCore::standardUserAgent(applicationNameForUserAgent);
 }
 
-void WebPageProxy::saveRecentSearches(const String& name, const Vector<WebCore::RecentSearch>& searchItems)
+void WebPageProxy::saveRecentSearches(IPC::Connection&, const String& name, const Vector<WebCore::RecentSearch>& searchItems)
 {
     if (!name)
         return;
@@ -60,7 +57,7 @@ void WebPageProxy::saveRecentSearches(const String& name, const Vector<WebCore::
     return WebCore::SearchPopupMenuDB::singleton().saveRecentSearches(name, searchItems);
 }
 
-void WebPageProxy::loadRecentSearches(const String& name, CompletionHandler<void(Vector<WebCore::RecentSearch>&&)>&& completionHandler)
+void WebPageProxy::loadRecentSearches(IPC::Connection&, const String& name, CompletionHandler<void(Vector<WebCore::RecentSearch>&&)>&& completionHandler)
 {
     if (!name)
         return completionHandler({ });
@@ -74,20 +71,10 @@ void WebPageProxy::didUpdateEditorState(const EditorState&, const EditorState&)
 {
 }
 
-PlatformViewWidget WebPageProxy::viewWidget()
+#if USE(GRAPHICS_LAYER_TEXTURE_MAPPER) || USE(GRAPHICS_LAYER_WC)
+uint64_t WebPageProxy::viewWidget()
 {
-    return static_cast<PageClientImpl&>(pageClient()).viewWidget();
-}
-
-#if USE(DIRECT2D)
-ID3D11Device1* WebPageProxy::device() const
-{
-    return m_device.get();
-}
-
-void WebPageProxy::setDevice(ID3D11Device1* device)
-{
-    m_device = device;
+    return reinterpret_cast<uint64_t>(static_cast<PageClientImpl&>(pageClient()).viewWidget());
 }
 #endif
 
@@ -95,7 +82,7 @@ void WebPageProxy::dispatchPendingCharEvents(const NativeWebKeyboardEvent& keydo
 {
     auto& pendingCharEvents = keydownEvent.pendingCharEvents();
     for (auto it = pendingCharEvents.rbegin(); it != pendingCharEvents.rend(); it++)
-        m_keyEventQueue.prepend(NativeWebKeyboardEvent(it->hwnd, it->message, it->wParam, it->lParam, { }));
+        internals().keyEventQueue.prepend(NativeWebKeyboardEvent(it->hwnd, it->message, it->wParam, it->lParam, { }));
 }
 
 } // namespace WebKit

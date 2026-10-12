@@ -168,7 +168,8 @@ angle::Result TextureNULL::setStorageExternalMemory(const gl::Context *context,
                                                     gl::MemoryObject *memoryObject,
                                                     GLuint64 offset,
                                                     GLbitfield createFlags,
-                                                    GLbitfield usageFlags)
+                                                    GLbitfield usageFlags,
+                                                    const void *imageCreateInfoPNext)
 {
     return angle::Result::Continue;
 }
@@ -226,6 +227,7 @@ angle::Result TextureNULL::setStorageMultisample(const gl::Context *context,
 }
 
 angle::Result TextureNULL::initializeContents(const gl::Context *context,
+                                              GLenum binding,
                                               const gl::ImageIndex &imageIndex)
 {
     return angle::Result::Continue;

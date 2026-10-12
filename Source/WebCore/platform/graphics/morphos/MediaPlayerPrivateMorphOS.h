@@ -1,7 +1,5 @@
 #pragma once
 
-#include "config.h"
-
 #if ENABLE(VIDEO)
 
 #include "MediaPlayerPrivate.h"
@@ -22,12 +20,15 @@ namespace Acinerella {
 template<typename T>
 using deleted_unique_ptr = std::unique_ptr<T,std::function<void(T*)>>;
 
-class MediaPlayerPrivateMorphOS : public MediaPlayerPrivateInterface, public Acinerella::AcinerellaClient, public CanMakeWeakPtr<MediaPlayerPrivateMorphOS, WeakPtrFactoryInitialization::Eager>
+class MediaPlayerPrivateMorphOS : public MediaPlayerPrivateInterface, public Acinerella::AcinerellaClient, public CanMakeWeakPtr<MediaPlayerPrivateMorphOS>, public RefCounted<MediaPlayerPrivateMorphOS>
 {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     MediaPlayerPrivateMorphOS(MediaPlayer*);
     virtual ~MediaPlayerPrivateMorphOS();
+
+    void ref() final { RefCounted::ref(); }
+    void deref() final { RefCounted::deref(); }
 
     static void registerMediaEngine(MediaEngineRegistrar);
     static MediaPlayer::SupportsType extendedSupportsType(const MediaEngineSupportParameters&, MediaPlayer::SupportsType);
@@ -35,7 +36,7 @@ public:
 	
     void load(const String&) final;
 #if ENABLE(MEDIA_SOURCE)
-    void load(const URL& url, const ContentType&, MediaSourcePrivateClient*) final;
+    void load(const URL&, const ContentType&, MediaSourcePrivateClient&) final;
 #endif
 #if ENABLE(MEDIA_STREAM)
 	void load(MediaStreamPrivate&) final { };
@@ -52,15 +53,13 @@ public:
     void pause() final;
     FloatSize naturalSize() const final;
 
-    float duration() const final;
-    double durationDouble() const final;
-    MediaTime durationMediaTime() const final;
-
     unsigned decodedFrameCount() const { return m_decodedFrameCount; }
     unsigned droppedFrameCount() const { return m_droppedFrameCount; }
 
-	float maxTimeSeekable() const final;
-    float currentTime() const final { return m_currentTime; }
+	MediaTime maxTimeSeekable() const final;
+    MediaTime duration() const final;
+
+    MediaTime currentTime() const final;
 
     bool hasVideo() const final;
     bool hasAudio() const final;
@@ -73,24 +72,25 @@ public:
     void setMuted(bool) final;
 
 	bool supportsScanning() const { return true; }
-    void seek(float) final;
+    void seekToTarget(const SeekTarget&) final;
     bool ended() const final;
 
     std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() final;
 
     MediaPlayer::NetworkState networkState() const final;
     MediaPlayer::ReadyState readyState() const final;
-    std::unique_ptr<PlatformTimeRanges> buffered() const final;
+    const PlatformTimeRanges& buffered() const override;
     void paint(GraphicsContext&, const FloatRect&) final;
     bool didLoadingProgress() const final;
 	MediaPlayer::MovieLoadType movieLoadType() const final;
 
 	void accInitialized(MediaPlayerMorphOSInfo info) override;
 	void accUpdated(MediaPlayerMorphOSInfo info) override;
-	void accSetNetworkState(WebCore::MediaPlayerEnums::NetworkState state) override;
+	void accSetNetworkState(WebCore::MediaPlayerEnums::NetworkState state, const WTF::String &error) override;
 	void accSetReadyState(WebCore::MediaPlayerEnums::ReadyState state) override;
 	void accSetBufferLength(double buffer) override;
 	void accSetPosition(double buffer) override;
+    void accSeeked(double position) override;
 	void accSetDuration(double buffer) override;
 	void accEnded() override;
 	void accFailed() override;
@@ -113,14 +113,19 @@ public:
 
 	void selectHLSStream(const String& url) override;
 
+    DestinationColorSpace colorSpace() final { return DestinationColorSpace::SRGB(); }
+    
+    String errorMessage() const final;
 protected:
 	MediaPlayer* m_player;
 	RefPtr<Acinerella::Acinerella> m_acinerella;
 	MediaPlayer::NetworkState m_networkState = { MediaPlayer::NetworkState::Empty };
 	MediaPlayer::ReadyState m_readyState = { MediaPlayer::ReadyState::HaveNothing };
 	MediaPlayerMorphOSStreamSettings m_streamSettings;
-	double m_duration = 0.f;
-	double m_currentTime = 0.f;
+	MediaTime m_duration = MediaTime::invalidTime();
+	MediaTime m_currentTime;
+    String m_errorMessage;
+    PlatformTimeRanges m_buffered;
 	int   m_width = 1280;
 	int   m_height = 740;
 	bool  m_prepareToPlay = false;

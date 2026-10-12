@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,14 +35,26 @@
 #import "UIKitSPI.h"
 #import "WKDeferringGestureRecognizer.h"
 #import <WebCore/Region.h>
+#import <WebCore/RenderStyleConstants.h>
+#import <WebCore/TouchAction.h>
 #import <WebCore/TransformationMatrix.h>
 #import <WebCore/WebCoreCALayerExtras.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/SoftLinking.h>
+#import <wtf/cocoa/VectorCocoa.h>
+
+namespace WTF {
+
+static std::optional<RetainPtr<UIView>> makeVectorElement(const RetainPtr<UIView>*, UIView *arrayElement)
+{
+    return { retainPtr(arrayElement) };
+}
+
+} // namespace WTF
 
 namespace WebKit {
 
-static void collectDescendantViewsAtPoint(Vector<UIView *, 16>& viewsAtPoint, UIView *parent, CGPoint point, UIEvent *event)
+static void collectDescendantViewsAtPoint(Vector<RetainPtr<UIView>, 16>& viewsAtPoint, UIView *parent, CGPoint point, UIEvent *event)
 {
     if (parent.clipsToBounds && ![parent pointInside:point withEvent:event])
         return;
@@ -50,17 +62,18 @@ static void collectDescendantViewsAtPoint(Vector<UIView *, 16>& viewsAtPoint, UI
     if (parent.layer.mask && ![parent.layer _web_maskContainsPoint:point])
         return;
 
-    for (UIView *view in [parent subviews]) {
+    auto subviews = makeVector<RetainPtr<UIView>>([parent subviews]);
+    for (RetainPtr view : subviews) {
         CGPoint subviewPoint = [view convertPoint:point fromView:parent];
 
-        auto transform = WebCore::TransformationMatrix { [view.layer transform] };
+        auto transform = WebCore::TransformationMatrix { [[view layer] transform] };
         if (!transform.isInvertible())
             continue;
 
         auto handlesEvent = [&] {
             // FIXME: isUserInteractionEnabled is mostly redundant with event regions for web content layers.
-            //        It is currently only needed for scroll views.
-            if (!view.isUserInteractionEnabled)
+            // It is currently only needed for scroll views.
+            if (![view isUserInteractionEnabled])
                 return false;
 
             if (CGRectIsEmpty([view frame]))
@@ -74,8 +87,9 @@ static void collectDescendantViewsAtPoint(Vector<UIView *, 16>& viewsAtPoint, UI
 
             if (![view isKindOfClass:[WKCompositingView class]])
                 return true;
-            auto* node = RemoteLayerTreeNode::forCALayer(view.layer);
-            return node->eventRegion().contains(WebCore::IntPoint(subviewPoint));
+            if (auto* node = RemoteLayerTreeNode::forCALayer([view layer]))
+                return node->eventRegion().contains(WebCore::IntPoint(subviewPoint));
+            return false;
         }();
 
         if (handlesEvent)
@@ -84,13 +98,13 @@ static void collectDescendantViewsAtPoint(Vector<UIView *, 16>& viewsAtPoint, UI
         if (![view subviews])
             return;
 
-        collectDescendantViewsAtPoint(viewsAtPoint, view, subviewPoint, event);
+        collectDescendantViewsAtPoint(viewsAtPoint, view.get(), subviewPoint, event);
     };
 }
 
 #if ENABLE(EDITABLE_REGION)
 
-static void collectDescendantViewsInRect(Vector<UIView *, 16>& viewsInRect, UIView *parent, CGRect rect)
+static void collectDescendantViewsInRect(Vector<RetainPtr<UIView>, 16>& viewsInRect, UIView *parent, CGRect rect)
 {
     if (parent.clipsToBounds && !CGRectIntersectsRect(parent.bounds, rect))
         return;
@@ -98,48 +112,50 @@ static void collectDescendantViewsInRect(Vector<UIView *, 16>& viewsInRect, UIVi
     if (parent.layer.mask && ![parent.layer _web_maskMayIntersectRect:rect])
         return;
 
-    for (UIView *view in parent.subviews) {
+    auto subviews = makeVector<RetainPtr<UIView>>([parent subviews]);
+    for (RetainPtr view : subviews) {
         CGRect subviewRect = [view convertRect:rect fromView:parent];
 
         auto intersectsRect = [&] {
             // FIXME: isUserInteractionEnabled is mostly redundant with event regions for web content layers.
             //        It is currently only needed for scroll views.
-            if (!view.isUserInteractionEnabled)
+            if (![view isUserInteractionEnabled])
                 return false;
 
-            if (CGRectIsEmpty(view.frame))
+            if (CGRectIsEmpty([view frame]))
                 return false;
 
-            if (!CGRectIntersectsRect(subviewRect, view.bounds))
+            if (!CGRectIntersectsRect(subviewRect, [view bounds]))
                 return false;
 
             if (![view isKindOfClass:WKCompositingView.class])
                 return true;
-            auto* node = RemoteLayerTreeNode::forCALayer(view.layer);
-            return node->eventRegion().intersects(WebCore::IntRect { subviewRect });
+            if (auto* node = RemoteLayerTreeNode::forCALayer([view layer]))
+                return node->eventRegion().intersects(WebCore::IntRect { subviewRect });
+            return false;
         }();
 
         if (intersectsRect)
             viewsInRect.append(view);
 
-        if (!view.subviews)
+        if (![view subviews])
             return;
 
-        collectDescendantViewsInRect(viewsInRect, view, subviewRect);
+        collectDescendantViewsInRect(viewsInRect, view.get(), subviewRect);
     };
 }
 
 bool mayContainEditableElementsInRect(UIView *rootView, const WebCore::FloatRect& rect)
 {
-    Vector<UIView *, 16> viewsInRect;
+    Vector<RetainPtr<UIView>, 16> viewsInRect;
     collectDescendantViewsInRect(viewsInRect, rootView, rect);
     if (viewsInRect.isEmpty())
         return false;
     bool possiblyHasEditableElements = true;
-    for (auto *view : WTF::makeReversedRange(viewsInRect)) {
+    for (RetainPtr view : WTF::makeReversedRange(viewsInRect)) {
         if (![view isKindOfClass:WKCompositingView.class])
             continue;
-        auto* node = RemoteLayerTreeNode::forCALayer(view.layer);
+        auto* node = RemoteLayerTreeNode::forCALayer([view layer]);
         if (!node)
             continue;
         WebCore::IntRect rectToTest { [view convertRect:rect fromView:rootView] };
@@ -178,21 +194,21 @@ static bool isScrolledBy(WKChildScrollView* scrollView, UIView *hitView)
 
 OptionSet<WebCore::TouchAction> touchActionsForPoint(UIView *rootView, const WebCore::IntPoint& point)
 {
-    Vector<UIView *, 16> viewsAtPoint;
+    Vector<RetainPtr<UIView>, 16> viewsAtPoint;
     collectDescendantViewsAtPoint(viewsAtPoint, rootView, point, nil);
 
     if (viewsAtPoint.isEmpty())
         return { WebCore::TouchAction::Auto };
 
-    UIView *hitView = nil;
-    for (auto *view : WTF::makeReversedRange(viewsAtPoint)) {
+    RetainPtr<UIView> hitView;
+    for (RetainPtr view : WTF::makeReversedRange(viewsAtPoint)) {
         // We only hit WKChildScrollView directly if its content layer doesn't have an event region.
         // We don't generate the region if there is nothing interesting in it, meaning the touch-action is auto.
         if ([view isKindOfClass:[WKChildScrollView class]])
             return WebCore::TouchAction::Auto;
 
         if ([view isKindOfClass:[WKCompositingView class]]) {
-            hitView = view;
+            hitView = WTFMove(view);
             break;
         }
     }
@@ -202,7 +218,7 @@ OptionSet<WebCore::TouchAction> touchActionsForPoint(UIView *rootView, const Web
 
     CGPoint hitViewPoint = [hitView convertPoint:point fromView:rootView];
 
-    auto* node = RemoteLayerTreeNode::forCALayer(hitView.layer);
+    auto* node = RemoteLayerTreeNode::forCALayer(hitView.get().layer);
     if (!node)
         return { WebCore::TouchAction::Auto };
 
@@ -212,16 +228,16 @@ OptionSet<WebCore::TouchAction> touchActionsForPoint(UIView *rootView, const Web
 #if ENABLE(WHEEL_EVENT_REGIONS)
 OptionSet<WebCore::EventListenerRegionType> eventListenerTypesAtPoint(UIView *rootView, const WebCore::IntPoint& point)
 {
-    Vector<UIView *, 16> viewsAtPoint;
+    Vector<RetainPtr<UIView>, 16> viewsAtPoint;
     collectDescendantViewsAtPoint(viewsAtPoint, rootView, point, nil);
 
     if (viewsAtPoint.isEmpty())
         return { };
 
-    UIView *hitView = nil;
-    for (auto *view : WTF::makeReversedRange(viewsAtPoint)) {
+    RetainPtr<UIView> hitView;
+    for (RetainPtr view : WTF::makeReversedRange(viewsAtPoint)) {
         if ([view isKindOfClass:[WKCompositingView class]]) {
-            hitView = view;
+            hitView = WTFMove(view);
             break;
         }
     }
@@ -231,7 +247,7 @@ OptionSet<WebCore::EventListenerRegionType> eventListenerTypesAtPoint(UIView *ro
 
     CGPoint hitViewPoint = [hitView convertPoint:point fromView:rootView];
 
-    auto* node = RemoteLayerTreeNode::forCALayer(hitView.layer);
+    auto* node = RemoteLayerTreeNode::forCALayer(hitView.get().layer);
     if (!node)
         return { };
 
@@ -241,7 +257,7 @@ OptionSet<WebCore::EventListenerRegionType> eventListenerTypesAtPoint(UIView *ro
 
 UIScrollView *findActingScrollParent(UIScrollView *scrollView, const RemoteLayerTreeHost& host)
 {
-    HashSet<WebCore::GraphicsLayer::PlatformLayerID> scrollersToSkip;
+    HashSet<WebCore::PlatformLayerIdentifier> scrollersToSkip;
 
     for (UIView *view = [scrollView superview]; view; view = [view superview]) {
         if ([view isKindOfClass:[WKChildScrollView class]] && !scrollersToSkip.contains(RemoteLayerTreeNode::layerID(view.layer))) {
@@ -250,8 +266,8 @@ UIScrollView *findActingScrollParent(UIScrollView *scrollView, const RemoteLayer
         }
         if (auto* node = RemoteLayerTreeNode::forCALayer(view.layer)) {
             if (auto* actingParent = host.nodeForID(node->actingScrollContainerID())) {
-                if ([actingParent->uiView() isKindOfClass:[UIScrollView class]])
-                    return (UIScrollView *)actingParent->uiView();
+                if (auto scrollView = dynamic_objc_cast<UIScrollView>(actingParent->uiView()))
+                    return scrollView;
             }
 
             scrollersToSkip.add(node->stationaryScrollContainerIDs().begin(), node->stationaryScrollContainerIDs().end());
@@ -280,33 +296,33 @@ static Class scrollViewScrollIndicatorClass()
 
 - (UIView *)_web_findDescendantViewAtPoint:(CGPoint)point withEvent:(UIEvent *)event
 {
-    Vector<UIView *, 16> viewsAtPoint;
+    Vector<RetainPtr<UIView>, 16> viewsAtPoint;
     WebKit::collectDescendantViewsAtPoint(viewsAtPoint, self, point, event);
 
     LOG_WITH_STREAM(UIHitTesting, stream << (void*)self << "_web_findDescendantViewAtPoint " << WebCore::FloatPoint(point) << " found " << viewsAtPoint.size() << " views");
 
-    for (auto *view : WTF::makeReversedRange(viewsAtPoint)) {
+    for (RetainPtr view : WTF::makeReversedRange(viewsAtPoint)) {
         if ([view conformsToProtocol:@protocol(WKNativelyInteractible)]) {
-            LOG_WITH_STREAM(UIHitTesting, stream << " " << (void*)view << " is natively interactible");
+            LOG_WITH_STREAM(UIHitTesting, stream << " " << (void*)view.get() << " is natively interactible");
             CGPoint subviewPoint = [view convertPoint:point fromView:self];
             return [view hitTest:subviewPoint withEvent:event];
         }
 
         if ([view isKindOfClass:[WKChildScrollView class]]) {
-            if (WebKit::isScrolledBy((WKChildScrollView *)view, viewsAtPoint.last())) {
-                LOG_WITH_STREAM(UIHitTesting, stream << " " << (void*)view << " is child scroll view and scrolled by " << (void*)viewsAtPoint.last());
-                return view;
+            if (WebKit::isScrolledBy((WKChildScrollView *)view.get(), viewsAtPoint.last().get())) {
+                LOG_WITH_STREAM(UIHitTesting, stream << " " << (void*)view.get() << " is child scroll view and scrolled by " << (void*)viewsAtPoint.last().get());
+                return view.get();
             }
         }
 
-        if ([view isKindOfClass:WebKit::scrollViewScrollIndicatorClass()] && [view.superview isKindOfClass:WKChildScrollView.class]) {
-            if (WebKit::isScrolledBy((WKChildScrollView *)view.superview, viewsAtPoint.last())) {
-                LOG_WITH_STREAM(UIHitTesting, stream << " " << (void*)view << " is the scroll indicator of child scroll view, which is scrolled by " << (void*)viewsAtPoint.last());
-                return view;
+        if ([view isKindOfClass:WebKit::scrollViewScrollIndicatorClass()] && [[view superview] isKindOfClass:WKChildScrollView.class]) {
+            if (WebKit::isScrolledBy((WKChildScrollView *)[view superview], viewsAtPoint.last().get())) {
+                LOG_WITH_STREAM(UIHitTesting, stream << " " << (void*)view.get() << " is the scroll indicator of child scroll view, which is scrolled by " << (void*)viewsAtPoint.last().get());
+                return view.get();
             }
         }
 
-        LOG_WITH_STREAM(UIHitTesting, stream << " ignoring " << [view class] << " " << (void*)view);
+        LOG_WITH_STREAM(UIHitTesting, stream << " ignoring " << [view class] << " " << (void*)view.get());
     }
 
     LOG_WITH_STREAM(UIHitTesting, stream << (void*)self << "_web_findDescendantViewAtPoint found no interactive views");
@@ -343,7 +359,7 @@ static Class scrollViewScrollIndicatorClass()
 
 @end
 
-@implementation WKSimpleBackdropView
+@implementation WKBackdropView
 
 + (Class)layerClass
 {
@@ -416,20 +432,6 @@ static Class scrollViewScrollIndicatorClass()
 
 @end
 
-@implementation WKBackdropView
-
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
-{
-    return [self _web_findDescendantViewAtPoint:point withEvent:event];
-}
-
-- (NSString *)description
-{
-    return WebKit::RemoteLayerTreeNode::appendLayerDescription(super.description, self.layer);
-}
-
-@end
-
 @implementation WKChildScrollView
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -438,13 +440,9 @@ static Class scrollViewScrollIndicatorClass()
     if (!self)
         return nil;
 
-// FIXME: Likely we can remove this special case for watchOS and tvOS.
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+// FIXME: Likely we can remove this special case for watchOS.
+#if !PLATFORM(WATCHOS)
     self.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-#endif
-
-#if HAVE(UISCROLLVIEW_ASYNCHRONOUS_SCROLL_EVENT_HANDLING)
-    [self _setAllowsAsyncScrollEvent:YES];
 #endif
 
     return self;

@@ -30,10 +30,13 @@
 #include "WKAPICast.h"
 #include "WebPageProxy.h"
 #include "WebProcessPool.h"
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
 using namespace WebCore;
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebPageInjectedBundleClient);
 
 void WebPageInjectedBundleClient::didReceiveMessageFromInjectedBundle(WebPageProxy* page, const String& messageName, API::Object* messageBody)
 {
@@ -56,6 +59,14 @@ void WebPageInjectedBundleClient::didReceiveSynchronousMessageFromInjectedBundle
     }
 
     m_client.didReceiveSynchronousMessageFromInjectedBundleWithListener(toAPI(page), toAPI(messageName.impl()), toAPI(messageBody), toAPI(API::MessageListener::create(WTFMove(completionHandler)).ptr()), m_client.base.clientInfo);
+}
+
+void WebPageInjectedBundleClient::didReceiveAsyncMessageFromInjectedBundle(WebPageProxy* page, const String& messageName, API::Object* messageBody, CompletionHandler<void(RefPtr<API::Object>)>&& completionHandler)
+{
+    if (!m_client.didReceiveAsyncMessageFromInjectedBundle)
+        return completionHandler(nullptr);
+
+    m_client.didReceiveAsyncMessageFromInjectedBundle(toAPI(page), toAPI(messageName.impl()), toAPI(messageBody), toAPI(API::MessageListener::create(WTFMove(completionHandler)).ptr()), m_client.base.clientInfo);
 }
 
 } // namespace WebKit

@@ -26,8 +26,11 @@
 #import "WebAlternativeTextClient.h"
 
 #import "WebViewInternal.h"
+#import <wtf/TZoneMallocInlines.h>
 
 using namespace WebCore;
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebAlternativeTextClient);
 
 WebAlternativeTextClient::WebAlternativeTextClient(WebView* webView)
     : m_webView(webView)
@@ -37,7 +40,7 @@ WebAlternativeTextClient::WebAlternativeTextClient(WebView* webView)
 WebAlternativeTextClient::~WebAlternativeTextClient()
 {
 #if USE(AUTOCORRECTION_PANEL)
-    dismissAlternative(ReasonForDismissingAlternativeTextIgnored);
+    dismissAlternative(ReasonForDismissingAlternativeText::Ignored);
 #endif
 }
 

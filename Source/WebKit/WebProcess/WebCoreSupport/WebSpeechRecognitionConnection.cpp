@@ -26,6 +26,7 @@
 #include "config.h"
 #include "WebSpeechRecognitionConnection.h"
 
+#include "MessageSenderInlines.h"
 #include "SpeechRecognitionServerMessages.h"
 #include "WebFrame.h"
 #include "WebProcess.h"
@@ -61,7 +62,7 @@ WebSpeechRecognitionConnection::~WebSpeechRecognitionConnection()
 
 void WebSpeechRecognitionConnection::registerClient(WebCore::SpeechRecognitionConnectionClient& client)
 {
-    m_clientMap.add(client.identifier(), makeWeakPtr(client));
+    m_clientMap.add(client.identifier(), client);
 }
 
 void WebSpeechRecognitionConnection::unregisterClient(WebCore::SpeechRecognitionConnectionClient& client)

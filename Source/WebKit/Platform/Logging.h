@@ -39,9 +39,11 @@ extern "C" {
 #endif
 
 #define WEBKIT2_LOG_CHANNELS(M) \
+    M(API) \
     M(ActivityState) \
-    M(PrivateClickMeasurement) \
+    M(AdvancedPrivacyProtections) \
     M(AppSSO) \
+    M(Animations) \
     M(Automation) \
     M(AutomationInteractions) \
     M(BackForward) \
@@ -50,25 +52,29 @@ extern "C" {
     M(ContentObservation) \
     M(ContextMenu) \
     M(DisplayLink) \
+    M(DisplayLists) \
     M(DiskPersistency) \
     M(DragAndDrop) \
     M(EME) \
+    M(Extensions) \
     M(Fullscreen) \
     M(Gamepad) \
     M(IPC) \
+    M(IPCMessages) \
     M(ITPDebug) \
     M(IconDatabase) \
     M(Images) \
+    M(ImageAnalysis) \
     M(IncrementalPDF) \
     M(IncrementalPDFVerbose) \
     M(IndexedDB) \
     M(Inspector) \
     M(KeyHandling) \
+    M(Keychain) \
     M(Language) \
     M(Layers) \
     M(Layout) \
     M(Loading) \
-    M(LocalStorageDatabaseTracker) \
     M(Media) \
     M(MemoryPressure) \
     M(ModelElement) \
@@ -79,24 +85,40 @@ extern "C" {
     M(NetworkCacheStorage) \
     M(NetworkScheduling) \
     M(NetworkSession) \
+    M(Notifications) \
+    M(PDF) \
+    M(PDFAsyncRendering) \
+    M(PageLoadObserver) \
     M(PerformanceLogging) \
     M(Plugins) \
     M(Printing) \
+    M(PrivateClickMeasurement) \
     M(Process) \
+    M(ProcessCapabilities) \
     M(ProcessSuspension) \
     M(ProcessSwapping) \
     M(ProximityNetworking) \
+    M(Push) \
+    M(RemoteLayerBuffers) \
     M(RemoteLayerTree) \
     M(Resize) \
     M(ResourceLoadStatistics) \
+    M(Sandbox) \
+    M(ScrollAnimations) \
     M(Scrolling) \
+    M(SecureCoding) \
     M(Selection) \
     M(ServiceWorker) \
     M(SessionState) \
     M(SharedDisplayLists) \
+    M(SharedWorker) \
     M(Storage) \
     M(StorageAPI) \
+    M(SystemPreview) \
+    M(Telephony) \
     M(TextInput) \
+    M(TextInteraction) \
+    M(Translation) \
     M(UIHitTesting) \
     M(ViewGestures) \
     M(ViewState) \
@@ -107,6 +129,7 @@ extern "C" {
     M(WebGL) \
     M(WebRTC) \
     M(WheelEvents) \
+    M(Worker) \
     M(XR) \
 
 WEBKIT2_LOG_CHANNELS(DECLARE_LOG_CHANNEL)

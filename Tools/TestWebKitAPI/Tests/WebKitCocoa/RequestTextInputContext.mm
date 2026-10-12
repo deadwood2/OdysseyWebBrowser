@@ -664,7 +664,7 @@ TEST(RequestTextInputContext, TextInteraction_FocusingReadOnlyElementShouldScrol
     }
 
     EXPECT_WK_STREQ("INPUT", [webView stringByEvaluatingJavaScript:@"document.activeElement.tagName"]);
-    EXPECT_TRUE(didScroll);
+    TestWebKitAPI::Util::run(&didScroll);
 }
 
 TEST(RequestTextInputContext, TextInteraction_FocusElementInDetachedDocument)
@@ -834,7 +834,8 @@ TEST(RequestTextInputContext, TextInteraction_FocusDefocusFocusAgainShouldScroll
     EXPECT_TRUE(didScroll);
 }
 
-TEST(RequestTextInputContext, TextInteraction_FocusingAssistedElementShouldNotScrollToReveal)
+// FIXME: Re-enable after webkit.org/b/242085 is resolved
+TEST(RequestTextInputContext, DISABLED_TextInteraction_FocusingAssistedElementShouldNotScrollToReveal)
 {
     IPhoneUserInterfaceSwizzler userInterfaceSwizzler;
 

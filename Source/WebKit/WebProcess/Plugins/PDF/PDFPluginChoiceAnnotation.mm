@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,13 +23,11 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#if ENABLE(PDFKIT_PLUGIN)
-
 #import "config.h"
 #import "PDFPluginChoiceAnnotation.h"
 
-#import "PDFLayerControllerSPI.h"
-#import <Quartz/Quartz.h>
+#if ENABLE(PDF_PLUGIN) && PLATFORM(MAC)
+
 #import <WebCore/CSSPrimitiveValue.h>
 #import <WebCore/CSSPropertyNames.h>
 #import <WebCore/ColorMac.h>
@@ -44,17 +42,17 @@ namespace WebKit {
 using namespace WebCore;
 using namespace HTMLNames;
 
-Ref<PDFPluginChoiceAnnotation> PDFPluginChoiceAnnotation::create(PDFAnnotation *annotation, PDFLayerController *pdfLayerController, PDFPlugin* plugin)
+Ref<PDFPluginChoiceAnnotation> PDFPluginChoiceAnnotation::create(PDFAnnotation *annotation, PDFPluginBase* plugin)
 {
-    return adoptRef(*new PDFPluginChoiceAnnotation(annotation, pdfLayerController, plugin));
+    return adoptRef(*new PDFPluginChoiceAnnotation(annotation, plugin));
 }
 
 void PDFPluginChoiceAnnotation::updateGeometry()
 {
     PDFPluginAnnotation::updateGeometry();
 
-    StyledElement* styledElement = static_cast<StyledElement*>(element());
-    styledElement->setInlineStyleProperty(CSSPropertyFontSize, choiceAnnotation().font.pointSize * pdfLayerController().contentScaleFactor, CSSUnitType::CSS_PX);
+    RefPtr styledElement = downcast<StyledElement>(element());
+    styledElement->setInlineStyleProperty(CSSPropertyFontSize, choiceAnnotation().font.pointSize * plugin()->contentScaleFactor(), CSSUnitType::CSS_PX);
 }
 
 void PDFPluginChoiceAnnotation::commit()
@@ -66,31 +64,29 @@ void PDFPluginChoiceAnnotation::commit()
 
 Ref<Element> PDFPluginChoiceAnnotation::createAnnotationElement()
 {
-    Document& document = parent()->document();
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    Ref document = parent()->document();
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     PDFAnnotationChoiceWidget *choiceAnnotation = this->choiceAnnotation();
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
-    auto element = document.createElement(selectTag, false);
-
-    auto& styledElement = downcast<StyledElement>(element.get());
+    Ref element = downcast<StyledElement>(document->createElement(selectTag, false));
 
     // FIXME: Match font weight and style as well?
-    styledElement.setInlineStyleProperty(CSSPropertyColor, serializationForHTML(colorFromNSColor(choiceAnnotation.fontColor)));
-    styledElement.setInlineStyleProperty(CSSPropertyFontFamily, choiceAnnotation.font.familyName);
+    element->setInlineStyleProperty(CSSPropertyColor, serializationForHTML(colorFromCocoaColor(choiceAnnotation.fontColor)));
+    element->setInlineStyleProperty(CSSPropertyFontFamily, choiceAnnotation.font.familyName);
 
     NSArray *choices = choiceAnnotation.choices;
     NSString *selectedChoice = choiceAnnotation.stringValue;
 
     for (NSString *choice in choices) {
-        auto choiceOption = document.createElement(optionTag, false);
+        auto choiceOption = document->createElement(optionTag, false);
         choiceOption->setAttributeWithoutSynchronization(valueAttr, choice);
         choiceOption->setTextContent(choice);
 
         if (choice == selectedChoice)
-            choiceOption->setAttributeWithoutSynchronization(selectedAttr, AtomString("selected", AtomString::ConstructFromLiteral));
+            choiceOption->setAttributeWithoutSynchronization(selectedAttr, "selected"_s);
 
-        styledElement.appendChild(choiceOption);
+        element->appendChild(choiceOption);
     }
 
     return element;
@@ -98,4 +94,4 @@ Ref<Element> PDFPluginChoiceAnnotation::createAnnotationElement()
 
 } // namespace WebKit
 
-#endif // ENABLE(PDFKIT_PLUGIN)
+#endif // ENABLE(PDF_PLUGIN) && PLATFORM(MAC)

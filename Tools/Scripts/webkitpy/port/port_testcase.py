@@ -44,9 +44,11 @@ from webkitpy.common.system.filesystem_mock import MockFileSystem
 from webkitpy.common.system.systemhost_mock import MockSystemHost
 from webkitpy.common.version_name_map import INTERNAL_TABLE
 from webkitpy.port.base import Port
-from webkitpy.port.config import apple_additions, clear_cached_configuration
-from webkitpy.port.image_diff import ImageDiffer
+from webkitpy.port.config import apple_additions
+from webkitpy.port.driver import DriverOutput
+from webkitpy.port.image_diff import ImageDiffer, ImageDiffResult
 from webkitpy.port.server_process_mock import MockServerProcess
+from webkitpy.layout_tests.controllers.layout_test_runner import TestShard
 from webkitpy.layout_tests.servers import http_server_base
 from webkitpy.tool.mocktool import MockOptions
 
@@ -125,6 +127,17 @@ class PortTestCase(unittest.TestCase):
         port = self.port_maker(host, port_name, options=options, **kwargs)
         port._config.build_directory = lambda configuration, for_host=False: '/mock-build'
         return port
+
+    def test_sharding_groups(self):
+        port = self.make_port()
+        self.assertEqual(sorted(port.sharding_groups().keys()), [])
+        self.assertEqual(None, port.group_for_shard(TestShard('media/something', [])))
+        self.assertEqual(None, port.group_for_shard(TestShard('webaudio/something', [])))
+        self.assertEqual(None, port.group_for_shard(TestShard('fast/media/something', [])))
+        self.assertEqual(None, port.group_for_shard(TestShard('media-session/something', [])))
+        self.assertEqual(None, port.group_for_shard(TestShard('imported/mediacapture-fromelement/something', [])))
+        self.assertEqual(None, port.group_for_shard(TestShard('something/media', [])))
+        self.assertEqual(None, port.group_for_shard(TestShard('fast/something', [])))
 
     def test_default_timeout_ms(self):
         self.assertEqual(self.make_port(options=MockOptions(configuration='Release')).default_timeout_ms(), 30000)
@@ -249,72 +262,91 @@ class PortTestCase(unittest.TestCase):
         dir = port.layout_tests_dir()
         file1 = port._filesystem.join(dir, 'fast', 'css', 'button_center.png')
         contents1 = port._filesystem.read_binary_file(file1)
-        file2 = port._filesystem.join(dir, 'fast', 'css',
-                                      'remove-shorthand-expected.png')
+        file2 = port._filesystem.join(dir, 'fast', 'css', 'remove-shorthand-expected.png')
         contents2 = port._filesystem.read_binary_file(file2)
         tmpfd, tmpfile = port._filesystem.open_binary_tempfile('')
         tmpfd.close()
 
-        self.assertFalse(port.diff_image(contents1, contents1)[0])
-        self.assertTrue(port.diff_image(contents1, contents2)[0])
+        self.assertTrue(port.diff_image(contents1, contents1).passed)
+        self.assertFalse(port.diff_image(contents1, contents2).passed)
 
-        self.assertTrue(port.diff_image(contents1, contents2, tmpfile)[0])
+        self.assertFalse(port.diff_image(contents1, contents2, tmpfile).passed)
 
         port._filesystem.remove(tmpfile)
 
     def test_diff_image__missing_both(self):
         port = self.make_port()
-        self.assertFalse(port.diff_image(None, None)[0])
-        self.assertFalse(port.diff_image(None, b'')[0])
-        self.assertFalse(port.diff_image(b'', None)[0])
+        self.assertTrue(port.diff_image(None, None).passed)
+        self.assertTrue(port.diff_image(None, b'').passed)
+        self.assertTrue(port.diff_image(b'', None).passed)
 
-        self.assertFalse(port.diff_image(b'', b'')[0])
+        self.assertTrue(port.diff_image(b'', b'').passed)
 
     def test_diff_image__missing_actual(self):
         port = self.make_port()
-        self.assertTrue(port.diff_image(None, b'foo')[0])
-        self.assertTrue(port.diff_image(b'', b'foo')[0])
+        self.assertFalse(port.diff_image(None, b'foo').passed)
+        self.assertFalse(port.diff_image(b'', b'foo').passed)
 
     def test_diff_image__missing_expected(self):
         port = self.make_port()
-        self.assertTrue(port.diff_image(b'foo', None)[0])
-        self.assertTrue(port.diff_image(b'foo', b'')[0])
+        self.assertFalse(port.diff_image(b'foo', None).passed)
+        self.assertFalse(port.diff_image(b'foo', b'').passed)
 
     def test_diff_image(self):
+        # FIXME: Can't pretend to run setup for some ports, so just skip this test.
+        if self.disable_setup:
+            return
         port = self.make_port()
         self.proc = None
 
         def make_proc(port, nm, cmd, env, crash_message=None):
-            self.proc = MockServerProcess(port, nm, cmd, env, lines=['diff: 100% failed\n', 'diff: 100% failed\n'])
+            self.proc = MockServerProcess(port, nm, cmd, env, lines=[
+                'Content-Length: 6\n',
+                'image1',
+                'diff: 90%\n',
+                'maxDifference=6; totalPixels=50\n',
+                '#EOF\n',
+                'Content-Length: 6\n',
+                'image2',
+                'maxDifference=7; totalPixels=60\n',
+                'diff: 100%\n',
+                '#EOF\n'])
             return self.proc
-
-        # FIXME: Can't pretend to run setup for some ports, so just skip this test.
-        if self.disable_setup:
-            return
-
         port._server_process_constructor = make_proc
+        self.test_runner_proc = None
+
+        def make_test_runner_proc(port, nm, cmd, env, target_host, crash_message=None):
+            self.test_runner_proc = MockServerProcess(port, nm, cmd, env, lines=['#EOF', '#EOF'], err_lines=['#EOF'])
+            return self.test_runner_proc
+        port._test_runner_process_constructor = make_test_runner_proc
         port.setup_test_run()
 
         # First test the case of not using the JHBuild wrapper.
         self.assertFalse(port._should_use_jhbuild())
 
-        self.assertEqual(port.diff_image(b'foo', b'bar'), (b'', 100.0, None))
-        self.assertEqual(self.proc.cmd, [port._path_to_image_diff(), "--tolerance", "0.1"])
-        self.assertEqual(port.diff_image(b'foo', b'bar', None), (b'', 100.0, None))
-        self.assertEqual(self.proc.cmd, [port._path_to_image_diff(), "--tolerance", "0.1"])
-        self.assertEqual(port.diff_image(b'foo', b'bar', 0), (b'', 100.0, None))
-        self.assertEqual(self.proc.cmd, [port._path_to_image_diff(), "--tolerance", "0"])
+        result_fuzzy_data = {'max_difference': 6, 'total_pixels': 50}
+
+        self.assertEqual(port.diff_image(b'foo', b'bar'), ImageDiffResult(passed=False, diff_image=b'image1', difference=90.0, tolerance=0.1, fuzzy_data=result_fuzzy_data))
+        self.assertEqual(self.proc.cmd, [port._path_to_image_diff(), "--difference"])
+
+        self.assertEqual(port.diff_image(b'foo', b'bar', tolerance=None), ImageDiffResult(passed=False, diff_image=b'image1', difference=90.0, tolerance=0.1, fuzzy_data=result_fuzzy_data))
+        self.assertEqual(self.proc.cmd, [port._path_to_image_diff(), "--difference"])
+
+        self.assertEqual(port.diff_image(b'foo', b'bar', tolerance=0), ImageDiffResult(passed=False, diff_image=b'image1', difference=90.0, fuzzy_data=result_fuzzy_data))
+        self.assertEqual(self.proc.cmd, [port._path_to_image_diff(), "--difference"])
 
         # Now test the case of using JHBuild wrapper.
         port._filesystem.maybe_make_directory(port.path_from_webkit_base('WebKitBuild', 'Dependencies%s' % port.port_name.upper()))
         self.assertTrue(port._should_use_jhbuild())
 
-        self.assertEqual(port.diff_image(b'foo', b'bar'), (b'', 100.0, None))
-        self.assertEqual(self.proc.cmd, port._jhbuild_wrapper + [port._path_to_image_diff(), "--tolerance", "0.1"])
-        self.assertEqual(port.diff_image(b'foo', b'bar', None), (b'', 100.0, None))
-        self.assertEqual(self.proc.cmd, port._jhbuild_wrapper + [port._path_to_image_diff(), "--tolerance", "0.1"])
-        self.assertEqual(port.diff_image(b'foo', b'bar', 0), (b'', 100.0, None))
-        self.assertEqual(self.proc.cmd, port._jhbuild_wrapper + [port._path_to_image_diff(), "--tolerance", "0"])
+        self.assertEqual(port.diff_image(b'foo', b'bar'), ImageDiffResult(passed=False, diff_image=b'image1', difference=90.0, tolerance=0.1, fuzzy_data=result_fuzzy_data))
+        self.assertEqual(self.proc.cmd, port._jhbuild_wrapper + [port._path_to_image_diff(), "--difference"])
+
+        self.assertEqual(port.diff_image(b'foo', b'bar', tolerance=None), ImageDiffResult(passed=False, diff_image=b'image1', difference=90.0, tolerance=0.1, fuzzy_data=result_fuzzy_data))
+        self.assertEqual(self.proc.cmd, port._jhbuild_wrapper + [port._path_to_image_diff(), "--difference"])
+
+        self.assertEqual(port.diff_image(b'foo', b'bar', tolerance=0), ImageDiffResult(passed=False, diff_image=b'image1', difference=90.0, fuzzy_data=result_fuzzy_data))
+        self.assertEqual(self.proc.cmd, port._jhbuild_wrapper + [port._path_to_image_diff(), "--difference"])
 
         port.clean_up_test_run()
         self.assertTrue(self.proc.stopped)
@@ -322,31 +354,48 @@ class PortTestCase(unittest.TestCase):
 
     def test_diff_image_passed(self):
         port = self.make_port()
-        port._server_process_constructor = lambda port, nm, cmd, env, crash_message=None: MockServerProcess(lines=['diff: 0% passed\n'])
+        port._server_process_constructor = lambda port, nm, cmd, env, crash_message=None: MockServerProcess(lines=['diff: 0%\n', 'maxDifference=0; totalPixels=0\n', '#EOF\n'])
         image_differ = ImageDiffer(port)
-        self.assertEqual(image_differ.diff_image(b'foo', b'bar', 0.1), (None, 0, None))
+        self.assertEqual(image_differ.diff_image(b'foo', b'foo', tolerance=0), ImageDiffResult(passed=True, diff_image=None, difference=0, tolerance=0, fuzzy_data={'max_difference': 0, 'total_pixels': 0}))
+
+    def test_diff_image_passed_with_tolerance(self):
+        port = self.make_port()
+        port._server_process_constructor = lambda port, nm, cmd, env, crash_message=None: MockServerProcess(lines=['Content-Length: 4\n', 'test', 'diff: 0.05%\n', 'maxDifference=4; totalPixels=10\n', '#EOF\n'])
+        image_differ = ImageDiffer(port)
+        self.assertEqual(image_differ.diff_image(b'foo', b'bar', tolerance=0.1), ImageDiffResult(passed=True, diff_image=b'test', difference=0.05, tolerance=0.1, fuzzy_data={'max_difference': 4, 'total_pixels': 10}))
+
+    def test_diff_image_failed_with_rounded_diff(self):
+        port = self.make_port()
+        port._server_process_constructor = lambda port, nm, cmd, env, crash_message=None: MockServerProcess(lines=['Content-Length: 4\n', 'test', 'diff: 0.101234%\n', 'maxDifference=8; totalPixels=20\n', '#EOF\n'])
+        image_differ = ImageDiffer(port)
+        self.assertEqual(image_differ.diff_image(b'foo', b'bar', tolerance=0.1), ImageDiffResult(passed=False, diff_image=b'test', difference=0.101234, tolerance=0.1, fuzzy_data={'max_difference': 8, 'total_pixels': 20}))
 
     def test_diff_image_failed(self):
         port = self.make_port()
-        port._server_process_constructor = lambda port, nm, cmd, env, crash_message=None: MockServerProcess(lines=['diff: 100% failed\n'])
+        port._server_process_constructor = lambda port, nm, cmd, env, crash_message=None: MockServerProcess(lines=['Content-Length: 4\n', 'test', 'diff: 10%\n', 'maxDifference=5; totalPixels=13\n', '#EOF\n'])
         image_differ = ImageDiffer(port)
-        self.assertEqual(image_differ.diff_image(b'foo', b'bar', 0.1), (b'', 100.0, None))
+        self.assertEqual(image_differ.diff_image(b'foo', b'bar', tolerance=0.1), ImageDiffResult(passed=False, diff_image=b'test', difference=10, tolerance=0.1, fuzzy_data={'max_difference': 5, 'total_pixels': 13}))
 
     def test_diff_image_crashed(self):
+        # FIXME: Can't pretend to run setup for some ports, so just skip this test.
+        if self.disable_setup:
+            return
+
         port = self.make_port()
         self.proc = None
 
         def make_proc(port, nm, cmd, env, crash_message=None):
             self.proc = MockServerProcess(port, nm, cmd, env, crashed=True)
             return self.proc
-
-        # FIXME: Can't pretend to run setup for some ports, so just skip this test.
-        if self.disable_setup:
-            return
-
         port._server_process_constructor = make_proc
+        self.test_runner_proc = None
+
+        def make_test_runner_proc(port, nm, cmd, env, target_host, crash_message=None):
+            self.test_runner_proc = MockServerProcess(port, nm, cmd, env, lines=['#EOF', '#EOF'], err_lines=['#EOF'])
+            return self.test_runner_proc
+        port._test_runner_process_constructor = make_test_runner_proc
         port.setup_test_run()
-        self.assertEqual(port.diff_image(b'foo', b'bar'), (b'', 0, 'ImageDiff crashed\n'))
+        self.assertEqual(port.diff_image(b'foo', b'bar'), ImageDiffResult(passed=False, diff_image=None, difference=0, tolerance=0.1, error_string='ImageDiff crashed\n'))
         port.clean_up_test_run()
 
     @slow
@@ -481,7 +530,6 @@ class PortTestCase(unittest.TestCase):
             port._filesystem.write_text_file(path, '')
         ordered_dict = port.expectations_dict()
         self.assertEqual(port.path_to_generic_test_expectations_file(), list(ordered_dict.keys())[0])
-        self.assertEqual(port.path_to_test_expectations_file(), list(ordered_dict.keys())[port.test_expectations_file_position()])
 
         options = MockOptions(additional_expectations=['/tmp/foo', '/tmp/bar'])
         port = self.make_port(options=options)
@@ -493,22 +541,8 @@ class PortTestCase(unittest.TestCase):
         self.assertEqual(list(ordered_dict.keys())[-2:], options.additional_expectations)  # pylint: disable=E1101
         self.assertEqual(list(ordered_dict.values())[-2:], ['foo', 'bar'])
 
-    def test_path_to_test_expectations_file(self):
-        port = TestWebKitPort()
-        port._options = MockOptions(webkit_test_runner=False)
-        self.assertEqual(port.path_to_test_expectations_file(), '/mock-checkout/LayoutTests/platform/testwebkitport/TestExpectations')
-
-        port = TestWebKitPort()
-        port._options = MockOptions(webkit_test_runner=True)
-        self.assertEqual(port.path_to_test_expectations_file(), '/mock-checkout/LayoutTests/platform/testwebkitport/TestExpectations')
-
-        port = TestWebKitPort()
-        port.host.filesystem.files['/mock-checkout/LayoutTests/platform/testwebkitport/TestExpectations'] = 'some content'
-        port._options = MockOptions(webkit_test_runner=False)
-        self.assertEqual(port.path_to_test_expectations_file(), '/mock-checkout/LayoutTests/platform/testwebkitport/TestExpectations')
-
     def test_skipped_layout_tests(self):
-        self.assertEqual(TestWebKitPort().skipped_layout_tests(test_list=[]), set(['media']))
+        self.assertEqual(TestWebKitPort().skipped_layout_tests(), set(['media']))
 
     def test_expectations_files(self):
         port = TestWebKitPort()
@@ -694,7 +728,6 @@ MOCK output of child process
         self.assertEqual(port.max_child_processes(), float('inf'))
 
     def test_default_upload_configuration(self):
-        clear_cached_configuration()
         port = self.make_port()
         configuration = port.configuration_for_upload()
         self.assertEqual(configuration['architecture'], port.architecture())
@@ -704,17 +737,14 @@ MOCK output of child process
         self.assertEqual(configuration['version_name'], port.host.platform.os_version_name())
 
     def test_debug_upload_configuration(self):
-        clear_cached_configuration()
         port = self.make_port(options=MockOptions(configuration='Debug'))
         self.assertEqual(port.configuration_for_upload()['style'], 'debug')
 
     def test_asan_upload_configuration(self):
-        clear_cached_configuration()
         port = self.make_port()
         port.host.filesystem.write_text_file('/mock-build/ASan', 'YES')
         self.assertEqual(port.configuration_for_upload()['style'], 'asan')
 
     def test_guard_malloc_configuration(self):
-        clear_cached_configuration()
         port = self.make_port(options=MockOptions(guard_malloc=True))
         self.assertEqual(port.configuration_for_upload()['style'], 'guard-malloc')

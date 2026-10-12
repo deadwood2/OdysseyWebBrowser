@@ -28,6 +28,8 @@
 #include "Connection.h"
 #include "DebuggableInfoData.h"
 #include "WebPageProxyIdentifier.h"
+#include <WebCore/Color.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/InspectorDebuggableType.h>
 #include <WebCore/InspectorFrontendAPIDispatcher.h>
 #include <WebCore/InspectorFrontendClient.h>
@@ -58,14 +60,12 @@ public:
     static Ref<WebInspectorUI> create(WebPage&);
     virtual ~WebInspectorUI();
 
-    static void enableFrontendFeatures(WebPage&);
-
     // Implemented in generated WebInspectorUIMessageReceiver.cpp
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
 
     // IPC::Connection::Client
     void didClose(IPC::Connection&) override { /* Do nothing, the inspected page process may have crashed and may be getting replaced. */ }
-    void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName) override { closeWindow(); }
+    void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName, int32_t indexOfObjectFailingDecoding) override { closeWindow(); }
 
     // Called by WebInspectorUI messages
     void establishConnection(WebPageProxyIdentifier inspectedPageIdentifier, const DebuggableInfoData&, bool underTest, unsigned inspectionLevel);
@@ -93,9 +93,6 @@ public:
     void setIsVisible(bool);
 
     void updateFindString(const String&);
-
-    void didSave(const String& url);
-    void didAppend(const String& url);
 
     void sendMessageToFrontend(const String& message);
     void evaluateInFrontendForTesting(const String& expression);
@@ -127,6 +124,7 @@ public:
     void resetState() override;
 
     void setForcedAppearance(WebCore::InspectorFrontendClient::Appearance) override;
+    void effectiveAppearanceDidChange(WebCore::InspectorFrontendClient::Appearance);
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() const override;
 
@@ -138,13 +136,21 @@ public:
     void changeSheetRect(const WebCore::FloatRect&) override;
 
     void openURLExternally(const String& url) override;
+    void revealFileExternally(const String& path) override;
 
-    bool canSave() override;
-    void save(const WTF::String& url, const WTF::String& content, bool base64Encoded, bool forceSaveAs) override;
-    void append(const WTF::String& url, const WTF::String& content) override;
+    bool canSave(WebCore::InspectorFrontendClient::SaveMode) override;
+    void save(Vector<WebCore::InspectorFrontendClient::SaveData>&&, bool forceSaveAs) override;
+
+    bool canLoad() override;
+    void load(const WTF::String& path, WTF::CompletionHandler<void(const WTF::String&)>&&) override;
+
+    bool canPickColorFromScreen() override;
+    void pickColorFromScreen(WTF::CompletionHandler<void(const std::optional<WebCore::Color>&)>&&) override;
 
     void inspectedURLChanged(const String&) override;
     void showCertificate(const WebCore::CertificateInfo&) override;
+
+    void setInspectorPageDeveloperExtrasEnabled(bool) override;
 
 #if ENABLE(INSPECTOR_TELEMETRY)
     bool supportsDiagnosticLogging() override;
@@ -154,8 +160,10 @@ public:
         
 #if ENABLE(INSPECTOR_EXTENSIONS)
     bool supportsWebExtensions() override;
-    void didShowExtensionTab(const Inspector::ExtensionID&, const Inspector::ExtensionTabID&) override;
+    void didShowExtensionTab(const Inspector::ExtensionID&, const Inspector::ExtensionTabID&, const WebCore::FrameIdentifier&) override;
     void didHideExtensionTab(const Inspector::ExtensionID&, const Inspector::ExtensionTabID&) override;
+    void didNavigateExtensionTab(const Inspector::ExtensionID&, const Inspector::ExtensionTabID&, const URL&) override;
+    void inspectedPageDidNavigate(const URL&) override;
 #endif
 
     void sendMessageToBackend(const String&) override;
@@ -169,6 +177,8 @@ public:
 
 private:
     explicit WebInspectorUI(WebPage&);
+
+    void didEstablishConnection();
 
     WebPage& m_page;
     Ref<WebCore::InspectorFrontendAPIDispatcher> m_frontendAPIDispatcher;

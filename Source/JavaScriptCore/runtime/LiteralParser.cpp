@@ -30,41 +30,17 @@
 #include "CodeBlock.h"
 #include "JSArray.h"
 #include "JSCInlines.h"
+#include "JSONAtomStringCacheInlines.h"
 #include "Lexer.h"
 #include "ObjectConstructor.h"
 #include <wtf/ASCIICType.h>
 #include <wtf/dtoa.h>
-#include <wtf/text/StringConcatenate.h>
+#include <wtf/text/FastCharacterComparison.h>
+#include <wtf/text/MakeString.h>
 
 #include "KeywordLookup.h"
 
 namespace JSC {
-
-template<typename CharType>
-ALWAYS_INLINE bool compare3Chars(const CharType* source, CharType c0, CharType c1, CharType c2)
-{
-    if constexpr (sizeof(CharType) == 1)
-        return COMPARE_3CHARS(source, c0, c1, c2);
-    else
-        return COMPARE_3UCHARS(source, c0, c1, c2);
-}
-
-template<typename CharType>
-ALWAYS_INLINE bool compare4Chars(const CharType* source, CharType c0, CharType c1, CharType c2, CharType c3)
-{
-    if constexpr (sizeof(CharType) == 1)
-        return COMPARE_4CHARS(source, c0, c1, c2, c3);
-    else
-        return COMPARE_4UCHARS(source, c0, c1, c2, c3);
-}
-
-template <typename CharType>
-static ALWAYS_INLINE bool isJSONWhiteSpace(const CharType& c)
-{
-    // The JSON RFC 4627 defines a list of allowed characters to be considered
-    // insignificant white space: http://www.ietf.org/rfc/rfc4627.txt (2. JSON Grammar).
-    return c == ' ' || c == 0x9 || c == 0xA || c == 0xD;
-}
 
 template <typename CharType>
 bool LiteralParser<CharType>::tryJSONPParse(Vector<JSONPData>& results, bool needsFullSourceInfo)
@@ -76,17 +52,17 @@ bool LiteralParser<CharType>::tryJSONPParse(Vector<JSONPData>& results, bool nee
     do {
         Vector<JSONPPathEntry> path;
         // Unguarded next to start off the lexer
-        Identifier name = Identifier::fromString(vm, m_lexer.currentToken()->start, m_lexer.currentToken()->end - m_lexer.currentToken()->start);
+        Identifier name = Identifier::fromString(vm, m_lexer.currentToken()->identifier());
         JSONPPathEntry entry;
         if (name == vm.propertyNames->varKeyword) {
             if (m_lexer.next() != TokIdentifier)
                 return false;
             entry.m_type = JSONPPathEntryTypeDeclareVar;
-            entry.m_pathEntryName = Identifier::fromString(vm, m_lexer.currentToken()->start, m_lexer.currentToken()->end - m_lexer.currentToken()->start);
+            entry.m_pathEntryName = Identifier::fromString(vm, m_lexer.currentToken()->identifier());
             path.append(entry);
         } else {
             entry.m_type = JSONPPathEntryTypeDot;
-            entry.m_pathEntryName = Identifier::fromString(vm, m_lexer.currentToken()->start, m_lexer.currentToken()->end - m_lexer.currentToken()->start);
+            entry.m_pathEntryName = Identifier::fromString(vm, m_lexer.currentToken()->identifier());
             path.append(entry);
         }
         if (isLexerKeyword(entry.m_pathEntryName))
@@ -113,7 +89,7 @@ bool LiteralParser<CharType>::tryJSONPParse(Vector<JSONPData>& results, bool nee
                 entry.m_type = JSONPPathEntryTypeDot;
                 if (m_lexer.next() != TokIdentifier)
                     return false;
-                entry.m_pathEntryName = Identifier::fromString(vm, m_lexer.currentToken()->start, m_lexer.currentToken()->end - m_lexer.currentToken()->start);
+                entry.m_pathEntryName = Identifier::fromString(vm, m_lexer.currentToken()->identifier());
                 break;
             }
             case TokLParen: {
@@ -132,7 +108,7 @@ bool LiteralParser<CharType>::tryJSONPParse(Vector<JSONPData>& results, bool nee
     startJSON:
         m_lexer.next();
         results.append(JSONPData());
-        JSValue startParseExpressionValue = parse(StartParseExpression);
+        JSValue startParseExpressionValue = parse(vm, StartParseExpression);
         RETURN_IF_EXCEPTION(scope, false);
         results.last().m_value.set(vm, startParseExpressionValue);
         if (!results.last().m_value)
@@ -149,57 +125,45 @@ bool LiteralParser<CharType>::tryJSONPParse(Vector<JSONPData>& results, bool nee
     } while (m_lexer.currentToken()->type == TokIdentifier);
     return m_lexer.currentToken()->type == TokEnd;
 }
-    
+
 template <typename CharType>
-template <typename LiteralCharType>
-ALWAYS_INLINE Identifier LiteralParser<CharType>::makeIdentifier(const LiteralCharType* characters, size_t length)
+ALWAYS_INLINE Identifier LiteralParser<CharType>::makeIdentifier(VM& vm, typename Lexer::LiteralParserTokenPtr token)
 {
-    VM& vm = m_globalObject->vm();
-    if (!length)
-        return vm.propertyNames->emptyIdentifier;
-
-    auto firstCharacter = characters[0];
-    if (length == 1) {
-        if constexpr (sizeof(LiteralCharType) == 1)
-            return Identifier::fromString(vm, vm.smallStrings.singleCharacterStringRep(firstCharacter));
-        if (firstCharacter <= maxSingleCharacterString)
-            return Identifier::fromString(vm, vm.smallStrings.singleCharacterStringRep(firstCharacter));
-        return Identifier::fromString(vm, characters, length);
-    }
-
-    if (firstCharacter >= maximumCachableCharacter)
-        return Identifier::fromString(vm, characters, length);
-
-    // 0 means no entry since m_recentIdentifiersIndex is zero-filled initially.
-    uint8_t indexPlusOne = m_recentIdentifiersIndex[firstCharacter];
-    if (indexPlusOne) {
-        uint8_t index = indexPlusOne - 1;
-        auto& ident = m_recentIdentifiers[index];
-        if (Identifier::equal(ident.impl(), characters, length))
-            return ident;
-        auto result = Identifier::fromString(vm, characters, length);
-        m_recentIdentifiers[index] = result;
-        return result;
-    }
-
-    auto result = Identifier::fromString(vm, characters, length);
-    m_recentIdentifiers.uncheckedAppend(result);
-    indexPlusOne = m_recentIdentifiers.size();
-    m_recentIdentifiersIndex[firstCharacter] = indexPlusOne;
-    return result;
+    if (token->type == TokIdentifier)
+        return Identifier::fromString(vm, vm.jsonAtomStringCache.makeIdentifier(token->identifier()));
+    ASSERT(token->type == TokString);
+    if (token->stringIs8Bit)
+        return Identifier::fromString(vm, vm.jsonAtomStringCache.makeIdentifier(token->string8()));
+    return Identifier::fromString(vm, vm.jsonAtomStringCache.makeIdentifier(token->string16()));
 }
 
-static ALWAYS_INLINE bool cannotBeIdentPartOrEscapeStart(LChar)
+template <typename CharType>
+ALWAYS_INLINE JSString* LiteralParser<CharType>::makeJSString(VM& vm, typename Lexer::LiteralParserTokenPtr token)
+{
+    constexpr unsigned maxAtomizeStringLength = 10;
+    if (token->stringIs8Bit) {
+        if (token->stringOrIdentifierLength > maxAtomizeStringLength)
+            return jsNontrivialString(vm, String({ token->stringStart8, token->stringOrIdentifierLength }));
+        return jsString(vm, Identifier::fromString(vm, token->string8()).string());
+    }
+    if (token->stringOrIdentifierLength > maxAtomizeStringLength)
+        return jsNontrivialString(vm, String({ token->stringStart16, token->stringOrIdentifierLength }));
+    return jsString(vm, Identifier::fromString(vm, token->string16()).string());
+}
+
+[[maybe_unused]] static ALWAYS_INLINE bool cannotBeIdentPartOrEscapeStart(LChar)
 {
     RELEASE_ASSERT_NOT_REACHED();
 }
 
-static ALWAYS_INLINE bool cannotBeIdentPartOrEscapeStart(UChar)
+[[maybe_unused]] static ALWAYS_INLINE bool cannotBeIdentPartOrEscapeStart(UChar)
 {
     RELEASE_ASSERT_NOT_REACHED();
 }
 
 // 256 Latin-1 codes
+// The JSON RFC 4627 defines a list of allowed characters to be considered
+// insignificant white space: http://www.ietf.org/rfc/rfc4627.txt (2. JSON Grammar).
 static constexpr const TokenType tokenTypesOfLatin1Characters[256] = {
 /*   0 - Null               */ TokError,
 /*   1 - Start of Heading   */ TokError,
@@ -210,11 +174,11 @@ static constexpr const TokenType tokenTypesOfLatin1Characters[256] = {
 /*   6 - Acknowledgment     */ TokError,
 /*   7 - Bell               */ TokError,
 /*   8 - Back Space         */ TokError,
-/*   9 - Horizontal Tab     */ TokError,
-/*  10 - Line Feed          */ TokError,
+/*   9 - Horizontal Tab     */ TokErrorSpace,
+/*  10 - Line Feed          */ TokErrorSpace,
 /*  11 - Vertical Tab       */ TokError,
 /*  12 - Form Feed          */ TokError,
-/*  13 - Carriage Return    */ TokError,
+/*  13 - Carriage Return    */ TokErrorSpace,
 /*  14 - Shift Out          */ TokError,
 /*  15 - Shift In           */ TokError,
 /*  16 - Data Line Escape   */ TokError,
@@ -233,7 +197,7 @@ static constexpr const TokenType tokenTypesOfLatin1Characters[256] = {
 /*  29 - Group Separator    */ TokError,
 /*  30 - Record Separator   */ TokError,
 /*  31 - Unit Separator     */ TokError,
-/*  32 - Space              */ TokError,
+/*  32 - Space              */ TokErrorSpace,
 /*  33 - !                  */ TokError,
 /*  34 - "                  */ TokString,
 /*  35 - #                  */ TokError,
@@ -720,6 +684,13 @@ static constexpr const bool safeStringLatin1CharactersInStrictJSON[256] = {
 };
 
 template <typename CharType>
+static ALWAYS_INLINE bool isJSONWhiteSpace(const CharType& c)
+{
+    return tokenTypesOfLatin1Characters[static_cast<uint8_t>(c)] == TokErrorSpace && isLatin1(c);
+}
+
+template <typename CharType>
+template <JSONIdentifierHint hint>
 ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::lex(LiteralParserToken<CharType>& token)
 {
 #if ASSERT_ENABLED
@@ -732,12 +703,10 @@ ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::lex(LiteralParserToken<C
     ASSERT(m_ptr <= m_end);
     if (m_ptr == m_end) {
         token.type = TokEnd;
-        token.start = token.end = m_ptr;
         return TokEnd;
     }
     ASSERT(m_ptr < m_end);
     token.type = TokError;
-    token.start = m_ptr;
     CharType character = *m_ptr;
     if (LIKELY(isLatin1(character))) {
         TokenType tokenType = tokenTypesOfLatin1Characters[character];
@@ -747,31 +716,28 @@ ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::lex(LiteralParserToken<C
                 m_lexErrorMessage = "Single quotes (\') are not allowed in JSON"_s;
                 return TokError;
             }
-            return lexString(token, character);
+            return lexString<hint>(token, character);
 
         case TokIdentifier: {
             switch (character) {
             case 't':
-                if (m_end - m_ptr >= 4 && compare3Chars<CharType>(m_ptr + 1, 'r', 'u', 'e')) {
+                if (m_end - m_ptr >= 4 && compareCharacters(m_ptr + 1, 'r', 'u', 'e')) {
                     m_ptr += 4;
                     token.type = TokTrue;
-                    token.end = m_ptr;
                     return TokTrue;
                 }
                 break;
             case 'f':
-                if (m_end - m_ptr >= 5 && compare4Chars<CharType>(m_ptr + 1, 'a', 'l', 's', 'e')) {
+                if (m_end - m_ptr >= 5 && compareCharacters(m_ptr + 1, 'a', 'l', 's', 'e')) {
                     m_ptr += 5;
                     token.type = TokFalse;
-                    token.end = m_ptr;
                     return TokFalse;
                 }
                 break;
             case 'n':
-                if (m_end - m_ptr >= 4 && compare3Chars<CharType>(m_ptr + 1, 'u', 'l', 'l')) {
+                if (m_end - m_ptr >= 4 && compareCharacters(m_ptr + 1, 'u', 'l', 'l')) {
                     m_ptr += 4;
                     token.type = TokNull;
-                    token.end = m_ptr;
                     return TokNull;
                 }
                 break;
@@ -783,6 +749,7 @@ ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::lex(LiteralParserToken<C
             return lexNumber(token);
 
         case TokError:
+        case TokErrorSpace:
             break;
 
         default:
@@ -798,44 +765,46 @@ ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::lex(LiteralParserToken<C
                 || tokenType == TokAssign
                 || tokenType == TokSemi);
             token.type = tokenType;
-            token.end = ++m_ptr;
+            ++m_ptr;
             return tokenType;
         }
     }
-    m_lexErrorMessage = makeString("Unrecognized token '", StringView { m_ptr, 1 }, '\'');
+    m_lexErrorMessage = makeString("Unrecognized token '"_s, span(*m_ptr), '\'');
     return TokError;
 }
 
-template <>
-ALWAYS_INLINE TokenType LiteralParser<LChar>::Lexer::lexIdentifier(LiteralParserToken<LChar>& token)
+template <typename CharType>
+ALWAYS_INLINE static bool isValidIdentifierCharacter(CharType c)
 {
-    while (m_ptr < m_end && (isASCIIAlphanumeric(*m_ptr) || *m_ptr == '_' || *m_ptr == '$'))
-        m_ptr++;
-    token.stringIs8Bit = 1;
-    token.stringToken8 = token.start;
-    token.stringLength = m_ptr - token.start;
-    token.type = TokIdentifier;
-    token.end = m_ptr;
-    return TokIdentifier;
+    if constexpr (sizeof(CharType) == 1)
+        return isASCIIAlphanumeric(c) || c == '_' || c == '$';
+    else
+        return isASCIIAlphanumeric(c) || c == '_' || c == '$' || c == 0x200C || c == 0x200D;
 }
 
-template <>
-ALWAYS_INLINE TokenType LiteralParser<UChar>::Lexer::lexIdentifier(LiteralParserToken<UChar>& token)
+template <typename CharType>
+ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::lexIdentifier(LiteralParserToken<CharType>& token)
 {
-    while (m_ptr < m_end && (isASCIIAlphanumeric(*m_ptr) || *m_ptr == '_' || *m_ptr == '$' || *m_ptr == 0x200C || *m_ptr == 0x200D))
-        m_ptr++;
-    token.stringIs8Bit = 0;
-    token.stringToken16 = token.start;
-    token.stringLength = m_ptr - token.start;
+    token.identifierStart = m_ptr;
+    while (m_ptr < m_end && isValidIdentifierCharacter(*m_ptr))
+        ++m_ptr;
+    token.stringOrIdentifierLength = m_ptr - token.identifierStart;
     token.type = TokIdentifier;
-    token.end = m_ptr;
     return TokIdentifier;
 }
 
 template <typename CharType>
-TokenType LiteralParser<CharType>::Lexer::next()
+ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::next()
 {
-    TokenType result = lex(m_currentToken);
+    TokenType result = lex<JSONIdentifierHint::Unknown>(m_currentToken);
+    ASSERT(m_currentToken.type == result);
+    return result;
+}
+
+template <typename CharType>
+ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::nextMaybeIdentifier()
+{
+    TokenType result = lex<JSONIdentifierHint::MaybeIdentifier>(m_currentToken);
     ASSERT(m_currentToken.type == result);
     return result;
 }
@@ -844,17 +813,17 @@ template <>
 ALWAYS_INLINE void setParserTokenString<LChar>(LiteralParserToken<LChar>& token, const LChar* string)
 {
     token.stringIs8Bit = 1;
-    token.stringToken8 = string;
+    token.stringStart8 = string;
 }
 
 template <>
 ALWAYS_INLINE void setParserTokenString<UChar>(LiteralParserToken<UChar>& token, const UChar* string)
 {
     token.stringIs8Bit = 0;
-    token.stringToken16 = string;
+    token.stringStart16 = string;
 }
 
-enum class SafeStringCharacterSet { Strict, NonStrict };
+enum class SafeStringCharacterSet { Strict, Sloppy };
 
 template <SafeStringCharacterSet set>
 static ALWAYS_INLINE bool isSafeStringCharacter(LChar c, LChar terminator)
@@ -876,7 +845,17 @@ static ALWAYS_INLINE bool isSafeStringCharacter(UChar c, UChar terminator)
         return (c >= ' ' && isLatin1(c) && c != '\\' && c != terminator) || (c == '\t');
 }
 
+template <SafeStringCharacterSet set>
+static ALWAYS_INLINE bool isSafeStringCharacterForIdentifier(UChar c, UChar terminator)
+{
+    if constexpr (set == SafeStringCharacterSet::Strict)
+        return isSafeStringCharacter<set>(static_cast<LChar>(c), static_cast<LChar>(terminator)) || !isLatin1(c);
+    else
+        return (c >= ' ' && isLatin1(c) && c != '\\' && c != terminator) || (c == '\t');
+}
+
 template <typename CharType>
+template <JSONIdentifierHint hint>
 ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::lexString(LiteralParserToken<CharType>& token, CharType terminator)
 {
     ++m_ptr;
@@ -884,18 +863,37 @@ ALWAYS_INLINE TokenType LiteralParser<CharType>::Lexer::lexString(LiteralParserT
 
     if (m_mode == StrictJSON) {
         ASSERT(terminator == '"');
-        while (m_ptr < m_end && isSafeStringCharacter<SafeStringCharacterSet::Strict>(*m_ptr, '"'))
-            ++m_ptr;
+        if constexpr (hint == JSONIdentifierHint::MaybeIdentifier) {
+            while (m_ptr < m_end && isSafeStringCharacterForIdentifier<SafeStringCharacterSet::Strict>(*m_ptr, '"'))
+                ++m_ptr;
+        } else {
+            using UnsignedType = std::make_unsigned_t<CharType>;
+            constexpr auto quoteMask = SIMD::splat<UnsignedType>('"');
+            constexpr auto escapeMask = SIMD::splat<UnsignedType>('\\');
+            constexpr auto controlMask = SIMD::splat<UnsignedType>(' ');
+            auto vectorMatch = [&](auto input) ALWAYS_INLINE_LAMBDA {
+                auto quotes = SIMD::equal(input, quoteMask);
+                auto escapes = SIMD::equal(input, escapeMask);
+                auto controls = SIMD::lessThan(input, controlMask);
+                auto mask = SIMD::bitOr(quotes, escapes, controls);
+                return SIMD::findFirstNonZeroIndex(mask);
+            };
+
+            auto scalarMatch = [&](auto character) ALWAYS_INLINE_LAMBDA {
+                return !isSafeStringCharacter<SafeStringCharacterSet::Strict>(character, '"');
+            };
+
+            m_ptr = SIMD::find(std::span { m_ptr, m_end }, vectorMatch, scalarMatch);
+        }
     } else {
-        while (m_ptr < m_end && isSafeStringCharacter<SafeStringCharacterSet::NonStrict>(*m_ptr, terminator))
+        while (m_ptr < m_end && isSafeStringCharacter<SafeStringCharacterSet::Sloppy>(*m_ptr, terminator))
             ++m_ptr;
     }
 
     if (LIKELY(m_ptr < m_end && *m_ptr == terminator)) {
         setParserTokenString<CharType>(token, runStart);
-        token.stringLength = m_ptr - runStart;
+        token.stringOrIdentifierLength = m_ptr++ - runStart;
         token.type = TokString;
-        token.end = ++m_ptr;
         return TokString;
     }
     return lexStringSlow(token, runStart, terminator);
@@ -912,17 +910,17 @@ TokenType LiteralParser<CharType>::Lexer::lexStringSlow(LiteralParserToken<CharT
             while (m_ptr < m_end && isSafeStringCharacter<SafeStringCharacterSet::Strict>(*m_ptr, terminator))
                 ++m_ptr;
         } else {
-            while (m_ptr < m_end && isSafeStringCharacter<SafeStringCharacterSet::NonStrict>(*m_ptr, terminator))
+            while (m_ptr < m_end && isSafeStringCharacter<SafeStringCharacterSet::Sloppy>(*m_ptr, terminator))
                 ++m_ptr;
         }
 
         if (!m_builder.isEmpty())
-            m_builder.appendCharacters(runStart, m_ptr - runStart);
+            m_builder.append(std::span { runStart, m_ptr });
 
 slowPathBegin:
-        if ((m_mode != NonStrictJSON) && m_ptr < m_end && *m_ptr == '\\') {
+        if ((m_mode != SloppyJSON) && m_ptr < m_end && *m_ptr == '\\') {
             if (m_builder.isEmpty() && runStart < m_ptr)
-                m_builder.appendCharacters(runStart, m_ptr - runStart);
+                m_builder.append(std::span { runStart, m_ptr });
             ++m_ptr;
             if (m_ptr >= m_end) {
                 m_lexErrorMessage = "Unterminated string"_s;
@@ -969,7 +967,7 @@ slowPathBegin:
                     } // uNNNN == 5 characters
                     for (int i = 1; i < 5; i++) {
                         if (!isASCIIHexDigit(m_ptr[i])) {
-                            m_lexErrorMessage = makeString("\"\\", StringView { m_ptr, 5 }, "\" is not a valid unicode escape");
+                            m_lexErrorMessage = makeString("\"\\"_s, std::span { m_ptr, 5 }, "\" is not a valid unicode escape"_s);
                             return TokError;
                         }
                     }
@@ -983,11 +981,11 @@ slowPathBegin:
                         m_ptr++;
                         break;
                     }
-                    m_lexErrorMessage = makeString("Invalid escape character ", StringView { m_ptr, 1 });
+                    m_lexErrorMessage = makeString("Invalid escape character "_s, span(*m_ptr));
                     return TokError;
             }
         }
-    } while ((m_mode != NonStrictJSON) && m_ptr != runStart && (m_ptr < m_end) && *m_ptr != terminator);
+    } while ((m_mode != SloppyJSON) && m_ptr != runStart && (m_ptr < m_end) && *m_ptr != terminator);
 
     if (m_ptr >= m_end || *m_ptr != terminator) {
         m_lexErrorMessage = "Unterminated string"_s;
@@ -996,19 +994,19 @@ slowPathBegin:
 
     if (m_builder.isEmpty()) {
         setParserTokenString<CharType>(token, runStart);
-        token.stringLength = m_ptr - runStart;
+        token.stringOrIdentifierLength = m_ptr - runStart;
     } else {
         if (m_builder.is8Bit()) {
             token.stringIs8Bit = 1;
-            token.stringToken8 = m_builder.characters8();
+            token.stringStart8 = m_builder.span8().data();
         } else {
             token.stringIs8Bit = 0;
-            token.stringToken16 = m_builder.characters16();
+            token.stringStart16 = m_builder.span16().data();
         }
-        token.stringLength = m_builder.length();
+        token.stringOrIdentifierLength = m_builder.length();
     }
     token.type = TokString;
-    token.end = ++m_ptr;
+    ++m_ptr;
     return TokString;
 }
 
@@ -1028,7 +1026,7 @@ TokenType LiteralParser<CharType>::Lexer::lexNumber(LiteralParserToken<CharType>
     //     digit digits?
     //
     // -?(0 | [1-9][0-9]*) ('.' [0-9]+)? ([eE][+-]? [0-9]+)?
-
+    auto* start = m_ptr;
     if (m_ptr < m_end && *m_ptr == '-') // -?
         ++m_ptr;
     
@@ -1058,11 +1056,10 @@ TokenType LiteralParser<CharType>::Lexer::lexNumber(LiteralParserToken<CharType>
         ++m_ptr;
         while (m_ptr < m_end && isASCIIDigit(*m_ptr))
             ++m_ptr;
-    } else if (m_ptr < m_end && (*m_ptr != 'e' && *m_ptr != 'E') && (m_ptr - token.start) <= NumberOfDigitsForSafeInt32) {
+    } else if (m_ptr < m_end && (*m_ptr != 'e' && *m_ptr != 'E') && (m_ptr - start) <= NumberOfDigitsForSafeInt32) {
         int32_t result = 0;
         token.type = TokNumber;
-        token.end = m_ptr;
-        const CharType* digit = token.start;
+        const CharType* digit = start;
         bool negative = false;
         if (*digit == '-') {
             negative = true;
@@ -1104,320 +1101,523 @@ TokenType LiteralParser<CharType>::Lexer::lexNumber(LiteralParserToken<CharType>
     }
     
     token.type = TokNumber;
-    token.end = m_ptr;
     size_t parsedLength;
-    token.numberToken = parseDouble(token.start, token.end - token.start, parsedLength);
+    token.numberToken = parseDouble(std::span { start, m_ptr }, parsedLength);
     return TokNumber;
 }
 
 template <typename CharType>
-JSValue LiteralParser<CharType>::parse(ParserState initialState)
+void LiteralParser<CharType>::setErrorMessageForToken(TokenType tokenType)
 {
-    VM& vm = m_globalObject->vm();
+    switch (tokenType) {
+    case TokRBrace:
+        m_parseErrorMessage = "Expected '}'"_s;
+        break;
+    case TokRBracket:
+        m_parseErrorMessage = "Expected ']'"_s;
+        break;
+    case TokColon:
+        m_parseErrorMessage = "Expected ':' before value in object property definition"_s;
+        break;
+    default: {
+        RELEASE_ASSERT_NOT_REACHED();
+    }
+    }
+}
+
+template <typename CharType>
+ALWAYS_INLINE JSValue LiteralParser<CharType>::parsePrimitiveValue(VM& vm)
+{
+    switch (m_lexer.currentToken()->type) {
+    case TokString: {
+        JSString* result = makeJSString(vm, m_lexer.currentToken());
+        m_lexer.next();
+        return result;
+    }
+    case TokNumber: {
+        JSValue result = jsNumber(m_lexer.currentToken()->numberToken);
+        m_lexer.next();
+        return result;
+    }
+    case TokNull:
+        m_lexer.next();
+        return jsNull();
+    case TokTrue:
+        m_lexer.next();
+        return jsBoolean(true);
+    case TokFalse:
+        m_lexer.next();
+        return jsBoolean(false);
+    case TokRBracket:
+        m_parseErrorMessage = "Unexpected token ']'"_s;
+        return { };
+    case TokRBrace:
+        m_parseErrorMessage = "Unexpected token '}'"_s;
+        return { };
+    case TokIdentifier: {
+        auto token = m_lexer.currentToken();
+
+        auto tryMakeErrorString = [&] (unsigned length) -> String {
+            bool addEllipsis = length != token->stringOrIdentifierLength;
+            return tryMakeString("Unexpected identifier \""_s, std::span { token->identifierStart, length }, addEllipsis ? "..."_s : ""_s, '"');
+        };
+
+        constexpr unsigned maxLength = 200;
+
+        String errorString = tryMakeErrorString(std::min(token->stringOrIdentifierLength, maxLength));
+        if (!errorString) {
+            constexpr unsigned shortLength = 10;
+            if (token->stringOrIdentifierLength > shortLength)
+                errorString = tryMakeErrorString(shortLength);
+            if (!errorString)
+                errorString = "Unexpected identifier"_s;
+        }
+
+        m_parseErrorMessage = errorString;
+        return { };
+    }
+    case TokColon:
+        m_parseErrorMessage = "Unexpected token ':'"_s;
+        return { };
+    case TokLParen:
+        m_parseErrorMessage = "Unexpected token '('"_s;
+        return { };
+    case TokRParen:
+        m_parseErrorMessage = "Unexpected token ')'"_s;
+        return { };
+    case TokComma:
+        m_parseErrorMessage = "Unexpected token ','"_s;
+        return { };
+    case TokDot:
+        m_parseErrorMessage = "Unexpected token '.'"_s;
+        return { };
+    case TokAssign:
+        m_parseErrorMessage = "Unexpected token '='"_s;
+        return { };
+    case TokSemi:
+        m_parseErrorMessage = "Unexpected token ';'"_s;
+        return { };
+    case TokEnd:
+        m_parseErrorMessage = "Unexpected EOF"_s;
+        return { };
+    case TokError:
+    default:
+        // Error
+        m_parseErrorMessage = "Could not parse value expression"_s;
+        return { };
+    }
+}
+
+template <typename CharType>
+JSValue LiteralParser<CharType>::parseRecursivelyEntry(VM& vm)
+{
+    ASSERT(m_mode == StrictJSON);
+    if (UNLIKELY(!Options::useRecursiveJSONParse()))
+        return parse(vm, StartParseExpression);
+    TokenType type = m_lexer.currentToken()->type;
+    if (type == TokLBrace || type == TokLBracket)
+        return parseRecursively(vm, bitwise_cast<uint8_t*>(vm.softStackLimit()));
+    return parsePrimitiveValue(vm);
+}
+
+template <typename CharType>
+JSValue LiteralParser<CharType>::parseRecursively(VM& vm, uint8_t* stackLimit)
+{
+    if (UNLIKELY(bitwise_cast<uint8_t*>(currentStackPointer()) < stackLimit))
+        return parse(vm, StartParseExpression);
+
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    TokenType type = m_lexer.currentToken()->type;
+    if (type == TokLBracket) {
+        JSArray* array = constructEmptyArray(m_globalObject, nullptr);
+        RETURN_IF_EXCEPTION(scope, { });
+        TokenType type = m_lexer.next();
+        if (type == TokRBracket) {
+            m_lexer.next();
+            return array;
+        }
+        unsigned index = 0;
+        while (true) {
+            JSValue value;
+            if (type == TokLBrace || type == TokLBracket)
+                value = parseRecursively(vm, stackLimit);
+            else
+                value = parsePrimitiveValue(vm);
+            EXCEPTION_ASSERT((!!scope.exception() || !m_parseErrorMessage.isNull()) == !value);
+            if (UNLIKELY(!value))
+                return { };
+
+            array->putDirectIndex(m_globalObject, index++, value);
+            RETURN_IF_EXCEPTION(scope, { });
+
+            type = m_lexer.currentToken()->type;
+            if (type == TokComma) {
+                type = m_lexer.next();
+                if (UNLIKELY(type == TokRBracket)) {
+                    m_parseErrorMessage = "Unexpected comma at the end of array expression"_s;
+                    return { };
+                }
+                continue;
+            }
+
+            if (UNLIKELY(type != TokRBracket)) {
+                setErrorMessageForToken(TokRBracket);
+                return { };
+            }
+
+            m_lexer.next();
+            return array;
+        }
+    }
+
+    ASSERT(type == TokLBrace);
+    JSObject* object = constructEmptyObject(m_globalObject);
+    if constexpr (sizeof(CharType) == 2)
+        type = m_lexer.nextMaybeIdentifier();
+    else
+        type = m_lexer.next();
+    if (type == TokString) {
+        while (true) {
+            Identifier ident = makeIdentifier(vm, m_lexer.currentToken());
+
+            if (UNLIKELY(m_lexer.next() != TokColon)) {
+                setErrorMessageForToken(TokColon);
+                return { };
+            }
+
+            type = m_lexer.next();
+            JSValue value;
+            if (type == TokLBrace || type == TokLBracket)
+                value = parseRecursively(vm, stackLimit);
+            else
+                value = parsePrimitiveValue(vm);
+            EXCEPTION_ASSERT((!!scope.exception() || !m_parseErrorMessage.isNull()) == !value);
+            if (UNLIKELY(!value))
+                return { };
+
+            if (std::optional<uint32_t> index = parseIndex(ident)) {
+                object->putDirectIndex(m_globalObject, index.value(), value);
+                RETURN_IF_EXCEPTION(scope, { });
+            } else {
+                // When creating JSON object in this fast path, we know the following.
+                //   1. The object is definitely JSFinalObject.
+                //   2. The object rarely has duplicate properties.
+                //   3. Many same-shaped objects would be created from JSON. Thus very likely, there is already an existing Structure.
+                // Let's make the above case super fast, and fallback to the normal implementation when it is not true.
+                auto* structure = object->structure();
+                PropertyOffset offset = 0;
+                Structure* newStructure = nullptr;
+                if (LIKELY(!structure->isDictionary() && (newStructure = Structure::addPropertyTransitionToExistingStructure(structure, ident, 0, offset)))) {
+                    Butterfly* newButterfly = object->butterfly();
+                    if (structure->outOfLineCapacity() != newStructure->outOfLineCapacity()) {
+                        ASSERT(newStructure != structure);
+                        newButterfly = object->allocateMoreOutOfLineStorage(vm, structure->outOfLineCapacity(), newStructure->outOfLineCapacity());
+                        object->nukeStructureAndSetButterfly(vm, structure->id(), newButterfly);
+                    }
+
+                    validateOffset(offset);
+                    ASSERT(newStructure->isValidOffset(offset));
+
+                    // This assertion verifies that the concurrent GC won't read garbage if the concurrentGC
+                    // is running at the same time we put without transitioning.
+                    ASSERT(!object->getDirect(offset) || !JSValue::encode(object->getDirect(offset)));
+                    object->putDirectOffset(vm, offset, value);
+                    object->setStructure(vm, newStructure);
+                    ASSERT(!newStructure->mayBePrototype()); // There is no way to make it prototype object.
+                } else
+                    object->putDirectForJSONSlow(vm, ident, value);
+            }
+
+            type = m_lexer.currentToken()->type;
+            if (type == TokComma) {
+                if (UNLIKELY(m_lexer.next() != TokString)) {
+                    m_parseErrorMessage = "Property name must be a string literal"_s;
+                    return { };
+                }
+                continue;
+            }
+
+            if (UNLIKELY(type != TokRBrace)) {
+                setErrorMessageForToken(TokRBrace);
+                return { };
+            }
+
+            m_lexer.next();
+            return object;
+        }
+    }
+
+    if (UNLIKELY(type != TokRBrace)) {
+        setErrorMessageForToken(TokRBrace);
+        return { };
+    }
+
+    m_lexer.next();
+    return object;
+}
+
+template <typename CharType>
+JSValue LiteralParser<CharType>::parse(VM& vm, ParserState initialState)
+{
     auto scope = DECLARE_THROW_SCOPE(vm);
     ParserState state = initialState;
-    MarkedArgumentBuffer objectStack;
     JSValue lastValue;
-    Vector<ParserState, 16, UnsafeVectorOverflow> stateStack;
-    Vector<Identifier, 16, UnsafeVectorOverflow> identifierStack;
-    HashSet<JSObject*> visitedUnderscoreProto;
     while (1) {
         switch(state) {
-            startParseArray:
-            case StartParseArray: {
-                JSArray* array = constructEmptyArray(m_globalObject, nullptr);
-                RETURN_IF_EXCEPTION(scope, JSValue());
-                objectStack.appendWithCrashOnOverflow(array);
-            }
-            doParseArrayStartExpression:
-            FALLTHROUGH;
-            case DoParseArrayStartExpression: {
-                TokenType lastToken = m_lexer.currentToken()->type;
-                if (m_lexer.next() == TokRBracket) {
-                    if (lastToken == TokComma) {
-                        m_parseErrorMessage = "Unexpected comma at the end of array expression"_s;
-                        return JSValue();
-                    }
-                    m_lexer.next();
-                    lastValue = objectStack.takeLast();
-                    break;
-                }
-
-                stateStack.append(DoParseArrayEndExpression);
-                goto startParseExpression;
-            }
-            case DoParseArrayEndExpression: {
-                JSArray* array = asArray(objectStack.last());
-                array->putDirectIndex(m_globalObject, array->length(), lastValue);
-                RETURN_IF_EXCEPTION(scope, JSValue());
-
-                if (m_lexer.currentToken()->type == TokComma)
-                    goto doParseArrayStartExpression;
-
-                if (m_lexer.currentToken()->type != TokRBracket) {
-                    m_parseErrorMessage = "Expected ']'"_s;
-                    return JSValue();
-                }
-                
-                m_lexer.next();
-                lastValue = objectStack.takeLast();
-                break;
-            }
-            startParseObject:
-            case StartParseObject: {
-                JSObject* object = constructEmptyObject(m_globalObject);
-                objectStack.appendWithCrashOnOverflow(object);
-
-                TokenType type = m_lexer.next();
-                if (type == TokString || (m_mode != StrictJSON && type == TokIdentifier)) {
-                    typename Lexer::LiteralParserTokenPtr identifierToken = m_lexer.currentToken();
-                    if (identifierToken->stringIs8Bit)
-                        identifierStack.append(makeIdentifier(identifierToken->stringToken8, identifierToken->stringLength));
-                    else
-                        identifierStack.append(makeIdentifier(identifierToken->stringToken16, identifierToken->stringLength));
-
-                    // Check for colon
-                    if (m_lexer.next() != TokColon) {
-                        m_parseErrorMessage = "Expected ':' before value in object property definition"_s;
-                        return JSValue();
-                    }
-                    
-                    m_lexer.next();
-                    stateStack.append(DoParseObjectEndExpression);
-                    goto startParseExpression;
-                }
-                if (type != TokRBrace)  {
-                    m_parseErrorMessage = "Expected '}'"_s;
-                    return JSValue();
-                }
-                m_lexer.next();
-                lastValue = objectStack.takeLast();
-                break;
-            }
-            doParseObjectStartExpression:
-            case DoParseObjectStartExpression: {
-                TokenType type = m_lexer.next();
-                if (type != TokString && (m_mode == StrictJSON || type != TokIdentifier)) {
-                    m_parseErrorMessage = "Property name must be a string literal"_s;
-                    return JSValue();
-                }
-                typename Lexer::LiteralParserTokenPtr identifierToken = m_lexer.currentToken();
-                if (identifierToken->stringIs8Bit)
-                    identifierStack.append(makeIdentifier(identifierToken->stringToken8, identifierToken->stringLength));
-                else
-                    identifierStack.append(makeIdentifier(identifierToken->stringToken16, identifierToken->stringLength));
-
-                // Check for colon
-                if (m_lexer.next() != TokColon) {
-                    m_parseErrorMessage = "Expected ':'"_s;
-                    return JSValue();
-                }
-
-                m_lexer.next();
-                stateStack.append(DoParseObjectEndExpression);
-                goto startParseExpression;
-            }
-            case DoParseObjectEndExpression:
-            {
-                JSObject* object = asObject(objectStack.last());
-                Identifier ident = identifierStack.takeLast();
-                if (m_mode != StrictJSON && ident == vm.propertyNames->underscoreProto) {
-                    if (!visitedUnderscoreProto.add(object).isNewEntry) {
-                        m_parseErrorMessage = "Attempted to redefine __proto__ property"_s;
-                        return JSValue();
-                    }
-                    PutPropertySlot slot(object, m_nullOrCodeBlock ? m_nullOrCodeBlock->ownerExecutable()->isInStrictContext() : false);
-                    objectStack.last().put(m_globalObject, ident, lastValue, slot);
-                } else {
-                    if (std::optional<uint32_t> index = parseIndex(ident))
-                        object->putDirectIndex(m_globalObject, index.value(), lastValue);
-                    else
-                        object->putDirect(vm, ident, lastValue);
-                }
-                RETURN_IF_EXCEPTION(scope, JSValue());
-                if (m_lexer.currentToken()->type == TokComma)
-                    goto doParseObjectStartExpression;
-                if (m_lexer.currentToken()->type != TokRBrace) {
-                    m_parseErrorMessage = "Expected '}'"_s;
-                    return JSValue();
-                }
-                m_lexer.next();
-                lastValue = objectStack.takeLast();
-                break;
-            }
-            startParseExpression:
-            case StartParseExpression: {
-                switch (m_lexer.currentToken()->type) {
-                    case TokLBracket:
-                        goto startParseArray;
-                    case TokLBrace:
-                        goto startParseObject;
-                    case TokString: {
-                        typename Lexer::LiteralParserTokenPtr stringToken = m_lexer.currentToken();
-                        if (stringToken->stringIs8Bit)
-                            lastValue = jsString(vm, makeIdentifier(stringToken->stringToken8, stringToken->stringLength).string());
-                        else
-                            lastValue = jsString(vm, makeIdentifier(stringToken->stringToken16, stringToken->stringLength).string());
-                        m_lexer.next();
-                        break;
-                    }
-                    case TokNumber: {
-                        typename Lexer::LiteralParserTokenPtr numberToken = m_lexer.currentToken();
-                        lastValue = jsNumber(numberToken->numberToken);
-                        m_lexer.next();
-                        break;
-                    }
-                    case TokNull:
-                        m_lexer.next();
-                        lastValue = jsNull();
-                        break;
-
-                    case TokTrue:
-                        m_lexer.next();
-                        lastValue = jsBoolean(true);
-                        break;
-
-                    case TokFalse:
-                        m_lexer.next();
-                        lastValue = jsBoolean(false);
-                        break;
-                    case TokRBracket:
-                        m_parseErrorMessage = "Unexpected token ']'"_s;
-                        return JSValue();
-                    case TokRBrace:
-                        m_parseErrorMessage = "Unexpected token '}'"_s;
-                        return JSValue();
-                    case TokIdentifier: {
-                        auto token = m_lexer.currentToken();
-
-                        auto tryMakeErrorString = [&] (unsigned length) -> String {
-                            bool addEllipsis = length != token->stringLength;
-                            if (token->stringIs8Bit)
-                                return tryMakeString("Unexpected identifier \"", StringView { token->stringToken8, length }, addEllipsis ? "..." : "", '"');
-                            return tryMakeString("Unexpected identifier \"", StringView { token->stringToken16, length }, addEllipsis ? "..." : "", '"');
-                        };
-
-                        constexpr unsigned maxLength = 200;
-
-                        String errorString = tryMakeErrorString(std::min(token->stringLength, maxLength));
-                        if (!errorString) {
-                            constexpr unsigned shortLength = 10;
-                            if (token->stringLength > shortLength)
-                                errorString = tryMakeErrorString(shortLength);
-                            if (!errorString)
-                                errorString = "Unexpected identifier";
-                        }
-
-                        m_parseErrorMessage = errorString;
-                        return JSValue();
-                    }
-                    case TokColon:
-                        m_parseErrorMessage = "Unexpected token ':'"_s;
-                        return JSValue();
-                    case TokLParen:
-                        m_parseErrorMessage = "Unexpected token '('"_s;
-                        return JSValue();
-                    case TokRParen:
-                        m_parseErrorMessage = "Unexpected token ')'"_s;
-                        return JSValue();
-                    case TokComma:
-                        m_parseErrorMessage = "Unexpected token ','"_s;
-                        return JSValue();
-                    case TokDot:
-                        m_parseErrorMessage = "Unexpected token '.'"_s;
-                        return JSValue();
-                    case TokAssign:
-                        m_parseErrorMessage = "Unexpected token '='"_s;
-                        return JSValue();
-                    case TokSemi:
-                        m_parseErrorMessage = "Unexpected token ';'"_s;
-                        return JSValue();
-                    case TokEnd:
-                        m_parseErrorMessage = "Unexpected EOF"_s;
-                        return JSValue();
-                    case TokError:
-                    default:
-                        // Error
-                        m_parseErrorMessage = "Could not parse value expression"_s;
-                        return JSValue();
-                }
-                break;
-            }
-            case StartParseStatement: {
-                switch (m_lexer.currentToken()->type) {
-                    case TokLBracket:
-                    case TokNumber:
-                    case TokString:
-                        goto startParseExpression;
-
-                    case TokLParen: {
-                        m_lexer.next();
-                        stateStack.append(StartParseStatementEndStatement);
-                        goto startParseExpression;
-                    }
-                    case TokRBracket:
-                        m_parseErrorMessage = "Unexpected token ']'"_s;
-                        return JSValue();
-                    case TokLBrace:
-                        m_parseErrorMessage = "Unexpected token '{'"_s;
-                        return JSValue();
-                    case TokRBrace:
-                        m_parseErrorMessage = "Unexpected token '}'"_s;
-                        return JSValue();
-                    case TokIdentifier:
-                        m_parseErrorMessage = "Unexpected identifier"_s;
-                        return JSValue();
-                    case TokColon:
-                        m_parseErrorMessage = "Unexpected token ':'"_s;
-                        return JSValue();
-                    case TokRParen:
-                        m_parseErrorMessage = "Unexpected token ')'"_s;
-                        return JSValue();
-                    case TokComma:
-                        m_parseErrorMessage = "Unexpected token ','"_s;
-                        return JSValue();
-                    case TokTrue:
-                        m_parseErrorMessage = "Unexpected token 'true'"_s;
-                        return JSValue();
-                    case TokFalse:
-                        m_parseErrorMessage = "Unexpected token 'false'"_s;
-                        return JSValue();
-                    case TokNull:
-                        m_parseErrorMessage = "Unexpected token 'null'"_s;
-                        return JSValue();
-                    case TokEnd:
-                        m_parseErrorMessage = "Unexpected EOF"_s;
-                        return JSValue();
-                    case TokDot:
-                        m_parseErrorMessage = "Unexpected token '.'"_s;
-                        return JSValue();
-                    case TokAssign:
-                        m_parseErrorMessage = "Unexpected token '='"_s;
-                        return JSValue();
-                    case TokSemi:
-                        m_parseErrorMessage = "Unexpected token ';'"_s;
-                        return JSValue();
-                    case TokError:
-                    default:
-                        m_parseErrorMessage = "Could not parse statement"_s;
-                        return JSValue();
-                }
-            }
-            case StartParseStatementEndStatement: {
-                ASSERT(stateStack.isEmpty());
-                if (m_lexer.currentToken()->type != TokRParen)
-                    return JSValue();
-                if (m_lexer.next() == TokEnd)
-                    return lastValue;
-                m_parseErrorMessage = "Unexpected content at end of JSON literal"_s;
-                return JSValue();
-            }
-            default:
-                RELEASE_ASSERT_NOT_REACHED();
+        startParseArray:
+        case StartParseArray: {
+            JSArray* array = constructEmptyArray(m_globalObject, nullptr);
+            RETURN_IF_EXCEPTION(scope, { });
+            m_objectStack.appendWithCrashOnOverflow(array);
         }
-        if (stateStack.isEmpty())
+        doParseArrayStartExpression:
+        FALLTHROUGH;
+        case DoParseArrayStartExpression: {
+            TokenType lastToken = m_lexer.currentToken()->type;
+            if (m_lexer.next() == TokRBracket) {
+                if (UNLIKELY(lastToken == TokComma)) {
+                    m_parseErrorMessage = "Unexpected comma at the end of array expression"_s;
+                    return { };
+                }
+                m_lexer.next();
+                lastValue = m_objectStack.takeLast();
+                break;
+            }
+
+            m_stateStack.append(DoParseArrayEndExpression);
+            goto startParseExpression;
+        }
+        case DoParseArrayEndExpression: {
+            JSArray* array = asArray(m_objectStack.last());
+            array->putDirectIndex(m_globalObject, array->length(), lastValue);
+            RETURN_IF_EXCEPTION(scope, { });
+
+            if (m_lexer.currentToken()->type == TokComma)
+                goto doParseArrayStartExpression;
+
+            if (UNLIKELY(m_lexer.currentToken()->type != TokRBracket)) {
+                setErrorMessageForToken(TokRBracket);
+                return { };
+            }
+            
+            m_lexer.next();
+            lastValue = m_objectStack.takeLast();
+            break;
+        }
+        startParseObject:
+        case StartParseObject: {
+            JSObject* object = constructEmptyObject(m_globalObject);
+
+            TokenType type = m_lexer.next();
+            if (type == TokString || (m_mode != StrictJSON && type == TokIdentifier)) {
+                while (true) {
+                    Identifier ident = makeIdentifier(vm, m_lexer.currentToken());
+
+                    if (UNLIKELY(m_lexer.next() != TokColon)) {
+                        setErrorMessageForToken(TokColon);
+                        return { };
+                    }
+
+                    TokenType nextType = m_lexer.next();
+                    if (nextType == TokLBrace || nextType == TokLBracket) {
+                        m_objectStack.appendWithCrashOnOverflow(object);
+                        m_identifierStack.append(WTFMove(ident));
+                        m_stateStack.append(DoParseObjectEndExpression);
+                        if (nextType == TokLBrace)
+                            goto startParseObject;
+                        ASSERT(nextType == TokLBracket);
+                        goto startParseArray;
+                    }
+
+                    // Leaf object construction fast path.
+                    JSValue primitive = parsePrimitiveValue(vm);
+                    if (UNLIKELY(!primitive))
+                        return { };
+
+                    if (m_mode != StrictJSON && ident == vm.propertyNames->underscoreProto) {
+                        if (UNLIKELY(!m_visitedUnderscoreProto.add(object).isNewEntry)) {
+                            m_parseErrorMessage = "Attempted to redefine __proto__ property"_s;
+                            return { };
+                        }
+                        PutPropertySlot slot(object, m_nullOrCodeBlock ? m_nullOrCodeBlock->ownerExecutable()->isInStrictContext() : false);
+                        JSValue(object).put(m_globalObject, ident, primitive, slot);
+                        RETURN_IF_EXCEPTION(scope, { });
+                    } else {
+                        if (std::optional<uint32_t> index = parseIndex(ident)) {
+                            object->putDirectIndex(m_globalObject, index.value(), primitive);
+                            RETURN_IF_EXCEPTION(scope, { });
+                        } else
+                            object->putDirect(vm, ident, primitive);
+                    }
+
+                    if (m_lexer.currentToken()->type != TokComma)
+                        break;
+
+                    nextType = m_lexer.next();
+                    if (UNLIKELY(nextType != TokString && (m_mode == StrictJSON || nextType != TokIdentifier))) {
+                        m_parseErrorMessage = "Property name must be a string literal"_s;
+                        return { };
+                    }
+                }
+
+                if (UNLIKELY(m_lexer.currentToken()->type != TokRBrace)) {
+                    setErrorMessageForToken(TokRBrace);
+                    return { };
+                }
+                m_lexer.next();
+                lastValue = object;
+                break;
+            }
+
+            if (UNLIKELY(type != TokRBrace)) {
+                setErrorMessageForToken(TokRBrace);
+                return { };
+            }
+
+            m_lexer.next();
+            lastValue = object;
+            break;
+        }
+        doParseObjectStartExpression:
+        case DoParseObjectStartExpression: {
+            TokenType type = m_lexer.next();
+            if (UNLIKELY(type != TokString && (m_mode == StrictJSON || type != TokIdentifier))) {
+                m_parseErrorMessage = "Property name must be a string literal"_s;
+                return { };
+            }
+            m_identifierStack.append(makeIdentifier(vm, m_lexer.currentToken()));
+
+            // Check for colon
+            if (UNLIKELY(m_lexer.next() != TokColon)) {
+                setErrorMessageForToken(TokColon);
+                return { };
+            }
+
+            m_lexer.next();
+            m_stateStack.append(DoParseObjectEndExpression);
+            goto startParseExpression;
+        }
+        case DoParseObjectEndExpression:
+        {
+            JSObject* object = asObject(m_objectStack.last());
+            Identifier ident = m_identifierStack.takeLast();
+            if (m_mode != StrictJSON && ident == vm.propertyNames->underscoreProto) {
+                if (UNLIKELY(!m_visitedUnderscoreProto.add(object).isNewEntry)) {
+                    m_parseErrorMessage = "Attempted to redefine __proto__ property"_s;
+                    return { };
+                }
+                PutPropertySlot slot(object, m_nullOrCodeBlock ? m_nullOrCodeBlock->ownerExecutable()->isInStrictContext() : false);
+                JSValue(object).put(m_globalObject, ident, lastValue, slot);
+                RETURN_IF_EXCEPTION(scope, { });
+            } else {
+                if (std::optional<uint32_t> index = parseIndex(ident)) {
+                    object->putDirectIndex(m_globalObject, index.value(), lastValue);
+                    RETURN_IF_EXCEPTION(scope, { });
+                } else
+                    object->putDirect(vm, ident, lastValue);
+            }
+            if (m_lexer.currentToken()->type == TokComma)
+                goto doParseObjectStartExpression;
+            if (UNLIKELY(m_lexer.currentToken()->type != TokRBrace)) {
+                setErrorMessageForToken(TokRBrace);
+                return { };
+            }
+            m_lexer.next();
+            lastValue = m_objectStack.takeLast();
+            break;
+        }
+        startParseExpression:
+        case StartParseExpression: {
+            TokenType type = m_lexer.currentToken()->type;
+            if (type == TokLBracket)
+                goto startParseArray;
+            if (type == TokLBrace)
+                goto startParseObject;
+            lastValue = parsePrimitiveValue(vm);
+            if (UNLIKELY(!lastValue))
+                return { };
+            break;
+        }
+        case StartParseStatement: {
+            switch (m_lexer.currentToken()->type) {
+            case TokLBracket:
+            case TokNumber:
+            case TokString: {
+                lastValue = parsePrimitiveValue(vm);
+                if (UNLIKELY(!lastValue))
+                    return { };
+                break;
+            }
+
+            case TokLParen: {
+                m_lexer.next();
+                m_stateStack.append(StartParseStatementEndStatement);
+                goto startParseExpression;
+            }
+            case TokRBracket:
+                m_parseErrorMessage = "Unexpected token ']'"_s;
+                return { };
+            case TokLBrace:
+                m_parseErrorMessage = "Unexpected token '{'"_s;
+                return { };
+            case TokRBrace:
+                m_parseErrorMessage = "Unexpected token '}'"_s;
+                return { };
+            case TokIdentifier:
+                m_parseErrorMessage = "Unexpected identifier"_s;
+                return { };
+            case TokColon:
+                m_parseErrorMessage = "Unexpected token ':'"_s;
+                return { };
+            case TokRParen:
+                m_parseErrorMessage = "Unexpected token ')'"_s;
+                return { };
+            case TokComma:
+                m_parseErrorMessage = "Unexpected token ','"_s;
+                return { };
+            case TokTrue:
+                m_parseErrorMessage = "Unexpected token 'true'"_s;
+                return { };
+            case TokFalse:
+                m_parseErrorMessage = "Unexpected token 'false'"_s;
+                return { };
+            case TokNull:
+                m_parseErrorMessage = "Unexpected token 'null'"_s;
+                return { };
+            case TokEnd:
+                m_parseErrorMessage = "Unexpected EOF"_s;
+                return { };
+            case TokDot:
+                m_parseErrorMessage = "Unexpected token '.'"_s;
+                return { };
+            case TokAssign:
+                m_parseErrorMessage = "Unexpected token '='"_s;
+                return { };
+            case TokSemi:
+                m_parseErrorMessage = "Unexpected token ';'"_s;
+                return { };
+            case TokError:
+            default:
+                m_parseErrorMessage = "Could not parse statement"_s;
+                return { };
+            }
+            break;
+        }
+        case StartParseStatementEndStatement: {
+            ASSERT(m_stateStack.isEmpty());
+            if (m_lexer.currentToken()->type != TokRParen)
+                return { };
+            if (m_lexer.next() == TokEnd)
+                return lastValue;
+            m_parseErrorMessage = "Unexpected content at end of JSON literal"_s;
+            return { };
+        }
+        default:
+            RELEASE_ASSERT_NOT_REACHED();
+        }
+        if (m_stateStack.isEmpty())
             return lastValue;
-        state = stateStack.takeLast();
+        state = m_stateStack.takeLast();
         continue;
     }
 }

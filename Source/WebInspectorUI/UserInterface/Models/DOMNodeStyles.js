@@ -34,6 +34,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         this._rulesMap = new Map;
         this._stylesMap = new Multimap;
+        this._groupingsMap = new Map;
 
         this._matchedRules = [];
         this._inheritedRules = [];
@@ -134,6 +135,8 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
     get usedCSSVariables() { return this._usedCSSVariables; }
     get allCSSVariables() { return this._allCSSVariables; }
 
+    set ignoreNextContentDidChangeForStyleSheet(ignoreNextContentDidChangeForStyleSheet) { this._ignoreNextContentDidChangeForStyleSheet = ignoreNextContentDidChangeForStyleSheet; }
+
     get needsRefresh()
     {
         return this._pendingRefreshTask || this._needsRefresh;
@@ -200,6 +203,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
             this._previousStylesMap = this._stylesMap;
             this._stylesMap = new Multimap;
+            this._groupingsMap = new Map;
 
             this._matchedRules = parseRuleMatchArrayPayload(matchedRulesPayload, this._node);
 
@@ -358,12 +362,20 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
     {
         selector = selector || this._node.appropriateSelectorFor(true);
 
+        let result = new WI.WrappedPromise;
         let target = WI.assumingMainTarget();
 
         function completed()
         {
             target.DOMAgent.markUndoableState();
-            this.refresh();
+
+            // Wait for the refresh promise caused by injecting an empty inspector stylesheet to resolve
+            // (another call will be ignored while one is still pending),
+            // then refresh again to get the latest matching styles which include the newly created rule.
+            if (this._pendingRefreshTask)
+                this._pendingRefreshTask.then(this.refresh.bind(this));
+            else
+                this.refresh();
         }
 
         function styleChanged(error, stylePayload)
@@ -376,8 +388,12 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         function addedRule(error, rulePayload)
         {
-            if (error)
+            if (error){
+                result.reject(error);
                 return;
+            }
+
+            result.resolve(rulePayload);
 
             if (!text || !text.length) {
                 completed.call(this);
@@ -399,6 +415,8 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
             inspectorStyleSheetAvailable.call(this, WI.cssManager.styleSheetForIdentifier(styleSheetId));
         else
             WI.cssManager.preferredInspectorStyleSheetForFrame(this._node.frame, inspectorStyleSheetAvailable.bind(this));
+
+        return result.promise;
     }
 
     effectivePropertyForName(name)
@@ -545,7 +563,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         if (styleDeclaration) {
             // Use propertyForName when the index is NaN since propertyForName is fast in that case.
-            var property = isNaN(index) ? styleDeclaration.propertyForName(name, true) : styleDeclaration.enabledProperties[index];
+            var property = isNaN(index) ? styleDeclaration.propertyForName(name) : styleDeclaration.properties[index];
 
             // Reuse a property if the index and name matches. Otherwise it is a different property
             // and should be created from scratch. This works in the simple cases where only existing
@@ -711,11 +729,49 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
 
         // COMPATIBILITY (iOS 13): CSS.CSSRule.groupings did not exist yet.
         let groupings = (payload.groupings || payload.media || []).map((grouping) => {
+            // COMPATIBILITY (macOS 13, iOS 16) CSS.CSSRule.ruleId did not exist yet.
+            let ruleId = grouping.ruleId;
+
+            let ruleIdForMap = null;
+            if (ruleId) {
+                ruleIdForMap = `${ruleId.styleSheetId}-${ruleId.ordinal}`;
+
+                let existingGroupingForRuleId = this._groupingsMap.get(ruleIdForMap);
+                if (existingGroupingForRuleId) {
+                    console.assert(existingGroupingForRuleId.text === grouping.text);
+                    console.assert(existingGroupingForRuleId.type === grouping.type);
+                    return existingGroupingForRuleId;
+                }
+            }
+
             let groupingType = WI.CSSManager.protocolGroupingTypeToEnum(grouping.type || grouping.source);
-            let groupingSourceCodeLocation = DOMNodeStyles.createSourceCodeLocation(grouping.sourceURL);
-            if (styleSheet)
-                groupingSourceCodeLocation = styleSheet.offsetSourceCodeLocation(groupingSourceCodeLocation);
-            return new WI.CSSGrouping(groupingType, grouping.text, groupingSourceCodeLocation);
+
+            let location = {};
+            if (payload.range) {
+                location.line = payload.range.startLine;
+                location.column = payload.range.startColumn;
+                location.documentNode = this._node.ownerDocument;
+            }
+
+            // The style sheet may be different from the style rule's style sheet, since groupings are computed beyond
+            // `@import` boundaries, and an `@import` statement from another style sheet may have been wrapped in
+            // another `@` rule.
+            let groupingStyleSheet = ruleId ? WI.cssManager.styleSheetForIdentifier(ruleId.styleSheetId) : null;
+
+            let groupingSourceCodeLocation = WI.DOMNodeStyles.createSourceCodeLocation(grouping.sourceURL, location);
+            let offsetGroupingSourceCodeLocation = styleSheet?.offsetSourceCodeLocation(groupingSourceCodeLocation) ?? groupingSourceCodeLocation;
+
+            let cssGrouping = new WI.CSSGrouping(this, groupingType, {
+                ownerStyleSheet: groupingStyleSheet,
+                id: grouping.ruleId,
+                text: grouping.text,
+                sourceCodeLocation: offsetGroupingSourceCodeLocation,
+            });
+
+            if (ruleIdForMap)
+                this._groupingsMap.set(ruleIdForMap, cssGrouping);
+
+            return cssGrouping;
         });
 
         if (rule) {
@@ -726,7 +782,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
         if (styleSheet)
             this._trackedStyleSheets.add(styleSheet);
 
-        rule = new WI.CSSRule(this, styleSheet, id, type, sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, groupings);
+        rule = new WI.CSSRule(this, styleSheet, id, type, sourceCodeLocation, selectorText, selectors, matchedSelectorIndices, style, groupings, payload.isImplicitlyNested);
 
         if (mapKey)
             this._rulesMap.set(mapKey, rule);
@@ -903,7 +959,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
                 if (!property.valid)
                     continue;
 
-                if (!WI.CSSCompletions.cssNameCompletions.isShorthandPropertyName(property.name))
+                if (!WI.CSSKeywordCompletions.LonghandNamesForShorthandProperty.has(property.name))
                     continue;
 
                 if (knownShorthands[property.canonicalName] && !knownShorthands[property.canonicalName].overridden) {
@@ -923,7 +979,7 @@ WI.DOMNodeStyles = class DOMNodeStyles extends WI.Object
                 var shorthandProperty = null;
 
                 if (!isEmptyObject(knownShorthands)) {
-                    var possibleShorthands = WI.CSSCompletions.cssNameCompletions.shorthandsForLonghand(property.canonicalName);
+                    var possibleShorthands = WI.CSSKeywordCompletions.ShorthandNamesForLongHandProperty.get(property.canonicalName) || [];
                     for (var k = 0; k < possibleShorthands.length; ++k) {
                         if (possibleShorthands[k] in knownShorthands) {
                             shorthandProperty = knownShorthands[possibleShorthands[k]];

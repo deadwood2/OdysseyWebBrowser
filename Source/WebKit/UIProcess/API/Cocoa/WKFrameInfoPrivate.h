@@ -31,5 +31,10 @@
 
 @property (nonatomic, readonly, copy, nonnull) _WKFrameHandle *_handle WK_API_AVAILABLE(macos(10.12), ios(10.0));
 @property (nonatomic, readonly, copy, nullable) _WKFrameHandle *_parentFrameHandle WK_API_AVAILABLE(macos(11.0), ios(14.0));
+@property (nonatomic, readonly) pid_t _processIdentifier WK_API_AVAILABLE(macos(13.3), ios(16.4));
+@property (nonatomic, readonly) BOOL _isLocalFrame WK_API_AVAILABLE(macos(14.0), ios(17.0));
+@property (nonatomic, readonly) BOOL _isFocused WK_API_AVAILABLE(macos(14.4), ios(17.4), visionos(1.1));
+@property (nonatomic, readonly) BOOL _errorOccurred WK_API_AVAILABLE(macos(14.4), ios(17.4), visionos(1.1));
+@property (nonatomic, readonly, copy, nullable) NSString *_title WK_API_AVAILABLE(macos(15.0), ios(18.0), visionos(2.0));
 
 @end

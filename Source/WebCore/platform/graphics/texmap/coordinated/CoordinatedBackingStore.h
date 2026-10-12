@@ -21,7 +21,7 @@
 
 #if USE(COORDINATED_GRAPHICS)
 
-#include "TextureMapper.h"
+#include "NicosiaBuffer.h"
 #include "TextureMapperBackingStore.h"
 #include "TextureMapperTile.h"
 #include <wtf/HashMap.h>
@@ -29,11 +29,9 @@
 #include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 
-namespace Nicosia {
-class Buffer;
-}
-
 namespace WebCore {
+
+class TextureMapper;
 
 class CoordinatedBackingStoreTile : public TextureMapperTile {
 public:

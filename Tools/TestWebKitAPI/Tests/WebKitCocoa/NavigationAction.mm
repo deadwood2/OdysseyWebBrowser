@@ -215,3 +215,72 @@ TEST(WKNavigationAction, BlobRequestBody)
     [webView loadHTMLString:html baseURL:nil];
     TestWebKitAPI::Util::run(&done);
 }
+
+TEST(WKNavigationAction, NonMainThread)
+{
+    TestWebKitAPI::HTTPServer server({
+        { "/"_s, { "hi"_s } },
+    });
+
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    auto webView = adoptNS([WKWebView new]);
+    [webView setNavigationDelegate:delegate.get()];
+    __block bool done = false;
+    delegate.get().decidePolicyForNavigationAction = ^(WKNavigationAction *action, void (^completionHandler)(WKNavigationActionPolicy)) {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            completionHandler(WKNavigationActionPolicyAllow);
+        });
+    };
+    delegate.get().decidePolicyForNavigationResponse = ^(WKNavigationResponse *action, void (^completionHandler)(WKNavigationResponsePolicy)) {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            completionHandler(WKNavigationResponsePolicyAllow);
+        });
+    };
+    delegate.get().didFinishNavigation = ^(WKWebView *, WKNavigation *) {
+        done = true;
+    };
+
+    [webView loadRequest:server.request()];
+    TestWebKitAPI::Util::run(&done);
+}
+
+TEST(WKNavigationAction, TargetFrameName)
+{
+    auto navigationDelegate = adoptNS([TestNavigationDelegate new]);
+    auto uiDelegate = adoptNS([TestUIDelegate new]);
+    auto webView = adoptNS([WKWebView new]);
+    webView.get().configuration.preferences.javaScriptCanOpenWindowsAutomatically = YES;
+    webView.get().navigationDelegate = navigationDelegate.get();
+    webView.get().UIDelegate = uiDelegate.get();
+
+    enum class DelegateCallback : bool {
+        Ui,
+        Navigation
+    };
+    __block Vector<DelegateCallback> callbacks;
+    __block Vector<RetainPtr<NSString>> targetFrameNames;
+    navigationDelegate.get().decidePolicyForNavigationAction = ^(WKNavigationAction *navigationAction, void (^completionHandler)(WKNavigationActionPolicy)) {
+        targetFrameNames.append(navigationAction._targetFrameName);
+        callbacks.append(DelegateCallback::Navigation);
+        completionHandler(WKNavigationActionPolicyAllow);
+    };
+    uiDelegate.get().createWebViewWithConfiguration = ^WKWebView *(WKWebViewConfiguration *, WKNavigationAction *navigationAction, WKWindowFeatures *)
+    {
+        targetFrameNames.append(navigationAction._targetFrameName);
+        callbacks.append(DelegateCallback::Ui);
+        return nil;
+    };
+    [webView loadHTMLString:@"<script>window.open('https://webkit.org/')</script>" baseURL:nil];
+    while (callbacks.size() < 2)
+        TestWebKitAPI::Util::spinRunLoop();
+
+    [webView loadHTMLString:@"<script>onload=()=>{link.click()}</script><a href='https://webkit.org/' target='_blank' id='link'>click me!</a>" baseURL:nil];
+    while (callbacks.size() < 5)
+        TestWebKitAPI::Util::spinRunLoop();
+    EXPECT_EQ(callbacks, Vector<DelegateCallback>::from(DelegateCallback::Navigation, DelegateCallback::Ui, DelegateCallback::Navigation, DelegateCallback::Navigation, DelegateCallback::Ui));
+    EXPECT_NULL(targetFrameNames[0]);
+    EXPECT_NULL(targetFrameNames[1]);
+    EXPECT_NULL(targetFrameNames[2]);
+    EXPECT_WK_STREQ(targetFrameNames[3].get(), "_blank");
+    EXPECT_NULL(targetFrameNames[4]);
+}

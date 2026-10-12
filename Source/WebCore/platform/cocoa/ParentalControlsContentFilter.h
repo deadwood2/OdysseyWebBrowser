@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -43,17 +43,13 @@ public:
 
     void willSendRequest(ResourceRequest&, const ResourceResponse&) override { }
     void responseReceived(const ResourceResponse&) override;
-    void addData(const uint8_t* data, int length) override;
+    void addData(const SharedBuffer&) override;
     void finishedAddingData() override;
-    Ref<SharedBuffer> replacementData() const override;
+    Ref<FragmentedSharedBuffer> replacementData() const override;
 #if ENABLE(CONTENT_FILTERING)
     ContentFilterUnblockHandler unblockHandler() const override;
 #endif
     
-#if PLATFORM(IOS)
-    WEBCORE_EXPORT static void setHasConsumedSandboxExtension(bool);
-#endif
-
 private:
     static bool enabled();
 
@@ -62,16 +58,6 @@ private:
 
     RetainPtr<WebFilterEvaluator> m_webFilterEvaluator;
     RetainPtr<NSData> m_replacementData;
-
-#if PLATFORM(IOS)
-    enum class SandboxExtensionState : uint8_t {
-        Consumed,
-        NotConsumed,
-        NotSet
-    };
-
-    WEBCORE_EXPORT static SandboxExtensionState m_sandboxExtensionState;
-#endif
 };
     
 } // namespace WebCore

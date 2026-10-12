@@ -27,6 +27,7 @@
 #include "WKNotificationManager.h"
 
 #include "APIArray.h"
+#include "APIData.h"
 #include "WKAPICast.h"
 #include "WebNotification.h"
 #include "WebNotificationManagerProxy.h"
@@ -46,12 +47,21 @@ void WKNotificationManagerSetProvider(WKNotificationManagerRef managerRef, const
 
 void WKNotificationManagerProviderDidShowNotification(WKNotificationManagerRef managerRef, uint64_t notificationID)
 {
-    toImpl(managerRef)->providerDidShowNotification(notificationID);
+    toImpl(managerRef)->providerDidShowNotification(WebNotificationIdentifier { notificationID });
 }
 
 void WKNotificationManagerProviderDidClickNotification(WKNotificationManagerRef managerRef, uint64_t notificationID)
 {
-    toImpl(managerRef)->providerDidClickNotification(notificationID);
+    toImpl(managerRef)->providerDidClickNotification(WebNotificationIdentifier { notificationID });
+}
+
+void WKNotificationManagerProviderDidClickNotification_b(WKNotificationManagerRef managerRef, WKDataRef identifier)
+{
+    auto span = toImpl(identifier)->span();
+    if (span.size() != 16)
+        return;
+
+    toImpl(managerRef)->providerDidClickNotification(WTF::UUID { std::span<const uint8_t, 16> { span } });
 }
 
 void WKNotificationManagerProviderDidCloseNotifications(WKNotificationManagerRef managerRef, WKArrayRef notificationIDs)
@@ -69,7 +79,7 @@ void WKNotificationManagerProviderDidRemoveNotificationPolicies(WKNotificationMa
     toImpl(managerRef)->providerDidRemoveNotificationPolicies(toImpl(origins));
 }
 
-uint64_t WKNotificationManagerGetLocalIDForTesting(WKNotificationManagerRef manager, WKNotificationRef notification)
+WKNotificationManagerRef WKNotificationManagerGetSharedServiceWorkerNotificationManager()
 {
-    return toImpl(manager)->notificationLocalIDForTesting(toImpl(notification));
+    return toAPI(&WebNotificationManagerProxy::sharedServiceWorkerManager());
 }

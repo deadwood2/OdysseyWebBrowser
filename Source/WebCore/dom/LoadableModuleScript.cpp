@@ -27,21 +27,22 @@
 #include "LoadableModuleScript.h"
 
 #include "Document.h"
-#include "Frame.h"
+#include "Element.h"
+#include "LocalFrame.h"
 #include "ModuleFetchParameters.h"
 #include "ScriptController.h"
 #include "ScriptElement.h"
 
 namespace WebCore {
 
-Ref<LoadableModuleScript> LoadableModuleScript::create(const String& nonce, const String& integrity, ReferrerPolicy policy, const String& crossOriginMode, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree)
+Ref<LoadableModuleScript> LoadableModuleScript::create(const AtomString& nonce, const AtomString& integrity, ReferrerPolicy policy, RequestPriority fetchPriorityHint, const AtomString& crossOriginMode, const String& charset, const AtomString& initiatorType, bool isInUserAgentShadowTree)
 {
-    return adoptRef(*new LoadableModuleScript(nonce, integrity, policy, crossOriginMode, charset, initiatorName, isInUserAgentShadowTree));
+    return adoptRef(*new LoadableModuleScript(nonce, integrity, policy, fetchPriorityHint, crossOriginMode, charset, initiatorType, isInUserAgentShadowTree));
 }
 
-LoadableModuleScript::LoadableModuleScript(const String& nonce, const String& integrity, ReferrerPolicy policy, const String& crossOriginMode, const String& charset, const AtomString& initiatorName, bool isInUserAgentShadowTree)
-    : LoadableScript(nonce, policy, crossOriginMode, charset, initiatorName, isInUserAgentShadowTree)
-    , m_parameters(ModuleFetchParameters::create(integrity, /* isTopLevelModule */ true))
+LoadableModuleScript::LoadableModuleScript(const AtomString& nonce, const AtomString& integrity, ReferrerPolicy policy, RequestPriority fetchPriorityHint, const AtomString& crossOriginMode, const String& charset, const AtomString& initiatorType, bool isInUserAgentShadowTree)
+    : LoadableScript(nonce, policy, fetchPriorityHint, crossOriginMode, charset, initiatorType, isInUserAgentShadowTree)
+    , m_parameters(ModuleFetchParameters::create(JSC::ScriptFetchParameters::Type::JavaScript, integrity, /* isTopLevelModule */ true))
 {
 }
 
@@ -52,9 +53,14 @@ bool LoadableModuleScript::isLoaded() const
     return m_isLoaded;
 }
 
-std::optional<LoadableScript::Error> LoadableModuleScript::error() const
+bool LoadableModuleScript::hasError() const
 {
-    return m_error;
+    return !!m_error;
+}
+
+std::optional<LoadableScript::Error> LoadableModuleScript::takeError()
+{
+    return std::exchange(m_error, std::nullopt);
 }
 
 bool LoadableModuleScript::wasCanceled() const

@@ -38,44 +38,36 @@
 #include "PlatformLocale.h"
 #include "RenderStyle.h"
 #include "RenderTheme.h"
+#include "ResolvedStyle.h"
 #include "StyleResolver.h"
 #include "Text.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebCore {
 
 using namespace HTMLNames;
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(DateTimeFieldElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(DateTimeFieldElement);
 
-DateTimeFieldElement::FieldOwner::~FieldOwner() = default;
+DateTimeFieldElementFieldOwner::~DateTimeFieldElementFieldOwner() = default;
 
-DateTimeFieldElement::DateTimeFieldElement(Document& document, FieldOwner& fieldOwner)
-    : HTMLDivElement(divTag, document)
-    , m_fieldOwner(makeWeakPtr(fieldOwner))
+DateTimeFieldElement::DateTimeFieldElement(Document& document, DateTimeFieldElementFieldOwner& fieldOwner)
+    : HTMLDivElement(divTag, document, TypeFlag::HasCustomStyleResolveCallbacks)
+    , m_fieldOwner(fieldOwner)
 {
-    setHasCustomStyleResolveCallbacks();
 }
 
-void DateTimeFieldElement::initialize(const AtomString& pseudo)
+std::optional<Style::ResolvedStyle> DateTimeFieldElement::resolveCustomStyle(const Style::ResolutionContext& resolutionContext, const RenderStyle* shadowHostStyle)
 {
-    setPseudo(pseudo);
-}
+    auto elementStyle = resolveStyle(resolutionContext);
 
-std::optional<Style::ElementStyle> DateTimeFieldElement::resolveCustomStyle(const RenderStyle& parentStyle, const RenderStyle* shadowHostStyle)
-{
-    auto elementStyle = resolveStyle(&parentStyle);
-    if (!elementStyle.renderStyle)
-        return std::nullopt;
-
-    auto& style = *elementStyle.renderStyle;
-    adjustMinWidth(style);
+    adjustMinInlineSize(*elementStyle.style);
 
     if (!hasValue() && shadowHostStyle) {
         auto textColor = shadowHostStyle->visitedDependentColorWithColorFilter(CSSPropertyColor);
         auto backgroundColor = shadowHostStyle->visitedDependentColorWithColorFilter(CSSPropertyBackgroundColor);
-        style.setColor(RenderTheme::singleton().datePlaceholderTextColor(textColor, backgroundColor));
+        elementStyle.style->setColor(RenderTheme::singleton().datePlaceholderTextColor(textColor, backgroundColor));
     }
 
     return elementStyle;
@@ -86,16 +78,15 @@ void DateTimeFieldElement::defaultEventHandler(Event& event)
     if (event.type() == eventNames().blurEvent)
         handleBlurEvent(event);
 
-    if (is<KeyboardEvent>(event)) {
-        auto& keyboardEvent = downcast<KeyboardEvent>(event);
+    if (auto* keyboardEvent = dynamicDowncast<KeyboardEvent>(event)) {
         if (!isFieldOwnerDisabled() && !isFieldOwnerReadOnly()) {
-            handleKeyboardEvent(keyboardEvent);
-            if (keyboardEvent.defaultHandled())
+            handleKeyboardEvent(*keyboardEvent);
+            if (keyboardEvent->defaultHandled())
                 return;
         }
 
-        defaultKeyboardEventHandler(keyboardEvent);
-        if (keyboardEvent.defaultHandled())
+        defaultKeyboardEventHandler(*keyboardEvent);
+        if (keyboardEvent->defaultHandled())
             return;
     }
 
@@ -113,12 +104,18 @@ void DateTimeFieldElement::defaultKeyboardEventHandler(KeyboardEvent& keyboardEv
     auto key = keyboardEvent.keyIdentifier();
     auto code = keyboardEvent.code();
 
-    if (key == "Left" && m_fieldOwner && m_fieldOwner->focusOnPreviousField(*this)) {
+    bool isHorizontal = isFieldOwnerHorizontal();
+    auto nextKeyIdentifier = isHorizontal ? "Right"_s : "Down"_s;
+    auto previousKeyIdentifier = isHorizontal ? "Left"_s : "Up"_s;
+    auto stepUpKeyIdentifier = isHorizontal ? "Up"_s : "Right"_s;
+    auto stepDownKeyIdentifier = isHorizontal ? "Down"_s : "Left"_s;
+
+    if (key == previousKeyIdentifier && m_fieldOwner && m_fieldOwner->focusOnPreviousField(*this)) {
         keyboardEvent.setDefaultHandled();
         return;
     }
 
-    if ((key == "Right" || code == "Comma" || code == "Minus" || code == "Period" || code == "Slash" || code == "Semicolon")
+    if ((key == nextKeyIdentifier || code == "Comma"_s || code == "Minus"_s || code == "Period"_s || code == "Slash"_s || code == "Semicolon"_s)
         && m_fieldOwner && m_fieldOwner->focusOnNextField(*this)) {
         keyboardEvent.setDefaultHandled();
         return;
@@ -127,20 +124,20 @@ void DateTimeFieldElement::defaultKeyboardEventHandler(KeyboardEvent& keyboardEv
     if (isFieldOwnerReadOnly())
         return;
 
-    if (key == "Up") {
+    if (key == stepUpKeyIdentifier) {
         stepUp();
         keyboardEvent.setDefaultHandled();
         return;
     }
 
-    if (key == "Down") {
+    if (key == stepDownKeyIdentifier) {
         stepDown();
         keyboardEvent.setDefaultHandled();
         return;
     }
 
     // Clear value when pressing backspace or delete.
-    if (key == "U+0008" || key == "U+007F") {
+    if (key == "U+0008"_s || key == "U+007F"_s) {
         setEmptyValue(DispatchInputAndChangeEvents);
         keyboardEvent.setDefaultHandled();
         return;
@@ -155,6 +152,13 @@ bool DateTimeFieldElement::isFieldOwnerDisabled() const
 bool DateTimeFieldElement::isFieldOwnerReadOnly() const
 {
     return m_fieldOwner && m_fieldOwner->isFieldOwnerReadOnly();
+}
+
+bool DateTimeFieldElement::isFieldOwnerHorizontal() const
+{
+    if (m_fieldOwner)
+        return m_fieldOwner->isFieldOwnerHorizontal();
+    return true;
 }
 
 bool DateTimeFieldElement::isFocusable() const
@@ -188,12 +192,12 @@ String DateTimeFieldElement::visibleValue() const
 void DateTimeFieldElement::updateVisibleValue(EventBehavior eventBehavior)
 {
     if (!firstChild())
-        appendChild(Text::create(document(), emptyString()));
+        appendChild(Text::create(document(), String { emptyString() }));
 
-    auto& textNode = downcast<Text>(*firstChild());
+    Ref textNode = downcast<Text>(*firstChild());
     String newVisibleValue = visibleValue();
-    if (textNode.wholeText() != newVisibleValue)
-        textNode.replaceWholeText(newVisibleValue);
+    if (textNode->wholeText() != newVisibleValue)
+        textNode->replaceWholeText(newVisibleValue);
 
     if (eventBehavior == DispatchInputAndChangeEvents && m_fieldOwner)
         m_fieldOwner->fieldValueChanged();

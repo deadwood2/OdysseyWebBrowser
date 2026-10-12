@@ -24,11 +24,12 @@
  */
 
 #import "config.h"
+
 #import "JavaScriptTest.h"
 #import "Test.h"
 #import "WebKitAgnosticTest.h"
+#import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WebViewPrivate.h>
-#import <WebKit/WKViewPrivate.h>
 #import <wtf/RetainPtr.h>
 
 static bool isWaitingForPageSignalToContinue = false;
@@ -70,13 +71,13 @@ public:
     // WebKitAgnosticTest
     NSURL *url() const override { return [[NSBundle mainBundle] URLForResource:@"PageVisibilityStateWithWindowChanges" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]; }
     void didLoadURL(WebView *webView) override { runTest(webView); }
-    void didLoadURL(WKView *wkView) override { runTest(wkView); }
+    void didLoadURL(WKWebView *wkView) override { runTest(wkView); }
 
     // Setup and teardown the UIDelegate which gets alert() signals from the page.
     void initializeView(WebView *) override;
-    void initializeView(WKView *) override;
+    void initializeView(WKWebView *) override;
     void teardownView(WebView *) override;
-    void teardownView(WKView *) override;
+    void teardownView(WKWebView *) override;
 
 private:
     RetainPtr<id <WebUIDelegate>> m_delegate;
@@ -97,7 +98,7 @@ void PageVisibilityStateWithWindowChanges::teardownView(WebView *webView)
     m_delegate = nil;
 }
 
-void PageVisibilityStateWithWindowChanges::initializeView(WKView *wkView)
+void PageVisibilityStateWithWindowChanges::initializeView(WKWebView *wkView)
 {
     WKPageUIClientV0 uiClient;
     memset(&uiClient, 0, sizeof(uiClient));
@@ -105,10 +106,10 @@ void PageVisibilityStateWithWindowChanges::initializeView(WKView *wkView)
     uiClient.base.version = 0;
     uiClient.runJavaScriptAlert = runJavaScriptAlert;
 
-    WKPageSetPageUIClient(wkView.pageRef, &uiClient.base);
+    WKPageSetPageUIClient(wkView._pageRefForTransitionToWKWebView, &uiClient.base);
 }
 
-void PageVisibilityStateWithWindowChanges::teardownView(WKView *wkView)
+void PageVisibilityStateWithWindowChanges::teardownView(WKWebView *wkView)
 {
     // We do not need to teardown the WKPageUIClient.
 }

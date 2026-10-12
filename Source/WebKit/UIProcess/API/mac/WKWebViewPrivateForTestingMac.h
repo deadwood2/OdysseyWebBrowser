@@ -34,6 +34,7 @@
 
 @property (nonatomic, readonly) BOOL _hasActiveVideoForControlsManager;
 @property (nonatomic, readonly) BOOL _shouldRequestCandidates;
+@property (nonatomic, readonly) BOOL _allowsInlinePredictions;
 @property (nonatomic, readonly) NSMenu *_activeMenu;
 
 - (void)_requestControlledElementID;
@@ -48,9 +49,17 @@
 - (void)_insertText:(id)string replacementRange:(NSRange)replacementRange;
 - (NSRect)_candidateRect;
 
-- (void)_setHeaderBannerHeight:(int)height;
-- (void)_setFooterBannerHeight:(int)height;
 - (NSSet<NSView *> *)_pdfHUDs;
+
+- (void)_retrieveAccessibilityTreeData:(void (^)(NSData *, NSError *))completionHandler;
+
+- (void)_setSelectedColorForColorPicker:(NSColor *)color;
+
+@property (nonatomic, readonly) BOOL _secureEventInputEnabledForTesting;
+
+- (void)_createFlagsChangedEventMonitorForTesting;
+
+- (void)_removeFlagsChangedEventMonitorForTesting;
 
 @end
 

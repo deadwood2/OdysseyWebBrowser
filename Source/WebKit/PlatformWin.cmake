@@ -5,24 +5,20 @@ set(GPUProcess_OUTPUT_NAME WebKitGPUProcess)
 set(PluginProcess_OUTPUT_NAME WebKitPluginProcess)
 
 include(Headers.cmake)
-
-add_definitions(-DBUILDING_WEBKIT)
+include(Platform/Curl.cmake)
+include(Platform/WC.cmake)
 
 list(APPEND WebKit_SOURCES
-    GPUProcess/graphics/RemoteGraphicsContextGLWin.cpp
-
     GPUProcess/media/win/RemoteMediaPlayerProxyWin.cpp
 
     GPUProcess/win/GPUProcessMainWin.cpp
     GPUProcess/win/GPUProcessWin.cpp
 
+    NetworkProcess/NetworkDataTaskDataURL.cpp
+
     NetworkProcess/Classifier/WebResourceLoadStatisticsStore.cpp
 
-    NetworkProcess/WebStorage/StorageManager.cpp
-
-    NetworkProcess/curl/NetworkProcessMainCurl.cpp
-
-    Platform/IPC/win/AttachmentWin.cpp
+    Platform/IPC/win/ArgumentCodersWin.cpp
     Platform/IPC/win/ConnectionWin.cpp
     Platform/IPC/win/IPCSemaphoreWin.cpp
 
@@ -30,11 +26,6 @@ list(APPEND WebKit_SOURCES
 
     Platform/win/LoggingWin.cpp
     Platform/win/ModuleWin.cpp
-    Platform/win/SharedMemoryWin.cpp
-
-    Shared/API/c/curl/WKCertificateInfoCurl.cpp
-
-    Shared/Plugins/Netscape/NetscapePluginModuleNone.cpp
 
     Shared/win/AuxiliaryProcessMainWin.cpp
     Shared/win/NativeWebKeyboardEventWin.cpp
@@ -43,20 +34,17 @@ list(APPEND WebKit_SOURCES
     Shared/win/NativeWebWheelEventWin.cpp
     Shared/win/WebCoreArgumentCodersWin.cpp
     Shared/win/WebEventFactory.cpp
-    Shared/win/WebPreferencesDefaultValuesWin.cpp
 
-    UIProcess/BackingStore.cpp
+    UIProcess/API/C/WKViewportAttributes.cpp
+
+    UIProcess/API/C/win/WKView.cpp
+
+    UIProcess/Automation/win/WebAutomationSessionWin.cpp
+
     UIProcess/DefaultUndoController.cpp
     UIProcess/LegacySessionStateCodingNone.cpp
     UIProcess/WebGrammarDetail.cpp
     UIProcess/WebViewportAttributes.cpp
-
-    UIProcess/API/C/WKViewportAttributes.cpp
-
-    UIProcess/API/C/curl/WKProtectionSpaceCurl.cpp
-    UIProcess/API/C/curl/WKWebsiteDataStoreRefCurl.cpp
-
-    UIProcess/API/C/win/WKView.cpp
 
     UIProcess/CoordinatedGraphics/DrawingAreaProxyCoordinatedGraphics.cpp
 
@@ -65,10 +53,9 @@ list(APPEND WebKit_SOURCES
 
     UIProcess/Launcher/win/ProcessLauncherWin.cpp
 
-    UIProcess/WebsiteData/curl/WebsiteDataStoreCurl.cpp
-
     UIProcess/WebsiteData/win/WebsiteDataStoreWin.cpp
 
+    UIProcess/win/AutomationClientWin.cpp
     UIProcess/win/PageClientImpl.cpp
     UIProcess/win/WebContextMenuProxyWin.cpp
     UIProcess/win/WebPageProxyWin.cpp
@@ -80,12 +67,10 @@ list(APPEND WebKit_SOURCES
 
     WebProcess/InjectedBundle/win/InjectedBundleWin.cpp
 
+    WebProcess/Inspector/win/RemoteWebInspectorUIWin.cpp
     WebProcess/Inspector/win/WebInspectorUIWin.cpp
 
     WebProcess/MediaCache/WebMediaKeyStorageManager.cpp
-
-    WebProcess/Plugins/Netscape/NetscapePluginNone.cpp
-    WebProcess/Plugins/Netscape/win/PluginProxyWin.cpp
 
     WebProcess/WebCoreSupport/win/WebPopupMenuWin.cpp
 
@@ -93,25 +78,24 @@ list(APPEND WebKit_SOURCES
 
     WebProcess/WebPage/CoordinatedGraphics/CompositingCoordinator.cpp
     WebProcess/WebPage/CoordinatedGraphics/DrawingAreaCoordinatedGraphics.cpp
-    WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostTextureMapper.cpp
 
     WebProcess/WebPage/win/WebPageWin.cpp
 
     WebProcess/win/WebProcessMainWin.cpp
     WebProcess/win/WebProcessWin.cpp
+
+    win/WebKitDLL.cpp
 )
 
-list(APPEND WebKit_INCLUDE_DIRECTORIES
+list(APPEND WebKit_PRIVATE_INCLUDE_DIRECTORIES
+    "${WEBKIT_DIR}/Platform/IPC/win"
     "${WEBKIT_DIR}/Platform/classifier"
     "${WEBKIT_DIR}/Platform/generic"
     "${WEBKIT_DIR}/PluginProcess/win"
     "${WEBKIT_DIR}/Shared/API/c/win"
     "${WEBKIT_DIR}/Shared/CoordinatedGraphics"
     "${WEBKIT_DIR}/Shared/CoordinatedGraphics/threadedcompositor"
-    "${WEBKIT_DIR}/Shared/Plugins/win"
     "${WEBKIT_DIR}/Shared/win"
-    "${WEBKIT_DIR}/UIProcess/API/C/cairo"
-    "${WEBKIT_DIR}/UIProcess/API/C/curl"
     "${WEBKIT_DIR}/UIProcess/API/C/win"
     "${WEBKIT_DIR}/UIProcess/API/cpp/win"
     "${WEBKIT_DIR}/UIProcess/API/win"
@@ -129,60 +113,33 @@ list(APPEND WebKit_INCLUDE_DIRECTORIES
     "${WEBKIT_DIR}/win"
 )
 
-set(WebKitCommonIncludeDirectories ${WebKit_INCLUDE_DIRECTORIES})
-set(WebKitCommonSystemIncludeDirectories ${WebKit_SYSTEM_INCLUDE_DIRECTORIES})
+list(APPEND WebKit_PUBLIC_FRAMEWORK_HEADERS
+    Shared/API/c/win/WKBaseWin.h
+
+    UIProcess/API/C/win/WKView.h
+)
+
+list(APPEND WebKit_PRIVATE_LIBRARIES
+    comctl32
+)
 
 list(APPEND WebProcess_SOURCES
     WebProcess/EntryPoint/win/WebProcessMain.cpp
+
+    win/WebKit.manifest
 )
 
 list(APPEND NetworkProcess_SOURCES
     NetworkProcess/EntryPoint/win/NetworkProcessMain.cpp
+
+    win/WebKit.manifest
 )
 
 list(APPEND GPUProcess_SOURCES
     GPUProcess/EntryPoint/win/GPUProcessMain.cpp
+
+    win/WebKit.manifest
 )
-
-if (${WTF_PLATFORM_WIN_CAIRO})
-    add_definitions(-DUSE_CAIRO=1 -DUSE_CURL=1)
-
-    list(APPEND WebKit_SOURCES
-        NetworkProcess/Cookies/curl/WebCookieManagerCurl.cpp
-
-        NetworkProcess/cache/NetworkCacheDataCurl.cpp
-        NetworkProcess/cache/NetworkCacheIOChannelCurl.cpp
-
-        NetworkProcess/curl/NetworkDataTaskCurl.cpp
-        NetworkProcess/curl/NetworkProcessCurl.cpp
-        NetworkProcess/curl/NetworkSessionCurl.cpp
-        NetworkProcess/curl/RemoteNetworkingContextCurl.cpp
-
-        Shared/API/c/cairo/WKImageCairo.cpp
-
-        Shared/cairo/ShareableBitmapCairo.cpp
-
-        Shared/curl/WebCoreArgumentCodersCurl.cpp
-
-        UIProcess/Automation/cairo/WebAutomationSessionCairo.cpp
-
-        UIProcess/cairo/BackingStoreCairo.cpp
-
-        WebProcess/WebCoreSupport/curl/WebFrameNetworkingContext.cpp
-    )
-
-    list(APPEND WebKit_INCLUDE_DIRECTORIES
-        "${WEBKIT_DIR}/NetworkProcess/curl"
-        "${WEBKIT_DIR}/WebProcess/WebCoreSupport/curl"
-    )
-
-    list(APPEND WebKit_PRIVATE_LIBRARIES
-        MediaFoundation
-        OpenSSL::SSL
-        mfuuid.lib
-        strmiids.lib
-    )
-endif ()
 
 if (ENABLE_REMOTE_INSPECTOR)
     list(APPEND WebKit_SOURCES
@@ -192,25 +149,21 @@ if (ENABLE_REMOTE_INSPECTOR)
         UIProcess/Inspector/win/RemoteWebInspectorUIProxyWin.cpp
     )
 
-    list(APPEND WebKit_INCLUDE_DIRECTORIES
+    list(APPEND WebKit_PRIVATE_INCLUDE_DIRECTORIES
         "${WEBKIT_DIR}/UIProcess/socket"
     )
 endif ()
 
-# Windows specific
-list(APPEND WebKit_PUBLIC_FRAMEWORK_HEADERS
-    Shared/API/c/win/WKBaseWin.h
+if (USE_CAIRO)
+    list(APPEND WebKit_SOURCES
+        Shared/API/c/cairo/WKImageCairo.cpp
 
-    UIProcess/API/C/win/WKView.h
-)
-
-if (${WTF_PLATFORM_WIN_CAIRO})
+        UIProcess/Automation/cairo/WebAutomationSessionCairo.cpp
+    )
+    list(APPEND WebKit_PRIVATE_INCLUDE_DIRECTORIES
+        "${WEBKIT_DIR}/UIProcess/API/C/cairo"
+    )
     list(APPEND WebKit_PUBLIC_FRAMEWORK_HEADERS
         Shared/API/c/cairo/WKImageCairo.h
-
-        Shared/API/c/curl/WKCertificateInfoCurl.h
-
-        UIProcess/API/C/curl/WKProtectionSpaceCurl.h
-        UIProcess/API/C/curl/WKWebsiteDataStoreRefCurl.h
     )
 endif ()

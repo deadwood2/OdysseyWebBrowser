@@ -15,7 +15,7 @@ using namespace angle;
 namespace
 {
 
-class AtomicCounterBufferTest : public ANGLETest
+class AtomicCounterBufferTest : public ANGLETest<>
 {
   protected:
     AtomicCounterBufferTest()
@@ -34,7 +34,7 @@ TEST_P(AtomicCounterBufferTest, AtomicCounterBufferBindings)
 {
     ASSERT_EQ(3, getClientMajorVersion());
     GLBuffer atomicCounterBuffer;
-    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicCounterBuffer.get());
+    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicCounterBuffer);
     if (getClientMinorVersion() < 1)
     {
         EXPECT_GL_ERROR(GL_INVALID_ENUM);
@@ -66,6 +66,290 @@ TEST_P(AtomicCounterBufferTest31, ExceedMaxVertexAtomicCounters)
 
     GLuint program = CompileProgram(kVS, kFS);
     EXPECT_EQ(0u, program);
+}
+
+// Test that Tessellation Control Shader Can Read/Write to atomic counter buffers
+TEST_P(AtomicCounterBufferTest31, TessellationControlShaderMaxAtomicCounterTests)
+{
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_EXT_tessellation_shader"));
+    GLint maxTessellationControlAtomicCounters = 0;
+    glGetIntegerv(GL_MAX_TESS_CONTROL_ATOMIC_COUNTERS, &maxTessellationControlAtomicCounters);
+    ANGLE_SKIP_TEST_IF(maxTessellationControlAtomicCounters <= 0);
+
+    // Cap the atomic counters to an arbitrary value 16 in case we do not have a limit for
+    // GL_MAX_TESS_CONTROL_ATOMIC_COUNTERS on certain devices
+    GLint maxTessellationControlAtomicCountersCap = 16u;
+    maxTessellationControlAtomicCounters =
+        std::min(maxTessellationControlAtomicCounters, maxTessellationControlAtomicCountersCap);
+
+    const unsigned int tessellationControlPointsCount = 3;
+
+    // Vertex Shader Code
+    const char *kVS =
+        "#version 310 es\n"
+        "\n"
+        "in vec4 a_position;\n"
+        "flat out int vertex_id;\n"
+        "\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position  = a_position;\n"
+        "}\n";
+
+    // Tessellation Control Shader Code
+    // gl_InvocationID = 0: increment all elements in atomic counters acs[].
+    // gl_InvocationID = 1: increment acs[index] where index==0
+    // gl_InvocationID = 2: increment acs[index] where index==0,1
+    // We have tessellationControlPointsCount=3 vertices output from the Tessellation Control
+    // Shader Stage, meaning we have three tessellation shader code running in parallel, each with a
+    // unique gl_InvocationID.
+    std::stringstream tcs_code_sstream;
+    tcs_code_sstream
+        << "#version 310 es\n"
+           "#extension GL_EXT_tessellation_shader : require\n"
+           "layout(vertices ="
+        << tessellationControlPointsCount
+        << ") out;\n"
+           "uniform int nLoopIterations;\n"
+           "layout(binding = 0) uniform atomic_uint acs["
+        << maxTessellationControlAtomicCounters
+        << "];\n"
+           "void main()\n"
+           "{\n"
+           "for (int counter_id = 1;\n"
+           "counter_id <= nLoopIterations;\n"
+           "++counter_id)\n"
+           "{\n"
+           "if ((gl_InvocationID % counter_id) == 0)\n"
+           "{\n"
+           "   atomicCounterIncrement(acs[counter_id - 1]);\n"
+           "}\n"
+           "}\n"
+           "\n"
+           "       gl_out [gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;\n"
+           "       gl_TessLevelInner[0] = 1.0;\n"
+           "       gl_TessLevelOuter[0] = 1.0;\n"
+           "       gl_TessLevelOuter[1] = 1.0;\n"
+           "       gl_TessLevelOuter[2] = 1.0;\n"
+           "}\n";
+    std::string tcs_code = tcs_code_sstream.str();
+    const char *kTC      = tcs_code.c_str();
+
+    // Tessellation Evaluation Shader Code
+    constexpr char kTES[] =
+        "#version 310 es\n"
+        "#extension GL_EXT_tessellation_shader : require\n"
+        "layout (triangles) in;\n"
+        "void main()\n"
+        "{\n"
+        "   gl_Position = gl_TessCoord[0] * gl_in[0].gl_Position +"
+        "                 gl_TessCoord[1] * gl_in[1].gl_Position +"
+        "                 gl_TessCoord[2] * gl_in[2].gl_Position;\n"
+        "}\n";
+
+    // Fragment Shader Code
+    const char *kFS =
+        "#version 310 es\n"
+        "\n"
+        "precision highp float;\n"
+        "\n"
+        "out vec4 result;\n"
+        "\n"
+        "void main()\n"
+        "{\n"
+        "    result = vec4(1.0);\n"
+        "}\n";
+    GLuint program = CompileProgramWithTESS(kVS, kTC, kTES, kFS);
+    EXPECT_NE(0u, program);
+    glUseProgram(program);
+
+    // Create and Bind Atomic Counter Buffer Object
+    GLuint atomicBufferID;
+    glGenBuffers(1, &atomicBufferID);
+    GLuint *atomicBufferData = new GLuint[maxTessellationControlAtomicCounters];
+    memset(atomicBufferData, 0, sizeof(GLuint) * maxTessellationControlAtomicCounters);
+    glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicBufferID);
+    glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(GLuint) * maxTessellationControlAtomicCounters,
+                 NULL, GL_DYNAMIC_COPY);
+    glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0,
+                    sizeof(GLuint) * maxTessellationControlAtomicCounters, atomicBufferData);
+    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicBufferID);
+
+    // Bind nLoopIterationsUniformLocation uniform
+    GLint nLoopIterationsUniformLocation = -1;
+    nLoopIterationsUniformLocation       = glGetUniformLocation(program, "nLoopIterations");
+    EXPECT_NE(-1, nLoopIterationsUniformLocation);
+    glUniform1i(nLoopIterationsUniformLocation, maxTessellationControlAtomicCounters);
+
+    // Issue a Drawcall
+    std::array<Vector3, 3> triangleVertices = {
+        Vector3(-1.0f, 1.0f, 0.5f), Vector3(-1.0f, -1.0f, 0.5f), Vector3(1.0f, -1.0f, 0.5f)};
+    GLint positionLocation = glGetAttribLocation(program, "a_position");
+    glVertexAttribPointer(positionLocation, 3, GL_FLOAT, GL_FALSE, 0, triangleVertices.data());
+    glEnableVertexAttribArray(positionLocation);
+    glDrawArrays(GL_PATCHES, 0, 3);
+    ASSERT_GL_NO_ERROR();
+
+    // Check the value of atomic counter buffer
+    GLuint *atomicBufferResult = (GLuint *)glMapBufferRange(
+        GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint) * maxTessellationControlAtomicCounters,
+        GL_MAP_READ_BIT);
+
+    for (GLint n_ac = 1; n_ac <= maxTessellationControlAtomicCounters; ++n_ac)
+    {
+        unsigned int expected_value = 0;
+        for (unsigned int n_draw_call_vertex = 0;
+             n_draw_call_vertex < tessellationControlPointsCount; ++n_draw_call_vertex)
+        {
+            if ((n_draw_call_vertex % n_ac) == 0)
+            {
+                expected_value++;
+            }
+        }
+        EXPECT_EQ(atomicBufferResult[n_ac - 1], expected_value);
+    }
+
+    glUnmapBuffer(GL_ATOMIC_COUNTER_BUFFER);
+    glDisableVertexAttribArray(positionLocation);
+    glDeleteBuffers(1, &atomicBufferID);
+    glDeleteProgram(program);
+}
+
+// Test that Tessellation Evaluation Shader Can Read/Write to atomic counter buffers
+TEST_P(AtomicCounterBufferTest31, TessellationEvaluationShaderMaxAtomicCounterTests)
+{
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_EXT_tessellation_shader"));
+    GLint maxTessellationEvaluationAtomicCounters = 0;
+    glGetIntegerv(GL_MAX_TESS_EVALUATION_ATOMIC_COUNTERS, &maxTessellationEvaluationAtomicCounters);
+    ANGLE_SKIP_TEST_IF(maxTessellationEvaluationAtomicCounters <= 0);
+
+    // Cap the atomic counters to an arbitrary value 16 in case we do not have a limit for
+    // GL_MAX_TESS_CONTROL_ATOMIC_COUNTERS on certain devices
+    GLint maxTessellationEvaluationAtomicCountersCap = 16u;
+    maxTessellationEvaluationAtomicCounters = std::min(maxTessellationEvaluationAtomicCounters,
+                                                       maxTessellationEvaluationAtomicCountersCap);
+
+    const unsigned int tessellationControlPointsCount = 3;
+
+    // Vertex Shader Code
+    const char *kVS =
+        "#version 310 es\n"
+        "\n"
+        "in vec4 a_position;\n"
+        "\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position  = a_position;\n"
+        "}\n";
+
+    // Tessellation Control Shader Code
+    std::stringstream tcs_code_sstream;
+    tcs_code_sstream
+        << "#version 310 es\n"
+           "#extension GL_EXT_tessellation_shader : require\n"
+           "layout(vertices = "
+        << tessellationControlPointsCount
+        << ") out;\n"
+           "void main()\n"
+           "{\n"
+           "       gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;\n"
+           "       gl_TessLevelInner[0] = 1.0;\n"
+           "       gl_TessLevelOuter[0] = 1.0;\n"
+           "       gl_TessLevelOuter[1] = 1.0;\n"
+           "       gl_TessLevelOuter[2] = 1.0;\n"
+           "}\n";
+    std::string tcs_code = tcs_code_sstream.str();
+    const char *kTC      = tcs_code.c_str();
+
+    // Tessellation Evaluation Shader Code
+    // The gl_TessLevelInner and gl_TessLevelOuter values in tessellation control shader (tcs) code
+    // are set to 1, meaning we do not subdivide the patch and create more vertices. The number of
+    // tessellation evaluation shader (tes) invocations is the same as number of vertex output from
+    // tcs (e.g. tessellationControlPointsCount).
+    // Increment all elements in atomic counters acs[] in every tes invocation.
+    // Final value in atomic counters acs[] should be the same as the number of
+    // tes invocations (e.g. tessellationControlPointsCount).
+    std::stringstream tes_code_sstream;
+    tes_code_sstream << "#version 310 es\n"
+                        "#extension GL_EXT_tessellation_shader : require\n"
+                        "layout (triangles) in;\n"
+                        "uniform int nLoopIterations;\n"
+                        "layout(binding = 0) uniform atomic_uint acs["
+                     << maxTessellationEvaluationAtomicCounters
+                     << "];\n"
+                        "void main()\n"
+                        "{\n"
+                        "for (int counter_id = 0;\n"
+                        "counter_id < nLoopIterations;\n"
+                        "++counter_id)\n"
+                        "{\n"
+                        "   atomicCounterIncrement(acs[counter_id]);\n"
+                        "}\n"
+                        "\n"
+                        "   gl_Position = gl_TessCoord[0] * gl_in[0].gl_Position +"
+                        "                 gl_TessCoord[1] * gl_in[1].gl_Position +"
+                        "                 gl_TessCoord[2] * gl_in[2].gl_Position;\n"
+                        "}\n";
+    std::string tes_code = tes_code_sstream.str();
+    const char *kTES     = tes_code.c_str();
+
+    // Fragment Shader Code
+    const char *kFS =
+        "#version 310 es\n"
+        "\n"
+        "precision highp float;\n"
+        "\n"
+        "out vec4 result;\n"
+        "\n"
+        "void main()\n"
+        "{\n"
+        "    result = vec4(1.0);\n"
+        "}\n";
+    GLuint program = CompileProgramWithTESS(kVS, kTC, kTES, kFS);
+    EXPECT_NE(0u, program);
+    glUseProgram(program);
+
+    // Create and Bind Atomic Counter Buffer Object
+    GLuint atomicBufferID;
+    glGenBuffers(1, &atomicBufferID);
+    GLuint *atomicBufferData = new GLuint[maxTessellationEvaluationAtomicCounters];
+    memset(atomicBufferData, 0, sizeof(GLuint) * maxTessellationEvaluationAtomicCounters);
+    glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicBufferID);
+    glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(GLuint) * maxTessellationEvaluationAtomicCounters,
+                 NULL, GL_DYNAMIC_COPY);
+    glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0,
+                    sizeof(GLuint) * maxTessellationEvaluationAtomicCounters, atomicBufferData);
+    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicBufferID);
+
+    // Bind nLoopIterationsUniformLocation uniform
+    GLint nLoopIterationsUniformLocation = -1;
+    nLoopIterationsUniformLocation       = glGetUniformLocation(program, "nLoopIterations");
+    EXPECT_NE(-1, nLoopIterationsUniformLocation);
+    glUniform1i(nLoopIterationsUniformLocation, maxTessellationEvaluationAtomicCounters);
+
+    // Issue Drawcall
+    std::array<Vector3, 3> triangleVertices = {
+        Vector3(-1.0f, 1.0f, 0.5f), Vector3(-1.0f, -1.0f, 0.5f), Vector3(1.0f, -1.0f, 0.5f)};
+    GLint positionLocation = glGetAttribLocation(program, "a_position");
+    glVertexAttribPointer(positionLocation, 3, GL_FLOAT, GL_FALSE, 0, triangleVertices.data());
+    glEnableVertexAttribArray(positionLocation);
+    glDrawArrays(GL_PATCHES, 0, 3);
+    ASSERT_GL_NO_ERROR();
+
+    // Check the value of atomic counter buffer
+    GLuint *atomicBufferResult = (GLuint *)glMapBufferRange(
+        GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint) * maxTessellationEvaluationAtomicCounters,
+        GL_MAP_READ_BIT);
+    unsigned int expected_value = tessellationControlPointsCount;
+    for (GLint n_ac = 0; n_ac < maxTessellationEvaluationAtomicCounters; ++n_ac)
+    {
+        EXPECT_EQ(atomicBufferResult[n_ac], expected_value);
+    }
+
+    glUnmapBuffer(GL_ATOMIC_COUNTER_BUFFER);
+    glDisableVertexAttribArray(positionLocation);
+    glDeleteBuffers(1, &atomicBufferID);
+    glDeleteProgram(program);
 }
 
 // Counters matching across shader stages should fail if offsets aren't all specified.
@@ -115,12 +399,8 @@ TEST_P(AtomicCounterBufferTest31, OffsetNotAllSpecifiedWithSameValue)
 // Tests atomic counter reads using compute shaders. Used as a confidence check for the translator.
 TEST_P(AtomicCounterBufferTest31, AtomicCounterReadCompute)
 {
-    // Skipping due to a bug on the Qualcomm Vulkan Android driver.
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
-
     // Skipping due to a bug on the Adreno OpenGLES Android driver.
-    // http://anglebug.com/2925
+    // http://anglebug.com/42261624
     ANGLE_SKIP_TEST_IF(IsAndroid() && IsAdreno() && IsOpenGLES());
 
     constexpr char kComputeShaderSource[] = R"(#version 310 es
@@ -148,12 +428,8 @@ void main()
 // Test atomic counter read.
 TEST_P(AtomicCounterBufferTest31, AtomicCounterRead)
 {
-    // Skipping due to a bug on the Qualcomm Vulkan Android driver.
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
-
     // Skipping test while we work on enabling atomic counter buffer support in th D3D renderer.
-    // http://anglebug.com/1729
+    // http://anglebug.com/42260658
     ANGLE_SKIP_TEST_IF(IsD3D11());
 
     constexpr char kFS[] =
@@ -170,7 +446,7 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterRead)
 
     ANGLE_GL_PROGRAM(program, essl31_shaders::vs::Simple(), kFS);
 
-    glUseProgram(program.get());
+    glUseProgram(program);
 
     // The initial value of counter 'ac' is 3u.
     unsigned int bufferData[3] = {11u, 3u, 1u};
@@ -180,9 +456,55 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterRead)
 
     glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicCounterBuffer);
 
-    drawQuad(program.get(), essl31_shaders::PositionAttrib(), 0.0f);
+    drawQuad(program, essl31_shaders::PositionAttrib(), 0.0f);
     ASSERT_GL_NO_ERROR();
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::white);
+}
+
+// Test a bug in vulkan back-end where recreating the atomic counter storage should trigger state
+// update in the context
+TEST_P(AtomicCounterBufferTest31, DependentAtomicCounterBufferChange)
+{
+    // Skipping test while we work on enabling atomic counter buffer support in th D3D renderer.
+    // http://anglebug.com/42260658
+    ANGLE_SKIP_TEST_IF(IsD3D11());
+
+    constexpr char kFS[] =
+        "#version 310 es\n"
+        "precision highp float;\n"
+        "layout(binding = 0, offset = 4) uniform atomic_uint ac;\n"
+        "out highp vec4 my_color;\n"
+        "void main()\n"
+        "{\n"
+        "    my_color = vec4(0.0);\n"
+        "    uint a1 = atomicCounter(ac);\n"
+        "    if (a1 == 3u) my_color = vec4(1.0);\n"
+        "    if (a1 == 19u) my_color = vec4(1.0, 0.0, 0.0, 1.0);\n"
+        "}\n";
+
+    ANGLE_GL_PROGRAM(program, essl31_shaders::vs::Simple(), kFS);
+
+    glUseProgram(program);
+
+    // The initial value of counter 'ac' is 3u.
+    unsigned int bufferDataLeft[3] = {11u, 3u, 1u};
+    GLBuffer atomicCounterBuffer;
+    glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicCounterBuffer);
+    glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(bufferDataLeft), bufferDataLeft, GL_STATIC_DRAW);
+
+    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicCounterBuffer);
+    // Draw left quad
+    glViewport(0, 0, getWindowWidth() / 2, getWindowHeight());
+    drawQuad(program, essl31_shaders::PositionAttrib(), 0.0f);
+    // Draw right quad
+    unsigned int bufferDataRight[3] = {11u, 19u, 1u};
+    glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(bufferDataRight), bufferDataRight,
+                 GL_STATIC_DRAW);
+    glViewport(getWindowWidth() / 2, 0, getWindowWidth() / 2, getWindowHeight());
+    drawQuad(program, essl31_shaders::PositionAttrib(), 0.0f);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::white);
+    EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, 0, GLColor::red);
 }
 
 // Updating atomic counter buffer's offsets was optimized based on a count of valid bindings.
@@ -190,18 +512,11 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterRead)
 TEST_P(AtomicCounterBufferTest31, AtomicCounterBufferRangeRead)
 {
     // Skipping due to a bug on the Qualcomm driver.
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsNexus5X());
-
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsNexus6P());
-
-    // Skipping due to a bug on the Qualcomm Vulkan Android driver.
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
+    // http://anglebug.com/42262383
+    ANGLE_SKIP_TEST_IF(IsNexus5X() && IsOpenGLES());
 
     // Skipping test while we work on enabling atomic counter buffer support in th D3D renderer.
-    // http://anglebug.com/1729
+    // http://anglebug.com/42260658
     ANGLE_SKIP_TEST_IF(IsD3D11());
 
     constexpr char kFS[] =
@@ -218,7 +533,7 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterBufferRangeRead)
 
     ANGLE_GL_PROGRAM(program, essl31_shaders::vs::Simple(), kFS);
 
-    glUseProgram(program.get());
+    glUseProgram(program);
 
     // The initial value of counter 'ac' is 3u.
     unsigned int bufferData[]     = {0u, 0u, 0u, 0u, 0u, 11u, 3u, 1u};
@@ -238,7 +553,7 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterBufferRangeRead)
                           sizeof(bufferData) - kOffset);
     }
 
-    drawQuad(program.get(), essl31_shaders::PositionAttrib(), 0.0f);
+    drawQuad(program, essl31_shaders::PositionAttrib(), 0.0f);
     ASSERT_GL_NO_ERROR();
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::white);
 }
@@ -248,12 +563,8 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterBufferRangeRead)
 // there are bugs in how we count valid bindings.
 TEST_P(AtomicCounterBufferTest31, AtomicCounterBufferRepeatedBindUnbind)
 {
-    // Skipping due to a bug on the Qualcomm Vulkan Android driver.
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
-
     // Skipping test while we work on enabling atomic counter buffer support in th D3D renderer.
-    // http://anglebug.com/1729
+    // http://anglebug.com/42260658
     ANGLE_SKIP_TEST_IF(IsD3D11());
 
     constexpr char kFS[] =
@@ -270,7 +581,7 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterBufferRepeatedBindUnbind)
 
     ANGLE_GL_PROGRAM(program, essl31_shaders::vs::Simple(), kFS);
 
-    glUseProgram(program.get());
+    glUseProgram(program);
 
     constexpr int32_t kBufferCount = 16;
     // The initial value of counter 'ac' is 3u.
@@ -314,7 +625,7 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterBufferRepeatedBindUnbind)
 
     // Bind atomicCounterBuffer[0] to slot 0 and verify result
     glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicCounterBuffer[0]);
-    drawQuad(program.get(), essl31_shaders::PositionAttrib(), 0.0f);
+    drawQuad(program, essl31_shaders::PositionAttrib(), 0.0f);
     ASSERT_GL_NO_ERROR();
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::white);
 }
@@ -322,10 +633,6 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterBufferRepeatedBindUnbind)
 // Test atomic counter increment and decrement.
 TEST_P(AtomicCounterBufferTest31, AtomicCounterIncrementAndDecrement)
 {
-    // Skipping due to a bug on the Qualcomm Vulkan Android driver.
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
-
     constexpr char kCS[] =
         "#version 310 es\n"
         "layout(local_size_x=1, local_size_y=1, local_size_z=1) in;\n"
@@ -338,7 +645,7 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterIncrementAndDecrement)
 
     ANGLE_GL_COMPUTE_PROGRAM(program, kCS);
 
-    glUseProgram(program.get());
+    glUseProgram(program);
 
     // The initial value of 'ac[0]' is 3u, 'ac[1]' is 1u.
     unsigned int bufferData[3] = {11u, 3u, 1u};
@@ -367,10 +674,6 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterIncrementAndDecrement)
 // Tests multiple atomic counter buffers.
 TEST_P(AtomicCounterBufferTest31, AtomicCounterMultipleBuffers)
 {
-    // Skipping due to a bug on the Qualcomm Vulkan Android driver.
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
-
     GLint maxAtomicCounterBuffers = 0;
     glGetIntegerv(GL_MAX_COMPUTE_ATOMIC_COUNTER_BUFFERS, &maxAtomicCounterBuffers);
     constexpr unsigned int kBufferCount = 3;
@@ -424,18 +727,14 @@ void main()
 TEST_P(AtomicCounterBufferTest31, AtomicCounterArrayOfArray)
 {
     // Fails on D3D.  Some counters are double-incremented while some are untouched, hinting at a
-    // bug in index translation.  http://anglebug.com/3783
+    // bug in index translation.  http://anglebug.com/42262427
     ANGLE_SKIP_TEST_IF(IsD3D11());
 
-    // Nvidia's OpenGL driver fails to compile the shader.  http://anglebug.com/3791
+    // Nvidia's OpenGL driver fails to compile the shader.  http://anglebug.com/42262434
     ANGLE_SKIP_TEST_IF(IsOpenGL() && IsNVIDIA());
 
-    // Intel's Windows OpenGL driver crashes in this test.  http://anglebug.com/3791
+    // Intel's Windows OpenGL driver crashes in this test.  http://anglebug.com/42262434
     ANGLE_SKIP_TEST_IF(IsOpenGL() && IsIntel() && IsWindows());
-
-    // Skipping due to a bug on the Qualcomm Vulkan Android driver.
-    // http://anglebug.com/3726
-    ANGLE_SKIP_TEST_IF(IsAndroid() && IsVulkan());
 
     constexpr char kCS[] = R"(#version 310 es
 layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
@@ -534,7 +833,7 @@ void main()
     ANGLE_SKIP_TEST_IF(static_cast<uint32_t>(maxAtomicCounters) < kAtomicCounterCount);
 
     ANGLE_GL_COMPUTE_PROGRAM(program, kCS);
-    glUseProgram(program.get());
+    glUseProgram(program);
 
     // The initial value of atomic counters is 0, 1, 2, ...
     unsigned int bufferData[kAtomicCounterCount] = {};
@@ -618,23 +917,9 @@ TEST_P(AtomicCounterBufferTest31, AtomicCounterMemoryBarrier)
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
 }
 
-// TODO(syoussefi): re-enable tests on Vulkan once http://anglebug.com/3738 is resolved.  The issue
-// is with WGL where if a Vulkan test is run first in the shard, it causes crashes when an OpenGL
-// test is run afterwards.  AtomicCounter* tests are alphabetically first, and having them not run
-// on Vulkan makes every shard our bots currently make do have at least some OpenGL test run before
-// any Vulkan test. When these tests can be enabled on Vulkan, can replace the current macros with
-// the updated macros below that include Vulkan:
-#if !defined(ANGLE_PLATFORM_WINDOWS)
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(AtomicCounterBufferTest);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(AtomicCounterBufferTest31);
 ANGLE_INSTANTIATE_TEST_ES3_AND_ES31(AtomicCounterBufferTest);
 ANGLE_INSTANTIATE_TEST_ES31(AtomicCounterBufferTest31);
-#else
-ANGLE_INSTANTIATE_TEST(AtomicCounterBufferTest,
-                       ES3_OPENGL(),
-                       ES3_OPENGLES(),
-                       ES31_OPENGL(),
-                       ES31_OPENGLES(),
-                       ES31_D3D11());
-ANGLE_INSTANTIATE_TEST(AtomicCounterBufferTest31, ES31_OPENGL(), ES31_OPENGLES(), ES31_D3D11());
-#endif
 
 }  // namespace

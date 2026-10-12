@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include <cairo.h>
 #include <glib-object.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
@@ -28,10 +27,16 @@
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 
-#if PLATFORM(GTK)
+#if USE(CAIRO) || PLATFORM(GTK)
+#include <cairo.h>
+#endif
+
+#if PLATFORM(GTK) && USE(GTK4)
+#include <webkit/webkit.h>
+#elif PLATFORM(GTK)
 #include <webkit2/webkit2.h>
 #elif PLATFORM(WPE)
-#include "HeadlessViewBackend.h"
+#include <WPEToolingBackends/HeadlessViewBackend.h>
 #include <wpe/webkit.h>
 #endif
 
@@ -111,47 +116,52 @@ public:
 
     static const char* dataDirectory();
 
-    static void initializeWebExtensionsCallback(WebKitWebContext* context, Test* test)
+    static bool shouldInitializeWebProcessExtensions;
+
+    static void initializeWebProcessExtensionsCallback(WebKitWebContext* context, Test* test)
     {
-        test->initializeWebExtensions();
+        test->initializeWebProcessExtensions();
     }
 
     Test()
     {
-        GUniquePtr<char> localStorageDirectory(g_build_filename(dataDirectory(), "local-storage", nullptr));
-        GUniquePtr<char> indexedDBDirectory(g_build_filename(dataDirectory(), "indexeddb", nullptr));
-        GUniquePtr<char> diskCacheDirectory(g_build_filename(dataDirectory(), "disk-cache", nullptr));
-        GUniquePtr<char> applicationCacheDirectory(g_build_filename(dataDirectory(), "appcache", nullptr));
-        GUniquePtr<char> webSQLDirectory(g_build_filename(dataDirectory(), "websql", nullptr));
-        GUniquePtr<char> hstsDirectory(g_build_filename(dataDirectory(), "hsts", nullptr));
-        GUniquePtr<char> itpDirectory(g_build_filename(dataDirectory(), "itp", nullptr));
-        GUniquePtr<char> swRegistrationsDirectory(g_build_filename(dataDirectory(), "serviceworkers", nullptr));
-        GUniquePtr<char> domCacheDirectory(g_build_filename(dataDirectory(), "dom-cache", nullptr));
+#if ENABLE(2022_GLIB_API)
+        m_networkSession = adoptGRef(webkit_network_session_new(dataDirectory(), dataDirectory()));
+        assertObjectIsDeletedWhenTestFinishes(G_OBJECT(m_networkSession.get()));
+
+        m_webContext = adoptGRef(WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, "memory-pressure-settings", s_memoryPressureSettings, nullptr)));
+#else
         GRefPtr<WebKitWebsiteDataManager> websiteDataManager = adoptGRef(webkit_website_data_manager_new(
-            "local-storage-directory", localStorageDirectory.get(), "indexeddb-directory", indexedDBDirectory.get(),
-            "disk-cache-directory", diskCacheDirectory.get(), "offline-application-cache-directory", applicationCacheDirectory.get(),
-            "websql-directory", webSQLDirectory.get(), "hsts-cache-directory", hstsDirectory.get(),
-            "itp-directory", itpDirectory.get(), "service-worker-registrations-directory", swRegistrationsDirectory.get(),
-            "dom-cache-directory", domCacheDirectory.get(), nullptr));
+            "base-data-directory", dataDirectory(),
+            "base-cache-directory", dataDirectory(),
+            nullptr));
 
         m_webContext = adoptGRef(WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT,
             "website-data-manager", websiteDataManager.get(),
 #if PLATFORM(GTK)
             "process-swap-on-cross-site-navigation-enabled", TRUE,
-#if !USE(GTK4)
-            "use-system-appearance-for-scrollbars", FALSE,
-#endif
 #endif
             "memory-pressure-settings", s_memoryPressureSettings,
             nullptr)));
+#endif
         assertObjectIsDeletedWhenTestFinishes(G_OBJECT(m_webContext.get()));
-        g_signal_connect(m_webContext.get(), "initialize-web-extensions", G_CALLBACK(initializeWebExtensionsCallback), this);
+
+        if (shouldInitializeWebProcessExtensions) {
+#if ENABLE(2022_GLIB_API)
+            g_signal_connect(m_webContext.get(), "initialize-web-process-extensions", G_CALLBACK(initializeWebProcessExtensionsCallback), this);
+#else
+            g_signal_connect(m_webContext.get(), "initialize-web-extensions", G_CALLBACK(initializeWebProcessExtensionsCallback), this);
+#endif
+        }
     }
 
     virtual ~Test()
     {
         g_signal_handlers_disconnect_matched(m_webContext.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
         m_webContext = nullptr;
+#if ENABLE(2022_GLIB_API)
+        m_networkSession = nullptr;
+#endif
         if (m_watchedObjects.isEmpty())
             return;
 
@@ -164,11 +174,17 @@ public:
         g_assert_true(m_watchedObjects.isEmpty());
     }
 
-    virtual void initializeWebExtensions()
+    virtual void initializeWebProcessExtensions()
     {
-        webkit_web_context_set_web_extensions_directory(m_webContext.get(), WEBKIT_TEST_WEB_EXTENSIONS_DIR);
+#if ENABLE(2022_GLIB_API)
+        webkit_web_context_set_web_process_extensions_directory(m_webContext.get(), WEBKIT_TEST_WEB_PROCESS_EXTENSIONS_DIR);
+        webkit_web_context_set_web_process_extensions_initialization_user_data(m_webContext.get(),
+            g_variant_new("(ss)", g_dbus_server_get_guid(s_dbusServer.get()), g_dbus_server_get_client_address(s_dbusServer.get())));
+#else
+        webkit_web_context_set_web_extensions_directory(m_webContext.get(), WEBKIT_TEST_WEB_PROCESS_EXTENSIONS_DIR);
         webkit_web_context_set_web_extensions_initialization_user_data(m_webContext.get(),
             g_variant_new("(ss)", g_dbus_server_get_guid(s_dbusServer.get()), g_dbus_server_get_client_address(s_dbusServer.get())));
+#endif
     }
 
 #if PLATFORM(WPE)
@@ -197,38 +213,42 @@ public:
 
     static WebKitWebView* createWebView(WebKitWebContext* context)
     {
-#if PLATFORM(GTK)
-        return WEBKIT_WEB_VIEW(webkit_web_view_new_with_context(context));
-#elif PLATFORM(WPE)
-        return webkit_web_view_new_with_context(createWebViewBackend(), context);
+        return WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+#if PLATFORM(WPE)
+                                            "backend", createWebViewBackend(),
 #endif
+                                            "web-context", context,
+                                            nullptr));
     }
 
     static WebKitWebView* createWebView(WebKitWebView* relatedView)
     {
-#if PLATFORM(GTK)
-        return WEBKIT_WEB_VIEW(webkit_web_view_new_with_related_view(relatedView));
-#elif PLATFORM(WPE)
-        return webkit_web_view_new_with_related_view(createWebViewBackend(), relatedView);
+        return WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+#if PLATFORM(WPE)
+            "backend", createWebViewBackend(),
 #endif
+            "related-view", relatedView,
+            nullptr));
     }
 
     static WebKitWebView* createWebView(WebKitUserContentManager* contentManager)
     {
-#if PLATFORM(GTK)
-        return WEBKIT_WEB_VIEW(webkit_web_view_new_with_user_content_manager(contentManager));
-#elif PLATFORM(WPE)
-        return webkit_web_view_new_with_user_content_manager(createWebViewBackend(), contentManager);
+        return WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+#if PLATFORM(WPE)
+                                            "backend", createWebViewBackend(),
 #endif
+                                            "user-content-manager", contentManager,
+                                            nullptr));
     }
 
     static WebKitWebView* createWebView(WebKitSettings* settings)
     {
-#if PLATFORM(GTK)
-        return WEBKIT_WEB_VIEW(webkit_web_view_new_with_settings(settings));
-#elif PLATFORM(WPE)
-        return webkit_web_view_new_with_settings(createWebViewBackend(), settings);
+        return WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+#if PLATFORM(WPE)
+                                            "backend", createWebViewBackend(),
 #endif
+                                            "settings", settings,
+                                            nullptr));
     }
 
     static void objectFinalized(Test* test, GObject* finalizedObject)
@@ -277,6 +297,7 @@ public:
         g_log_set_always_fatal(static_cast<GLogLevelFlags>(fatalMask));
     }
 
+#if USE(CAIRO) || PLATFORM(GTK)
     static bool cairoSurfacesEqual(cairo_surface_t* s1, cairo_surface_t* s2)
     {
         return (cairo_image_surface_get_format(s1) == cairo_image_surface_get_format(s2)
@@ -287,9 +308,13 @@ public:
                 const_cast<const void*>(reinterpret_cast<void*>(cairo_image_surface_get_data(s2))),
                 cairo_image_surface_get_height(s1)*cairo_image_surface_get_stride(s1)));
     }
+#endif
 
     HashSet<GObject*> m_watchedObjects;
     GRefPtr<WebKitWebContext> m_webContext;
+#if ENABLE(2022_GLIB_API)
+    GRefPtr<WebKitNetworkSession> m_networkSession;
+#endif
     static GRefPtr<GDBusServer> s_dbusServer;
     static Vector<GRefPtr<GDBusConnection>> s_dbusConnections;
     static HashMap<uint64_t, GDBusConnection*> s_dbusConnectionPageMap;

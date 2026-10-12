@@ -25,11 +25,11 @@
 
 #pragma once
 
-#include "ScrollingTreeScrollingNodeDelegate.h"
-
 #if ENABLE(ASYNC_SCROLLING) && PLATFORM(MAC)
 
-#include "ScrollController.h"
+#include "ScrollerPairMac.h"
+#include "ScrollingEffectsController.h"
+#include "ThreadedScrollingTreeScrollingNodeDelegate.h"
 #include <wtf/RunLoop.h>
 
 OBJC_CLASS NSScrollerImp;
@@ -43,7 +43,7 @@ class ScrollingStateScrollingNode;
 class ScrollingTreeScrollingNode;
 class ScrollingTree;
 
-class ScrollingTreeScrollingNodeDelegateMac : public ScrollingTreeScrollingNodeDelegate, private ScrollControllerClient {
+class ScrollingTreeScrollingNodeDelegateMac final : public ThreadedScrollingTreeScrollingNodeDelegate {
 public:
     explicit ScrollingTreeScrollingNodeDelegateMac(ScrollingTreeScrollingNode&);
     virtual ~ScrollingTreeScrollingNodeDelegateMac();
@@ -51,63 +51,38 @@ public:
     void nodeWillBeDestroyed();
 
     bool handleWheelEvent(const PlatformWheelEvent&);
-    
+
     void willDoProgrammaticScroll(const FloatPoint&);
     void currentScrollPositionChanged();
 
-    bool activeScrollSnapIndexDidChange() const;
-    std::optional<unsigned> activeScrollSnapIndexForAxis(ScrollEventAxis) const;
-    bool isScrollSnapInProgress() const;
-
     bool isRubberBandInProgress() const;
 
-    void updateFromStateNode(const ScrollingStateScrollingNode&);
     void updateScrollbarPainters();
-
-    void deferWheelEventTestCompletionForReason(WheelEventTestMonitor::ScrollableAreaIdentifier, WheelEventTestMonitor::DeferReason) const override;
-    void removeWheelEventTestCompletionDeferralForReason(WheelEventTestMonitor::ScrollableAreaIdentifier, WheelEventTestMonitor::DeferReason) const override;
+    void updateScrollbarLayers() final;
+    
+    void handleWheelEventPhase(const PlatformWheelEventPhase) final;
+    void viewWillStartLiveResize() final;
+    void viewWillEndLiveResize() final;
+    void viewSizeDidChange() final;
+    void initScrollbars() final;
+    String scrollbarStateForOrientation(ScrollbarOrientation) const final;
 
 private:
-    bool isPinnedForScrollDeltaOnAxis(float scrollDelta, ScrollEventAxis, float scrollLimit = 0) const;
+    void updateFromStateNode(const ScrollingStateScrollingNode&) final;
 
-    // ScrollControllerClient.
-    std::unique_ptr<ScrollControllerTimer> createTimer(Function<void()>&&) final;
-    void startAnimationCallback(ScrollController&) final;
-    void stopAnimationCallback(ScrollController&) final;
-
+    // ScrollingEffectsControllerClient.
     bool allowsHorizontalStretching(const PlatformWheelEvent&) const final;
     bool allowsVerticalStretching(const PlatformWheelEvent&) const final;
     IntSize stretchAmount() const final;
-    bool isPinnedForScrollDelta(const FloatSize&) const final;
+    bool isPinnedOnSide(BoxSide) const final;
     RectEdges<bool> edgePinnedState() const final;
-    bool allowsHorizontalScrolling() const final;
-    bool allowsVerticalScrolling() const final;
-    bool shouldRubberBandInDirection(ScrollDirection) const final;
-    void immediateScrollBy(const FloatSize&) final;
-    void immediateScrollByWithoutContentEdgeConstraints(const FloatSize&) final;
-    void didStopRubberbandSnapAnimation() final;
+
+    bool shouldRubberBandOnSide(BoxSide) const final;
+    void didStopRubberBandAnimation() final;
     void rubberBandingStateChanged(bool) final;
-    void adjustScrollPositionToBoundsIfNecessary() final;
-
     bool scrollPositionIsNotRubberbandingEdge(const FloatPoint&) const;
-    void scrollControllerAnimationTimerFired();
 
-    FloatPoint scrollOffset() const override;
-    void immediateScrollOnAxis(ScrollEventAxis, float delta) override;
-    float pageScaleFactor() const override;
-    void willStartScrollSnapAnimation() final;
-    void didStopScrollSnapAnimation() final;
-    LayoutSize scrollExtent() const override;
-    FloatSize viewportSize() const override;
-
-    void releaseReferencesToScrollerImpsOnTheMainThread();
-
-    ScrollController m_scrollController;
-
-    RetainPtr<NSScrollerImp> m_verticalScrollerImp;
-    RetainPtr<NSScrollerImp> m_horizontalScrollerImp;
-
-    std::unique_ptr<RunLoop::Timer<ScrollingTreeScrollingNodeDelegateMac>> m_scrollControllerAnimationTimer;
+    Ref<ScrollerPairMac> m_scrollerPair;
 
     bool m_inMomentumPhase { false };
 };

@@ -35,6 +35,7 @@
 #include "APIURLRequest.h"
 #include "AuthenticationChallengeProxy.h"
 #include "DownloadProxy.h"
+#include "GPUProcessProxy.h"
 #include "LegacyGlobalSettings.h"
 #include "WKAPICast.h"
 #include "WKArray.h"
@@ -42,15 +43,15 @@
 #include "WKRetainPtr.h"
 #include "WKString.h"
 #include "WKWebsiteDataStoreRef.h"
-#include "WebCertificateInfo.h"
 #include "WebContextInjectedBundleClient.h"
+#include "WebFrameProxy.h"
 #include "WebPageProxy.h"
 #include "WebProcessPool.h"
+#include <WebCore/GamepadProvider.h>
 #include <wtf/RefPtr.h>
 #include <wtf/text/WTFString.h>
 
 // Supplements
-#include "WebCookieManagerProxy.h"
 #include "WebGeolocationManagerProxy.h"
 #include "WebNotificationManagerProxy.h"
 
@@ -162,12 +163,13 @@ void WKContextSetHistoryClient(WKContextRef contextRef, const WKContextHistoryCl
 
     bool addsVisitedLinks = processPool.historyClient().addsVisitedLinks();
 
-    for (auto& process : processPool.processes()) {
-        for (auto& page : process->pages())
+    for (Ref process : processPool.processes()) {
+        for (Ref page : process->pages())
             page->setAddsVisitedLinks(addsVisitedLinks);
     }
 }
 
+// FIXME: Remove when rdar://133503931 is complete.
 void WKContextSetDownloadClient(WKContextRef context, const WKContextDownloadClientBase* wkClient)
 {
     class LegacyDownloadClient final : public API::Client<WKContextDownloadClientBase>, public API::DownloadClient {
@@ -252,11 +254,6 @@ void WKContextSetDownloadClient(WKContextRef context, const WKContextDownloadCli
     WebKit::toImpl(context)->setLegacyDownloadClient(adoptRef(*new LegacyDownloadClient(wkClient, context)));
 }
 
-void WKContextSetConnectionClient(WKContextRef contextRef, const WKContextConnectionClientBase* wkClient)
-{
-    WebKit::toImpl(contextRef)->initializeConnectionClient(wkClient);
-}
-
 WKDownloadRef WKContextDownloadURLRequest(WKContextRef, WKURLRequestRef)
 {
     return nullptr;
@@ -326,28 +323,20 @@ void WKContextSetAlwaysUsesComplexTextCodePath(WKContextRef contextRef, bool alw
     WebKit::toImpl(contextRef)->setAlwaysUsesComplexTextCodePath(alwaysUseComplexTextCodePath);
 }
 
-void WKContextSetShouldUseFontSmoothing(WKContextRef contextRef, bool useFontSmoothing)
+void WKContextSetDisableFontSubpixelAntialiasingForTesting(WKContextRef contextRef, bool disable)
 {
-    WebKit::toImpl(contextRef)->setShouldUseFontSmoothing(useFontSmoothing);
+    WebKit::toImpl(contextRef)->setDisableFontSubpixelAntialiasingForTesting(disable);
 }
 
 void WKContextSetAdditionalPluginsDirectory(WKContextRef contextRef, WKStringRef pluginsDirectory)
 {
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    WebKit::toImpl(contextRef)->setAdditionalPluginsDirectory(WebKit::toImpl(pluginsDirectory)->string());
-#else
     UNUSED_PARAM(contextRef);
     UNUSED_PARAM(pluginsDirectory);
-#endif
 }
 
 void WKContextRefreshPlugIns(WKContextRef context)
 {
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    WebKit::toImpl(context)->refreshPlugins();
-#else
     UNUSED_PARAM(context);
-#endif
 }
 
 void WKContextRegisterURLSchemeAsEmptyDocument(WKContextRef contextRef, WKStringRef urlScheme)
@@ -399,9 +388,8 @@ bool WKContextGetUsesSingleWebProcess(WKContextRef contextRef)
     return WebKit::toImpl(contextRef)->configuration().usesSingleWebProcess();
 }
 
-void WKContextSetCustomWebContentServiceBundleIdentifier(WKContextRef contextRef, WKStringRef name)
+void WKContextSetCustomWebContentServiceBundleIdentifier(WKContextRef, WKStringRef)
 {
-    WebKit::toImpl(contextRef)->setCustomWebContentServiceBundleIdentifier(WebKit::toImpl(name)->string());
 }
 
 void WKContextSetDiskCacheSpeculativeValidationEnabled(WKContextRef, bool)
@@ -545,6 +533,14 @@ void WKContextSetFontAllowList(WKContextRef contextRef, WKArrayRef arrayRef)
     WebKit::toImpl(contextRef)->setFontAllowList(WebKit::toImpl(arrayRef));
 }
 
+void WKContextTerminateGPUProcess(WKContextRef)
+{
+#if ENABLE(GPU_PROCESS)
+    if (auto* gpuProcess = WebKit::GPUProcessProxy::singletonIfCreated())
+        gpuProcess->terminateForTesting();
+#endif
+}
+
 void WKContextTerminateServiceWorkers(WKContextRef context)
 {
     WebKit::toImpl(context)->terminateServiceWorkers();
@@ -552,26 +548,10 @@ void WKContextTerminateServiceWorkers(WKContextRef context)
 
 void WKContextAddSupportedPlugin(WKContextRef contextRef, WKStringRef domainRef, WKStringRef nameRef, WKArrayRef mimeTypesRef, WKArrayRef extensionsRef)
 {
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    HashSet<String> mimeTypes;
-    HashSet<String> extensions;
-
-    size_t count = WKArrayGetSize(mimeTypesRef);
-    for (size_t i = 0; i < count; ++i)
-        mimeTypes.add(WebKit::toWTFString(static_cast<WKStringRef>(WKArrayGetItemAtIndex(mimeTypesRef, i))));
-    count = WKArrayGetSize(extensionsRef);
-    for (size_t i = 0; i < count; ++i)
-        extensions.add(WebKit::toWTFString(static_cast<WKStringRef>(WKArrayGetItemAtIndex(extensionsRef, i))));
-
-    WebKit::toImpl(contextRef)->addSupportedPlugin(WebKit::toWTFString(domainRef), WebKit::toWTFString(nameRef), WTFMove(mimeTypes), WTFMove(extensions));
-#endif
 }
 
 void WKContextClearSupportedPlugins(WKContextRef contextRef)
 {
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    WebKit::toImpl(contextRef)->clearSupportedPlugins();
-#endif
 }
 
 void WKContextClearCurrentModifierStateForTesting(WKContextRef contextRef)
@@ -586,4 +566,23 @@ void WKContextSetUseSeparateServiceWorkerProcess(WKContextRef, bool useSeparateS
 
 void WKContextSetPrimaryWebsiteDataStore(WKContextRef, WKWebsiteDataStoreRef)
 {
+}
+
+WKArrayRef WKContextCopyLocalhostAliases(WKContextRef)
+{
+    return WebKit::toAPI(&API::Array::createStringArray(copyToVector(WebKit::LegacyGlobalSettings::singleton().hostnamesToRegisterAsLocal())).leakRef());
+}
+
+void WKContextSetLocalhostAliases(WKContextRef, WKArrayRef localhostAliases)
+{
+    for (const auto& hostname : WebKit::toImpl(localhostAliases)->toStringVector())
+        WebKit::LegacyGlobalSettings::singleton().registerHostnameAsLocal(hostname);
+}
+
+void WKContextClearMockGamepadsForTesting(WKContextRef)
+{
+#if ENABLE(GAMEPAD)
+    if (WebCore::GamepadProvider::singleton().isMockGamepadProvider())
+        WebCore::GamepadProvider::singleton().clearGamepadsForTesting();
+#endif
 }

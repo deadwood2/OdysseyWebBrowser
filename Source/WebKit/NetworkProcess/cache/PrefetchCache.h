@@ -25,20 +25,22 @@
 
 #pragma once
 
+#include "PrivateRelayed.h"
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ResourceResponse.h>
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/Timer.h>
 #include <wtf/Deque.h>
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/URLHash.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
 
 class PrefetchCache {
+    WTF_MAKE_TZONE_ALLOCATED(PrefetchCache);
     WTF_MAKE_NONCOPYABLE(PrefetchCache);
-    WTF_MAKE_FAST_ALLOCATED;
 public:
     PrefetchCache();
     ~PrefetchCache();
@@ -47,18 +49,20 @@ public:
 
     struct Entry {
         WTF_MAKE_STRUCT_FAST_ALLOCATED;
-        Entry(WebCore::ResourceResponse&&, RefPtr<WebCore::SharedBuffer>&&);
+        Entry(WebCore::ResourceResponse&&, PrivateRelayed, RefPtr<WebCore::FragmentedSharedBuffer>&&);
         Entry(WebCore::ResourceResponse&&, WebCore::ResourceRequest&&);
 
-        Ref<WebCore::SharedBuffer> releaseBuffer() { return buffer.releaseNonNull(); }
+        Ref<WebCore::FragmentedSharedBuffer> releaseBuffer() { return buffer.releaseNonNull(); }
 
         WebCore::ResourceResponse response;
-        RefPtr<WebCore::SharedBuffer> buffer;
+        PrivateRelayed privateRelayed { PrivateRelayed::No };
+        // FIXME: This should probably be a variant<RefPtr, ResourceRequest> because we have one or the other but never both.
+        RefPtr<WebCore::FragmentedSharedBuffer> buffer;
         WebCore::ResourceRequest redirectRequest;
     };
 
     std::unique_ptr<Entry> take(const URL&);
-    void store(const URL&, WebCore::ResourceResponse&&, RefPtr<WebCore::SharedBuffer>&&);
+    void store(const URL&, WebCore::ResourceResponse&&, PrivateRelayed, RefPtr<WebCore::FragmentedSharedBuffer>&&);
     void storeRedirect(const URL&, WebCore::ResourceResponse&&, WebCore::ResourceRequest&&);
 
 private:

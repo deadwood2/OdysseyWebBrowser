@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -70,16 +70,25 @@
 #import "_WKFrameHandleInternal.h"
 #import "_WKRenderingProgressEventsInternal.h"
 #import "_WKSameDocumentNavigationTypeInternal.h"
+#import <JavaScriptCore/ConsoleTypes.h>
 #import <WebCore/AuthenticationMac.h>
 #import <WebCore/ContentRuleListResults.h>
 #import <WebCore/Credential.h>
-#import <WebCore/SSLKeyGenerator.h>
 #import <WebCore/SecurityOriginData.h>
 #import <WebCore/SerializedCryptoKeyWrap.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/NeverDestroyed.h>
+#import <wtf/Scope.h>
+#import <wtf/TZoneMallocInlines.h>
 #import <wtf/URL.h>
+#import <wtf/WeakHashMap.h>
 #import <wtf/cocoa/VectorCocoa.h>
+#import <wtf/text/MakeString.h>
+
+#if ENABLE(WK_WEB_EXTENSIONS)
+#import "WKWebViewConfigurationPrivate.h"
+#import "WebExtensionController.h"
+#endif
 
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
 #import <pal/ios/ManagedConfigurationSoftLink.h>
@@ -90,44 +99,61 @@
 #import <pal/spi/cocoa/LaunchServicesSPI.h>
 #endif
 
+#if HAVE(MARKETPLACE_KIT)
+#import "WebKitSwiftSoftLink.h"
+
+SOFT_LINK_CLASS_FOR_HEADER(WebKit, WKMarketplaceKit)
+SOFT_LINK_CLASS_FOR_SOURCE_OPTIONAL(WebKit, WebKitSwift, WKMarketplaceKit)
+
+@interface WKMarketplaceKit : NSObject
++ (void)requestAppInstallationWithTopOrigin:(NSURL *)topOrigin url:(NSURL *)url completionHandler:(void (^)(NSError *))completionHandler;
+@end
+#endif
+
 namespace WebKit {
 using namespace WebCore;
 
-static HashMap<WebPageProxy*, WeakPtr<NavigationState>>& navigationStates()
+static WeakHashMap<WebPageProxy, WeakPtr<NavigationState>>& navigationStates()
 {
-    static NeverDestroyed<HashMap<WebPageProxy*, WeakPtr<NavigationState>>> navigationStates;
+    static NeverDestroyed<WeakHashMap<WebPageProxy, WeakPtr<NavigationState>>> navigationStates;
 
     return navigationStates;
 }
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(NavigationState);
 
 NavigationState::NavigationState(WKWebView *webView)
     : m_webView(webView)
     , m_navigationDelegateMethods()
     , m_historyDelegateMethods()
-#if PLATFORM(IOS_FAMILY)
+#if USE(RUNNINGBOARD)
     , m_releaseNetworkActivityTimer(RunLoop::current(), this, &NavigationState::releaseNetworkActivityAfterLoadCompletion)
 #endif
 {
-    ASSERT(m_webView->_page);
-    ASSERT(!navigationStates().contains(m_webView->_page.get()));
+    RefPtr page = webView->_page;
+    ASSERT(page);
+    ASSERT(!navigationStates().contains(*page));
 
-    navigationStates().add(m_webView->_page.get(), makeWeakPtr(*this));
-    m_webView->_page->pageLoadState().addObserver(*this);
+    navigationStates().add(*page, *this);
+    page->pageLoadState().addObserver(*this);
 }
 
 NavigationState::~NavigationState()
 {
-    ASSERT(navigationStates().get(m_webView->_page.get()) == this);
+    if (auto webView = this->webView()) {
+        RefPtr page = webView->_page;
+        ASSERT(navigationStates().get(*page).get() == this);
 
-    navigationStates().remove(m_webView->_page.get());
-    m_webView->_page->pageLoadState().removeObserver(*this);
+        navigationStates().remove(*page);
+        page->pageLoadState().removeObserver(*this);
+    }
 }
 
-NavigationState& NavigationState::fromWebPage(WebPageProxy& webPageProxy)
+NavigationState* NavigationState::fromWebPage(WebPageProxy& webPageProxy)
 {
-    ASSERT(navigationStates().contains(&webPageProxy));
+    ASSERT(navigationStates().contains(webPageProxy));
 
-    return *navigationStates().get(&webPageProxy);
+    return navigationStates().get(webPageProxy).get();
 }
 
 UniqueRef<API::NavigationClient> NavigationState::createNavigationClient()
@@ -140,12 +166,12 @@ UniqueRef<API::HistoryClient> NavigationState::createHistoryClient()
     return makeUniqueRef<HistoryClient>(*this);
 }
 
-RetainPtr<id <WKNavigationDelegate> > NavigationState::navigationDelegate()
+RetainPtr<id<WKNavigationDelegate>> NavigationState::navigationDelegate() const
 {
     return m_navigationDelegate.get();
 }
 
-void NavigationState::setNavigationDelegate(id <WKNavigationDelegate> delegate)
+void NavigationState::setNavigationDelegate(id<WKNavigationDelegate> delegate)
 {
     m_navigationDelegate = delegate;
 
@@ -155,7 +181,6 @@ void NavigationState::setNavigationDelegate(id <WKNavigationDelegate> delegate)
     m_navigationDelegateMethods.webViewDecidePolicyForNavigationResponseDecisionHandler = [delegate respondsToSelector:@selector(webView:decidePolicyForNavigationResponse:decisionHandler:)];
 
     m_navigationDelegateMethods.webViewDidStartProvisionalNavigation = [delegate respondsToSelector:@selector(webView:didStartProvisionalNavigation:)];
-    m_navigationDelegateMethods.webViewDidStartProvisionalNavigationUserInfo = [delegate respondsToSelector:@selector(_webView:didStartProvisionalNavigation:userInfo:)];
     m_navigationDelegateMethods.webViewDidStartProvisionalLoadWithRequestInFrame = [delegate respondsToSelector:@selector(_webView:didStartProvisionalLoadWithRequest:inFrame:)];
     m_navigationDelegateMethods.webViewDidReceiveServerRedirectForProvisionalNavigation = [delegate respondsToSelector:@selector(webView:didReceiveServerRedirectForProvisionalNavigation:)];
     m_navigationDelegateMethods.webViewDidFailProvisionalNavigationWithError = [delegate respondsToSelector:@selector(webView:didFailProvisionalNavigation:withError:)];
@@ -167,7 +192,10 @@ void NavigationState::setNavigationDelegate(id <WKNavigationDelegate> delegate)
     m_navigationDelegateMethods.webViewDidFailNavigationWithError = [delegate respondsToSelector:@selector(webView:didFailNavigation:withError:)];
     m_navigationDelegateMethods.webViewDidFailNavigationWithErrorUserInfo = [delegate respondsToSelector:@selector(_webView:didFailNavigation:withError:userInfo:)];
     m_navigationDelegateMethods.webViewDidFailLoadWithRequestInFrameWithError = [delegate respondsToSelector:@selector(_webView:didFailLoadWithRequest:inFrame:withError:)];
-
+    m_navigationDelegateMethods.webViewDidFailLoadDueToNetworkConnectionIntegrityWithURL = [delegate respondsToSelector:@selector(_webView:didFailLoadDueToNetworkConnectionIntegrityWithURL:)];
+    m_navigationDelegateMethods.webViewDidChangeLookalikeCharactersFromURLToURL = [delegate respondsToSelector:@selector(_webView:didChangeLookalikeCharactersFromURL:toURL:)];
+    m_navigationDelegateMethods.webViewDidPromptForStorageAccessForSubFrameDomainForQuirk = [delegate respondsToSelector:@selector(_webView:didPromptForStorageAccess:forSubFrameDomain:forQuirk:)];
+    
     m_navigationDelegateMethods.webViewNavigationDidFailProvisionalLoadInSubframeWithError = [delegate respondsToSelector:@selector(_webView:navigation:didFailProvisionalLoadInSubframe:withError:)];
     m_navigationDelegateMethods.webViewWillPerformClientRedirect = [delegate respondsToSelector:@selector(_webView:willPerformClientRedirectToURL:delay:)];
     m_navigationDelegateMethods.webViewDidPerformClientRedirect = [delegate respondsToSelector:@selector(_webView:didPerformClientRedirectFromURL:toURL:)];
@@ -185,6 +213,7 @@ void NavigationState::setNavigationDelegate(id <WKNavigationDelegate> delegate)
     m_navigationDelegateMethods.webViewWebProcessDidBecomeResponsive = [delegate respondsToSelector:@selector(_webViewWebProcessDidBecomeResponsive:)];
     m_navigationDelegateMethods.webViewWebProcessDidBecomeUnresponsive = [delegate respondsToSelector:@selector(_webViewWebProcessDidBecomeUnresponsive:)];
     m_navigationDelegateMethods.webCryptoMasterKeyForWebView = [delegate respondsToSelector:@selector(_webCryptoMasterKeyForWebView:)];
+    m_navigationDelegateMethods.webCryptoMasterKeyForWebViewCompletionHandler = [delegate respondsToSelector:@selector(_webCryptoMasterKeyForWebView:completionHandler:)];
     m_navigationDelegateMethods.navigationActionDidBecomeDownload = [delegate respondsToSelector:@selector(webView:navigationAction:didBecomeDownload:)];
     m_navigationDelegateMethods.navigationResponseDidBecomeDownload = [delegate respondsToSelector:@selector(webView:navigationResponse:didBecomeDownload:)];
     m_navigationDelegateMethods.contextMenuDidCreateDownload = [delegate respondsToSelector:@selector(_webView:contextMenuDidCreateDownload:)];
@@ -199,11 +228,12 @@ void NavigationState::setNavigationDelegate(id <WKNavigationDelegate> delegate)
 #if USE(QUICK_LOOK)
     m_navigationDelegateMethods.webViewDidStartLoadForQuickLookDocumentInMainFrame = [delegate respondsToSelector:@selector(_webView:didStartLoadForQuickLookDocumentInMainFrameWithFileName:uti:)];
     m_navigationDelegateMethods.webViewDidFinishLoadForQuickLookDocumentInMainFrame = [delegate respondsToSelector:@selector(_webView:didFinishLoadForQuickLookDocumentInMainFrame:)];
+#endif
+#if PLATFORM(IOS_FAMILY)
     m_navigationDelegateMethods.webViewDidRequestPasswordForQuickLookDocument = [delegate respondsToSelector:@selector(_webViewDidRequestPasswordForQuickLookDocument:)];
+    m_navigationDelegateMethods.webViewDidStopRequestingPasswordForQuickLookDocument = [delegate respondsToSelector:@selector(_webViewDidStopRequestingPasswordForQuickLookDocument:)];
 #endif
 #if PLATFORM(MAC)
-    m_navigationDelegateMethods.webViewWebGLLoadPolicyForURL = [delegate respondsToSelector:@selector(_webView:webGLLoadPolicyForURL:decisionHandler:)];
-    m_navigationDelegateMethods.webViewResolveWebGLLoadPolicyForURL = [delegate respondsToSelector:@selector(_webView:resolveWebGLLoadPolicyForURL:decisionHandler:)];
     m_navigationDelegateMethods.webViewBackForwardListItemAddedRemoved = [delegate respondsToSelector:@selector(_webView:backForwardListItemAdded:removed:)];
 #endif
     m_navigationDelegateMethods.webViewWillGoToBackForwardListItemInBackForwardCache = [delegate respondsToSelector:@selector(_webView:willGoToBackForwardListItem:inPageCache:)];
@@ -212,12 +242,12 @@ void NavigationState::setNavigationDelegate(id <WKNavigationDelegate> delegate)
 #endif
 }
 
-RetainPtr<id <WKHistoryDelegatePrivate> > NavigationState::historyDelegate()
+RetainPtr<id<WKHistoryDelegatePrivate>> NavigationState::historyDelegate() const
 {
     return m_historyDelegate.get();
 }
 
-void NavigationState::setHistoryDelegate(id <WKHistoryDelegatePrivate> historyDelegate)
+void NavigationState::setHistoryDelegate(id<WKHistoryDelegatePrivate> historyDelegate)
 {
     m_historyDelegate = historyDelegate;
 
@@ -232,11 +262,11 @@ void NavigationState::navigationGestureDidBegin()
     if (!m_navigationDelegateMethods.webViewDidBeginNavigationGesture)
         return;
 
-    auto navigationDelegate = m_navigationDelegate.get();
+    auto navigationDelegate = this->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidBeginNavigationGesture:m_webView];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidBeginNavigationGesture:webView().get()];
 }
 
 void NavigationState::navigationGestureWillEnd(bool willNavigate, WebBackForwardListItem& item)
@@ -244,11 +274,11 @@ void NavigationState::navigationGestureWillEnd(bool willNavigate, WebBackForward
     if (!m_navigationDelegateMethods.webViewWillEndNavigationGestureWithNavigationToBackForwardListItem)
         return;
 
-    auto navigationDelegate = m_navigationDelegate.get();
+    auto navigationDelegate = this->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webViewWillEndNavigationGesture:m_webView withNavigationToBackForwardListItem:willNavigate ? wrapper(item) : nil];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewWillEndNavigationGesture:webView().get() withNavigationToBackForwardListItem:willNavigate ? wrapper(item) : nil];
 }
 
 void NavigationState::navigationGestureDidEnd(bool willNavigate, WebBackForwardListItem& item)
@@ -256,11 +286,11 @@ void NavigationState::navigationGestureDidEnd(bool willNavigate, WebBackForwardL
     if (!m_navigationDelegateMethods.webViewDidEndNavigationGestureWithNavigationToBackForwardListItem)
         return;
 
-    auto navigationDelegate = m_navigationDelegate.get();
+    auto navigationDelegate = this->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidEndNavigationGesture:m_webView withNavigationToBackForwardListItem:willNavigate ? wrapper(item) : nil];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidEndNavigationGesture:webView().get() withNavigationToBackForwardListItem:willNavigate ? wrapper(item) : nil];
 }
 
 void NavigationState::willRecordNavigationSnapshot(WebBackForwardListItem& item)
@@ -268,11 +298,11 @@ void NavigationState::willRecordNavigationSnapshot(WebBackForwardListItem& item)
     if (!m_navigationDelegateMethods.webViewWillSnapshotBackForwardListItem)
         return;
 
-    auto navigationDelegate = m_navigationDelegate.get();
+    auto navigationDelegate = this->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_webView willSnapshotBackForwardListItem:wrapper(item)];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:webView().get() willSnapshotBackForwardListItem:wrapper(item)];
 }
 
 void NavigationState::navigationGestureSnapshotWasRemoved()
@@ -280,24 +310,36 @@ void NavigationState::navigationGestureSnapshotWasRemoved()
     if (!m_navigationDelegateMethods.webViewNavigationGestureSnapshotWasRemoved)
         return;
 
-    auto navigationDelegate = m_navigationDelegate.get();
+    auto navigationDelegate = this->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidRemoveNavigationGestureSnapshot:m_webView];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidRemoveNavigationGestureSnapshot:webView().get()];
 }
 
-#if USE(QUICK_LOOK)
+#if PLATFORM(IOS_FAMILY)
 void NavigationState::didRequestPasswordForQuickLookDocument()
 {
     if (!m_navigationDelegateMethods.webViewDidRequestPasswordForQuickLookDocument)
         return;
 
-    auto navigationDelegate = m_navigationDelegate.get();
+    auto navigationDelegate = this->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidRequestPasswordForQuickLookDocument:m_webView];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidRequestPasswordForQuickLookDocument:webView().get()];
+}
+
+void NavigationState::didStopRequestingPasswordForQuickLookDocument()
+{
+    if (!m_navigationDelegateMethods.webViewDidStopRequestingPasswordForQuickLookDocument)
+        return;
+
+    auto navigationDelegate = this->navigationDelegate();
+    if (!navigationDelegate)
+        return;
+
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidStopRequestingPasswordForQuickLookDocument:webView().get()];
 }
 #endif
 
@@ -306,15 +348,15 @@ void NavigationState::didFirstPaint()
     if (!m_navigationDelegateMethods.webViewRenderingProgressDidChange)
         return;
 
-    auto navigationDelegate = m_navigationDelegate.get();
+    auto navigationDelegate = this->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_webView renderingProgressDidChange:_WKRenderingProgressEventFirstPaint];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:webView().get() renderingProgressDidChange:_WKRenderingProgressEventFirstPaint];
 }
 
 NavigationState::NavigationClient::NavigationClient(NavigationState& navigationState)
-    : m_navigationState(makeWeakPtr(navigationState))
+    : m_navigationState(navigationState)
 {
 }
 
@@ -323,61 +365,6 @@ NavigationState::NavigationClient::~NavigationClient()
 }
 
 #if PLATFORM(MAC)
-inline WebCore::WebGLLoadPolicy toWebCoreWebGLLoadPolicy(_WKWebGLLoadPolicy policy)
-{
-    switch (policy) {
-    case _WKWebGLLoadPolicyAllowCreation:
-        return WebCore::WebGLLoadPolicy::WebGLAllowCreation;
-    case _WKWebGLLoadPolicyBlockCreation:
-        return WebCore::WebGLLoadPolicy::WebGLBlockCreation;
-    case _WKWebGLLoadPolicyPendingCreation:
-        return WebCore::WebGLLoadPolicy::WebGLPendingCreation;
-    }
-    
-    ASSERT_NOT_REACHED();
-    return WebCore::WebGLLoadPolicy::WebGLAllowCreation;
-}
-
-void NavigationState::NavigationClient::webGLLoadPolicy(WebPageProxy&, const URL& url, CompletionHandler<void(WebCore::WebGLLoadPolicy)>&& completionHandler) const
-{
-    if (!m_navigationState)
-        return completionHandler(WebGLLoadPolicy::WebGLAllowCreation);
-
-    if (!m_navigationState->m_navigationDelegateMethods.webViewWebGLLoadPolicyForURL) {
-        completionHandler(WebGLLoadPolicy::WebGLAllowCreation);
-        return;
-    }
-
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
-    auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(_webView:webGLLoadPolicyForURL:decisionHandler:));
-    [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView webGLLoadPolicyForURL:(NSURL *)url decisionHandler:makeBlockPtr([completionHandler = WTFMove(completionHandler), checker = WTFMove(checker)](_WKWebGLLoadPolicy policy) mutable {
-        if (checker->completionHandlerHasBeenCalled())
-            return;
-        checker->didCallCompletionHandler();
-        completionHandler(toWebCoreWebGLLoadPolicy(policy));
-    }).get()];
-}
-
-void NavigationState::NavigationClient::resolveWebGLLoadPolicy(WebPageProxy&, const URL& url, CompletionHandler<void(WebCore::WebGLLoadPolicy)>&& completionHandler) const
-{
-    if (!m_navigationState)
-        return completionHandler(WebGLLoadPolicy::WebGLAllowCreation);
-
-    if (!m_navigationState->m_navigationDelegateMethods.webViewResolveWebGLLoadPolicyForURL) {
-        completionHandler(WebGLLoadPolicy::WebGLAllowCreation);
-        return;
-    }
-    
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
-    auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(_webView:resolveWebGLLoadPolicyForURL:decisionHandler:));
-    [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView resolveWebGLLoadPolicyForURL:(NSURL *)url decisionHandler:makeBlockPtr([completionHandler = WTFMove(completionHandler), checker = WTFMove(checker)](_WKWebGLLoadPolicy policy) mutable {
-        if (checker->completionHandlerHasBeenCalled())
-            return;
-        checker->didCallCompletionHandler();
-        completionHandler(toWebCoreWebGLLoadPolicy(policy));
-    }).get()];
-}
-
 bool NavigationState::NavigationClient::didChangeBackForwardList(WebPageProxy&, WebBackForwardListItem* added, const Vector<Ref<WebBackForwardListItem>>& removed)
 {
     if (!m_navigationState)
@@ -386,7 +373,7 @@ bool NavigationState::NavigationClient::didChangeBackForwardList(WebPageProxy&, 
     if (!m_navigationState->m_navigationDelegateMethods.webViewBackForwardListItemAddedRemoved)
         return false;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return false;
 
@@ -396,7 +383,7 @@ bool NavigationState::NavigationClient::didChangeBackForwardList(WebPageProxy&, 
             return wrapper(removedItem.get());
         });
     }
-    [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView backForwardListItemAdded:wrapper(added) removed:removedItems.get()];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() backForwardListItemAdded:wrapper(added) removed:removedItems.get()];
     return true;
 }
 #endif
@@ -409,11 +396,11 @@ bool NavigationState::NavigationClient::willGoToBackForwardListItem(WebPageProxy
     if (!m_navigationState->m_navigationDelegateMethods.webViewWillGoToBackForwardListItemInBackForwardCache)
         return false;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return false;
 
-    [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView willGoToBackForwardListItem:wrapper(item) inPageCache:inBackForwardCache];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() willGoToBackForwardListItem:wrapper(item) inPageCache:inBackForwardCache];
     return true;
 }
 
@@ -424,18 +411,83 @@ static void trySOAuthorization(Ref<API::NavigationAction>&& navigationAction, We
         completionHandler(false);
         return;
     }
-    page.websiteDataStore().soAuthorizationCoordinator().tryAuthorize(WTFMove(navigationAction), page, WTFMove(completionHandler));
+    page.websiteDataStore().soAuthorizationCoordinator(page).tryAuthorize(WTFMove(navigationAction), page, WTFMove(completionHandler));
 #else
     completionHandler(false);
 #endif
 }
 
+#if HAVE(MARKETPLACE_KIT)
+
+static bool isMarketplaceKitURL(const URL& url)
+{
+    return url.protocolIs("app-distribution"_s) || url.protocolIs("marketplace-kit"_s);
+}
+
+static void interceptMarketplaceKitNavigation(Ref<API::NavigationAction>&& action, WebPageProxy& page)
+{
+    std::optional<FrameIdentifier> sourceFrameID;
+    if (auto sourceFrame = action->sourceFrame())
+        sourceFrameID = sourceFrame->handle()->frameID();
+
+    auto addConsoleError = [sourceFrameID, url = action->request().url(), weakPage = WeakPtr { page }](const String& error) {
+        if (!sourceFrameID || !weakPage)
+            return;
+
+        weakPage->addConsoleMessage(*sourceFrameID, MessageSource::Network, MessageLevel::Error, makeString("Can't handle MarketplaceKit link "_s, url.string(), " due to error: "_s, error));
+    };
+
+    if (!action->shouldOpenExternalSchemes() || !action->isProcessingUserGesture() || action->isRedirect() || action->data().requesterTopOrigin.isNull()) {
+        RELEASE_LOG_ERROR(Loading, "NavigationState: can't handle MarketplaceKit navigation with shouldOpenExternalSchemes: %d, isProcessingUserGesture: %d, isRedirect: %d, requesterTopOriginIsNull: %d", action->shouldOpenExternalSchemes(), action->isProcessingUserGesture(), action->isRedirect(), action->data().requesterTopOrigin.isNull());
+
+        if (!action->isProcessingUserGesture())
+            addConsoleError("must be activated via a user gesture"_s);
+        else if (action->isRedirect())
+            addConsoleError("must be a direct link without a redirect"_s);
+
+        return;
+    }
+
+    RetainPtr<NSURL> requesterTopOriginURL = static_cast<NSURL *>(action->data().requesterTopOrigin.toURL());
+    RetainPtr<NSURL> url = static_cast<NSURL *>(action->request().url());
+
+    if (!requesterTopOriginURL || !url) {
+        RELEASE_LOG_ERROR(Loading, "NavigationState: can't handle MarketplaceKit navigation with requesterTopOriginURL: %d url: %d", static_cast<bool>(requesterTopOriginURL), static_cast<bool>(url));
+        return;
+    }
+
+    if (![getWKMarketplaceKitClass() respondsToSelector:@selector(requestAppInstallationWithTopOrigin:url:completionHandler:)])
+        return;
+
+    [getWKMarketplaceKitClass() requestAppInstallationWithTopOrigin:requesterTopOriginURL.get() url:url.get() completionHandler:makeBlockPtr([addConsoleError = WTFMove(addConsoleError)](NSError *error) mutable {
+        if (error)
+            addConsoleError(error.description);
+    }).get()];
+}
+
+#endif // HAVE(MARKETPLACE_KIT)
+
 static void tryInterceptNavigation(Ref<API::NavigationAction>&& navigationAction, WebPageProxy& page, WTF::Function<void(bool)>&& completionHandler)
 {
+#if HAVE(MARKETPLACE_KIT)
+    if (isMarketplaceKitURL(navigationAction->request().url())) {
+        interceptMarketplaceKitNavigation(WTFMove(navigationAction), page);
+        return completionHandler(true /* interceptedNavigation */);
+    }
+#endif
+
 #if HAVE(APP_LINKS)
     if (navigationAction->shouldOpenAppLinks()) {
         auto url = navigationAction->request().url();
-        auto* localCompletionHandler = new WTF::Function<void (bool)>([navigationAction = WTFMove(navigationAction), weakPage = makeWeakPtr(page), completionHandler = WTFMove(completionHandler)] (bool success) mutable {
+
+        NSURL *referrerURL = nil;
+        auto request = navigationAction->request();
+        request.setExistingHTTPReferrerToOriginString();
+        auto referrerString = request.httpReferrer();
+        if (!referrerString.isEmpty())
+            referrerURL = (NSURL *)URL { referrerString };
+
+        auto* localCompletionHandler = new WTF::Function<void (bool)>([navigationAction = WTFMove(navigationAction), weakPage = WeakPtr { page }, completionHandler = WTFMove(completionHandler)] (bool success) mutable {
             ASSERT(RunLoop::isMain());
             if (!success && weakPage) {
                 trySOAuthorization(WTFMove(navigationAction), *weakPage, WTFMove(completionHandler));
@@ -447,7 +499,11 @@ static void tryInterceptNavigation(Ref<API::NavigationAction>&& navigationAction
 #endif
             completionHandler(success);
         });
-        [LSAppLink openWithURL:url completionHandler:[localCompletionHandler](BOOL success, NSError *) {
+
+        RetainPtr<_LSOpenConfiguration> configuration = adoptNS([[_LSOpenConfiguration alloc] init]);
+        configuration.get().referrerURL = referrerURL;
+
+        [LSAppLink openWithURL:url configuration:configuration.get() completionHandler:[localCompletionHandler](BOOL success, NSError *) {
             RunLoop::main().dispatch([localCompletionHandler, success] {
                 (*localCompletionHandler)(success);
                 delete localCompletionHandler;
@@ -460,32 +516,62 @@ static void tryInterceptNavigation(Ref<API::NavigationAction>&& navigationAction
     trySOAuthorization(WTFMove(navigationAction), page, WTFMove(completionHandler));
 }
 
-void NavigationState::NavigationClient::decidePolicyForNavigationAction(WebPageProxy& webPageProxy, Ref<API::NavigationAction>&& navigationAction, Ref<WebFramePolicyListenerProxy>&& listener, API::Object* userInfo)
+#if ENABLE(WK_WEB_EXTENSIONS)
+static bool isUnsupportedWebExtensionNavigation(API::NavigationAction& navigationAction, WebPageProxy& page)
+{
+    bool subframeNavigation = navigationAction.targetFrame() && !navigationAction.targetFrame()->isMainFrame();
+    if (subframeNavigation)
+        return false;
+
+    auto *requiredBaseURL = page.cocoaView().get()._requiredWebExtensionBaseURL;
+    if (!requiredBaseURL)
+        return false;
+
+    if (RefPtr extensionController = page.webExtensionController()) {
+        auto extensionContext = extensionController->extensionContext(navigationAction.originalURL());
+        if (!extensionContext || !extensionContext->isURLForThisExtension(requiredBaseURL))
+            return true;
+    }
+
+    return false;
+}
+#endif // ENABLE(WK_WEB_EXTENSIONS)
+
+void NavigationState::NavigationClient::decidePolicyForNavigationAction(WebPageProxy& webPageProxy, Ref<API::NavigationAction>&& navigationAction, Ref<WebFramePolicyListenerProxy>&& listener)
 {
     bool subframeNavigation = navigationAction->targetFrame() && !navigationAction->targetFrame()->isMainFrame();
 
-    RefPtr<API::WebsitePolicies> defaultWebsitePolicies;
-    if (auto* policies = webPageProxy.configuration().defaultWebsitePolicies())
-        defaultWebsitePolicies = policies->copy();
+    RefPtr<API::WebsitePolicies> defaultWebsitePolicies = webPageProxy.configuration().defaultWebsitePolicies().copy();
 
     if (!m_navigationState || (!m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionDecisionHandler
         && !m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesUserInfoDecisionHandler
         && !m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesDecisionHandler)) {
-        auto completionHandler = [webPage = makeRef(webPageProxy), listener = WTFMove(listener), navigationAction, defaultWebsitePolicies] (bool interceptedNavigation) {
+        auto completionHandler = [webPage = Ref { webPageProxy }, listener = WTFMove(listener), navigationAction, defaultWebsitePolicies] (bool interceptedNavigation) {
             if (interceptedNavigation) {
+                listener->ignore(WasNavigationIntercepted::Yes);
+                return;
+            }
+
+#if ENABLE(WK_WEB_EXTENSIONS)
+            if (isUnsupportedWebExtensionNavigation(navigationAction, webPage)) {
+                RELEASE_LOG_DEBUG(Extensions, "Ignoring unsupported web extension navigation");
                 listener->ignore();
                 return;
             }
+
+            if (RefPtr extensionController = webPage->webExtensionController())
+                extensionController->updateWebsitePoliciesForNavigation(*defaultWebsitePolicies, navigationAction);
+#endif
 
             if (!navigationAction->targetFrame()) {
                 listener->use(defaultWebsitePolicies.get());
                 return;
             }
 
-            NSURLRequest *nsURLRequest = wrapper(API::URLRequest::create(navigationAction->request()));
-            if ([NSURLConnection canHandleRequest:nsURLRequest]
-                || webPage->urlSchemeHandlerForScheme([nsURLRequest URL].scheme)
-                || [nsURLRequest.URL.scheme isEqualToString:@"blob"]) {
+            auto nsURLRequest = wrapper(API::URLRequest::create(navigationAction->request()));
+            if ([NSURLConnection canHandleRequest:nsURLRequest.get()]
+                || webPage->urlSchemeHandlerForScheme(nsURLRequest.get().URL.scheme)
+                || [nsURLRequest.get().URL.scheme isEqualToString:@"blob"]) {
                 if (navigationAction->shouldPerformDownload())
                     listener->download();
                 else
@@ -499,13 +585,14 @@ void NavigationState::NavigationClient::decidePolicyForNavigationAction(WebPageP
             if (![[nsURLRequest URL] isFileURL])
                 [[NSWorkspace sharedWorkspace] openURL:[nsURLRequest URL]];
 #endif
+
             listener->ignore();
         };
         tryInterceptNavigation(WTFMove(navigationAction), webPageProxy, WTFMove(completionHandler));
         return;
     }
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
@@ -519,7 +606,7 @@ void NavigationState::NavigationClient::decidePolicyForNavigationAction(WebPageP
     })();
 
     auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), selectorForCompletionHandlerChecker);
-    auto decisionHandlerWithPreferencesOrPolicies = [localListener = WTFMove(listener), navigationAction, checker = WTFMove(checker), webPageProxy = makeRef(webPageProxy), subframeNavigation, defaultWebsitePolicies] (WKNavigationActionPolicy actionPolicy, WKWebpagePreferences *preferences) mutable {
+    auto decisionHandlerWithPreferencesOrPolicies = [localListener = WTFMove(listener), navigationAction, checker = WTFMove(checker), webPageProxy = Ref { webPageProxy }, subframeNavigation, defaultWebsitePolicies] (WKNavigationActionPolicy actionPolicy, WKWebpagePreferences *preferences) mutable {
         if (checker->completionHandlerHasBeenCalled())
             return;
         checker->didCallCompletionHandler();
@@ -537,66 +624,90 @@ void NavigationState::NavigationClient::decidePolicyForNavigationAction(WebPageP
                 [NSException raise:NSInvalidArgumentException format:@"WKWebpagePreferences._customNavigatorPlatform must be nil for subframe navigations."];
         }
 
-        switch (actionPolicy) {
-        case WKNavigationActionPolicyAllow:
-        case _WKNavigationActionPolicyAllowInNewProcess:
-            tryInterceptNavigation(WTFMove(navigationAction), webPageProxy, [actionPolicy, localListener = WTFMove(localListener), websitePolicies = WTFMove(apiWebsitePolicies)](bool interceptedNavigation) mutable {
-                if (interceptedNavigation) {
+        ensureOnMainRunLoop([navigationAction = WTFMove(navigationAction), webPageProxy = WTFMove(webPageProxy), actionPolicy, localListener = WTFMove(localListener), apiWebsitePolicies = WTFMove(apiWebsitePolicies)] () mutable {
+#if ENABLE(WK_WEB_EXTENSIONS)
+            if (actionPolicy != WKNavigationActionPolicyCancel && isUnsupportedWebExtensionNavigation(navigationAction, webPageProxy)) {
+                RELEASE_LOG_DEBUG(Extensions, "Ignoring unsupported web extension navigation");
+                localListener->ignore();
+                return;
+            }
+
+            if (RefPtr extensionController = webPageProxy->webExtensionController())
+                extensionController->updateWebsitePoliciesForNavigation(*apiWebsitePolicies, navigationAction);
+#endif
+
+            switch (actionPolicy) {
+            case WKNavigationActionPolicyAllow:
+            case _WKNavigationActionPolicyAllowInNewProcess:
+                tryInterceptNavigation(WTFMove(navigationAction), webPageProxy, [actionPolicy, localListener = WTFMove(localListener), websitePolicies = WTFMove(apiWebsitePolicies)](bool interceptedNavigation) mutable {
+                    if (interceptedNavigation) {
+                        localListener->ignore(WasNavigationIntercepted::Yes);
+                        return;
+                    }
+
+                    localListener->use(websitePolicies.get(), actionPolicy == _WKNavigationActionPolicyAllowInNewProcess ? ProcessSwapRequestedByClient::Yes : ProcessSwapRequestedByClient::No);
+                });
+                break;
+
+            case WKNavigationActionPolicyCancel:
+                localListener->ignore();
+                break;
+
+            case WKNavigationActionPolicyDownload:
+                localListener->download();
+                break;
+
+            case _WKNavigationActionPolicyAllowWithoutTryingAppLink:
+#if HAVE(MARKETPLACE_KIT)
+                if (isMarketplaceKitURL(navigationAction->request().url())) {
+                    interceptMarketplaceKitNavigation(WTFMove(navigationAction), webPageProxy);
                     localListener->ignore();
                     return;
                 }
+#endif
 
-                localListener->use(websitePolicies.get(), actionPolicy == _WKNavigationActionPolicyAllowInNewProcess ? ProcessSwapRequestedByClient::Yes : ProcessSwapRequestedByClient::No);
-            });
-        
-            break;
+                trySOAuthorization(WTFMove(navigationAction), webPageProxy, [localListener = WTFMove(localListener), websitePolicies = WTFMove(apiWebsitePolicies)] (bool optimizedLoad) {
+                    if (optimizedLoad) {
+                        localListener->ignore(WasNavigationIntercepted::Yes);
+                        return;
+                    }
 
-        case WKNavigationActionPolicyCancel:
-            localListener->ignore();
-            break;
-
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        case _WKNavigationActionPolicyDownload:
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            localListener->download();
-            break;
-
-        case _WKNavigationActionPolicyAllowWithoutTryingAppLink:
-            trySOAuthorization(WTFMove(navigationAction), webPageProxy, [localListener = WTFMove(localListener), websitePolicies = WTFMove(apiWebsitePolicies)] (bool optimizedLoad) {
-                if (optimizedLoad) {
-                    localListener->ignore();
-                    return;
-                }
-
-                localListener->use(websitePolicies.get());
-            });
-            break;
-        }
+                    localListener->use(websitePolicies.get());
+                });
+                break;
+            }
+        });
     };
 
     if (delegateHasWebpagePreferences) {
         if (m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationActionWithPreferencesDecisionHandler)
-            [navigationDelegate webView:m_navigationState->m_webView decidePolicyForNavigationAction:wrapper(navigationAction) preferences:wrapper(defaultWebsitePolicies) decisionHandler:makeBlockPtr(WTFMove(decisionHandlerWithPreferencesOrPolicies)).get()];
+            [navigationDelegate webView:m_navigationState->webView().get() decidePolicyForNavigationAction:wrapper(navigationAction) preferences:wrapper(defaultWebsitePolicies) decisionHandler:makeBlockPtr(WTFMove(decisionHandlerWithPreferencesOrPolicies)).get()];
         else
-            [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView decidePolicyForNavigationAction:wrapper(navigationAction) preferences:wrapper(defaultWebsitePolicies) userInfo:userInfo ? static_cast<id<NSSecureCoding>>(userInfo->wrapper()) : nil decisionHandler:makeBlockPtr(WTFMove(decisionHandlerWithPreferencesOrPolicies)).get()];
+            [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() decidePolicyForNavigationAction:wrapper(navigationAction) preferences:wrapper(defaultWebsitePolicies) userInfo:nil decisionHandler:makeBlockPtr(WTFMove(decisionHandlerWithPreferencesOrPolicies)).get()];
     } else {
         auto decisionHandler = [decisionHandlerWithPreferencesOrPolicies = WTFMove(decisionHandlerWithPreferencesOrPolicies)] (WKNavigationActionPolicy actionPolicy) mutable {
             decisionHandlerWithPreferencesOrPolicies(actionPolicy, nil);
         };
-        [navigationDelegate webView:m_navigationState->m_webView decidePolicyForNavigationAction:wrapper(navigationAction) decisionHandler:makeBlockPtr(WTFMove(decisionHandler)).get()];
+        [navigationDelegate webView:m_navigationState->webView().get() decidePolicyForNavigationAction:wrapper(navigationAction) decisionHandler:makeBlockPtr(WTFMove(decisionHandler)).get()];
     }
 }
 
-void NavigationState::NavigationClient::contentRuleListNotification(WebPageProxy&, URL&& url, ContentRuleListResults&& results)
+#if ENABLE(CONTENT_EXTENSIONS)
+void NavigationState::NavigationClient::contentRuleListNotification(WebPageProxy& page, URL&& url, ContentRuleListResults&& results)
 {
     if (!m_navigationState)
         return;
+
+#if ENABLE(WK_WEB_EXTENSIONS)
+    if (RefPtr extensionController = page.webExtensionController())
+        extensionController->handleContentRuleListNotification(page.identifier(), url, results);
+#endif
 
     if (!m_navigationState->m_navigationDelegateMethods.webViewURLContentRuleListIdentifiersNotifications
         && !m_navigationState->m_navigationDelegateMethods.webViewContentRuleListWithIdentifierPerformedActionForURL)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
@@ -617,15 +728,16 @@ void NavigationState::NavigationClient::contentRuleListNotification(WebPageProxy
     }
 
     if (notifications && m_navigationState->m_navigationDelegateMethods.webViewURLContentRuleListIdentifiersNotifications)
-        [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView URL:url contentRuleListIdentifiers:identifiers.get() notifications:notifications.get()];
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() URL:url contentRuleListIdentifiers:identifiers.get() notifications:notifications.get()];
 
     if (m_navigationState->m_navigationDelegateMethods.webViewContentRuleListWithIdentifierPerformedActionForURL) {
         for (auto&& pair : WTFMove(results.results))
-            [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView contentRuleListWithIdentifier:pair.first performedAction:wrapper(API::ContentRuleListAction::create(WTFMove(pair.second)).get()) forURL:url];
+            [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() contentRuleListWithIdentifier:pair.first performedAction:wrapper(API::ContentRuleListAction::create(WTFMove(pair.second)).get()) forURL:url];
     }
 }
+#endif
     
-void NavigationState::NavigationClient::decidePolicyForNavigationResponse(WebPageProxy& page, Ref<API::NavigationResponse>&& navigationResponse, Ref<WebFramePolicyListenerProxy>&& listener, API::Object* userData)
+void NavigationState::NavigationClient::decidePolicyForNavigationResponse(WebPageProxy& page, Ref<API::NavigationResponse>&& navigationResponse, Ref<WebFramePolicyListenerProxy>&& listener)
 {
     if (!m_navigationState || !m_navigationState->m_navigationDelegateMethods.webViewDecidePolicyForNavigationResponseDecisionHandler) {
         NSURL *url = navigationResponse->response().nsURLResponse().URL;
@@ -647,29 +759,30 @@ void NavigationState::NavigationClient::decidePolicyForNavigationResponse(WebPag
         return;
     }
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(webView:decidePolicyForNavigationResponse:decisionHandler:));
-    [navigationDelegate webView:m_navigationState->m_webView decidePolicyForNavigationResponse:wrapper(navigationResponse) decisionHandler:makeBlockPtr([localListener = WTFMove(listener), checker = WTFMove(checker)](WKNavigationResponsePolicy responsePolicy) {
+    [navigationDelegate webView:m_navigationState->webView().get() decidePolicyForNavigationResponse:wrapper(navigationResponse) decisionHandler:makeBlockPtr([localListener = WTFMove(listener), checker = WTFMove(checker)](WKNavigationResponsePolicy responsePolicy) mutable {
         if (checker->completionHandlerHasBeenCalled())
             return;
         checker->didCallCompletionHandler();
+        ensureOnMainRunLoop([responsePolicy, localListener = WTFMove(localListener)] {
+            switch (responsePolicy) {
+            case WKNavigationResponsePolicyAllow:
+                localListener->use();
+                break;
 
-        switch (responsePolicy) {
-        case WKNavigationResponsePolicyAllow:
-            localListener->use();
-            break;
+            case WKNavigationResponsePolicyCancel:
+                localListener->ignore();
+                break;
 
-        case WKNavigationResponsePolicyCancel:
-            localListener->ignore();
-            break;
-
-        case WKNavigationResponsePolicyDownload:
-            localListener->download();
-            break;
-        }
+            case WKNavigationResponsePolicyDownload:
+                localListener->download();
+                break;
+            }
+        });
     }).get()];
 }
 
@@ -678,15 +791,13 @@ void NavigationState::NavigationClient::didStartProvisionalNavigation(WebPagePro
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     // FIXME: We should assert that navigation is not null here, but it's currently null for some navigations through the back/forward cache.
-    if (m_navigationState->m_navigationDelegateMethods.webViewDidStartProvisionalNavigationUserInfo)
-        [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView didStartProvisionalNavigation:wrapper(navigation) userInfo:userInfo ? static_cast<id <NSSecureCoding>>(userInfo->wrapper()) : nil];
-    else if (m_navigationState->m_navigationDelegateMethods.webViewDidStartProvisionalNavigation)
-        [navigationDelegate webView:m_navigationState->m_webView didStartProvisionalNavigation:wrapper(navigation)];
+    if (m_navigationState->m_navigationDelegateMethods.webViewDidStartProvisionalNavigation)
+        [navigationDelegate webView:m_navigationState->webView().get() didStartProvisionalNavigation:wrapper(navigation)];
 }
 
 void NavigationState::NavigationClient::didStartProvisionalLoadForFrame(WebPageProxy& page, WebCore::ResourceRequest&& request, FrameInfoData&& frameInfo)
@@ -694,12 +805,12 @@ void NavigationState::NavigationClient::didStartProvisionalLoadForFrame(WebPageP
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     if (m_navigationState->m_navigationDelegateMethods.webViewDidStartProvisionalLoadWithRequestInFrame)
-        [(id <WKNavigationDelegatePrivate>)navigationDelegate.get() _webView:m_navigationState->m_webView didStartProvisionalLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page))];
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didStartProvisionalLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)).get()];
 }
 
 void NavigationState::NavigationClient::didReceiveServerRedirectForProvisionalNavigation(WebPageProxy& page, API::Navigation* navigation, API::Object*)
@@ -710,13 +821,13 @@ void NavigationState::NavigationClient::didReceiveServerRedirectForProvisionalNa
     if (!m_navigationState->m_navigationDelegateMethods.webViewDidReceiveServerRedirectForProvisionalNavigation)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     // FIXME: We should assert that navigation is not null here, but it's currently null for some navigations through the back/forward cache.
 
-    [navigationDelegate webView:m_navigationState->m_webView didReceiveServerRedirectForProvisionalNavigation:wrapper(navigation)];
+    [navigationDelegate webView:m_navigationState->webView().get() didReceiveServerRedirectForProvisionalNavigation:wrapper(navigation)];
 }
 
 void NavigationState::NavigationClient::willPerformClientRedirect(WebPageProxy& page, const WTF::String& urlString, double delay)
@@ -727,13 +838,13 @@ void NavigationState::NavigationClient::willPerformClientRedirect(WebPageProxy& 
     if (!m_navigationState->m_navigationDelegateMethods.webViewWillPerformClientRedirect)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    URL url(URL(), urlString);
+    URL url { urlString };
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->m_webView willPerformClientRedirectToURL:url delay:delay];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() willPerformClientRedirectToURL:url delay:delay];
 }
 
 void NavigationState::NavigationClient::didPerformClientRedirect(WebPageProxy& page, const WTF::String& sourceURLString, const WTF::String& destinationURLString)
@@ -744,14 +855,14 @@ void NavigationState::NavigationClient::didPerformClientRedirect(WebPageProxy& p
     if (!m_navigationState->m_navigationDelegateMethods.webViewDidPerformClientRedirect)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    URL sourceURL(URL(), sourceURLString);
-    URL destinationURL(URL(), destinationURLString);
+    URL sourceURL { sourceURLString };
+    URL destinationURL { destinationURLString };
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->m_webView didPerformClientRedirectFromURL:sourceURL toURL:destinationURL];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didPerformClientRedirectFromURL:sourceURL toURL:destinationURL];
 }
 
 void NavigationState::NavigationClient::didCancelClientRedirect(WebPageProxy& page)
@@ -762,18 +873,17 @@ void NavigationState::NavigationClient::didCancelClientRedirect(WebPageProxy& pa
     if (!m_navigationState->m_navigationDelegateMethods.webViewDidCancelClientRedirect)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidCancelClientRedirect:m_navigationState->m_webView];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewDidCancelClientRedirect:m_navigationState->webView().get()];
 }
 
-static RetainPtr<NSError> createErrorWithRecoveryAttempter(WKWebView *webView, const FrameInfoData& frameInfo, NSError *originalError)
+static RetainPtr<NSError> createErrorWithRecoveryAttempter(WKWebView *webView, const FrameInfoData& frameInfo, NSError *originalError, const URL& url)
 {
-    auto frameHandle = API::FrameHandle::create(frameInfo.frameID ? *frameInfo.frameID : FrameIdentifier { });
-
-    auto recoveryAttempter = adoptNS([[WKReloadFrameErrorRecoveryAttempter alloc] initWithWebView:webView frameHandle:wrapper(frameHandle.get()) urlString:originalError.userInfo[NSURLErrorFailingURLStringErrorKey]]);
+    auto frameHandle = API::FrameHandle::create(frameInfo.frameID);
+    auto recoveryAttempter = adoptNS([[WKReloadFrameErrorRecoveryAttempter alloc] initWithWebView:webView frameHandle:wrapper(frameHandle.get()) urlString:url.string()]);
 
     auto userInfo = adoptNS([[NSMutableDictionary alloc] initWithObjectsAndKeys:recoveryAttempter.get(), _WKRecoveryAttempterErrorKey, nil]);
 
@@ -783,24 +893,24 @@ static RetainPtr<NSError> createErrorWithRecoveryAttempter(WKWebView *webView, c
     return adoptNS([[NSError alloc] initWithDomain:originalError.domain code:originalError.code userInfo:userInfo.get()]);
 }
 
-void NavigationState::NavigationClient::didFailProvisionalNavigationWithError(WebPageProxy& page, FrameInfoData&& frameInfo, API::Navigation* navigation, const WebCore::ResourceError& error, API::Object*)
+void NavigationState::NavigationClient::didFailProvisionalNavigationWithError(WebPageProxy& page, FrameInfoData&& frameInfo, API::Navigation* navigation, const URL& url, const WebCore::ResourceError& error, API::Object*)
 {
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    auto errorWithRecoveryAttempter = createErrorWithRecoveryAttempter(m_navigationState->m_webView, frameInfo, error);
+    auto errorWithRecoveryAttempter = createErrorWithRecoveryAttempter(m_navigationState->webView().get(), frameInfo, error, url);
 
     if (frameInfo.isMainFrame) {
         // FIXME: We should assert that navigation is not null here, but it's currently null for some navigations through the back/forward cache.
         if (m_navigationState->m_navigationDelegateMethods.webViewDidFailProvisionalNavigationWithError)
-            [navigationDelegate webView:m_navigationState->m_webView didFailProvisionalNavigation:wrapper(navigation) withError:errorWithRecoveryAttempter.get()];
+            [navigationDelegate webView:m_navigationState->webView().get() didFailProvisionalNavigation:wrapper(navigation) withError:errorWithRecoveryAttempter.get()];
     } else {
         if (m_navigationState->m_navigationDelegateMethods.webViewNavigationDidFailProvisionalLoadInSubframeWithError)
-            [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView navigation:nil didFailProvisionalLoadInSubframe:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)) withError:errorWithRecoveryAttempter.get()];
+            [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() navigation:nil didFailProvisionalLoadInSubframe:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)).get() withError:errorWithRecoveryAttempter.get()];
     }
 }
 
@@ -809,14 +919,14 @@ void NavigationState::NavigationClient::didFailProvisionalLoadWithErrorForFrame(
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    auto errorWithRecoveryAttempter = createErrorWithRecoveryAttempter(m_navigationState->m_webView, frameInfo, error);
+    auto errorWithRecoveryAttempter = createErrorWithRecoveryAttempter(m_navigationState->webView().get(), frameInfo, error, request.url());
 
     if (m_navigationState->m_navigationDelegateMethods.webViewDidFailProvisionalLoadWithRequestInFrameWithError)
-        [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView didFailProvisionalLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)) withError:errorWithRecoveryAttempter.get()];
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didFailProvisionalLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)).get() withError:errorWithRecoveryAttempter.get()];
 }
 
 void NavigationState::NavigationClient::didCommitNavigation(WebPageProxy& page, API::Navigation* navigation, API::Object*)
@@ -824,13 +934,13 @@ void NavigationState::NavigationClient::didCommitNavigation(WebPageProxy& page, 
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     // FIXME: We should assert that navigation is not null here, but it's currently null for some navigations through the back/forward cache.
     if (m_navigationState->m_navigationDelegateMethods.webViewDidCommitNavigation)
-        [navigationDelegate webView:m_navigationState->m_webView didCommitNavigation:wrapper(navigation)];
+        [navigationDelegate webView:m_navigationState->webView().get() didCommitNavigation:wrapper(navigation)];
 }
 
 void NavigationState::NavigationClient::didCommitLoadForFrame(WebKit::WebPageProxy& page, WebCore::ResourceRequest&& request, FrameInfoData&& frameInfo)
@@ -838,12 +948,12 @@ void NavigationState::NavigationClient::didCommitLoadForFrame(WebKit::WebPagePro
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     if (m_navigationState->m_navigationDelegateMethods.webViewDidCommitLoadWithRequestInFrame)
-        [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView didCommitLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page))];
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didCommitLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)).get()];
 }
 
 void NavigationState::NavigationClient::didFinishDocumentLoad(WebPageProxy& page, API::Navigation* navigation, API::Object*)
@@ -854,13 +964,13 @@ void NavigationState::NavigationClient::didFinishDocumentLoad(WebPageProxy& page
     if (!m_navigationState->m_navigationDelegateMethods.webViewNavigationDidFinishDocumentLoad)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     // FIXME: We should assert that navigation is not null here, but it's currently null for some navigations through the back/forward cache.
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView navigationDidFinishDocumentLoad:wrapper(navigation)];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() navigationDidFinishDocumentLoad:wrapper(navigation)];
 }
 
 void NavigationState::NavigationClient::didFinishNavigation(WebPageProxy&, API::Navigation* navigation, API::Object*)
@@ -868,13 +978,13 @@ void NavigationState::NavigationClient::didFinishNavigation(WebPageProxy&, API::
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     // FIXME: We should assert that navigation is not null here, but it's currently null for some navigations through the back/forward cache.
     if (m_navigationState->m_navigationDelegateMethods.webViewDidFinishNavigation)
-        [navigationDelegate webView:m_navigationState->m_webView didFinishNavigation:wrapper(navigation)];
+        [navigationDelegate webView:m_navigationState->webView().get() didFinishNavigation:wrapper(navigation)];
 }
 
 void NavigationState::NavigationClient::didFinishLoadForFrame(WebPageProxy& page, WebCore::ResourceRequest&& request, FrameInfoData&& frameInfo)
@@ -882,30 +992,69 @@ void NavigationState::NavigationClient::didFinishLoadForFrame(WebPageProxy& page
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
     if (m_navigationState->m_navigationDelegateMethods.webViewDidFinishLoadWithRequestInFrame)
-        [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView didFinishLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page))];
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didFinishLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)).get()];
 }
 
-void NavigationState::NavigationClient::didFailNavigationWithError(WebPageProxy& page, const FrameInfoData& frameInfo, API::Navigation* navigation, const WebCore::ResourceError& error, API::Object* userInfo)
+void NavigationState::NavigationClient::didBlockLoadToKnownTracker(WebPageProxy& page, const URL& url)
 {
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    auto errorWithRecoveryAttempter = createErrorWithRecoveryAttempter(m_navigationState->m_webView, frameInfo, error);
+    if (m_navigationState->m_navigationDelegateMethods.webViewDidFailLoadDueToNetworkConnectionIntegrityWithURL)
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didFailLoadDueToNetworkConnectionIntegrityWithURL:url];
+}
+
+void NavigationState::NavigationClient::didApplyLinkDecorationFiltering(WebPageProxy& page, const URL& originalURL, const URL& adjustedURL)
+{
+    if (!m_navigationState)
+        return;
+    
+    auto navigationDelegate = m_navigationState->navigationDelegate();
+    if (!navigationDelegate)
+        return;
+
+    if (m_navigationState->m_navigationDelegateMethods.webViewDidChangeLookalikeCharactersFromURLToURL)
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didChangeLookalikeCharactersFromURL:originalURL toURL:adjustedURL];
+}
+
+void NavigationState::NavigationClient::didPromptForStorageAccess(WebPageProxy&, const String& topFrameDomain, const String& subFrameDomain, bool hasQuirk)
+{
+    if (!m_navigationState)
+        return;
+
+    auto navigationDelegate = m_navigationState->navigationDelegate();
+    if (!navigationDelegate)
+        return;
+
+    if (m_navigationState->m_navigationDelegateMethods.webViewDidPromptForStorageAccessForSubFrameDomainForQuirk)
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didPromptForStorageAccess:topFrameDomain forSubFrameDomain:subFrameDomain forQuirk:hasQuirk];
+}
+
+void NavigationState::NavigationClient::didFailNavigationWithError(WebPageProxy& page, const FrameInfoData& frameInfo, API::Navigation* navigation, const URL& url, const WebCore::ResourceError& error, API::Object* userInfo)
+{
+    if (!m_navigationState)
+        return;
+
+    auto navigationDelegate = m_navigationState->navigationDelegate();
+    if (!navigationDelegate)
+        return;
+
+    auto errorWithRecoveryAttempter = createErrorWithRecoveryAttempter(m_navigationState->webView().get(), frameInfo, error, url);
 
     // FIXME: We should assert that navigation is not null here, but it's currently null for some navigations through the back/forward cache.
     if (m_navigationState->m_navigationDelegateMethods.webViewDidFailNavigationWithErrorUserInfo)
-        [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView didFailNavigation:wrapper(navigation) withError:errorWithRecoveryAttempter.get() userInfo:userInfo ? static_cast<id <NSSecureCoding>>(userInfo->wrapper()) : nil];
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didFailNavigation:wrapper(navigation) withError:errorWithRecoveryAttempter.get() userInfo:userInfo ? static_cast<id<NSSecureCoding>>(userInfo->wrapper()) : nil];
     else if (m_navigationState->m_navigationDelegateMethods.webViewDidFailNavigationWithError)
-        [navigationDelegate webView:m_navigationState->m_webView didFailNavigation:wrapper(navigation) withError:errorWithRecoveryAttempter.get()];
+        [navigationDelegate webView:m_navigationState->webView().get() didFailNavigation:wrapper(navigation) withError:errorWithRecoveryAttempter.get()];
 }
 
 void NavigationState::NavigationClient::didFailLoadWithErrorForFrame(WebPageProxy& page, WebCore::ResourceRequest&& request, const WebCore::ResourceError& error, FrameInfoData&& frameInfo)
@@ -913,14 +1062,14 @@ void NavigationState::NavigationClient::didFailLoadWithErrorForFrame(WebPageProx
     if (!m_navigationState)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    auto errorWithRecoveryAttempter = createErrorWithRecoveryAttempter(m_navigationState->m_webView, frameInfo, error);
+    auto errorWithRecoveryAttempter = createErrorWithRecoveryAttempter(m_navigationState->webView().get(), frameInfo, error, request.url());
 
     if (m_navigationState->m_navigationDelegateMethods.webViewDidFailLoadWithRequestInFrameWithError)
-        [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView didFailLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)) withError:errorWithRecoveryAttempter.get()];
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didFailLoadWithRequest:request.nsURLRequest(HTTPBodyUpdatePolicy::DoNotUpdateHTTPBody) inFrame:wrapper(API::FrameInfo::create(WTFMove(frameInfo), &page)).get() withError:errorWithRecoveryAttempter.get()];
 }
 
 void NavigationState::NavigationClient::didSameDocumentNavigation(WebPageProxy&, API::Navigation* navigation, SameDocumentNavigationType navigationType, API::Object*)
@@ -931,13 +1080,11 @@ void NavigationState::NavigationClient::didSameDocumentNavigation(WebPageProxy&,
     if (!m_navigationState->m_navigationDelegateMethods.webViewNavigationDidSameDocumentNavigation)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    // FIXME: We should assert that navigationID is not zero here, but it's currently zero for some navigations through the back/forward cache.
-
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView navigation:wrapper(navigation) didSameDocumentNavigation:toWKSameDocumentNavigationType(navigationType)];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() navigation:wrapper(navigation) didSameDocumentNavigation:toWKSameDocumentNavigationType(navigationType)];
 }
 
 void NavigationState::NavigationClient::renderingProgressDidChange(WebPageProxy&, OptionSet<WebCore::LayoutMilestone> layoutMilestones)
@@ -948,11 +1095,11 @@ void NavigationState::NavigationClient::renderingProgressDidChange(WebPageProxy&
     if (!m_navigationState->m_navigationDelegateMethods.webViewRenderingProgressDidChange)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView renderingProgressDidChange:renderingProgressEvents(layoutMilestones)];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() renderingProgressDidChange:renderingProgressEvents(layoutMilestones)];
 }
 
 bool NavigationState::NavigationClient::shouldBypassContentModeSafeguards() const
@@ -972,12 +1119,12 @@ void NavigationState::NavigationClient::didReceiveAuthenticationChallenge(WebPag
     if (!m_navigationState->m_navigationDelegateMethods.webViewDidReceiveAuthenticationChallengeCompletionHandler)
         return authenticationChallenge.listener().completeChallenge(WebKit::AuthenticationChallengeDisposition::RejectProtectionSpaceAndContinue);
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return authenticationChallenge.listener().completeChallenge(WebKit::AuthenticationChallengeDisposition::RejectProtectionSpaceAndContinue);
 
     auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(webView:didReceiveAuthenticationChallenge:completionHandler:));
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) webView:m_navigationState->m_webView didReceiveAuthenticationChallenge:wrapper(authenticationChallenge) completionHandler:makeBlockPtr([challenge = makeRef(authenticationChallenge), checker = WTFMove(checker)](NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential) {
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) webView:m_navigationState->webView().get() didReceiveAuthenticationChallenge:wrapper(authenticationChallenge) completionHandler:makeBlockPtr([challenge = Ref { authenticationChallenge }, checker = WTFMove(checker)](NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential) {
         if (checker->completionHandlerHasBeenCalled())
             return;
         checker->didCallCompletionHandler();
@@ -985,37 +1132,22 @@ void NavigationState::NavigationClient::didReceiveAuthenticationChallenge(WebPag
     }).get()];
 }
 
-static bool systemAllowsLegacyTLSFor(WebPageProxy& page)
-{
-    bool enableLegacyTLS = page.websiteDataStore().configuration().legacyTLSEnabled();
-    if (id value = [[NSUserDefaults standardUserDefaults] objectForKey:@"WebKitEnableLegacyTLS"])
-        enableLegacyTLS = [value boolValue];
-    if (!enableLegacyTLS) {
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
-        enableLegacyTLS = [[PAL::getMCProfileConnectionClass() sharedConnection] effectiveBoolValueForSetting:@"allowDeprecatedWebKitTLS"] == MCRestrictedBoolExplicitYes;
-#elif PLATFORM(MAC)
-        enableLegacyTLS = CFPreferencesGetAppBooleanValue(CFSTR("allowDeprecatedWebKitTLS"), CFSTR("com.apple.applicationaccess"), nullptr);
-#endif
-    }
-    return enableLegacyTLS;
-}
-
 void NavigationState::NavigationClient::shouldAllowLegacyTLS(WebPageProxy& page, AuthenticationChallengeProxy& authenticationChallenge, CompletionHandler<void(bool)>&& completionHandler)
 {
     if (!m_navigationState)
-        return completionHandler(systemAllowsLegacyTLSFor(page));
+        return completionHandler(page.websiteDataStore().configuration().legacyTLSEnabled());
 
     if (!m_navigationState->m_navigationDelegateMethods.webViewAuthenticationChallengeShouldAllowLegacyTLS
         && !m_navigationState->m_navigationDelegateMethods.webViewAuthenticationChallengeShouldAllowDeprecatedTLS)
-        return completionHandler(systemAllowsLegacyTLSFor(page));
+        return completionHandler(page.websiteDataStore().configuration().legacyTLSEnabled());
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
-        return completionHandler(systemAllowsLegacyTLSFor(page));
+        return completionHandler(page.websiteDataStore().configuration().legacyTLSEnabled());
 
     if (m_navigationState->m_navigationDelegateMethods.webViewAuthenticationChallengeShouldAllowDeprecatedTLS) {
         auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(webView:authenticationChallenge:shouldAllowDeprecatedTLS:));
-        [navigationDelegate.get() webView:m_navigationState->m_webView authenticationChallenge:wrapper(authenticationChallenge) shouldAllowDeprecatedTLS:makeBlockPtr([checker = WTFMove(checker), completionHandler = WTFMove(completionHandler)](BOOL shouldAllow) mutable {
+        [navigationDelegate webView:m_navigationState->webView().get() authenticationChallenge:wrapper(authenticationChallenge) shouldAllowDeprecatedTLS:makeBlockPtr([checker = WTFMove(checker), completionHandler = WTFMove(completionHandler)](BOOL shouldAllow) mutable {
             if (checker->completionHandlerHasBeenCalled())
                 return;
             checker->didCallCompletionHandler();
@@ -1024,7 +1156,7 @@ void NavigationState::NavigationClient::shouldAllowLegacyTLS(WebPageProxy& page,
         return;
     }
     auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(_webView:authenticationChallenge:shouldAllowLegacyTLS:));
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView authenticationChallenge:wrapper(authenticationChallenge) shouldAllowLegacyTLS:makeBlockPtr([checker = WTFMove(checker), completionHandler = WTFMove(completionHandler)](BOOL shouldAllow) mutable {
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() authenticationChallenge:wrapper(authenticationChallenge) shouldAllowLegacyTLS:makeBlockPtr([checker = WTFMove(checker), completionHandler = WTFMove(completionHandler)](BOOL shouldAllow) mutable {
         if (checker->completionHandlerHasBeenCalled())
             return;
         checker->didCallCompletionHandler();
@@ -1040,11 +1172,11 @@ void NavigationState::NavigationClient::didNegotiateModernTLS(const URL& url)
     if (!m_navigationState->m_navigationDelegateMethods.webViewDidNegotiateModernTLS)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView didNegotiateModernTLSForURL:url];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didNegotiateModernTLSForURL:url];
 }
 
 static _WKProcessTerminationReason wkProcessTerminationReason(ProcessTerminationReason reason)
@@ -1055,15 +1187,22 @@ static _WKProcessTerminationReason wkProcessTerminationReason(ProcessTermination
     case ProcessTerminationReason::ExceededCPULimit:
         return _WKProcessTerminationReasonExceededCPULimit;
     case ProcessTerminationReason::NavigationSwap:
+    case ProcessTerminationReason::IdleExit:
         // We probably shouldn't bother coming up with a new API type for process-swapping.
         // "Requested by client" seems like the best match for existing types.
         FALLTHROUGH;
     case ProcessTerminationReason::RequestedByClient:
         return _WKProcessTerminationReasonRequestedByClient;
+    case ProcessTerminationReason::ExceededProcessCountLimit:
+    case ProcessTerminationReason::Unresponsive:
     case ProcessTerminationReason::RequestedByNetworkProcess:
     case ProcessTerminationReason::RequestedByGPUProcess:
+    case ProcessTerminationReason::RequestedByModelProcess:
     case ProcessTerminationReason::Crash:
         return _WKProcessTerminationReasonCrash;
+    case ProcessTerminationReason::GPUProcessCrashedTooManyTimes:
+    case ProcessTerminationReason::ModelProcessCrashedTooManyTimes:
+        return _WKProcessTerminationReasonExceededSharedProcessCrashLimit;
     }
     ASSERT_NOT_REACHED();
     return _WKProcessTerminationReasonCrash;
@@ -1079,23 +1218,23 @@ bool NavigationState::NavigationClient::processDidTerminate(WebPageProxy& page, 
         && !m_navigationState->m_navigationDelegateMethods.webViewWebProcessDidCrash)
         return false;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return false;
 
     if (m_navigationState->m_navigationDelegateMethods.webViewWebContentProcessDidTerminateWithReason) {
-        [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView webContentProcessDidTerminateWithReason:wkProcessTerminationReason(reason)];
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() webContentProcessDidTerminateWithReason:wkProcessTerminationReason(reason)];
         return true;
     }
 
     // We prefer webViewWebContentProcessDidTerminate: over _webViewWebProcessDidCrash:.
     if (m_navigationState->m_navigationDelegateMethods.webViewWebContentProcessDidTerminate) {
-        [navigationDelegate webViewWebContentProcessDidTerminate:m_navigationState->m_webView];
+        [navigationDelegate webViewWebContentProcessDidTerminate:m_navigationState->webView().get()];
         return true;
     }
 
     ASSERT(m_navigationState->m_navigationDelegateMethods.webViewWebProcessDidCrash);
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webViewWebProcessDidCrash:m_navigationState->m_webView];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewWebProcessDidCrash:m_navigationState->webView().get()];
     return true;
 }
 
@@ -1107,11 +1246,11 @@ void NavigationState::NavigationClient::processDidBecomeResponsive(WebPageProxy&
     if (!m_navigationState->m_navigationDelegateMethods.webViewWebProcessDidBecomeResponsive)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webViewWebProcessDidBecomeResponsive:m_navigationState->m_webView];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewWebProcessDidBecomeResponsive:m_navigationState->webView().get()];
 }
 
 void NavigationState::NavigationClient::processDidBecomeUnresponsive(WebPageProxy& page)
@@ -1122,38 +1261,41 @@ void NavigationState::NavigationClient::processDidBecomeUnresponsive(WebPageProx
     if (!m_navigationState->m_navigationDelegateMethods.webViewWebProcessDidBecomeUnresponsive)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webViewWebProcessDidBecomeUnresponsive:m_navigationState->m_webView];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webViewWebProcessDidBecomeUnresponsive:m_navigationState->webView().get()];
 }
 
-RefPtr<API::Data> NavigationState::NavigationClient::webCryptoMasterKey(WebPageProxy&)
+void NavigationState::NavigationClient::legacyWebCryptoMasterKey(WebPageProxy&, CompletionHandler<void(std::optional<Vector<uint8_t>>&&)>&& completionHandler)
 {
     if (!m_navigationState)
-        return nullptr;
-
-    if (!m_navigationState->m_navigationDelegateMethods.webCryptoMasterKeyForWebView) {
-        auto masterKey = defaultWebCryptoMasterKey();
-        if (!masterKey)
-            return nullptr;
-
-        return API::Data::create(WTFMove(*masterKey));
-    }
-
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+        return completionHandler(std::nullopt);
+    if (!(m_navigationState->m_navigationDelegateMethods.webCryptoMasterKeyForWebView || m_navigationState->m_navigationDelegateMethods.webCryptoMasterKeyForWebViewCompletionHandler))
+        return completionHandler(WebCore::defaultWebCryptoMasterKey());
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
-        return nullptr;
+        return completionHandler(std::nullopt);
 
-    NSData *data = [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webCryptoMasterKeyForWebView:m_navigationState->m_webView];
-    return API::Data::createWithoutCopying(data);
-}
-
-RefPtr<API::String> NavigationState::NavigationClient::signedPublicKeyAndChallengeString(WebPageProxy& page, unsigned keySizeIndex, const RefPtr<API::String>& challengeString, const URL& url)
-{
-    // WebKitTestRunner uses C API. Hence, no SPI is provided to override the following function.
-    return API::String::create(WebCore::signedPublicKeyAndChallengeString(keySizeIndex, challengeString->string(), url));
+    if (m_navigationState->m_navigationDelegateMethods.webCryptoMasterKeyForWebView) {
+        if (NSData *data = [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webCryptoMasterKeyForWebView:m_navigationState->webView().get()])
+            return completionHandler(makeVector(data));
+        return completionHandler(std::nullopt);
+    }
+    if (m_navigationState->m_navigationDelegateMethods.webCryptoMasterKeyForWebViewCompletionHandler) {
+        auto checker = WebKit::CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(_webCryptoMasterKeyForWebView:completionHandler:));
+        [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webCryptoMasterKeyForWebView:m_navigationState->webView().get() completionHandler:makeBlockPtr([completionHandler = WTFMove(completionHandler), checker = WTFMove(checker)] (NSData *result) mutable {
+            if (checker->completionHandlerHasBeenCalled())
+                return;
+            checker->didCallCompletionHandler();
+            if (result)
+                return completionHandler(makeVector(result));
+            return completionHandler(std::nullopt);
+        }).get()];
+        return;
+    }
+    return completionHandler(std::nullopt);
 }
 
 void NavigationState::NavigationClient::navigationActionDidBecomeDownload(WebPageProxy&, API::NavigationAction& navigationAction, DownloadProxy& download)
@@ -1164,11 +1306,11 @@ void NavigationState::NavigationClient::navigationActionDidBecomeDownload(WebPag
     if (!m_navigationState->m_navigationDelegateMethods.navigationActionDidBecomeDownload)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [navigationDelegate.get() webView:m_navigationState->m_webView navigationAction:wrapper(navigationAction) didBecomeDownload:wrapper(download)];
+    [navigationDelegate webView:m_navigationState->webView().get() navigationAction:wrapper(navigationAction) didBecomeDownload:wrapper(download)];
 }
 
 void NavigationState::NavigationClient::navigationResponseDidBecomeDownload(WebPageProxy&, API::NavigationResponse& navigationResponse, DownloadProxy& download)
@@ -1179,11 +1321,11 @@ void NavigationState::NavigationClient::navigationResponseDidBecomeDownload(WebP
     if (!m_navigationState->m_navigationDelegateMethods.navigationResponseDidBecomeDownload)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [navigationDelegate.get() webView:m_navigationState->m_webView navigationResponse:wrapper(navigationResponse) didBecomeDownload:wrapper(download)];
+    [navigationDelegate webView:m_navigationState->webView().get() navigationResponse:wrapper(navigationResponse) didBecomeDownload:wrapper(download)];
 }
 
 void NavigationState::NavigationClient::contextMenuDidCreateDownload(WebPageProxy&, DownloadProxy& download)
@@ -1194,11 +1336,11 @@ void NavigationState::NavigationClient::contextMenuDidCreateDownload(WebPageProx
     if (!m_navigationState->m_navigationDelegateMethods.contextMenuDidCreateDownload)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get())  _webView:m_navigationState->m_webView contextMenuDidCreateDownload:wrapper(download)];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate)  _webView:m_navigationState->webView().get() contextMenuDidCreateDownload:wrapper(download)];
 }
 
 #if USE(QUICK_LOOK)
@@ -1210,14 +1352,14 @@ void NavigationState::NavigationClient::didStartLoadForQuickLookDocumentInMainFr
     if (!m_navigationState->m_navigationDelegateMethods.webViewDidStartLoadForQuickLookDocumentInMainFrame)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView didStartLoadForQuickLookDocumentInMainFrameWithFileName:fileName uti:uti];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didStartLoadForQuickLookDocumentInMainFrameWithFileName:fileName uti:uti];
 }
 
-void NavigationState::NavigationClient::didFinishLoadForQuickLookDocumentInMainFrame(const SharedBuffer& buffer)
+void NavigationState::NavigationClient::didFinishLoadForQuickLookDocumentInMainFrame(const FragmentedSharedBuffer& buffer)
 {
     if (!m_navigationState)
         return;
@@ -1225,11 +1367,11 @@ void NavigationState::NavigationClient::didFinishLoadForQuickLookDocumentInMainF
     if (!m_navigationState->m_navigationDelegateMethods.webViewDidFinishLoadForQuickLookDocumentInMainFrame)
         return;
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate)
         return;
 
-    [static_cast<id <WKNavigationDelegatePrivate>>(navigationDelegate.get()) _webView:m_navigationState->m_webView didFinishLoadForQuickLookDocumentInMainFrame:buffer.createNSData().get()];
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() didFinishLoadForQuickLookDocumentInMainFrame:buffer.makeContiguous()->createNSData().get()];
 }
 #endif
 
@@ -1268,14 +1410,14 @@ void NavigationState::NavigationClient::decidePolicyForSOAuthorizationLoad(WebPa
         return;
     }
 
-    auto navigationDelegate = m_navigationState->m_navigationDelegate.get();
+    auto navigationDelegate = m_navigationState->navigationDelegate();
     if (!navigationDelegate) {
         completionHandler(currentSOAuthorizationLoadPolicy);
         return;
     }
 
     auto checker = CompletionHandlerCallChecker::create(navigationDelegate.get(), @selector(_webView:decidePolicyForSOAuthorizationLoadWithCurrentPolicy:forExtension:completionHandler:));
-    [(id <WKNavigationDelegatePrivate>)navigationDelegate _webView:m_navigationState->m_webView decidePolicyForSOAuthorizationLoadWithCurrentPolicy:wkSOAuthorizationLoadPolicy(currentSOAuthorizationLoadPolicy) forExtension:extension completionHandler:makeBlockPtr([completionHandler = WTFMove(completionHandler), checker = WTFMove(checker)](_WKSOAuthorizationLoadPolicy policy) mutable {
+    [static_cast<id<WKNavigationDelegatePrivate>>(navigationDelegate) _webView:m_navigationState->webView().get() decidePolicyForSOAuthorizationLoadWithCurrentPolicy:wkSOAuthorizationLoadPolicy(currentSOAuthorizationLoadPolicy) forExtension:extension completionHandler:makeBlockPtr([completionHandler = WTFMove(completionHandler), checker = WTFMove(checker)](_WKSOAuthorizationLoadPolicy policy) mutable {
         if (checker->completionHandlerHasBeenCalled())
             return;
         checker->didCallCompletionHandler();
@@ -1287,7 +1429,7 @@ void NavigationState::NavigationClient::decidePolicyForSOAuthorizationLoad(WebPa
 // HistoryDelegatePrivate support
     
 NavigationState::HistoryClient::HistoryClient(NavigationState& navigationState)
-    : m_navigationState(makeWeakPtr(navigationState))
+    : m_navigationState(navigationState)
 {
 }
 
@@ -1307,7 +1449,7 @@ void NavigationState::HistoryClient::didNavigateWithNavigationData(WebPageProxy&
     if (!historyDelegate)
         return;
 
-    [historyDelegate _webView:m_navigationState->m_webView didNavigateWithNavigationData:wrapper(API::NavigationData::create(navigationDataStore))];
+    [historyDelegate _webView:m_navigationState->webView().get() didNavigateWithNavigationData:wrapper(API::NavigationData::create(navigationDataStore)).get()];
 }
 
 void NavigationState::HistoryClient::didPerformClientRedirect(WebPageProxy&, const WTF::String& sourceURL, const WTF::String& destinationURL)
@@ -1322,7 +1464,7 @@ void NavigationState::HistoryClient::didPerformClientRedirect(WebPageProxy&, con
     if (!historyDelegate)
         return;
 
-    [historyDelegate _webView:m_navigationState->m_webView didPerformClientRedirectFromURL:[NSURL _web_URLWithWTFString:sourceURL] toURL:[NSURL _web_URLWithWTFString:destinationURL]];
+    [historyDelegate _webView:m_navigationState->webView().get() didPerformClientRedirectFromURL:[NSURL _web_URLWithWTFString:sourceURL] toURL:[NSURL _web_URLWithWTFString:destinationURL]];
 }
 
 void NavigationState::HistoryClient::didPerformServerRedirect(WebPageProxy&, const WTF::String& sourceURL, const WTF::String& destinationURL)
@@ -1337,7 +1479,7 @@ void NavigationState::HistoryClient::didPerformServerRedirect(WebPageProxy&, con
     if (!historyDelegate)
         return;
 
-    [historyDelegate _webView:m_navigationState->m_webView didPerformServerRedirectFromURL:[NSURL _web_URLWithWTFString:sourceURL] toURL:[NSURL _web_URLWithWTFString:destinationURL]];
+    [historyDelegate _webView:m_navigationState->webView().get() didPerformServerRedirectFromURL:[NSURL _web_URLWithWTFString:sourceURL] toURL:[NSURL _web_URLWithWTFString:destinationURL]];
 }
 
 void NavigationState::HistoryClient::didUpdateHistoryTitle(WebPageProxy&, const WTF::String& title, const WTF::String& url)
@@ -1352,15 +1494,15 @@ void NavigationState::HistoryClient::didUpdateHistoryTitle(WebPageProxy&, const 
     if (!historyDelegate)
         return;
 
-    [historyDelegate _webView:m_navigationState->m_webView didUpdateHistoryTitle:title forURL:[NSURL _web_URLWithWTFString:url]];
+    [historyDelegate _webView:m_navigationState->webView().get() didUpdateHistoryTitle:title forURL:[NSURL _web_URLWithWTFString:url]];
 }
 
 void NavigationState::willChangeIsLoading()
 {
-    [m_webView willChangeValueForKey:@"loading"];
+    [webView() willChangeValueForKey:@"loading"];
 }
 
-#if PLATFORM(IOS_FAMILY)
+#if USE(RUNNINGBOARD)
 void NavigationState::releaseNetworkActivity(NetworkActivityReleaseReason reason)
 {
     if (!m_networkActivity)
@@ -1381,11 +1523,15 @@ void NavigationState::releaseNetworkActivity(NetworkActivityReleaseReason reason
 
 void NavigationState::didChangeIsLoading()
 {
+    auto webView = this->webView();
+
+#if USE(RUNNINGBOARD)
+    if (webView && webView->_page->pageLoadState().isLoading()) {
 #if PLATFORM(IOS_FAMILY)
-    if (m_webView->_page->pageLoadState().isLoading()) {
         // We do not start a network activity if a load starts after the screen has been locked.
-        if ([UIApp isSuspendedUnderLock])
+        if (UIApplication.sharedApplication.isSuspendedUnderLock)
             return;
+#endif
 
         if (m_releaseNetworkActivityTimer.isActive()) {
             RELEASE_LOG(ProcessSuspension, "%p - NavigationState keeps its process network assertion because a new page load started", this);
@@ -1393,7 +1539,7 @@ void NavigationState::didChangeIsLoading()
         }
         if (!m_networkActivity) {
             RELEASE_LOG(ProcessSuspension, "%p - NavigationState is taking a process network assertion because a page load started", this);
-            m_networkActivity = m_webView->_page->process().throttler().backgroundActivity("Page Load"_s).moveToUniquePtr();
+            m_networkActivity = webView->_page->legacyMainFrameProcess().throttler().backgroundActivity("Page Load"_s).moveToUniquePtr();
         }
     } else if (m_networkActivity) {
         // The application is visible so we delay releasing the background activity for 3 seconds to give it a chance to start another navigation
@@ -1403,117 +1549,130 @@ void NavigationState::didChangeIsLoading()
     }
 #endif
 
-    [m_webView didChangeValueForKey:@"loading"];
+    [webView didChangeValueForKey:@"loading"];
 }
 
 void NavigationState::willChangeTitle()
 {
-    [m_webView willChangeValueForKey:@"title"];
+    [webView() willChangeValueForKey:@"title"];
 }
 
 void NavigationState::didChangeTitle()
 {
-    [m_webView didChangeValueForKey:@"title"];
+    [webView() didChangeValueForKey:@"title"];
 }
 
 void NavigationState::willChangeActiveURL()
 {
-    [m_webView willChangeValueForKey:@"URL"];
+    [webView() willChangeValueForKey:@"URL"];
 }
 
 void NavigationState::didChangeActiveURL()
 {
-    [m_webView didChangeValueForKey:@"URL"];
+    [webView() didChangeValueForKey:@"URL"];
 }
 
 void NavigationState::willChangeHasOnlySecureContent()
 {
-    [m_webView willChangeValueForKey:@"hasOnlySecureContent"];
+    [webView() willChangeValueForKey:@"hasOnlySecureContent"];
 }
 
 void NavigationState::didChangeHasOnlySecureContent()
 {
-    [m_webView didChangeValueForKey:@"hasOnlySecureContent"];
+    [webView() didChangeValueForKey:@"hasOnlySecureContent"];
 }
 
 void NavigationState::willChangeNegotiatedLegacyTLS()
 {
-    [m_webView willChangeValueForKey:@"_negotiatedLegacyTLS"];
+    [webView() willChangeValueForKey:@"_negotiatedLegacyTLS"];
 }
 
 void NavigationState::didChangeNegotiatedLegacyTLS()
 {
-    [m_webView didChangeValueForKey:@"_negotiatedLegacyTLS"];
+    [webView() didChangeValueForKey:@"_negotiatedLegacyTLS"];
+}
+
+void NavigationState::willChangeWasPrivateRelayed()
+{
+    [webView() willChangeValueForKey:@"_wasPrivateRelayed"];
+}
+
+void NavigationState::didChangeWasPrivateRelayed()
+{
+    [webView() didChangeValueForKey:@"_wasPrivateRelayed"];
 }
 
 void NavigationState::willChangeEstimatedProgress()
 {
-    [m_webView willChangeValueForKey:@"estimatedProgress"];
+    [webView() willChangeValueForKey:@"estimatedProgress"];
 }
 
 void NavigationState::didChangeEstimatedProgress()
 {
-    [m_webView didChangeValueForKey:@"estimatedProgress"];
+    [webView() didChangeValueForKey:@"estimatedProgress"];
 }
 
 void NavigationState::willChangeCanGoBack()
 {
-    [m_webView willChangeValueForKey:@"canGoBack"];
+    [webView() willChangeValueForKey:@"canGoBack"];
 }
 
 void NavigationState::didChangeCanGoBack()
 {
-    [m_webView didChangeValueForKey:@"canGoBack"];
+    [webView() didChangeValueForKey:@"canGoBack"];
 }
 
 void NavigationState::willChangeCanGoForward()
 {
-    [m_webView willChangeValueForKey:@"canGoForward"];
+    [webView() willChangeValueForKey:@"canGoForward"];
 }
 
 void NavigationState::didChangeCanGoForward()
 {
-    [m_webView didChangeValueForKey:@"canGoForward"];
+    [webView() didChangeValueForKey:@"canGoForward"];
 }
 
 void NavigationState::willChangeNetworkRequestsInProgress()
 {
-    [m_webView willChangeValueForKey:@"_networkRequestsInProgress"];
+    [webView() willChangeValueForKey:@"_networkRequestsInProgress"];
 }
 
 void NavigationState::didChangeNetworkRequestsInProgress()
 {
-    [m_webView didChangeValueForKey:@"_networkRequestsInProgress"];
+    [webView() didChangeValueForKey:@"_networkRequestsInProgress"];
 }
 
 void NavigationState::willChangeCertificateInfo()
 {
-    [m_webView willChangeValueForKey:@"serverTrust"];
-    [m_webView willChangeValueForKey:@"certificateChain"];
+    auto webView = this->webView();
+    [webView willChangeValueForKey:@"serverTrust"];
+    [webView willChangeValueForKey:@"certificateChain"];
 }
 
 void NavigationState::didChangeCertificateInfo()
 {
-    [m_webView didChangeValueForKey:@"certificateChain"];
-    [m_webView didChangeValueForKey:@"serverTrust"];
+    auto webView = this->webView();
+    [webView didChangeValueForKey:@"certificateChain"];
+    [webView didChangeValueForKey:@"serverTrust"];
 }
 
 void NavigationState::willChangeWebProcessIsResponsive()
 {
-    [m_webView willChangeValueForKey:@"_webProcessIsResponsive"];
+    [webView() willChangeValueForKey:@"_webProcessIsResponsive"];
 }
 
 void NavigationState::didChangeWebProcessIsResponsive()
 {
-    [m_webView didChangeValueForKey:@"_webProcessIsResponsive"];
+    [webView() didChangeValueForKey:@"_webProcessIsResponsive"];
 }
 
 void NavigationState::didSwapWebProcesses()
 {
-#if PLATFORM(IOS_FAMILY)
+#if USE(RUNNINGBOARD)
     // Transfer our background assertion from the old process to the new one.
-    if (m_networkActivity)
-        m_networkActivity = m_webView->_page->process().throttler().backgroundActivity("Page Load"_s).moveToUniquePtr();
+    auto webView = this->webView();
+    if (m_networkActivity && webView)
+        m_networkActivity = webView->_page->legacyMainFrameProcess().throttler().backgroundActivity("Page Load"_s).moveToUniquePtr();
 #endif
 }
 

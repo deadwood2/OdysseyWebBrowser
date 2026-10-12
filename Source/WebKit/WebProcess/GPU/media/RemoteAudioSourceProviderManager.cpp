@@ -30,8 +30,9 @@
 #include "Logging.h"
 #include "RemoteAudioSourceProvider.h"
 #include "RemoteAudioSourceProviderManagerMessages.h"
-#include "SharedRingBufferStorage.h"
+#include "SharedCARingBuffer.h"
 #include "WebProcess.h"
+#include <wtf/TZoneMallocInlines.h>
 
 #if PLATFORM(COCOA) && ENABLE(GPU_PROCESS)
 
@@ -39,7 +40,7 @@ namespace WebKit {
 using namespace WebCore;
 
 RemoteAudioSourceProviderManager::RemoteAudioSourceProviderManager()
-    : m_queue(WorkQueue::create("RemoteAudioSourceProviderManager", WorkQueue::Type::Serial, WorkQueue::QOS::UserInteractive))
+    : m_queue(WorkQueue::create("RemoteAudioSourceProviderManager"_s, WorkQueue::QOS::UserInteractive))
 {
 }
 
@@ -64,7 +65,7 @@ void RemoteAudioSourceProviderManager::setConnection(IPC::Connection* connection
     m_connection = WTFMove(connection);
 
     if (m_connection)
-        m_connection->addWorkQueueMessageReceiver(Messages::RemoteAudioSourceProviderManager::messageReceiverName(), m_queue, this);
+        m_connection->addWorkQueueMessageReceiver(Messages::RemoteAudioSourceProviderManager::messageReceiverName(), m_queue, *this);
 }
 
 void RemoteAudioSourceProviderManager::addProvider(Ref<RemoteAudioSourceProvider>&& provider)
@@ -72,7 +73,7 @@ void RemoteAudioSourceProviderManager::addProvider(Ref<RemoteAudioSourceProvider
     ASSERT(WTF::isMainRunLoop());
     setConnection(&WebProcess::singleton().ensureGPUProcessConnection().connection());
 
-    m_queue->dispatch([this, protectedThis = makeRef(*this), provider = WTFMove(provider)]() mutable {
+    m_queue->dispatch([this, protectedThis = Ref { *this }, provider = WTFMove(provider)]() mutable {
         auto identifier = provider->identifier();
 
         ASSERT(!m_providers.contains(identifier));
@@ -84,13 +85,13 @@ void RemoteAudioSourceProviderManager::removeProvider(MediaPlayerIdentifier iden
 {
     ASSERT(WTF::isMainRunLoop());
 
-    m_queue->dispatch([this, protectedThis = makeRef(*this), identifier] {
+    m_queue->dispatch([this, protectedThis = Ref { *this }, identifier] {
         ASSERT(m_providers.contains(identifier));
         m_providers.remove(identifier);
     });
 }
 
-void RemoteAudioSourceProviderManager::audioStorageChanged(MediaPlayerIdentifier identifier, const SharedMemory::IPCHandle& ipcHandle, const WebCore::CAAudioStreamDescription& description, uint64_t numberOfFrames)
+void RemoteAudioSourceProviderManager::audioStorageChanged(MediaPlayerIdentifier identifier, ConsumerSharedCARingBuffer::Handle&& handle, const WebCore::CAAudioStreamDescription& description)
 {
     ASSERT(!WTF::isMainRunLoop());
 
@@ -99,7 +100,7 @@ void RemoteAudioSourceProviderManager::audioStorageChanged(MediaPlayerIdentifier
         RELEASE_LOG_ERROR(Media, "Unable to find provider %llu for storageChanged", identifier.toUInt64());
         return;
     }
-    iterator->value->setStorage(ipcHandle.handle, description, numberOfFrames);
+    iterator->value->setStorage(WTFMove(handle), description);
 }
 
 void RemoteAudioSourceProviderManager::audioSamplesAvailable(MediaPlayerIdentifier identifier, uint64_t startFrame, uint64_t numberOfFrames)
@@ -114,21 +115,22 @@ void RemoteAudioSourceProviderManager::audioSamplesAvailable(MediaPlayerIdentifi
     iterator->value->audioSamplesAvailable(startFrame, numberOfFrames);
 }
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL_NESTED(RemoteAudioSourceProviderManagerRemoteAudio, RemoteAudioSourceProviderManager::RemoteAudio);
+
 RemoteAudioSourceProviderManager::RemoteAudio::RemoteAudio(Ref<RemoteAudioSourceProvider>&& provider)
     : m_provider(WTFMove(provider))
-    , m_ringBuffer(makeUnique<CARingBuffer>())
 {
 }
 
-void RemoteAudioSourceProviderManager::RemoteAudio::setStorage(const SharedMemory::Handle& handle, const WebCore::CAAudioStreamDescription& description, uint64_t numberOfFrames)
+void RemoteAudioSourceProviderManager::RemoteAudio::setStorage(ConsumerSharedCARingBuffer::Handle&& handle, const WebCore::CAAudioStreamDescription& description)
 {
-    m_description = description;
-
-    // Take ownership of shared memory and mark it as media-related memory.
+    m_buffer = nullptr;
     handle.takeOwnershipOfMemory(MemoryLedger::Media);
-
-    m_ringBuffer = CARingBuffer::adoptStorage(makeUniqueRef<ReadOnlySharedRingBufferStorage>(handle), description, numberOfFrames).moveToUniquePtr();
-    m_buffer = makeUnique<WebAudioBufferList>(description, numberOfFrames);
+    m_ringBuffer = ConsumerSharedCARingBuffer::map(description, WTFMove(handle));
+    if (!m_ringBuffer)
+        return;
+    m_description = description;
+    m_buffer = makeUnique<WebAudioBufferList>(description);
 }
 
 void RemoteAudioSourceProviderManager::RemoteAudio::audioSamplesAvailable(uint64_t startFrame, uint64_t numberOfFrames)
@@ -138,7 +140,7 @@ void RemoteAudioSourceProviderManager::RemoteAudio::audioSamplesAvailable(uint64
         return;
     }
 
-    if (!WebAudioBufferList::isSupportedDescription(m_description, numberOfFrames)) {
+    if (!WebAudioBufferList::isSupportedDescription(*m_description, numberOfFrames)) {
         RELEASE_LOG_ERROR(Media, "Unable to support description with given number of frames for audio provider %llu", m_provider->identifier().toUInt64());
         return;
     }
@@ -147,7 +149,7 @@ void RemoteAudioSourceProviderManager::RemoteAudio::audioSamplesAvailable(uint64
 
     m_ringBuffer->fetch(m_buffer->list(), numberOfFrames, startFrame);
 
-    m_provider->audioSamplesAvailable(*m_buffer, m_description, numberOfFrames);
+    m_provider->audioSamplesAvailable(*m_buffer, *m_description, numberOfFrames);
 }
 
 }

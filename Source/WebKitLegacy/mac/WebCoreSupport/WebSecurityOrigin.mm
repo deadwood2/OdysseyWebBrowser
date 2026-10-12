@@ -28,7 +28,6 @@
 
 #import "WebSecurityOriginInternal.h"
 
-#import "WebApplicationCacheQuotaManager.h"
 #import "WebDatabaseQuotaManager.h"
 #import "WebQuotaManager.h"
 #import <WebCore/DatabaseTracker.h>
@@ -44,7 +43,7 @@ using namespace WebCore;
 {
     WTF::initializeMainThread();
 
-    auto origin = SecurityOriginData::fromDatabaseIdentifier(databaseIdentifier);
+    auto origin = SecurityOriginData::fromDatabaseIdentifier(String { databaseIdentifier });
     if (!origin)
         return nil;
 
@@ -109,8 +108,6 @@ using namespace WebCore;
 {
     if (_private)
         reinterpret_cast<SecurityOrigin*>(_private)->deref();
-    if (_applicationCacheQuotaManager)
-        [(NSObject *)_applicationCacheQuotaManager release];
     if (_databaseQuotaManager)
         [(NSObject *)_databaseQuotaManager release];
     [super dealloc];
@@ -133,6 +130,12 @@ using namespace WebCore;
     return self;
 }
 
+- (id)_initWithString:(NSString *)originString
+{
+    auto origin = SecurityOrigin::createFromString(originString);
+    return adoptNS([[WebSecurityOrigin alloc] _initWithWebCoreSecurityOrigin:origin.ptr()]).autorelease();
+}
+
 - (SecurityOrigin *)_core
 {
     return reinterpret_cast<SecurityOrigin*>(_private);
@@ -145,13 +148,6 @@ using namespace WebCore;
 // MARK: WebQuotaManagers
 
 @implementation WebSecurityOrigin (WebQuotaManagers)
-
-- (id<WebQuotaManager>)applicationCacheQuotaManager
-{
-    if (!_applicationCacheQuotaManager)
-        _applicationCacheQuotaManager = [[WebApplicationCacheQuotaManager alloc] initWithOrigin:self];
-    return _applicationCacheQuotaManager;
-}
 
 - (id<WebQuotaManager>)databaseQuotaManager
 {

@@ -30,8 +30,8 @@
 #if USE(CG)
 
 #include "AffineTransform.h"
+#include "CGUtilities.h"
 #include "GraphicsContextCG.h"
-#include <CoreGraphics/CoreGraphics.h>
 #include <pal/spi/cg/CoreGraphicsSPI.h>
 #include <wtf/MainThread.h>
 
@@ -42,9 +42,7 @@ static void patternCallback(void* info, CGContextRef context)
     CGImageRef platformImage = static_cast<CGImageRef>(info);
     if (!platformImage)
         return;
-
-    CGRect rect = GraphicsContextCG(context).roundToDevicePixels(
-        FloatRect(0, 0, CGImageGetWidth(platformImage), CGImageGetHeight(platformImage)));
+    auto rect = cgRoundToDevicePixels(CGContextGetUserSpaceToDeviceSpaceTransform(context), cgImageRect(platformImage));
     CGContextDrawImage(context, rect, platformImage);
 }
 
@@ -55,15 +53,19 @@ static void patternReleaseCallback(void* info)
 
 RetainPtr<CGPatternRef> Pattern::createPlatformPattern(const AffineTransform& userSpaceTransform) const
 {
-    FloatRect tileRect = { { }, tileImage().size() };
+    auto nativeImage = tileNativeImage();
+    if (!nativeImage)
+        return nullptr;
 
-    AffineTransform patternTransform = userSpaceTransform * patternSpaceTransform();
-    patternTransform.scaleNonUniform(1, -1);
-    patternTransform.translate(0, -tileRect.height());
-
-    PlatformImagePtr platformImage = tileImage().platformImage();
+    auto platformImage = nativeImage->platformImage();
     if (!platformImage)
         return nullptr;
+
+    FloatRect tileRect = { { }, nativeImage->size() };
+
+    auto patternTransform = userSpaceTransform * patternSpaceTransform();
+    patternTransform.scaleNonUniform(1, -1);
+    patternTransform.translate(0, -tileRect.height());
 
     // If we're repeating in both directions, we can use image-backed patterns
     // instead of custom patterns, and avoid tiling-edge pixel cracks.

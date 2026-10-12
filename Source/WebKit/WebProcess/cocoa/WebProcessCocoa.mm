@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,20 +27,21 @@
 #import "WebProcess.h"
 
 #import "AccessibilitySupportSPI.h"
-#import "GPUProcessConnectionParameters.h"
+#import "ArgumentCodersCocoa.h"
+#import "CoreIPCAuditToken.h"
+#import "DefaultWebBrowserChecks.h"
 #import "LegacyCustomProtocolManager.h"
 #import "LogInitialization.h"
 #import "Logging.h"
 #import "NetworkConnectionToWebProcessMessages.h"
 #import "NetworkProcessConnection.h"
-#import "ObjCObjectGraph.h"
 #import "ProcessAssertion.h"
 #import "SandboxExtension.h"
 #import "SandboxInitializationParameters.h"
+#import "SharedBufferReference.h"
 #import "WKAPICast.h"
 #import "WKBrowsingContextHandleInternal.h"
 #import "WKFullKeyboardAccessWatcher.h"
-#import "WKTypeRefWrapper.h"
 #import "WKWebProcessPlugInBrowserContextControllerInternal.h"
 #import "WebFrame.h"
 #import "WebInspector.h"
@@ -53,17 +54,30 @@
 #import "WebSleepDisablerClient.h"
 #import "WebSystemSoundDelegate.h"
 #import "WebsiteDataStoreParameters.h"
+#import <CoreMedia/CMFormatDescription.h>
 #import <JavaScriptCore/ConfigFile.h>
 #import <JavaScriptCore/Options.h>
 #import <WebCore/AVAssetMIMETypeCache.h>
+#import <pal/spi/cf/VideoToolboxSPI.h>
+#import <pal/spi/cg/ImageIOSPI.h>
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+#import <WebCore/AXIsolatedObject.h>
+#import <WebCore/AXIsolatedTree.h>
+#endif
 #import <WebCore/AXObjectCache.h>
 #import <WebCore/CPUMonitor.h>
+#import <WebCore/DeprecatedGlobalSettings.h>
 #import <WebCore/DisplayRefreshMonitorManager.h>
 #import <WebCore/FontCache.h>
+#import <WebCore/FontCacheCoreText.h>
 #import <WebCore/FontCascade.h>
 #import <WebCore/HistoryController.h>
 #import <WebCore/HistoryItem.h>
 #import <WebCore/IOSurface.h>
+#import <WebCore/Image.h>
+#import <WebCore/ImageDecoderCG.h>
+#import <WebCore/LocalFrameView.h>
 #import <WebCore/LocalizedDeviceModel.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/LogInitialization.h>
@@ -74,61 +88,65 @@
 #import <WebCore/PerformanceLogging.h>
 #import <WebCore/PictureInPictureSupport.h>
 #import <WebCore/PlatformMediaSessionManager.h>
+#import <WebCore/PlatformScreen.h>
+#import <WebCore/ProcessCapabilities.h>
+#import <WebCore/PublicSuffixStore.h>
 #import <WebCore/RuntimeApplicationChecks.h>
-#import <WebCore/RuntimeEnabledFeatures.h>
 #import <WebCore/SWContextManager.h>
 #import <WebCore/SystemBattery.h>
 #import <WebCore/SystemSoundManager.h>
 #import <WebCore/UTIUtilities.h>
-#import <WebCore/VersionChecks.h>
 #import <WebCore/WebMAudioUtilitiesCocoa.h>
 #import <algorithm>
 #import <dispatch/dispatch.h>
 #import <mach/mach.h>
+#import <malloc/malloc.h>
 #import <objc/runtime.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <pal/spi/cf/CFUtilitiesSPI.h>
 #import <pal/spi/cg/CoreGraphicsSPI.h>
 #import <pal/spi/cocoa/AVFoundationSPI.h>
-#import <pal/spi/cocoa/AccessibilitySupportSPI.h>
 #import <pal/spi/cocoa/CoreServicesSPI.h>
+#import <pal/spi/cocoa/DataDetectorsCoreSPI.h>
 #import <pal/spi/cocoa/LaunchServicesSPI.h>
 #import <pal/spi/cocoa/NSAccessibilitySPI.h>
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <pal/spi/cocoa/pthreadSPI.h>
 #import <pal/spi/mac/NSApplicationSPI.h>
 #import <stdio.h>
+#import <wtf/BlockPtr.h>
 #import <wtf/FileSystem.h>
 #import <wtf/Language.h>
 #import <wtf/LogInitialization.h>
+#import <wtf/MemoryPressureHandler.h>
 #import <wtf/ProcessPrivilege.h>
 #import <wtf/SoftLinking.h>
 #import <wtf/cocoa/Entitlements.h>
 #import <wtf/cocoa/NSURLExtras.h>
 #import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#import <wtf/cocoa/TypeCastsCocoa.h>
 #import <wtf/cocoa/VectorCocoa.h>
-
-#if ENABLE(CFPREFS_DIRECT_MODE)
-#import "AccessibilitySupportSPI.h"
-#endif
+#import <wtf/spi/cocoa/OSLogSPI.h>
+#import <wtf/spi/darwin/SandboxSPI.h>
+#import <wtf/text/MakeString.h>
 
 #if ENABLE(REMOTE_INSPECTOR)
 #import <JavaScriptCore/RemoteInspector.h>
 #endif
 
 #if PLATFORM(IOS_FAMILY)
+#import "AccessibilityUtilitiesSPI.h"
 #import "UIKitSPI.h"
 #import <bmalloc/MemoryStatusSPI.h>
 #endif
 
 #if PLATFORM(IOS_FAMILY)
 #import "RunningBoardServicesSPI.h"
-#import "UserInterfaceIdiom.h"
 #import "WKAccessibilityWebPageObjectIOS.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <UIKit/UIAccessibility.h>
 #import <pal/spi/ios/GraphicsServicesSPI.h>
-#import <pal/spi/ios/MobileGestaltSPI.h>
+#import <pal/system/ios/UserInterfaceIdiom.h>
 #endif
 
 #if PLATFORM(IOS_FAMILY) && USE(APPLE_INTERNAL_SDK)
@@ -143,52 +161,38 @@
 #if PLATFORM(MAC)
 #import "AppKitSPI.h"
 #import "WKAccessibilityWebPageObjectMac.h"
-#import "WebSwitchingGPUClient.h"
-#import <WebCore/GraphicsContextGLOpenGLManager.h>
+#import <Security/SecStaticCode.h>
 #import <WebCore/ScrollbarThemeMac.h>
 #import <pal/spi/cf/CoreTextSPI.h>
-#import <pal/spi/mac/HIServicesSPI.h>
 #import <pal/spi/mac/NSScrollerImpSPI.h>
 #endif
 
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+#import <pal/spi/mac/HIServicesSPI.h>
+#endif
 
 #if HAVE(MEDIA_ACCESSIBILITY_FRAMEWORK)
 #import "WebCaptionPreferencesDelegate.h"
 #import <WebCore/CaptionUserPreferencesMediaAF.h>
 #endif
 
+#if ENABLE(DATA_DETECTION) && PLATFORM(IOS_FAMILY)
+#import <pal/spi/ios/DataDetectorsUISoftLink.h>
+#endif
+
 #import <WebCore/MediaAccessibilitySoftLink.h>
-#import <pal/cf/AudioToolboxSoftLink.h>
+#import <pal/cf/VideoToolboxSoftLink.h>
 #import <pal/cocoa/AVFoundationSoftLink.h>
+#import <pal/cocoa/DataDetectorsCoreSoftLink.h>
 #import <pal/cocoa/MediaToolboxSoftLink.h>
-
-#if HAVE(CATALYST_USER_INTERFACE_IDIOM_AND_SCALE_FACTOR)
-// FIXME: This is only for binary compatibility with versions of UIKit in macOS 11 that are missing the change in <rdar://problem/68524148>.
-SOFT_LINK_FRAMEWORK(UIKit)
-SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE(WebKit, UIKit, _UIApplicationCatalystRequestViewServiceIdiomAndScaleFactor, void, (UIUserInterfaceIdiom idiom, CGFloat scaleFactor), (idiom, scaleFactor))
-#endif
-
-SOFT_LINK_FRAMEWORK(CoreServices)
-SOFT_LINK_CLASS(CoreServices, _LSDService)
-SOFT_LINK_CLASS(CoreServices, _LSDOpenService)
-
-#if HAVE(CMPHOTO_TILE_DECODER_AVAILABLE)
-SOFT_LINK_PRIVATE_FRAMEWORK_OPTIONAL(CMPhoto)
-SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE(WebKit, CMPhoto, CMPhotoIsTileDecoderAvailable, Boolean, (CMVideoCodecType decoder), (decoder))
-#endif
 
 #define RELEASE_LOG_SESSION_ID (m_sessionID ? m_sessionID->toUInt64() : 0)
 #define WEBPROCESS_RELEASE_LOG(channel, fmt, ...) RELEASE_LOG(channel, "%p - [sessionID=%" PRIu64 "] WebProcess::" fmt, this, RELEASE_LOG_SESSION_ID, ##__VA_ARGS__)
 #define WEBPROCESS_RELEASE_LOG_ERROR(channel, fmt, ...) RELEASE_LOG_ERROR(channel, "%p - [sessionID=%" PRIu64 "] WebProcess::" fmt, this, RELEASE_LOG_SESSION_ID, ##__VA_ARGS__)
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 SOFT_LINK_FRAMEWORK_IN_UMBRELLA(ApplicationServices, HIServices)
 SOFT_LINK_FUNCTION_MAY_FAIL_FOR_SOURCE(WebKit, HIServices, _AXSetAuditTokenIsAuthenticatedCallback, void, (AXAuditTokenIsAuthenticatedCallback callback), (callback))
-#endif
-
-#if HAVE(UPDATE_WEB_ACCESSIBILITY_SETTINGS) && ENABLE(CFPREFS_DIRECT_MODE)
-SOFT_LINK_LIBRARY(libAccessibility)
-SOFT_LINK_OPTIONAL(libAccessibility, _AXSUpdateWebAccessibilitySettings, void, (), ());
 #endif
 
 namespace WebKit {
@@ -203,14 +207,59 @@ void WebProcess::platformSetCacheModel(CacheModel)
 {
 }
 
+void WebProcess::bindAccessibilityFrameWithData(WebCore::FrameIdentifier frameID, std::span<const uint8_t> data)
+{
+    if (!m_accessibilityRemoteFrameTokenCache)
+        m_accessibilityRemoteFrameTokenCache = adoptNS([[NSMutableDictionary alloc] init]);
+
+    auto frameInt = frameID.object().toUInt64();
+    [m_accessibilityRemoteFrameTokenCache setObject:toNSData(data).get() forKey:@(frameInt)];
+}
+
+id WebProcess::accessibilityFocusedUIElement()
+{
+    auto retrieveFocusedUIElementFromMainThread = [] () {
+        return Accessibility::retrieveAutoreleasedValueFromMainThread<id>([] () -> RetainPtr<id> {
+            RefPtr page = WebProcess::singleton().focusedWebPage();
+            if (!page || !page->accessibilityRemoteObject())
+                return nil;
+            return [page->accessibilityRemoteObject() accessibilityFocusedUIElement];
+        });
+    };
+
+#if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
+    if (!isMainRunLoop()) {
+        // Avoid hitting the main thread by getting the focused object from the focused isolated tree.
+        auto tree = findAXTree([] (AXTreePtr tree) -> bool {
+            OptionSet<ActivityState> state;
+            switchOn(tree,
+                [&state] (RefPtr<AXIsolatedTree>& typedTree) {
+                    if (typedTree)
+                        state = typedTree->lockedPageActivityState();
+                }
+                , [] (auto&) { }
+            );
+            return state.containsAll({ ActivityState::IsVisible, ActivityState::IsFocused, ActivityState::WindowIsActive });
+        });
+        auto* isolatedTree = std::get_if<RefPtr<AXIsolatedTree>>(&tree);
+        if (!isolatedTree) {
+            // There is no isolated tree that has focus. This may be because none has been created yet, or because the one previously focused is being destroyed.
+            // In any case, get the focus from the main thread.
+            return retrieveFocusedUIElementFromMainThread();
+        }
+
+        RefPtr object = (*isolatedTree)->focusedNode();
+        return object ? object->wrapper() : nil;
+    }
+#endif
+
+    return retrieveFocusedUIElementFromMainThread();
+}
+
 #if USE(APPKIT)
 static id NSApplicationAccessibilityFocusedUIElement(NSApplication*, SEL)
 {
-    WebPage* page = WebProcess::singleton().focusedWebPage();
-    if (!page || !page->accessibilityRemoteObject())
-        return 0;
-
-    return [page->accessibilityRemoteObject() accessibilityFocusedUIElement];
+    return WebProcess::accessibilityFocusedUIElement();
 }
 
 #if ENABLE(SET_WEBCONTENT_PROCESS_INFORMATION_IN_NETWORK_PROCESS)
@@ -222,89 +271,145 @@ static void preventAppKitFromContactingLaunchServices(NSApplication*, SEL)
 #endif
 #endif
 
-
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 static Boolean isAXAuthenticatedCallback(audit_token_t auditToken)
 {
     bool authenticated = false;
-    WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebProcessProxy::IsAXAuthenticated(auditToken), Messages::WebProcessProxy::IsAXAuthenticated::Reply(authenticated), 0);
+    // IPC must be done on the main runloop, so dispatch it to avoid crashes when the secondary AX thread handles this callback.
+    callOnMainRunLoopAndWait([&authenticated, auditToken] {
+        auto sendResult = WebProcess::singleton().parentProcessConnection()->sendSync(Messages::WebProcessProxy::IsAXAuthenticated(auditToken), 0);
+        std::tie(authenticated) = sendResult.takeReplyOr(false);
+    });
     return authenticated;
 }
 #endif
 
+enum class VideoDecoderBehavior : uint8_t {
+    AvoidHardware               = 1 << 0,
+    AvoidIOSurface              = 1 << 1,
+    EnableCommonVideoDecoders   = 1 << 2,
+    EnableHEIC                  = 1 << 3,
+    EnableAVIF                  = 1 << 4,
+};
+
+static void setVideoDecoderBehaviors(OptionSet<VideoDecoderBehavior> videoDecoderBehavior)
+{
+    if (!(PAL::isVideoToolboxFrameworkAvailable() && PAL::canLoad_VideoToolbox_VTRestrictVideoDecoders()))
+        return;
+
+    Vector<CMVideoCodecType> allowedCodecTypeList;
+
+    if (videoDecoderBehavior.contains(VideoDecoderBehavior::EnableCommonVideoDecoders)) {
+        allowedCodecTypeList.append(kCMVideoCodecType_H263);
+        allowedCodecTypeList.append(kCMVideoCodecType_H264);
+        allowedCodecTypeList.append(kCMVideoCodecType_MPEG4Video);
+    }
+
+    if (videoDecoderBehavior.contains(VideoDecoderBehavior::EnableHEIC)) {
+        allowedCodecTypeList.append(kCMVideoCodecType_HEVC);
+        allowedCodecTypeList.append(kCMVideoCodecType_HEVCWithAlpha);
+    }
+
+#if HAVE(AVIF)
+    if (videoDecoderBehavior.contains(VideoDecoderBehavior::EnableAVIF))
+        allowedCodecTypeList.append(kCMVideoCodecType_AV1);
+#endif
+
+    unsigned flags = 0;
+
+    if (videoDecoderBehavior.contains(VideoDecoderBehavior::AvoidHardware))
+        flags |= kVTRestrictions_RunVideoDecodersInProcess | kVTRestrictions_AvoidHardwareDecoders | kVTRestrictions_AvoidHardwarePixelTransfer;
+
+    if (videoDecoderBehavior.contains(VideoDecoderBehavior::AvoidIOSurface))
+        flags |= kVTRestrictions_AvoidIOSurfaceBackings;
+
+#if ENABLE(TRUSTD_BLOCKING_IN_WEBCONTENT)
+    flags |= kVTRestrictions_RegisterLimitedSystemDecodersWithoutValidation;
+#endif
+
+    PAL::softLinkVideoToolboxVTRestrictVideoDecoders(flags, allowedCodecTypeList.data(), allowedCodecTypeList.size());
+}
+
 void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& parameters)
 {
+    WEBPROCESS_RELEASE_LOG(Process, "WebProcess::platformInitializeWebProcess");
+
+#if USE(EXTENSIONKIT)
+    // Workaround for crash seen when running tests. See rdar://118186487.
+    unsetenv("BSServiceDomains");
+#endif
+
+    applyProcessCreationParameters(parameters.auxiliaryProcessParameters);
+
     setQOS(parameters.latencyQOS, parameters.throughputQOS);
-    
-    SandboxExtension::consumePermanently(parameters.diagnosticsExtensionHandles);
 
 #if HAVE(CATALYST_USER_INTERFACE_IDIOM_AND_SCALE_FACTOR)
-    if (canLoad_UIKit__UIApplicationCatalystRequestViewServiceIdiomAndScaleFactor()) {
-        auto [overrideUserInterfaceIdiom, overrideScaleFactor] = parameters.overrideUserInterfaceIdiomAndScale;
-        softLink_UIKit__UIApplicationCatalystRequestViewServiceIdiomAndScaleFactor(static_cast<UIUserInterfaceIdiom>(overrideUserInterfaceIdiom), overrideScaleFactor);
-    }
+    auto [overrideUserInterfaceIdiom, overrideScaleFactor] = parameters.overrideUserInterfaceIdiomAndScale;
+    _UIApplicationCatalystRequestViewServiceIdiomAndScaleFactor(static_cast<UIUserInterfaceIdiom>(overrideUserInterfaceIdiom), overrideScaleFactor);
 #endif
 
-    if (parameters.mobileGestaltExtensionHandle) {
-        if (auto extension = SandboxExtension::create(WTFMove(*parameters.mobileGestaltExtensionHandle))) {
-            bool ok = extension->consume();
-            ASSERT_UNUSED(ok, ok);
-            // If we have an extension handle for MobileGestalt, it means the MobileGestalt cache is invalid.
-            // In this case, we perform a set of MobileGestalt queries while having access to the daemon,
-            // which will populate the MobileGestalt in-memory cache with correct values.
-            // The set of queries below was determined by finding all possible queries that have cachable
-            // values, and would reach out to the daemon for the answer. That way, the in-memory cache
-            // should be identical to a valid MobileGestalt cache after having queried all of these values.
-#if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
-            MGGetFloat32Answer(kMGQMainScreenScale, 0);
-            MGGetSInt32Answer(kMGQMainScreenPitch, 0);
-            MGGetSInt32Answer(kMGQMainScreenClass, MGScreenClassPad2);
-            MGGetBoolAnswer(kMGQAppleInternalInstallCapability);
-            MGGetBoolAnswer(kMGQiPadCapability);
-            auto deviceName = adoptCF(MGCopyAnswer(kMGQDeviceName, nullptr));
-            MGGetSInt32Answer(kMGQDeviceClassNumber, MGDeviceClassInvalid);
-            MGGetBoolAnswer(kMGQHasExtendedColorDisplay);
-            MGGetFloat32Answer(kMGQDeviceCornerRadius, 0);
-            MGGetBoolAnswer(kMGQSupportsForceTouch);
-
-            auto answer = adoptCF(MGCopyAnswer(kMGQBluetoothCapability, nullptr));
-            answer = MGCopyAnswer(kMGQDeviceProximityCapability, nullptr);
-            answer = MGCopyAnswer(kMGQDeviceSupportsARKit, nullptr);
-            answer = MGCopyAnswer(kMGQTimeSyncCapability, nullptr);
-            answer = MGCopyAnswer(kMGQWAPICapability, nullptr);
-            answer = MGCopyAnswer(kMGQMainDisplayRotation, nullptr);
-#endif
-            ok = extension->revoke();
-            ASSERT_UNUSED(ok, ok);
-        }
-    }
-
-#if !LOG_DISABLED || !RELEASE_LOG_DISABLED
-    WTF::logChannels().initializeLogChannelsIfNecessary(parameters.wtfLoggingChannels);
-    WebCore::logChannels().initializeLogChannelsIfNecessary(parameters.webCoreLoggingChannels);
-    WebKit::logChannels().initializeLogChannelsIfNecessary(parameters.webKitLoggingChannels);
-#endif
+    populateMobileGestaltCache(WTFMove(parameters.mobileGestaltExtensionHandle));
 
     m_uiProcessBundleIdentifier = parameters.uiProcessBundleIdentifier;
 
+    WebCore::setPresentingApplicationBundleIdentifier(parameters.presentingApplicationBundleIdentifier);
+
 #if ENABLE(SANDBOX_EXTENSIONS)
     SandboxExtension::consumePermanently(parameters.uiProcessBundleResourcePathExtensionHandle);
-#if ENABLE(MEDIA_STREAM)
-    SandboxExtension::consumePermanently(parameters.audioCaptureExtensionHandle);
-#endif
-#if PLATFORM(IOS_FAMILY)
-    SandboxExtension::consumePermanently(parameters.cookieStorageDirectoryExtensionHandle);
-    SandboxExtension::consumePermanently(parameters.containerCachesDirectoryExtensionHandle);
-    SandboxExtension::consumePermanently(parameters.containerTemporaryDirectoryExtensionHandle);
-#endif
 #if PLATFORM(COCOA) && ENABLE(REMOTE_INSPECTOR)
-    Inspector::RemoteInspector::setNeedMachSandboxExtension(!SandboxExtension::consumePermanently(parameters.enableRemoteWebInspectorExtensionHandle));
+    Inspector::RemoteInspector::setNeedMachSandboxExtension(!SandboxExtension::consumePermanently(parameters.enableRemoteWebInspectorExtensionHandles));
 #endif
 #endif
 
 #if HAVE(VIDEO_RESTRICTED_DECODING)
-    SandboxExtension::consumePermanently(parameters.videoDecoderExtensionHandles);
+#if PLATFORM(MAC) && !ENABLE(TRUSTD_BLOCKING_IN_WEBCONTENT)
+    OSObjectPtr<dispatch_semaphore_t> codeCheckSemaphore;
+    if (SandboxExtension::consumePermanently(parameters.trustdExtensionHandle)) {
+        // Open up a Mach connection to trustd by doing a code check validation on the main bundle.
+        // This is required since launchd will be blocked after process launch, which prevents new Mach connections to be created.
+        // FIXME: remove this once <rdar://90127163> is fixed.
+        // Dispatch this work on a thread to avoid blocking the main thread. We will wait for this to complete at the end of this method.
+        codeCheckSemaphore = adoptOSObject(dispatch_semaphore_create(0));
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), [codeCheckSemaphore = codeCheckSemaphore] {
+            auto bundleURL = adoptCF(CFBundleCopyBundleURL(CFBundleGetMainBundle()));
+            SecStaticCodeRef code = nullptr;
+            if (bundleURL)
+                SecStaticCodeCreateWithPath(bundleURL.get(), kSecCSDefaultFlags, &code);
+            if (code) {
+                SecStaticCodeCheckValidity(code, kSecCSDoNotValidateResources | kSecCSDoNotValidateExecutable, nullptr);
+                CFRelease(code);
+            }
+            dispatch_semaphore_signal(codeCheckSemaphore.get());
+        });
+    }
+#endif // PLATFORM(MAC)
+    OptionSet<VideoDecoderBehavior> videoDecoderBehavior;
+    
+    if (parameters.enableDecodingHEIC) {
+        ProcessCapabilities::setHEICDecodingEnabled(true);
+        videoDecoderBehavior.add(VideoDecoderBehavior::EnableHEIC);
+    }
+
+    if (parameters.enableDecodingAVIF) {
+        ProcessCapabilities::setAVIFDecodingEnabled(true);
+        videoDecoderBehavior.add(VideoDecoderBehavior::EnableAVIF);
+    }
+
+#if HAVE(CGIMAGESOURCE_ENABLE_RESTRICTED_DECODING)
+    if (parameters.enableDecodingHEIC || parameters.enableDecodingAVIF) {
+        static bool restricted { false };
+        if (!std::exchange(restricted, true)) {
+            OSStatus ok = CGImageSourceEnableRestrictedDecoding();
+            ASSERT_UNUSED(ok, ok == noErr);
+        }
+    }
 #endif
+
+    if (videoDecoderBehavior) {
+        videoDecoderBehavior.add({ VideoDecoderBehavior::AvoidIOSurface, VideoDecoderBehavior::AvoidHardware });
+        setVideoDecoderBehaviors(videoDecoderBehavior);
+    }
+#endif // HAVE(VIDEO_RESTRICTED_DECODING)
 
     // Disable NSURLCache.
     auto urlCache = adoptNS([[NSURLCache alloc] initWithMemoryCapacity:0 diskCapacity:0 diskPath:nil]);
@@ -314,17 +419,15 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& para
     WebCore::FontCache::setFontAllowlist(parameters.fontAllowList);
 #endif
 
-    m_compositingRenderServerPort = WTFMove(parameters.acceleratedCompositingPort);
-
     WebCore::registerMemoryReleaseNotifyCallbacks();
     MemoryPressureHandler::ReliefLogger::setLoggingEnabled(parameters.shouldEnableMemoryPressureReliefLogging);
 
     setEnhancedAccessibility(parameters.accessibilityEnhancedUserInterfaceEnabled);
 
 #if PLATFORM(IOS_FAMILY)
-    setCurrentUserInterfaceIdiomIsPhoneOrWatch(parameters.currentUserInterfaceIdiomIsPhoneOrWatch);
+    setCurrentUserInterfaceIdiom(parameters.currentUserInterfaceIdiom);
     setLocalizedDeviceModel(parameters.localizedDeviceModel);
-    RenderThemeIOS::setContentSizeCategory(parameters.contentSizeCategory);
+    setContentSizeCategory(parameters.contentSizeCategory);
 #if ENABLE(VIDEO_PRESENTATION_MODE)
     setSupportsPictureInPicture(parameters.supportsPictureInPicture);
 #endif
@@ -334,51 +437,43 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& para
     // We don't need to talk to the Dock.
     [NSApplication _preventDockConnections];
 
-    [[NSUserDefaults standardUserDefaults] registerDefaults:@{ @"NSApplicationCrashOnExceptions" : @YES, @"ApplePersistence" : @NO }];
+    [[NSUserDefaults standardUserDefaults] registerDefaults:@{
+        @"NSApplicationCrashOnExceptions": @YES,
+        @"ApplePersistence": @(-1) // Number -1 means NO + no logging to log and console. See <rdar://7749927>.
+    }];
 
     // rdar://9118639 accessibilityFocusedUIElement in NSApplication defaults to use the keyWindow. Since there's
     // no window in WK2, NSApplication needs to use the focused page's focused element.
     Method methodToPatch = class_getInstanceMethod([NSApplication class], @selector(accessibilityFocusedUIElement));
     method_setImplementation(methodToPatch, (IMP)NSApplicationAccessibilityFocusedUIElement);
+
+    auto method = class_getInstanceMethod([NSApplication class], @selector(_updateCanQuitQuietlyAndSafely));
+    method_setImplementation(method, (IMP)preventAppKitFromContactingLaunchServices);
 #endif
 
-#if PLATFORM(MAC) && ENABLE(WEBPROCESS_NSRUNLOOP)
-    RefPtr<SandboxExtension> launchServicesExtension;
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
     if (parameters.launchServicesExtensionHandle) {
-        if ((launchServicesExtension = SandboxExtension::create(WTFMove(*parameters.launchServicesExtensionHandle)))) {
-            bool ok = launchServicesExtension->consume();
+        if ((m_launchServicesExtension = SandboxExtension::create(WTFMove(*parameters.launchServicesExtensionHandle)))) {
+            bool ok = m_launchServicesExtension->consume();
             ASSERT_UNUSED(ok, ok);
         }
     }
 
-    // Need to initialize accessibility for VoiceOver to work when the WebContent process is using NSRunLoop.
-    // Currently, it is also needed to allocate and initialize an NSApplication object.
-    // This method call will also call RegisterApplication, so there is no need for us to call this or
-    // check in with Launch Services
-    [NSApplication _accessibilityInitialize];
+    // Register the application. This will also check in with Launch Services.
+    _RegisterApplication(nullptr, nullptr);
+#if PLATFORM(MACCATALYST)
+    revokeLaunchServicesSandboxExtension();
+#endif
+#endif
 
+#if PLATFORM(MAC)
     // Update process name while holding the Launch Services sandbox extension
     updateProcessName(IsInProcessInitialization::Yes);
 
-#if ENABLE(SET_WEBCONTENT_PROCESS_INFORMATION_IN_NETWORK_PROCESS)
     // Disable relaunch on login. This is also done from -[NSApplication init] by dispatching -[NSApplication disableRelaunchOnLogin] on a non-main thread.
     // This will be in a race with the closing of the Launch Services connection, so call it synchronously here.
     // The cost of calling this should be small, and it is not expected to have any impact on performance.
     _LSSetApplicationInformationItem(kLSDefaultSessionID, _LSGetCurrentApplicationASN(), _kLSPersistenceSuppressRelaunchAtLoginKey, kCFBooleanTrue, nullptr);
-    
-    // This is being called under WebPage::platformInitialize(), and may reach out to the Launch Services daemon once in the lifetime of the process.
-    // Call this synchronously here while a sandbox extension to Launch Services is being held.
-    [NSAccessibilityRemoteUIElement remoteTokenForLocalUIElement:adoptNS([[WKAccessibilityWebPageObject alloc] init]).get()];
-
-    auto method = class_getInstanceMethod([NSApplication class], @selector(_updateCanQuitQuietlyAndSafely));
-    method_setImplementation(method, (IMP)preventAppKitFromContactingLaunchServices);
-
-    // FIXME: Replace the constant 4 with kLSServerConnectionStatusReleaseNotificationsMask when available in the SDK, see <https://bugs.webkit.org/show_bug.cgi?id=220988>.
-    _LSSetApplicationLaunchServicesServerConnectionStatus(kLSServerConnectionStatusDoNotConnectToServerMask | /*kLSServerConnectionStatusReleaseNotificationsMask*/ 4, nullptr);
-#endif
-
-    if (launchServicesExtension)
-        launchServicesExtension->revoke();
 #endif
 
 #if PLATFORM(MAC)
@@ -396,15 +491,15 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& para
 #endif
 
 #if ENABLE(WEBM_FORMAT_READER)
-    PlatformMediaSessionManager::setWebMFormatReaderEnabled(RuntimeEnabledFeatures::sharedFeatures().webMFormatReaderEnabled());
+    PlatformMediaSessionManager::setWebMFormatReaderEnabled(DeprecatedGlobalSettings::webMFormatReaderEnabled());
 #endif
 
-#if ENABLE(VORBIS) && PLATFORM(MAC)
-    PlatformMediaSessionManager::setVorbisDecoderEnabled(RuntimeEnabledFeatures::sharedFeatures().vorbisDecoderEnabled());
+#if ENABLE(VORBIS)
+    PlatformMediaSessionManager::setVorbisDecoderEnabled(DeprecatedGlobalSettings::vorbisDecoderEnabled());
 #endif
 
-#if ENABLE(OPUS) && PLATFORM(MAC)
-    PlatformMediaSessionManager::setOpusDecoderEnabled(RuntimeEnabledFeatures::sharedFeatures().opusDecoderEnabled());
+#if ENABLE(OPUS)
+    PlatformMediaSessionManager::setOpusDecoderEnabled(DeprecatedGlobalSettings::opusDecoderEnabled());
 #endif
 
     if (!parameters.mediaMIMETypes.isEmpty())
@@ -421,18 +516,18 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& para
     scrollerStylePreferenceChanged(parameters.useOverlayScrollbars);
 #endif
 
-#if PLATFORM(IOS)
+#if PLATFORM(IOS) || PLATFORM(VISION)
     SandboxExtension::consumePermanently(parameters.compilerServiceExtensionHandles);
 #endif
 
-    if (parameters.containerManagerExtensionHandle)
-        SandboxExtension::consumePermanently(*parameters.containerManagerExtensionHandle);
-    
 #if PLATFORM(IOS_FAMILY)
-    SandboxExtension::consumePermanently(parameters.dynamicMachExtensionHandles);
     SandboxExtension::consumePermanently(parameters.dynamicIOKitExtensionHandles);
 #endif
-    
+
+#if PLATFORM(VISION)
+    SandboxExtension::consumePermanently(parameters.metalCacheDirectoryExtensionHandles);
+#endif
+
     setSystemHasBattery(parameters.systemHasBattery);
     setSystemHasAC(parameters.systemHasAC);
 
@@ -441,16 +536,9 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& para
     RenderThemeIOS::setFocusRingColor(parameters.focusRingColor);
 #endif
 
-#if ENABLE(CFPREFS_DIRECT_MODE)
-    if (parameters.preferencesExtensionHandles) {
-        SandboxExtension::consumePermanently(*parameters.preferencesExtensionHandles);
-        _CFPrefsSetDirectModeEnabled(false);
-    }
-#endif
-        
     WebCore::sleepDisablerClient() = makeUnique<WebSleepDisablerClient>();
 
-#if HAVE(FIG_PHOTO_DECOMPRESSION_SET_HARDWARE_CUTOFF) && !ENABLE(HARDWARE_JPEG)
+#if PLATFORM(MAC) && !ENABLE(HARDWARE_JPEG)
     if (PAL::isMediaToolboxFrameworkAvailable() && PAL::canLoad_MediaToolbox_FigPhotoDecompressionSetHardwareCutoff())
         PAL::softLinkMediaToolboxFigPhotoDecompressionSetHardwareCutoff(kPALFigPhotoContainerFormat_JFIF, INT_MAX);
 #endif
@@ -461,31 +549,64 @@ void WebProcess::platformInitializeWebProcess(WebProcessCreationParameters& para
     WebCore::CaptionUserPreferencesMediaAF::setCaptionPreferencesDelegate(makeUnique<WebCaptionPreferencesDelegate>());
 #endif
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
     if (canLoad_HIServices__AXSetAuditTokenIsAuthenticatedCallback())
         softLink_HIServices__AXSetAuditTokenIsAuthenticatedCallback(isAXAuthenticatedCallback);
 #endif
-    
-    if (!parameters.maximumIOSurfaceSize.isEmpty())
-        WebCore::IOSurface::setMaximumSize(parameters.maximumIOSurfaceSize);
+
+#if HAVE(IOSURFACE)
+    WebCore::IOSurface::setMaximumSize(parameters.maximumIOSurfaceSize);
+    WebCore::IOSurface::setBytesPerRowAlignment(parameters.bytesPerRowIOSurfaceAlignment);
+#endif
 
     accessibilityPreferencesDidChange(parameters.accessibilityPreferences);
+#if PLATFORM(IOS_FAMILY)
+    _AXSApplicationAccessibilitySetEnabled(parameters.applicationAccessibilityEnabled);
+#endif
+
+    disableURLSchemeCheckInDataDetectors();
+
+#if ENABLE(QUICKLOOK_SANDBOX_RESTRICTIONS)
+    if (auto auditToken = parentProcessConnection()->getAuditToken()) {
+        bool parentCanSetStateFlags = WTF::hasEntitlementValueInArray(auditToken.value(), "com.apple.private.security.enable-state-flags"_s, "EnableQuickLookSandboxResources"_s);
+        if (parentCanSetStateFlags) {
+            auto auditToken = auditTokenForSelf();
+            bool status = sandbox_enable_state_flag("ParentProcessCanEnableQuickLookStateFlag", auditToken.value());
+            WEBPROCESS_RELEASE_LOG(Sandbox, "Enabling ParentProcessCanEnableQuickLookStateFlag state flag, status = %d", status);
+        }
+    }
+#endif
+
+#if HAVE(VIDEO_RESTRICTED_DECODING) && PLATFORM(MAC) && !ENABLE(TRUSTD_BLOCKING_IN_WEBCONTENT)
+    if (codeCheckSemaphore)
+        dispatch_semaphore_wait(codeCheckSemaphore.get(), DISPATCH_TIME_FOREVER);
+#endif
 }
 
 void WebProcess::platformSetWebsiteDataStoreParameters(WebProcessDataStoreParameters&& parameters)
 {
 #if ENABLE(SANDBOX_EXTENSIONS)
-    SandboxExtension::consumePermanently(parameters.applicationCacheDirectoryExtensionHandle);
+#if !ENABLE(GPU_PROCESS)
     SandboxExtension::consumePermanently(parameters.mediaCacheDirectoryExtensionHandle);
+#endif
     SandboxExtension::consumePermanently(parameters.mediaKeyStorageDirectoryExtensionHandle);
     SandboxExtension::consumePermanently(parameters.javaScriptConfigurationDirectoryExtensionHandle);
-#if HAVE(ARKIT_INLINE_PREVIEW)
+#if ENABLE(ARKIT_INLINE_PREVIEW)
     SandboxExtension::consumePermanently(parameters.modelElementCacheDirectoryExtensionHandle);
 #endif
 #endif
+#if PLATFORM(IOS_FAMILY)
+    // FIXME: Does the web process still need access to the cookie storage directory? Probably not.
+    if (auto& handle = parameters.cookieStorageDirectoryExtensionHandle)
+        SandboxExtension::consumePermanently(*handle);
+    if (auto& handle = parameters.containerCachesDirectoryExtensionHandle)
+        SandboxExtension::consumePermanently(*handle);
+    if (auto& handle = parameters.containerTemporaryDirectoryExtensionHandle)
+        SandboxExtension::consumePermanently(*handle);
+#endif
 
     if (!parameters.javaScriptConfigurationDirectory.isEmpty()) {
-        String javaScriptConfigFile = parameters.javaScriptConfigurationDirectory + "/JSC.config";
+        auto javaScriptConfigFile = makeString(parameters.javaScriptConfigurationDirectory, "/JSC.config"_s);
         JSC::processConfigFile(javaScriptConfigFile.latin1().data(), "com.apple.WebKit.WebContent", m_uiProcessBundleIdentifier.latin1().data());
     }
 }
@@ -499,25 +620,41 @@ void WebProcess::initializeProcessName(const AuxiliaryProcessInitializationParam
 #endif
 }
 
+std::optional<audit_token_t> WebProcess::auditTokenForSelf()
+{
+    if (m_auditTokenForSelf)
+        return m_auditTokenForSelf;
+
+    audit_token_t auditToken = { 0 };
+    mach_msg_type_number_t info_size = TASK_AUDIT_TOKEN_COUNT;
+    kern_return_t kr = task_info(mach_task_self(), TASK_AUDIT_TOKEN, reinterpret_cast<integer_t *>(&auditToken), &info_size);
+    if (kr != KERN_SUCCESS) {
+        WEBPROCESS_RELEASE_LOG_ERROR(Process, "Unable to get audit token for self. Error: %{public}s (%x)", mach_error_string(kr), kr);
+        return std::nullopt;
+    }
+    m_auditTokenForSelf = auditToken;
+    return m_auditTokenForSelf;
+}
+
 void WebProcess::updateProcessName(IsInProcessInitialization isInProcessInitialization)
 {
 #if PLATFORM(MAC)
     RetainPtr<NSString> applicationName;
     switch (m_processType) {
     case ProcessType::Inspector:
-        applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Web Inspector", "Visible name of Web Inspector's web process. The argument is the application name."), (NSString *)m_uiProcessName];
+        applicationName = [NSString stringWithFormat:WEB_UI_NSSTRING(@"%@ Web Inspector", "Visible name of Web Inspector's web process. The argument is the application name."), (NSString *)m_uiProcessName];
         break;
     case ProcessType::ServiceWorker:
-        applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Service Worker (%@)", "Visible name of Service Worker process. The argument is the application name."), (NSString *)m_uiProcessName, (NSString *)m_registrableDomain.string()];
+        applicationName = [NSString stringWithFormat:WEB_UI_NSSTRING(@"%@ Service Worker (%@)", "Visible name of Service Worker process. The argument is the application name."), (NSString *)m_uiProcessName, (NSString *)m_registrableDomain.string()];
         break;
     case ProcessType::PrewarmedWebContent:
-        applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Web Content (Prewarmed)", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
+        applicationName = [NSString stringWithFormat:WEB_UI_NSSTRING(@"%@ Web Content (Prewarmed)", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
         break;
     case ProcessType::CachedWebContent:
-        applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Web Content (Cached)", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
+        applicationName = [NSString stringWithFormat:WEB_UI_NSSTRING(@"%@ Web Content (Cached)", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
         break;
     case ProcessType::WebContent:
-        applicationName = [NSString stringWithFormat:WEB_UI_STRING("%@ Web Content", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
+        applicationName = [NSString stringWithFormat:WEB_UI_NSSTRING(@"%@ Web Content", "Visible name of the web process. The argument is the application name."), (NSString *)m_uiProcessName];
         break;
     }
 
@@ -525,16 +662,13 @@ void WebProcess::updateProcessName(IsInProcessInitialization isInProcessInitiali
     // During WebProcess initialization, we are still able to talk to LaunchServices to set the process name so there is no need to go
     // via the NetworkProcess. Prewarmed WebProcesses also do not have a network process connection until they are actually used by
     // a page.
+
     if (isInProcessInitialization == IsInProcessInitialization::No) {
-        audit_token_t auditToken = { 0 };
-        mach_msg_type_number_t info_size = TASK_AUDIT_TOKEN_COUNT;
-        kern_return_t kr = task_info(mach_task_self(), TASK_AUDIT_TOKEN, reinterpret_cast<integer_t *>(&auditToken), &info_size);
-        if (kr != KERN_SUCCESS) {
-            WEBPROCESS_RELEASE_LOG_ERROR(Process, "updateProcessName: Unable to get audit token for self. Error: %{public}s (%x)", mach_error_string(kr), kr);
+        auto auditToken = auditTokenForSelf();
+        if (!auditToken)
             return;
-        }
         String displayName = applicationName.get();
-        ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::UpdateActivePages(displayName, Vector<String>(), auditToken), 0);
+        ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::UpdateActivePages(displayName, Vector<String>(), *auditToken), 0);
         return;
     }
 #endif // ENABLE(SET_WEBCONTENT_PROCESS_INFORMATION_IN_NETWORK_PROCESS)
@@ -559,15 +693,20 @@ void WebProcess::updateProcessName(IsInProcessInitialization isInProcessInitiali
 #if PLATFORM(IOS_FAMILY)
 static NSString *webProcessLoaderAccessibilityBundlePath()
 {
-#if HAVE(ACCESSIBILITY_BUNDLES_PATH)
-    return adoptCF(_AXSCopyPathForAccessibilityBundle(CFSTR("WebProcessLoader"))).bridgingAutorelease();
-#else
     NSString *path = (__bridge NSString *)GSSystemRootDirectory();
 #if PLATFORM(MACCATALYST)
     path = [path stringByAppendingPathComponent:@"System/iOSSupport"];
 #endif
     return [path stringByAppendingPathComponent:@"System/Library/AccessibilityBundles/WebProcessLoader.axbundle"];
-#endif // HAVE(ACCESSIBILITY_BUNDLES_PATH)
+}
+
+static NSString *webProcessAccessibilityBundlePath()
+{
+    NSString *path = (__bridge NSString *)GSSystemRootDirectory();
+#if PLATFORM(MACCATALYST)
+    path = [path stringByAppendingPathComponent:@"System/iOSSupport"];
+#endif
+    return [path stringByAppendingPathComponent:@"System/Library/AccessibilityBundles/WebProcess.axbundle"];
 }
 #endif
 
@@ -582,6 +721,16 @@ static void registerWithAccessibility()
     NSError *error = nil;
     if (![[NSBundle bundleWithPath:bundlePath] loadAndReturnError:&error])
         LOG_ERROR("Failed to load accessibility bundle at %@: %@", bundlePath, error);
+
+    // This code will eagerly start the in-process AX server.
+    // This enables us to revoke the Mach bootstrap sandbox extension.
+    NSString *webProcessAXBundlePath = webProcessAccessibilityBundlePath();
+    NSBundle *bundle = [NSBundle bundleWithPath:webProcessAXBundlePath];
+    error = nil;
+    if ([bundle loadAndReturnError:&error])
+        [[bundle principalClass] safeValueForKey:@"accessibilityInitializeBundle"];
+    else
+        LOG_ERROR("Failed to load accessibility bundle at %@: %@", webProcessAXBundlePath, error);
 #endif
 }
 
@@ -592,9 +741,9 @@ RetainPtr<NSDictionary> WebProcess::additionalStateForDiagnosticReport() const
     auto stateDictionary = adoptNS([[NSMutableDictionary alloc] init]);
     {
         auto memoryUsageStats = adoptNS([[NSMutableDictionary alloc] init]);
-        for (auto& it : PerformanceLogging::memoryUsageStatistics(ShouldIncludeExpensiveComputations::Yes)) {
-            auto keyString = adoptNS([[NSString alloc] initWithUTF8String:it.key]);
-            [memoryUsageStats setObject:@(it.value) forKey:keyString.get()];
+        for (auto& [key, value] : PerformanceLogging::memoryUsageStatistics(ShouldIncludeExpensiveComputations::Yes)) {
+            auto keyString = adoptNS([[NSString alloc] initWithUTF8String:key]);
+            [memoryUsageStats setObject:@(value) forKey:keyString.get()];
         }
         [stateDictionary setObject:memoryUsageStats.get() forKey:@"Memory Usage Stats"];
     }
@@ -612,6 +761,8 @@ RetainPtr<NSDictionary> WebProcess::additionalStateForDiagnosticReport() const
 
         return [NSDate dateWithTimeIntervalSince1970:page->loadCommitTime().secondsSinceEpoch().seconds()];
     });
+    auto websamStateDescription = MemoryPressureHandler::processStateDescription().createNSString();
+    [stateDictionary setObject:websamStateDescription.get() forKey:@"Websam State"];
 
     // Adding an empty array to the process state may provide an
     // indication of the existance of private sessions, which we'd like
@@ -625,31 +776,143 @@ RetainPtr<NSDictionary> WebProcess::additionalStateForDiagnosticReport() const
 
 #endif // USE(OS_STATE)
 
+#if ENABLE(LOGD_BLOCKING_IN_WEBCONTENT)
+#if PLATFORM(IOS_FAMILY)
+static void prewarmLogs()
+{
+    // This call will create container manager log objects.
+    // FIXME: this can be removed if we move all calls to topPrivatelyControlledDomain out of the WebContent process.
+    // This would be desirable, since the WebContent process is blocking access to the container manager daemon.
+    PublicSuffixStore::singleton().topPrivatelyControlledDomain("apple.com"_s);
+
+    static std::array<std::pair<ASCIILiteral, ASCIILiteral>, 5> logs { {
+        { "com.apple.CFBundle"_s, "strings"_s },
+        { "com.apple.network"_s, ""_s },
+        { "com.apple.CFNetwork"_s, "ATS"_s },
+        { "com.apple.coremedia"_s, ""_s },
+        { "com.apple.SafariShared"_s, "Translation"_s },
+    } };
+
+    for (auto& log : logs) {
+        auto logHandle = adoptOSObject(os_log_create(log.first, log.second));
+        bool enabled = os_log_type_enabled(logHandle.get(), OS_LOG_TYPE_ERROR);
+        UNUSED_PARAM(enabled);
+    }
+}
+#endif // PLATFORM(IOS_FAMILY)
+
+static Ref<WorkQueue> logQueue()
+{
+    static LazyNeverDestroyed<Ref<WorkQueue>> queue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, [&] {
+        queue.construct(WorkQueue::create("Log Queue"_s, WorkQueue::QOS::Background));
+    });
+    return queue.get();
+}
+
+static void registerLogHook()
+{
+    if (os_trace_get_mode() != OS_TRACE_MODE_DISABLE && os_trace_get_mode() != OS_TRACE_MODE_OFF)
+        return;
+
+    static os_log_hook_t prevHook = nullptr;
+
+#ifdef NDEBUG
+    // OS_LOG_TYPE_DEFAULT implies default, fault, and error.
+    constexpr auto minimumType = OS_LOG_TYPE_DEFAULT;
+#else
+    // OS_LOG_TYPE_DEBUG implies debug, info, default, fault, and error.
+    constexpr auto minimumType = OS_LOG_TYPE_DEBUG;
+#endif
+
+    prevHook = os_log_set_hook(minimumType, ^(os_log_type_t type, os_log_message_t msg) {
+        if (prevHook)
+            prevHook(type, msg);
+
+        if (msg->buffer_sz > 1024)
+            return;
+
+#ifdef NDEBUG
+        // Don't send messages with types we don't want to log in release. Even though OS_LOG_TYPE_DEFAULT is the minimum,
+        // the hook will be called for other subsystems with debug and info types.
+        if (type & (OS_LOG_TYPE_DEBUG | OS_LOG_TYPE_INFO))
+            return;
+#endif
+
+        CString logFormat(msg->format);
+        CString logChannel(msg->subsystem);
+        CString logCategory(msg->category);
+
+        auto qos = Thread::QOS::Background;
+
+        // Send fault logs with high priority. If the WebContent process is terminated, we might not be able to send the log in time.
+        if (type == OS_LOG_TYPE_FAULT) {
+            type = OS_LOG_TYPE_ERROR;
+            qos = Thread::QOS::UserInteractive;
+        }
+
+        Vector<uint8_t> buffer(std::span { msg->buffer, msg->buffer_sz });
+        Vector<uint8_t> privdata(std::span { msg->privdata, msg->privdata_sz });
+
+        logQueue()->dispatchWithQOS([logFormat = WTFMove(logFormat), logChannel = WTFMove(logChannel), logCategory = WTFMove(logCategory), type = type, buffer = WTFMove(buffer), privdata = WTFMove(privdata), qos] {
+            os_log_message_s msg;
+            memset(&msg, 0, sizeof(msg));
+
+            msg.format = logFormat.data();
+            msg.buffer = buffer.data();
+            msg.buffer_sz = buffer.size();
+            msg.privdata = privdata.data();
+            msg.privdata_sz = privdata.size();
+
+            char* messageString = os_log_copy_message_string(&msg);
+            if (!messageString)
+                return;
+            std::span logStringIncludingNullTerminator(messageString, strlen(messageString) + 1);
+
+            auto connectionID = WebProcess::singleton().networkProcessConnectionID();
+            if (connectionID)
+                IPC::Connection::send(connectionID, Messages::NetworkConnectionToWebProcess::LogOnBehalfOfWebContent(logChannel.spanIncludingNullTerminator(), logCategory.spanIncludingNullTerminator(), logStringIncludingNullTerminator, type, getpid()), 0, { }, qos);
+
+            free(messageString);
+        }, qos);
+    });
+
+    WTFSignpostIndirectLoggingEnabled = true;
+}
+#endif
+
 void WebProcess::platformInitializeProcess(const AuxiliaryProcessInitializationParameters& parameters)
 {
+    WebCore::PublicSuffixStore::singleton().enablePublicSuffixCache();
+
+#if ENABLE(LOGD_BLOCKING_IN_WEBCONTENT)
+    if (isLockdownModeEnabled()) {
+#if PLATFORM(IOS_FAMILY)
+        prewarmLogs();
+#endif
+        registerLogHook();
+    }
+#endif // ENABLE(LOGD_BLOCKING_IN_WEBCONTENT)
+
 #if PLATFORM(MAC)
     // Deny the WebContent process access to the WindowServer.
     // This call will not succeed if there are open WindowServer connections at this point.
     auto retval = CGSSetDenyWindowServerConnections(true);
     RELEASE_ASSERT(retval == kCGErrorSuccess);
-    // Make sure that we close any WindowServer connections after checking in with Launch Services.
-    CGSShutdownServerConnections();
 
-    SwitchingGPUClient::setSingleton(WebSwitchingGPUClient::singleton());
     MainThreadSharedTimer::shouldSetupPowerObserver() = false;
 #endif // PLATFORM(MAC)
 
-    if (parameters.extraInitializationData.get("inspector-process"_s) == "1")
+    if (parameters.extraInitializationData.get<HashTranslatorASCIILiteral>("inspector-process"_s) == "1"_s)
         m_processType = ProcessType::Inspector;
-#if ENABLE(SERVICE_WORKER)
-    else if (parameters.extraInitializationData.get("service-worker-process"_s) == "1") {
+    else if (parameters.extraInitializationData.get<HashTranslatorASCIILiteral>("service-worker-process"_s) == "1"_s) {
         m_processType = ProcessType::ServiceWorker;
 #if PLATFORM(MAC)
-        m_registrableDomain = RegistrableDomain::uncheckedCreateFromRegistrableDomainString(parameters.extraInitializationData.get("registrable-domain"_s));
+        m_registrableDomain = RegistrableDomain::uncheckedCreateFromRegistrableDomainString(parameters.extraInitializationData.get<HashTranslatorASCIILiteral>("registrable-domain"_s));
 #endif
     }
-#endif
-    else if (parameters.extraInitializationData.get("is-prewarmed"_s) == "1")
+    else if (parameters.extraInitializationData.get<HashTranslatorASCIILiteral>("is-prewarmed"_s) == "1"_s)
         m_processType = ProcessType::PrewarmedWebContent;
     else
         m_processType = ProcessType::WebContent;
@@ -703,19 +966,9 @@ RetainPtr<CFDataRef> WebProcess::sourceApplicationAuditData() const
 void WebProcess::initializeSandbox(const AuxiliaryProcessInitializationParameters& parameters, SandboxInitializationParameters& sandboxParameters)
 {
 #if PLATFORM(MAC) || PLATFORM(MACCATALYST)
-    // Need to override the default, because service has a different bundle ID.
-    auto webKitBundle = [NSBundle bundleWithIdentifier:@"com.apple.WebKit"];
+    auto webKitBundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
 
-    // We need to initialize the Vorbis decoder before the sandbox gets setup; this is a one off action.
-    WebCore::registerVorbisDecoderIfNeeded();
-
-    sandboxParameters.setOverrideSandboxProfilePath(makeString(String([webKitBundle resourcePath]), "/com.apple.WebProcess.sb"));
-
-    bool enableMessageFilter = false;
-#if HAVE(SANDBOX_MESSAGE_FILTERING)
-    enableMessageFilter = WTF::processHasEntitlement("com.apple.private.security.message-filter");
-#endif
-    sandboxParameters.addParameter("ENABLE_SANDBOX_MESSAGE_FILTER", enableMessageFilter ? "YES" : "NO");
+    sandboxParameters.setOverrideSandboxProfilePath(makeString(String([webKitBundle resourcePath]), "/com.apple.WebProcess.sb"_s));
 
     AuxiliaryProcess::initializeSandbox(parameters, sandboxParameters);
 #endif
@@ -725,26 +978,13 @@ void WebProcess::initializeSandbox(const AuxiliaryProcessInitializationParameter
 
 static NSURL *origin(WebPage& page)
 {
-    auto& mainFrame = page.mainWebFrame();
-
-    URL mainFrameURL = mainFrame.url();
-    Ref<SecurityOrigin> mainFrameOrigin = SecurityOrigin::create(mainFrameURL);
-    String mainFrameOriginString;
-    if (!mainFrameOrigin->isUnique())
-        mainFrameOriginString = mainFrameOrigin->toRawString();
-    else
-        mainFrameOriginString = makeString(mainFrameURL.protocol(), ':'); // toRawString() is not supposed to work with unique origins, and would just return "://".
-
+    auto rootFrameOriginString = page.rootFrameOriginString();
     // +[NSURL URLWithString:] returns nil when its argument is malformed. It's unclear when we would have a malformed URL here,
     // but it happens in practice according to <rdar://problem/14173389>. Leaving an assertion in to catch a reproducible case.
-    ASSERT([NSURL URLWithString:mainFrameOriginString]);
-
-    return [NSURL URLWithString:mainFrameOriginString];
+    ASSERT([NSURL URLWithString:rootFrameOriginString]);
+    return [NSURL URLWithString:rootFrameOriginString];
 }
 
-#endif
-
-#if PLATFORM(MAC)
 static Vector<String> activePagesOrigins(const HashMap<PageIdentifier, RefPtr<WebPage>>& pageMap)
 {
     Vector<String> origins;
@@ -762,19 +1002,26 @@ static Vector<String> activePagesOrigins(const HashMap<PageIdentifier, RefPtr<We
 }
 #endif
 
+void WebProcess::getProcessDisplayName(CompletionHandler<void(String&&)>&& completionHandler)
+{
+#if PLATFORM(MAC)
+    auto auditToken = auditTokenForSelf();
+    if (!auditToken)
+        return completionHandler({ });
+    ensureNetworkProcessConnection().connection().sendWithAsyncReply(Messages::NetworkConnectionToWebProcess::GetProcessDisplayName(*auditToken), WTFMove(completionHandler));
+#else
+    completionHandler({ });
+#endif
+}
+
 void WebProcess::updateActivePages(const String& overrideDisplayName)
 {
 #if PLATFORM(MAC)
 #if ENABLE(SET_WEBCONTENT_PROCESS_INFORMATION_IN_NETWORK_PROCESS)
-    audit_token_t auditToken = { 0 };
-    mach_msg_type_number_t info_size = TASK_AUDIT_TOKEN_COUNT;
-    kern_return_t kr = task_info(mach_task_self(), TASK_AUDIT_TOKEN, reinterpret_cast<integer_t *>(&auditToken), &info_size);
-    if (kr != KERN_SUCCESS) {
-        WEBPROCESS_RELEASE_LOG_ERROR(Process, "updateActivePages: Unable to get audit token for self. Error: %{public}s (%x)", mach_error_string(kr), kr);
+    auto auditToken = auditTokenForSelf();
+    if (!auditToken)
         return;
-    }
-
-    ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::UpdateActivePages(overrideDisplayName, activePagesOrigins(m_pageMap), auditToken), 0);
+    ensureNetworkProcessConnection().connection().send(Messages::NetworkConnectionToWebProcess::UpdateActivePages(overrideDisplayName, activePagesOrigins(m_pageMap), *auditToken), 0);
 #else
     if (!overrideDisplayName) {
         RunLoop::main().dispatch([activeOrigins = activePagesOrigins(m_pageMap)] {
@@ -853,79 +1100,6 @@ void WebProcess::updateCPUMonitorState(CPUMonitorUpdateReason reason)
 #endif
 }
 
-RefPtr<ObjCObjectGraph> WebProcess::transformHandlesToObjects(ObjCObjectGraph& objectGraph)
-{
-    struct Transformer final : ObjCObjectGraph::Transformer {
-        Transformer(WebProcess& webProcess)
-            : m_webProcess(webProcess)
-        {
-        }
-
-        bool shouldTransformObject(id object) const override
-        {
-            if (dynamic_objc_cast<WKBrowsingContextHandle>(object))
-                return true;
-
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            if (dynamic_objc_cast<WKTypeRefWrapper>(object))
-                return true;
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            return false;
-        }
-
-        RetainPtr<id> transformObject(id object) const override
-        {
-            if (auto* handle = dynamic_objc_cast<WKBrowsingContextHandle>(object)) {
-                if (auto* webPage = m_webProcess.webPage(handle._webPageID))
-                    return wrapper(*webPage);
-
-                return [NSNull null];
-            }
-
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            if (auto* wrapper = dynamic_objc_cast<WKTypeRefWrapper>(object))
-                return adoptNS([[WKTypeRefWrapper alloc] initWithObject:toAPI(m_webProcess.transformHandlesToObjects(toImpl(wrapper.object)).get())]);
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            return object;
-        }
-
-        WebProcess& m_webProcess;
-    };
-
-    return ObjCObjectGraph::create(ObjCObjectGraph::transform(objectGraph.rootObject(), Transformer(*this)).get());
-}
-
-RefPtr<ObjCObjectGraph> WebProcess::transformObjectsToHandles(ObjCObjectGraph& objectGraph)
-{
-    struct Transformer final : ObjCObjectGraph::Transformer {
-        bool shouldTransformObject(id object) const override
-        {
-            if (dynamic_objc_cast<WKWebProcessPlugInBrowserContextController>(object))
-                return true;
-
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            if (dynamic_objc_cast<WKTypeRefWrapper>(object))
-                return true;
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            return false;
-        }
-
-        RetainPtr<id> transformObject(id object) const override
-        {
-            if (auto* controller = dynamic_objc_cast<WKWebProcessPlugInBrowserContextController>(object))
-                return controller.handle;
-
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            if (auto* wrapper = dynamic_objc_cast<WKTypeRefWrapper>(object))
-                return adoptNS([[WKTypeRefWrapper alloc] initWithObject:toAPI(transformObjectsToHandles(toImpl(wrapper.object)).get())]);
-            ALLOW_DEPRECATED_DECLARATIONS_END
-            return object;
-        }
-    };
-
-    return ObjCObjectGraph::create(ObjCObjectGraph::transform(objectGraph.rootObject(), Transformer()).get());
-}
-
 void WebProcess::destroyRenderingResources()
 {
 #if !RELEASE_LOG_DISABLED
@@ -938,10 +1112,27 @@ void WebProcess::destroyRenderingResources()
     WEBPROCESS_RELEASE_LOG(ProcessSuspension, "destroyRenderingResources: took %.2fms", (endTime - startTime).milliseconds());
 }
 
-#if PLATFORM(IOS_FAMILY)
-void WebProcess::userInterfaceIdiomDidChange(bool isPhoneOrWatch)
+void WebProcess::releaseSystemMallocMemory()
 {
-    WebKit::setCurrentUserInterfaceIdiomIsPhoneOrWatch(isPhoneOrWatch);
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+#if !RELEASE_LOG_DISABLED
+        MonotonicTime startTime = MonotonicTime::now();
+#endif
+        malloc_zone_pressure_relief(NULL, 0);
+#if !RELEASE_LOG_DISABLED
+        MonotonicTime endTime = MonotonicTime::now();
+#endif
+        WEBPROCESS_RELEASE_LOG(ProcessSuspension, "releaseSystemMallocMemory: took %.2fms", (endTime - startTime).milliseconds());
+    });
+#endif
+}
+
+#if PLATFORM(IOS_FAMILY)
+
+void WebProcess::userInterfaceIdiomDidChange(PAL::UserInterfaceIdiom idiom)
+{
+    PAL::setCurrentUserInterfaceIdiom(idiom);
 }
 
 bool WebProcess::shouldFreezeOnSuspension() const
@@ -974,6 +1165,7 @@ void WebProcess::updateFreezerStatus()
     else
         WEBPROCESS_RELEASE_LOG(ProcessSuspension, "updateFreezerStatus: isFreezable=%d, success", isFreezable);
 }
+
 #endif
 
 #if PLATFORM(MAC)
@@ -987,14 +1179,15 @@ void WebProcess::scrollerStylePreferenceChanged(bool useOverlayScrollbars)
 
     static_cast<ScrollbarThemeMac&>(theme).preferencesChanged();
     
+    for (auto& page : m_pageMap.values()) {
+        if (RefPtr frameView = page->localMainFrameView())
+            frameView->scrollbarStyleDidChange();
+    }
+
     NSScrollerStyle style = useOverlayScrollbars ? NSScrollerStyleOverlay : NSScrollerStyleLegacy;
     [NSScrollerImpPair _updateAllScrollerImpPairsForNewRecommendedScrollerStyle:style];
 }
 
-void WebProcess::displayConfigurationChanged(CGDirectDisplayID displayID, CGDisplayChangeSummaryFlags flags)
-{
-    GraphicsContextGLOpenGLManager::displayWasReconfigured(displayID, flags, nullptr);
-}
 #endif
 
 #if PLATFORM(IOS_FAMILY) && !PLATFORM(MACCATALYST)
@@ -1021,22 +1214,31 @@ void WebProcess::accessibilityPreferencesDidChange(const AccessibilityPreference
 {
 #if HAVE(PER_APP_ACCESSIBILITY_PREFERENCES)
     auto appID = CFSTR("com.apple.WebKit.WebContent");
-    auto reduceMotionEnabled = preferences.reduceMotionEnabled;
+    auto reduceMotionEnabled = fromWebKitAXValueState(preferences.reduceMotionEnabled);
     if (_AXSReduceMotionEnabledApp(appID) != reduceMotionEnabled)
         _AXSSetReduceMotionEnabledApp(reduceMotionEnabled, appID);
-    auto increaseButtonLegibility = preferences.increaseButtonLegibility;
+    auto increaseButtonLegibility = fromWebKitAXValueState(preferences.increaseButtonLegibility);
     if (_AXSIncreaseButtonLegibilityApp(appID) != increaseButtonLegibility)
         _AXSSetIncreaseButtonLegibilityApp(increaseButtonLegibility, appID);
-    auto enhanceTextLegibility = preferences.enhanceTextLegibility;
+    auto enhanceTextLegibility = fromWebKitAXValueState(preferences.enhanceTextLegibility);
     if (_AXSEnhanceTextLegibilityEnabledApp(appID) != enhanceTextLegibility)
         _AXSSetEnhanceTextLegibilityEnabledApp(enhanceTextLegibility, appID);
-    auto darkenSystemColors = preferences.darkenSystemColors;
+    auto darkenSystemColors = fromWebKitAXValueState(preferences.darkenSystemColors);
     if (_AXDarkenSystemColorsApp(appID) != darkenSystemColors)
         _AXSSetDarkenSystemColorsApp(darkenSystemColors, appID);
-    auto invertColorsEnabled = preferences.invertColorsEnabled;
+    auto invertColorsEnabled = fromWebKitAXValueState(preferences.invertColorsEnabled);
     if (_AXSInvertColorsEnabledApp(appID) != invertColorsEnabled)
         _AXSInvertColorsSetEnabledApp(invertColorsEnabled, appID);
 #endif
+    setOverrideEnhanceTextLegibility(preferences.enhanceTextLegibilityOverall);
+    FontCache::invalidateAllFontCaches();
+#if ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
+    m_imageAnimationEnabled = preferences.imageAnimationEnabled;
+#endif
+#if ENABLE(ACCESSIBILITY_NON_BLINKING_CURSOR)
+    m_prefersNonBlinkingCursor = preferences.prefersNonBlinkingCursor;
+#endif
+    updatePageAccessibilitySettings();
 }
 
 #if HAVE(MEDIA_ACCESSIBILITY_FRAMEWORK)
@@ -1051,6 +1253,25 @@ void WebProcess::setMediaAccessibilityPreferences(WebCore::CaptionUserPreference
     }
 }
 #endif
+
+void WebProcess::updatePageAccessibilitySettings()
+{
+#if ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
+    Image::setSystemAllowsAnimationControls(!imageAnimationEnabled());
+#endif
+
+#if ENABLE(ACCESSIBILITY_ANIMATION_CONTROL) || ENABLE(ACCESSIBILITY_NON_BLINKING_CURSOR)
+    for (auto& page : m_pageMap.values()) {
+#if ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
+        page->updateImageAnimationEnabled();
+#endif
+
+#if ENABLE(ACCESSIBILITY_NON_BLINKING_CURSOR)
+        page->updatePrefersNonBlinkingCursor();
+#endif
+    }
+#endif // ENABLE(ACCESSIBILITY_ANIMATION_CONTROL) || ENABLE(ACCESSIBILITY_NON_BLINKING_CURSOR)
+}
 
 #if PLATFORM(MAC) || PLATFORM(MACCATALYST)
 void WebProcess::colorPreferencesDidChange()
@@ -1087,20 +1308,6 @@ static const WTF::String& userHighlightColorPreferenceKey()
     static NeverDestroyed<WTF::String> userHighlightColorPreferenceKey(MAKE_STATIC_STRING_IMPL("AppleHighlightColor"));
     return userHighlightColorPreferenceKey;
 }
-
-static const WTF::String& invertColorsPreferenceKey()
-{
-    static NeverDestroyed<WTF::String> key(MAKE_STATIC_STRING_IMPL("whiteOnBlack"));
-    return key;
-}
-#endif
-
-#if !(HAVE(UPDATE_WEB_ACCESSIBILITY_SETTINGS) && ENABLE(CFPREFS_DIRECT_MODE)) && PLATFORM(IOS_FAMILY)
-static const WTF::String& increaseContrastPreferenceKey()
-{
-    static NeverDestroyed<WTF::String> key(MAKE_STATIC_STRING_IMPL("DarkenSystemColors"));
-    return key;
-}
 #endif
 
 static const WTF::String& captionProfilePreferenceKey()
@@ -1109,7 +1316,7 @@ static const WTF::String& captionProfilePreferenceKey()
     return key;
 }
 
-static void dispatchSimulatedNotificationsForPreferenceChange(const String& key)
+void WebProcess::dispatchSimulatedNotificationsForPreferenceChange(const String& key)
 {
 #if USE(APPKIT)
     // Ordinarily, other parts of the system ensure that this notification is posted after this default is changed.
@@ -1133,18 +1340,9 @@ static void dispatchSimulatedNotificationsForPreferenceChange(const String& key)
     }
 }
 
-static void setPreferenceValue(const String& domain, const String& key, id value)
+void WebProcess::handlePreferenceChange(const String& domain, const String& key, id value)
 {
-    if (domain.isEmpty()) {
-        CFPreferencesSetValue(key.createCFString().get(), (__bridge CFPropertyListRef)value, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-#if ASSERT_ENABLED
-        id valueAfterSetting = [[NSUserDefaults standardUserDefaults] objectForKey:key];
-        ASSERT(valueAfterSetting == value || [valueAfterSetting isEqual:value] || key == "AppleLanguages");
-#endif
-    } else
-        CFPreferencesSetValue(key.createCFString().get(), (__bridge CFPropertyListRef)value, domain.createCFString().get(), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-
-    if (key == "AppleLanguages") {
+    if (key == "AppleLanguages"_s) {
         // We need to set AppleLanguages for the volatile domain, similarly to what we do in XPCServiceMain.mm.
         NSDictionary *existingArguments = [[NSUserDefaults standardUserDefaults] volatileDomainForName:NSArgumentDomain];
         RetainPtr<NSMutableDictionary> newArguments = adoptNS([existingArguments mutableCopy]);
@@ -1154,79 +1352,53 @@ static void setPreferenceValue(const String& domain, const String& key, id value
         WTF::languageDidChange();
     }
 
-    if (domain == String(kAXSAccessibilityPreferenceDomain)) {
-#if HAVE(UPDATE_WEB_ACCESSIBILITY_SETTINGS) && ENABLE(CFPREFS_DIRECT_MODE)
-        if (_AXSUpdateWebAccessibilitySettingsPtr())
-            _AXSUpdateWebAccessibilitySettingsPtr()();
-#elif PLATFORM(IOS_FAMILY)
-        // If the update method is not available, to update the cache inside AccessibilitySupport,
-        // these methods need to be called directly.
-        if (CFEqual(key.createCFString().get(), kAXSReduceMotionPreference) && [value isKindOfClass:[NSNumber class]])
-            _AXSSetReduceMotionEnabled([(NSNumber *)value boolValue]);
-        else if (CFEqual(key.createCFString().get(), increaseContrastPreferenceKey()) && [value isKindOfClass:[NSNumber class]])
-            _AXSSetDarkenSystemColors([(NSNumber *)value boolValue]);
+    AuxiliaryProcess::handlePreferenceChange(domain, key, value);
+}
+
+void WebProcess::accessibilitySettingsDidChange()
+{
+    for (auto& page : m_pageMap.values())
+        page->accessibilitySettingsDidChange();
+}
 #endif
+
+void WebProcess::grantAccessToAssetServices(Vector<WebKit::SandboxExtensionHandle>&& assetServicesHandles)
+{
+    if (m_assetServicesExtensions.size())
+        return;
+    for (auto& handle : assetServicesHandles) {
+        auto extension = SandboxExtension::create(WTFMove(handle));
+        if (!extension)
+            continue;
+        extension->consume();
+        m_assetServicesExtensions.append(extension);
     }
-    
-#if USE(APPKIT)
-    auto cfKey = key.createCFString();
-    if (CFEqual(cfKey.get(), kAXInterfaceReduceMotionKey) || CFEqual(cfKey.get(), kAXInterfaceIncreaseContrastKey) || key == invertColorsPreferenceKey())
-        [NSWorkspace _invalidateAccessibilityDisplayValues];
-#endif
-}
-
-void WebProcess::notifyPreferencesChanged(const String& domain, const String& key, const std::optional<String>& encodedValue)
-{
-    if (!encodedValue) {
-        setPreferenceValue(domain, key, nil);
-        dispatchSimulatedNotificationsForPreferenceChange(key);
-        return;
-    }
-    auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:*encodedValue options:0]);
-    if (!encodedData)
-        return;
-    NSError *err = nil;
-    auto classes = [NSSet setWithArray:@[[NSString class], [NSNumber class], [NSDate class], [NSDictionary class], [NSArray class], [NSData class]]];
-    id object = [NSKeyedUnarchiver unarchivedObjectOfClasses:classes fromData:encodedData.get() error:&err];
-    ASSERT(!err);
-    if (err)
-        return;
-    setPreferenceValue(domain, key, object);
-    dispatchSimulatedNotificationsForPreferenceChange(key);
-}
-
-void WebProcess::unblockPreferenceService(Vector<SandboxExtension::Handle>&& handleArray)
-{
-    SandboxExtension::consumePermanently(handleArray);
-    _CFPrefsSetDirectModeEnabled(false);
-}
-#endif
-
-void WebProcess::grantAccessToAssetServices(WebKit::SandboxExtension::Handle&& mobileAssetV2Handle)
-{
-    if (m_assetServiceV2Extension)
-        return;
-    m_assetServiceV2Extension = SandboxExtension::create(WTFMove(mobileAssetV2Handle));
-    m_assetServiceV2Extension->consume();
 }
 
 void WebProcess::revokeAccessToAssetServices()
 {
-    if (!m_assetServiceV2Extension)
-        return;
-    m_assetServiceV2Extension->revoke();
-    m_assetServiceV2Extension = nullptr;
+    for (auto extension : m_assetServicesExtensions)
+        extension->revoke();
+    m_assetServicesExtensions.clear();
 }
 
-void WebProcess::switchFromStaticFontRegistryToUserFontRegistry(WebKit::SandboxExtension::Handle&& fontMachExtensionHandle)
+void WebProcess::disableURLSchemeCheckInDataDetectors() const
 {
-    SandboxExtension::consumePermanently(fontMachExtensionHandle);
+#if HAVE(DDRESULT_DISABLE_URL_SCHEME_CHECKING)
+    if (PAL::canLoad_DataDetectorsCore_DDResultDisableURLSchemeChecking())
+        PAL::softLinkDataDetectorsCoreDDResultDisableURLSchemeChecking();
+#endif
+}
+
+void WebProcess::switchFromStaticFontRegistryToUserFontRegistry(Vector<WebKit::SandboxExtensionHandle>&& fontMachExtensionHandles)
+{
+    SandboxExtension::consumePermanently(fontMachExtensionHandles);
 #if HAVE(STATIC_FONT_REGISTRY)
     CTFontManagerEnableAllUserFonts(true);
 #endif
 }
 
-void WebProcess::setScreenProperties(const ScreenProperties& properties)
+void WebProcess::setScreenProperties(const WebCore::ScreenProperties& properties)
 {
     WebCore::setScreenProperties(properties);
     for (auto& page : m_pageMap.values())
@@ -1248,20 +1420,26 @@ void WebProcess::updatePageScreenProperties()
     }
 
     bool allPagesAreOnHDRScreens = allOf(m_pageMap.values(), [] (auto& page) {
-        return page && screenSupportsHighDynamicRange(page->mainFrameView());
+        return page && screenSupportsHighDynamicRange(page->localMainFrameView());
     });
     setShouldOverrideScreenSupportsHighDynamicRange(true, allPagesAreOnHDRScreens);
 #endif
 }
 #endif
 
-void WebProcess::unblockServicesRequiredByAccessibility(const Vector<SandboxExtension::Handle>& handleArray)
+void WebProcess::unblockServicesRequiredByAccessibility(Vector<SandboxExtension::Handle>&& handles)
 {
-#if PLATFORM(IOS_FAMILY)
-    bool consumed = SandboxExtension::consumePermanently(handleArray);
-    ASSERT_UNUSED(consumed, consumed);
-#endif
+    auto extensions = WTF::compactMap(WTFMove(handles), [](SandboxExtension::Handle&& handle) -> RefPtr<SandboxExtension> {
+        auto extension = SandboxExtension::create(WTFMove(handle));
+        if (extension)
+            extension->consume();
+        return extension;
+    });
+
     registerWithAccessibility();
+
+    for (auto& extension : extensions)
+        extension->revoke();
 }
 
 void WebProcess::powerSourceDidChange(bool hasAC)
@@ -1282,28 +1460,12 @@ void WebProcess::didWriteToPasteboardAsynchronously(const String& pasteboardName
 void WebProcess::waitForPendingPasteboardWritesToFinish(const String& pasteboardName)
 {
     while (m_pendingPasteboardWriteCounts.contains(pasteboardName)) {
-        if (!parentProcessConnection()->waitForAndDispatchImmediately<Messages::WebProcess::DidWriteToPasteboardAsynchronously>(0, 1_s, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives)) {
+        if (parentProcessConnection()->waitForAndDispatchImmediately<Messages::WebProcess::DidWriteToPasteboardAsynchronously>(0, 1_s, IPC::WaitForOption::InterruptWaitingIfSyncMessageArrives) != IPC::Error::NoError) {
             m_pendingPasteboardWriteCounts.removeAll(pasteboardName);
             break;
         }
     }
 }
-
-#if ENABLE(GPU_PROCESS)
-void WebProcess::platformInitializeGPUProcessConnectionParameters(GPUProcessConnectionParameters& parameters)
-{
-#if HAVE(TASK_IDENTITY_TOKEN)
-    task_id_token_t identityToken;
-    kern_return_t kr = task_create_identity_token(mach_task_self(), &identityToken);
-    if (kr == KERN_SUCCESS)
-        parameters.webProcessIdentityToken = MachSendRight::adopt(identityToken);
-    else
-        RELEASE_LOG_ERROR(Process, "Call to task_create_identity_token() failed: %{private}s (%x)", mach_error_string(kr), kr);
-#endif
-
-    parameters.overrideLanguages = userPreferredLanguagesOverride();
-}
-#endif
 
 #if PLATFORM(MAC)
 void WebProcess::systemWillPowerOn()
@@ -1324,21 +1486,54 @@ void WebProcess::systemDidWake()
 }
 #endif
 
-void WebProcess::consumeAudioComponentRegistrations(const IPC::DataReference& data)
+#if PLATFORM(MAC)
+void WebProcess::openDirectoryCacheInvalidated(SandboxExtension::Handle&& handle, SandboxExtension::Handle&& machBootstrapHandle)
 {
-    using namespace PAL;
+    auto cacheInvalidationHandler = [handle = WTFMove(handle), machBootstrapHandle = WTFMove(machBootstrapHandle)] () mutable {
+        auto bootstrapExtension = SandboxExtension::create(WTFMove(machBootstrapHandle));
 
-    if (!PAL::isAudioToolboxCoreFrameworkAvailable() || !PAL::canLoad_AudioToolboxCore_AudioComponentApplyServerRegistrations())
-        return;
+        if (bootstrapExtension)
+            bootstrapExtension->consume();
 
-    auto registrations = adoptCF(CFDataCreate(kCFAllocatorDefault, data.data(), data.size()));
-    if (!registrations)
-        return;
+        AuxiliaryProcess::openDirectoryCacheInvalidated(WTFMove(handle));
 
-    auto err = AudioComponentApplyServerRegistrations(registrations.get());
-    if (noErr != err)
-        WEBPROCESS_RELEASE_LOG_ERROR(Process, "Could not apply AudioComponent registrations, err(%ld)", static_cast<long>(err));
+        if (bootstrapExtension)
+            bootstrapExtension->revoke();
+    };
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), makeBlockPtr(WTFMove(cacheInvalidationHandler)).get());
 }
+#endif
+
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+void WebProcess::revokeLaunchServicesSandboxExtension()
+{
+    if (m_launchServicesExtension) {
+        m_launchServicesExtension->revoke();
+        m_launchServicesExtension = nullptr;
+    }
+}
+#endif
+
+#if ENABLE(NOTIFY_BLOCKING)
+void WebProcess::postNotification(const String& message, std::optional<uint64_t> state)
+{
+    if (state) {
+        int token = 0;
+        if (notify_register_check(message.ascii().data(), &token) == NOTIFY_STATUS_OK) {
+            notify_set_state(token, *state);
+            notify_cancel(token);
+        }
+    }
+    notify_post(message.ascii().data());
+}
+
+void WebProcess::postObserverNotification(const String& message)
+{
+    [[NSNotificationCenter defaultCenter] postNotificationName:message object:nil];
+}
+
+#endif
 
 } // namespace WebKit
 

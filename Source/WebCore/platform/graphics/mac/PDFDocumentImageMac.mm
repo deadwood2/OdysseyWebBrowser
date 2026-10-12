@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -48,7 +48,7 @@ namespace WebCore {
 
 void PDFDocumentImage::createPDFDocument()
 {
-    m_document = adoptNS([allocPDFDocumentInstance() initWithData:data()->createNSData().get()]);
+    m_document = adoptNS([allocPDFDocumentInstance() initWithData:data()->makeContiguous()->createNSData().get()]);
 }
 
 void PDFDocumentImage::computeBoundsForCurrentPage()
@@ -74,9 +74,9 @@ void PDFDocumentImage::drawPDFPage(GraphicsContext& context)
     bool allowsSubpixelQuantization = CGContextGetAllowsFontSubpixelQuantization(context.platformContext());
     bool allowsSubpixelPositioning = CGContextGetAllowsFontSubpixelPositioning(context.platformContext());
 
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [[m_document pageAtIndex:0] drawWithBox:kPDFDisplayBoxCropBox];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     CGContextSetAllowsFontSmoothing(context.platformContext(), allowsSmoothing);
     CGContextSetAllowsFontSubpixelQuantization(context.platformContext(), allowsSubpixelQuantization);

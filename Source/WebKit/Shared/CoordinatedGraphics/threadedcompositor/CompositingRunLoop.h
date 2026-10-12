@@ -29,21 +29,23 @@
 
 #include <wtf/Atomics.h>
 #include <wtf/Condition.h>
-#include <wtf/FastMalloc.h>
 #include <wtf/Function.h>
 #include <wtf/Lock.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
 class CompositingRunLoop {
     WTF_MAKE_NONCOPYABLE(CompositingRunLoop);
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(CompositingRunLoop);
 public:
     CompositingRunLoop(Function<void ()>&&);
     ~CompositingRunLoop();
+
+    bool isCurrent() const;
 
     void performTask(Function<void ()>&&);
     void performTaskSync(Function<void ()>&&);
@@ -54,10 +56,11 @@ public:
     Lock& stateLock() { return m_state.lock; }
 
     void scheduleUpdate();
-    void scheduleUpdate(LockHolder&);
     void stopUpdates();
 
-    void updateCompleted(LockHolder&);
+    void updateCompleted(Locker<Lock>&);
+
+    RunLoop& runLoop() const { return m_runLoop.get(); }
 
 private:
     enum class UpdateState {
@@ -66,10 +69,11 @@ private:
         InProgress,
     };
 
+    void scheduleUpdate(Locker<Lock>&);
     void updateTimerFired();
 
-    RunLoop* m_runLoop { nullptr };
-    RunLoop::Timer<CompositingRunLoop> m_updateTimer;
+    Ref<RunLoop> m_runLoop;
+    RunLoop::Timer m_updateTimer;
     Function<void ()> m_updateFunction;
     Lock m_dispatchSyncConditionLock;
     Condition m_dispatchSyncCondition;

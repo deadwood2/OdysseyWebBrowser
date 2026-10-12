@@ -28,26 +28,25 @@
 #include "config.h"
 #include "EventContext.h"
 
-#include "DOMWindow.h"
 #include "Document.h"
 #include "EventNames.h"
 #include "FocusEvent.h"
+#include "HTMLFieldSetElement.h"
 #include "HTMLFormElement.h"
+#include "LocalDOMWindow.h"
 #include "MouseEvent.h"
 #include "TouchEvent.h"
 
 namespace WebCore {
 
-EventContext::~EventContext() = default;
-
 void EventContext::handleLocalEvents(Event& event, EventInvokePhase phase) const
 {
-    event.setTarget(m_target.get());
-    event.setCurrentTarget(m_currentTarget.get(), m_currentTargetIsInShadowTree);
+    event.setTarget(m_target.copyRef());
+    event.setCurrentTarget(m_currentTarget.copyRef(), m_currentTargetIsInShadowTree);
 
-    if (m_relatedTarget) {
-        ASSERT(m_type == Type::MouseOrFocus);
-        event.setRelatedTarget(m_relatedTarget.get());
+    if (m_relatedTargetIsSet) {
+        ASSERT(!m_relatedTarget || isMouseOrFocusEventContext() || isWindowContext());
+        event.setRelatedTarget(m_relatedTarget.copyRef());
     }
 
 #if ENABLE(TOUCH_EVENTS)
@@ -72,13 +71,14 @@ void EventContext::handleLocalEvents(Event& event, EventInvokePhase phase) const
 #endif
 
     if (!m_node || UNLIKELY(m_type == Type::Window)) {
-        m_currentTarget->fireEventListeners(event, phase);
+        protectedCurrentTarget()->fireEventListeners(event, phase);
         return;
     }
 
     if (UNLIKELY(m_contextNodeIsFormElement)) {
         ASSERT(is<HTMLFormElement>(*m_node));
-        if ((event.type() == eventNames().submitEvent || event.type() == eventNames().resetEvent)
+        auto& eventNames = WebCore::eventNames();
+        if ((event.type() == eventNames.submitEvent || event.type() == eventNames.resetEvent)
             && event.eventPhase() != Event::CAPTURING_PHASE && event.target() != m_node && is<Node>(event.target())) {
             event.stopPropagation();
             return;
@@ -88,11 +88,13 @@ void EventContext::handleLocalEvents(Event& event, EventInvokePhase phase) const
     if (!m_node->hasEventTargetData())
         return;
 
-    // FIXME: Should we deliver wheel events to disabled form controls or not?
-    if (event.isTrusted() && is<Element>(m_node) && downcast<Element>(*m_node).isDisabledFormControl() && event.isMouseEvent() && !event.isWheelEvent())
-        return;
+    if (event.isTrusted() && is<MouseEvent>(event) && !event.isWheelEvent() && !m_node->document().settings().sendMouseEventsToDisabledFormControlsEnabled()) {
+        auto* element = dynamicDowncast<Element>(m_node.get());
+        if (element && element->isDisabledFormControl())
+            return;
+    }
 
-    m_node->fireEventListeners(event, phase);
+    protectedNode()->fireEventListeners(event, phase);
 }
 
 #if ENABLE(TOUCH_EVENTS)
@@ -111,7 +113,8 @@ void EventContext::initializeTouchLists()
 bool EventContext::isUnreachableNode(EventTarget* target) const
 {
     // FIXME: Checks also for SVG elements.
-    return is<Node>(target) && !downcast<Node>(*target).isSVGElement() && m_node->isClosedShadowHidden(downcast<Node>(*target));
+    auto* node = dynamicDowncast<Node>(target);
+    return node && !node->isSVGElement() && m_node && m_node->isClosedShadowHidden(*node);
 }
 
 #endif

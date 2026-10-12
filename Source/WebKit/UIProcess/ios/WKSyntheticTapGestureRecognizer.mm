@@ -28,19 +28,19 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#import "UIKitUtilities.h"
+#import "WKTouchEventsGestureRecognizer.h"
 #import <UIKit/UIGestureRecognizerSubclass.h>
 #import <wtf/RetainPtr.h>
-#import <wtf/WeakObjCPtr.h>
 
 @implementation WKSyntheticTapGestureRecognizer {
-    id _gestureIdentifiedTarget;
+    __weak id _gestureIdentifiedTarget;
     SEL _gestureIdentifiedAction;
-    id _gestureFailedTarget;
+    __weak id _gestureFailedTarget;
     SEL _gestureFailedAction;
-    id _resetTarget;
+    __weak id _resetTarget;
     SEL _resetAction;
     RetainPtr<NSNumber> _lastActiveTouchIdentifier;
-    WeakObjCPtr<UIScrollView> _lastTouchedScrollView;
 }
 
 - (void)setGestureIdentifiedTarget:(id)target action:(SEL)action
@@ -73,30 +73,18 @@
 - (void)reset
 {
     [super reset];
+
     [_resetTarget performSelector:_resetAction withObject:self];
     _lastActiveTouchIdentifier = nil;
-    _lastTouchedScrollView = nil;
-}
-
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
-{
-    [super touchesBegan:touches withEvent:event];
-
-    for (UITouch *touch in touches) {
-        if ([touch.view isKindOfClass:UIScrollView.class]) {
-            _lastTouchedScrollView = (UIScrollView *)touch.view;
-            break;
-        }
-    }
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event
 {
     [super touchesEnded:touches withEvent:event];
-    if (!_supportingWebTouchEventsGestureRecognizer)
+    if (!_supportingTouchEventsGestureRecognizer)
         return;
 
-    NSMapTable<NSNumber *, UITouch *> *activeTouches = [_supportingWebTouchEventsGestureRecognizer activeTouchesByIdentifier];
+    NSMapTable<NSNumber *, UITouch *> *activeTouches = [_supportingTouchEventsGestureRecognizer activeTouchesByIdentifier];
     for (NSNumber *touchIdentifier in activeTouches) {
         UITouch *touch = [activeTouches objectForKey:touchIdentifier];
         if ([touch.gestureRecognizers containsObject:self]) {
@@ -104,11 +92,6 @@
             break;
         }
     }
-}
-
-- (UIScrollView *)lastTouchedScrollView
-{
-    return _lastTouchedScrollView.get().get();
 }
 
 - (NSNumber*)lastActiveTouchIdentifier

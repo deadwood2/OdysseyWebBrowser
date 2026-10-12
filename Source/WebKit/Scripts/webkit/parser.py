@@ -43,19 +43,43 @@ def bracket_if_needed(condition):
 
 
 def parse(file):
+    receiver_enabled_by = None
     receiver_attributes = None
+    shared_preferences_needs_connection = False
     destination = None
     messages = []
     conditions = []
     master_condition = None
     superclass = []
+    namespace = "WebKit"
     for line in file:
         line = line.strip()
-        match = re.search(r'messages -> (?P<destination>[A-Za-z_0-9]+) \s*(?::\s*(?P<superclass>.*?) \s*)?(?:(?P<attributes>.*?)\s+)?{', line)
+        match = re.search(r'\s*\[\s*(?P<extended_attributes>.*?)\s*\]\s*', line)
+        if match and not destination:
+            extended_attributes = re.split(r'\s*,\s*', match.group('extended_attributes'))
+            for attribute in extended_attributes:
+                match = re.match(r'(?P<name>\w+)\s*=\s*(?P<value>.+)', attribute)
+                if match:
+                    if match.group('name') == 'EnabledBy':
+                        receiver_enabled_by = re.split(r'\s*&&\s*', match.group('value'))
+                        continue
+                elif attribute == 'SharedPreferencesNeedsConnection':
+                    shared_preferences_needs_connection = True
+                    continue
+                raise Exception("ERROR: Unknown extended attribute: '%s'" % attribute)
+            continue
+        match = re.search(r'messages -> (?P<namespace>[A-Za-z]+)::(?P<destination>[A-Za-z_0-9]+) \s*(?::\s*(?P<superclass>.*?) \s*)?(?:(?P<attributes>.*?)\s+)?{', line)
+        if not match:
+            match = re.search(r'messages -> (?P<destination>[A-Za-z_0-9]+) \s*(?::\s*(?P<superclass>.*?) \s*)?(?:(?P<attributes>.*?)\s+)?{', line)
+        else:
+            if match.group('namespace'):
+                namespace = match.group('namespace')
         if match:
             receiver_attributes = parse_attributes_string(match.group('attributes'))
             if match.group('superclass'):
                 superclass = match.group('superclass')
+                if receiver_enabled_by:
+                    raise Exception("ERROR: EnabledBy is not supported for a message receiver with a superclass")
             if conditions:
                 master_condition = conditions
                 conditions = []
@@ -69,15 +93,25 @@ def parse(file):
             elif line.startswith('#else') or line.startswith('#elif'):
                 raise Exception("ERROR: '%s' is not supported in the *.in files" % line)
             continue
-        match = re.search(r'([A-Za-z_0-9]+)\((.*?)\)(?:(?:\s+->\s+)\((.*?)\))?(?:\s+(.*))?', line)
+        match = re.search(r'(?:\[(.*)\] (?:.* )?)?([A-Za-z_0-9]+)\((.*?)\)(?:(?:\s+->\s+)\((.*?)\))?(?:\s+(.*))?', line)
         if match:
-            name, parameters_string, reply_parameters_string, attributes_string = match.groups()
+            options_string, name, parameters_string, reply_parameters_string, attributes_string = match.groups()
             if parameters_string:
                 parameters = parse_parameters_string(parameters_string)
                 for parameter in parameters:
                     parameter.condition = combine_condition(conditions)
             else:
                 parameters = []
+
+            enabled_if = None
+            enabled_by = None
+            if options_string:
+                match = re.search(r"(?:(?:, |^)+(?:EnabledIf='(.*)'))(?:, |$)?", options_string)
+                if match:
+                    enabled_if = match.groups()[0]
+                match = re.search(r"(?:(?:, |^)+(?:EnabledBy=([\w \&]+)))(?:, |$)?", options_string)
+                if match:
+                    enabled_by = re.split(r'\s*&&\s*', match.groups()[0])
 
             attributes = parse_attributes_string(attributes_string)
 
@@ -90,8 +124,8 @@ def parse(file):
             else:
                 reply_parameters = None
 
-            messages.append(model.Message(name, parameters, reply_parameters, attributes, combine_condition(conditions)))
-    return model.MessageReceiver(destination, superclass, receiver_attributes, messages, combine_condition(master_condition))
+            messages.append(model.Message(name, parameters, reply_parameters, attributes, combine_condition(conditions), enabled_if, enabled_by))
+    return model.MessageReceiver(destination, superclass, receiver_attributes, receiver_enabled_by, shared_preferences_needs_connection, messages, combine_condition(master_condition), namespace)
 
 
 def parse_attributes_string(attributes_string):
@@ -137,6 +171,9 @@ def parse_parameters_string(parameters_string):
         elif split[0].startswith('enum:'):
             parameter_kind = split[0][:split[0].find(' ')]
             split[0] = split[0][split[0].find(' ') + 1:]
+
+        if len(split) != 2:
+            raise Exception("ERROR: Argument '%s' in parameter list '%s' is missing either type or name" % (type_and_name_string, parameter_string))
 
         parameter_type = split[0]
         parameter_name = split[1]

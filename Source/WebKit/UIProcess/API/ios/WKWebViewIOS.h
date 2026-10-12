@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,18 +23,22 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#import "WKBaseScrollView.h"
 #import "WKWebViewInternal.h"
 #import "_WKTapHandlingResult.h"
-
-@class UIScrollEvent;
+#import <wtf/spi/cocoa/NSObjCRuntimeSPI.h>
 
 #if PLATFORM(IOS_FAMILY)
+
+#import "UIKitSPI.h"
+
+@class WKBEScrollViewScrollUpdate;
 
 namespace WebKit {
 enum class TapHandlingResult : uint8_t;
 }
 
-@interface WKWebView (WKViewInternalIOS)
+@interface WKWebView (WKViewInternalIOS) <WKBaseScrollViewDelegate>
 
 - (void)_setupScrollAndContentViews;
 - (void)_registerForNotifications;
@@ -48,13 +52,19 @@ enum class TapHandlingResult : uint8_t;
 - (void)_contentSizeCategoryDidChange:(NSNotification *)notification;
 - (void)_accessibilitySettingsDidChange:(NSNotification *)notification;
 
-- (void)_frameOrBoundsChanged;
+- (void)_frameOrBoundsMayHaveChanged;
+- (BOOL)_shouldDeferGeometryUpdates;
+#if HAVE(UIKIT_RESIZABLE_WINDOWS)
+- (void)_invalidateResizeAssertions;
+#endif
+
 - (BOOL)usesStandardContentView;
 
 - (void)_processDidExit;
 - (void)_processWillSwap;
 - (void)_didRelaunchProcess;
 
+- (WKScrollView *)_wkScrollView;
 - (UIView *)_currentContentView;
 
 - (void)_didCommitLoadForMainFrame;
@@ -67,7 +77,7 @@ enum class TapHandlingResult : uint8_t;
 
 - (RefPtr<WebKit::ViewSnapshot>)_takeViewSnapshot;
 
-- (void)_scrollToContentScrollPosition:(WebCore::FloatPoint)scrollPosition scrollOrigin:(WebCore::IntPoint)scrollOrigin;
+- (void)_scrollToContentScrollPosition:(WebCore::FloatPoint)scrollPosition scrollOrigin:(WebCore::IntPoint)scrollOrigin animated:(BOOL)animated;
 - (BOOL)_scrollToRect:(WebCore::FloatRect)targetRect origin:(WebCore::FloatPoint)origin minimumScrollDistance:(float)minimumScrollDistance;
 
 - (double)_initialScaleFactor;
@@ -78,10 +88,14 @@ enum class TapHandlingResult : uint8_t;
 - (BOOL)_zoomToRect:(WebCore::FloatRect)targetRect withOrigin:(WebCore::FloatPoint)origin fitEntireRect:(BOOL)fitEntireRect minimumScale:(double)minimumScale maximumScale:(double)maximumScale minimumScrollDistance:(float)minimumScrollDistance;
 - (void)_zoomOutWithOrigin:(WebCore::FloatPoint)origin animated:(BOOL)animated;
 - (void)_zoomToInitialScaleWithOrigin:(WebCore::FloatPoint)origin animated:(BOOL)animated;
-- (void)_didFinishScrolling;
+- (void)_didFinishScrolling:(UIScrollView *)scrollView;
 
 - (void)_setHasCustomContentView:(BOOL)hasCustomContentView loadedMIMEType:(const WTF::String&)mimeType;
 - (void)_didFinishLoadingDataForCustomContentProviderWithSuggestedFilename:(const WTF::String&)suggestedFilename data:(NSData *)data;
+
+#if ENABLE(OVERLAY_REGIONS_IN_EVENT_REGION)
+- (void)_updateOverlayRegionsForCustomContentView;
+#endif
 
 - (void)_willInvokeUIScrollViewDelegateCallback;
 - (void)_didInvokeUIScrollViewDelegateCallback;
@@ -99,7 +113,9 @@ enum class TapHandlingResult : uint8_t;
 - (BOOL)_isShowingVideoPictureInPicture;
 - (BOOL)_mayAutomaticallyShowVideoPictureInPicture;
 
+- (void)_resetCachedScrollViewBackgroundColor;
 - (void)_updateScrollViewBackground;
+- (void)_updateScrollViewIndicatorStyle;
 
 - (void)_videoControlsManagerDidChange;
 
@@ -109,40 +125,76 @@ enum class TapHandlingResult : uint8_t;
 
 - (void)_showPasswordViewWithDocumentName:(NSString *)documentName passwordHandler:(void (^)(NSString *))passwordHandler;
 - (void)_hidePasswordView;
+- (void)_didRequestPasswordForDocument;
+- (void)_didStopRequestingPasswordForDocument;
 
 - (void)_addShortcut:(id)sender;
 - (void)_define:(id)sender;
 - (void)_lookup:(id)sender;
 - (void)_share:(id)sender;
-- (void)_showTextStyleOptions:(id)sender;
 - (void)_promptForReplace:(id)sender;
 - (void)_transliterateChinese:(id)sender;
 - (void)replace:(id)sender;
 - (void)_translate:(id)sender;
+
+#if HAVE(UIFINDINTERACTION)
+- (void)find:(id)sender;
+- (void)findNext:(id)sender;
+- (void)findPrevious:(id)sender;
+- (void)findAndReplace:(id)sender;
+- (void)useSelectionForFind:(id)sender;
+- (void)_findSelected:(id)sender;
+
+- (id<UITextSearching>)_searchableObject;
+
+- (void)_showFindOverlay;
+- (void)_hideFindOverlay;
+#endif
 
 - (void)_nextAccessoryTab:(id)sender;
 - (void)_previousAccessoryTab:(id)sender;
 
 - (void)_incrementFocusPreservationCount;
 - (void)_decrementFocusPreservationCount;
-- (void)_resetFocusPreservationCount;
+- (NSUInteger)_resetFocusPreservationCount;
 
 - (void)_setOpaqueInternal:(BOOL)opaque;
 - (NSString *)_contentSizeCategory;
-- (void)_dispatchSetDeviceOrientation:(int32_t)deviceOrientation;
+- (void)_dispatchSetDeviceOrientation:(WebCore::IntDegrees)deviceOrientation;
 - (WebCore::FloatSize)activeViewLayoutSize:(const CGRect&)bounds;
 - (void)_updateScrollViewInsetAdjustmentBehavior;
+- (void)_resetScrollViewInsetAdjustmentBehavior;
+
+- (void)_beginAnimatedFullScreenExit;
+- (void)_endAnimatedFullScreenExit;
 
 - (BOOL)_effectiveAppearanceIsDark;
 - (BOOL)_effectiveUserInterfaceLevelIsElevated;
 
-#if HAVE(UISCROLLVIEW_ASYNCHRONOUS_SCROLL_EVENT_HANDLING)
-- (void)_scrollView:(UIScrollView *)scrollView asynchronouslyHandleScrollEvent:(UIScrollEvent *)scrollEvent completion:(void (^)(BOOL handled))completion;
+- (_UIDataOwner)_effectiveDataOwner:(_UIDataOwner)clientSuppliedDataOwner;
+
+#if HAVE(UI_WINDOW_SCENE_LIVE_RESIZE)
+- (void)_beginLiveResize;
+- (void)_endLiveResize;
 #endif
+
+#if ENABLE(LOCKDOWN_MODE_API)
++ (void)_clearLockdownModeWarningNeeded;
+#endif
+
+#if HAVE(UISCROLLVIEW_ASYNCHRONOUS_SCROLL_EVENT_HANDLING)
+- (void)scrollView:(WKBaseScrollView *)scrollView handleScrollUpdate:(WKBEScrollViewScrollUpdate *)update completion:(void (^)(BOOL handled))completion;
+#endif
+
+- (UIColor *)_insertionPointColor;
+
+- (BOOL)_tryToHandleKeyEventInCustomContentView:(UIPressesEvent *)event;
 
 @property (nonatomic, readonly) WKPasswordView *_passwordView;
 @property (nonatomic, readonly) WKWebViewContentProviderRegistry *_contentProviderRegistry;
 @property (nonatomic, readonly) WKSelectionGranularity _selectionGranularity;
+
+@property (nonatomic, readonly) BOOL _shouldAvoidSecurityHeuristicScoreUpdates;
 
 @property (nonatomic, readonly) BOOL _isBackground;
 @property (nonatomic, readonly) BOOL _allowsDoubleTapGestures;
@@ -150,7 +202,27 @@ enum class TapHandlingResult : uint8_t;
 @property (nonatomic, readonly) UIEdgeInsets _computedObscuredInset;
 @property (nonatomic, readonly) UIEdgeInsets _computedUnobscuredSafeAreaInset;
 @property (nonatomic, readonly, getter=_isRetainingActiveFocusedState) BOOL _retainingActiveFocusedState;
-@property (nonatomic, readonly) int32_t _deviceOrientation;
+@property (nonatomic, readonly) WebCore::IntDegrees _deviceOrientationIgnoringOverrides;
+
+#if HAVE(UIKIT_RESIZABLE_WINDOWS)
+@property (nonatomic, readonly) BOOL _isWindowResizingEnabled;
+#endif
+
+@property (nonatomic, readonly) WKVelocityTrackingScrollView *_scrollViewInternal;
+@property (nonatomic, readonly) CGRect _contentRectForUserInteraction;
+
+@property (nonatomic, readonly) BOOL _haveSetUnobscuredSafeAreaInsets;
+@property (nonatomic, readonly) BOOL _hasOverriddenLayoutParameters;
+- (void)_resetContentOffset;
+- (void)_resetUnobscuredSafeAreaInsets;
+- (void)_resetObscuredInsets;
+
+- (void)_overrideZoomScaleParametersWithMinimumZoomScale:(CGFloat)minimumZoomScale maximumZoomScale:(CGFloat)maximumZoomScale allowUserScaling:(BOOL)allowUserScaling;
+- (void)_clearOverrideZoomScaleParameters;
+
+#if ENABLE(PAGE_LOAD_OBSERVER)
+- (void)_updatePageLoadObserverState NS_DIRECT;
+#endif
 
 @end
 

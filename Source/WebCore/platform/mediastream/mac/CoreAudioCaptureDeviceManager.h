@@ -27,7 +27,6 @@
 
 #if ENABLE(MEDIA_STREAM) && PLATFORM(MAC)
 
-#include "CaptureDevice.h"
 #include "CaptureDeviceManager.h"
 #include <CoreAudio/CoreAudio.h>
 #include <wtf/text/WTFString.h>
@@ -39,7 +38,7 @@ class CoreAudioCaptureDevice;
 class CoreAudioCaptureDeviceManager final : public CaptureDeviceManager {
     friend class NeverDestroyed<CoreAudioCaptureDeviceManager>;
 public:
-    static CoreAudioCaptureDeviceManager& singleton();
+    WEBCORE_EXPORT static CoreAudioCaptureDeviceManager& singleton();
 
     const Vector<CaptureDevice>& captureDevices() final;
     std::optional<CaptureDevice> captureDeviceWithPersistentID(CaptureDevice::DeviceType, const String&);
@@ -47,10 +46,12 @@ public:
     std::optional<CoreAudioCaptureDevice> coreAudioDeviceWithUID(const String&);
     const Vector<CaptureDevice>& speakerDevices() const { return m_speakerDevices; }
 
+    void setFilterTapEnabledDevices(bool doFiltering) { m_filterTapEnabledDevices = doFiltering; }
+
 private:
     CoreAudioCaptureDeviceManager() = default;
-    ~CoreAudioCaptureDeviceManager() = default;
-    
+    virtual ~CoreAudioCaptureDeviceManager();
+
     Vector<CoreAudioCaptureDevice>& coreAudioCaptureDevices();
 
     enum class NotifyIfDevicesHaveChanged { Notify, DoNotNotify };
@@ -61,6 +62,7 @@ private:
     Vector<CaptureDevice> m_speakerDevices;
     Vector<CoreAudioCaptureDevice> m_coreAudioCaptureDevices;
     bool m_wasRefreshAudioCaptureDevicesScheduled { false };
+    bool m_filterTapEnabledDevices { false };
 };
 
 } // namespace WebCore

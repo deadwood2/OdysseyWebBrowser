@@ -33,7 +33,7 @@
 #include <wtf/Forward.h>
 
 namespace WebCore {
-    
+
 class AXObjectCache;
 class Element;
 class HTMLLabelElement;
@@ -46,51 +46,49 @@ enum MouseButtonListenerResultFilter {
 
 class AccessibilityNodeObject : public AccessibilityObject {
 public:
-    static Ref<AccessibilityNodeObject> create(Node*);
+    static Ref<AccessibilityNodeObject> create(Node&);
     virtual ~AccessibilityNodeObject();
 
     void init() override;
 
     bool canvasHasFallbackContent() const override;
 
+    bool isBusy() const override;
     bool isControl() const override;
+    bool isRadioInput() const override;
     bool isFieldset() const override;
-    bool isGroup() const override;
-    bool isHeading() const override;
     bool isHovered() const override;
-    bool isImageButton() const override;
     bool isInputImage() const override;
     bool isLink() const override;
-    bool isMenu() const override;
-    bool isMenuBar() const override;
-    bool isMenuButton() const override;
-    bool isMenuItem() const override;
-    bool isMenuRelated() const override;
     bool isMultiSelectable() const override;
-    virtual bool isNativeCheckboxOrRadio() const;
-    bool isNativeImage() const override;
+    bool isNativeImage() const;
     bool isNativeTextControl() const override;
-    bool isPasswordField() const override;
-    AccessibilityObject* passwordFieldOrContainingPasswordField() override;
-    bool isProgressIndicator() const override;
+    bool isSecureField() const override;
     bool isSearchField() const override;
-    bool isSlider() const override;
 
     bool isChecked() const override;
     bool isEnabled() const override;
     bool isIndeterminate() const override;
-    bool isPressed() const override;
+    bool isPressed() const final;
     bool isRequired() const override;
+    bool supportsARIAOwns() const final;
     bool supportsRequiredAttribute() const override;
+
+    bool supportsDropping() const override;
+    bool supportsDragging() const override;
+    bool isGrabbed() override;
+    Vector<String> determineDropEffects() const override;
 
     bool canSetSelectedAttribute() const override;
 
-    void setNode(Node*);
-    Node* node() const override { return m_node; }
+    Node* node() const override { return m_node.get(); }
     Document* document() const override;
+    LocalFrameView* documentFrameView() const override;
 
+    void setFocused(bool) override;
+    bool isFocused() const override;
     bool canSetFocusAttribute() const override;
-    int headingLevel() const override;
+    unsigned headingLevel() const override;
 
     bool canSetValueAttribute() const override;
 
@@ -100,26 +98,34 @@ public:
     float minValueForRange() const override;
     float stepValueForRange() const override;
 
-    AXCoreObject* selectedRadioButton() override;
-    AXCoreObject* selectedTabItem() override;
+    AccessibilityOrientation orientation() const override;
+
     AccessibilityButtonState checkboxOrRadioValue() const override;
 
+    URL url() const override;
     unsigned hierarchicalLevel() const override;
-    String textUnderElement(AccessibilityTextUnderElementMode = AccessibilityTextUnderElementMode()) const override;
+    String textUnderElement(TextUnderElementMode = TextUnderElementMode()) const override;
     String accessibilityDescriptionForChildren() const;
-    String accessibilityDescription() const override;
+    String description() const override;
     String helpText() const override;
     String title() const override;
     String text() const override;
+    void alternativeText(Vector<AccessibilityText>&) const;
+    void helpText(Vector<AccessibilityText>&) const;
     String stringValue() const override;
+    WallTime dateTimeValue() const final;
     SRGBA<uint8_t> colorValue() const override;
     String ariaLabeledByAttribute() const override;
+    bool hasAccNameAttribute() const;
     bool hasAttributesRequiredForInclusion() const final;
     void setIsExpanded(bool) override;
 
     Element* actionElement() const override;
     Element* mouseButtonListener(MouseButtonListenerResultFilter = ExcludeBodyElement) const;
     Element* anchorElement() const override;
+    RefPtr<Element> popoverTargetElement() const final;
+    AXCoreObject* internalLinkElement() const final;
+    AccessibilityChildrenVector radioButtonGroup() const final;
     AccessibilityObject* menuForMenuButton() const;
    
     virtual void changeValueByPercent(float percentChange);
@@ -131,44 +137,75 @@ public:
     AccessibilityObject* parentObject() const override;
     AccessibilityObject* parentObjectIfExists() const override;
 
-    void childrenChanged() override;
-    void updateAccessibilityRole() override;
+    bool matchesTextAreaRole() const;
 
     void increment() override;
     void decrement() override;
+    bool toggleDetailsAncestor() final;
 
     LayoutRect elementRect() const override;
+
+#if ENABLE(AX_THREAD_TEXT_APIS)
+    bool shouldEmitNewlinesBeforeAndAfterNode() const final;
+#endif
 
 protected:
     explicit AccessibilityNodeObject(Node*);
     void detachRemoteParts(AccessibilityDetachmentType) override;
 
     AccessibilityRole m_ariaRole { AccessibilityRole::Unknown };
-    mutable AccessibilityRole m_roleForMSAA { AccessibilityRole::Unknown };
 #ifndef NDEBUG
     bool m_initialized { false };
 #endif
 
     bool isDetached() const override { return !m_node; }
 
-    virtual AccessibilityRole determineAccessibilityRole();
-    void addChildren() override;
-
-    bool canHaveChildren() const override;
-    AccessibilityRole ariaRoleAttribute() const override;
+    AccessibilityRole determineAccessibilityRole() override;
+    enum class TreatStyleFormatGroupAsInline : bool { No, Yes };
+    AccessibilityRole determineAccessibilityRoleFromNode(TreatStyleFormatGroupAsInline = TreatStyleFormatGroupAsInline::No) const;
+    AccessibilityRole roleFromInputElement(const HTMLInputElement&) const;
+    AccessibilityRole ariaRoleAttribute() const override { return m_ariaRole; }
     virtual AccessibilityRole determineAriaRoleAttribute() const;
     AccessibilityRole remapAriaRoleDueToParent(AccessibilityRole) const;
+
+    bool computeAccessibilityIsIgnored() const override;
+    void addChildren() override;
+    void clearChildren() override;
+    void updateChildrenIfNecessary() override;
+    bool canHaveChildren() const override;
+    AccessibilityChildrenVector visibleChildren() override;
     bool isDescendantOfBarrenParent() const override;
-    void alterSliderValue(bool increase);
-    void changeValueByStep(bool increase);
+    void updateOwnedChildren();
+    AccessibilityObject* ownerParentObject() const;
+    
+    enum class StepAction : bool { Decrement, Increment };
+    void alterRangeValue(StepAction);
+    void changeValueByStep(StepAction);
     // This returns true if it's focusable but it's not content editable and it's not a control or ARIA control.
     bool isGenericFocusableElement() const;
+
+    VisiblePositionRange visiblePositionRange() const final;
+    VisiblePositionRange selectedVisiblePositionRange() const final;
+    VisiblePositionRange visiblePositionRangeForLine(unsigned) const final;
+    VisiblePosition visiblePositionForIndex(int) const override;
+    int indexForVisiblePosition(const VisiblePosition&) const override;
+
+    bool elementAttributeValue(const QualifiedName&) const;
+
+    const String liveRegionStatus() const override;
+    const String liveRegionRelevant() const override;
+    bool liveRegionAtomic() const override;
+
+    String accessKey() const final;
     bool isLabelable() const;
-    HTMLLabelElement* labelForElement(Element*) const;
-    String textForLabelElement(Element*) const;
+    AccessibilityObject* controlForLabelElement() const final;
+    String textAsLabelFor(const AccessibilityObject&) const;
+    String textForLabelElements(Vector<Ref<HTMLElement>>&&) const;
+    HTMLLabelElement* labelElementContainer() const;
+
     String ariaAccessibilityDescription() const;
-    void ariaLabeledByElements(Vector<Element*>& elements) const;
-    String accessibilityDescriptionForElements(Vector<Element*> &elements) const;
+    Vector<Ref<Element>> ariaLabeledByElements() const;
+    String descriptionForElements(const Vector<Ref<Element>>&) const;
     LayoutRect boundingBoxRect() const override;
     String ariaDescribedByAttribute() const override;
     
@@ -176,26 +213,39 @@ protected:
     Element* menuItemElementForMenu() const;
     AccessibilityObject* menuButtonForMenu() const;
     AccessibilityObject* captionForFigure() const;
-    virtual void titleElementText(Vector<AccessibilityText>&) const;
-
+    virtual void labelText(Vector<AccessibilityText>&) const;
 private:
     bool isAccessibilityNodeObject() const final { return true; }
     void accessibilityText(Vector<AccessibilityText>&) const override;
-    void alternativeText(Vector<AccessibilityText>&) const;
     void visibleText(Vector<AccessibilityText>&) const;
-    void helpText(Vector<AccessibilityText>&) const;
     String alternativeTextForWebArea() const;
     void ariaLabeledByText(Vector<AccessibilityText>&) const;
-    bool computeAccessibilityIsIgnored() const override;
     bool usesAltTagForTextComputation() const;
     bool roleIgnoresTitle() const;
-    bool postKeyboardKeysForValueChange(bool increase);
-    void setNodeValue(bool increase, float value);
+    bool postKeyboardKeysForValueChange(StepAction);
+    void setNodeValue(StepAction, float);
     bool performDismissAction() final;
-    
-    Node* m_node;
+    bool hasTextAlternative() const;
+    LayoutRect checkboxOrRadioRect() const;
+
+    void setNeedsToUpdateChildren() override { m_childrenDirty = true; }
+    bool needsToUpdateChildren() const override { return m_childrenDirty; }
+    void setNeedsToUpdateSubtree() override { m_subtreeDirty = true; }
+
+    bool isDescendantOfElementType(const HashSet<QualifiedName>&) const;
+protected:
+    WeakPtr<Node, WeakPtrImplWithEventTargetData> m_node;
 };
+
+namespace Accessibility {
+
+RefPtr<HTMLElement> controlForLabelElement(const HTMLLabelElement&);
+Vector<Ref<HTMLElement>> labelsForElement(Element*);
+
+} // namespace Accessibility
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_ACCESSIBILITY(AccessibilityNodeObject, isAccessibilityNodeObject())
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::AccessibilityNodeObject) \
+    static bool isType(const WebCore::AccessibilityObject& object) { return object.isAccessibilityNodeObject(); } \
+SPECIALIZE_TYPE_TRAITS_END()

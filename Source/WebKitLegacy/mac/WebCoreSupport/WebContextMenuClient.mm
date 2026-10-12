@@ -45,19 +45,19 @@
 #import <WebCore/ContextMenuController.h>
 #import <WebCore/DestinationColorSpace.h>
 #import <WebCore/Document.h>
-#import <WebCore/Frame.h>
-#import <WebCore/FrameView.h>
 #import <WebCore/GraphicsContext.h>
 #import <WebCore/ImageBuffer.h>
+#import <WebCore/LocalFrame.h>
+#import <WebCore/LocalFrameView.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/Page.h>
-#import <WebCore/RenderBox.h>
-#import <WebCore/RenderObject.h>
+#import <WebCore/RenderBoxInlines.h>
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/SharedBuffer.h>
 #import <WebCore/SimpleRange.h>
 #import <WebKitLegacy/DOMPrivate.h>
 #import <pal/spi/mac/NSSharingServicePickerSPI.h>
+#import <wtf/TZoneMallocInlines.h>
 #import <wtf/URL.h>
 
 using namespace WebCore;
@@ -67,6 +67,8 @@ using namespace WebCore;
 - (void)speakString:(NSString *)string;
 - (void)stopSpeaking:(id)sender;
 @end
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebContextMenuClient);
 
 WebContextMenuClient::WebContextMenuClient(WebView *webView)
 #if ENABLE(SERVICE_CONTROLS)
@@ -85,27 +87,17 @@ WebContextMenuClient::~WebContextMenuClient()
 #endif
 }
 
-void WebContextMenuClient::contextMenuDestroyed()
-{
-    delete this;
-}
-
 void WebContextMenuClient::downloadURL(const URL& url)
 {
     [m_webView _downloadURL:url];
 }
 
-void WebContextMenuClient::searchWithSpotlight()
-{
-    [m_webView _searchWithSpotlightFromMenu:nil];
-}
-
-void WebContextMenuClient::searchWithGoogle(const Frame*)
+void WebContextMenuClient::searchWithGoogle(const LocalFrame*)
 {
     [m_webView _searchWithGoogleFromMenu:nil];
 }
 
-void WebContextMenuClient::lookUpInDictionary(Frame* frame)
+void WebContextMenuClient::lookUpInDictionary(LocalFrame* frame)
 {
     WebHTMLView* htmlView = (WebHTMLView*)[[kit(frame) frameView] documentView];
     if(![htmlView isKindOfClass:[WebHTMLView class]])
@@ -113,7 +105,7 @@ void WebContextMenuClient::lookUpInDictionary(Frame* frame)
     [htmlView _lookUpInDictionaryFromMenu:nil];
 }
 
-bool WebContextMenuClient::isSpeaking()
+bool WebContextMenuClient::isSpeaking() const
 {
     return [NSApp isSpeaking];
 }
@@ -174,7 +166,7 @@ WebCore::FloatRect WebContextMenuClient::screenRectForCurrentSharingServicePicke
     if (!node)
         return NSZeroRect;
 
-    FrameView* frameView = node->document().view();
+    auto* frameView = node->document().view();
     if (!frameView) {
         // This method shouldn't be called in cases where the controlled node isn't in a rendered view.
         ASSERT_NOT_REACHED();
@@ -198,11 +190,11 @@ RetainPtr<NSImage> WebContextMenuClient::imageForCurrentSharingServicePickerItem
     if (!page)
         return nil;
 
-    auto node = makeRefPtr(page->contextMenuController().context().hitTestResult().innerNode());
+    RefPtr node = page->contextMenuController().context().hitTestResult().innerNode();
     if (!node)
         return nil;
 
-    auto frameView = makeRefPtr(node->document().view());
+    RefPtr frameView = node->document().view();
     if (!frameView) {
         // This method shouldn't be called in cases where the controlled node isn't in a rendered view.
         ASSERT_NOT_REACHED();
@@ -214,12 +206,14 @@ RetainPtr<NSImage> WebContextMenuClient::imageForCurrentSharingServicePickerItem
         return nil;
 
     // This is effectively a snapshot, and will be painted in an unaccelerated fashion in line with FrameSnapshotting.
-    auto buffer = ImageBuffer::create(rect.size(), RenderingMode::Unaccelerated, 1, DestinationColorSpace::SRGB(), PixelFormat::BGRA8);
+    auto buffer = ImageBuffer::create(rect.size(), RenderingPurpose::Unspecified, 1, DestinationColorSpace::SRGB(), ImageBufferPixelFormat::BGRA8);
     if (!buffer)
         return nil;
 
-    auto oldSelection = frameView->frame().selection().selection();
-    frameView->frame().selection().setSelection(*makeRangeSelectingNode(*node), FrameSelection::DoNotSetFocus);
+    Ref localFrame = frameView->frame();
+
+    auto oldSelection = localFrame->selection().selection();
+    localFrame->selection().setSelection(*makeRangeSelectingNode(*node), FrameSelection::SetSelectionOption::DoNotSetFocus);
 
     auto oldPaintBehavior = frameView->paintBehavior();
     frameView->setPaintBehavior(PaintBehavior::SelectionOnly);
@@ -227,14 +221,14 @@ RetainPtr<NSImage> WebContextMenuClient::imageForCurrentSharingServicePickerItem
     buffer->context().translate(-toFloatSize(rect.location()));
     frameView->paintContents(buffer->context(), roundedIntRect(rect));
 
-    frameView->frame().selection().setSelection(oldSelection);
+    localFrame->selection().setSelection(oldSelection);
     frameView->setPaintBehavior(oldPaintBehavior);
 
-    auto image = ImageBuffer::sinkIntoImage(WTFMove(buffer));
+    auto image = BitmapImage::create(ImageBuffer::sinkIntoNativeImage(WTFMove(buffer)));
     if (!image)
         return nil;
 
-    return image->snapshotNSImage();
+    return image->adapter().snapshotNSImage();
 }
 
 #endif
@@ -251,7 +245,7 @@ NSMenu *WebContextMenuClient::contextMenuForEvent(NSEvent *event, NSView *view, 
     if (Image* image = page->contextMenuController().context().controlledImage()) {
         ASSERT(page->contextMenuController().context().hitTestResult().innerNode());
 
-        RetainPtr<NSItemProvider> itemProvider = adoptNS([[NSItemProvider alloc] initWithItem:image->snapshotNSImage().get() typeIdentifier:@"public.image"]);
+        RetainPtr<NSItemProvider> itemProvider = adoptNS([[NSItemProvider alloc] initWithItem:image->adapter().snapshotNSImage().get() typeIdentifier:@"public.image"]);
 
         bool isContentEditable = page->contextMenuController().context().hitTestResult().innerNode()->isContentEditable();
         m_sharingServicePickerController = adoptNS([[WebSharingServicePickerController alloc] initWithItems:@[ itemProvider.get() ] includeEditorServices:isContentEditable client:this style:NSSharingServicePickerStyleRollover]);
@@ -266,13 +260,13 @@ NSMenu *WebContextMenuClient::contextMenuForEvent(NSEvent *event, NSView *view, 
 
 void WebContextMenuClient::showContextMenu()
 {
-    Page* page = [m_webView page];
+    auto page = [m_webView page];
     if (!page)
         return;
-    Frame* frame = page->contextMenuController().hitTestResult().innerNodeFrame();
+    auto* frame = page->contextMenuController().hitTestResult().innerNodeFrame();
     if (!frame)
         return;
-    FrameView* frameView = frame->view();
+    auto* frameView = frame->view();
     if (!frameView)
         return;
 

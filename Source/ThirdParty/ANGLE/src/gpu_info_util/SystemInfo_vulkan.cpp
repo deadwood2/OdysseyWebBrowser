@@ -5,23 +5,24 @@
 //
 
 // SystemInfo_vulkan.cpp: Generic vulkan implementation of SystemInfo.h
-// TODO: Use VK_KHR_driver_properties. http://anglebug.com/5103
+// TODO: Use VK_KHR_driver_properties. http://anglebug.com/42263671
+
+#include "gpu_info_util/SystemInfo_vulkan.h"
 
 #include <vulkan/vulkan.h>
 #include "gpu_info_util/SystemInfo_internal.h"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <string>
+#include <vector>
 
 #include "common/angleutils.h"
 #include "common/debug.h"
+#include "common/platform_helpers.h"
 #include "common/system_utils.h"
-
-#if defined(ANGLE_PLATFORM_WINDOWS)
-const char *kLibVulkanNames[] = {"vulkan-1.dll"};
-#else
-const char *kLibVulkanNames[] = {"libvulkan.so", "libvulkan.so.1"};
-#endif
+#include "common/vulkan/libvulkan_loader.h"
 
 namespace angle
 {
@@ -40,18 +41,55 @@ class VulkanLibrary final : NonCopyable
                 pfnDestroyInstance(mInstance, nullptr);
             }
         }
-        SafeDelete(mLibVulkan);
+
+        CloseSystemLibrary(mLibVulkan);
+    }
+
+    std::vector<std::string> GetInstanceExtensionNames() const
+    {
+        std::vector<std::string> extensionNames;
+
+        auto pfnEnumerateInstanceExtensionProperties =
+            getProc<PFN_vkEnumerateInstanceExtensionProperties>(
+                "vkEnumerateInstanceExtensionProperties");
+        if (!pfnEnumerateInstanceExtensionProperties)
+        {
+            return extensionNames;
+        }
+
+        uint32_t extensionCount = 0;
+        if (pfnEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr) !=
+            VK_SUCCESS)
+        {
+            return extensionNames;
+        }
+
+        std::vector<VkExtensionProperties> extensions(extensionCount);
+        if (pfnEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data()) !=
+            VK_SUCCESS)
+        {
+            return extensionNames;
+        }
+
+        for (const auto &extension : extensions)
+        {
+            extensionNames.emplace_back(extension.extensionName);
+        }
+
+        std::sort(extensionNames.begin(), extensionNames.end());
+
+        return extensionNames;
+    }
+
+    bool ExtensionFound(std::string const &needle, const std::vector<std::string> &haystack)
+    {
+        // NOTE: The list must be sorted.
+        return std::binary_search(haystack.begin(), haystack.end(), needle);
     }
 
     VkInstance getVulkanInstance()
     {
-        for (const char *libraryName : kLibVulkanNames)
-        {
-            mLibVulkan = OpenSharedLibraryWithExtension(libraryName);
-            if (mLibVulkan)
-                break;
-        }
-
+        mLibVulkan = vk::OpenLibVulkan();
         if (!mLibVulkan)
         {
             // If Vulkan doesn't exist, bail-out early:
@@ -70,6 +108,21 @@ class VulkanLibrary final : NonCopyable
         }
 #endif  // VK_VERSION_1_1
 
+        std::vector<std::string> availableInstanceExtensions = GetInstanceExtensionNames();
+        std::vector<const char *> enabledInstanceExtensions;
+
+        bool hasPortabilityEnumeration = false;
+
+        if (IsApple() && ExtensionFound(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+                                        availableInstanceExtensions))
+        {
+            // On iOS/macOS, there is no native Vulkan driver, so we need to
+            // enable the portability enumeration extension to allow use of
+            // MoltenVK.
+            enabledInstanceExtensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+            hasPortabilityEnumeration = true;
+        }
+
         // Create a Vulkan instance:
         VkApplicationInfo appInfo;
         appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -81,14 +134,21 @@ class VulkanLibrary final : NonCopyable
         appInfo.apiVersion         = instanceVersion;
 
         VkInstanceCreateInfo createInstanceInfo;
-        createInstanceInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        createInstanceInfo.pNext                   = nullptr;
-        createInstanceInfo.flags                   = 0;
-        createInstanceInfo.pApplicationInfo        = &appInfo;
-        createInstanceInfo.enabledLayerCount       = 0;
-        createInstanceInfo.ppEnabledLayerNames     = nullptr;
-        createInstanceInfo.enabledExtensionCount   = 0;
-        createInstanceInfo.ppEnabledExtensionNames = nullptr;
+        createInstanceInfo.sType               = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        createInstanceInfo.pNext               = nullptr;
+        createInstanceInfo.flags               = 0;
+        createInstanceInfo.pApplicationInfo    = &appInfo;
+        createInstanceInfo.enabledLayerCount   = 0;
+        createInstanceInfo.ppEnabledLayerNames = nullptr;
+        createInstanceInfo.enabledExtensionCount =
+            static_cast<uint32_t>(enabledInstanceExtensions.size());
+        createInstanceInfo.ppEnabledExtensionNames =
+            enabledInstanceExtensions.empty() ? nullptr : enabledInstanceExtensions.data();
+
+        if (hasPortabilityEnumeration)
+        {
+            createInstanceInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        }
 
         auto pfnCreateInstance = getProc<PFN_vkCreateInstance>("vkCreateInstance");
         if (!pfnCreateInstance ||
@@ -103,11 +163,11 @@ class VulkanLibrary final : NonCopyable
     template <typename Func>
     Func getProc(const char *fn) const
     {
-        return reinterpret_cast<Func>(mLibVulkan->getSymbol(fn));
+        return reinterpret_cast<Func>(angle::GetLibrarySymbol(mLibVulkan, fn));
     }
 
   private:
-    Library *mLibVulkan  = nullptr;
+    void *mLibVulkan     = nullptr;
     VkInstance mInstance = VK_NULL_HANDLE;
 };
 
@@ -126,6 +186,14 @@ std::string FormatString(const char *fmt, ...)
 
 bool GetSystemInfoVulkan(SystemInfo *info)
 {
+    return GetSystemInfoVulkanWithICD(info, vk::ICD::Default);
+}
+
+bool GetSystemInfoVulkanWithICD(SystemInfo *info, vk::ICD preferredICD)
+{
+    const bool enableValidationLayers = false;
+    vk::ScopedVkLoaderEnvironment scopedEnvironment(enableValidationLayers, preferredICD);
+
     // This implementation builds on top of the Vulkan API, but cannot assume the existence of the
     // Vulkan library.  ANGLE can be installed on versions of Android as old as Ice Cream Sandwich.
     // Therefore, we need to use dlopen()/dlsym() in order to see if Vulkan is installed on the
@@ -143,8 +211,10 @@ bool GetSystemInfoVulkan(SystemInfo *info)
         vkLibrary.getProc<PFN_vkEnumeratePhysicalDevices>("vkEnumeratePhysicalDevices");
     auto pfnGetPhysicalDeviceProperties =
         vkLibrary.getProc<PFN_vkGetPhysicalDeviceProperties>("vkGetPhysicalDeviceProperties");
+    auto pfnGetPhysicalDeviceProperties2 =
+        vkLibrary.getProc<PFN_vkGetPhysicalDeviceProperties2>("vkGetPhysicalDeviceProperties2");
     uint32_t physicalDeviceCount = 0;
-    if (!pfnEnumeratePhysicalDevices ||
+    if (!pfnEnumeratePhysicalDevices || !pfnGetPhysicalDeviceProperties ||
         pfnEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr) != VK_SUCCESS)
     {
         return false;
@@ -161,8 +231,23 @@ bool GetSystemInfoVulkan(SystemInfo *info)
 
     for (uint32_t i = 0; i < physicalDeviceCount; i++)
     {
-        VkPhysicalDeviceProperties properties;
+        VkPhysicalDeviceDriverProperties driverProperties = {};
+        driverProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+
+        VkPhysicalDeviceProperties2 properties2 = {};
+        properties2.sType                       = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        properties2.pNext                       = &driverProperties;
+
+        VkPhysicalDeviceProperties &properties = properties2.properties;
         pfnGetPhysicalDeviceProperties(physicalDevices[i], &properties);
+
+        // vkGetPhysicalDeviceProperties2() is supported since 1.1
+        // Use vkGetPhysicalDeviceProperties2() to get driver information.
+        if (properties.apiVersion >= VK_API_VERSION_1_1)
+        {
+            pfnGetPhysicalDeviceProperties2(physicalDevices[i], &properties2);
+        }
+
         // Fill in data for a given physical device (a.k.a. gpu):
         GPUDeviceInfo &gpu = info->gpus[i];
         gpu.vendorId       = properties.vendorID;
@@ -170,7 +255,9 @@ bool GetSystemInfoVulkan(SystemInfo *info)
         // Need to parse/re-format properties.driverVersion.
         //
         // TODO(ianelliott): Determine the formatting used for each vendor
-        // (http://anglebug.com/2677)
+        // (http://anglebug.com/42261385)
+        // TODO(http://anglebug.com/42266143): Use driverID instead of the hardware vendorID to
+        // detect driveVendor, etc.
         switch (properties.vendorID)
         {
             case kVendorID_AMD:
@@ -185,6 +272,11 @@ bool GetSystemInfoVulkan(SystemInfo *info)
                 break;
             case kVendorID_Broadcom:
                 gpu.driverVendor                = "Broadcom";
+                gpu.driverVersion               = FormatString("0x%x", properties.driverVersion);
+                gpu.detailedDriverVersion.major = properties.driverVersion;
+                break;
+            case kVendorID_GOOGLE:
+                gpu.driverVendor                = "Google";
                 gpu.driverVersion               = FormatString("0x%x", properties.driverVersion);
                 gpu.detailedDriverVersion.major = properties.driverVersion;
                 break;
@@ -231,6 +323,11 @@ bool GetSystemInfoVulkan(SystemInfo *info)
                     gpu.detailedDriverVersion.major = properties.driverVersion;
                 }
                 break;
+            case kVendorID_Samsung:
+                gpu.driverVendor                = "Samsung";
+                gpu.driverVersion               = FormatString("0x%x", properties.driverVersion);
+                gpu.detailedDriverVersion.major = properties.driverVersion;
+                break;
             case kVendorID_VeriSilicon:
                 gpu.driverVendor                = "VeriSilicon";
                 gpu.driverVersion               = FormatString("0x%x", properties.driverVersion);
@@ -241,10 +338,29 @@ bool GetSystemInfoVulkan(SystemInfo *info)
                 gpu.driverVersion               = FormatString("0x%x", properties.driverVersion);
                 gpu.detailedDriverVersion.major = properties.driverVersion;
                 break;
+            case kVendorID_Mesa:
+                gpu.driverVendor                = "Mesa";
+                gpu.driverVersion               = FormatString("0x%x", properties.driverVersion);
+                gpu.detailedDriverVersion.major = properties.driverVersion;
+                break;
+            case kVendorID_Apple:
+                // Note: this is the version extraction for MoltenVK, which
+                // formulates its version number as a decimal number like so:
+                //     (major * 10000) + (minor * 100) + patch
+                gpu.driverVendor                = "Apple";
+                gpu.detailedDriverVersion.major = properties.driverVersion / 10000;
+                gpu.detailedDriverVersion.minor = (properties.driverVersion / 100) % 100;
+                gpu.detailedDriverVersion.patch = properties.driverVersion % 100;
+                gpu.driverVersion =
+                    FormatString("%d.%d.%d", gpu.detailedDriverVersion.major,
+                                 gpu.detailedDriverVersion.minor, gpu.detailedDriverVersion.patch);
+                break;
             default:
                 return false;
         }
-        gpu.driverDate = "";
+        gpu.driverId         = static_cast<DriverID>(driverProperties.driverID);
+        gpu.driverApiVersion = properties.apiVersion;
+        gpu.driverDate       = "";
     }
 
     return true;

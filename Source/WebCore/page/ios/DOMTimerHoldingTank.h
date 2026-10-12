@@ -29,6 +29,7 @@
 
 #include "Timer.h"
 #include <wtf/Forward.h>
+#include <wtf/WeakHashSet.h>
 
 namespace WebCore {
 
@@ -48,7 +49,7 @@ public:
 private:
     void stopExceededMaximumHoldTimer();
 
-    HashSet<const DOMTimer*> m_timers;
+    WeakHashSet<DOMTimer> m_timers;
     Timer m_exceededMaximumHoldTimer;
 };
 

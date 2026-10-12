@@ -30,9 +30,9 @@
 namespace WebCore {
 
 class WheelEvent final : public MouseEvent {
-    WTF_MAKE_ISO_ALLOCATED(WheelEvent);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(WheelEvent);
 public:
-    enum { TickMultiplier = 120 };
+    static constexpr int TickMultiplier = 120;
 
     enum {
         DOM_DELTA_PIXEL = 0,
@@ -53,8 +53,6 @@ public:
     };
 
     static Ref<WheelEvent> create(const AtomString& type, const Init&);
-
-    WEBCORE_EXPORT void initWebKitWheelEvent(int rawDeltaX, int rawDeltaY, RefPtr<WindowProxy>&&, int screenX, int screenY, int pageX, int pageY, bool ctrlKey, bool altKey, bool shiftKey, bool metaKey);
 
     const std::optional<PlatformWheelEvent>& underlyingPlatformEvent() const { return m_underlyingPlatformEvent; }
 
@@ -77,8 +75,6 @@ private:
     WheelEvent();
     WheelEvent(const AtomString&, const Init&);
     WheelEvent(const PlatformWheelEvent&, RefPtr<WindowProxy>&&, IsCancelable);
-
-    EventInterface eventInterface() const final;
 
     bool isWheelEvent() const final;
 

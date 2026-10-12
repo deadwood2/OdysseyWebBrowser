@@ -37,12 +37,23 @@ class MediaTime;
 namespace WebCore {
 
 class AudioStreamDescription;
+class LibWebRTCAudioModule;
 class PlatformAudioData;
 
 class WEBCORE_EXPORT AudioMediaStreamTrackRenderer : public LoggerHelper {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static std::unique_ptr<AudioMediaStreamTrackRenderer> create();
+    struct Init {
+        Function<void()>&& crashCallback;
+#if USE(LIBWEBRTC)
+        RefPtr<LibWebRTCAudioModule> audioModule;
+#endif
+#if !RELEASE_LOG_DISABLED
+        const Logger& logger;
+        const void* logIdentifier;
+#endif
+    };
+    static std::unique_ptr<AudioMediaStreamTrackRenderer> create(Init&&);
     virtual ~AudioMediaStreamTrackRenderer() = default;
 
     virtual void start(CompletionHandler<void()>&&) = 0;
@@ -56,35 +67,34 @@ public:
 
     virtual void setAudioOutputDevice(const String&);
 
-#if !RELEASE_LOG_DISABLED
-    void setLogger(const Logger&, const void*);
-#endif
-
-    using RendererCreator = std::unique_ptr<AudioMediaStreamTrackRenderer> (*)();
-    static void setCreator(RendererCreator);
-
-    void setCrashCallback(Function<void()>&& callback) { m_crashCallback = WTFMove(callback); }
-
 protected:
+    explicit AudioMediaStreamTrackRenderer(Init&&);
+
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final;
     const void* logIdentifier() const final;
 
-    const char* logClassName() const final;
+    ASCIILiteral logClassName() const final;
     WTFLogChannel& logChannel() const final;
+#endif
+
+#if USE(LIBWEBRTC)
+    LibWebRTCAudioModule* audioModule();
 #endif
 
     void crashed();
 
 private:
-    static RendererCreator m_rendererCreator;
-
     // Main thread writable members
     float m_volume { 1 };
     Function<void()> m_crashCallback;
 
+#if USE(LIBWEBRTC)
+    RefPtr<LibWebRTCAudioModule> m_audioModule;
+#endif
+
 #if !RELEASE_LOG_DISABLED
-    RefPtr<const Logger> m_logger;
+    Ref<const Logger> m_logger;
     const void* m_logIdentifier;
 #endif
 };
@@ -105,21 +115,10 @@ inline void AudioMediaStreamTrackRenderer::crashed()
         m_crashCallback();
 }
 
-#if !RELEASE_LOG_DISABLED
-inline const Logger& AudioMediaStreamTrackRenderer::logger() const
+#if USE(LIBWEBRTC)
+inline LibWebRTCAudioModule* AudioMediaStreamTrackRenderer::audioModule()
 {
-    return *m_logger;
-    
-}
-
-inline const void* AudioMediaStreamTrackRenderer::logIdentifier() const
-{
-    return m_logIdentifier;
-}
-
-inline const char* AudioMediaStreamTrackRenderer::logClassName() const
-{
-    return "AudioMediaStreamTrackRenderer";
+    return m_audioModule.get();
 }
 #endif
 

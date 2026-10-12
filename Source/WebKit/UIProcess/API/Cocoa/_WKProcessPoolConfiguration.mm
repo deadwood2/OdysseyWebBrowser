@@ -69,27 +69,11 @@
 
 - (NSSet<Class> *)customClassesForParameterCoder
 {
-    auto classes = _processPoolConfiguration->customClassesForParameterCoder();
-    if (classes.isEmpty())
-        return [NSSet set];
-
-    auto result = adoptNS([[NSMutableSet alloc] initWithCapacity:classes.size()]);
-    for (const auto& value : classes)
-        [result addObject: objc_lookUpClass(value.utf8().data())];
-
-    return result.autorelease();
+    return [NSSet set];
 }
 
 - (void)setCustomClassesForParameterCoder:(NSSet<Class> *)classesForCoder
 {
-    Vector<WTF::String> classes;
-    classes.reserveInitialCapacity(classesForCoder.count);
-    for (id classObj : classesForCoder) {
-        if (auto* string = NSStringFromClass(classObj))
-            classes.uncheckedAppend(string);
-    }
-
-    _processPoolConfiguration->setCustomClassesForParameterCoder(WTFMove(classes));
 }
 
 - (NSUInteger)maximumProcessCount
@@ -158,19 +142,19 @@
         return @[ ];
 
     return createNSArray(paths, [] (auto& path) {
-        return [NSURL fileURLWithFileSystemRepresentation:path.data() isDirectory:NO relativeToURL:nil];
+        return [NSURL fileURLWithFileSystemRepresentation:path.utf8().data() isDirectory:NO relativeToURL:nil];
     }).autorelease();
 }
 
 - (void)setAdditionalReadAccessAllowedURLs:(NSArray<NSURL *> *)additionalReadAccessAllowedURLs
 {
-    Vector<CString> paths;
+    Vector<String> paths;
     paths.reserveInitialCapacity(additionalReadAccessAllowedURLs.count);
     for (NSURL *url in additionalReadAccessAllowedURLs) {
         if (!url.isFileURL)
             [NSException raise:NSInvalidArgumentException format:@"%@ is not a file URL", url];
 
-        paths.uncheckedAppend(url.fileSystemRepresentation);
+        paths.append(String::fromUTF8(url.fileSystemRepresentation));
     }
 
     _processPoolConfiguration->setAdditionalReadAccessAllowedPaths(WTFMove(paths));
@@ -235,6 +219,18 @@
     return _processPoolConfiguration->presentingApplicationPID();
 }
 
+- (void)setPresentingApplicationProcessToken:(audit_token_t)token
+{
+    _processPoolConfiguration->setPresentingApplicationProcessToken(token);
+}
+
+- (audit_token_t)presentingApplicationProcessToken
+{
+    if (_processPoolConfiguration->presentingApplicationProcessToken())
+        return *_processPoolConfiguration->presentingApplicationProcessToken();
+    return { };
+}
+
 - (void)setProcessSwapsOnNavigation:(BOOL)swaps
 {
     _processPoolConfiguration->setProcessSwapsOnNavigation(swaps);
@@ -273,16 +269,6 @@
 - (BOOL)alwaysKeepAndReuseSwappedProcesses
 {
     return _processPoolConfiguration->alwaysKeepAndReuseSwappedProcesses();
-}
-
-- (void)setProcessSwapsOnWindowOpenWithOpener:(BOOL)swaps
-{
-    _processPoolConfiguration->setProcessSwapsOnWindowOpenWithOpener(swaps);
-}
-
-- (BOOL)processSwapsOnWindowOpenWithOpener
-{
-    return _processPoolConfiguration->processSwapsOnWindowOpenWithOpener();
 }
 
 - (void)setProcessSwapsOnNavigationWithinSameNonHTTPFamilyProtocol:(BOOL)swaps
@@ -325,15 +311,6 @@
     _processPoolConfiguration->setJITEnabled(enabled);
 }
 
-- (void)setHSTSStorageDirectory:(NSURL *)directory
-{
-}
-
-- (NSURL *)hstsStorageDirectory
-{
-    return nil;
-}
-
 #if PLATFORM(IOS_FAMILY)
 - (BOOL)alwaysRunsAtBackgroundPriority
 {
@@ -373,12 +350,11 @@
 
 - (NSString *)customWebContentServiceBundleIdentifier
 {
-    return _processPoolConfiguration->customWebContentServiceBundleIdentifier();
+    return nil;
 }
 
 - (void)setCustomWebContentServiceBundleIdentifier:(NSString *)customWebContentServiceBundleIdentifier
 {
-    _processPoolConfiguration->setCustomWebContentServiceBundleIdentifier(customWebContentServiceBundleIdentifier);
 }
 
 - (BOOL)configureJSCForTesting
@@ -389,6 +365,44 @@
 - (void)setConfigureJSCForTesting:(BOOL)value
 {
     _processPoolConfiguration->setShouldConfigureJSCForTesting(value);
+}
+
+- (NSString *)timeZoneOverride
+{
+    return _processPoolConfiguration->timeZoneOverride();
+}
+
+- (void)setTimeZoneOverride:(NSString *)timeZone
+{
+    _processPoolConfiguration->setTimeZoneOverride(timeZone);
+}
+
+- (void)setMemoryFootprintPollIntervalForTesting:(NSTimeInterval)pollInterval
+{
+    _processPoolConfiguration->setMemoryFootprintPollIntervalForTesting(Seconds { pollInterval });
+}
+
+- (NSTimeInterval)memoryFootprintPollIntervalForTesting
+{
+    return _processPoolConfiguration->memoryFootprintPollIntervalForTesting().seconds();
+}
+
+- (NSArray<NSNumber *> *)memoryFootprintNotificationThresholds
+{
+    const auto& thresholds = _processPoolConfiguration->memoryFootprintNotificationThresholds();
+    RetainPtr result = adoptNS([[NSMutableArray alloc] initWithCapacity: thresholds.size()]);
+    for (auto& threshold : thresholds)
+        [result addObject:@(threshold)];
+    return result.autorelease();
+}
+
+- (void)setMemoryFootprintNotificationThresholds:(NSArray<NSNumber *> *)thresholds
+{
+    Vector<size_t> sizes;
+    sizes.reserveCapacity(thresholds.count);
+    for (NSNumber *threshold in thresholds)
+        sizes.append(static_cast<size_t>(threshold.unsignedLongLongValue));
+    _processPoolConfiguration->setMemoryFootprintNotificationThresholds(WTFMove(sizes));
 }
 
 #pragma mark WKObject protocol implementation

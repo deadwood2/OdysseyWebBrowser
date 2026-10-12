@@ -57,7 +57,7 @@ static RemoteInspector::Client::SessionCapabilities processSessionCapabilities(G
         const char* host;
         const char* certificateFile;
         while (g_variant_iter_loop(&iter, "(&s&s)", &host, &certificateFile))
-            capabilities.certificates.uncheckedAppend({ String::fromUTF8(host), String::fromUTF8(certificateFile) });
+            capabilities.certificates.append({ String::fromUTF8(host), String::fromUTF8(certificateFile) });
     }
 
     if (GRefPtr<GVariant> proxy = g_variant_lookup_value(sessionCapabilities, "proxy", G_VARIANT_TYPE("a{sv}"))) {
@@ -66,6 +66,10 @@ static RemoteInspector::Client::SessionCapabilities processSessionCapabilities(G
         const char* proxyType;
         g_variant_lookup(proxy.get(), "type", "&s", &proxyType);
         capabilities.proxy->type = String::fromUTF8(proxyType);
+
+        const char* autoconfigURL;
+        if (g_variant_lookup(proxy.get(), "autoconfigURL", "&s", &autoconfigURL))
+            capabilities.proxy->autoconfigURL = String::fromUTF8(autoconfigURL);
 
         const char* ftpURL;
         if (g_variant_lookup(proxy.get(), "ftpURL", "&s", &ftpURL))
@@ -182,17 +186,20 @@ RemoteInspectorServer::~RemoteInspectorServer()
         g_signal_handlers_disconnect_matched(m_service.get(), G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
 }
 
-bool RemoteInspectorServer::start(const char* address, unsigned port)
+bool RemoteInspectorServer::start(GRefPtr<GSocketAddress>&& socketAddress)
 {
     m_service = adoptGRef(g_socket_service_new());
     g_signal_connect(m_service.get(), "incoming", G_CALLBACK(incomingConnectionCallback), this);
 
-    GRefPtr<GSocketAddress> socketAddress = adoptGRef(g_inet_socket_address_new_from_string(address, port));
+    GRefPtr<GSocketAddress> effectiveAddress;
     GUniqueOutPtr<GError> error;
-    if (!g_socket_listener_add_address(G_SOCKET_LISTENER(m_service.get()), socketAddress.get(), G_SOCKET_TYPE_STREAM, G_SOCKET_PROTOCOL_TCP, nullptr, nullptr, &error.outPtr())) {
-        g_warning("Failed to start remote inspector server on %s:%u: %s\n", address, port, error->message);
+    if (!g_socket_listener_add_address(G_SOCKET_LISTENER(m_service.get()), socketAddress.get(), G_SOCKET_TYPE_STREAM, G_SOCKET_PROTOCOL_TCP, nullptr, &effectiveAddress.outPtr(), &error.outPtr())) {
+        GUniquePtr<char> address(g_socket_connectable_to_string(G_SOCKET_CONNECTABLE(socketAddress.get())));
+        g_warning("Failed to start remote inspector server on %s: %s", address.get(), error->message);
         return false;
     }
+
+    m_port = g_inet_socket_address_get_port(G_INET_SOCKET_ADDRESS(effectiveAddress.get()));
 
     return true;
 }
@@ -221,7 +228,7 @@ void RemoteInspectorServer::setTargetList(SocketConnection& remoteInspectorConne
     gboolean remoteAutomationEnabled;
     GRefPtr<GVariant> targetList;
     g_variant_get(parameters, "(@a(tsssb)b)", &targetList.outPtr(), &remoteAutomationEnabled);
-    SocketConnection* clientConnection = remoteAutomationEnabled && m_automationConnection ? m_automationConnection : m_clientConnection;
+    RefPtr clientConnection = remoteAutomationEnabled && m_automationConnection ? m_automationConnection : m_clientConnection;
     if (!clientConnection)
         return;
 
@@ -241,7 +248,7 @@ GVariant* RemoteInspectorServer::setupInspectorClient(SocketConnection& clientCo
         backendCommands = g_variant_new_bytestring("");
 
     // Ask all remote inspectors to push their target lists to notify the new client.
-    for (auto* remoteInspectorConnection : m_remoteInspectorConnectionToIDMap.keys())
+    for (RefPtr remoteInspectorConnection : m_remoteInspectorConnectionToIDMap.keys())
         remoteInspectorConnection->sendMessage("GetTargetList", nullptr);
 
     return backendCommands;
@@ -266,7 +273,7 @@ void RemoteInspectorServer::close(SocketConnection& clientConnection, uint64_t c
     ASSERT(m_clientConnection == &clientConnection || m_automationConnection == &clientConnection);
     ASSERT(m_idToRemoteInspectorConnectionMap.contains(connectionID));
     if (&clientConnection == m_automationConnection) {
-        // FIXME: automation.
+        m_automationTargets.remove(std::make_pair(connectionID, targetID));
         return;
     }
 
@@ -279,11 +286,11 @@ void RemoteInspectorServer::connectionDidClose(SocketConnection& clientConnectio
 {
     ASSERT(m_connections.contains(&clientConnection));
     if (&clientConnection == m_automationConnection) {
-        for (auto connectionTargetPair : m_automationTargets)
+        for (auto connectionTargetPair : copyToVector(m_automationTargets))
             close(clientConnection, connectionTargetPair.first, connectionTargetPair.second);
         m_automationConnection = nullptr;
     } else if (&clientConnection == m_clientConnection) {
-        for (auto connectionTargetPair : m_inspectionTargets)
+        for (auto connectionTargetPair : copyToVector(m_inspectionTargets))
             close(clientConnection, connectionTargetPair.first, connectionTargetPair.second);
         m_clientConnection = nullptr;
     } else if (m_remoteInspectorConnectionToIDMap.contains(&clientConnection)) {
@@ -291,7 +298,7 @@ void RemoteInspectorServer::connectionDidClose(SocketConnection& clientConnectio
         m_idToRemoteInspectorConnectionMap.remove(connectionID);
         // Send an empty target list to the clients.
         Vector<SocketConnection*> clientConnections = { m_automationConnection, m_clientConnection };
-        for (auto* connection : clientConnections) {
+        for (RefPtr connection : clientConnections) {
             if (!connection)
                 continue;
             connection->sendMessage("SetTargetList", g_variant_new("(t@a(tsssb))", connectionID, g_variant_new_array(G_VARIANT_TYPE("(tsssb)"), nullptr, 0)));
@@ -319,8 +326,10 @@ void RemoteInspectorServer::sendMessageToFrontend(SocketConnection& remoteInspec
 
     uint64_t connectionID = m_remoteInspectorConnectionToIDMap.get(&remoteInspectorConnection);
     auto connectionTargetPair = std::make_pair(connectionID, targetID);
-    ASSERT(m_automationTargets.contains(connectionTargetPair) || m_inspectionTargets.contains(connectionTargetPair));
-    SocketConnection* clientConnection = m_inspectionTargets.contains(connectionTargetPair) ? m_clientConnection : m_automationConnection;
+    if (!m_automationTargets.contains(connectionTargetPair) && !m_inspectionTargets.contains(connectionTargetPair))
+        return;
+
+    RefPtr clientConnection = m_inspectionTargets.contains(connectionTargetPair) ? m_clientConnection : m_automationConnection;
     ASSERT(clientConnection);
     clientConnection->sendMessage("SendMessageToFrontend", g_variant_new("(tt&s)", connectionID, targetID, message));
 }

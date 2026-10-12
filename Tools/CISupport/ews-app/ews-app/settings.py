@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Apple Inc. All rights reserved.
+# Copyright (C) 2018-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -32,8 +32,15 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 """
 
 import os
+import sys
+import ews.common.util as util
 
-is_test_mode_enabled = os.getenv('EWS_PRODUCTION') is None
+if sys.version_info < (3, 9):
+    print('ERROR: Minimum supported Python version for this code is Python 3.9')
+    sys.exit(1)
+
+is_test_mode_enabled = util.load_password('EWS_PRODUCTION') is None
+is_dev_instance = (util.get_custom_suffix() != '')
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,10 +50,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/1.11/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('EWS_SECRET_KEY', 'secret')
+SECRET_KEY = util.load_password('EWS_SECRET_KEY', default='secret')
 
 DEBUG = False
-if is_test_mode_enabled:
+if (is_test_mode_enabled and not is_dev_instance):
     # SECURITY WARNING: don't run with debug turned on in production!
     DEBUG = True
 
@@ -99,7 +106,7 @@ WSGI_APPLICATION = 'ews-app.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
 
-if is_test_mode_enabled:
+if is_test_mode_enabled or is_dev_instance:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -110,10 +117,10 @@ else:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql_psycopg2',
-            'NAME': os.environ.get('DB_NAME', None),
-            'USER': os.environ.get('DB_USERNAME', None),
-            'PASSWORD': os.environ.get('DB_PASSWORD', None),
-            'HOST': os.environ.get('DB_URL', None),
+            'NAME': util.load_password('DB_NAME'),
+            'USER': util.load_password('DB_USERNAME'),
+            'PASSWORD': util.load_password('DB_PASSWORD'),
+            'HOST': util.load_password('DB_URL'),
         }
     }
 

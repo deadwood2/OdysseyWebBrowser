@@ -9,6 +9,8 @@
 #include "ANGLEPerfTest.h"
 
 #include "libANGLE/renderer/vulkan/vk_cache_utils.h"
+#include "libANGLE/renderer/vulkan/vk_helpers.h"
+#include "libANGLE/renderer/vulkan/vk_renderer.h"
 #include "util/random_utils.h"
 
 using namespace rx;
@@ -17,7 +19,13 @@ namespace
 {
 constexpr unsigned int kIterationsPerStep = 100;
 
-class VulkanPipelineCachePerfTest : public ANGLEPerfTest
+struct Params
+{
+    bool withDynamicState = false;
+};
+
+class VulkanPipelineCachePerfTest : public ANGLEPerfTest,
+                                    public ::testing::WithParamInterface<Params>
 {
   public:
     VulkanPipelineCachePerfTest();
@@ -26,7 +34,7 @@ class VulkanPipelineCachePerfTest : public ANGLEPerfTest
     void SetUp() override;
     void step() override;
 
-    GraphicsPipelineCache mCache;
+    GraphicsPipelineCache<GraphicsPipelineDescCompleteHash> mCache;
     angle::RNG mRNG;
 
     std::vector<vk::GraphicsPipelineDesc> mCacheHits;
@@ -38,16 +46,18 @@ class VulkanPipelineCachePerfTest : public ANGLEPerfTest
 };
 
 VulkanPipelineCachePerfTest::VulkanPipelineCachePerfTest()
-    : ANGLEPerfTest("VulkanPipelineCachePerf", "", "", kIterationsPerStep)
+    : ANGLEPerfTest("VulkanPipelineCachePerf", "", "", kIterationsPerStep), mRNG(0x12345678u)
 {}
 
 VulkanPipelineCachePerfTest::~VulkanPipelineCachePerfTest()
 {
-    mCache.destroy(VK_NULL_HANDLE);
+    mCache.reset();
 }
 
 void VulkanPipelineCachePerfTest::SetUp()
 {
+    ANGLEPerfTest::SetUp();
+
     // Insert a number of random pipeline states.
     for (int pipelineCount = 0; pipelineCount < 100; ++pipelineCount)
     {
@@ -59,7 +69,7 @@ void VulkanPipelineCachePerfTest::SetUp()
         {
             mCacheHits.push_back(desc);
         }
-        mCache.populate(desc, std::move(pipeline));
+        mCache.populate(desc, std::move(pipeline), nullptr);
     }
 
     for (int missCount = 0; missCount < 10000; ++missCount)
@@ -75,6 +85,8 @@ void VulkanPipelineCachePerfTest::randomizeDesc(vk::GraphicsPipelineDesc *desc)
     std::vector<uint8_t> bytes(sizeof(vk::GraphicsPipelineDesc));
     FillVectorWithRandomUBytes(&mRNG, &bytes);
     memcpy(desc, bytes.data(), sizeof(vk::GraphicsPipelineDesc));
+
+    desc->setSupportsDynamicStateForTest(GetParam().withDynamicState);
 }
 
 void VulkanPipelineCachePerfTest::step()
@@ -82,11 +94,24 @@ void VulkanPipelineCachePerfTest::step()
     vk::RenderPass rp;
     vk::PipelineLayout pl;
     vk::PipelineCache pc;
-    vk::ShaderModule sm;
+    vk::PipelineCacheAccess spc;
+    vk::RefCounted<vk::ShaderModule> vsRefCounted;
+    vk::RefCounted<vk::ShaderModule> fsRefCounted;
+    vk::ShaderModuleMap ssm;
     const vk::GraphicsPipelineDesc *desc = nullptr;
     vk::PipelineHelper *result           = nullptr;
-    gl::AttributesMask am;
-    gl::ComponentTypeMask ctm;
+
+    // The Vulkan handle types are difficult to cast to without #ifdefs.
+    VkShaderModule vs = (VkShaderModule)1;
+    VkShaderModule fs = (VkShaderModule)2;
+
+    vsRefCounted.get().setHandle(vs);
+    fsRefCounted.get().setHandle(fs);
+
+    ssm[gl::ShaderType::Vertex].set(&vsRefCounted);
+    ssm[gl::ShaderType::Fragment].set(&fsRefCounted);
+
+    spc.init(&pc, nullptr);
 
     vk::SpecializationConstants defaultSpecConsts{};
 
@@ -94,8 +119,11 @@ void VulkanPipelineCachePerfTest::step()
     {
         for (const auto &hit : mCacheHits)
         {
-            (void)mCache.getPipeline(VK_NULL_HANDLE, pc, rp, pl, am, ctm, &sm, &sm, nullptr,
-                                     defaultSpecConsts, hit, &desc, &result);
+            if (!mCache.getPipeline(hit, &desc, &result))
+            {
+                (void)mCache.createPipeline(VK_NULL_HANDLE, &spc, rp, pl, ssm, defaultSpecConsts,
+                                            PipelineSource::Draw, hit, &desc, &result);
+            }
         }
     }
 
@@ -103,14 +131,25 @@ void VulkanPipelineCachePerfTest::step()
          ++missCount, ++mMissIndex)
     {
         const auto &miss = mCacheMisses[mMissIndex];
-        (void)mCache.getPipeline(VK_NULL_HANDLE, pc, rp, pl, am, ctm, &sm, &sm, nullptr,
-                                 defaultSpecConsts, miss, &desc, &result);
+        if (!mCache.getPipeline(miss, &desc, &result))
+        {
+            (void)mCache.createPipeline(VK_NULL_HANDLE, &spc, rp, pl, ssm, defaultSpecConsts,
+                                        PipelineSource::Draw, miss, &desc, &result);
+        }
     }
+
+    vsRefCounted.get().setHandle(VK_NULL_HANDLE);
+    fsRefCounted.get().setHandle(VK_NULL_HANDLE);
 }
 
 }  // anonymous namespace
 
-TEST_F(VulkanPipelineCachePerfTest, Run)
+// Test performance of pipeline hash and look up in Vulkan
+TEST_P(VulkanPipelineCachePerfTest, Run)
 {
     run();
 }
+
+INSTANTIATE_TEST_SUITE_P(,
+                         VulkanPipelineCachePerfTest,
+                         ::testing::ValuesIn(std::vector<Params>{{Params{false}, Params{true}}}));

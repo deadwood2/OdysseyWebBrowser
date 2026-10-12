@@ -25,11 +25,33 @@
 
 #import "config.h"
 #import "TestsController.h"
-
-#import <WebKit/WKProcessPoolPrivate.h>
 #import <wtf/RetainPtr.h>
 
+#if !defined(BUILDING_TEST_IPC) && !defined(BUILDING_TEST_WTF) && !defined(BUILDING_TEST_WGSL)
+#import <WebKit/WKProcessPoolPrivate.h>
+#endif
+
 extern "C" void _BeginEventReceiptOnThread(void);
+
+void buildArgumentDefaults(int argc, char** argv, NSMutableDictionary *argumentDefaults)
+{
+    // FIXME: We should switch these defaults to use overlay scrollbars, since they are the
+    // default on the platform, but a variety of tests will need changes.
+    argumentDefaults[@"NSOverlayScrollersEnabled"] = @NO;
+    argumentDefaults[@"AppleShowScrollBars"] = @"Always";
+
+    for (int i = 1; i < argc; ++i) {
+        // These defaults are not propagated manually but are only consulted in the UI process.
+        if (strcmp(argv[i], "--remote-layer-tree") == 0)
+            argumentDefaults[@"WebKit2UseRemoteLayerTreeDrawingArea"] = @YES;
+        else if (strcmp(argv[i], "--no-remote-layer-tree") == 0)
+            argumentDefaults[@"WebKit2UseRemoteLayerTreeDrawingArea"] = @NO;
+        else if (strcmp(argv[i], "--use-gpu-process") == 0)
+            argumentDefaults[@"WebKit2GPUProcessForDOMRendering"] = @YES;
+        else if (strcmp(argv[i], "--no-use-gpu-process") == 0)
+            argumentDefaults[@"WebKit2GPUProcessForDOMRendering"] = @NO;
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -44,18 +66,14 @@ int main(int argc, char** argv)
 
         // CAUTION: Defaults set here are not automatically propagated to the
         // Web Content process. Those listed below are propagated manually.
-        NSDictionary *dict = @{
-            // FIXME: We should switch these defaults to use overlay
-            // scrollbars, since they are the default on the platform,
-            // but a variety of tests will need changes.
-            @"NSOverlayScrollersEnabled": @NO,
-            @"AppleShowScrollBars": @"Always",
-        };
 
-        [argumentDomain addEntriesFromDictionary:dict];
+        auto argumentDefaults = adoptNS([[NSMutableDictionary alloc] init]);
+        buildArgumentDefaults(argc, argv, argumentDefaults.get());
+
+        [argumentDomain addEntriesFromDictionary:argumentDefaults.get()];
         [[NSUserDefaults standardUserDefaults] setVolatileDomain:argumentDomain.get() forName:NSArgumentDomain];
 
-#ifndef BUILDING_TEST_WTF
+#if !defined(BUILDING_TEST_IPC) && !defined(BUILDING_TEST_WTF) && !defined(BUILDING_TEST_WGSL)
         [WKProcessPool _setLinkedOnOrAfterEverythingForTesting];
 #endif
 

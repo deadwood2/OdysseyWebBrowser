@@ -45,6 +45,7 @@ struct PromisedAttachmentInfo;
 
 namespace WebKit {
 
+class RemoteLayerTreeNode;
 class WebViewImpl;
 
 class PageClientImpl final : public PageClientImplCocoa
@@ -65,13 +66,14 @@ private:
     // PageClient
     std::unique_ptr<DrawingAreaProxy> createDrawingAreaProxy(WebProcessProxy&) override;
     void setViewNeedsDisplay(const WebCore::Region&) override;
-    void requestScroll(const WebCore::FloatPoint& scrollPosition, const WebCore::IntPoint& scrollOrigin) override;
+    void requestScroll(const WebCore::FloatPoint& scrollPosition, const WebCore::IntPoint& scrollOrigin, WebCore::ScrollIsAnimated) override;
     WebCore::FloatPoint viewScrollPosition() override;
 
     WebCore::IntSize viewSize() override;
     bool isViewWindowActive() override;
     bool isViewFocused() override;
     bool isViewVisible() override;
+    bool canTakeForegroundAssertions() override { return true; };
     bool isViewVisibleOrOccluded() override;
     bool isViewInWindow() override;
     bool isVisuallyIdle() override;
@@ -79,6 +81,8 @@ private:
     WebCore::DestinationColorSpace colorSpace() override;
     void setRemoteLayerTreeRootNode(RemoteLayerTreeNode*) override;
     CALayer *acceleratedCompositingRootLayer() const override;
+    CALayer *headerBannerLayer() const override;
+    CALayer *footerBannerLayer() const override;
 
     void processDidExit() override;
     void processWillSwap() override;
@@ -87,8 +91,7 @@ private:
     void preferencesDidChange() override;
     void toolTipChanged(const String& oldToolTip, const String& newToolTip) override;
     void didCommitLoadForMainFrame(const String& mimeType, bool useCustomContentProvider) override;
-    void didFinishLoadingDataForCustomContentProvider(const String& suggestedFilename, const IPC::DataReference&) override;
-    void handleDownloadRequest(DownloadProxy&) override;
+    void didFinishLoadingDataForCustomContentProvider(const String& suggestedFilename, std::span<const uint8_t>) override;
     void didChangeContentSize(const WebCore::IntSize&) override;
     void setCursor(const WebCore::Cursor&) override;
     void setCursorHiddenUntilMouseMoves(bool) override;
@@ -99,17 +102,17 @@ private:
     bool canUndoRedo(UndoOrRedo) override;
     void executeUndoRedo(UndoOrRedo) override;
     bool executeSavedCommandBySelector(const String& selector) override;
-    void startDrag(const WebCore::DragItem&, const ShareableBitmap::Handle& image) override;
-    void setPromisedDataForImage(const String& pasteboardName, Ref<WebCore::SharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title,
-        const String& url, const String& visibleURL, RefPtr<WebCore::SharedBuffer>&& archiveBuffer, const String& originIdentifier) override;
+    void startDrag(const WebCore::DragItem&, WebCore::ShareableBitmap::Handle&& image) override;
+    void setPromisedDataForImage(const String& pasteboardName, Ref<WebCore::FragmentedSharedBuffer>&& imageBuffer, const String& filename, const String& extension, const String& title,
+        const String& url, const String& visibleURL, RefPtr<WebCore::FragmentedSharedBuffer>&& archiveBuffer, const String& originIdentifier) override;
     void updateSecureInputState() override;
     void resetSecureInputState() override;
     void notifyInputContextAboutDiscardedComposition() override;
     void selectionDidChange() override;
-    void showSafeBrowsingWarning(const SafeBrowsingWarning&, CompletionHandler<void(Variant<WebKit::ContinueUnsafeLoad, URL>&&)>&&) override;
-    void clearSafeBrowsingWarning() override;
-    void clearSafeBrowsingWarningIfForMainFrameNavigation() override;
-    bool hasSafeBrowsingWarning() const override;
+    void showBrowsingWarning(const BrowsingWarning&, CompletionHandler<void(std::variant<WebKit::ContinueUnsafeLoad, URL>&&)>&&) override;
+    void clearBrowsingWarning() override;
+    void clearBrowsingWarningIfForMainFrameNavigation() override;
+    bool hasBrowsingWarning() const override;
     
     bool showShareSheet(const WebCore::ShareDataWithParsedURL&, WTF::CompletionHandler<void(bool)>&&) override;
         
@@ -125,14 +128,16 @@ private:
 
     void pinnedStateWillChange() final;
     void pinnedStateDidChange() final;
+        
+    void drawPageBorderForPrinting(WebCore::FloatSize&&) final;
 
     CGRect boundsOfLayerInLayerBackedWindowCoordinates(CALayer *) const override;
 
     void doneWithKeyEvent(const NativeWebKeyboardEvent&, bool wasEventHandled) override;
 
 #if ENABLE(IMAGE_ANALYSIS)
-    void requestTextRecognition(const URL& imageURL, const ShareableBitmap::Handle& imageData, CompletionHandler<void(WebCore::TextRecognitionResult&&)>&&) override;
-    void computeHasImageAnalysisResults(const URL&, ShareableBitmap&, ImageAnalysisType, CompletionHandler<void(bool)>&&) override;
+    void requestTextRecognition(const URL& imageURL, WebCore::ShareableBitmap::Handle&& imageData, const String& sourceLanguageIdentifier, const String& targetLanguageIdentifier, CompletionHandler<void(WebCore::TextRecognitionResult&&)>&&) override;
+    void computeHasVisualSearchResults(const URL&, WebCore::ShareableBitmap&, CompletionHandler<void(bool)>&&) override;
 #endif
 
     RefPtr<WebPopupMenuProxy> createPopupMenuProxy(WebPageProxy&) override;
@@ -166,15 +171,13 @@ private:
     void didFirstLayerFlush(const LayerTreeContext&) override;
 
     RefPtr<ViewSnapshot> takeViewSnapshot(std::optional<WebCore::IntRect>&&) override;
+    RefPtr<ViewSnapshot> takeViewSnapshot(std::optional<WebCore::IntRect>&&, ForceSoftwareCapturingViewportSnapshot) override;
     void wheelEventWasNotHandledByWebCore(const NativeWebWheelEvent&) override;
 #if ENABLE(MAC_GESTURE_EVENTS)
     void gestureEventWasNotHandledByWebCore(const NativeWebGestureEvent&) override;
 #endif
 
-    void accessibilityWebProcessTokenReceived(const IPC::DataReference&) override;
-
-    void pluginFocusOrWindowFocusChanged(uint64_t pluginComplexTextInputIdentifier, bool pluginHasFocusAndWindowHasFocus) override;
-    void setPluginComplexTextInputState(uint64_t pluginComplexTextInputIdentifier, PluginComplexTextInputState) override;
+    void accessibilityWebProcessTokenReceived(std::span<const uint8_t>, WebCore::FrameIdentifier, pid_t) override;
 
     void makeFirstResponder() override;
     void assistiveTechnologyMakeFirstResponder() override;
@@ -195,14 +198,17 @@ private:
 
     void setEditableElementIsFocused(bool) override;
 
+    void didCommitLayerTree(const RemoteLayerTreeTransaction&) override;
+    void layerTreeCommitComplete() override;
+
+    void scrollingNodeScrollViewDidScroll(WebCore::ScrollingNodeID) override;
+
     void registerInsertionUndoGrouping() override;
 
-#if ENABLE(UI_PROCESS_PDF_HUD)
     void createPDFHUD(PDFPluginIdentifier, const WebCore::IntRect&) override;
     void updatePDFHUDLocation(PDFPluginIdentifier, const WebCore::IntRect&) override;
     void removePDFHUD(PDFPluginIdentifier) override;
     void removeAllPDFHUDs() override;
-#endif
 
     // Auxiliary Client Creation
 #if ENABLE(FULLSCREEN_API)
@@ -226,12 +232,16 @@ private:
     void willRecordNavigationSnapshot(WebBackForwardListItem&) override;
     void didRemoveNavigationGestureSnapshot() override;
 
-    void requestDOMPasteAccess(const WebCore::IntRect&, const String&, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&&) final;
+    void willBeginViewGesture() final;
+    void didEndViewGesture() final;
+
+    void requestDOMPasteAccess(WebCore::DOMPasteAccessCategory, WebCore::DOMPasteRequiresInteraction, const WebCore::IntRect&, const String&, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&&) final;
 
     void makeViewBlank(bool) final;
 
     NSView *activeView() const;
     NSWindow *activeWindow() const;
+    NSView *viewForPresentingRevealPopover() const override { return activeView(); }
 
     void didStartProvisionalLoadForMainFrame() override;
     void didFirstVisuallyNonEmptyLayoutForMainFrame() override;
@@ -252,11 +262,16 @@ private:
     void didChangeBackgroundColor() override;
 
     void startWindowDrag() override;
-    NSWindow *platformWindow() override;
 
     WebCore::UserInterfaceLayoutDirection userInterfaceLayoutDirection() override;
     bool effectiveAppearanceIsDark() const override;
     bool effectiveUserInterfaceLevelIsElevated() const override;
+
+    bool useFormSemanticContext() const override;
+
+    bool isTextRecognitionInFullscreenVideoEnabled() const final { return true; }
+    void beginTextRecognitionForVideoInElementFullscreen(WebCore::ShareableBitmap::Handle&&, WebCore::FloatRect) final;
+    void cancelTextRecognitionForVideoInElementFullscreen() final;
 
 #if ENABLE(DRAG_SUPPORT)
     void didPerformDragOperation(bool handled) final;
@@ -278,8 +293,13 @@ private:
 
     void takeFocus(WebCore::FocusDirection) override;
 
+    void performSwitchHapticFeedback() final;
+
 #if HAVE(APP_ACCENT_COLORS)
     WebCore::Color accentColor() override;
+#if PLATFORM(MAC)
+    bool appUsesCustomAccentColor() override;
+#endif
 #endif
 
 #if HAVE(TRANSLATION_UI_SERVICES) && ENABLE(CONTEXT_MENUS)
@@ -287,11 +307,22 @@ private:
     void handleContextMenuTranslation(const WebCore::TranslationContextMenuInfo&) override;
 #endif
 
+#if ENABLE(WRITING_TOOLS) && ENABLE(CONTEXT_MENUS)
+    bool canHandleContextMenuWritingTools() const override;
+    void handleContextMenuWritingTools(WebCore::WritingTools::RequestedTool, WebCore::IntRect) override;
+#endif
+
 #if ENABLE(DATA_DETECTION)
     void handleClickForDataDetectionResult(const WebCore::DataDetectorElementInfo&, const WebCore::IntPoint&) final;
 #endif
         
     void requestScrollToRect(const WebCore::FloatRect& targetRect, const WebCore::FloatPoint& origin) override;
+
+#if ENABLE(VIDEO_PRESENTATION_MODE)
+    void didEnterFullscreen() final { }
+    void didExitFullscreen() final { }
+    void didCleanupFullscreen() final { }
+#endif
 
     NSView *m_view;
     WeakPtr<WebViewImpl> m_impl;

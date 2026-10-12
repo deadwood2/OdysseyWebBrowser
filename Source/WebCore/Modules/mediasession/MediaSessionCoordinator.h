@@ -42,9 +42,9 @@ template<typename> class DOMPromiseDeferred;
 class MediaSessionCoordinator
     : public RefCounted<MediaSessionCoordinator>
     , public MediaSessionCoordinatorClient
-    , public MediaSession::Observer
+    , public MediaSessionObserver
     , public ActiveDOMObject
-    , public EventTargetWithInlineData  {
+    , public EventTarget  {
     WTF_MAKE_FAST_ALLOCATED;
 public:
     WEBCORE_EXPORT static Ref<MediaSessionCoordinator> create(ScriptExecutionContext*);
@@ -66,9 +66,12 @@ public:
     void setMediaSession(MediaSession*);
 
     using MediaSessionCoordinatorClient::weakPtrFactory;
-    using WeakValueType = MediaSessionCoordinatorClient::WeakValueType;
-    using RefCounted::ref;
-    using RefCounted::deref;
+    using MediaSessionCoordinatorClient::WeakValueType;
+    using MediaSessionCoordinatorClient::WeakPtrImplType;
+
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
 
     struct PlaySessionCommand {
         std::optional<double> atTime;
@@ -82,15 +85,14 @@ private:
     // EventTarget
     void refEventTarget() final { ref(); }
     void derefEventTarget() final { deref(); }
-    EventTargetInterface eventTargetInterface() const final { return MediaSessionCoordinatorEventTargetInterfaceType; }
+    enum EventTargetInterfaceType eventTargetInterface() const final { return EventTargetInterfaceType::MediaSessionCoordinator; }
     ScriptExecutionContext* scriptExecutionContext() const final { return ContextDestructionObserver::scriptExecutionContext(); }
     void eventListenersDidChange() final;
 
-    // ActiveDOMObject
-    const char* activeDOMObjectName() const final { return "MediaSessionCoordinator"; }
+    // ActiveDOMObject.
     bool virtualHasPendingActivity() const final;
 
-    // MediaSession::Observer
+    // MediaSessionObserver
     void metadataChanged(const RefPtr<MediaMetadata>&) final;
     void positionStateChanged(const std::optional<MediaPositionState>&) final;
     void playbackStateChanged(MediaSessionPlaybackState) final;
@@ -108,7 +110,7 @@ private:
     const Logger& logger() const { return m_logger; }
     const void* logIdentifier() const { return m_logIdentifier; }
     static WTFLogChannel& logChannel();
-    static const char* logClassName() { return "MediaSessionCoordinator"; }
+    static ASCIILiteral logClassName() { return "MediaSessionCoordinator"_s; }
     bool shouldFireEvents() const;
 
     WeakPtr<MediaSession> m_session;

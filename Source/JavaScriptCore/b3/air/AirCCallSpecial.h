@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 
 #include "AirSpecial.h"
 #include "RegisterSet.h"
+#include <wtf/TZoneMalloc.h>
 
 namespace JSC { namespace B3 { namespace Air {
 
@@ -43,8 +44,9 @@ namespace JSC { namespace B3 { namespace Air {
 // the prologue, whichever happened sooner.
 
 class CCallSpecial final : public Special {
+    WTF_MAKE_TZONE_ALLOCATED(CCallSpecial);
 public:
-    CCallSpecial();
+    CCallSpecial(bool isSIMDContext);
     ~CCallSpecial() final;
 
     // You cannot use this register to pass arguments. It just so happens that this register is not
@@ -57,10 +59,10 @@ private:
     bool isValid(Inst&) final;
     bool admitsStack(Inst&, unsigned argIndex) final;
     bool admitsExtendedOffsetAddr(Inst&, unsigned) final;
-    void reportUsedRegisters(Inst&, const RegisterSet&) final;
+    void reportUsedRegisters(Inst&, const RegisterSetBuilder&) final;
     MacroAssembler::Jump generate(Inst&, CCallHelpers&, GenerationContext&) final;
-    RegisterSet extraEarlyClobberedRegs(Inst&) final;
-    RegisterSet extraClobberedRegs(Inst&) final;
+    RegisterSetBuilder extraEarlyClobberedRegs(Inst&) final;
+    RegisterSetBuilder extraClobberedRegs(Inst&) final;
 
     void dumpImpl(PrintStream&) const final;
     void deepDumpImpl(PrintStream&) const final;
@@ -76,8 +78,8 @@ private:
     static constexpr unsigned argArgOffset =
         numSpecialArgs + numCalleeArgs + numReturnGPArgs + numReturnFPArgs;
     
-    RegisterSet m_clobberedRegs;
-    RegisterSet m_emptyRegs;
+    RegisterSetBuilder m_clobberedRegs;
+    bool m_isSIMDContext { false };
 };
 
 } } } // namespace JSC::B3::Air

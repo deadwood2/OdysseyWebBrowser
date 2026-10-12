@@ -31,9 +31,11 @@
 #include <WebCore/Color.h>
 #include <WebCore/FloatRect.h>
 #include <WebCore/FloatSize.h>
+#include <wtf/CheckedRef.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/RetainPtr.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
 
 #if PLATFORM(COCOA)
@@ -46,8 +48,6 @@
 
 #if USE(GTK4)
 #include <WebCore/GRefPtrGtk.h>
-#else
-#include <WebCore/CairoUtilities.h>
 #endif
 #endif
 
@@ -87,7 +87,18 @@ typedef struct {
     bool isEnd;
 } PlatformGtkScrollData;
 typedef PlatformGtkScrollData* PlatformScrollEvent;
+#else
+typedef void* PlatformScrollEvent;
 #endif
+
+namespace WebKit {
+class ViewGestureController;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::ViewGestureController> : std::true_type { };
+}
 
 namespace WebKit {
 
@@ -96,10 +107,14 @@ class WebBackForwardListItem;
 class WebPageProxy;
 class WebProcessProxy;
 
-class ViewGestureController : private IPC::MessageReceiver {
-    WTF_MAKE_FAST_ALLOCATED;
+class ViewGestureController : public IPC::MessageReceiver {
+    WTF_MAKE_TZONE_ALLOCATED(ViewGestureController);
     WTF_MAKE_NONCOPYABLE(ViewGestureController);
 public:
+
+    static constexpr double defaultMinMagnification { 1 };
+    static constexpr double defaultMaxMagnification { 3 };
+
     ViewGestureController(WebPageProxy&);
     ~ViewGestureController();
     void platformTeardown();
@@ -144,7 +159,7 @@ public:
 
 #if PLATFORM(MAC)
     void handleMagnificationGestureEvent(PlatformScrollEvent, WebCore::FloatPoint origin);
-    void handleSmartMagnificationGesture(WebCore::FloatPoint origin);
+    void handleSmartMagnificationGesture(WebCore::FloatPoint gestureLocationInViewCoordinates);
 
     void gestureEventWasNotHandledByWebCore(PlatformScrollEvent, WebCore::FloatPoint origin);
 
@@ -250,13 +265,13 @@ private:
 
     private:
         static String eventsDescription(Events);
-        void log(const String&) const;
+        void log(StringView) const;
 
         void fireRemovalCallbackImmediately();
         void fireRemovalCallbackIfPossible();
         void watchdogTimerFired();
 
-        bool stopWaitingForEvent(Events, const String& logReason, ShouldIgnoreEventIfPaused = ShouldIgnoreEventIfPaused::Yes);
+        bool stopWaitingForEvent(Events, ASCIILiteral logReason, ShouldIgnoreEventIfPaused = ShouldIgnoreEventIfPaused::Yes);
 
         Events m_outstandingEvents { 0 };
         WTF::Function<void()> m_removalCallback;
@@ -264,14 +279,14 @@ private:
 
         uint64_t m_renderTreeSizeThreshold { 0 };
 
-        RunLoop::Timer<SnapshotRemovalTracker> m_watchdogTimer;
+        RunLoop::Timer m_watchdogTimer;
 
         bool m_paused { true };
     };
 
 #if PLATFORM(MAC)
     // Message handlers.
-    void didCollectGeometryForSmartMagnificationGesture(WebCore::FloatPoint origin, WebCore::FloatRect renderRect, WebCore::FloatRect visibleContentBounds, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale);
+    void didCollectGeometryForSmartMagnificationGesture(WebCore::FloatPoint origin, WebCore::FloatRect absoluteTargetRect, WebCore::FloatRect visibleContentBounds, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale);
 #endif
 
 #if !PLATFORM(IOS_FAMILY)
@@ -292,7 +307,7 @@ private:
     bool shouldUseSnapshotForSize(ViewSnapshot&, WebCore::FloatSize swipeLayerSize, float topContentInset);
 
 #if PLATFORM(MAC)
-    static double resistanceForDelta(double deltaScale, double currentScale);
+    static double resistanceForDelta(double deltaScale, double currentScale, double minMagnification, double maxMagnification);
 
     CALayer* determineSnapshotLayerParent() const;
     CALayer* determineLayerAdjacentToSnapshotForParent(SwipeDirection, CALayer* snapshotLayerParent) const;
@@ -309,7 +324,7 @@ private:
         bool handleEvent(PlatformScrollEvent);
         void eventWasNotHandledByWebCore(PlatformScrollEvent);
 
-        void reset(const char* resetReasonForLogging);
+        void reset(ASCIILiteral resetReasonForLogging);
 
         bool shouldIgnorePinnedState() { return m_shouldIgnorePinnedState; }
         void setShouldIgnorePinnedState(bool ignore) { m_shouldIgnorePinnedState = ignore; }
@@ -323,11 +338,12 @@ private:
         bool scrollEventCanInfluenceSwipe(PlatformScrollEvent);
         WebCore::FloatSize scrollEventGetScrollingDeltas(PlatformScrollEvent);
 
-        enum class State {
+        enum class State : uint8_t {
             None,
             WaitingForWebCore,
             InsufficientMagnitude
         };
+        static ASCIILiteral stateToString(State);
 
         State m_state { State::None };
         SwipeDirection m_direction;
@@ -349,7 +365,7 @@ private:
 
     bool m_swipeGestureEnabled { true };
 
-    RunLoop::Timer<ViewGestureController> m_swipeActiveLoadMonitoringTimer;
+    RunLoop::Timer m_swipeActiveLoadMonitoringTimer;
 
     WebCore::Color m_backgroundColorForCurrentSnapshot;
 
@@ -367,10 +383,10 @@ private:
 
     bool m_hasOutstandingRepaintRequest { false };
 
-    double m_magnification;
+    double m_magnification { 1 };
     WebCore::FloatPoint m_magnificationOrigin;
 
-    double m_initialMagnification;
+    double m_initialMagnification { 1 };
     WebCore::FloatPoint m_initialMagnificationOrigin;
 #endif
 
@@ -483,11 +499,6 @@ private:
 
     SnapshotRemovalTracker m_snapshotRemovalTracker;
     WTF::Function<void()> m_loadCallback;
-
-#if !PLATFORM(IOS_FAMILY)
-    static constexpr double minMagnification { 1 };
-    static constexpr double maxMagnification { 3 };
-#endif
 };
 
 } // namespace WebKit

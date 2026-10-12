@@ -28,10 +28,17 @@
 #include <WebCore/LoaderStrategy.h>
 #include <WebCore/PasteboardStrategy.h>
 #include <WebCore/PlatformStrategies.h>
+#include <WebCore/PushStrategy.h>
 
 namespace WebKit {
 
-class WebPlatformStrategies : public WebCore::PlatformStrategies, private WebCore::PasteboardStrategy {
+class WebPlatformStrategies :
+    public WebCore::PlatformStrategies,
+    private WebCore::PasteboardStrategy
+#if ENABLE(DECLARATIVE_WEB_PUSH)
+    , public WebCore::PushStrategy
+#endif
+{
     friend NeverDestroyed<WebPlatformStrategies>;
 public:
     static void initialize();
@@ -44,6 +51,9 @@ private:
     WebCore::PasteboardStrategy* createPasteboardStrategy() override;
     WebCore::MediaStrategy* createMediaStrategy() override;
     WebCore::BlobRegistry* createBlobRegistry() override;
+#if ENABLE(DECLARATIVE_WEB_PUSH)
+    WebCore::PushStrategy* createPushStrategy() override;
+#endif
 
     // WebCore::PasteboardStrategy
 #if PLATFORM(IOS_FAMILY)
@@ -81,6 +91,7 @@ private:
     RefPtr<WebCore::SharedBuffer> readBufferFromClipboard(const String& pasteboardName, const String& pasteboardType) override;
     void writeToClipboard(const String& pasteboardName, WebCore::SelectionData&&) override;
     void clearClipboard(const String& pasteboardName) override;
+    int64_t changeCount(const String& pasteboardName) override;
 #endif
 #if USE(LIBWPE)
     void getTypes(Vector<String>& types) override;
@@ -89,7 +100,7 @@ private:
 #endif
 
     String readStringFromPasteboard(size_t index, const String& pasteboardType, const String& pasteboardName, const WebCore::PasteboardContext*) override;
-    RefPtr<WebCore::SharedBuffer> readBufferFromPasteboard(size_t index, const String& pasteboardType, const String& pasteboardName, const WebCore::PasteboardContext*) override;
+    RefPtr<WebCore::SharedBuffer> readBufferFromPasteboard(std::optional<size_t> index, const String& pasteboardType, const String& pasteboardName, const WebCore::PasteboardContext*) override;
     URL readURLFromPasteboard(size_t index, const String& pasteboardName, String& title, const WebCore::PasteboardContext*) override;
     int getPasteboardItemsCount(const String& pasteboardName, const WebCore::PasteboardContext*) override;
     std::optional<WebCore::PasteboardItemInfo> informationForItemAtIndex(size_t index, const String& pasteboardName, int64_t changeCount, const WebCore::PasteboardContext*) override;
@@ -97,6 +108,14 @@ private:
     Vector<String> typesSafeForDOMToReadAndWrite(const String& pasteboardName, const String& origin, const WebCore::PasteboardContext*) override;
     int64_t writeCustomData(const Vector<WebCore::PasteboardCustomData>&, const String&, const WebCore::PasteboardContext*) override;
     bool containsStringSafeForDOMToReadForType(const String&, const String& pasteboardName, const WebCore::PasteboardContext*) override;
+
+    // WebCore::PushStrategy
+#if ENABLE(DECLARATIVE_WEB_PUSH)
+    void navigatorSubscribeToPushService(const URL& scope, const Vector<uint8_t>& applicationServerKey, SubscribeToPushServiceCallback&&) override;
+    void navigatorUnsubscribeFromPushService(const URL& scope, WebCore::PushSubscriptionIdentifier, UnsubscribeFromPushServiceCallback&&) override;
+    void navigatorGetPushSubscription(const URL& scope, GetPushSubscriptionCallback&&) override;
+    void navigatorGetPushPermissionState(const URL& scope, GetPushPermissionStateCallback&&) override;
+#endif
 };
 
 } // namespace WebKit

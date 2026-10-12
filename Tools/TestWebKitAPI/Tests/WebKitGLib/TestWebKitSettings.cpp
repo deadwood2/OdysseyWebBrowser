@@ -34,7 +34,9 @@
 #include "WebKitTestServer.h"
 #include "WebViewTest.h"
 #include <WebCore/SoupVersioning.h>
+#include <wtf/HashSet.h>
 #include <wtf/glib/GRefPtr.h>
+#include <wtf/text/MakeString.h>
 
 static WebKitTestServer* gServer;
 
@@ -52,15 +54,25 @@ static void testWebKitSettings(Test*, gconstpointer)
     webkit_settings_set_auto_load_images(settings, FALSE);
     g_assert_false(webkit_settings_get_auto_load_images(settings));
 
-    // load-icons-ignoring-image-load-setting is false by default.
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    // load-icons-ignoring-image-load-setting is deprecated and always false.
+    // Make warnings non-fatal for this test to make it pass.
+    Test::removeLogFatalFlag(G_LOG_LEVEL_WARNING);
     g_assert_false(webkit_settings_get_load_icons_ignoring_image_load_setting(settings));
     webkit_settings_set_load_icons_ignoring_image_load_setting(settings, TRUE);
-    g_assert_true(webkit_settings_get_load_icons_ignoring_image_load_setting(settings));
+    g_assert_false(webkit_settings_get_load_icons_ignoring_image_load_setting(settings));
+    Test::addLogFatalFlag(G_LOG_LEVEL_WARNING);
+    ALLOW_DEPRECATED_DECLARATIONS_END
     
-    // Offline application cache is true by default.
-    g_assert_true(webkit_settings_get_enable_offline_web_application_cache(settings));
-    webkit_settings_set_enable_offline_web_application_cache(settings, FALSE);
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    // Offline application cache is deprecated and always false.
+    // Make warnings non-fatal for this test to make it pass.
+    Test::removeLogFatalFlag(G_LOG_LEVEL_WARNING);
     g_assert_false(webkit_settings_get_enable_offline_web_application_cache(settings));
+    webkit_settings_set_enable_offline_web_application_cache(settings, TRUE);
+    g_assert_false(webkit_settings_get_enable_offline_web_application_cache(settings));
+    Test::addLogFatalFlag(G_LOG_LEVEL_WARNING);
+    ALLOW_DEPRECATED_DECLARATIONS_END
 
     // Local storage is enable by default.
     g_assert_true(webkit_settings_get_enable_html5_local_storage(settings));
@@ -71,21 +83,6 @@ static void testWebKitSettings(Test*, gconstpointer)
     g_assert_true(webkit_settings_get_enable_html5_database(settings));
     webkit_settings_set_enable_html5_database(settings, FALSE);
     g_assert_false(webkit_settings_get_enable_html5_database(settings));
-
-    // XSS Auditor is enabled by default.
-    g_assert_true(webkit_settings_get_enable_xss_auditor(settings));
-    webkit_settings_set_enable_xss_auditor(settings, FALSE);
-    g_assert_false(webkit_settings_get_enable_xss_auditor(settings));
-
-    // Frame flattening is disabled by default.
-    g_assert_false(webkit_settings_get_enable_frame_flattening(settings));
-    webkit_settings_set_enable_frame_flattening(settings, TRUE);
-    g_assert_true(webkit_settings_get_enable_frame_flattening(settings));
-
-    // Java is enabled by default.
-    g_assert_true(webkit_settings_get_enable_java(settings));
-    webkit_settings_set_enable_java(settings, FALSE);
-    g_assert_false(webkit_settings_get_enable_java(settings));
 
     // By default, JavaScript can open windows automatically is disabled.
     g_assert_false(webkit_settings_get_javascript_can_open_windows_automatically(settings));
@@ -276,10 +273,10 @@ static void testWebKitSettings(Test*, gconstpointer)
     webkit_settings_set_enable_page_cache(settings, FALSE);
     g_assert_false(webkit_settings_get_enable_page_cache(settings));
 
-    // By default, smooth scrolling is disabled.
-    g_assert_false(webkit_settings_get_enable_smooth_scrolling(settings));
-    webkit_settings_set_enable_smooth_scrolling(settings, TRUE);
+    // By default, smooth scrolling is enabled.
     g_assert_true(webkit_settings_get_enable_smooth_scrolling(settings));
+    webkit_settings_set_enable_smooth_scrolling(settings, FALSE);
+    g_assert_false(webkit_settings_get_enable_smooth_scrolling(settings));
 
     // By default, writing of console messages to stdout is disabled.
     g_assert_false(webkit_settings_get_enable_write_console_messages_to_stdout(settings));
@@ -290,6 +287,17 @@ static void testWebKitSettings(Test*, gconstpointer)
     g_assert_true(webkit_settings_get_enable_media_stream(settings));
     webkit_settings_set_enable_media_stream(settings, FALSE);
     g_assert_false(webkit_settings_get_enable_media_stream(settings));
+
+    // WebRTC is only enabled by default when using the GStreamer-based implementation
+#if USE(GSTREAMER_WEBRTC)
+    g_assert_true(webkit_settings_get_enable_webrtc(settings));
+    webkit_settings_set_enable_webrtc(settings, FALSE);
+    g_assert_false(webkit_settings_get_enable_webrtc(settings));
+#else
+    g_assert_false(webkit_settings_get_enable_webrtc(settings));
+    webkit_settings_set_enable_webrtc(settings, TRUE);
+    g_assert_true(webkit_settings_get_enable_webrtc(settings));
+#endif
 
     // By default, SpatialNavigation is disabled
     g_assert_false(webkit_settings_get_enable_spatial_navigation(settings));
@@ -339,16 +347,16 @@ static void testWebKitSettings(Test*, gconstpointer)
     g_assert_cmpstr(nullptr, ==, webkit_settings_get_media_content_types_requiring_hardware_support(settings));
 
 #if PLATFORM(GTK)
-#if !USE(GTK4)
-    // Ondemand is the default hardware acceleration policy.
-    g_assert_cmpuint(webkit_settings_get_hardware_acceleration_policy(settings), ==, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
+    // Always is the default hardware acceleration policy.
+    g_assert_cmpuint(webkit_settings_get_hardware_acceleration_policy(settings), ==, WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
     webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER);
     g_assert_cmpuint(webkit_settings_get_hardware_acceleration_policy(settings), ==, WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER);
-    webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
-    g_assert_cmpuint(webkit_settings_get_hardware_acceleration_policy(settings), ==, WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
+#if !USE(GTK4)
     webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
     g_assert_cmpuint(webkit_settings_get_hardware_acceleration_policy(settings), ==, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
 #endif
+    webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
+    g_assert_cmpuint(webkit_settings_get_hardware_acceleration_policy(settings), ==, WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
 
     // Back-forward navigation gesture is disabled by default
     g_assert_false(webkit_settings_get_enable_back_forward_navigation_gestures(settings));
@@ -361,12 +369,44 @@ static void testWebKitSettings(Test*, gconstpointer)
     webkit_settings_set_enable_javascript_markup(settings, FALSE);
     g_assert_false(webkit_settings_get_enable_javascript_markup(settings));
 
+#if !ENABLE(2022_GLIB_API)
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    // Accelerated 2D canvas setting is deprecated and no-op.
+    // Accelerated 2D canvas is deprecated and always disabled.
     g_assert_false(webkit_settings_get_enable_accelerated_2d_canvas(settings));
     webkit_settings_set_enable_accelerated_2d_canvas(settings, TRUE);
     g_assert_false(webkit_settings_get_enable_accelerated_2d_canvas(settings));
+
+    // XSS Auditor is deprecated and always disabled.
+    g_assert_false(webkit_settings_get_enable_xss_auditor(settings));
+    webkit_settings_set_enable_xss_auditor(settings, TRUE);
+    g_assert_false(webkit_settings_get_enable_xss_auditor(settings));
+
+    // Frame flattening is deprecated and always disabled.
+    g_assert_false(webkit_settings_get_enable_frame_flattening(settings));
+    webkit_settings_set_enable_frame_flattening(settings, TRUE);
+    g_assert_false(webkit_settings_get_enable_frame_flattening(settings));
+
+    // Java is not supported, and always disabled.
+    // Make warnings non-fatal for this test to make it pass.
+    Test::removeLogFatalFlag(G_LOG_LEVEL_WARNING);
+    g_assert_false(webkit_settings_get_enable_java(settings));
+    webkit_settings_set_enable_java(settings, FALSE);
+    g_assert_false(webkit_settings_get_enable_java(settings));
+    Test::addLogFatalFlag(G_LOG_LEVEL_WARNING);
 ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+
+#if USE(SKIA)
+    // 2D canvas acceleration is enabled by default.
+    g_assert_true(webkit_settings_get_enable_2d_canvas_acceleration(settings));
+    webkit_settings_set_enable_2d_canvas_acceleration(settings, FALSE);
+    g_assert_false(webkit_settings_get_enable_2d_canvas_acceleration(settings));
+#endif
+
+    // WebSecurity is enabled by default.
+    g_assert_false(webkit_settings_get_disable_web_security(settings));
+    webkit_settings_set_disable_web_security(settings, TRUE);
+    g_assert_true(webkit_settings_get_disable_web_security(settings));
 
     g_object_unref(G_OBJECT(settings));
 }
@@ -376,12 +416,139 @@ void testWebKitSettingsNewWithSettings(Test* test, gconstpointer)
     GRefPtr<WebKitSettings> settings = adoptGRef(webkit_settings_new_with_settings(
         "enable-javascript", FALSE,
         "auto-load-images", FALSE,
-        "load-icons-ignoring-image-load-setting", TRUE,
         nullptr));
     test->assertObjectIsDeletedWhenTestFinishes(G_OBJECT(settings.get()));
     g_assert_false(webkit_settings_get_enable_javascript(settings.get()));
     g_assert_false(webkit_settings_get_auto_load_images(settings.get()));
-    g_assert_true(webkit_settings_get_load_icons_ignoring_image_load_setting(settings.get()));
+}
+
+void testWebKitFeatures(Test* test, gconstpointer)
+{
+    g_autoptr(WebKitFeatureList) allFeatures = webkit_settings_get_all_features();
+    g_assert_nonnull(allFeatures);
+
+    auto allFeaturesCount = webkit_feature_list_get_length(allFeatures);
+
+    {
+        // Keep a set of identifiers to validate their uniqueness.
+        HashSet<String> featureIdentifiers;
+        featureIdentifiers.reserveInitialCapacity(allFeaturesCount);
+        for (gsize i = 0; i < allFeaturesCount; i++) {
+            auto* feature = webkit_feature_list_get(allFeatures, i);
+            g_assert_nonnull(webkit_feature_get_identifier(feature));
+            g_assert_nonnull(webkit_feature_get_category(feature));
+
+            auto identifier = String::fromUTF8(webkit_feature_get_identifier(feature));
+            g_assert_false(featureIdentifiers.contains(identifier));
+            featureIdentifiers.add(WTFMove(identifier));
+        }
+
+        g_assert_cmpuint(featureIdentifiers.size(), ==, allFeaturesCount);
+    }
+
+    // These are subsets of the list of all features.
+    g_autoptr(WebKitFeatureList) experimentalFeatures = webkit_settings_get_experimental_features();
+    g_assert_nonnull(experimentalFeatures);
+    g_assert_cmpuint(allFeaturesCount, >=, webkit_feature_list_get_length(experimentalFeatures));
+
+    g_autoptr(WebKitFeatureList) developmentFeatures = webkit_settings_get_development_features();
+    g_assert_nonnull(developmentFeatures);
+    g_assert_cmpuint(allFeaturesCount, >=, webkit_feature_list_get_length(developmentFeatures));
+
+    // Try toggling a feature.
+    GRefPtr<WebKitSettings> settings = adoptGRef(webkit_settings_new());
+    auto* feature = webkit_feature_list_get(experimentalFeatures, 0);
+    auto wasEnabled = webkit_settings_get_feature_enabled(settings.get(), feature);
+    webkit_settings_set_feature_enabled(settings.get(), feature, !wasEnabled);
+    g_assert(wasEnabled != webkit_settings_get_feature_enabled(settings.get(), feature));
+
+    // Check that enabled status is the same as the declared default.
+    for (gsize i = 0; i < allFeaturesCount; i++) {
+        auto* feature = webkit_feature_list_get(allFeatures, i);
+        const auto identifier = String::fromUTF8(webkit_feature_get_identifier(feature));
+
+        // FIXME: During initialization this is changed depending on
+        // available hardware support, so the default is not guaranteed to
+        // match. It might be possible to try and write a function like
+        // WebKit::defaultForceCompositingModeEnabled() to provide the
+        // default value for the feature flag.
+        if (identifier == "ForceCompositingMode"_s)
+            continue;
+
+        // FIXME: This is enabled in UnifiedWebPreferences.yaml, but the
+        // actual value ends up being disabled without an obvious reason.
+        // Needs investigating.
+        if (identifier == "GrammarAndSpellingPseudoElements"_s)
+            continue;
+
+        g_assert(webkit_settings_get_feature_enabled(settings.get(), feature) == webkit_feature_get_default_value(feature));
+    }
+}
+
+void testWebKitSettingsApplyFromConfigFile(Test* test, gconstpointer)
+{
+    GRefPtr<WebKitSettings> settings = adoptGRef(webkit_settings_new());
+    GUniquePtr<GKeyFile> key_file(g_key_file_new());
+    const char* key_file_contents = "[websettings]\n" \
+        "user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36\n" \
+        "enable-webaudio = 0\n" \
+        "enable-webrtc = true\n";
+
+    const char* invalidGroup = "[foo]\nbar = 42\n";
+    const char* unknownSetting = "[websettings]\n" \
+        "iamnotasetting = yes\n" \
+        "enable-webaudio = 0\n";
+    const char* invalidSettingType = "[websettings]\n" \
+        "enable-webaudio = ishouldnotbeastring\n";
+    auto bigIntNotSupported = makeString("[websettings]\nminimum-font-size = "_s, std::numeric_limits<uint64_t>::max(), '\n');
+    GUniqueOutPtr<GError> error;
+
+    // Loading settings from a file not containing a websettings group should raise an error.
+    g_key_file_load_from_data(key_file.get(), invalidGroup, strlen(invalidGroup), G_KEY_FILE_NONE, &error.outPtr());
+    g_assert_no_error(error.get());
+    g_assert_false(webkit_settings_apply_from_key_file(settings.get(), key_file.get(), "websettings", &error.outPtr()));
+    g_assert_error(error.get(), G_KEY_FILE_ERROR, G_KEY_FILE_ERROR_INVALID_VALUE);
+    g_assert_true(webkit_settings_get_enable_webaudio(settings.get()));
+
+    // Check default values of settings, before applying key_file settings.
+    g_assert_true(webkit_settings_get_enable_webaudio(settings.get()));
+#if USE(GSTREAMER_WEBRTC)
+    g_assert_true(webkit_settings_get_enable_webrtc(settings.get()));
+#else
+    g_assert_false(webkit_settings_get_enable_webrtc(settings.get()));
+#endif
+    CString defaultUserAgent = webkit_settings_get_user_agent(settings.get());
+
+    // Loading settings from a file that contains an unknown setting should raise an error.
+    g_key_file_load_from_data(key_file.get(), unknownSetting, strlen(unknownSetting), G_KEY_FILE_NONE, &error.outPtr());
+    g_assert_no_error(error.get());
+    g_assert_false(webkit_settings_apply_from_key_file(settings.get(), key_file.get(), "websettings", &error.outPtr()));
+    g_assert_error(error.get(), G_KEY_FILE_ERROR, G_KEY_FILE_ERROR_INVALID_VALUE);
+
+    // Mismatching a setting value type should raise an error.
+    g_key_file_load_from_data(key_file.get(), invalidSettingType, strlen(invalidSettingType), G_KEY_FILE_NONE, &error.outPtr());
+    g_assert_no_error(error.get());
+    g_assert_false(webkit_settings_apply_from_key_file(settings.get(), key_file.get(), "websettings", &error.outPtr()));
+    g_assert_error(error.get(), G_KEY_FILE_ERROR, G_KEY_FILE_ERROR_INVALID_VALUE);
+
+    // Overflowing uint settings should raise an error.
+    g_key_file_load_from_data(key_file.get(), bigIntNotSupported.utf8().data(), bigIntNotSupported.length(), G_KEY_FILE_NONE, &error.outPtr());
+    g_assert_no_error(error.get());
+    g_assert_false(webkit_settings_apply_from_key_file(settings.get(), key_file.get(), "websettings", &error.outPtr()));
+    g_assert_error(error.get(), G_KEY_FILE_ERROR, G_KEY_FILE_ERROR_INVALID_VALUE);
+
+    g_assert_true(g_key_file_load_from_data(key_file.get(), key_file_contents, strlen(key_file_contents), G_KEY_FILE_NONE, &error.outPtr()));
+    g_assert_no_error(error.get());
+
+    g_assert_true(webkit_settings_apply_from_key_file(settings.get(), key_file.get(), "websettings", &error.outPtr()));
+    g_assert_no_error(error.get());
+
+    // Check settings after apply key_file settings.
+    g_assert_false(webkit_settings_get_enable_webaudio(settings.get()));
+    g_assert_true(webkit_settings_get_enable_webrtc(settings.get()));
+
+    CString newUserAgent = webkit_settings_get_user_agent(settings.get());
+    g_assert_cmpstr(newUserAgent.data(), !=, defaultUserAgent.data());
 }
 
 #if PLATFORM(GTK)
@@ -389,7 +556,7 @@ static CString convertWebViewMainResourceDataToCString(WebViewTest* test)
 {
     size_t mainResourceDataSize = 0;
     const char* mainResourceData = test->mainResourceData(mainResourceDataSize);
-    return CString(mainResourceData, mainResourceDataSize);
+    return std::span { mainResourceData, mainResourceDataSize };
 }
 
 static void assertThatUserAgentIsSentInHeaders(WebViewTest* test, const CString& userAgent)
@@ -491,6 +658,8 @@ void beforeAll()
 
     Test::add("WebKitSettings", "webkit-settings", testWebKitSettings);
     Test::add("WebKitSettings", "new-with-settings", testWebKitSettingsNewWithSettings);
+    Test::add("WebKitSettings", "features", testWebKitFeatures);
+    Test::add("WebKitSettings", "config-file", testWebKitSettingsApplyFromConfigFile);
 #if PLATFORM(GTK)
     WebViewTest::add("WebKitSettings", "user-agent", testWebKitSettingsUserAgent);
 #endif

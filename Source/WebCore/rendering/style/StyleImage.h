@@ -2,7 +2,7 @@
  * Copyright (C) 2000 Lars Knoll (knoll@kde.org)
  *           (C) 2000 Antti Koivisto (koivisto@kde.org)
  *           (C) 2000 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2003-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2003-2023 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -29,70 +29,102 @@
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/TypeCasts.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
 class CachedImage;
 class CachedResourceLoader;
 class CSSValue;
+class Document;
 class RenderElement;
 class RenderObject;
+class RenderStyle;
 struct ResourceLoaderOptions;
 
 typedef const void* WrappedImagePtr;
 
-class StyleImage : public RefCounted<StyleImage> {
+class StyleImage : public RefCounted<StyleImage>, public CanMakeWeakPtr<StyleImage> {
 public:
     virtual ~StyleImage() = default;
 
     virtual bool operator==(const StyleImage& other) const = 0;
 
-    virtual Ref<CSSValue> cssValue() const = 0;
+    // Computed Style representation.
+    virtual Ref<CSSValue> computedStyleValue(const RenderStyle&) const = 0;
 
-    virtual bool canRender(const RenderElement*, float /*multiplier*/) const { return true; }
+    // Opaque representation.
+    virtual WrappedImagePtr data() const = 0;
+
+    // Loading.
     virtual bool isPending() const = 0;
     virtual void load(CachedResourceLoader&, const ResourceLoaderOptions&) = 0;
-    virtual bool isLoaded() const { return true; }
+    virtual bool isLoaded(const RenderElement*) const { return true; }
     virtual bool errorOccurred() const { return false; }
-    virtual FloatSize imageSize(const RenderElement*, float multiplier) const = 0;
-    virtual void computeIntrinsicDimensions(const RenderElement*, Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio) = 0;
-    virtual bool imageHasRelativeWidth() const = 0;
-    virtual bool imageHasRelativeHeight() const = 0;
-    virtual bool usesImageContainerSize() const = 0;
-    virtual void setContainerContextForRenderer(const RenderElement&, const FloatSize&, float) = 0;
+    virtual bool usesDataProtocol() const { return false; }
+    virtual bool hasImage() const { return false; }
+    virtual URL reresolvedURL(const Document&) const { return { }; }
+
+    // Clients.
     virtual void addClient(RenderElement&) = 0;
     virtual void removeClient(RenderElement&) = 0;
     virtual bool hasClient(RenderElement&) const = 0;
-    virtual bool hasImage() const { return false; }
-    virtual RefPtr<Image> image(RenderElement*, const FloatSize&) const = 0;
-    virtual WrappedImagePtr data() const = 0;
+
+    // Size / scale.
+    virtual FloatSize imageSize(const RenderElement*, float multiplier) const = 0;
+    virtual bool usesImageContainerSize() const = 0;
+    virtual void computeIntrinsicDimensions(const RenderElement*, Length& intrinsicWidth, Length& intrinsicHeight, FloatSize& intrinsicRatio) = 0;
+    virtual bool imageHasRelativeWidth() const = 0;
+    virtual bool imageHasRelativeHeight() const = 0;
     virtual float imageScaleFactor() const { return 1; }
-    virtual bool knownToBeOpaque(const RenderElement&) const = 0;
-    virtual CachedImage* cachedImage() const { return 0; }
+    virtual bool imageHasNaturalDimensions() const { return true; }
+
+    // Image.
+    virtual RefPtr<Image> image(const RenderElement*, const FloatSize&, bool isForFirstLine = false) const = 0;
     virtual StyleImage* selectedImage() { return this; }
     virtual const StyleImage* selectedImage() const { return this; }
+    virtual CachedImage* cachedImage() const { return nullptr; }
 
-    ALWAYS_INLINE bool isCachedImage() const { return m_isCachedImage; }
-    ALWAYS_INLINE bool isGeneratedImage() const { return m_isGeneratedImage; }
-    ALWAYS_INLINE bool isCursorImage() const { return m_isCursorImage; }
-    ALWAYS_INLINE bool isImageSet() const { return m_isImageSet; }
+    // Rendering.
+    virtual bool canRender(const RenderElement*, float /*multiplier*/) const { return true; }
+    virtual void setContainerContextForRenderer(const RenderElement&, const FloatSize&, float) = 0;
+    virtual bool knownToBeOpaque(const RenderElement&) const = 0;
 
-    bool hasCachedImage() const { return m_isCachedImage || selectedImage()->isCachedImage(); }
+    // Derived type.
+    ALWAYS_INLINE bool isCachedImage() const { return m_type == Type::CachedImage; }
+    ALWAYS_INLINE bool isCursorImage() const { return m_type == Type::CursorImage; }
+    ALWAYS_INLINE bool isImageSet() const { return m_type == Type::ImageSet; }
+    ALWAYS_INLINE bool isGeneratedImage() const { return isFilterImage() || isCanvasImage() || isCrossfadeImage() || isGradientImage() || isNamedImage() || isPaintImage() || isInvalidImage(); }
+    ALWAYS_INLINE bool isFilterImage() const { return m_type == Type::FilterImage; }
+    ALWAYS_INLINE bool isCanvasImage() const { return m_type == Type::CanvasImage; }
+    ALWAYS_INLINE bool isCrossfadeImage() const { return m_type == Type::CrossfadeImage; }
+    ALWAYS_INLINE bool isGradientImage() const { return m_type == Type::GradientImage; }
+    ALWAYS_INLINE bool isNamedImage() const { return m_type == Type::NamedImage; }
+    ALWAYS_INLINE bool isPaintImage() const { return m_type == Type::PaintImage; }
+    ALWAYS_INLINE bool isInvalidImage() const { return m_type == Type::InvalidImage; }
 
-    virtual bool usesDataProtocol() const { return false; }
+    bool hasCachedImage() const { return m_type == Type::CachedImage || selectedImage()->isCachedImage(); }
 
 protected:
-    StyleImage()
-        : m_isCachedImage(false)
-        , m_isGeneratedImage(false)
-        , m_isImageSet(false)
-        , m_isCursorImage(false)
+    enum class Type : uint8_t {
+        CachedImage,
+        CursorImage,
+        ImageSet,
+        FilterImage,
+        CanvasImage,
+        CrossfadeImage,
+        GradientImage,
+        NamedImage,
+        InvalidImage,
+        PaintImage,
+    };
+
+    StyleImage(Type type)
+        : m_type { type }
     {
     }
-    bool m_isCachedImage : 1;
-    bool m_isGeneratedImage : 1;
-    bool m_isImageSet : 1;
-    bool m_isCursorImage : 1;
+
+    Type m_type;
 };
 
 } // namespace WebCore

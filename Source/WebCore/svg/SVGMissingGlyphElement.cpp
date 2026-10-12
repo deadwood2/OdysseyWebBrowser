@@ -21,14 +21,14 @@
 
 #include "SVGMissingGlyphElement.h"
 #include "SVGNames.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SVGMissingGlyphElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SVGMissingGlyphElement);
 
 inline SVGMissingGlyphElement::SVGMissingGlyphElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
 {
     ASSERT(hasTagName(SVGNames::missing_glyphTag));
 }

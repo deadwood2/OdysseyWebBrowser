@@ -101,12 +101,11 @@ HTTPParser::Process HTTPParser::handlePhase()
 HTTPParser::Process HTTPParser::abortProcess(const char* message)
 {
     if (message)
-        LOG_ERROR(message);
+        LOG_ERROR("%s", message);
 
     m_phase = Phase::Error;
 
-    if (!m_buffer.isEmpty())
-        m_buffer.resize(0);
+    m_buffer.shrink(0);
 
     return Process::Suspend;
 }
@@ -130,7 +129,7 @@ bool HTTPParser::readLine(String& line)
     if (position == notFound || position + 1 == length || m_buffer[position + 1] != 0x0a)
         return false;
 
-    line = String::fromUTF8(m_buffer.data(), position);
+    line = String::fromUTF8({ m_buffer.data(), position });
     if (line.isNull())
         LOG_ERROR("Client error: invalid encoding in HTTP header.");
 
@@ -140,11 +139,11 @@ bool HTTPParser::readLine(String& line)
 
 size_t HTTPParser::expectedBodyLength() const
 {
-    if (m_message.method == "HEAD")
+    if (m_message.method == "HEAD"_s)
         return 0;
 
-    const char* name = "content-length:";
-    const size_t nameLength = std::strlen(name);
+    constexpr auto name = "content-length:"_s;
+    const size_t nameLength = name.length();
 
     for (const auto& header : m_message.requestHeaders) {
         if (header.startsWithIgnoringASCIICase(name))

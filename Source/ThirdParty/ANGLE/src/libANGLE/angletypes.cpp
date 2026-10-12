@@ -12,6 +12,11 @@
 #include "libANGLE/VertexArray.h"
 #include "libANGLE/VertexAttribute.h"
 
+#include <limits>
+
+#define USE_SYSTEM_ZLIB
+#include "compression_utils_portable.h"
+
 namespace gl
 {
 namespace
@@ -34,27 +39,50 @@ bool EnclosesRange(int outsideLow, int outsideHigh, int insideLow, int insideHig
 {
     return outsideLow <= insideLow && outsideHigh >= insideHigh;
 }
+
+bool IsAdvancedBlendEquation(gl::BlendEquationType blendEquation)
+{
+    return blendEquation >= gl::BlendEquationType::Multiply &&
+           blendEquation <= gl::BlendEquationType::HslLuminosity;
+}
+
+bool IsExtendedBlendFactor(gl::BlendFactorType blendFactor)
+{
+    return blendFactor >= gl::BlendFactorType::Src1Alpha &&
+           blendFactor <= gl::BlendFactorType::OneMinusSrc1Alpha;
+}
 }  // anonymous namespace
 
 RasterizerState::RasterizerState()
 {
     memset(this, 0, sizeof(RasterizerState));
 
-    rasterizerDiscard   = false;
     cullFace            = false;
     cullMode            = CullFaceMode::Back;
     frontFace           = GL_CCW;
+    polygonMode         = PolygonMode::Fill;
+    polygonOffsetPoint  = false;
+    polygonOffsetLine   = false;
     polygonOffsetFill   = false;
     polygonOffsetFactor = 0.0f;
     polygonOffsetUnits  = 0.0f;
+    polygonOffsetClamp  = 0.0f;
+    depthClamp          = false;
     pointDrawMode       = false;
     multiSample         = false;
+    rasterizerDiscard   = false;
     dither              = true;
 }
 
 RasterizerState::RasterizerState(const RasterizerState &other)
 {
     memcpy(this, &other, sizeof(RasterizerState));
+}
+
+RasterizerState &RasterizerState::operator=(const RasterizerState &other)
+{
+    memcpy(this, &other, sizeof(RasterizerState));
+    return *this;
 }
 
 bool operator==(const RasterizerState &a, const RasterizerState &b)
@@ -124,6 +152,12 @@ DepthStencilState::DepthStencilState()
 DepthStencilState::DepthStencilState(const DepthStencilState &other)
 {
     memcpy(this, &other, sizeof(DepthStencilState));
+}
+
+DepthStencilState &DepthStencilState::operator=(const DepthStencilState &other)
+{
+    memcpy(this, &other, sizeof(DepthStencilState));
+    return *this;
 }
 
 bool DepthStencilState::isDepthMaskedOut() const
@@ -198,69 +232,129 @@ SamplerState SamplerState::CreateDefaultForTarget(TextureType type)
     return state;
 }
 
-void SamplerState::setMinFilter(GLenum minFilter)
+bool SamplerState::setMinFilter(GLenum minFilter)
 {
-    mMinFilter                    = minFilter;
-    mCompleteness.typed.minFilter = static_cast<uint8_t>(FromGLenum<FilterMode>(minFilter));
+    if (mMinFilter != minFilter)
+    {
+        mMinFilter                    = minFilter;
+        mCompleteness.typed.minFilter = static_cast<uint8_t>(FromGLenum<FilterMode>(minFilter));
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setMagFilter(GLenum magFilter)
+bool SamplerState::setMagFilter(GLenum magFilter)
 {
-    mMagFilter                    = magFilter;
-    mCompleteness.typed.magFilter = static_cast<uint8_t>(FromGLenum<FilterMode>(magFilter));
+    if (mMagFilter != magFilter)
+    {
+        mMagFilter                    = magFilter;
+        mCompleteness.typed.magFilter = static_cast<uint8_t>(FromGLenum<FilterMode>(magFilter));
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setWrapS(GLenum wrapS)
+bool SamplerState::setWrapS(GLenum wrapS)
 {
-    mWrapS                    = wrapS;
-    mCompleteness.typed.wrapS = static_cast<uint8_t>(FromGLenum<WrapMode>(wrapS));
+    if (mWrapS != wrapS)
+    {
+        mWrapS                    = wrapS;
+        mCompleteness.typed.wrapS = static_cast<uint8_t>(FromGLenum<WrapMode>(wrapS));
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setWrapT(GLenum wrapT)
+bool SamplerState::setWrapT(GLenum wrapT)
 {
-    mWrapT = wrapT;
-    updateWrapTCompareMode();
+    if (mWrapT != wrapT)
+    {
+        mWrapT = wrapT;
+        updateWrapTCompareMode();
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setWrapR(GLenum wrapR)
+bool SamplerState::setWrapR(GLenum wrapR)
 {
-    mWrapR = wrapR;
+    if (mWrapR != wrapR)
+    {
+        mWrapR = wrapR;
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setMaxAnisotropy(float maxAnisotropy)
+bool SamplerState::setMaxAnisotropy(float maxAnisotropy)
 {
-    mMaxAnisotropy = maxAnisotropy;
+    if (mMaxAnisotropy != maxAnisotropy)
+    {
+        mMaxAnisotropy = maxAnisotropy;
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setMinLod(GLfloat minLod)
+bool SamplerState::setMinLod(GLfloat minLod)
 {
-    mMinLod = minLod;
+    if (mMinLod != minLod)
+    {
+        mMinLod = minLod;
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setMaxLod(GLfloat maxLod)
+bool SamplerState::setMaxLod(GLfloat maxLod)
 {
-    mMaxLod = maxLod;
+    if (mMaxLod != maxLod)
+    {
+        mMaxLod = maxLod;
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setCompareMode(GLenum compareMode)
+bool SamplerState::setCompareMode(GLenum compareMode)
 {
-    mCompareMode = compareMode;
-    updateWrapTCompareMode();
+    if (mCompareMode != compareMode)
+    {
+        mCompareMode = compareMode;
+        updateWrapTCompareMode();
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setCompareFunc(GLenum compareFunc)
+bool SamplerState::setCompareFunc(GLenum compareFunc)
 {
-    mCompareFunc = compareFunc;
+    if (mCompareFunc != compareFunc)
+    {
+        mCompareFunc = compareFunc;
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setSRGBDecode(GLenum sRGBDecode)
+bool SamplerState::setSRGBDecode(GLenum sRGBDecode)
 {
-    mSRGBDecode = sRGBDecode;
+    if (mSRGBDecode != sRGBDecode)
+    {
+        mSRGBDecode = sRGBDecode;
+        return true;
+    }
+    return false;
 }
 
-void SamplerState::setBorderColor(const ColorGeneric &color)
+bool SamplerState::setBorderColor(const ColorGeneric &color)
 {
-    mBorderColor = color;
+    if (mBorderColor != color)
+    {
+        mBorderColor = color;
+        return true;
+    }
+    return false;
 }
 
 void SamplerState::updateWrapTCompareMode()
@@ -278,37 +372,34 @@ ImageUnit::ImageUnit(const ImageUnit &other) = default;
 
 ImageUnit::~ImageUnit() = default;
 
-BlendStateExt::BlendStateExt(const size_t drawBuffers)
-    : mMaxFactorMask(FactorStorage::GetMask(drawBuffers)),
-      mSrcColor(FactorStorage::GetReplicatedValue(BlendFactorType::One, mMaxFactorMask)),
-      mDstColor(FactorStorage::GetReplicatedValue(BlendFactorType::Zero, mMaxFactorMask)),
-      mSrcAlpha(FactorStorage::GetReplicatedValue(BlendFactorType::One, mMaxFactorMask)),
-      mDstAlpha(FactorStorage::GetReplicatedValue(BlendFactorType::Zero, mMaxFactorMask)),
-      mMaxEquationMask(EquationStorage::GetMask(drawBuffers)),
-      mEquationColor(EquationStorage::GetReplicatedValue(BlendEquationType::Add, mMaxEquationMask)),
-      mEquationAlpha(EquationStorage::GetReplicatedValue(BlendEquationType::Add, mMaxEquationMask)),
-      mMaxColorMask(ColorMaskStorage::GetMask(drawBuffers)),
-      mColorMask(ColorMaskStorage::GetReplicatedValue(PackColorMask(true, true, true, true),
-                                                      mMaxColorMask)),
-      mMaxEnabledMask(0xFF >> (8 - drawBuffers)),
-      mEnabledMask(),
-      mMaxDrawBuffers(drawBuffers)
+BlendStateExt::BlendStateExt(const size_t drawBufferCount)
+    : mParameterMask(FactorStorage::GetMask(drawBufferCount)),
+      mSrcColor(FactorStorage::GetReplicatedValue(BlendFactorType::One, mParameterMask)),
+      mDstColor(FactorStorage::GetReplicatedValue(BlendFactorType::Zero, mParameterMask)),
+      mSrcAlpha(FactorStorage::GetReplicatedValue(BlendFactorType::One, mParameterMask)),
+      mDstAlpha(FactorStorage::GetReplicatedValue(BlendFactorType::Zero, mParameterMask)),
+      mEquationColor(EquationStorage::GetReplicatedValue(BlendEquationType::Add, mParameterMask)),
+      mEquationAlpha(EquationStorage::GetReplicatedValue(BlendEquationType::Add, mParameterMask)),
+      mAllColorMask(
+          ColorMaskStorage::GetReplicatedValue(PackColorMask(true, true, true, true),
+                                               ColorMaskStorage::GetMask(drawBufferCount))),
+      mColorMask(mAllColorMask),
+      mAllEnabledMask(0xFF >> (8 - drawBufferCount)),
+      mDrawBufferCount(drawBufferCount)
 {}
 
-BlendStateExt &BlendStateExt::operator=(const BlendStateExt &other)
-{
-    memcpy(this, &other, sizeof(BlendStateExt));
-    return *this;
-}
+BlendStateExt::BlendStateExt(const BlendStateExt &other) = default;
+
+BlendStateExt &BlendStateExt::operator=(const BlendStateExt &other) = default;
 
 void BlendStateExt::setEnabled(const bool enabled)
 {
-    mEnabledMask = enabled ? mMaxEnabledMask : DrawBufferMask::Zero();
+    mEnabledMask = enabled ? mAllEnabledMask : DrawBufferMask::Zero();
 }
 
 void BlendStateExt::setEnabledIndexed(const size_t index, const bool enabled)
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     mEnabledMask.set(index, enabled);
 }
 
@@ -318,14 +409,14 @@ BlendStateExt::ColorMaskStorage::Type BlendStateExt::expandColorMaskValue(const 
                                                                           const bool alpha) const
 {
     return BlendStateExt::ColorMaskStorage::GetReplicatedValue(
-        PackColorMask(red, green, blue, alpha), mMaxColorMask);
+        PackColorMask(red, green, blue, alpha), mAllColorMask);
 }
 
 BlendStateExt::ColorMaskStorage::Type BlendStateExt::expandColorMaskIndexed(
     const size_t index) const
 {
     return ColorMaskStorage::GetReplicatedValue(
-        ColorMaskStorage::GetValueIndexed(index, mColorMask), mMaxColorMask);
+        ColorMaskStorage::GetValueIndexed(index, mColorMask), mAllColorMask);
 }
 
 void BlendStateExt::setColorMask(const bool red,
@@ -338,7 +429,7 @@ void BlendStateExt::setColorMask(const bool red,
 
 void BlendStateExt::setColorMaskIndexed(const size_t index, const uint8_t value)
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     ASSERT(value <= 0xF);
     ColorMaskStorage::SetValueIndexed(index, value, &mColorMask);
 }
@@ -349,13 +440,13 @@ void BlendStateExt::setColorMaskIndexed(const size_t index,
                                         const bool blue,
                                         const bool alpha)
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     ColorMaskStorage::SetValueIndexed(index, PackColorMask(red, green, blue, alpha), &mColorMask);
 }
 
 uint8_t BlendStateExt::getColorMaskIndexed(const size_t index) const
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     return ColorMaskStorage::GetValueIndexed(index, mColorMask);
 }
 
@@ -365,7 +456,7 @@ void BlendStateExt::getColorMaskIndexed(const size_t index,
                                         bool *blue,
                                         bool *alpha) const
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     UnpackColorMask(ColorMaskStorage::GetValueIndexed(index, mColorMask), red, green, blue, alpha);
 }
 
@@ -376,65 +467,80 @@ DrawBufferMask BlendStateExt::compareColorMask(ColorMaskStorage::Type other) con
 
 BlendStateExt::EquationStorage::Type BlendStateExt::expandEquationValue(const GLenum mode) const
 {
-    return EquationStorage::GetReplicatedValue(FromGLenum<BlendEquationType>(mode),
-                                               mMaxEquationMask);
+    return EquationStorage::GetReplicatedValue(FromGLenum<BlendEquationType>(mode), mParameterMask);
+}
+
+BlendStateExt::EquationStorage::Type BlendStateExt::expandEquationValue(
+    const gl::BlendEquationType equation) const
+{
+    return EquationStorage::GetReplicatedValue(equation, mParameterMask);
 }
 
 BlendStateExt::EquationStorage::Type BlendStateExt::expandEquationColorIndexed(
     const size_t index) const
 {
     return EquationStorage::GetReplicatedValue(
-        EquationStorage::GetValueIndexed(index, mEquationColor), mMaxEquationMask);
+        EquationStorage::GetValueIndexed(index, mEquationColor), mParameterMask);
 }
 
 BlendStateExt::EquationStorage::Type BlendStateExt::expandEquationAlphaIndexed(
     const size_t index) const
 {
     return EquationStorage::GetReplicatedValue(
-        EquationStorage::GetValueIndexed(index, mEquationAlpha), mMaxEquationMask);
+        EquationStorage::GetValueIndexed(index, mEquationAlpha), mParameterMask);
 }
 
 void BlendStateExt::setEquations(const GLenum modeColor, const GLenum modeAlpha)
 {
-    mEquationColor = expandEquationValue(modeColor);
-    mEquationAlpha = expandEquationValue(modeAlpha);
+    const gl::BlendEquationType colorEquation = FromGLenum<BlendEquationType>(modeColor);
+    const gl::BlendEquationType alphaEquation = FromGLenum<BlendEquationType>(modeAlpha);
+
+    mEquationColor = expandEquationValue(colorEquation);
+    mEquationAlpha = expandEquationValue(alphaEquation);
+
+    // Note that advanced blend equations cannot be independently set for color and alpha, so only
+    // the color equation can be checked.
+    if (IsAdvancedBlendEquation(colorEquation))
+    {
+        mUsesAdvancedBlendEquationMask = mAllEnabledMask;
+    }
+    else
+    {
+        mUsesAdvancedBlendEquationMask.reset();
+    }
 }
 
 void BlendStateExt::setEquationsIndexed(const size_t index,
                                         const GLenum modeColor,
                                         const GLenum modeAlpha)
 {
-    ASSERT(index < mMaxDrawBuffers);
-    EquationStorage::SetValueIndexed(index, FromGLenum<BlendEquationType>(modeColor),
-                                     &mEquationColor);
-    EquationStorage::SetValueIndexed(index, FromGLenum<BlendEquationType>(modeAlpha),
-                                     &mEquationAlpha);
+    ASSERT(index < mDrawBufferCount);
+
+    const gl::BlendEquationType colorEquation = FromGLenum<BlendEquationType>(modeColor);
+    const gl::BlendEquationType alphaEquation = FromGLenum<BlendEquationType>(modeAlpha);
+
+    EquationStorage::SetValueIndexed(index, colorEquation, &mEquationColor);
+    EquationStorage::SetValueIndexed(index, alphaEquation, &mEquationAlpha);
+
+    mUsesAdvancedBlendEquationMask.set(index, IsAdvancedBlendEquation(colorEquation));
 }
 
 void BlendStateExt::setEquationsIndexed(const size_t index,
                                         const size_t sourceIndex,
                                         const BlendStateExt &source)
 {
-    ASSERT(index < mMaxDrawBuffers);
-    ASSERT(sourceIndex < source.mMaxDrawBuffers);
-    EquationStorage::SetValueIndexed(
-        index, EquationStorage::GetValueIndexed(sourceIndex, source.mEquationColor),
-        &mEquationColor);
-    EquationStorage::SetValueIndexed(
-        index, EquationStorage::GetValueIndexed(sourceIndex, source.mEquationAlpha),
-        &mEquationAlpha);
-}
+    ASSERT(index < mDrawBufferCount);
+    ASSERT(sourceIndex < source.mDrawBufferCount);
 
-GLenum BlendStateExt::getEquationColorIndexed(size_t index) const
-{
-    ASSERT(index < mMaxDrawBuffers);
-    return ToGLenum(EquationStorage::GetValueIndexed(index, mEquationColor));
-}
+    const gl::BlendEquationType colorEquation =
+        EquationStorage::GetValueIndexed(sourceIndex, source.mEquationColor);
+    const gl::BlendEquationType alphaEquation =
+        EquationStorage::GetValueIndexed(sourceIndex, source.mEquationAlpha);
 
-GLenum BlendStateExt::getEquationAlphaIndexed(size_t index) const
-{
-    ASSERT(index < mMaxDrawBuffers);
-    return ToGLenum(EquationStorage::GetValueIndexed(index, mEquationAlpha));
+    EquationStorage::SetValueIndexed(index, colorEquation, &mEquationColor);
+    EquationStorage::SetValueIndexed(index, alphaEquation, &mEquationAlpha);
+
+    mUsesAdvancedBlendEquationMask.set(index, IsAdvancedBlendEquation(colorEquation));
 }
 
 DrawBufferMask BlendStateExt::compareEquations(const EquationStorage::Type color,
@@ -446,35 +552,41 @@ DrawBufferMask BlendStateExt::compareEquations(const EquationStorage::Type color
 
 BlendStateExt::FactorStorage::Type BlendStateExt::expandFactorValue(const GLenum func) const
 {
-    return FactorStorage::GetReplicatedValue(FromGLenum<BlendFactorType>(func), mMaxFactorMask);
+    return FactorStorage::GetReplicatedValue(FromGLenum<BlendFactorType>(func), mParameterMask);
+}
+
+BlendStateExt::FactorStorage::Type BlendStateExt::expandFactorValue(
+    const gl::BlendFactorType func) const
+{
+    return FactorStorage::GetReplicatedValue(func, mParameterMask);
 }
 
 BlendStateExt::FactorStorage::Type BlendStateExt::expandSrcColorIndexed(const size_t index) const
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     return FactorStorage::GetReplicatedValue(FactorStorage::GetValueIndexed(index, mSrcColor),
-                                             mMaxFactorMask);
+                                             mParameterMask);
 }
 
 BlendStateExt::FactorStorage::Type BlendStateExt::expandDstColorIndexed(const size_t index) const
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     return FactorStorage::GetReplicatedValue(FactorStorage::GetValueIndexed(index, mDstColor),
-                                             mMaxFactorMask);
+                                             mParameterMask);
 }
 
 BlendStateExt::FactorStorage::Type BlendStateExt::expandSrcAlphaIndexed(const size_t index) const
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     return FactorStorage::GetReplicatedValue(FactorStorage::GetValueIndexed(index, mSrcAlpha),
-                                             mMaxFactorMask);
+                                             mParameterMask);
 }
 
 BlendStateExt::FactorStorage::Type BlendStateExt::expandDstAlphaIndexed(const size_t index) const
 {
-    ASSERT(index < mMaxDrawBuffers);
+    ASSERT(index < mDrawBufferCount);
     return FactorStorage::GetReplicatedValue(FactorStorage::GetValueIndexed(index, mDstAlpha),
-                                             mMaxFactorMask);
+                                             mParameterMask);
 }
 
 void BlendStateExt::setFactors(const GLenum srcColor,
@@ -482,10 +594,44 @@ void BlendStateExt::setFactors(const GLenum srcColor,
                                const GLenum srcAlpha,
                                const GLenum dstAlpha)
 {
-    mSrcColor = expandFactorValue(srcColor);
-    mDstColor = expandFactorValue(dstColor);
-    mSrcAlpha = expandFactorValue(srcAlpha);
-    mDstAlpha = expandFactorValue(dstAlpha);
+    const gl::BlendFactorType srcColorFactor = FromGLenum<BlendFactorType>(srcColor);
+    const gl::BlendFactorType dstColorFactor = FromGLenum<BlendFactorType>(dstColor);
+    const gl::BlendFactorType srcAlphaFactor = FromGLenum<BlendFactorType>(srcAlpha);
+    const gl::BlendFactorType dstAlphaFactor = FromGLenum<BlendFactorType>(dstAlpha);
+
+    mSrcColor = expandFactorValue(srcColorFactor);
+    mDstColor = expandFactorValue(dstColorFactor);
+    mSrcAlpha = expandFactorValue(srcAlphaFactor);
+    mDstAlpha = expandFactorValue(dstAlphaFactor);
+
+    if (IsExtendedBlendFactor(srcColorFactor) || IsExtendedBlendFactor(dstColorFactor) ||
+        IsExtendedBlendFactor(srcAlphaFactor) || IsExtendedBlendFactor(dstAlphaFactor))
+    {
+        mUsesExtendedBlendFactorMask = mAllEnabledMask;
+    }
+    else
+    {
+        mUsesExtendedBlendFactorMask.reset();
+    }
+}
+
+void BlendStateExt::setFactorsIndexed(const size_t index,
+                                      const gl::BlendFactorType srcColorFactor,
+                                      const gl::BlendFactorType dstColorFactor,
+                                      const gl::BlendFactorType srcAlphaFactor,
+                                      const gl::BlendFactorType dstAlphaFactor)
+{
+    ASSERT(index < mDrawBufferCount);
+
+    FactorStorage::SetValueIndexed(index, srcColorFactor, &mSrcColor);
+    FactorStorage::SetValueIndexed(index, dstColorFactor, &mDstColor);
+    FactorStorage::SetValueIndexed(index, srcAlphaFactor, &mSrcAlpha);
+    FactorStorage::SetValueIndexed(index, dstAlphaFactor, &mDstAlpha);
+
+    const bool isExtended =
+        IsExtendedBlendFactor(srcColorFactor) || IsExtendedBlendFactor(dstColorFactor) ||
+        IsExtendedBlendFactor(srcAlphaFactor) || IsExtendedBlendFactor(dstAlphaFactor);
+    mUsesExtendedBlendFactorMask.set(index, isExtended);
 }
 
 void BlendStateExt::setFactorsIndexed(const size_t index,
@@ -494,51 +640,39 @@ void BlendStateExt::setFactorsIndexed(const size_t index,
                                       const GLenum srcAlpha,
                                       const GLenum dstAlpha)
 {
-    ASSERT(index < mMaxDrawBuffers);
-    FactorStorage::SetValueIndexed(index, FromGLenum<BlendFactorType>(srcColor), &mSrcColor);
-    FactorStorage::SetValueIndexed(index, FromGLenum<BlendFactorType>(dstColor), &mDstColor);
-    FactorStorage::SetValueIndexed(index, FromGLenum<BlendFactorType>(srcAlpha), &mSrcAlpha);
-    FactorStorage::SetValueIndexed(index, FromGLenum<BlendFactorType>(dstAlpha), &mDstAlpha);
+    const gl::BlendFactorType srcColorFactor = FromGLenum<BlendFactorType>(srcColor);
+    const gl::BlendFactorType dstColorFactor = FromGLenum<BlendFactorType>(dstColor);
+    const gl::BlendFactorType srcAlphaFactor = FromGLenum<BlendFactorType>(srcAlpha);
+    const gl::BlendFactorType dstAlphaFactor = FromGLenum<BlendFactorType>(dstAlpha);
+
+    setFactorsIndexed(index, srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor);
 }
 
 void BlendStateExt::setFactorsIndexed(const size_t index,
                                       const size_t sourceIndex,
                                       const BlendStateExt &source)
 {
-    ASSERT(index < mMaxDrawBuffers);
-    ASSERT(sourceIndex < source.mMaxDrawBuffers);
-    FactorStorage::SetValueIndexed(
-        index, FactorStorage::GetValueIndexed(sourceIndex, source.mSrcColor), &mSrcColor);
-    FactorStorage::SetValueIndexed(
-        index, FactorStorage::GetValueIndexed(sourceIndex, source.mDstColor), &mDstColor);
-    FactorStorage::SetValueIndexed(
-        index, FactorStorage::GetValueIndexed(sourceIndex, source.mSrcAlpha), &mSrcAlpha);
-    FactorStorage::SetValueIndexed(
-        index, FactorStorage::GetValueIndexed(sourceIndex, source.mDstAlpha), &mDstAlpha);
-}
+    ASSERT(index < mDrawBufferCount);
+    ASSERT(sourceIndex < source.mDrawBufferCount);
 
-GLenum BlendStateExt::getSrcColorIndexed(size_t index) const
-{
-    ASSERT(index < mMaxDrawBuffers);
-    return ToGLenum(FactorStorage::GetValueIndexed(index, mSrcColor));
-}
+    const gl::BlendFactorType srcColorFactor =
+        FactorStorage::GetValueIndexed(sourceIndex, source.mSrcColor);
+    const gl::BlendFactorType dstColorFactor =
+        FactorStorage::GetValueIndexed(sourceIndex, source.mDstColor);
+    const gl::BlendFactorType srcAlphaFactor =
+        FactorStorage::GetValueIndexed(sourceIndex, source.mSrcAlpha);
+    const gl::BlendFactorType dstAlphaFactor =
+        FactorStorage::GetValueIndexed(sourceIndex, source.mDstAlpha);
 
-GLenum BlendStateExt::getDstColorIndexed(size_t index) const
-{
-    ASSERT(index < mMaxDrawBuffers);
-    return ToGLenum(FactorStorage::GetValueIndexed(index, mDstColor));
-}
+    FactorStorage::SetValueIndexed(index, srcColorFactor, &mSrcColor);
+    FactorStorage::SetValueIndexed(index, dstColorFactor, &mDstColor);
+    FactorStorage::SetValueIndexed(index, srcAlphaFactor, &mSrcAlpha);
+    FactorStorage::SetValueIndexed(index, dstAlphaFactor, &mDstAlpha);
 
-GLenum BlendStateExt::getSrcAlphaIndexed(size_t index) const
-{
-    ASSERT(index < mMaxDrawBuffers);
-    return ToGLenum(FactorStorage::GetValueIndexed(index, mSrcAlpha));
-}
-
-GLenum BlendStateExt::getDstAlphaIndexed(size_t index) const
-{
-    ASSERT(index < mMaxDrawBuffers);
-    return ToGLenum(FactorStorage::GetValueIndexed(index, mDstAlpha));
+    const bool isExtended =
+        IsExtendedBlendFactor(srcColorFactor) || IsExtendedBlendFactor(dstColorFactor) ||
+        IsExtendedBlendFactor(srcAlphaFactor) || IsExtendedBlendFactor(dstAlphaFactor);
+    mUsesExtendedBlendFactorMask.set(index, isExtended);
 }
 
 DrawBufferMask BlendStateExt::compareFactors(const FactorStorage::Type srcColor,
@@ -566,30 +700,17 @@ static void MinMax(int a, int b, int *minimum, int *maximum)
     }
 }
 
-Rectangle Rectangle::flip(bool flipX, bool flipY) const
+template <>
+bool RectangleImpl<int>::empty() const
 {
-    Rectangle flipped = *this;
-    if (flipX)
-    {
-        flipped.x     = flipped.x + flipped.width;
-        flipped.width = -flipped.width;
-    }
-    if (flipY)
-    {
-        flipped.y      = flipped.y + flipped.height;
-        flipped.height = -flipped.height;
-    }
-    return flipped;
+    return width == 0 && height == 0;
 }
 
-Rectangle Rectangle::removeReversal() const
+template <>
+bool RectangleImpl<float>::empty() const
 {
-    return flip(isReversedX(), isReversedY());
-}
-
-bool Rectangle::encloses(const gl::Rectangle &inside) const
-{
-    return x0() <= inside.x0() && y0() <= inside.y0() && x1() >= inside.x1() && y1() >= inside.y1();
+    return std::abs(width) < std::numeric_limits<float>::epsilon() &&
+           std::abs(height) < std::numeric_limits<float>::epsilon();
 }
 
 bool ClipRectangle(const Rectangle &source, const Rectangle &clip, Rectangle *intersection)
@@ -760,6 +881,11 @@ void ExtendRectangle(const Rectangle &source, const Rectangle &extend, Rectangle
     extended->height = y1 - y0;
 }
 
+bool Box::valid() const
+{
+    return width != 0 && height != 0 && depth != 0;
+}
+
 bool Box::operator==(const Box &other) const
 {
     return (x == other.x && y == other.y && z == other.z && width == other.width &&
@@ -781,6 +907,87 @@ bool Box::coversSameExtent(const Extents &size) const
 {
     return x == 0 && y == 0 && z == 0 && width == size.width && height == size.height &&
            depth == size.depth;
+}
+
+bool Box::contains(const Box &other) const
+{
+    return x <= other.x && y <= other.y && z <= other.z && x + width >= other.x + other.width &&
+           y + height >= other.y + other.height && z + depth >= other.z + other.depth;
+}
+
+size_t Box::volume() const
+{
+    return width * height * depth;
+}
+
+void Box::extend(const Box &other)
+{
+    // This extends the logic of "ExtendRectangle" to 3 dimensions
+
+    int x0 = x;
+    int x1 = x + width;
+    int y0 = y;
+    int y1 = y + height;
+    int z0 = z;
+    int z1 = z + depth;
+
+    const int otherx0 = other.x;
+    const int otherx1 = other.x + other.width;
+    const int othery0 = other.y;
+    const int othery1 = other.y + other.height;
+    const int otherz0 = other.z;
+    const int otherz1 = other.z + other.depth;
+
+    // For each side of the box, calculate whether it can be extended by the other box.
+    // If so, extend it and continue to the next side with the new dimensions.
+
+    const bool enclosesWidth  = EnclosesRange(otherx0, otherx1, x0, x1);
+    const bool enclosesHeight = EnclosesRange(othery0, othery1, y0, y1);
+    const bool enclosesDepth  = EnclosesRange(otherz0, otherz1, z0, z1);
+
+    // Left: Reduce x0 if the other box's Y and Z plane encloses the source
+    if (otherx0 < x0 && otherx1 >= x0 && enclosesHeight && enclosesDepth)
+    {
+        x0 = otherx0;
+    }
+
+    // Right: Increase x1 simiarly.
+    if (otherx0 <= x1 && otherx1 > x1 && enclosesHeight && enclosesDepth)
+    {
+        x1 = otherx1;
+    }
+
+    // Bottom: Reduce y0 if the other box's X and Z plane encloses the source
+    if (othery0 < y0 && othery1 >= y0 && enclosesWidth && enclosesDepth)
+    {
+        y0 = othery0;
+    }
+
+    // Top: Increase y1 simiarly.
+    if (othery0 <= y1 && othery1 > y1 && enclosesWidth && enclosesDepth)
+    {
+        y1 = othery1;
+    }
+
+    // Front: Reduce z0 if the other box's X and Y plane encloses the source
+    if (otherz0 < z0 && otherz1 >= z0 && enclosesWidth && enclosesHeight)
+    {
+        z0 = otherz0;
+    }
+
+    // Back: Increase z1 simiarly.
+    if (otherz0 <= z1 && otherz1 > z1 && enclosesWidth && enclosesHeight)
+    {
+        z1 = otherz1;
+    }
+
+    // Update member var with new dimensions
+    x      = x0;
+    width  = x1 - x0;
+    y      = y0;
+    height = y1 - y0;
+    z      = z0;
+    depth  = z1 - z0;
 }
 
 bool operator==(const Offset &a, const Offset &b)
@@ -834,30 +1041,143 @@ bool ValidateComponentTypeMasks(unsigned long outputTypes,
 GLsizeiptr GetBoundBufferAvailableSize(const OffsetBindingPointer<Buffer> &binding)
 {
     Buffer *buffer = binding.get();
-    if (buffer)
-    {
-        if (binding.getSize() == 0)
-            return static_cast<GLsizeiptr>(buffer->getSize());
-        angle::CheckedNumeric<GLintptr> offset       = binding.getOffset();
-        angle::CheckedNumeric<GLsizeiptr> size       = binding.getSize();
-        angle::CheckedNumeric<GLsizeiptr> bufferSize = buffer->getSize();
-        auto end                                     = offset + size;
-        auto clampedSize                             = size;
-        auto difference                              = end - bufferSize;
-        if (!difference.IsValid())
-        {
-            return 0;
-        }
-        if (difference.ValueOrDie() > 0)
-        {
-            clampedSize = size - difference;
-        }
-        return clampedSize.ValueOrDefault(0);
-    }
-    else
+    if (buffer == nullptr)
     {
         return 0;
     }
+
+    const GLsizeiptr bufferSize = static_cast<GLsizeiptr>(buffer->getSize());
+
+    if (binding.getSize() == 0)
+    {
+        return bufferSize;
+    }
+
+    const GLintptr offset = binding.getOffset();
+    const GLsizeiptr size = binding.getSize();
+
+    ASSERT(offset >= 0 && bufferSize >= 0);
+
+    if (bufferSize <= offset)
+    {
+        return 0;
+    }
+
+    return std::min(size, bufferSize - offset);
 }
 
 }  // namespace gl
+   //
+namespace angle
+{
+bool CompressBlob(const size_t cacheSize, const uint8_t *cacheData, MemoryBuffer *compressedData)
+{
+    uLong uncompressedSize       = static_cast<uLong>(cacheSize);
+    uLong expectedCompressedSize = zlib_internal::GzipExpectedCompressedSize(uncompressedSize);
+    uLong actualCompressedSize   = expectedCompressedSize;
+
+    // Allocate memory.
+    if (!compressedData->resize(expectedCompressedSize))
+    {
+        ERR() << "Failed to allocate memory for compression";
+        return false;
+    }
+
+    int zResult = zlib_internal::GzipCompressHelper(compressedData->data(), &actualCompressedSize,
+                                                    cacheData, uncompressedSize, nullptr, nullptr);
+
+    if (zResult != Z_OK)
+    {
+        ERR() << "Failed to compress cache data: " << zResult;
+        return false;
+    }
+
+    // Trim to actual size.
+    ASSERT(actualCompressedSize <= expectedCompressedSize);
+    compressedData->trim(actualCompressedSize);
+
+    return true;
+}
+
+bool DecompressBlob(const uint8_t *compressedData,
+                    const size_t compressedSize,
+                    size_t maxUncompressedDataSize,
+                    MemoryBuffer *uncompressedData)
+{
+    // Call zlib function to decompress.
+    uint32_t uncompressedSize =
+        zlib_internal::GetGzipUncompressedSize(compressedData, compressedSize);
+
+    if (uncompressedSize == 0)
+    {
+        ERR() << "Decompressed data size is zero. Wrong or corrupted data? (compressed size is: "
+              << compressedSize << ")";
+        return false;
+    }
+
+    if (uncompressedSize > maxUncompressedDataSize)
+    {
+        ERR() << "Decompressed data size is larger than the maximum supported (" << uncompressedSize
+              << " vs " << maxUncompressedDataSize << ")";
+        return false;
+    }
+
+    // Allocate enough memory.
+    if (!uncompressedData->resize(uncompressedSize))
+    {
+        ERR() << "Failed to allocate memory for decompression";
+        return false;
+    }
+
+    uLong destLen = uncompressedSize;
+    int zResult   = zlib_internal::GzipUncompressHelper(
+        uncompressedData->data(), &destLen, compressedData, static_cast<uLong>(compressedSize));
+
+    if (zResult != Z_OK)
+    {
+        WARN() << "Failed to decompress data: " << zResult << "\n";
+        return false;
+    }
+
+    // Trim to actual size.
+    ASSERT(destLen <= uncompressedSize);
+    uncompressedData->trim(destLen);
+
+    return true;
+}
+
+uint32_t GenerateCRC32(const uint8_t *data, size_t size)
+{
+    // To get required initial value for the crc, need to pass nullptr into buf.
+    const uLong initialValue = crc32_z(0u, nullptr, 0u);
+    return static_cast<uint32_t>(crc32_z(initialValue, data, size));
+}
+
+UnlockedTailCall::UnlockedTailCall() = default;
+
+UnlockedTailCall::~UnlockedTailCall()
+{
+    ASSERT(mCalls.empty());
+}
+
+void UnlockedTailCall::add(CallType &&call)
+{
+    mCalls.push_back(std::move(call));
+}
+
+void UnlockedTailCall::runImpl(void *resultOut)
+{
+    if (mCalls.empty())
+    {
+        return;
+    }
+    // Clear `mCalls` before calling, because Android sometimes calls back into ANGLE through EGL
+    // calls which don't expect there to be any pre-existing tail calls.
+    auto calls(std::move(mCalls));
+    ASSERT(mCalls.empty());
+    for (CallType &call : calls)
+    {
+        call(resultOut);
+    }
+}
+}  // namespace angle

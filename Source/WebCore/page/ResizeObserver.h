@@ -25,8 +25,6 @@
 
 #pragma once
 
-#if ENABLE(RESIZE_OBSERVER)
-
 #include "GCReachableRef.h"
 #include "ResizeObservation.h"
 #include "ResizeObserverCallback.h"
@@ -44,21 +42,28 @@ namespace WebCore {
 
 class Document;
 class Element;
+struct ResizeObserverOptions;
 
 struct ResizeObserverData {
     WTF_MAKE_STRUCT_FAST_ALLOCATED;
     Vector<WeakPtr<ResizeObserver>> observers;
 };
 
+using NativeResizeObserverCallback = void (*)(const Vector<Ref<ResizeObserverEntry>>&, ResizeObserver&);
+using JSOrNativeResizeObserverCallback = std::variant<RefPtr<ResizeObserverCallback>, NativeResizeObserverCallback>;
+
 class ResizeObserver : public RefCounted<ResizeObserver>, public CanMakeWeakPtr<ResizeObserver> {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(ResizeObserver);
 public:
     static Ref<ResizeObserver> create(Document&, Ref<ResizeObserverCallback>&&);
+    static Ref<ResizeObserver> createNativeObserver(Document&, NativeResizeObserverCallback&&);
     ~ResizeObserver();
 
     bool hasObservations() const { return m_observations.size(); }
     bool hasActiveObservations() const { return m_activeObservations.size(); }
 
     void observe(Element&);
+    void observe(Element&, const ResizeObserverOptions&);
     void unobserve(Element&);
     void disconnect();
     void targetDestroyed(Element&);
@@ -69,25 +74,30 @@ public:
     bool hasSkippedObservations() const { return m_hasSkippedObservations; }
     void setHasSkippedObservations(bool skipped) { m_hasSkippedObservations = skipped; }
 
-    ResizeObserverCallback* callbackConcurrently() { return m_callback.get(); }
+    void resetObservationSize(Element&);
+
+    ResizeObserverCallback* callbackConcurrently();
     bool isReachableFromOpaqueRoots(JSC::AbstractSlotVisitor&) const;
 
 private:
-    ResizeObserver(Document&, Ref<ResizeObserverCallback>&&);
+    ResizeObserver(Document&, JSOrNativeResizeObserverCallback&&);
 
     bool removeTarget(Element&);
     void removeAllTargets();
     bool removeObservation(const Element&);
+    void observeInternal(Element&, const ResizeObserverBoxOptions);
+    bool isNativeCallback();
+    bool isJSCallback();
 
-    WeakPtr<Document> m_document;
-    RefPtr<ResizeObserverCallback> m_callback;
+    WeakPtr<Document, WeakPtrImplWithEventTargetData> m_document;
+    JSOrNativeResizeObserverCallback m_JSOrNativeCallback;
     Vector<Ref<ResizeObservation>> m_observations;
 
     Vector<Ref<ResizeObservation>> m_activeObservations;
     Vector<GCReachableRef<Element>> m_activeObservationTargets;
+    Vector<GCReachableRef<Element>> m_targetsWaitingForFirstObservation;
+
     bool m_hasSkippedObservations { false };
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(RESIZE_OBSERVER)

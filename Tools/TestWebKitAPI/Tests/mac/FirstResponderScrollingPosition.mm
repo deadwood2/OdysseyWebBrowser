@@ -30,6 +30,7 @@
 #import <WebKit/WKRetainPtr.h>
 #import <WebKit/WKPage.h>
 #import <WebKit/WKPreferencesPrivate.h>
+#import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
 
 namespace TestWebKitAPI {
@@ -41,14 +42,16 @@ static void didFinishNavigation(WKPageRef, WKNavigationRef, WKTypeRef, const voi
     didFinishLoad = true;
 }
 
-TEST(WebKit, FirstResponderScrollingPosition)
+// FIXME when rdar://107850827 is resolved
+TEST(WebKit, DISABLED_FirstResponderScrollingPosition)
 {
     WKRetainPtr<WKContextRef> context = adoptWK(Util::createContextWithInjectedBundle());
 
     // Turn off threaded scrolling; synchronously waiting for the main thread scroll position to
     // update using WKPageForceRepaint would be better, but for some reason the test still fails occasionally.
-    WKRetainPtr<WKPageGroupRef> pageGroup = adoptWK(WKPageGroupCreateWithIdentifier(Util::toWK("NoThreadedScrollingPageGroup").get()));
-    WKPreferencesRef preferences = WKPageGroupGetPreferences(pageGroup.get());
+    auto configuration = adoptWK(WKPageConfigurationCreate());
+    WKPageConfigurationSetContext(configuration.get(), context.get());
+    auto preferences = WKPageConfigurationGetPreferences(configuration.get());
     WKPreferencesSetThreadedScrollingEnabled(preferences, false);
 
     RetainPtr<NSWindow> window = adoptNS([[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)
@@ -56,7 +59,7 @@ TEST(WebKit, FirstResponderScrollingPosition)
     [window.get() makeKeyAndOrderFront:nil];
     EXPECT_TRUE([window.get() isVisible]);
 
-    PlatformWebView webView(context.get(), pageGroup.get());
+    PlatformWebView webView(configuration.get());
 
     WKPageNavigationClientV0 loaderClient;
     memset(&loaderClient, 0, sizeof(loaderClient));
@@ -80,9 +83,15 @@ TEST(WebKit, FirstResponderScrollingPosition)
     ASSERT_TRUE([webView.platformView() respondsToSelector:@selector(scrollLineDown:)]);
     [webView.platformView() scrollLineDown:nil];
 
+    __block bool done = false;
+    [webView.platformView() _doAfterNextPresentationUpdate:^{
+        done = true;
+    }];
+    Util::run(&done);
+
     EXPECT_JS_EQ(webView.page(), "window.scrollY", "40");
 
-    PlatformWebView newWebView(context.get(), pageGroup.get());
+    PlatformWebView newWebView(context.get());
     WKPageSetPageNavigationClient(newWebView.page(), &loaderClient.base);
 
     [window.get().contentView addSubview:newWebView.platformView()];

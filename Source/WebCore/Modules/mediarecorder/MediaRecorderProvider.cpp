@@ -26,23 +26,32 @@
 #include "config.h"
 #include "MediaRecorderProvider.h"
 
-#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
+#if ENABLE(MEDIA_RECORDER)
 
 #include "ContentType.h"
-#include "HTMLParserIdioms.h"
+#include "MediaRecorderPrivate.h"
+
+#if PLATFORM(COCOA) && USE(AVFOUNDATION)
 #include "MediaRecorderPrivateAVFImpl.h"
+#endif
+
+#if USE(GSTREAMER_TRANSCODER)
+#include "MediaRecorderPrivateGStreamer.h"
+#endif
 
 namespace WebCore {
 
 std::unique_ptr<MediaRecorderPrivate> MediaRecorderProvider::createMediaRecorderPrivate(MediaStreamPrivate& stream, const MediaRecorderPrivateOptions& options)
 {
-#if HAVE(AVASSETWRITERDELEGATE)
+#if PLATFORM(COCOA) && USE(AVFOUNDATION)
     return MediaRecorderPrivateAVFImpl::create(stream, options);
+#elif USE(GSTREAMER_TRANSCODER)
+    return MediaRecorderPrivateGStreamer::create(stream, options);
 #else
     UNUSED_PARAM(stream);
     UNUSED_PARAM(options);
-    return nullptr;
 #endif
+    return nullptr;
 }
 
 bool MediaRecorderProvider::isSupported(const String& value)
@@ -51,20 +60,25 @@ bool MediaRecorderProvider::isSupported(const String& value)
         return true;
 
     ContentType mimeType(value);
-
+#if PLATFORM(COCOA)
     auto containerType = mimeType.containerType();
-    if (!equalLettersIgnoringASCIICase(containerType, "audio/mp4") && !equalLettersIgnoringASCIICase(containerType, "video/mp4"))
+    if (!equalLettersIgnoringASCIICase(containerType, "audio/mp4"_s) && !equalLettersIgnoringASCIICase(containerType, "video/mp4"_s))
         return false;
 
     for (auto& item : mimeType.codecs()) {
-        auto codec = StringView(item).stripLeadingAndTrailingMatchedCharacters(isHTMLSpace<UChar>);
+        auto codec = StringView(item).trim(isASCIIWhitespace<UChar>);
         // FIXME: We should further validate parameters.
-        if (!startsWithLettersIgnoringASCIICase(codec, "avc1") && !startsWithLettersIgnoringASCIICase(codec, "mp4a"))
+        if (!startsWithLettersIgnoringASCIICase(codec, "avc1"_s) && !startsWithLettersIgnoringASCIICase(codec, "mp4a"_s))
             return false;
     }
     return true;
+#elif USE(GSTREAMER_TRANSCODER)
+    return MediaRecorderPrivateGStreamer::isTypeSupported(mimeType);
+#else
+    UNUSED_VARIABLE(mimeType);
+    return false;
+#endif
 }
-
 }
 
 #endif

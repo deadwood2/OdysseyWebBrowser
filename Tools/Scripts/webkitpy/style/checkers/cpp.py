@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2009, 2010, 2012 Google Inc. All rights reserved.
 # Copyright (C) 2009 Torch Mobile Inc.
-# Copyright (C) 2009-2021 Apple Inc. All rights reserved.
+# Copyright (C) 2009-2023 Apple Inc. All rights reserved.
 # Copyright (C) 2010 Chris Jerdonek (cjerdonek@webkit.org)
 #
 # Redistribution and use in source and binary forms, with or without
@@ -147,7 +147,7 @@ _NO_CONFIG_H_PATH_PATTERNS = [
 ]
 
 _EXPORT_MACRO_SPEC = {
-    'BEXPORT': 'Source/bmalloc',
+    'BEXPORT': '(Source/bmalloc|Source/JavaScriptCore/API/ExtraSymbolsForTAPI.h)',
     'JS_EXPORT': 'Source/JavaScriptCore/API',
     'JS_EXPORT_PRIVATE': 'Source/JavaScriptCore',
     'PAL_EXPORT': 'Source/WebCore/PAL',
@@ -155,7 +155,7 @@ _EXPORT_MACRO_SPEC = {
     # Excludes PAL and testing directories
     'WEBCORE_EXPORT': 'Source/WebCore/(?!(PAL|testing))',
     'WK_EXPORT': 'Source/WebKit',
-    'WTF_EXPORT_PRIVATE': 'Source/WTF',
+    'WTF_EXPORT_PRIVATE': '(Source/WTF|Source/JavaScriptCore/API/ExtraSymbolsForTAPI.h)',
 }
 
 _EXPORT_MACROS = sorted(_EXPORT_MACRO_SPEC.keys())
@@ -230,7 +230,7 @@ def _convert_to_lower_with_underscores(text):
     # (This puts an underscore before A in isA but not A in CBA).
     text = sub(r'(?<=[a-z0-9])([A-Z])(?=\b)', r'_\1', text)
 
-    # Next add underscores when you have a captial letter which is followed by a capital letter
+    # Next add underscores when you have a capital letter which is followed by a capital letter
     # but is not proceeded by one. (This puts an underscore before A in 'WordADay').
     text = sub(r'(?<=[a-z0-9])([A-Z][A-Z_])', r'_\1', text)
 
@@ -438,21 +438,21 @@ class SingleLineView(object):
           end_position: just after where to end (like a slice operation).
         """
         # Get the rows of interest.
-        trimmed_lines = lines[start_position.row:end_position.row + 1]
+        self.trimmed_lines = lines[start_position.row:end_position.row + 1]
 
         # Remove the columns on the last line that aren't included.
-        trimmed_lines[-1] = trimmed_lines[-1][:end_position.column]
+        self.trimmed_lines[-1] = self.trimmed_lines[-1][:end_position.column]
 
         # Remove the columns on the first line that aren't included.
-        trimmed_lines[0] = trimmed_lines[0][start_position.column:]
+        self.trimmed_lines[0] = self.trimmed_lines[0][start_position.column:]
 
         # Create a single line with all of the parameters.
-        self.single_line = ' '.join(trimmed_lines)
+        self.single_line = ' '.join(self.trimmed_lines)
 
         # Keep the row lengths, so we can calculate the original row number
         # given a column in the single line (adding 1 due to the space added
         # during the join).
-        self._row_lengths = [len(line) + 1 for line in trimmed_lines]
+        self._row_lengths = [len(line) + 1 for line in self.trimmed_lines]
         self._starting_row = start_position.row
 
     def convert_column_to_row(self, single_line_column_number):
@@ -599,6 +599,11 @@ class _FunctionState(object):
         """Returns the modifiers after the function declaration such as attributes."""
         elided = self._clean_lines.elided
         return SingleLineView(elided, self.parameter_end_position, self.body_start_position).single_line.strip()
+
+    def body_view(self):
+        """Returns the function body."""
+        elided = self._clean_lines.elided
+        return SingleLineView(elided, self.body_start_position, self.end_position)
 
     def attributes_after_definition(self, attribute_regex):
         return re.findall(attribute_regex, self.post_modifiers())
@@ -1348,35 +1353,41 @@ class _EnumState(object):
         # FIXME: The regular expressions for expr_all_uppercase and expr_enum_end only accept integers
         # and identifiers for the value of the enumerator, but do not accept any other constant
         # expressions. However, this is sufficient for now (11/27/2012).
-        expr_all_uppercase = r'\s*[A-Z0-9_]+\s*(?:=\s*[a-zA-Z0-9]+\s*)?,?\s*$'
+        expr_all_uppercase = r'\s*(?P<value>[A-Z0-9_]+)\s*(?:=\s*[a-zA-Z0-9]+\s*)?,?\s*$'
         expr_starts_lowercase = r'\s*[a-jl-z]'
         expr_enum_end = r'}\s*(?:[a-zA-Z0-9]+\s*(?:=\s*[a-zA-Z0-9]+)?)?\s*;\s*'
-        expr_enum_start = r'\s*(?:enum(?:\s+class)?(?:\s+(?P<identifier>[a-zA-Z0-9]+))?)\s*\{?\s*'
+        expr_enum_start = r'\s*(?:enum(?:\s+class)?(?:\s+(?P<identifier>[a-zA-Z0-9]+))?)(?:\s*:\s*[a-zA-Z0-9_]+?)?\s*\{?\s*'
+
+        def is_case_error(enum_name, value_declaration):
+            all_uppercase = match(expr_all_uppercase, value_declaration)
+            if all_uppercase:
+                if self.is_webidl_enum:
+                    return False
+                if enum_name in _ALLOW_ALL_UPPERCASE_ENUM:
+                    return False
+                if len(all_uppercase.group('value')) < 2:
+                    return False
+                return not all_uppercase.group('value') in _ALLOW_ABBREVIATION_ENUM_VALUES
+            return match(expr_starts_lowercase, value_declaration)
+
         if self.in_enum_decl:
             if match(r'\s*' + expr_enum_end + r'$', line):
                 self.in_enum_decl = False
                 self.is_webidl_enum = False
                 return True
-            elif match(expr_all_uppercase, line):
-                return self.is_webidl_enum or self.enum_decl_name in _ALLOW_ALL_UPPERCASE_ENUM
-            elif match(expr_starts_lowercase, line):
+            elif is_case_error(self.enum_decl_name, line):
                 return False
         matched = match(expr_enum_start + r'$', line)
         if matched:
             self.in_enum_decl = True
             self.enum_decl_name = matched.group('identifier')
         else:
-            matched = match(expr_enum_start + r'(?P<members>.*)' + expr_enum_end + r'$', line)
+            matched = match(expr_enum_start + r'(?P<members>[^{]*)' + expr_enum_end + r'$', line)
             if matched:
                 members = matched.group('members').split(',')
-                allow_all_uppercase = matched.group('identifier') in _ALLOW_ALL_UPPERCASE_ENUM
-                found_invalid_member = False
+                enum_name = matched.group('identifier')
                 for member in members:
-                    if match(expr_all_uppercase, member):
-                        found_invalid_member = not self.is_webidl_enum and not allow_all_uppercase
-                    if match(expr_starts_lowercase, member):
-                        found_invalid_member = True
-                    if found_invalid_member:
+                    if is_case_error(enum_name, member):
                         self.is_webidl_enum = False
                         return False
                 return True
@@ -1384,8 +1395,8 @@ class _EnumState(object):
 
 
 def regex_for_lambdas_and_blocks(line, line_number, file_state, error):
-    cpp_result = search(r'\s\[.*?\]\s', line)
-    objc_result = search(r'(\s\^\s?\(.*?\)\s?|\^\s*\{|:\^(\s|\w+)?\(.*?\)\s\{)', line)
+    cpp_result = search(r'\[.*?\]\s*[\(\{]', line)
+    objc_result = search(r'(\^(.*)?\(.*?\)|\^\s*\{)', line)
     if cpp_result:
         group = cpp_result.group()
         targ_error = None
@@ -1409,7 +1420,7 @@ def regex_for_lambdas_and_blocks(line, line_number, file_state, error):
         if search(r'\^\s+\{', group):
             targ_error = [line_number, 'whitespace/brackets', 4,
               'Extra space between ^ and block definition.',line]
-        if search(r'\^\s\(', group):
+        if search(r'\^\s+\(', group):
             targ_error = [line_number, 'whitespace/brackets', 4,
               'Extra space between ^ and block arguments.',line]
 
@@ -1609,8 +1620,8 @@ def check_spacing_for_function_call(line, line_number, file_state, error):
     # " (something)[something]"
     # Note that we assume the contents of [] to be short enough that
     # they'll never need to wrap.
-    if (  # Ignore control structures.
-        not search(r'\b(if|for|while|switch|return|new|delete)\b', function_call)
+    if (  # Ignore control structures / c++20 concept constraints.
+        not search(r'\b(if|for|while|switch|return|new|delete|requires)\b', function_call)
         # Ignore lambda functions
         and not regex_for_lambdas_and_blocks(function_call, line_number, file_state, error)
         # Ignore pointers/references to functions.
@@ -1624,7 +1635,8 @@ def check_spacing_for_function_call(line, line_number, file_state, error):
             error(line_number, 'whitespace/parens', 2,
                   'Extra space after (')
         if (search(r'\w\s+\(', function_call)
-            and not match(r'\s*((#|typedef|@property|@interface|@implementation|@synchronized)|} @catch\b)', function_call)):
+                and not match(r'\s*((#|typedef|@property|@interface|@implementation|@synchronized)|} @catch\b)', function_call)
+                and not search(r'(std::function\<|Function\<)', function_call)):
             error(line_number, 'whitespace/parens', 4,
                   'Extra space before ( in function call')
         # If the ) is followed only by a newline or a { + newline, assume it's
@@ -2044,6 +2056,44 @@ def check_function_definition(filename, file_extension, clean_lines, line_number
                   '%s should only appear in directories matching %s.' % (export_macro, path))
 
 
+def check_function_body(filename, file_extension, clean_lines, line_number, class_state, function_state, error):
+    """Check function bodies for style issues.
+
+    Args:
+       filename: Filename of the file that is being processed.
+       file_extension: The current file extension, without the leading dot.
+       clean_lines: A CleansedLines instance containing the file.
+       line_number: The number of the line to check.
+       function_state: Current function name and lines in body so far.
+       error: The function to call with any errors found.
+    """
+    if line_number != function_state.end_position.row:  # last line
+        return
+
+    function_body_view = function_state.body_view()
+    function_line_count = len(function_body_view.trimmed_lines)
+
+    # Check for uncontrolled fall-through after ASSERT_NOT_REACHED() statement.
+    for i in range(0, function_line_count):
+        current_line = function_body_view.trimmed_lines[i]
+        if not re.search(r'[^_]ASSERT_NOT_REACHED\(\);', current_line):
+            continue
+
+        min_index = max(0, i - 1)
+        max_index = min(function_line_count, i + 4)
+        partial_function_body = ' '.join(function_body_view.trimmed_lines[min_index:max_index])
+
+        if search(r'[^_]ASSERT_NOT_REACHED\(\);\s*(continue|return|break(\s+[^;]+)?);', partial_function_body) \
+                or search(r'[^_]ASSERT_NOT_REACHED\(\);(\s*#endif)?(\s*})+\s*$', partial_function_body) \
+                or search(r'[^_]ASSERT_NOT_REACHED\(\);(\s*completionHandler[^;]+;)?(\s*})+\s*$', partial_function_body) \
+                or search(r'[^_]ASSERT_NOT_REACHED\(\);(\s*[^;]+;)?\s*return(\s+[^;]+)?;', partial_function_body) \
+                or search(r'(default|case\s+.+):\s*[^_]ASSERT_NOT_REACHED\(\);(\s*[^;]+;)*\s*break;', partial_function_body):
+            continue
+
+        error(line_number - (function_line_count - (i + 1)), 'security/assertion_fallthrough', 4,
+              'ASSERT_NOT_REACHED() statement fallthrough may result in unexpected code execution.')
+
+
 def check_for_leaky_patterns(clean_lines, line_number, function_state, error):
     """Check for constructs known to be leak prone.
     Args:
@@ -2334,11 +2384,25 @@ def check_spacing(file_extension, clean_lines, line_number, file_state, error):
             error(line_number, 'whitespace/brackets', 5,
                   'Extra space before [.')
 
-    # There should always be a single space in between braces on the same line.
-    if search(r'\{\}', line):
-        error(line_number, 'whitespace/braces', 5, 'Missing space inside { }.')
-    if search(r'\{\s\s+\}', line):
-        error(line_number, 'whitespace/braces', 5, 'Too many spaces inside { }.')
+    # Try to avoid false positives when braces are inside of a string
+    if not search(r'"[^"]*\{.*\}[^"]*"', line):
+        # There should always be a single space in between braces on the same
+        # line.
+        if search(r'\{\}', line):
+            error(line_number, 'whitespace/braces', 5, 'Missing space inside { }.')
+        if search(r'\{\s\s+\}', line):
+            error(line_number, 'whitespace/braces', 5, 'Too many spaces inside { }.')
+
+        # Also a single space inside of braces with an initializer value inside
+        # of them.
+        if search(r'\{[^\s\}]', line):
+            error(line_number, 'whitespace/braces', 5, 'Missing space after {.')
+        if search(r'[^\s\{]\}', line):
+            error(line_number, 'whitespace/braces', 5, 'Missing space before }.')
+        if search(r'\{\s\s+[^\s\}]', line):
+            error(line_number, 'whitespace/braces', 5, 'Too many spaces after {.')
+        if search(r'[^\s\{]\s\+\}', line):
+            error(line_number, 'whitespace/braces', 5, 'Too many spaces before }.')
 
     # You shouldn't have a space before a semicolon at the end of the line.
     # There's a special case for "for" since the style guide allows space before
@@ -2466,13 +2530,14 @@ def check_namespace_indentation(clean_lines, line_number, file_extension, file_s
     looking_for_semicolon = False
     line_offset = 0
     in_preprocessor_directive = False
+    initializer_re = re.compile(r'^\s+[:,] m_[a-zA-Z][a-zA-Z0-9_]* { .+ }$')
     for current_line in clean_lines.elided[line_number + 1:]:
         line_offset += 1
         if not current_line.strip():
             continue
         if not current_indentation_level:
             if not (in_preprocessor_directive or looking_for_semicolon):
-                if not match(r'\S', current_line) and not file_state.did_inside_namespace_indent_warning():
+                if not match(r'\S', current_line) and not initializer_re.match(current_line) and not file_state.did_inside_namespace_indent_warning():
                     file_state.set_did_inside_namespace_indent_warning()
                     error(line_number + line_offset, 'whitespace/indent', 4,
                           'Code inside a namespace should not be indented.')
@@ -2489,8 +2554,10 @@ def check_namespace_indentation(clean_lines, line_number, file_extension, file_s
 
 
 # Enum declaration allowlist
-_ALLOW_ALL_UPPERCASE_ENUM = ['JSTokenType', 'Meridiem']
+_ALLOW_ALL_UPPERCASE_ENUM = ['JSTokenType']
 
+# Enum value allowlist
+_ALLOW_ABBREVIATION_ENUM_VALUES = ['AM', 'CF', 'PM', 'URL', 'XHR']
 
 def check_enum_casing(clean_lines, line_number, enum_state, error):
     """Looks for incorrectly named enum values.
@@ -2940,7 +3007,7 @@ def check_braces(clean_lines, line_number, file_state, error):
         # on the previous non-blank line is '{' because it's likely to
         # indicate the begining of a nested code block.
         previous_line = get_previous_non_blank_line(clean_lines, line_number)[0]
-        if ((not search(r'[;:}{)=]\s*$|\)\s*((const|override|const override|final|const final)\s*)?(->\s*\S+)?\s*$', previous_line)
+        if ((not search(r'[;:}{)=]\s*$|\)\s*((const|override|const override|final|const final|noexcept|const noexcept)\s*)?(->\s*\S+)?\s*$', previous_line)
              or search(r'\b(if|for|while|switch|else|CF_OPTIONS|NS_ENUM|NS_ERROR_ENUM|NS_OPTIONS)\b', previous_line)
              or regex_for_lambdas_and_blocks(previous_line, line_number, file_state, error))
             and previous_line.find('#') < 0
@@ -3288,8 +3355,8 @@ def check_arguments_for_wk_api_available(clean_lines, line_number, error):
     """
 
     @memoized
-    def max_version_for_platform(platform_name):
-        return VersionNameMap.map().max_public_version(platform=platform_name)
+    def max_major_version_for_platform(platform_name):
+        return VersionNameMap.map().max_public_version(platform=platform_name).major
 
     def check_version_string(version_string, platform_name):
         mapping = {
@@ -3311,9 +3378,9 @@ def check_arguments_for_wk_api_available(clean_lines, line_number, error):
             error(line_number, 'build/wk_api_available', 5, '%s(%s) is invalid; version number should have one decimal' % (platform_name, version_string))
             return
 
-        max_version = max_version_for_platform(platform_name)
-        if version > max_version:
-            error(line_number, 'build/wk_api_available', 5, '%s(%s) is invalid; version number should not exceed %s' % (platform_name, version_string, max_version))
+        max_major_version = max_major_version_for_platform(platform_name)
+        if version.major > max_major_version:
+            error(line_number, 'build/wk_api_available', 5, '%s(%s) is invalid; major version number should not exceed %d' % (platform_name, version_string, max_major_version))
             return
 
     line = clean_lines.elided[line_number]  # Get rid of comments and strings.
@@ -3340,6 +3407,31 @@ def check_arguments_for_wk_api_available(clean_lines, line_number, error):
     wk_api_available = search(r'WK_API_AVAILABLE\(ios\(([^\)]+)\)\)', line)
     if wk_api_available:
         check_version_string(wk_api_available.group(1), "ios")
+
+
+def check_objc_protocol(clean_lines, line_number, file_extension, error):
+    """Looks for spaces between type names and protocol names.
+
+    Because the style checker uses regexes, we don't know what's a type and what's a protocol.
+    So, this check is a simplification and just checks for "id <"
+
+    Args:
+      clean_lines: A CleansedLines instance containing the file.
+      line_number: The number of the line to check.
+      file_extension: The extension (without the dot) of the filename.
+      error: The function to call with any errors found.
+    """
+
+    if file_extension != "m" and file_extension != "mm":
+        return
+
+    line = clean_lines.elided[line_number]  # Get rid of comments and strings.
+
+    using_space_with_protocol = search(r'\bid <', line)
+    if not using_space_with_protocol:
+        return
+
+    error(line_number, 'spacing/objc-protocol', 2, "Protocol names shouldn't have a space before them.")
 
 
 def check_style(clean_lines, line_number, file_extension, class_state, file_state, enum_state, error):
@@ -3423,6 +3515,7 @@ def check_style(clean_lines, line_number, file_extension, class_state, file_stat
     check_enum_casing(clean_lines, line_number, enum_state, error)
     check_once_flag(clean_lines, line_number, file_state, error)
     check_arguments_for_wk_api_available(clean_lines, line_number, error)
+    check_objc_protocol(clean_lines, line_number, file_extension, error)
 
 
 _RE_PATTERN_INCLUDE_NEW_STYLE = re.compile(r'#(?:include|import) +"[^/]+\.h"')
@@ -3508,6 +3601,10 @@ def _classify_include(filename, include, is_system, include_state):
     # then we consider it the primary header.
     target_base = FileInfo(filename).base_name()
     include_base = FileInfo(include).base_name()
+
+    # Test .cpp, .mm, .c files do not have primary header files.
+    if any(target_base.endswith(suffix) for suffix in ['Test', 'Tests']):
+        return _OTHER_HEADER
 
     # If we haven't encountered a primary header, then be lenient in checking.
     if not include_state.visited_primary_section():
@@ -3926,7 +4023,7 @@ def check_language(filename, clean_lines, line_number, file_extension, include_s
               'http://google-styleguide.googlecode.com/svn/trunk/cppguide.xml#Namespaces'
               ' for more information.')
 
-    # Check for plain bitfields declared without either "singed" or "unsigned".
+    # Check for plain bitfields declared without either "signed" or "unsigned".
     # Most compilers treat such bitfields as signed, but there are still compilers like
     # RVCT 4.0 that use unsigned by default.
     matched = re.match(r'\s*((const|mutable)\s+)?(char|(short(\s+int)?)|int|long(\s+(long|int))?)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*:\s*\d+\s*;', line)
@@ -3941,7 +4038,7 @@ def check_language(filename, clean_lines, line_number, file_extension, include_s
     matched = re.match(r'\s*((const|mutable)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*:\s*\d+\s*;', line)
     if matched:
         # Make sure the type is an enum and not an integral type
-        if not match(r'bool|char|(short(\s+int)?)|int|long(\s+(long|int))|(signed|unsigned)(\s+int)?', matched.group(3)):
+        if not match(r'bool|char|(short(\s+int)?)|u?int(8|16|32|64)_t|int|long(\s+(long|int))|(signed|unsigned)(\s+int)?', matched.group(3)):
             error(line_number, 'runtime/enum_bitfields', 5,
                   'Please declare enum bitfields as unsigned integral types.')
 
@@ -3957,6 +4054,14 @@ def check_language(filename, clean_lines, line_number, file_extension, include_s
         error(line_number, 'readability/check', 4,
               'Consider using toText helper function in WebCore/dom/Text.h '
               'instead of static_cast<Text*>')
+
+    if filename != 'Source/WebCore/platform/graphics/gstreamer/GStreamerCommon.cpp':
+        if search(r'gst_structure_get_(int|uint|double|boolean)', line):
+            error(line_number, 'readability/check', 4, 'Consider using gstStructureGet<T>() instead')
+        if search(r'gst_structure_get_string', line):
+            error(line_number, 'readability/check', 4, 'Consider using gstStructureGetString() instead')
+        if search(r'gst_structure_get_name', line):
+            error(line_number, 'readability/check', 4, 'Consider using gstStructureGetName() instead')
 
 
 def check_identifier_name_in_declaration(filename, line_number, line, file_state, error):
@@ -3974,8 +4079,8 @@ def check_identifier_name_in_declaration(filename, line_number, line, file_state
                   the state of things in the file.
       error: The function to call with any errors found.
     """
-    # We don't check a return statement.
-    if match(r'\s*(return|delete)\b', line):
+    # We don't check return, case or delete statements.
+    if match(r'\s*(return|case|delete)\b', line):
         return
 
     # Make sure Ref/RefPtrs used as protectors are named correctly, and do this before we start stripping things off the input.
@@ -3985,15 +4090,22 @@ def check_identifier_name_in_declaration(filename, line_number, line, file_state
         protector_name = ref_check.group('protector_name')
         protected_name = ref_check.group('protected_name')
         cap_protected_name = protected_name[0].upper() + protected_name[1:]
+
         # Ignore function declarations where cap_protected_name == protected_name indicates a type name.
         if cap_protected_name != protected_name:
             expected_protector_name = 'protected' + cap_protected_name
             if protected_name == 'this' and protector_name != 'protectedThis':
                 error(line_number, 'readability/naming/protected', 4, "\'" + protector_name + "\' is incorrectly named. It should be named \'protectedThis\'.")
-            elif protector_name == expected_protector_name or protector_name == 'protector':
+            elif protected_name == 'this' and protector_name == 'protectedThis':
                 return
+            elif protected_name != 'this' and protector_name == 'protectedThis':
+                error(line_number, 'readability/naming/protected', 4, "Incorrect use of \'protectedThis\'.")
+            elif protector_name.startswith("protected"):
+                error(line_number, 'readability/naming/protected', 4, "\'" + protector_name + "\' is incorrectly named. New variables should not use the \'protected\' prefix.")
+            elif protector_name == 'protector':
+                error(line_number, 'readability/naming/protected', 4, "\'" + protector_name + "\' is incorrectly named. New variables should not be named \'protector\'")
             else:
-                error(line_number, 'readability/naming/protected', 4, "\'" + protector_name + "\' is incorrectly named. It should be named \'protector\' or \'" + expected_protector_name + "\'.")
+                return
 
     # Basically, a declaration is a type name followed by whitespaces
     # followed by an identifier. The type name can be complicated
@@ -4087,6 +4199,7 @@ def check_identifier_name_in_declaration(filename, line_number, line, file_state
             if (not (_is_javascriptcore_file(filename) and (modified_identifier.find('op_') >= 0 or modified_identifier.find('intrinsic_') >= 0))
                 and not (('gtk' in filename or 'glib' in filename or 'wpe' in filename or 'atk' in filename) and modified_identifier.startswith('webkit_'))
                 and not ('glib' in filename and modified_identifier.startswith('jsc_'))
+                and not ('wpe' in filename and modified_identifier.startswith('wpe_'))
                 and not modified_identifier.startswith('tst_')
                 and not modified_identifier.startswith('webkit_dom_object_')
                 and not modified_identifier.startswith('webkit_soup')
@@ -4100,10 +4213,16 @@ def check_identifier_name_in_declaration(filename, line_number, line, file_state
                 and not modified_identifier.startswith('Evas_')
                 and not modified_identifier.startswith('Ewk_')
                 and not modified_identifier.startswith('cti_')
+                and not modified_identifier.startswith('hb_')
                 and not modified_identifier.find('::_q_') >= 0
                 and not modified_identifier == "const_iterator"
                 and not modified_identifier == "vm_throw"
                 and not modified_identifier == "DFG_OPERATION"
+                and not modified_identifier == "LOG_CHANNEL"
+                and not modified_identifier == "WTF_GUARDED_BY_LOCK"
+                and not modified_identifier == "WTF_GUARDED_BY_CAPABILITY"
+                and not modified_identifier.startswith("_AX")
+                and not modified_identifier.startswith("_WK")
                 and not modified_identifier.find('chrono_literals') >= 0):
                 error(line_number, 'readability/naming/underscores', 4, identifier + " is incorrectly named. Don't use underscores in your identifier names.")
 
@@ -4480,6 +4599,7 @@ def process_line(filename, file_extension,
     if asm_state.is_in_asm():  # Ignore further checks because asm blocks formatted differently.
         return
     check_function_definition(filename, file_extension, clean_lines, line, class_state, function_state, error)
+    check_function_body(filename, file_extension, clean_lines, line, class_state, function_state, error)
     check_for_leaky_patterns(clean_lines, line, function_state, error)
     check_for_multiline_comments_and_strings(clean_lines, line, error)
     check_style(clean_lines, line, file_extension, class_state, file_state, enum_state, error)
@@ -4639,6 +4759,7 @@ class CppChecker(object):
         'runtime/wtf_move',
         'runtime/wtf_never_destroyed',
         'security/assertion',
+        'security/assertion_fallthrough',
         'security/javascriptcore_wtf_blockptr',
         'security/missing_warn_unused_return',
         'security/printf',

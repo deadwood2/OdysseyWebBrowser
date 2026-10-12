@@ -34,8 +34,8 @@
 #import "EventSendingController.h"
 #import "MockWebNotificationProvider.h"
 #import "TestRunner.h"
+#import "WPTFunctions.h"
 
-#import <WebKit/WebApplicationCache.h>
 #import <WebKit/WebFramePrivate.h>
 #import <WebKit/WebHTMLViewPrivate.h>
 #import <WebKit/WebDatabaseManagerPrivate.h>
@@ -174,12 +174,15 @@ static NSString *addLeadingSpaceStripTrailingSpaces(NSString *string)
 {
     if (!gTestRunner->canOpenWindows())
         return nil;
-    
+
     // Make sure that waitUntilDone has been called.
-    ASSERT(gTestRunner->waitToDump());
+    ASSERT(gTestRunner->waitToDump() || WTR::hasTestWaitAttribute(mainFrame.globalContext));
 
     auto webView = createWebViewAndOffscreenWindow();
     [webView setPreferences:[sender preferences]];
+
+    if (auto ports = gTestRunner->portsForUpgradingInsecureScheme())
+        [webView _setPortsForUpgradingInsecureSchemeForTesting:ports->first withSecurePort:ports->second];
 
     if (gTestRunner->newWindowsCopyBackForwardList())
         [webView _loadBackForwardListFromOtherView:sender];
@@ -190,11 +193,15 @@ static NSString *addLeadingSpaceStripTrailingSpaces(NSString *string)
 - (void)webViewClose:(WebView *)sender
 {
     NSWindow* window = [sender window];
- 
+
     if (gTestRunner->callCloseOnWebViews())
         [sender close];
-    
+
+#if !PLATFORM(MACCATALYST)
     [window close];
+#else
+    UNUSED_PARAM(window);
+#endif
 }
 
 - (void)webView:(WebView *)sender frame:(WebFrame *)frame exceededDatabaseQuotaForSecurityOrigin:(WebSecurityOrigin *)origin database:(NSString *)databaseIdentifier
@@ -221,25 +228,6 @@ static NSString *addLeadingSpaceStripTrailingSpaces(NSString *string)
         }
     }
     [[origin databaseQuotaManager] setQuota:newQuota];
-}
-
-- (void)webView:(WebView *)sender exceededApplicationCacheOriginQuotaForSecurityOrigin:(WebSecurityOrigin *)origin totalSpaceNeeded:(NSUInteger)totalSpaceNeeded
-{
-    if (!done && gTestRunner->dumpApplicationCacheDelegateCallbacks()) {
-        // For example, numbers from 30000 - 39999 will output as 30000.
-        // Rounding up or down not really matter for these tests. It's
-        // sufficient to just get a range of 10000 to determine if we were
-        // above or below a threshold.
-        unsigned long truncatedSpaceNeeded = static_cast<unsigned long>((totalSpaceNeeded / 10000) * 10000);
-        printf("UI DELEGATE APPLICATION CACHE CALLBACK: exceededApplicationCacheOriginQuotaForSecurityOrigin:{%s, %s, %i} totalSpaceNeeded:~%lu\n",
-            [[origin protocol] UTF8String], [[origin host] UTF8String], [origin port], truncatedSpaceNeeded);
-    }
-
-    if (gTestRunner->disallowIncreaseForApplicationCacheQuota())
-        return;
-
-    static const unsigned long long defaultOriginQuota = [WebApplicationCache defaultOriginQuota];
-    [[origin applicationCacheQuotaManager] setQuota:defaultOriginQuota];
 }
 
 - (void)webView:(WebView *)sender setStatusText:(NSString *)text
@@ -367,12 +355,6 @@ static NSString *addLeadingSpaceStripTrailingSpaces(NSString *string)
 {
     // Any 128 bit key would do, all we need for testing is to implement the callback.
     return [NSData dataWithBytes:"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f" length:16];
-}
-
-- (NSString *)signedPublicKeyAndChallengeStringForWebView:(WebView *)sender
-{
-    // Any fake response would do, all we need for testing is to implement the callback.
-    return @"MIHFMHEwXDANBgkqhkiG9w0BAQEFAANLADBIAkEAnX0TILJrOMUue%2BPtwBRE6XfV%0AWtKQbsshxk5ZhcUwcwyvcnIq9b82QhJdoACdD34rqfCAIND46fXKQUnb0mvKzQID%0AAQABFhFNb3ppbGxhSXNNeUZyaWVuZDANBgkqhkiG9w0BAQQFAANBAAKv2Eex2n%2FS%0Ar%2F7iJNroWlSzSMtTiQTEB%2BADWHGj9u1xrUrOilq%2Fo2cuQxIfZcNZkYAkWP4DubqW%0Ai0%2F%2FrgBvmco%3D";
 }
 
 - (void)webView:(WebView *)sender runOpenPanelForFileButtonWithResultListener:(id<WebOpenPanelResultListener>)resultListener allowMultipleFiles:(BOOL)allowMultipleFiles

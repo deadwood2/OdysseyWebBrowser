@@ -27,7 +27,6 @@
 
 #include "NetworkDataTask.h"
 #include "NetworkLoadParameters.h"
-#include <WebCore/DataURLDecoder.h>
 #include <WebCore/FrameIdentifier.h>
 #include <WebCore/NetworkLoadMetrics.h>
 #include <WebCore/PageIdentifier.h>
@@ -55,6 +54,7 @@ private:
     void resume() override;
     void invalidateAndCancel() override;
     NetworkDataTask::State state() const override;
+    void setTimingAllowFailedFlag() final;
 
     void setPendingDownloadLocation(const String&, SandboxExtension::Handle&&, bool /*allowOverwrite*/) override;
     String suggestedFilename() const override;
@@ -65,7 +65,7 @@ private:
     void startTimeout();
     void stopTimeout();
 
-    enum class WasBlockingCookies { No, Yes };
+    enum class WasBlockingCookies : bool { No, Yes };
     void createRequest(WebCore::ResourceRequest&&, WasBlockingCookies);
     void clearRequest();
 
@@ -179,7 +179,7 @@ private:
     static void enumerateFileChildrenCallback(GFile*, GAsyncResult*, NetworkDataTaskSoup*);
     void didReadFile(GRefPtr<GInputStream>&&);
 
-    void didReadDataURL(std::optional<WebCore::DataURLDecoder::Result>&&);
+    WebCore::AdditionalNetworkLoadMetricsForWebInspector& additionalNetworkLoadMetricsForWebInspector();
 
     WebCore::FrameIdentifier m_frameID;
     WebCore::PageIdentifier m_pageID;
@@ -192,7 +192,6 @@ private:
     GRefPtr<SoupMultipartInputStream> m_multipartInputStream;
     GRefPtr<GCancellable> m_cancellable;
     GRefPtr<GAsyncResult> m_pendingResult;
-    std::optional<WebCore::DataURLDecoder::Result> m_pendingDataURLResult;
     WebCore::ProtectionSpace m_protectionSpaceForPersistentStorage;
     WebCore::Credential m_credentialForPersistentStorage;
     WebCore::ResourceRequest m_currentRequest;
@@ -207,7 +206,7 @@ private:
     WebCore::NetworkLoadMetrics m_networkLoadMetrics;
     bool m_isBlockingCookies { false };
     RefPtr<WebCore::SecurityOrigin> m_sourceOrigin;
-    RunLoop::Timer<NetworkDataTaskSoup> m_timeoutSource;
+    RunLoop::Timer m_timeoutSource;
 };
 
 } // namespace WebKit

@@ -59,8 +59,7 @@ public:
         return *m_iter;
     }
 
-    inline bool operator==(FilterIterator& other) const { return m_iter == other.m_iter; }
-    inline bool operator!=(FilterIterator& other) const { return m_iter != other.m_iter; }
+    inline bool operator==(const FilterIterator& other) const { return m_iter == other.m_iter; }
 
 private:
     const Predicate m_pred;
@@ -95,8 +94,7 @@ public:
         return m_transform(*m_iter);
     }
 
-    inline bool operator==(TransformIterator& other) const { return m_iter == other.m_iter; }
-    inline bool operator!=(TransformIterator& other) const { return m_iter != other.m_iter; }
+    inline bool operator==(const TransformIterator& other) const { return m_iter == other.m_iter; }
 
 private:
     const Transform m_transform;
@@ -106,7 +104,7 @@ private:
 template<typename Transform, typename Iterator>
 inline TransformIterator<Transform, Iterator> makeTransformIterator(Transform&& transform, Iterator&& iter)
 {
-    return TransformIterator<Transform, Iterator>(WTFMove(transform), WTFMove(iter));
+    return TransformIterator<Transform, Iterator>(std::forward<Transform>(transform), std::forward<Iterator>(iter));
 }
 
 } // namespace WTF

@@ -22,5 +22,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
 
 PRODUCT_NAME = MiniBrowser
-
 STRIP_STYLE=debugging
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator xros xrsimulator;
+CODE_SIGN_ENTITLEMENTS[sdk=*simulator] = MobileMiniBrowser/MobileMiniBrowser.entitlements;
+OTHER_CODE_SIGN_FLAGS[sdk=*simulator] = ;

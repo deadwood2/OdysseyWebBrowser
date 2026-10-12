@@ -70,14 +70,14 @@ TEST(CloseWebViewDuringEnterFullscreen, VideoFullscreen)
     willEnterFullscreen = false;
     [webView evaluateJavaScript:@"document.querySelector('video').webkitEnterFullscreen()" completionHandler: nil];
     TestWebKitAPI::Util::run(&willEnterFullscreen);
-    TestWebKitAPI::Util::sleep(0.2);
+    TestWebKitAPI::Util::runFor(0.2_s);
 
     // Should not crash:
     [webView _close];
 }
 
-
-TEST(CloseWebViewDuringEnterFullscreen, ElementFullscreen)
+// FIXME: Re-enable this test once webkit.org/b/243678 is resolved.
+TEST(CloseWebViewDuringEnterFullscreen, DISABLED_ElementFullscreen)
 {
     RetainPtr<WKWebViewConfiguration> configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     [configuration preferences]._fullScreenEnabled = YES;
@@ -90,7 +90,7 @@ TEST(CloseWebViewDuringEnterFullscreen, ElementFullscreen)
     willEnterFullscreen = false;
     [webView evaluateJavaScript:@"document.querySelector('div').webkitRequestFullscreen()" completionHandler: nil];
     TestWebKitAPI::Util::run(&willEnterFullscreen);
-    TestWebKitAPI::Util::sleep(0.2);
+    TestWebKitAPI::Util::runFor(0.2_s);
 
     // Should not crash:
     [webView _close];

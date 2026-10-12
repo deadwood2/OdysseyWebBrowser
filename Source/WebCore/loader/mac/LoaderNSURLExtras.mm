@@ -41,6 +41,11 @@ using namespace WebCore;
 
 NSString *suggestedFilenameWithMIMEType(NSURL *url, const String& mimeType)
 {
+    return suggestedFilenameWithMIMEType(url, mimeType, copyImageUnknownFileLabel());
+}
+
+NSString *suggestedFilenameWithMIMEType(NSURL *url, const String& mimeType, const String& defaultValue)
+{
     // Get the filename from the URL. Try the lastPathComponent first.
     NSString *lastPathComponent = [[url path] lastPathComponent];
     NSString *filename = filenameByFixingIllegalCharacters(lastPathComponent);
@@ -51,8 +56,8 @@ NSString *suggestedFilenameWithMIMEType(NSURL *url, const String& mimeType)
         auto host = URL(url).host().createNSString();
         filename = filenameByFixingIllegalCharacters(host.get());
         if ([filename length] == 0) {
-            // Can't make a filename using this URL, use "unknown".
-            filename = copyImageUnknownFileLabel();
+            // Can't make a filename using this URL, use the default value.
+            filename = defaultValue;
         }
     } else {
         // Save the extension for later correction. Only correct the extension of the lastPathComponent.
@@ -60,17 +65,20 @@ NSString *suggestedFilenameWithMIMEType(NSURL *url, const String& mimeType)
         extension = [filename pathExtension];
     }
 
+    if (!mimeType)
+        return filename;
+
     // Do not correct filenames that are reported with a mime type of tar, and 
     // have a filename which has .tar in it or ends in .tgz
-    if ((mimeType == "application/tar" || mimeType == "application/x-tar")
-        && (String(filename).containsIgnoringASCIICase(".tar")
-        || String(filename).endsWithIgnoringASCIICase(".tgz"))) {
+    if ((mimeType == "application/tar"_s || mimeType == "application/x-tar"_s)
+        && (String(filename).containsIgnoringASCIICase(".tar"_s)
+        || String(filename).endsWithIgnoringASCIICase(".tgz"_s))) {
         return filename;
     }
 
     // I don't think we need to worry about this for the image case
     // If the type is known, check the extension and correct it if necessary.
-    if (mimeType != "application/octet-stream" && mimeType != "text/plain") {
+    if (mimeType != "application/octet-stream"_s && mimeType != "text/plain"_s) {
         Vector<String> extensions = MIMETypeRegistry::extensionsForMIMEType(mimeType);
 
         if (extensions.isEmpty() || !extensions.contains(String(extension))) {
@@ -88,7 +96,7 @@ NSString *suggestedFilenameWithMIMEType(NSURL *url, const String& mimeType)
 
 NSString *filenameByFixingIllegalCharacters(NSString *string)
 {
-    auto filename = adoptNS([string mutableCopy]);
+    RetainPtr filename = adoptNS([string mutableCopy]);
 
     // Strip null characters.
     unichar nullChar = 0;

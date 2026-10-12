@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 Adenilson Cavalcanti <cavalcantii@gmail.com>
+ * Copyright (C) 2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,7 +35,9 @@
 #include <WebKit/WKRetainPtr.h>
 #include <signal.h>
 
-#if PLATFORM(PLAYSTATION)
+#if USE(WPE_BACKEND_PLAYSTATION)
+#include <wpe/playstation.h>
+#elif PLATFORM(PLAYSTATION)
 #include <process-launcher.h>
 #endif
 
@@ -42,7 +45,6 @@ namespace TestWebKitAPI {
 
 static bool loadBeforeCrash = false;
 static bool loadAfterCrash = false;
-static bool calledCrashHandler = false;
 
 static void didFinishLoad(WKPageRef page, WKNavigationRef, WKTypeRef userData, const void* clientInfo)
 {
@@ -97,9 +99,7 @@ TEST(WebKit, ReloadPageAfterCrash)
 
 #if !PLATFORM(WIN)
 
-static void nullJavaScriptCallback(WKSerializedScriptValueRef, WKErrorRef, void*)
-{
-}
+static bool calledCrashHandler = false;
 
 static void didCrashCheckFrames(WKPageRef page, const void*)
 {
@@ -108,9 +108,9 @@ static void didCrashCheckFrames(WKPageRef page, const void*)
 
     EXPECT_TRUE(!WKPageGetMainFrame(page));
     EXPECT_TRUE(!WKPageGetFocusedFrame(page));
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     EXPECT_TRUE(!WKPageGetFrameSetLargestFrame(page));
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     calledCrashHandler = true;
 }
@@ -136,12 +136,14 @@ TEST(WebKit, FocusedFrameAfterCrash)
     EXPECT_FALSE(!WKPageGetMainFrame(webView.page()));
 
     WKRetainPtr<WKStringRef> javaScriptString = adoptWK(WKStringCreateWithUTF8CString("frames[2].focus()"));
-    WKPageRunJavaScriptInMainFrame(webView.page(), javaScriptString.get(), 0, nullJavaScriptCallback);
+    WKPageEvaluateJavaScriptInMainFrame(webView.page(), javaScriptString.get(), nullptr, nullptr);
 
     while (!WKPageGetFocusedFrame(webView.page()))
         Util::spinRunLoop(10);
 
-#if PLATFORM(PLAYSTATION)
+#if USE(WPE_BACKEND_PLAYSTATION)
+    
+#elif PLATFORM(PLAYSTATION)
     PlayStation::terminateProcess(WKPageGetProcessIdentifier(webView.page()));
 #else
     kill(WKPageGetProcessIdentifier(webView.page()), 9);

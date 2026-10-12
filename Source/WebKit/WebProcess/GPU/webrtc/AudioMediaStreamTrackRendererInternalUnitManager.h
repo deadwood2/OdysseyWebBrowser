@@ -28,9 +28,19 @@
 #if ENABLE(MEDIA_STREAM) && ENABLE(GPU_PROCESS) && PLATFORM(COCOA)
 
 #include "AudioMediaStreamTrackRendererInternalUnitIdentifier.h"
-#include "SharedMemory.h"
 #include <WebCore/AudioMediaStreamTrackRendererInternalUnit.h>
+#include <WebCore/SharedMemory.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class AudioMediaStreamTrackRendererInternalUnitManagerProxy;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::AudioMediaStreamTrackRendererInternalUnitManagerProxy> : std::true_type { };
+}
 
 namespace IPC {
 class Semaphore;
@@ -42,22 +52,24 @@ class CAAudioStreamDescription;
 
 namespace WebKit {
 
+class AudioMediaStreamTrackRendererInternalUnitManagerProxy;
+
 class AudioMediaStreamTrackRendererInternalUnitManager {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(AudioMediaStreamTrackRendererInternalUnitManager);
 public:
     AudioMediaStreamTrackRendererInternalUnitManager() = default;
 
-    UniqueRef<WebCore::AudioMediaStreamTrackRendererInternalUnit> createRemoteInternalUnit(WebCore::AudioMediaStreamTrackRendererInternalUnit::RenderCallback&&);
+    void add(AudioMediaStreamTrackRendererInternalUnitManagerProxy&);
+    void remove(AudioMediaStreamTrackRendererInternalUnitManagerProxy&);
 
-    class Proxy;
-    void add(Proxy&);
-    void remove(Proxy&);
-
-    void gpuProcessConnectionClosed();
+    void reset(AudioMediaStreamTrackRendererInternalUnitIdentifier);
+    void restartAllUnits();
 
 private:
-    HashMap<AudioMediaStreamTrackRendererInternalUnitIdentifier, WeakPtr<Proxy>> m_proxies;
+    HashMap<AudioMediaStreamTrackRendererInternalUnitIdentifier, WeakPtr<AudioMediaStreamTrackRendererInternalUnitManagerProxy>> m_proxies;
 };
+
+UniqueRef<WebCore::AudioMediaStreamTrackRendererInternalUnit> createRemoteAudioMediaStreamTrackRendererInternalUnitProxy(WebCore::AudioMediaStreamTrackRendererInternalUnit::Client&);
 
 }
 

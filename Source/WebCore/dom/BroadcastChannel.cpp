@@ -30,23 +30,27 @@
 #include "EventNames.h"
 #include "MessageEvent.h"
 #include "Page.h"
+#include "PartitionedSecurityOrigin.h"
 #include "SecurityOrigin.h"
 #include "SerializedScriptValue.h"
 #include "WorkerGlobalScope.h"
 #include "WorkerLoaderProxy.h"
+#include "WorkerThread.h"
 #include <wtf/CallbackAggregator.h>
 #include <wtf/HashMap.h>
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/Identified.h>
 #include <wtf/MainThread.h>
+#include <wtf/Scope.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(BroadcastChannel);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(BroadcastChannel);
 
 static Lock allBroadcastChannelsLock;
-static HashMap<BroadcastChannelIdentifier, BroadcastChannel*>& allBroadcastChannels() WTF_REQUIRES_LOCK(allBroadcastChannelsLock)
+static HashMap<BroadcastChannelIdentifier, ThreadSafeWeakPtr<BroadcastChannel>>& allBroadcastChannels() WTF_REQUIRES_LOCK(allBroadcastChannelsLock)
 {
-    static NeverDestroyed<HashMap<BroadcastChannelIdentifier, BroadcastChannel*>> map;
+    static NeverDestroyed<HashMap<BroadcastChannelIdentifier, ThreadSafeWeakPtr<BroadcastChannel>>> map;
     return map;
 }
 
@@ -57,55 +61,152 @@ static HashMap<BroadcastChannelIdentifier, ScriptExecutionContextIdentifier>& ch
     return map;
 }
 
-BroadcastChannel::BroadcastChannel(ScriptExecutionContext& context, const String& name)
-    : ActiveDOMObject(&context)
-    , m_name(name)
-    , m_origin(context.securityOrigin()->data())
-    , m_identifier(BroadcastChannelIdentifier::generateThreadSafe())
+static PartitionedSecurityOrigin partitionedSecurityOriginFromContext(ScriptExecutionContext& context)
 {
+    Ref securityOrigin { *context.securityOrigin() };
+    Ref topOrigin { context.settingsValues().broadcastChannelOriginPartitioningEnabled ? context.topOrigin() : securityOrigin.get() };
+    return { WTFMove(topOrigin), WTFMove(securityOrigin) };
+}
+
+class BroadcastChannel::MainThreadBridge : public ThreadSafeRefCounted<MainThreadBridge, WTF::DestructionThread::Main>, public Identified<BroadcastChannelIdentifier> {
+public:
+    static Ref<MainThreadBridge> create(BroadcastChannel& channel, const String& name)
     {
-        Locker locker { allBroadcastChannelsLock };
-        allBroadcastChannels().add(m_identifier, this);
+        return adoptRef(*new MainThreadBridge(channel, name));
     }
 
-    ensureOnMainThread([origin = crossThreadCopy(m_origin), name = crossThreadCopy(m_name), contextIdentifier = context.contextIdentifier(), channelIdentifier = m_identifier](auto& document) {
-        if (auto* page = document.page())
-            page->broadcastChannelRegistry().registerChannel(origin, name, channelIdentifier);
-        channelToContextIdentifier().add(channelIdentifier, contextIdentifier);
+    void registerChannel();
+    void unregisterChannel();
+    void postMessage(Ref<SerializedScriptValue>&&);
+    void detach() { m_broadcastChannel = nullptr; }
+
+    String name() const { return m_name.isolatedCopy(); }
+
+private:
+    MainThreadBridge(BroadcastChannel&, const String& name);
+
+    void ensureOnMainThread(Function<void(Page*)>&&);
+
+    WeakPtr<BroadcastChannel, WeakPtrImplWithEventTargetData> m_broadcastChannel;
+    const String m_name; // Main thread only.
+    PartitionedSecurityOrigin m_origin; // Main thread only.
+};
+
+BroadcastChannel::MainThreadBridge::MainThreadBridge(BroadcastChannel& channel, const String& name)
+    : m_broadcastChannel(channel)
+    , m_name(name.isolatedCopy())
+    , m_origin(partitionedSecurityOriginFromContext(*channel.protectedScriptExecutionContext()).isolatedCopy())
+{
+}
+
+void BroadcastChannel::MainThreadBridge::ensureOnMainThread(Function<void(Page*)>&& task)
+{
+    ASSERT(m_broadcastChannel);
+    if (!m_broadcastChannel)
+        return;
+
+    RefPtr context = m_broadcastChannel->scriptExecutionContext();
+    if (!context)
+        return;
+    ASSERT(context->isContextThread());
+
+    if (auto* document = dynamicDowncast<Document>(*context)) {
+        task(document->protectedPage().get());
+        return;
+    }
+
+    auto* workerLoaderProxy = downcast<WorkerGlobalScope>(*context).thread().workerLoaderProxy();
+    if (!workerLoaderProxy)
+        return;
+
+    workerLoaderProxy->postTaskToLoader([task = WTFMove(task)](auto& context) {
+        task(downcast<Document>(context).protectedPage().get());
     });
+}
+
+void BroadcastChannel::MainThreadBridge::registerChannel()
+{
+    ensureOnMainThread([this, contextIdentifier = m_broadcastChannel->scriptExecutionContext()->identifier()](auto* page) mutable {
+        if (page)
+            page->protectedBroadcastChannelRegistry()->registerChannel(m_origin, m_name, identifier());
+        channelToContextIdentifier().add(identifier(), contextIdentifier);
+    });
+}
+
+void BroadcastChannel::MainThreadBridge::unregisterChannel()
+{
+    ensureOnMainThread([this](auto* page) {
+        if (page)
+            page->protectedBroadcastChannelRegistry()->unregisterChannel(m_origin, m_name, identifier());
+        channelToContextIdentifier().remove(identifier());
+    });
+}
+
+void BroadcastChannel::MainThreadBridge::postMessage(Ref<SerializedScriptValue>&& message)
+{
+    ensureOnMainThread([this, message = WTFMove(message)](auto* page) mutable {
+        if (!page)
+            return;
+
+        auto blobHandles = message->blobHandles();
+        page->protectedBroadcastChannelRegistry()->postMessage(m_origin, m_name, identifier(), WTFMove(message), [blobHandles = WTFMove(blobHandles)] {
+            // Keeps Blob data inside messageData alive until the message has been delivered.
+        });
+    });
+}
+
+BroadcastChannel::BroadcastChannel(ScriptExecutionContext& context, const String& name)
+    : ActiveDOMObject(&context)
+    , m_mainThreadBridge(MainThreadBridge::create(*this, name))
+{
+    Ref mainThreadBridge = m_mainThreadBridge;
+    {
+        Locker locker { allBroadcastChannelsLock };
+        allBroadcastChannels().add(mainThreadBridge->identifier(), *this);
+    }
+    mainThreadBridge->registerChannel();
 }
 
 BroadcastChannel::~BroadcastChannel()
 {
     close();
+    m_mainThreadBridge->detach();
     {
         Locker locker { allBroadcastChannelsLock };
-        allBroadcastChannels().remove(m_identifier);
+        allBroadcastChannels().remove(m_mainThreadBridge->identifier());
     }
+}
+
+auto BroadcastChannel::protectedMainThreadBridge() const -> Ref<MainThreadBridge>
+{
+    return m_mainThreadBridge;
+}
+
+BroadcastChannelIdentifier BroadcastChannel::identifier() const
+{
+    return m_mainThreadBridge->identifier();
+}
+
+String BroadcastChannel::name() const
+{
+    return m_mainThreadBridge->name();
 }
 
 ExceptionOr<void> BroadcastChannel::postMessage(JSC::JSGlobalObject& globalObject, JSC::JSValue message)
 {
-    if (m_isClosed)
-        return Exception { InvalidStateError, "This BroadcastChannel is closed" };
+    if (!isEligibleForMessaging())
+        return { };
 
-    Vector<RefPtr<MessagePort>> ports;
-    auto messageData = SerializedScriptValue::create(globalObject, message, { }, ports);
+    if (m_isClosed)
+        return Exception { ExceptionCode::InvalidStateError, "This BroadcastChannel is closed"_s };
+
+    Vector<Ref<MessagePort>> ports;
+    auto messageData = SerializedScriptValue::create(globalObject, message, { }, ports, SerializationForStorage::No, SerializationContext::WorkerPostMessage);
     if (messageData.hasException())
         return messageData.releaseException();
     ASSERT(ports.isEmpty());
 
-    ensureOnMainThread([origin = crossThreadCopy(m_origin), name = crossThreadCopy(m_name), identifier = m_identifier, messageData = messageData.releaseReturnValue()](auto& document) mutable {
-        auto* page = document.page();
-        if (!page)
-            return;
-
-        auto blobHandles = messageData->blobHandles();
-        page->broadcastChannelRegistry().postMessage(origin, name, identifier, WTFMove(messageData), [blobHandles = WTFMove(blobHandles)] {
-            // Keeps Blob data inside messageData alive until the message has been delivered.
-        });
-    });
-
+    protectedMainThreadBridge()->postMessage(messageData.releaseReturnValue());
     return { };
 }
 
@@ -115,63 +216,58 @@ void BroadcastChannel::close()
         return;
 
     m_isClosed = true;
-    ensureOnMainThread([origin = crossThreadCopy(m_origin), name = crossThreadCopy(m_name), channelIdentifier = m_identifier](auto& document) {
-        if (auto* page = document.page())
-            page->broadcastChannelRegistry().unregisterChannel(origin, name, channelIdentifier);
-        channelToContextIdentifier().remove(channelIdentifier);
-    });
+    protectedMainThreadBridge()->unregisterChannel();
 }
 
 void BroadcastChannel::dispatchMessageTo(BroadcastChannelIdentifier channelIdentifier, Ref<SerializedScriptValue>&& message, CompletionHandler<void()>&& completionHandler)
 {
     ASSERT(isMainThread());
+    auto completionHandlerCallingScope = makeScopeExit([completionHandler = WTFMove(completionHandler)]() mutable {
+        callOnMainThread(WTFMove(completionHandler));
+    });
+
     auto contextIdentifier = channelToContextIdentifier().get(channelIdentifier);
     if (!contextIdentifier)
-        return completionHandler();
+        return;
 
-    auto callbackAggregator = CallbackAggregator::create(WTFMove(completionHandler));
-    ScriptExecutionContext::postTaskTo(contextIdentifier, [channelIdentifier, message = WTFMove(message), callbackAggregator = WTFMove(callbackAggregator)](auto&) mutable {
+    ScriptExecutionContext::ensureOnContextThread(contextIdentifier, [channelIdentifier, message = WTFMove(message), completionHandlerCallingScope = WTFMove(completionHandlerCallingScope)](auto&) mutable {
         RefPtr<BroadcastChannel> channel;
         {
             Locker locker { allBroadcastChannelsLock };
-            channel = allBroadcastChannels().get(channelIdentifier);
+            channel = allBroadcastChannels().get(channelIdentifier).get();
         }
         if (channel)
             channel->dispatchMessage(WTFMove(message));
-
-        callOnMainThread([callbackAggregator = WTFMove(callbackAggregator)] { });
     });
 }
 
 void BroadcastChannel::dispatchMessage(Ref<SerializedScriptValue>&& message)
 {
+    if (!isEligibleForMessaging())
+        return;
+
     if (m_isClosed)
         return;
 
     queueTaskKeepingObjectAlive(*this, TaskSource::PostedMessageQueue, [this, message = WTFMove(message)]() mutable {
-        if (!m_isClosed)
-            dispatchEvent(MessageEvent::create({ }, WTFMove(message), m_origin.toString()));
+        if (m_isClosed || !scriptExecutionContext())
+            return;
+
+        auto* globalObject = scriptExecutionContext()->globalObject();
+        if (!globalObject)
+            return;
+
+        auto& vm = globalObject->vm();
+        auto scope = DECLARE_CATCH_SCOPE(vm);
+        auto event = MessageEvent::create(*globalObject, WTFMove(message), scriptExecutionContext()->securityOrigin()->toString());
+        if (UNLIKELY(scope.exception())) {
+            // Currently, we assume that the only way we can get here is if we have a termination.
+            RELEASE_ASSERT(vm.hasPendingTerminationException());
+            return;
+        }
+
+        dispatchEvent(event.event);
     });
-}
-
-void BroadcastChannel::ensureOnMainThread(Function<void(Document&)>&& task)
-{
-    auto* context = scriptExecutionContext();
-    if (!context)
-        return;
-
-    if (is<Document>(*context))
-        task(downcast<Document>(*context));
-    else {
-        downcast<WorkerGlobalScope>(*context).thread().workerLoaderProxy().postTaskToLoader([task = WTFMove(task)](auto& context) {
-            task(downcast<Document>(context));
-        });
-    }
-}
-
-const char* BroadcastChannel::activeDOMObjectName() const
-{
-    return "BroadcastChannel";
 }
 
 void BroadcastChannel::eventListenersDidChange()
@@ -182,6 +278,19 @@ void BroadcastChannel::eventListenersDidChange()
 bool BroadcastChannel::virtualHasPendingActivity() const
 {
     return !m_isClosed && m_hasRelevantEventListener;
+}
+
+// https://html.spec.whatwg.org/#eligible-for-messaging
+bool BroadcastChannel::isEligibleForMessaging() const
+{
+    RefPtr context = scriptExecutionContext();
+    if (!context)
+        return false;
+
+    if (auto document = dynamicDowncast<Document>(*context))
+        return document->isFullyActive();
+
+    return !downcast<WorkerGlobalScope>(*context).isClosing();
 }
 
 } // namespace WebCore

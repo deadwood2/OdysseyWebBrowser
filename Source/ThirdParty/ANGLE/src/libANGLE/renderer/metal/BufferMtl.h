@@ -78,14 +78,18 @@ struct IndexConversionBufferMtl : public ConversionBufferMtl
     const size_t offset;
     bool primitiveRestartEnabled;
     IndexRange getRangeForConvertedBuffer(size_t count);
-
 };
 
 struct UniformConversionBufferMtl : public ConversionBufferMtl
 {
-    UniformConversionBufferMtl(ContextMtl *context, size_t offsetIn);
+    UniformConversionBufferMtl(ContextMtl *context,
+                               std::pair<size_t, size_t> offsetIn,
+                               size_t blockSize);
 
-    const size_t offset;
+    size_t initialSrcOffset() { return offset.second; }
+
+    const size_t uniformBufferBlockSize;
+    const std::pair<size_t, size_t> offset;
 };
 
 class BufferHolderMtl
@@ -152,7 +156,8 @@ class BufferMtl : public BufferImpl, public BufferHolderMtl
                                       size_t count,
                                       std::pair<uint32_t, uint32_t> *outIndices);
 
-    const uint8_t *getClientShadowCopyData(ContextMtl *contextMtl);
+    const uint8_t *getBufferDataReadOnly(ContextMtl *contextMtl);
+    bool isSafeToReadFromBufferViaBlit(ContextMtl *contextMtl);
 
     ConversionBufferMtl *getVertexConversionBuffer(ContextMtl *context,
                                                    angle::FormatID formatID,
@@ -164,17 +169,26 @@ class BufferMtl : public BufferImpl, public BufferHolderMtl
                                                        bool primitiveRestartEnabled,
                                                        size_t offset);
 
-    ConversionBufferMtl *getUniformConversionBuffer(ContextMtl *context, size_t offset);
-
-    // NOTE(hqle): If the buffer is modifed by GPU, this function must be explicitly
-    // called.
-    void markConversionBuffersDirty();
+    ConversionBufferMtl *getUniformConversionBuffer(ContextMtl *context,
+                                                    std::pair<size_t, size_t> offset,
+                                                    size_t blockSize);
 
     size_t size() const { return static_cast<size_t>(mState.getSize()); }
-    
-    const std::vector<IndexRange> & getRestartIndices(ContextMtl * ctx, gl::DrawElementsType indexType);
-    
+
+    const std::vector<IndexRange> &getRestartIndices(ContextMtl *ctx,
+                                                     gl::DrawElementsType indexType);
+
+    static const std::vector<IndexRange> getRestartIndicesFromClientData(
+        ContextMtl *ctx,
+        gl::DrawElementsType indexType,
+        const mtl::BufferRef clientBuffer);
+
   private:
+    angle::Result allocateNewMetalBuffer(ContextMtl *contextMtl,
+                                         MTLStorageMode storageMode,
+                                         size_t size,
+                                         bool returnOldBufferImmediately);
+
     angle::Result setDataImpl(const gl::Context *context,
                               gl::BufferBinding target,
                               const void *data,
@@ -185,42 +199,56 @@ class BufferMtl : public BufferImpl, public BufferHolderMtl
                                  size_t size,
                                  size_t offset);
 
-    angle::Result commitShadowCopy(const gl::Context *context);
-    angle::Result commitShadowCopy(const gl::Context *context, size_t size);
+    angle::Result commitShadowCopy(ContextMtl *contextMtl);
+    angle::Result commitShadowCopy(ContextMtl *contextMtl, size_t size);
 
+    void markConversionBuffersDirty();
     void clearConversionBuffers();
+
+    angle::Result putDataInNewBufferAndStartUsingNewBuffer(ContextMtl *contextMtl,
+                                                           const uint8_t *srcPtr,
+                                                           size_t sizeToCopy,
+                                                           size_t offset);
+    angle::Result updateExistingBufferViaBlitFromStagingBuffer(ContextMtl *contextMtl,
+                                                               const uint8_t *srcPtr,
+                                                               size_t sizeToCopy,
+                                                               size_t offset);
+    angle::Result copyDataToExistingBufferViaCPU(ContextMtl *contextMtl,
+                                                 const uint8_t *srcPtr,
+                                                 size_t sizeToCopy,
+                                                 size_t offset);
+    angle::Result updateShadowCopyThenCopyShadowToNewBuffer(ContextMtl *contextMtl,
+                                                            const uint8_t *srcPtr,
+                                                            size_t sizeToCopy,
+                                                            size_t offset);
 
     bool clientShadowCopyDataNeedSync(ContextMtl *contextMtl);
     void ensureShadowCopySyncedFromGPU(ContextMtl *contextMtl);
     uint8_t *syncAndObtainShadowCopy(ContextMtl *contextMtl);
 
-    // Convenient method
-    const uint8_t *getClientShadowCopyData(const gl::Context *context)
-    {
-        return getClientShadowCopyData(mtl::GetImpl(context));
-    }
-    // Client side shadow buffer
+    // Optional client side shadow buffer
     angle::MemoryBuffer mShadowCopy;
-
-    // GPU side buffers pool
-    mtl::BufferPool mBufferPool;
 
     // A cache of converted vertex data.
     std::vector<VertexConversionBufferMtl> mVertexConversionBuffers;
 
     std::vector<IndexConversionBufferMtl> mIndexConversionBuffers;
-    
+
     std::vector<UniformConversionBufferMtl> mUniformConversionBuffers;
 
     struct RestartRangeCache
     {
-        RestartRangeCache(std::vector<IndexRange>&& ranges_,  gl::DrawElementsType indexType_)
+        RestartRangeCache(std::vector<IndexRange> &&ranges_, gl::DrawElementsType indexType_)
             : ranges(ranges_), indexType(indexType_)
         {}
         const std::vector<IndexRange> ranges;
         const gl::DrawElementsType indexType;
     };
     std::optional<RestartRangeCache> mRestartRangeCache;
+    std::vector<IndexRange> mRestartIndices;
+    size_t mGLSize        = 0;  // size GL asked for (vs size we actually allocated)
+    size_t mRevisionCount = 0;  // for generating labels only
+    gl::BufferUsage mUsage;
 };
 
 class SimpleWeakBufferHolderMtl : public BufferHolderMtl

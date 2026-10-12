@@ -30,13 +30,30 @@
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
+class AbstractScriptBufferHolder;
+}
 
-class ScriptBufferSourceProvider final : public JSC::SourceProvider, public CanMakeWeakPtr<ScriptBufferSourceProvider> {
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::AbstractScriptBufferHolder> : std::true_type { };
+}
+
+namespace WebCore {
+
+class AbstractScriptBufferHolder : public CanMakeWeakPtr<AbstractScriptBufferHolder> {
+public:
+    virtual void clearDecodedData() = 0;
+    virtual void tryReplaceScriptBuffer(const ScriptBuffer&) = 0;
+
+    virtual ~AbstractScriptBufferHolder() { }
+};
+
+class ScriptBufferSourceProvider final : public JSC::SourceProvider, public AbstractScriptBufferHolder {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    static Ref<ScriptBufferSourceProvider> create(const ScriptBuffer& scriptBuffer, const JSC::SourceOrigin& sourceOrigin, String sourceURL, const TextPosition& startPosition = TextPosition(), JSC::SourceProviderSourceType sourceType = JSC::SourceProviderSourceType::Program)
+    static Ref<ScriptBufferSourceProvider> create(const ScriptBuffer& scriptBuffer, const JSC::SourceOrigin& sourceOrigin, String sourceURL, String preRedirectURL, const TextPosition& startPosition = TextPosition(), JSC::SourceProviderSourceType sourceType = JSC::SourceProviderSourceType::Program)
     {
-        return adoptRef(*new ScriptBufferSourceProvider(scriptBuffer, sourceOrigin, WTFMove(sourceURL), startPosition, sourceType));
+        return adoptRef(*new ScriptBufferSourceProvider(scriptBuffer, sourceOrigin, WTFMove(sourceURL), WTFMove(preRedirectURL), startPosition, sourceType));
     }
 
     unsigned hash() const final
@@ -51,13 +68,15 @@ public:
         if (m_scriptBuffer.isEmpty())
             return emptyString();
 
+        if (!m_contiguousBuffer && (!m_containsOnlyASCII || *m_containsOnlyASCII))
+            m_contiguousBuffer = m_scriptBuffer.buffer()->makeContiguous();
         if (!m_containsOnlyASCII) {
-            m_containsOnlyASCII = charactersAreAllASCII(m_scriptBuffer.buffer()->data(), m_scriptBuffer.buffer()->size());
+            m_containsOnlyASCII = charactersAreAllASCII(m_contiguousBuffer->span());
             if (*m_containsOnlyASCII)
-                m_scriptHash = StringHasher::computeHashAndMaskTop8Bits(m_scriptBuffer.buffer()->data(), m_scriptBuffer.buffer()->size());
+                m_scriptHash = StringHasher::computeHashAndMaskTop8Bits(m_contiguousBuffer->span());
         }
         if (*m_containsOnlyASCII)
-            return { m_scriptBuffer.buffer()->data(), static_cast<unsigned>(m_scriptBuffer.buffer()->size()) };
+            return m_contiguousBuffer->span();
 
         if (!m_cachedScriptString) {
             m_cachedScriptString = m_scriptBuffer.toString();
@@ -68,12 +87,12 @@ public:
         return m_cachedScriptString;
     }
 
-    void clearDecodedData()
+    void clearDecodedData() final
     {
         m_cachedScriptString = String();
     }
 
-    void tryReplaceScriptBuffer(const ScriptBuffer& scriptBuffer)
+    void tryReplaceScriptBuffer(const ScriptBuffer& scriptBuffer) final
     {
         // If this new file-mapped script buffer is identical to the one we have, then replace
         // ours to save dirty memory.
@@ -81,16 +100,18 @@ public:
             return;
 
         m_scriptBuffer = scriptBuffer;
+        m_contiguousBuffer = nullptr;
     }
 
 private:
-    ScriptBufferSourceProvider(const ScriptBuffer& scriptBuffer, const JSC::SourceOrigin& sourceOrigin, String&& sourceURL, const TextPosition& startPosition, JSC::SourceProviderSourceType sourceType)
-        : JSC::SourceProvider(sourceOrigin, WTFMove(sourceURL), startPosition, sourceType)
+    ScriptBufferSourceProvider(const ScriptBuffer& scriptBuffer, const JSC::SourceOrigin& sourceOrigin, String&& sourceURL, String&& preRedirectURL, const TextPosition& startPosition, JSC::SourceProviderSourceType sourceType)
+        : JSC::SourceProvider(sourceOrigin, WTFMove(sourceURL), WTFMove(preRedirectURL), JSC::SourceTaintedOrigin::Untainted, startPosition, sourceType)
         , m_scriptBuffer(scriptBuffer)
     {
     }
 
     ScriptBuffer m_scriptBuffer;
+    mutable RefPtr<SharedBuffer> m_contiguousBuffer;
     mutable unsigned m_scriptHash { 0 };
     mutable String m_cachedScriptString;
     mutable std::optional<bool> m_containsOnlyASCII;

@@ -14,7 +14,7 @@ namespace rx
 {
 
 void DebugAnnotator9::beginEvent(gl::Context *context,
-                                 gl::EntryPoint entryPoint,
+                                 angle::EntryPoint entryPoint,
                                  const char *eventName,
                                  const char *eventMessage)
 {
@@ -26,21 +26,21 @@ void DebugAnnotator9::beginEvent(gl::Context *context,
 
 void DebugAnnotator9::endEvent(gl::Context *context,
                                const char *eventName,
-                               gl::EntryPoint entryPoint)
+                               angle::EntryPoint entryPoint)
 {
     angle::LoggingAnnotator::endEvent(context, eventName, entryPoint);
     D3DPERF_EndEvent();
 }
 
-void DebugAnnotator9::setMarker(const char *markerName)
+void DebugAnnotator9::setMarker(gl::Context *context, const char *markerName)
 {
-    angle::LoggingAnnotator::setMarker(markerName);
+    angle::LoggingAnnotator::setMarker(context, markerName);
     std::mbstate_t state = std::mbstate_t();
     std::mbsrtowcs(mWCharMessage, &markerName, kMaxMessageLength, &state);
     D3DPERF_SetMarker(0, mWCharMessage);
 }
 
-bool DebugAnnotator9::getStatus()
+bool DebugAnnotator9::getStatus(const gl::Context *context)
 {
     return !!D3DPERF_GetStatus();
 }

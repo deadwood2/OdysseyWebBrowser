@@ -28,24 +28,30 @@
 #if ENABLE(SPEECH_SYNTHESIS)
 
 #include "Event.h"
+#include "SpeechSynthesisEventInit.h"
+#include "SpeechSynthesisUtterance.h"
 
 namespace WebCore {
 
-class SpeechSynthesisEvent final : public Event {
-    WTF_MAKE_ISO_ALLOCATED(SpeechSynthesisEvent);
+class SpeechSynthesisEvent : public Event {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SpeechSynthesisEvent);
 public:
-    static Ref<SpeechSynthesisEvent> create(const AtomString& type, unsigned charIndex, float elapsedTime, const String& name);
+    
+    static Ref<SpeechSynthesisEvent> create(const AtomString& type, const SpeechSynthesisEventInit&);
 
+    const SpeechSynthesisUtterance* utterance() const { return m_utterance.get(); }
     unsigned long charIndex() const { return m_charIndex; }
+    unsigned long charLength() const { return m_charLength; }
     float elapsedTime() const { return m_elapsedTime; }
     const String& name() const { return m_name; }
 
-    virtual EventInterface eventInterface() const { return SpeechSynthesisEventInterfaceType; }
+protected:
+    SpeechSynthesisEvent(enum EventInterfaceType, const AtomString& type, const SpeechSynthesisEventInit&);
 
 private:
-    SpeechSynthesisEvent(const AtomString& type, unsigned charIndex, float elapsedTime, const String& name);
-
+    RefPtr<SpeechSynthesisUtterance> m_utterance;
     unsigned long m_charIndex;
+    unsigned long m_charLength;
     float m_elapsedTime;
     String m_name;
 };

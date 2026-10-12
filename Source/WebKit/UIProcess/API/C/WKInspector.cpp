@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #if !PLATFORM(IOS_FAMILY)
 
 #include "WKAPICast.h"
+#include "WebFrameProxy.h"
 #include "WebInspectorUIProxy.h"
 #include "WebPageProxy.h"
 
@@ -41,7 +42,7 @@ WKTypeID WKInspectorGetTypeID()
 
 WKPageRef WKInspectorGetPage(WKInspectorRef inspectorRef)
 {
-    return toAPI(toImpl(inspectorRef)->inspectedPage());
+    return toAPI(toImpl(inspectorRef)->inspectedPage().get());
 }
 
 bool WKInspectorIsConnected(WKInspectorRef inspectorRef)
@@ -91,7 +92,7 @@ void WKInspectorShowResources(WKInspectorRef inspectorRef)
 
 void WKInspectorShowMainResourceForFrame(WKInspectorRef inspectorRef, WKFrameRef frameRef)
 {
-    toImpl(inspectorRef)->showMainResourceForFrame(toImpl(frameRef));
+    toImpl(inspectorRef)->showMainResourceForFrame(toImpl(frameRef)->frameID());
 }
 
 bool WKInspectorIsAttached(WKInspectorRef inspectorRef)

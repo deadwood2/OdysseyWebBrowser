@@ -23,10 +23,10 @@
 #include <wtf/MemoryPressureHandler.h>
 
 /**
- * SECTION: WebKitMemoryPressureSettings
- * @Short_description: A boxed type representing the settings for the MemoryPressureHandler
- * @Title: WebKitMemoryPressureSettings
+ * WebKitMemoryPressureSettings:
  * @See_also: #WebKitWebContext, #WebKitWebsiteDataManager
+ *
+ * A boxed type representing the settings for the memory pressure handler
  *
  * #WebKitMemoryPressureSettings is a boxed type that can be used to provide some custom settings
  * to control how the memory pressure situations are handled by the different processes.
@@ -42,7 +42,7 @@
  *
  * A #WebKitMemoryPressureSettings can be passed to a #WebKitWebContext constructor, and the settings will
  * be applied to all the web processes created by that context.
- * 
+ *
  * A #WebKitMemoryPressureSettings can be passed to webkit_website_data_manager_set_memory_pressure_settings(),
  * and the settings will be applied to all the network processes created after that call by any instance of
  * #WebKitWebsiteDataManager.
@@ -131,7 +131,9 @@ void webkit_memory_pressure_settings_set_memory_limit(WebKitMemoryPressureSettin
  * webkit_memory_pressure_settings_get_memory_limit:
  * @settings: a #WebKitMemoryPressureSettings
  *
- * Returns: the value in MB of the memory limit inside @settings.
+ * Gets the memory usage limit.
+ *
+ * Returns: current value, in megabytes.
  *
  * Since: 2.34
  */
@@ -146,6 +148,8 @@ guint webkit_memory_pressure_settings_get_memory_limit(WebKitMemoryPressureSetti
  * webkit_memory_pressure_settings_set_conservative_threshold:
  * @settings: a #WebKitMemoryPressureSettings
  * @value: fraction of the memory limit where the conservative policy starts working.
+ *
+ * Sets the memory limit for the conservative policy to start working.
  *
  * Sets @value as the fraction of the defined memory limit where the conservative
  * policy starts working. This policy will try to reduce the memory footprint by
@@ -169,7 +173,9 @@ void webkit_memory_pressure_settings_set_conservative_threshold(WebKitMemoryPres
  * webkit_memory_pressure_settings_get_conservative_threshold:
  * @settings: a #WebKitMemoryPressureSettings
  *
- * Returns: the value of the the conservative threshold inside @settings.
+ * Gets the conservative memory usage threshold.
+ *
+ * Returns: value in the `(0, 1)` range.
  *
  * Since: 2.34
  */
@@ -184,6 +190,8 @@ gdouble webkit_memory_pressure_settings_get_conservative_threshold(WebKitMemoryP
  * webkit_memory_pressure_settings_set_strict_threshold:
  * @settings: a #WebKitMemoryPressureSettings
  * @value: fraction of the memory limit where the strict policy starts working.
+ *
+ * Sets the memory limit for the strict policy to start working.
  *
  * Sets @value as the fraction of the defined memory limit where the strict
  * policy starts working. This policy will try to reduce the memory footprint by
@@ -209,7 +217,9 @@ void webkit_memory_pressure_settings_set_strict_threshold(WebKitMemoryPressureSe
  * webkit_memory_pressure_settings_get_strict_threshold:
  * @settings: a #WebKitMemoryPressureSettings
  *
- * Returns: the value of the the strict threshold inside @settings.
+ * Gets the strict memory usage threshold.
+ *
+ * Returns: value in the `(0, 1)` range.
  *
  * Since: 2.34
  */
@@ -248,7 +258,9 @@ void webkit_memory_pressure_settings_set_kill_threshold(WebKitMemoryPressureSett
  * webkit_memory_pressure_settings_get_kill_threshold:
  * @settings: a #WebKitMemoryPressureSettings
  *
- * Returns: the value of the the kill threshold inside @settings.
+ * Gets the kill memory usage threshold.
+ *
+ * Returns: positive value, can be zero.
  *
  * Since: 2.34
  */
@@ -283,7 +295,9 @@ void webkit_memory_pressure_settings_set_poll_interval(WebKitMemoryPressureSetti
  * webkit_memory_pressure_settings_get_poll_interval:
  * @settings: a #WebKitMemoryPressureSettings
  *
- * Returns: the value in seconds of the the poll interval inside @settings.
+ * Gets the interval at which memory usage is checked.
+ *
+ * Returns: current interval value, in seconds.
  *
  * Since: 2.34
  */

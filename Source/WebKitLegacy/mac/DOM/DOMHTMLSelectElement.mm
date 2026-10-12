@@ -32,6 +32,7 @@
 #import "DOMNodeInternal.h"
 #import "DOMNodeListInternal.h"
 #import "ExceptionHandlers.h"
+#import <WebCore/ElementInlines.h>
 #import <WebCore/HTMLCollection.h>
 #import <WebCore/HTMLElement.h>
 #import <WebCore/HTMLFormElement.h>
@@ -40,7 +41,6 @@
 #import <WebCore/HTMLOptionsCollection.h>
 #import <WebCore/HTMLSelectElement.h>
 #import <WebCore/JSExecState.h>
-#import <WebCore/NameNodeList.h>
 #import <WebCore/Node.h>
 #import <WebCore/NodeList.h>
 #import <WebCore/ThreadCheck.h>
@@ -91,7 +91,7 @@
 - (void)setMultiple:(BOOL)newMultiple
 {
     WebCore::JSMainThreadNullState state;
-    IMPL->setMultiple(newMultiple);
+    IMPL->setBooleanAttribute(WebCore::HTMLNames::multipleAttr, newMultiple);
 }
 
 - (NSString *)name
@@ -185,7 +185,7 @@
         raiseTypeErrorException();
 
     auto& coreElement = *core(element);
-    Variant<RefPtr<WebCore::HTMLOptionElement>, RefPtr<WebCore::HTMLOptGroupElement>> variantElement;
+    std::variant<RefPtr<WebCore::HTMLOptionElement>, RefPtr<WebCore::HTMLOptGroupElement>> variantElement;
     if (is<WebCore::HTMLOptionElement>(coreElement))
         variantElement = &downcast<WebCore::HTMLOptionElement>(coreElement);
     else if (is<WebCore::HTMLOptGroupElement>(coreElement))

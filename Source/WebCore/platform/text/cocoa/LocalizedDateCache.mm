@@ -29,12 +29,11 @@
 #import "DateComponents.h"
 #import "FontCascade.h"
 #import <CoreFoundation/CFNotificationCenter.h>
+#import <WebCore/LocalizedStrings.h>
 #import <math.h>
 #import <wtf/Assertions.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/StdLibExtras.h>
-
-using namespace std;
 
 namespace WebCore {
 
@@ -99,33 +98,35 @@ RetainPtr<NSDateFormatter> LocalizedDateCache::createFormatterForType(DateCompon
     auto dateFormatter = adoptNS([[NSDateFormatter alloc] init]);
     NSLocale *currentLocale = [NSLocale currentLocale];
     [dateFormatter setLocale:currentLocale];
+    [dateFormatter setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
 
     switch (type) {
     case DateComponentsType::Invalid:
         ASSERT_NOT_REACHED();
         break;
     case DateComponentsType::Date:
-        [dateFormatter setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
         [dateFormatter setTimeStyle:NSDateFormatterNoStyle];
         [dateFormatter setDateStyle:NSDateFormatterMediumStyle];
         break;
     case DateComponentsType::DateTimeLocal:
-        [dateFormatter setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
         [dateFormatter setTimeStyle:NSDateFormatterShortStyle];
         [dateFormatter setDateStyle:NSDateFormatterMediumStyle];
         break;
     case DateComponentsType::Month:
-        [dateFormatter setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
         [dateFormatter setDateFormat:[NSDateFormatter dateFormatFromTemplate:@"MMMMyyyy" options:0 locale:currentLocale]];
         break;
     case DateComponentsType::Time:
-        [dateFormatter setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
         [dateFormatter setTimeStyle:NSDateFormatterShortStyle];
         [dateFormatter setDateStyle:NSDateFormatterNoStyle];
         break;
     case DateComponentsType::Week:
+#if ENABLE(INPUT_TYPE_WEEK_PICKER)
+        [dateFormatter setDateFormat:[NSString stringWithFormat:@"'%@' w',' yyyy", (NSString *)inputWeekLabel()]];
+#else
         ASSERT_NOT_REACHED();
+#endif
         break;
+
     }
 
     return dateFormatter;
@@ -146,12 +147,12 @@ float LocalizedDateCache::calculateMaximumWidth(DateComponentsType type, const M
     // date doesn't adjust for the current timezone. This is an arbitrary date
     // (x-27-2007) and time (10:45 PM).
     RetainPtr<NSCalendar> gregorian = adoptNS([[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian]);
-    [gregorian.get() setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
+    [gregorian setTimeZone:[NSTimeZone timeZoneForSecondsFromGMT:0]];
     RetainPtr<NSDateComponents> components = adoptNS([[NSDateComponents alloc] init]);
-    [components.get() setDay:27];
-    [components.get() setYear:2007];
-    [components.get() setHour:22];
-    [components.get() setMinute:45];
+    [components setDay:27];
+    [components setYear:2007];
+    [components setHour:22];
+    [components setMinute:45];
 
     static const NSUInteger numberOfGregorianMonths = [[dateFormatter monthSymbols] count];
     ASSERT(numberOfGregorianMonths == 12);
@@ -160,13 +161,17 @@ float LocalizedDateCache::calculateMaximumWidth(DateComponentsType type, const M
     NSUInteger totalMonthsToTest = 1;
     if (type == DateComponentsType::Date
         || type == DateComponentsType::DateTimeLocal
-        || type == DateComponentsType::Month)
+        || type == DateComponentsType::Month
+#if ENABLE(INPUT_TYPE_WEEK_PICKER)
+        || type == DateComponentsType::Week
+#endif
+        )
         totalMonthsToTest = numberOfGregorianMonths;
     for (NSUInteger i = 0; i < totalMonthsToTest; ++i) {
-        [components.get() setMonth:(i + 1)];
-        NSDate *date = [gregorian.get() dateFromComponents:components.get()];
+        [components setMonth:(i + 1)];
+        NSDate *date = [gregorian dateFromComponents:components.get()];
         NSString *formattedDate = [dateFormatter stringFromDate:date];
-        maximumWidth = max(maximumWidth, measurer.measureText(String(formattedDate)));
+        maximumWidth = std::max(maximumWidth, measurer.measureText(String(formattedDate)));
     }
 
     return maximumWidth;

@@ -32,20 +32,21 @@
 
 #include "Document.h"
 #include "EventLoop.h"
-#include "FeaturePolicy.h"
-#include "Frame.h"
 #include "GeoNotifier.h"
 #include "GeolocationController.h"
 #include "GeolocationCoordinates.h"
 #include "GeolocationError.h"
 #include "GeolocationPosition.h"
 #include "GeolocationPositionData.h"
+#include "LocalFrame.h"
 #include "Navigator.h"
 #include "Page.h"
+#include "PermissionsPolicy.h"
 #include "RuntimeApplicationChecks.h"
 #include "SecurityOrigin.h"
-#include <wtf/IsoMallocInlines.h>
 #include <wtf/Ref.h>
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
 
 namespace WebCore {
@@ -55,14 +56,14 @@ static const ASCIILiteral failedToStartServiceErrorMessage { "Failed to start Ge
 static const ASCIILiteral framelessDocumentErrorMessage { "Geolocation cannot be used in frameless documents"_s };
 static const ASCIILiteral originCannotRequestGeolocationErrorMessage { "Origin does not have permission to use Geolocation service"_s };
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(Geolocation);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(Geolocation);
 
 static RefPtr<GeolocationPosition> createGeolocationPosition(std::optional<GeolocationPositionData>&& position)
 {
     if (!position)
         return nullptr;
     
-    DOMTimeStamp timestamp = convertSecondsToDOMTimeStamp(position->timestamp);
+    EpochTimeStamp timestamp = convertSecondsToEpochTimeStamp(position->timestamp);
     return GeolocationPosition::create(GeolocationCoordinates::create(WTFMove(position.value())), timestamp);
 }
 
@@ -134,13 +135,13 @@ void Geolocation::Watchers::getNotifiersVector(GeoNotifierVector& copy) const
 Ref<Geolocation> Geolocation::create(Navigator& navigator)
 {
     auto geolocation = adoptRef(*new Geolocation(navigator));
-    geolocation.get().suspendIfNeeded();
+    geolocation->suspendIfNeeded();
     return geolocation;
 }
 
 Geolocation::Geolocation(Navigator& navigator)
     : ActiveDOMObject(navigator.scriptExecutionContext())
-    , m_navigator(makeWeakPtr(navigator))
+    , m_navigator(navigator)
     , m_resumeTimer(*this, &Geolocation::resumeTimerFired)
 {
 }
@@ -156,9 +157,15 @@ SecurityOrigin* Geolocation::securityOrigin() const
     return scriptExecutionContext()->securityOrigin();
 }
 
+RefPtr<SecurityOrigin> Geolocation::protectedSecurityOrigin() const
+{
+    return securityOrigin();
+}
+
 Page* Geolocation::page() const
 {
-    return document() ? document()->page() : nullptr;
+    RefPtr document = this->document();
+    return document ? document->page() : nullptr;
 }
     
 void Geolocation::suspend(ReasonForSuspension reason)
@@ -227,7 +234,7 @@ void Geolocation::resumeTimerFired()
     }
 
     if (m_errorWaitingForResume) {
-        handleError(*m_errorWaitingForResume);
+        handleError(m_errorWaitingForResume.releaseNonNull());
         m_errorWaitingForResume = nullptr;
     }
 }
@@ -240,9 +247,9 @@ void Geolocation::resetAllGeolocationPermission()
     }
 
     if (m_allowGeolocation == InProgress) {
-        Page* page = this->page();
+        RefPtr page = this->page();
         if (page)
-            GeolocationController::from(page)->cancelPermissionRequest(*this);
+            GeolocationController::from(page.get())->cancelPermissionRequest(*this);
 
         // This return is not technically correct as GeolocationController::cancelPermissionRequest() should have cleared the active request.
         // Neither iOS nor OS X supports cancelPermissionRequest() (https://bugs.webkit.org/show_bug.cgi?id=89524), so we workaround that and let ongoing requests complete. :(
@@ -270,9 +277,9 @@ void Geolocation::resetAllGeolocationPermission()
 
 void Geolocation::stop()
 {
-    Page* page = this->page();
+    RefPtr page = this->page();
     if (page && m_allowGeolocation == InProgress)
-        GeolocationController::from(page)->cancelPermissionRequest(*this);
+        GeolocationController::from(page.get())->cancelPermissionRequest(*this);
     // The frame may be moving to a new page and we want to get the permissions from the new page's client.
     resetIsAllowed();
     cancelAllRequests();
@@ -282,25 +289,21 @@ void Geolocation::stop()
     m_pendingForPermissionNotifiers.clear();
 }
 
-const char* Geolocation::activeDOMObjectName() const
-{
-    return "Geolocation";
-}
-
 GeolocationPosition* Geolocation::lastPosition()
 {
-    Page* page = this->page();
+    RefPtr page = this->page();
     if (!page)
         return nullptr;
 
-    m_lastPosition = createGeolocationPosition(GeolocationController::from(page)->lastPosition());
+    m_lastPosition = createGeolocationPosition(GeolocationController::from(page.get())->lastPosition());
 
     return m_lastPosition.get();
 }
 
 void Geolocation::getCurrentPosition(Ref<PositionCallback>&& successCallback, RefPtr<PositionErrorCallback>&& errorCallback, PositionOptions&& options)
 {
-    if (!document() || !document()->isFullyActive()) {
+    RefPtr document = this->document();
+    if (!document || !document->isFullyActive()) {
         if (errorCallback && errorCallback->scriptExecutionContext()) {
             errorCallback->scriptExecutionContext()->eventLoop().queueTask(TaskSource::Geolocation, [errorCallback] {
                 errorCallback->handleEvent(GeolocationPositionError::create(GeolocationPositionError::POSITION_UNAVAILABLE, "Document is not fully active"_s));
@@ -332,51 +335,37 @@ int Geolocation::watchPosition(Ref<PositionCallback>&& successCallback, RefPtr<P
     int watchID;
     // Keep asking for the next id until we're given one that we don't already have.
     do {
-        watchID = m_scriptExecutionContext->circularSequentialID();
+        watchID = scriptExecutionContext()->circularSequentialID();
     } while (!m_watchers.add(watchID, notifier.copyRef()));
     return watchID;
 }
 
 static void logError(const String& target, const bool isSecure, const bool isMixedContent, Document* document)
 {
-    StringBuilder message;
-    message.append("[blocked] Access to geolocation was blocked over");
-    
-    if (!isSecure)
-        message.append(" insecure connection to ");
-    else if (isMixedContent)
-        message.append(" secure connection with mixed content to ");
-    else
+    if (isSecure && !isMixedContent)
         return;
-    
-    message.append(target);
-    message.append(".\n");
-    document->addConsoleMessage(MessageSource::Security, MessageLevel::Error, message.toString());
-}
 
-// FIXME: remove this function when rdar://problem/32137821 is fixed.
-static bool isRequestFromIBooks()
-{
-#if PLATFORM(COCOA)
-    return CocoaApplication::isIBooks();
-#endif
-    return false;
+    auto message = makeString("[blocked] Access to geolocation was blocked over"_s,
+        isSecure ? " secure connection with mixed content to "_s : " insecure connection to "_s,
+        target, ".\n"_s);
+    document->addConsoleMessage(MessageSource::Security, MessageLevel::Error, WTFMove(message));
 }
     
 bool Geolocation::shouldBlockGeolocationRequests()
 {
-    if (!isFeaturePolicyAllowedByDocumentAndAllOwners(FeaturePolicy::Type::Geolocation, *document(), LogFeaturePolicyFailure::Yes))
+    RefPtr document = this->document();
+    if (!PermissionsPolicy::isFeatureEnabled(PermissionsPolicy::Feature::Geolocation, *document))
         return true;
 
-    bool isSecure = SecurityOrigin::isSecure(document()->url()) || document()->isSecureContext();
-    bool hasMixedContent = !document()->foundMixedContent().isEmpty();
+    bool isSecure = SecurityOrigin::isSecure(document->url()) || document->isSecureContext();
+    bool hasMixedContent = !document->foundMixedContent().isEmpty();
     bool isLocalOrigin = securityOrigin()->isLocal();
-    if (securityOrigin()->canRequestGeolocation()) {
-        if (isLocalOrigin || (isSecure && !hasMixedContent) || isRequestFromIBooks())
+    if (document->canAccessResource(ScriptExecutionContext::ResourceType::Geolocation) != ScriptExecutionContext::HasResourceAccess::No) {
+        if (isLocalOrigin || (isSecure && !hasMixedContent))
             return false;
     }
 
-    logError(securityOrigin()->toString(), isSecure, hasMixedContent, document());
+    logError(protectedSecurityOrigin()->toString(), isSecure, hasMixedContent, document.get());
     return true;
 }
 
@@ -479,7 +468,7 @@ bool Geolocation::haveSuitableCachedPosition(const PositionOptions& options)
         return false;
     if (!options.maximumAge)
         return false;
-    DOMTimeStamp currentTimeMillis = convertSecondsToDOMTimeStamp(WallTime::now().secondsSinceEpoch());
+    EpochTimeStamp currentTimeMillis = convertSecondsToEpochTimeStamp(WallTime::now().secondsSinceEpoch());
     return cachedPosition->timestamp() > currentTimeMillis - options.maximumAge;
 }
 
@@ -762,7 +751,7 @@ Navigator* Geolocation::navigator()
     return m_navigator.get();
 }
 
-Frame* Geolocation::frame() const
+LocalFrame* Geolocation::frame() const
 {
     return m_navigator ? m_navigator->frame() : nullptr;
 }

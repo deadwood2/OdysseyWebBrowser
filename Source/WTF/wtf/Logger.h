@@ -25,11 +25,13 @@
 
 #pragma once
 
+#include <wtf/Assertions.h>
 #include <wtf/Lock.h>
 #include <wtf/ThreadSafeRefCounted.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
 
-#if USE(JOURNALD)
+#if ENABLE(JOURNALD_LOG)
 #define SD_JOURNAL_SUPPRESS_LOCATION
 #include <systemd/sd-journal.h>
 #endif
@@ -38,21 +40,29 @@ namespace WTF {
 
 template<typename T>
 struct LogArgument {
-    template<typename U = T> static typename std::enable_if<std::is_same<U, bool>::value, String>::type toString(bool argument) { return argument ? "true"_s : "false"_s; }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, int>::value, String>::type toString(int argument) { return String::number(argument); }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, unsigned>::value, String>::type toString(unsigned argument) { return String::number(argument); }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, unsigned long>::value, String>::type toString(unsigned long argument) { return String::number(argument); }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, long>::value, String>::type toString(long argument) { return String::number(argument); }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, unsigned long long>::value, String>::type toString(unsigned long long argument) { return String::number(argument); }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, long long>::value, String>::type toString(long long argument) { return String::number(argument); }
-    template<typename U = T> static typename std::enable_if<std::is_enum<U>::value, String>::type toString(U argument) { return String::number(static_cast<typename std::underlying_type<U>::type>(argument)); }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, float>::value, String>::type toString(float argument) { return String::number(argument); }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, double>::value, String>::type toString(double argument) { return String::number(argument); }
-    template<typename U = T> static typename std::enable_if<std::is_same<typename std::remove_reference<U>::type, AtomString>::value, String>::type toString(const AtomString& argument) { return argument.string(); }
-    template<typename U = T> static typename std::enable_if<std::is_same<typename std::remove_reference<U>::type, String>::value, String>::type toString(String argument) { return argument; }
-    template<typename U = T> static typename std::enable_if<std::is_same<typename std::remove_reference<U>::type, StringBuilder*>::value, String>::type toString(StringBuilder* argument) { return argument->toString(); }
-    template<typename U = T> static typename std::enable_if<std::is_same<U, const char*>::value, String>::type toString(const char* argument) { return String(argument); }
-    template<size_t length> static String toString(const char (&argument)[length]) { return String(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, bool>, String> toString(bool argument) { return argument ? "true"_s : "false"_s; }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, int>, String> toString(int argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, unsigned>, String> toString(unsigned argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, unsigned long>, String> toString(unsigned long argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, long>, String> toString(long argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, unsigned long long>, String> toString(unsigned long long argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, long long>, String> toString(long long argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, unsigned short>, String> toString(unsigned short argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, short>, String> toString(short argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_enum_v<U>, String> toString(U argument) { return String::number(static_cast<typename std::underlying_type<U>::type>(argument)); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, float>, String> toString(float argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, double>, String> toString(double argument) { return String::number(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<typename std::remove_reference_t<U>, AtomString>, String> toString(const AtomString& argument) { return argument.string(); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<typename std::remove_reference_t<U>, String>, String> toString(String argument) { return argument; }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<typename std::remove_reference_t<U>, StringBuilder*>, String> toString(StringBuilder* argument) { return argument->toString(); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, const char*>, String> toString(const char* argument) { return String::fromLatin1(argument); }
+    template<typename U = T> static std::enable_if_t<std::is_same_v<U, ASCIILiteral>, String> toString(ASCIILiteral argument) { return argument; }
+#ifdef __OBJC__
+    template<typename U = T> static std::enable_if_t<std::is_base_of_v<NSError, std::remove_pointer_t<U>>, String> toString(NSError *argument) { return String(argument.localizedDescription); }
+    template<typename U = T> static std::enable_if_t<std::is_base_of_v<NSObject, std::remove_pointer_t<U>>, String> toString(NSObject *argument) { return String(argument.description); }
+    template<typename U = T> static std::enable_if_t<std::is_base_of_v<NSProxy, std::remove_pointer_t<U>>, String> toString(NSProxy *argument) { return String(argument.description); }
+#endif
+    template<size_t length> static String toString(const char (&argument)[length]) { return String::fromLatin1(argument); }
 };
 
 struct JSONLogValue {
@@ -117,6 +127,7 @@ WTF_EXPORT_PRIVATE extern Lock loggerObserverLock;
 class Logger : public ThreadSafeRefCounted<Logger> {
     WTF_MAKE_NONCOPYABLE(Logger);
 public:
+    virtual ~Logger() { }
 
     class Observer {
     public:
@@ -131,7 +142,7 @@ public:
     }
 
     template<typename... Arguments>
-    inline void logAlways(WTFLogChannel& channel, UNUSED_FUNCTION const Arguments&... arguments) const
+    inline void logAlways(WTFLogChannel& channel, UNUSED_VARIADIC_PARAMS const Arguments&... arguments) const
     {
 #if RELEASE_LOG_DISABLED
         // "Standard" WebCore logging goes to stderr, which is captured in layout test output and can generally be a problem
@@ -182,7 +193,7 @@ public:
     }
 
     template<typename... Arguments>
-    inline void logAlwaysVerbose(WTFLogChannel& channel, const char* file, const char* function, int line, UNUSED_FUNCTION const Arguments&... arguments) const
+    inline void logAlwaysVerbose(WTFLogChannel& channel, const char* file, const char* function, int line, UNUSED_VARIADIC_PARAMS const Arguments&... arguments) const
     {
 #if RELEASE_LOG_DISABLED
         // "Standard" WebCore logging goes to stderr, which is captured in layout test output and can generally be a problem
@@ -240,7 +251,7 @@ public:
         if (!m_enabled)
             return false;
 
-#if USE(SYSTEMD)
+#if ENABLE(JOURNALD_LOG)
         if (channel.state == WTFLogChannelState::Off)
             return false;
 #endif
@@ -269,7 +280,7 @@ public:
         {
         }
 
-        LogSiteIdentifier(const char* className, const char* methodName, const void* objectPtr)
+        LogSiteIdentifier(ASCIILiteral className, const char* methodName, const void* objectPtr)
             : className { className }
             , methodName { methodName }
             , objectPtr { reinterpret_cast<uintptr_t>(objectPtr) }
@@ -278,7 +289,7 @@ public:
 
         WTF_EXPORT_PRIVATE String toString() const;
 
-        const char* className { nullptr };
+        ASCIILiteral className;
         const char* methodName { nullptr };
         const uintptr_t objectPtr { 0 };
     };
@@ -298,6 +309,7 @@ public:
 
 private:
     friend class AggregateLogger;
+    friend class NativePromiseBase;
 
     Logger(const void* owner)
         : m_owner { owner }
@@ -311,12 +323,12 @@ private:
 
 #if RELEASE_LOG_DISABLED
         WTFLog(&channel, "%s", logMessage.utf8().data());
-#endif
-#if USE(OS_LOG) && !RELEASE_LOG_DISABLED
+#elif USE(OS_LOG)
         os_log(channel.osLogChannel, "%{public}s", logMessage.utf8().data());
-#endif
-#if USE(JOURNALD) && !RELEASE_LOG_DISABLED
+#elif ENABLE(JOURNALD_LOG)
         sd_journal_send("WEBKIT_SUBSYSTEM=%s", channel.subsystem, "WEBKIT_CHANNEL=%s", channel.name, "MESSAGE=%s", logMessage.utf8().data(), nullptr);
+#else
+        fprintf(stderr, "[%s:%s:-] %s\n", channel.subsystem, channel.name, logMessage.utf8().data());
 #endif
 
         if (channel.state == WTFLogChannelState::Off || level > channel.level)
@@ -337,17 +349,17 @@ private:
 
 #if RELEASE_LOG_DISABLED
         WTFLogVerbose(file, line, function, &channel, "%s", logMessage.utf8().data());
-#endif
-#if USE(OS_LOG) && !RELEASE_LOG_DISABLED
+#elif USE(OS_LOG)
         os_log(channel.osLogChannel, "%{public}s", logMessage.utf8().data());
         UNUSED_PARAM(file);
         UNUSED_PARAM(line);
         UNUSED_PARAM(function);
-#endif
-#if USE(JOURNALD) && !RELEASE_LOG_DISABLED
-        auto fileString = makeString("CODE_FILE=", file);
-        auto lineString = makeString("CODE_LINE=", line);
+#elif ENABLE(JOURNALD_LOG)
+        auto fileString = makeString("CODE_FILE="_s, span(file));
+        auto lineString = makeString("CODE_LINE="_s, line);
         sd_journal_send_with_location(fileString.utf8().data(), lineString.utf8().data(), function, "WEBKIT_SUBSYSTEM=%s", channel.subsystem, "WEBKIT_CHANNEL=%s", channel.name, "MESSAGE=%s", logMessage.utf8().data(), nullptr);
+#else
+        fprintf(stderr, "[%s:%s:-] %s FILE=%s:%d %s\n", channel.subsystem, channel.name, logMessage.utf8().data(), file, line, function);
 #endif
 
         if (channel.state == WTFLogChannelState::Off || level > channel.level)
@@ -379,6 +391,17 @@ template<> struct LogArgument<Logger::LogSiteIdentifier> {
 template<> struct LogArgument<const void*> {
     WTF_EXPORT_PRIVATE static String toString(const void*);
 };
+
+#ifdef __OBJC__
+template<> struct LogArgument<id> {
+    static String toString(id argument)
+    {
+        if ([argument respondsToSelector:@selector(description)])
+            return String([argument description]);
+        return LogArgument<const void*>::toString((__bridge const void*)argument);
+    }
+};
+#endif
 
 } // namespace WTF
 

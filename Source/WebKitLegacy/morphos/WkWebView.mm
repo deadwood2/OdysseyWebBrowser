@@ -7,23 +7,26 @@
 #import "WebPage.h"
 #import "WebProcess.h"
 #import "WebViewDelegate.h"
+#import <WebCore/Page.h>
 #import <WebCore/ContextMenuItem.h>
 #import <WebCore/CertificateInfo.h>
 #import <WebCore/ResourceRequest.h>
 #import <WebCore/ResourceHandle.h>
 #import <WebCore/ResourceResponse.h>
 #import <WebCore/FileChooser.h>
-#import <WebCore/TextEncoding.h>
 #import <WebCore/FindOptions.h>
 #import <WebCore/AuthenticationChallenge.h>
 #import <WebCore/AuthenticationClient.h>
 #import <WebCore/HitTestResult.h>
 #import <WebCore/MediaPlayerMorphOS.h>
 #import <WebCore/MediaPlayer.h>
-#import <WebCore/Page.h>
 #import <WebCore/HTMLMediaElement.h>
 #import <WebCore/UserGestureIndicator.h>
+#import <WebCore/Credential.h>
+#import <WebCore/Storage.h>
 #import <wtf/MediaTime.h>
+#import <pal/text/TextEncoding.h>
+#import <wtf/text/Base64.h>
 #define __OBJC__
 
 #import "WkHitTest_private.h"
@@ -47,6 +50,7 @@
 #import "WkMedia_private.h"
 #import "WkNotification_private.h"
 #import "WkResourceResponse_private.h"
+#import "WkWebInspectorView.h"
 
 #import <proto/dos.h>
 #import <proto/exec.h>
@@ -62,7 +66,13 @@
 #import <cairo.h>
 struct Library *FreetypeBase;
 
-#include <libeventprofiler.h>
+#if (MORPHOS_MINIMAL)
+#define USE_ADFILTER 0
+#else
+#define USE_ADFILTER 1
+#endif
+
+//#include <libeventprofiler.h>
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
@@ -70,7 +80,7 @@ struct Library *FreetypeBase;
 extern "C" { void dprintf(const char *, ...); }
 extern "C" { void _oomCrash(); }
 
-#define D(x)
+#define D(x) 
 
 // #define VALIDATE_ALLOCS 15.f
 #ifdef VALIDATE_ALLOCS
@@ -359,7 +369,7 @@ namespace  {
 	{
 		WebCore::MediaPlayer *player = reinterpret_cast<WebCore::MediaPlayer *>(_playerRef);
 		position = std::clamp(position, 0.f, _info.m_duration);
-		return player->seek(WTF::MediaTime::createWithFloat(position));
+		return player->seekToTime(WTF::MediaTime::createWithFloat(position));
 	}
 }
 
@@ -372,7 +382,7 @@ namespace  {
 		if (page) {
 			bool isFs = false;
 			page->forEachMediaElement([&](WebCore::HTMLMediaElement& element) {
-				if (player == element.player().get()) {
+				if (player == element.player()) {
 					isFs = element.isFullscreen();
 				}
 			});
@@ -391,8 +401,8 @@ namespace  {
 		WebCore::Page* page = player->client().mediaPlayerPage();
 		if (page) {
 			page->forEachMediaElement([&](WebCore::HTMLMediaElement& element) {
-				if (player == element.player().get()) {
-					WebCore::UserGestureIndicator gestureIndicator(WebCore::ProcessingUserGesture, &element.document());
+				if (player == element.player()) {
+					WebCore::UserGestureIndicator gestureIndicator(WebCore::IsProcessingUserGesture::Yes, &element.document());
 					if (fs)
 						element.enterFullscreen();
 					else
@@ -438,7 +448,7 @@ namespace  {
 	if (_info.m_hlsStreams.size())
 	{
 		OBMutableArray *streams = [OBMutableArray arrayWithCapacity:_info.m_hlsStreams.size()];
-		for (int i = 0; i < _info.m_hlsStreams.size(); i++)
+		for (size_t i = 0; i < _info.m_hlsStreams.size(); i++)
 		{
 			auto uurl = _info.m_hlsStreams[i].m_url.utf8();
 			if (_info.m_hlsStreams[i].m_codecs.size() == 0)
@@ -454,13 +464,13 @@ namespace  {
 			}
 			else if (_info.m_hlsStreams[i].m_codecs.size() > 1)
 			{
-				String s = _info.m_hlsStreams[i].m_codecs[0];
-				s.append(String::fromUTF8(", "));
-				s.append(_info.m_hlsStreams[i].m_codecs[1]);
+				String s = makeString(_info.m_hlsStreams[i].m_codecs[0], ", "_s, _info.m_hlsStreams[i].m_codecs[1]);
 				auto ucodecs = s.utf8();
 				[streams addObject:[[[WkHLSStreamPrivate alloc] initWithURL:[OBString stringWithUTF8String:uurl.data()] codecs:[OBString stringWithUTF8String:ucodecs.data()] fps:_info.m_hlsStreams[i].m_fps bitrate:_info.m_hlsStreams[i].m_bitRate
 					width:_info.m_hlsStreams[i].m_width height:_info.m_hlsStreams[i].m_height] autorelease]];
 			}
+			
+			[streams sortUsingSelector:@selector(compareByHeightAndBitRate:)];
 		}
 		
 		_hlsStreams = [streams retain];
@@ -492,13 +502,62 @@ namespace  {
 		player->selectHLSStream(String::fromUTF8([[hlsStream url] cString]));
 	}
 }
+
+- (OBURL *)downloadableURL
+{
+    return nil;
+}
+
+- (WkMediaObjectType)type
+{
+    if (_info.m_isHLS)
+        return WkMediaObjectType_HLS;
+    if (_info.m_isMediaSource)
+        return WkMediaObjectType_MediaSource;
+    return WkMediaObjectType_File;
+}
+
+- (OBArray *)allAudioTracks
+{
+    return nil;
+}
+
+- (OBArray *)allVideoTracks
+{
+    return nil;
+}
+
+- (OBArray *)allTracks
+{
+    return nil;
+}
+
+- (WkWebViewMediaIdentifier)identifier
+{
+    return (WkWebViewMediaIdentifier)self;
+}
+
 @end
 #endif
+
+@interface WkWebInspectorView ()
+
+- (id)initWithWebView:(WkWebView *)inspectedView;
+- (void)parentViewClosed;
+
+@end
+
+@interface WkWebViewStorageHandlerPrivate : OBObject<WkWebViewStorageHandler>
+{
+    WTF::RefPtr<WebCore::Storage> _storage;
+}
+@end
 
 @interface WkWebViewPrivate : OBObject<OBSignalHandlerDelegate>
 {
 	WTF::RefPtr<WebKit::WebPage>            _page;
 	WkWebView                              *_parentWeak;
+	WkWebInspectorView                     *_inspectorView;
 	id<WkWebViewScrollingDelegate>          _scrollingDelegate;
 	id<WkWebViewClientDelegate>             _clientDelegate;
 	id<WkWebViewBackForwardListDelegate>    _backForwardDelegate;
@@ -511,7 +570,8 @@ namespace  {
 	id<WkWebViewAllRequestsHandlerDelegate> _allRequestsDelegate;
 	id<WkWebViewEditorDelegate>             _editorDelegate;
 	id<WkWebViewMediaDelegate>              _mediaDelegate;
-	id<WkNotificationDelegate>            _notificationDelegate;
+	id<WkNotificationDelegate>              _notificationDelegate;
+    id<WkWebViewStorageDelegate>            _storageDelegate;
 	OBMutableDictionary                    *_protocolDelegates;
 #if ENABLE(VIDEO)
 	OBMutableDictionary                    *_mediaPlayers;
@@ -530,6 +590,7 @@ namespace  {
 	bool                                    _isLiveResizing;
 	bool                                    _hasOnlySecureContent;
 	bool                                    _isHandlingUserInput;
+    int                                     _postPaintCheckCnt;
 	bool                                    _isQuiet;
 	bool                                    _isShown;
 	OBURL                                  *_url;
@@ -615,6 +676,13 @@ namespace  {
 	[_ddWindowSignalHandler release];
 	if (_ddWindow)
 		CloseWindow(_ddWindow);
+	
+	if (_inspectorView)
+	{
+		[_inspectorView parentViewClosed];
+		[_inspectorView release];
+	}
+	
 #if ENABLE(VIDEO)
 	[[_mediaPlayers allValues] makeObjectsPerformSelector:@selector(invalidate)];
 	[_mediaPlayers release];
@@ -623,7 +691,7 @@ namespace  {
 	if (_fsWindowSignalHandler)
 		[[OBRunLoop mainRunLoop] removeSignalHandler:_fsWindowSignalHandler];
 	[_fsWindowSignalHandler release];
-
+	[_overlayTimer release];
 	if (_fsWindow)
 		CloseWindow(_fsWindow);
 	if (_fsScreen)
@@ -685,6 +753,17 @@ namespace  {
 	return _consoleDelegate;
 }
 
+- (WkWebInspectorView *)inspectorView
+{
+	return _inspectorView;
+}
+
+- (void)setInspectorView:(WkWebInspectorView *)inspector
+{
+	[_inspectorView autorelease];
+	_inspectorView = [inspector retain];
+}
+
 - (void)setTitle:(OBString *)title
 {
 	[_title autorelease];
@@ -707,6 +786,11 @@ namespace  {
 	return _url;
 }
 
+- (void)onDrawPendingTimer
+{
+    [_paintPerform perform];
+}
+
 - (void)setDrawPendingWithSchedule:(BOOL)schedule
 {
 	_drawPendingOnUserInput = schedule && _isHandlingUserInput;
@@ -716,38 +800,44 @@ namespace  {
 		[_paintTimer invalidate];
 		[_paintTimer release];
 		_paintTimer = nil;
+        _drawPending = NO;
 
-		_drawPending = YES;
-
-		if (schedule && _isHandlingUserInput)
-		{
-			[[OBRunLoop mainRunLoop] perform:_paintPerform];
-			return;
-		}
-		
 		if (schedule && _paintPerform)
 		{
 			static double divider = (double)_drawTimeBase;
-			double interval = _drawTime;
+			double drawTime = _drawTime;
 			double timeSinceLast = (__builtin_ppc_get_timebase() - _drawTimeLast);
+            double waitTime;
 
-			interval /= divider;
+			drawTime /= divider;
 			timeSinceLast /= divider;
 
-			interval *= 3.0;
-
-			if (timeSinceLast > interval || interval < 0.016)
-				interval = 0.016;
-			if (interval > 0.7)
-				interval = 0.7;
-			_paintTimer = [[OBScheduledTimer scheduledTimerWithInterval:interval perform:_paintPerform repeats:NO] retain];
+			if (timeSinceLast > waitTime || waitTime < 0.016)
+				waitTime = 0.016;
+			if (waitTime > 0.5)
+				waitTime = 0.5;
+    
+            // dprintf("waitTime %f lastdraw %f webcore %f\n", (float)waitTime, (float)drawTime, (float)_page->corePage()->preferredRenderingUpdateInterval().seconds());
+            // waitTime =_page->corePage()->preferredRenderingUpdateInterval().seconds();
+            
+			_paintTimer = [[OBScheduledTimer scheduledTimerWithInterval:waitTime perform:[OBPerform performSelector:@selector(onDrawPendingTimer) target:self] repeats:NO] retain];
+            if (_paintTimer)
+                _drawPending = YES;
 		}
 	}
 }
 
+- (void)willDraw
+{
+    _drawPending = NO;
+
+    [_paintTimer invalidate];
+    [_paintTimer release];
+    _paintTimer = nil;
+}
+
 - (void)drawFinishedIn:(UQUAD)timebaseticks
 {
-	_drawPending = NO;
 	_drawTime = timebaseticks;
 	_drawTimeLast = __builtin_ppc_get_timebase();
 }
@@ -767,15 +857,35 @@ namespace  {
 	return _isHandlingUserInput;
 }
 
+- (void)postInputPaintCheck
+{
+    _postPaintCheckCnt = 0;
+
+    if (_drawPending)
+        [_paintPerform perform];
+}
+
 - (void)setIsHandlingUserInput:(BOOL)handling
 {
 	bool issuePaint = _drawPending && _isHandlingUserInput && !handling && _drawPendingOnUserInput;
 
 	_isHandlingUserInput = handling;
 	_drawPendingOnUserInput = false;
-	
+
 	if (issuePaint)
-		[[OBRunLoop mainRunLoop] perform:_paintPerform];
+    {
+        _postPaintCheckCnt ++;
+        
+        if (1 == _postPaintCheckCnt)
+        {
+            [[OBRunLoop mainRunLoop] performSelector:@selector(postInputPaintCheck) target:self];
+        }
+        else if (_postPaintCheckCnt > 2)
+        {
+            [_paintPerform perform];
+            _postPaintCheckCnt = 0;
+        }
+    }
 }
 
 - (void)setBackForwardDelegate:(id<WkWebViewBackForwardListDelegate>)backForwardDelegate
@@ -866,6 +976,16 @@ namespace  {
 - (id<WkNotificationDelegate>)notificationDelegate
 {
 	return _notificationDelegate;
+}
+
+- (void)setStorageDelegate:(id<WkWebViewStorageDelegate>)delegate
+{
+    _storageDelegate = delegate;
+}
+
+- (id<WkWebViewStorageDelegate>)storageDelegate
+{
+    return _storageDelegate;
 }
 
 - (void)setEditorDelegate:(id<WkWebViewEditorDelegate>)delegate
@@ -1075,14 +1195,21 @@ namespace  {
 	return _documentHeight;
 }
 
-- (void)setScrollX:(int)sx y:(int)sy
+- (BOOL)updateScrollX:(int)sx y:(int)sy
 {
-	_scrollX = sx;
-	_scrollY = sy;
+    if (_scrollX != sx || _scrollY != sy)
+    {
+        _scrollX = sx;
+        _scrollY = sy;
 
 #if ENABLE(VIDEO)
-	[self callOverlayCallback];
+        [self callOverlayCallback];
 #endif
+
+        return YES;
+    }
+    
+    return NO;
 }
 
 - (int)scrollX
@@ -1673,19 +1800,17 @@ namespace  {
 
 @interface WkDownloadResponseDelegatePrivate : OBObject<WkConfirmDownloadResponseDelegate>
 {
-	WebCore::PolicyCheckIdentifier _identifier;
 	WebCore::FramePolicyFunction   _function;
 }
 @end
 
 @implementation WkDownloadResponseDelegatePrivate
 
-- (id)initWithPolicyCheckIdentifier:(WebCore::PolicyCheckIdentifier)identifier function:(WebCore::FramePolicyFunction &&)function
+- (id)initWithFunction:(WebCore::FramePolicyFunction &&)function
 {
 	if ((self = [super init]))
 	{
 		_function = std::move(function);
-		_identifier = identifier;
 	}
 	
 	return self;
@@ -1694,7 +1819,7 @@ namespace  {
 - (void)dealloc
 {
 	if (_function)
-		_function(WebCore::PolicyAction::Ignore, _identifier);
+		_function(WebCore::PolicyAction::Ignore);
 	[super dealloc];
 }
 
@@ -1702,7 +1827,7 @@ namespace  {
 {
 	if (_function)
 	{
-		_function(WebCore::PolicyAction::Download, _identifier);
+		_function(WebCore::PolicyAction::Download);
 		_function = nullptr;
 	}
 }
@@ -1711,9 +1836,60 @@ namespace  {
 {
 	if (_function)
 	{
-		_function(WebCore::PolicyAction::Ignore, _identifier);
+		_function(WebCore::PolicyAction::Ignore);
 		_function = nullptr;
 	}
+}
+
+@end
+
+@implementation WkWebViewStorageHandlerPrivate
+
+- (id)initWithStorage:(WebCore::Storage *)storage
+{
+    if ((self = [super init]))
+    {
+        _storage = storage;
+        
+        if (!storage)
+        {
+            [self release];
+            return nil;
+        }
+    }
+    
+    return self;
+}
+
+- (OBString *)localStorageValueForKey:(OBString *)key
+{
+    if (!key)
+        return nil;
+    auto wkey = WTF::String::fromUTF8([key cString]);
+    if (_storage->contains(wkey))
+    {
+        auto value = _storage->getItem(wkey);
+        auto vutf = value.utf8();
+        return [OBString stringWithUTF8String:vutf.data()];
+    }
+    return nil;
+}
+
+- (void)setLocalStorageValue:(OBString *)value forKey:(OBString *)key
+{
+    if (!key)
+        return;
+    auto wkey = WTF::String::fromUTF8([key cString]);
+
+    if (!value)
+    {
+        _storage->removeItem(wkey);
+    }
+    else
+    {
+        auto wvalue = WTF::String::fromUTF8([value cString]);
+        _storage->setItem(wkey, wvalue);
+    }
 }
 
 @end
@@ -1776,7 +1952,7 @@ private:
 	{
 		WTF::String sLogin = WTF::String::fromUTF8([login cString]);
 		WTF::String sPassword = WTF::String::fromUTF8([password cString]);
-		WebCore::Credential credential(sLogin, sPassword, WebCore::CredentialPersistence::CredentialPersistenceForSession);
+		WebCore::Credential credential(sLogin, sPassword, WebCore::CredentialPersistence::ForSession);
 		_challenge->challenge().authenticationClient()->receivedCredential(_challenge->challenge(), credential);
 		_challenge = nullptr;
 	}
@@ -1939,16 +2115,16 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 
 		switch (item.type())
 		{
-		case WebCore::ContextMenuItemType::ActionType:
+		case WebCore::ContextMenuItemType::Action:
 			[menu addObject:[MUIMenuitem itemWithTitle:[OBString stringWithUTF8String:title.data()] shortcut:nil userData:ULONG(item.action())]];
 			break;
-		case WebCore::ContextMenuItemType::CheckableActionType:
+		case WebCore::ContextMenuItemType::CheckableAction:
 			[menu addObject:[MUIMenuitem checkmarkItemWithTitle:[OBString stringWithUTF8String:title.data()] shortcut:nil userData:int(item.action()) checked:item.checked()]];
 			break;
-		case WebCore::ContextMenuItemType::SeparatorType:
+		case WebCore::ContextMenuItemType::Separator:
 			[menu addObject:[MUIMenuitem barItem]];
 			break;
-		case WebCore::ContextMenuItemType::SubmenuType:
+		case WebCore::ContextMenuItemType::Submenu:
 			{
 				MUIMenu *submenu = [MUIMenu menuWithTitle:[OBString stringWithUTF8String:title.data()] objects:nil, nil];
 				[menu addObject:submenu];
@@ -2145,7 +2321,21 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			id<WkWebViewClientDelegate> clientDelegate = [privateObject clientDelegate];
 			[clientDelegate webViewRequestedPrinting:self];
 		};
-		
+
+        webPage->_fUndoRedoChanged = [self]() {
+			validateObjCContext();
+			WkWebViewPrivate *privateObject = [self privateObject];
+			id<WkWebViewEditorDelegate> editorDelegate = [privateObject editorDelegate];
+            [editorDelegate webViewUpdatedUndoRedoList:self];
+		};
+
+        webPage->_fTextChanged = [self]() {
+			validateObjCContext();
+			WkWebViewPrivate *privateObject = [self privateObject];
+			id<WkWebViewEditorDelegate> editorDelegate = [privateObject editorDelegate];
+            [editorDelegate webViewDidEditText:self];
+		};
+  
 		webPage->_fDidStopLoading = [self]() {
 			validateObjCContext();
 			WkWebViewPrivate *privateObject = [self privateObject];
@@ -2192,7 +2382,98 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			}
 			return nullptr;
 		};
-		
+
+        webPage->_fInspectorDestroyed = [self]() {
+            validateObjCContext();
+            WkWebViewPrivate *privateObject = [self privateObject];
+            WkWebInspectorView *inspector = (id)([self isKindOfClass:[WkWebInspectorView class]] ? self : nil);
+            if (inspector)
+            {
+				[inspector parentViewClosed];
+            }
+			else if ([privateObject inspectorView])
+            {
+				[[privateObject inspectorView] parentViewClosed];
+                [privateObject setInspectorView:nil];
+            }
+        };
+        
+        webPage->_fInspectorSave = [self](const WTF::String& url, const WTF::String& data, bool base64) {
+            validateObjCContext();
+            WkWebViewPrivate *privateObject = [self privateObject];
+            WkWebInspectorView *inspector = (id)([self isKindOfClass:[WkWebInspectorView class]] ? self : nil);
+            id<WkWebInspectorViewDelegate> inspectorDelegate = [inspector inspectorDelegate];
+            if (inspectorDelegate)
+            {
+                auto uurl = url.utf8();
+                OBString *path = [inspectorDelegate webInspectorView:inspector wantsToSaveFile:[[OBString stringWithUTF8String:uurl.data()] filePart]];
+                if (path)
+                {
+                    BPTR f = Open([path nativeCString], MODE_NEWFILE);
+                    if (f)
+                    {
+                        if (base64)
+                        {
+                            auto decoded = WTF::base64Decode(data);
+                            if (decoded.has_value())
+                            {
+                                if (LONG(decoded->size()) != Write(f, APTR(decoded->data()), decoded->size()))
+                                    DisplayBeep(0);
+                            }
+                            else
+                                DisplayBeep(0);
+                        }
+                        else
+                        {
+                            auto udata = data.utf8();
+                            if (LONG(udata.length()) != Write(f, APTR(udata.data()), udata.length()))
+                                DisplayBeep(0);
+                        }
+                        Close(f);
+                    }
+                    else
+                        DisplayBeep(0);
+                }
+            }
+        };
+
+        webPage->_fOpenInspectorWindow = [self]() -> WebCore::Page * {
+            validateObjCContext();
+            WkWebViewPrivate *privateObject = [self privateObject];
+            
+            if ([privateObject inspectorView])
+            {
+            // todo: popup to front?
+                return nullptr;
+            }
+            
+            id<WkWebViewClientDelegate> clientDelegate = [privateObject clientDelegate];
+            if (!clientDelegate)
+                return nullptr;
+
+            WkWebInspectorView *newView = [[WkWebInspectorView alloc] initWithWebView:self];
+            WkWebViewPrivate *newPrivateObject = [newView privateObject];
+            WebKit::WebPage *page = [newPrivateObject page];
+            if (page && page->corePage())
+            {
+                [clientDelegate webView:self createdNewInspectorView:newView];
+                [privateObject setInspectorView:newView];
+                [newView release];
+                return page->corePage();
+            }
+            [newView release];
+            return nullptr;
+        };
+        
+        webPage->_fInspectorURLChanged = [self](const WTF::String& url) {
+            validateObjCContext();
+            WkWebViewPrivate *privateObject = [self privateObject];
+            WkWebInspectorView *inspector = (id)([self isKindOfClass:[WkWebInspectorView class]] ? self : nil);
+            id<WkWebInspectorViewDelegate> inspectorDelegate = [inspector inspectorDelegate];
+            auto uurl = url.utf8();
+			[inspectorDelegate webInspectorView:inspector changedURL:[OBString stringWithUTF8String:uurl.data()]];
+		};
+
 		webPage->_fPopup = [self](const WebCore::IntRect& pos, const WTF::Vector<WTF::String>& items) -> int {
 			validateObjCContext();
 			MUIMenu *menu = [[MUIMenu new] autorelease];
@@ -2307,10 +2588,10 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			WkWebViewPrivate *privateObject = [self privateObject];
 			const WTF::URL &url = request.url();
 
-			WTF::String protocol = url.protocol().toString();
+			auto protocol = url.protocol();
 
 			// bypass standard protocols...
-			if (protocol == "http" || protocol == "https" || protocol == "file" || protocol == "about" || protocol == "blob")
+			if (protocol == "http"_s || protocol == "https"_s || protocol == "file"_s || protocol == "about"_s || protocol == "blob"_s || protocol == "data"_s)
 			{
 				return true;
 			}
@@ -2326,7 +2607,7 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			return false;
 		};
 		
-		webPage->_fShouldNavigateToURL = [self](const WTF::URL &url, bool window) -> bool {
+		webPage->_fShouldNavigateToURL = [self](const WTF::URL &url, bool window, bool isTopSite) -> bool {
 			validateObjCContext();
 			WkWebViewPrivate *privateObject = [self privateObject];
 			WTF::String protocol = url.protocol().toString();
@@ -2336,11 +2617,16 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			{
 				auto uurl = url.string().utf8();
 				OBURL *url = [OBURL URLWithString:[OBString stringWithUTF8String:uurl.data()]];
-				if (![allHandler webView:self wantsToNavigateToURL:url])
+                auto target = WkWebViewAllRequestsHandlerTarget_MainFrame;
+                if (window)
+                    target = WkWebViewAllRequestsHandlerTarget_NewWindow;
+                else if (!isTopSite)
+                    target = WkWebViewAllRequestsHandlerTarget_SubFrame;
+				if (![allHandler webView:self wantsToNavigateToURL:url intoTarget:target])
 					return false;
 			}
 
-			if (protocol == "ftp" || protocol == "mailto" || protocol == "ftps")
+			if (protocol == "ftp"_s || protocol == "mailto"_s || protocol == "ftps"_s)
 			{
 				auto udata = url.string().ascii();
 				struct TagItem urltags[] = { { URL_Launch, TRUE }, { URL_Show, TRUE }, { TAG_DONE, 0 } };
@@ -2364,44 +2650,71 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			return true;
 		};
 		
-		webPage->_fDownload = [self](const WTF::URL &url, const WTF::String &) {
+		webPage->_fDownload = [self](const WTF::URL &url, const WTF::String &filename) {
 			validateObjCContext();
 			WkWebViewPrivate *privateObject = [self privateObject];
 			id<WkDownloadDelegate> downloadDelegate = [privateObject downloadDelegate];
 			if (downloadDelegate)
 			{
+                WkDownload *download = nil;
 				auto uurl = url.string().utf8();
-				WkDownload *download = [WkDownload download:[OBURL URLWithString:[OBString stringWithUTF8String:uurl.data()]] withDelegate:downloadDelegate];
+                auto uuname = filename.utf8();
+                auto protocol = url.protocol().toString();
+                if (protocol == "data"_s) {
+                    download = [WkDownload downloadWithDataURL:url pageURL:[self URL] filename:[OBString stringWithUTF8String:uuname.data()] withDelegate:downloadDelegate];
+                }
+                else if (protocol == "blob"_s) {
+                    download = [WkDownload downloadWithBlobURL:url pageURL:[self URL] filename:[OBString stringWithUTF8String:uuname.data()] withDelegate:downloadDelegate];
+                }
+                else {
+                    download = [WkDownload download:[OBURL URLWithString:[OBString stringWithUTF8String:uurl.data()]] withDelegate:downloadDelegate];
+                }
 				[download start];
 			}
 		};
-		
+
 		webPage->_fDownloadFromResource = [self](WebCore::ResourceHandle* handle, const WebCore::ResourceRequest& request, const WebCore::ResourceResponse& response) {
 			validateObjCContext();
 			WkWebViewPrivate *privateObject = [self privateObject];
 			id<WkDownloadDelegate> downloadDelegate = [privateObject downloadDelegate];
 			if (downloadDelegate)
 			{
-				WkDownload *download = [WkDownload downloadWithHandle:handle request:request response:response withDelegate:downloadDelegate];
+				WkDownload *download = nil;
+				auto protocol = request.url().protocol().toString();
+				if (protocol == "data"_s) {
+					auto uuname = response.suggestedFilename().utf8();
+					download = [WkDownload downloadWithDataURL:request.url() pageURL:[self URL] filename:[OBString stringWithUTF8String:uuname.data()] withDelegate:downloadDelegate];
+				}
+				else if (protocol == "blob"_s) {
+					auto uuname = response.suggestedFilename().utf8();
+					download = [WkDownload downloadWithBlobURL:request.url() pageURL:[self URL] filename:[OBString stringWithUTF8String:uuname.data()] withDelegate:downloadDelegate];
+				}
+				else {
+					download = [WkDownload downloadWithHandle:handle request:request response:response withDelegate:downloadDelegate];
+				}
 				[download start];
 			}
 		};
-		
+
 		webPage->_fDownloadAsk = [self](const WebCore::ResourceResponse& response, const WebCore::ResourceRequest&,
-			WebCore::PolicyCheckIdentifier identifier, const WTF::String&, WebCore::FramePolicyFunction&& function) {
+			const WTF::String& downloadAttribute, WebCore::FramePolicyFunction&& function) {
 			validateObjCContext();
 			WkWebViewPrivate *privateObject = [self privateObject];
 			id<WkWebViewClientDelegate> clientDelegate = [privateObject clientDelegate];
 			if (clientDelegate)
 			{
-				WkDownloadResponseDelegatePrivate *responsePrivate = [[[WkDownloadResponseDelegatePrivate alloc] initWithPolicyCheckIdentifier:identifier function:std::move(function)] autorelease];
+				WkDownloadResponseDelegatePrivate *responsePrivate = [[[WkDownloadResponseDelegatePrivate alloc] initWithFunction:std::move(function)] autorelease];
 				auto uurl = response.url().string().utf8();
 				auto umime = response.mimeType().utf8();
 				auto uname = response.suggestedFilename().utf8();
-				
+
+                if (0 == uname.length()) {
+                    uname = downloadAttribute.utf8();
+                }
+
 				if (0 == uname.length())
-					uname = WebCore::decodeURLEscapeSequences(response.url().lastPathComponent()).utf8();
-				
+					uname = PAL::decodeURLEscapeSequences(response.url().lastPathComponent()).utf8();
+
 				[clientDelegate webView:self
 					confirmDownloadOfURL:[OBURL URLWithString:[OBString stringWithUTF8String:uurl.data()]]
 					mimeType:[OBString stringWithUTF8String:umime.data()]
@@ -2410,7 +2723,7 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 					withResponseDelegate:responsePrivate];
 				return;
 			}
-			function(WebCore::PolicyAction::Ignore, identifier);
+			function(WebCore::PolicyAction::Ignore);
 		};
 
 		webPage->_fAlert = [self](const WTF::String &alert) {
@@ -2544,8 +2857,10 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 					[[[WkAuthenticationChallengeResponseDelegatePrivate alloc] initWithAuthenticationChallenge:WkAuthenticationChallenge::create(challenge)] autorelease];
 				if (responseDelegate)
 				{
+                    auto uurl = challenge.failureResponse().url().string().utf8();
+                    OBURL *url = [OBURL URLWithString:[OBString stringWithUTF8String:uurl.data()]];
 					[[OBRunLoop mainRunLoop] performSelector:@selector(webView:issuedAuthenticationChallengeAtURL:withResponseDelegate:)
-						target:clientDelegate withObject:self withObject:[self URL] withObject:responseDelegate];
+						target:clientDelegate withObject:self withObject:url withObject:responseDelegate];
 					return YES;
 				}
 			}
@@ -2631,14 +2946,14 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			return false;
 		};
 		
-		webPage->_fFavIconLoaded = [self](WebCore::SharedBuffer *data, const WTF::URL &url) {
+		webPage->_fFavIconLoaded = [self](RefPtr<WebCore::SharedBuffer>&&data, const WTF::URL &url) {
 			validateObjCContext();
 			WkWebViewPrivate *privateObject = [self privateObject];
 			id<WkWebViewClientDelegate> clientDelegate = [privateObject clientDelegate];
 			if (clientDelegate)
 			{
 				auto uurl = url.host().toString().utf8();
-				[clientDelegate webView:self changedFavIcon:[WkFavIconPrivate cacheIconWithData:data forHost:[OBString stringWithUTF8String:uurl.data()]]];
+				[clientDelegate webView:self changedFavIcon:[WkFavIconPrivate cacheIconWithData:WTFMove(data) forHost:[OBString stringWithUTF8String:uurl.data()]]];
 			}
 		};
 		
@@ -2659,6 +2974,14 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			WkWebViewPrivate *privateObject = [self privateObject];
 			[privateObject moveDDWindowToX:atX y:atY];
 		};
+  
+        webPage->_fLocalStorageCreated = [self](WebCore::Storage* storage) {
+			validateObjCContext();
+			WkWebViewPrivate *privateObject = [self privateObject];
+            id<WkWebViewStorageDelegate> storageDelegate = [privateObject storageDelegate];
+            if ([storageDelegate webViewShouldCreateLocalStorageHandler:self])
+                [storageDelegate webView:self createdLocalStorageHandler:[[[WkWebViewStorageHandlerPrivate alloc] initWithStorage:storage] autorelease]];
+        };
 
 #if ENABLE(VIDEO)
 		webPage->_fMediaAdded = [self](void *player, const String &url, WebCore::MediaPlayerMorphOSInfo &info,
@@ -2760,23 +3083,23 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			return WebViewDelegate::NotificationPermission::Deny;
 		};
 		
-		webPage->_fShowNotification = [self](WebCore::Notification* notification) {
+		webPage->_fShowNotification = [self](WebCore::NotificationData&& notification) {
 			validateObjCContext();
 			WkWebViewPrivate *privateObject = [self privateObject];
 			id<WkNotificationDelegate> delegate = [privateObject notificationDelegate];
 			if (delegate)
 			{
-				[delegate webView:self wantsToDisplayNotification:[[[WkNotificationPrivate alloc] initWithNotification:notification] autorelease]];
+				[delegate webView:self wantsToDisplayNotification:[[[WkNotificationPrivate alloc] initWithNotification:WTFMove(notification)] autorelease]];
 			}
 		};
 
-		webPage->_fHideNotification = [self](WebCore::Notification* notification) {
+		webPage->_fHideNotification = [self](WebCore::NotificationData&& notification) {
 			validateObjCContext();
 			WkWebViewPrivate *privateObject = [self privateObject];
 			id<WkNotificationDelegate> delegate = [privateObject notificationDelegate];
 			if (delegate)
 			{
-				id notify = [WkNotificationPrivate notificationForNotification:notification];
+				id notify = [WkNotificationPrivate notificationForNotification:WTFMove(notification)];
 				if (notify)
 				{
 					[notify cancel];
@@ -2940,7 +3263,7 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 - (void)goToItem:(WkBackForwardListItem *)item
 {
 	auto webPage = [_private page];
-	return webPage->goToItem([(WkBackForwardListItemPrivate *)item item]);
+    webPage->goToItem([(WkBackForwardListItemPrivate *)item item]);
 }
 
 - (WkBackForwardList *)backForwardList
@@ -3113,7 +3436,6 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 	[settings setCustomStyleSheetPath:[_private customStyleSheetPath]];
 	[settings setContextMenuHandling:WkSettings_ContextMenuHandling(webPage->contextMenuHandling())];
 	[settings setLocalStorageEnabled:webPage->localStorageEnabled()];
-	[settings setOfflineWebApplicationCacheEnabled:webPage->offlineCacheEnabled()];
 	[settings setInvisiblePlaybackNotAllowed:webPage->invisiblePlaybackNotAllowed()];
 	[settings setRequiresUserGestureForMediaPlayback:webPage->requiresUserGestureForMediaPlayback()];
 	[settings setDarkModeEnabled:webPage->darkModeEnabled()];
@@ -3147,11 +3469,15 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 {
 	auto webPage = [_private page];
 	webPage->setJavaScriptEnabled([settings javaScriptEnabled]);
+#if USE_ADFILTER
 	webPage->setAdBlockingEnabled([settings adBlockerEnabled]);
+#else
+	webPage->setAdBlockingEnabled([settings adBlockerEnabled]);
+    webPage->setExternalNetworkRequestsEnabled(![settings adBlockerEnabled]);
+#endif
 	webPage->setThirdPartyCookiesAllowed([settings thirdPartyCookiesAllowed]);
 	webPage->setContextMenuHandling(WebKit::WebPage::ContextMenuHandling([settings contextMenuHandling]));
 	webPage->setLocalStorageEnabled([settings localStorageEnabled]);
-	webPage->setOfflineCacheEnabled([settings offlineWebApplicationCacheEnabled]);
 	webPage->setInvisiblePlaybackNotAllowed([settings invisiblePlaybackNotAllowed]);
 	webPage->setRequiresUserGestureForMediaPlayback([settings requiresUserGestureForMediaPlayback]);
 	webPage->setDarkModeEnabled([settings darkModeEnabled]);
@@ -3312,6 +3638,7 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 - (BOOL)draw:(ULONG)flags
 {
 	EP_SCOPE(draw);
+    [_private willDraw];
 
 	[super draw:flags];
 
@@ -3357,6 +3684,10 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			[_private setPaintPerform:[OBPerform performSelector:@selector(lateDraw) target:self]];
 			[_private setMLeft:[self left] mTop:[self top] mRight:[self right] mBottom:[self bottom]];
 			
+            // update screen size reported to the Screen API
+            struct Screen *scr = [self screen];
+            webPage->setScreenSize(scr->Width, scr->Height);
+   
 			if ([_private documentWidth])
 			{
 				if ([_private printingState])
@@ -3470,6 +3801,8 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 	WkPrintingState *printingState = [_private printingState];
 	auto webPage = [_private page];
 
+    EP_SCOPE(events);
+
 	if (printingState)
 	{
 		if (imsg && imsg->Class == IDCMP_RAWKEY)
@@ -3495,12 +3828,13 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 		return 0;
 	}
 	
-	[_private setIsHandlingUserInput:YES];
-	
-	if (muikey != MUIKEY_NONE && webPage->handleMUIKey(int(muikey), [[self windowObject] defaultObject] == self))
-	{
+	if (muikey != MUIKEY_NONE)
+ 	{
+        [_private setIsHandlingUserInput:YES];
+        BOOL handled = webPage->handleMUIKey(int(muikey), [[self windowObject] defaultObject] == self);
 		[_private setIsHandlingUserInput:NO];
-		return MUI_EventHandlerRC_Eat;
+        if (handled)
+            return MUI_EventHandlerRC_Eat;
 	}
 
 	if (imsg)
@@ -3524,7 +3858,6 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 					if (imsg->Code == RAWKEY_ESCAPE)
 					{
 						webPage->exitFullscreen();
-						[_private setIsHandlingUserInput:NO];
 						return MUI_EventHandlerRC_Eat;
 					}
 					break;
@@ -3532,12 +3865,10 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 					if (imsg->Code == SELECTDOWN && [_private isDoubleClickSeconds:imsg->Seconds micros:imsg->Micros])
 					{
 						webPage->exitFullscreen();
-						[_private setIsHandlingUserInput:NO];
 						return MUI_EventHandlerRC_Eat;
 					}
 					break;
 				}
-				[_private setIsHandlingUserInput:NO];
 				return 0;
 			}
 			else // fsWindow
@@ -3548,6 +3879,7 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 					switch (imsg->Code)
 					{
 					case RAWKEY_ESCAPE:
+						[_private setIsHandlingUserInput:YES];
 						if (!webPage->handleIntuiMessage(imsg, x, y, inObject, isDefault))
 							webPage->exitFullscreen();
 						[_private setIsHandlingUserInput:NO];
@@ -3569,7 +3901,6 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 								else
 									[media play];
 							}
-							[_private setIsHandlingUserInput:NO];
 							return MUI_EventHandlerRC_Eat;
 						}
 						break;
@@ -3583,7 +3914,6 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 								[media seek:[media position] - 60.0f];
 							else
 								[media seek:[media position] - 10.0f];
-							[_private setIsHandlingUserInput:NO];
 							return MUI_EventHandlerRC_Eat;
 						}
 						break;
@@ -3597,7 +3927,6 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 								[media seek:[media position] + 60.0f];
 							else
 								[media seek:[media position] + 10.0f];
-							[_private setIsHandlingUserInput:NO];
 							return MUI_EventHandlerRC_Eat;
 						}
 						break;
@@ -3607,24 +3936,24 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 							id<WkMediaObject> media = [self activeMediaObject];
 							[media play];
 						}
-						[_private setIsHandlingUserInput:NO];
 						return MUI_EventHandlerRC_Eat;
 					case RAWKEY_CDTV_STOP:
 						{
 							id<WkMediaObject> media = [self activeMediaObject];
 							[media pause];
 						}
-						[_private setIsHandlingUserInput:NO];
 						return MUI_EventHandlerRC_Eat;
 					}
 					break;
 				}
 
+                [_private setIsHandlingUserInput:YES];
 				if (webPage->handleIntuiMessage(imsg, x, y, inObject, isDefault))
 				{
 					[_private setIsHandlingUserInput:NO];
 					return MUI_EventHandlerRC_Eat;
 				}
+                [_private setIsHandlingUserInput:NO];
 				return 0;
 			}
 		}
@@ -3636,14 +3965,15 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 			isDefault = [[self windowObject] defaultObject] == self;
 		}
 
+        [_private setIsHandlingUserInput:YES];
 		if (webPage->handleIntuiMessage(imsg, x, y, inObject, isDefault))
 		{
 			[_private setIsHandlingUserInput:NO];
 			return MUI_EventHandlerRC_Eat;
 		}
+        [_private setIsHandlingUserInput:NO];
 	}
 
-	[_private setIsHandlingUserInput:NO];
 	return 0;
 }
 
@@ -3662,7 +3992,9 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 
 - (void)invalidated:(BOOL)force
 {
-	if (![_private drawPending] || force || [_private isHandlingUserInput])
+    EP_SCOPE(drawRequest);
+
+	if (![_private drawPendingWithSchedule] || force || [_private isHandlingUserInput])
 	{
 		[_private setDrawPendingWithSchedule:!force];
 
@@ -3675,15 +4007,17 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 
 - (void)scrollToX:(int)sx y:(int)sy
 {
-	[_private setScrollX:sx y:sy];
-	[[_private scrollingDelegate] webView:self scrolledToLeft:sx top:sy];
+	if ([_private updateScrollX:sx y:sy])
+    {
+        [[_private scrollingDelegate] webView:self scrolledToLeft:sx top:sy];
 
-	// don't use draw scheduling - we want to have scrolling as fast as possible
-	if (![_private drawPending] || [_private drawPendingWithSchedule])
-	{
-		[_private setDrawPendingWithSchedule:NO];
-		[[OBRunLoop mainRunLoop] performSelector:@selector(lateDraw) target:self];
-	}
+        // don't use draw scheduling - we want to have scrolling as fast as possible
+        if (![_private drawPending] || [_private drawPendingWithSchedule])
+        {
+            [_private setDrawPendingWithSchedule:NO];
+            [[OBRunLoop mainRunLoop] performSelector:@selector(lateDraw) target:self];
+        }
+    }
 }
 
 - (void)setDocumentWidth:(int)width height:(int)height
@@ -3718,6 +4052,11 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 - (void)setNotificationDelegate:(id<WkNotificationDelegate>)delegate
 {
 	[_private setNotificationDelegate:delegate];
+}
+
+- (void)setStorageDelegate:(id<WkWebViewStorageDelegate>)delegate
+{
+    [_private setStorageDelegate:delegate];
 }
 
 - (void)setEditorDelegate:(id<WkWebViewEditorDelegate>)delegate
@@ -3837,6 +4176,12 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 	return webPage->drawRect(x, y, width, height, rp);
 }
 
+- (BOOL)screenShotPageToFile:(OBString *)path
+{
+	auto webPage = [_private page];
+    return webPage->screenshotToFile([path nativeCString]);
+}
+
 - (BOOL)searchFor:(OBString *)string direction:(BOOL)forward caseSensitive:(BOOL)caseFlag wrap:(BOOL)wrapFlag startInSelection:(BOOL)startInSelection
 {
     if (![string length])
@@ -3845,13 +4190,13 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 	WebCore::FindOptions options;
 
 	if (!forward)
-		options.add(WebCore::FindOptionFlag::Backwards);
+		options.add(WebCore::FindOption::Backwards);
 	if (!caseFlag)
-		options.add(WebCore::FindOptionFlag::CaseInsensitive);
+		options.add(WebCore::FindOption::CaseInsensitive);
 	if (wrapFlag)
-		options.add(WebCore::FindOptionFlag::WrapAround);
+		options.add(WebCore::FindOption::WrapAround);
 	if (startInSelection)
-		options.add(WebCore::FindOptionFlag::StartInSelection);
+		options.add(WebCore::FindOption::StartInSelection);
 
 	bool outWrapped = false;
 	return webPage->search(WTF::String::fromUTF8([string cString]), options, outWrapped);
@@ -4060,6 +4405,123 @@ static void populateContextMenu(MUIMenu *menu, const WTF::Vector<WebCore::Contex
 	auto webPage = [_private page];
 	if (w && webPage)
 		webPage->drawDragImage(w->RPort, 0, 0, w->Width, w->Height);
+}
+
+- (BOOL)developerToolsEnabled
+{
+	auto webPage = [_private page];
+	if (webPage)
+		return webPage->developerToolsEnabled();
+	return NO;
+}
+
+- (void)setDeveloperToolsEnabled:(BOOL)enabled
+{
+	auto webPage = [_private page];
+	if (webPage)
+		webPage->setDeveloperToolsEnabled(enabled);
+}
+
+@end
+
+@interface __WkWebInspectorViewPrivate : OBObject
+{
+	id<WkWebInspectorViewDelegate> _delegate;
+	WkWebView *_inspectedViewWeak;
+}
+@end
+
+@implementation __WkWebInspectorViewPrivate
+
+- (id)initWithWebView:(WkWebView *)inspectedView
+{
+	if ((self = [super init]))
+	{
+		_inspectedViewWeak = inspectedView;
+	}
+	
+	return self;
+}
+
+- (void)setDelegate:(id<WkWebInspectorViewDelegate>)delegate
+{
+	_delegate = delegate;
+}
+
+- (id<WkWebInspectorViewDelegate>)delegate
+{
+	return _delegate;
+}
+
+- (WkWebView *)inspectedView
+{
+	return _inspectedViewWeak;
+}
+
+@end
+
+@implementation WkWebInspectorView
+
+- (id)initWithWebView:(WkWebView *)inspectedView
+{
+	if ((self = [super init]))
+	{
+		_inspectorPrivate = [[__WkWebInspectorViewPrivate alloc] initWithWebView:inspectedView];
+		if (!_inspectorPrivate)
+		{
+			[self release];
+			return nil;
+		}
+	}
+	
+	return self;
+}
+
+- (void)dealloc
+{
+	D(dprintf("%s: \n", __PRETTY_FUNCTION__));
+	[_inspectorPrivate release];
+	[super dealloc];
+}
+
+- (void)setInspectorDelegate:(id<WkWebInspectorViewDelegate>)delegate
+{
+	[(__WkWebInspectorViewPrivate *)_inspectorPrivate setDelegate:delegate];
+}
+
+- (id<WkWebInspectorViewDelegate>)inspectorDelegate
+{
+	return [(__WkWebInspectorViewPrivate *)_inspectorPrivate delegate];
+}
+
+- (void)setDeveloperToolsEnabled:(BOOL)enabled
+{
+	// don't inspect the inspector
+}
+
+- (BOOL)developerToolsEnabled
+{
+	return NO;
+}
+
+- (void)close
+{
+	D(dprintf("%s: \n", __PRETTY_FUNCTION__));
+	[[self inspectedView] setDeveloperToolsEnabled:NO];
+}
+
+- (void)parentViewClosed
+{
+	id<WkWebInspectorViewDelegate> delegate = [self inspectorDelegate];
+	D(dprintf("%s: delegate %p\n", __PRETTY_FUNCTION__, delegate));
+	[_inspectorPrivate release];
+	_inspectorPrivate = nil;
+	[delegate webInspectorViewDestroyed:self];
+}
+
+- (WkWebView *)inspectedView
+{
+	return [_inspectorPrivate inspectedView];
 }
 
 @end

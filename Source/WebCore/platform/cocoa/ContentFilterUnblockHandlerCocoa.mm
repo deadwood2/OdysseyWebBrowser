@@ -31,21 +31,18 @@
 #import "ContentFilter.h"
 #import "Logging.h"
 #import "ResourceRequest.h"
+#import <pal/spi/cocoa/NSKeyedUnarchiverSPI.h>
 #import <pal/spi/cocoa/WebFilterEvaluatorSPI.h>
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/SoftLinking.h>
+#import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/text/CString.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import "WebCoreThreadRun.h"
 #endif
 
-static NSString * const unblockURLHostKey { @"unblockURLHost" };
-static NSString * const unreachableURLKey { @"unreachableURL" };
-
 #if HAVE(PARENTAL_CONTROLS_WITH_UNBLOCK_HANDLER)
-static NSString * const webFilterEvaluatorKey { @"webFilterEvaluator" };
-
 SOFT_LINK_PRIVATE_FRAMEWORK(WebContentAnalysis);
 SOFT_LINK_CLASS(WebContentAnalysis, WebFilterEvaluator);
 #endif
@@ -65,6 +62,39 @@ ContentFilterUnblockHandler::ContentFilterUnblockHandler(String unblockURLHost, 
     , m_webFilterEvaluator { WTFMove(evaluator) }
 {
     LOG(ContentFiltering, "Creating ContentFilterUnblockHandler with a WebFilterEvaluator and unblock URL host <%s>.\n", m_unblockURLHost.ascii().data());
+}
+#endif
+
+ContentFilterUnblockHandler::ContentFilterUnblockHandler(
+    String&& unblockURLHost,
+    URL&& unreachableURL,
+#if HAVE(PARENTAL_CONTROLS_WITH_UNBLOCK_HANDLER)
+    Vector<uint8_t>&& webFilterEvaluatorData,
+#endif
+    bool unblockedAfterRequest
+    ) : m_unblockURLHost(WTFMove(unblockURLHost))
+    , m_unreachableURL(WTFMove(unreachableURL))
+#if HAVE(PARENTAL_CONTROLS_WITH_UNBLOCK_HANDLER)
+    , m_webFilterEvaluator(unpackWebFilterEvaluatorData(WTFMove(webFilterEvaluatorData)))
+#endif
+    , m_unblockedAfterRequest(unblockedAfterRequest)
+{
+}
+
+#if HAVE(PARENTAL_CONTROLS_WITH_UNBLOCK_HANDLER)
+// FIXME: Remove the conversion to and from Vector<uint8_t> and serialize individual members when rdar://107281862 is resolved.
+Vector<uint8_t> ContentFilterUnblockHandler::webFilterEvaluatorData() const
+{
+    NSError *error = nil;
+    return makeVector([NSKeyedArchiver archivedDataWithRootObject:m_webFilterEvaluator.get() requiringSecureCoding:YES error:&error]);
+}
+
+RetainPtr<WebFilterEvaluator> ContentFilterUnblockHandler::unpackWebFilterEvaluatorData(Vector<uint8_t>&& vector)
+{
+    NSError *error { nil };
+    NSSet<Class> *classes = [NSSet setWithObjects:getWebFilterEvaluatorClass(), NSNumber.class, NSURL.class, NSString.class, NSMutableString.class, nil];
+    NSData *data = [NSData dataWithBytesNoCopy:vector.data() length:vector.size() freeWhenDone:NO];
+    return [NSKeyedUnarchiver _strictlyUnarchivedObjectOfClasses:classes fromData:data error:&error];
 }
 #endif
 
@@ -92,35 +122,9 @@ bool ContentFilterUnblockHandler::needsUIProcess() const
 #endif
 }
 
-void ContentFilterUnblockHandler::encode(NSCoder *coder) const
-{
-    ASSERT_ARG(coder, coder.allowsKeyedCoding && coder.requiresSecureCoding);
-    BEGIN_BLOCK_OBJC_EXCEPTIONS
-    [coder encodeObject:m_unblockURLHost forKey:unblockURLHostKey];
-    [coder encodeObject:(NSURL *)m_unreachableURL forKey:unreachableURLKey];
-#if HAVE(PARENTAL_CONTROLS_WITH_UNBLOCK_HANDLER)
-    [coder encodeObject:m_webFilterEvaluator.get() forKey:webFilterEvaluatorKey];
-#endif
-    END_BLOCK_OBJC_EXCEPTIONS
-}
-
-bool ContentFilterUnblockHandler::decode(NSCoder *coder, ContentFilterUnblockHandler& unblockHandler)
-{
-    ASSERT_ARG(coder, coder.allowsKeyedCoding && coder.requiresSecureCoding);
-    BEGIN_BLOCK_OBJC_EXCEPTIONS
-    unblockHandler.m_unblockURLHost = [coder decodeObjectOfClass:[NSString class] forKey:unblockURLHostKey];
-    unblockHandler.m_unreachableURL = [coder decodeObjectOfClass:[NSURL class] forKey:unreachableURLKey];
-#if HAVE(PARENTAL_CONTROLS_WITH_UNBLOCK_HANDLER)
-    unblockHandler.m_webFilterEvaluator = [coder decodeObjectOfClass:getWebFilterEvaluatorClass() forKey:webFilterEvaluatorKey];
-#endif
-    return true;
-    END_BLOCK_OBJC_EXCEPTIONS
-    return false;
-}
-
 bool ContentFilterUnblockHandler::canHandleRequest(const ResourceRequest& request) const
 {
-    if (!m_unblockRequester) {
+    if (!m_unblockRequester && !m_unblockedAfterRequest) {
 #if HAVE(PARENTAL_CONTROLS_WITH_UNBLOCK_HANDLER)
         if (!m_webFilterEvaluator)
             return false;
@@ -150,14 +154,29 @@ void ContentFilterUnblockHandler::requestUnblockAsync(DecisionHandlerFunction de
         return;
     }
 #endif
-
-    if (m_unblockRequester) {
-        m_unblockRequester([decisionHandler](bool unblocked) {
+    auto unblockRequester = m_unblockRequester;
+    if (!unblockRequester && m_unblockedAfterRequest) {
+        unblockRequester = [unblocked = m_unblockedAfterRequest](ContentFilterUnblockHandler::DecisionHandlerFunction function) {
+            function(unblocked);
+        };
+    }
+    if (unblockRequester) {
+        unblockRequester([decisionHandler](bool unblocked) {
             callOnMainThread([decisionHandler, unblocked] {
                 decisionHandler(unblocked);
             });
         });
+    } else {
+        callOnMainThread([decisionHandler] {
+            auto unblocked = false;
+            decisionHandler(unblocked);
+        });
     }
+}
+
+void ContentFilterUnblockHandler::setUnblockedAfterRequest(bool unblocked)
+{
+    m_unblockedAfterRequest = unblocked;
 }
 
 } // namespace WebCore

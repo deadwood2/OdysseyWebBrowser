@@ -27,62 +27,72 @@
 #include "config.h"
 #include "VideoTrackPrivateRemote.h"
 
-#if ENABLE(GPU_PROCESS)
+#if ENABLE(GPU_PROCESS) && ENABLE(VIDEO)
 
 #include "GPUProcessConnection.h"
 #include "MediaPlayerPrivateRemote.h"
 #include "RemoteMediaPlayerProxyMessages.h"
+#include "VideoTrackPrivateRemoteConfiguration.h"
+#include <wtf/CrossThreadCopier.h>
 
 namespace WebKit {
 
-VideoTrackPrivateRemote::VideoTrackPrivateRemote(GPUProcessConnection& gpuProcessConnection, WebCore::MediaPlayerIdentifier playerIdentifier, TrackPrivateRemoteIdentifier idendifier, TrackPrivateRemoteConfiguration&& configuration)
-    : m_gpuProcessConnection(makeWeakPtr(gpuProcessConnection))
+VideoTrackPrivateRemote::VideoTrackPrivateRemote(GPUProcessConnection& gpuProcessConnection, WebCore::MediaPlayerIdentifier playerIdentifier, VideoTrackPrivateRemoteConfiguration&& configuration)
+    : m_gpuProcessConnection(gpuProcessConnection)
+    , m_id(configuration.trackId)
     , m_playerIdentifier(playerIdentifier)
-    , m_idendifier(idendifier)
 {
     updateConfiguration(WTFMove(configuration));
 }
 
 void VideoTrackPrivateRemote::setSelected(bool selected)
 {
-    if (!m_gpuProcessConnection)
+    auto gpuProcessConnection = m_gpuProcessConnection.get();
+    if (!gpuProcessConnection)
         return;
 
     if (selected != this->selected())
-        m_gpuProcessConnection->connection().send(Messages::RemoteMediaPlayerProxy::VideoTrackSetSelected(m_idendifier, selected), m_playerIdentifier);
+        gpuProcessConnection->connection().send(Messages::RemoteMediaPlayerProxy::VideoTrackSetSelected(m_id, selected), m_playerIdentifier);
 
     VideoTrackPrivate::setSelected(selected);
 }
 
-void VideoTrackPrivateRemote::updateConfiguration(TrackPrivateRemoteConfiguration&& configuration)
+void VideoTrackPrivateRemote::updateConfiguration(VideoTrackPrivateRemoteConfiguration&& configuration)
 {
     if (configuration.trackId != m_id) {
-        auto changed = !m_id.isEmpty();
         m_id = configuration.trackId;
-        if (changed && client())
-            client()->idChanged(m_id);
+        notifyClients([id = m_id](auto& client) {
+            client.idChanged(id);
+        });
     }
 
     if (configuration.label != m_label) {
         auto changed = !m_label.isEmpty();
         m_label = configuration.label;
-        if (changed && client())
-            client()->labelChanged(m_label);
+        if (changed && hasClients()) {
+            notifyClients([label = crossThreadCopy(m_label)](auto& client) {
+                client.labelChanged(AtomString { label });
+            });
+        }
     }
 
     if (configuration.language != m_language) {
         auto changed = !m_language.isEmpty();
         m_language = configuration.language;
-        if (changed && client())
-            client()->languageChanged(m_language);
+        if (changed && hasClients()) {
+            notifyClients([language = crossThreadCopy(m_language)](auto& client) {
+                client.languageChanged(AtomString { language });
+            });
+        }
     }
 
     m_trackIndex = configuration.trackIndex;
     m_startTimeVariance = configuration.startTimeVariance;
-    m_kind = configuration.videoKind;
+    m_kind = configuration.kind;
+    setConfiguration(WTFMove(configuration.trackConfiguration));
     VideoTrackPrivate::setSelected(configuration.selected);
 }
 
 } // namespace WebKit
 
-#endif // ENABLE(GPU_PROCESS)
+#endif // ENABLE(GPU_PROCESS) && ENABLE(VIDEO)

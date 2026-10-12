@@ -1,4 +1,4 @@
-# Copyright (C) 2007-2018 Apple Inc.  All rights reserved.
+# Copyright (C) 2007-2022 Apple Inc.  All rights reserved.
 # Copyright (C) 2009, 2010 Chris Jerdonek (chris.jerdonek@gmail.com)
 # Copyright (C) 2010, 2011 Research In Motion Limited. All rights reserved.
 # Copyright (C) 2012 Daniel Bates (dbates@intudata.com)
@@ -71,11 +71,8 @@ BEGIN {
         &isGit
         &isGitBranchBuild
         &isGitDirectory
-        &isGitSVN
-        &isGitSVNDirectory
         &isSVN
         &isSVNDirectory
-        &isSVNVersion16OrNewer
         &listOfChangedFilesBetweenRevisions
         &makeFilePathRelative
         &mergeChangeLogs
@@ -111,7 +108,6 @@ our @EXPORT_OK;
 
 my $gitRoot;
 my $isGit;
-my $isGitSVN;
 my $isGitBranchBuild;
 my $isSVN;
 my $svnVersion;
@@ -237,26 +233,6 @@ sub isGit()
     return $isGit;
 }
 
-sub isGitSVNDirectory($)
-{
-    my ($directory) = @_;
-
-    # There doesn't seem to be an officially documented way to determine
-    # if you're in a git-svn checkout. The best suggestions seen so far
-    # all use something like the following:
-    my $output = `git -C \"$directory\" config --get svn-remote.svn.fetch 2>&1`;
-    $isGitSVN = exitStatus($?) == 0 && $output ne "";
-    return $isGitSVN;
-}
-
-sub isGitSVN()
-{
-    return $isGitSVN if defined $isGitSVN;
-
-    $isGitSVN = isGitSVNDirectory(".");
-    return $isGitSVN;
-}
-
 sub gitDirectory()
 {
     chomp(my $result = `git rev-parse --git-dir`);
@@ -361,12 +337,6 @@ sub svnVersion()
         chomp($svnVersion = `svn --version --quiet`);
     }
     return $svnVersion;
-}
-
-sub isSVNVersion16OrNewer()
-{
-    my $version = svnVersion();
-    return "v$version" ge v1.6;
 }
 
 sub chdirReturningRelativePath($)
@@ -592,17 +562,6 @@ sub possiblyColored($$)
         return $string;
     }
 }
-
-sub adjustPathForRecentRenamings($) 
-{ 
-    my ($fullPath) = @_; 
- 
-    $fullPath =~ s|WebCore/webaudio|WebCore/Modules/webaudio|g;
-    $fullPath =~ s|JavaScriptCore/wtf|WTF/wtf|g;
-    $fullPath =~ s|test_expectations.txt|TestExpectations|g;
-
-    return $fullPath; 
-} 
 
 sub canonicalizePath($)
 {
@@ -850,12 +809,7 @@ sub parseGitDiffHeader($$)
     if (/$gitDiffStartRegEx/) {
         # Use $POSTMATCH to preserve the end-of-line character.
         my $eol = $POSTMATCH;
-
-        # The first and second paths can differ in the case of copies
-        # and renames.  We use the second file path because it is the
-        # destination path.
-        $indexPath = adjustPathForRecentRenamings(parseGitDiffStartLine($_));
-
+        $indexPath = parseGitDiffStartLine($_);
         $_ = "Index: $indexPath$eol"; # Convert to SVN format.
     } else {
         die("Could not parse leading \"diff --git\" line: \"$line\".");
@@ -978,7 +932,7 @@ sub parseSvnDiffHeader($$)
 
     my $indexPath;
     if (/$svnDiffStartRegEx/) {
-        $indexPath = adjustPathForRecentRenamings($1);
+        $indexPath = $1;
     } else {
         die("First line of SVN diff does not begin with \"Index \": \"$_\"");
     }
@@ -2148,7 +2102,8 @@ sub mergeChangeLogs($$$)
         rename($fileMine, "$fileMine.save");
         rename($fileOlder, "$fileOlder.save");
     } else {
-        open(DIFF, "diff -u -a --binary \"$fileOlder\" \"$fileMine\" |") or die $!;
+        my $binarySwitch = isWindows() ? "--binary" : "";
+        open(DIFF, "diff -u -a $binarySwitch \"$fileOlder\" \"$fileMine\" |") or die $!;
         $patch = <DIFF>;
         close(DIFF);
     }
@@ -2216,8 +2171,6 @@ sub changeLogName()
     }
 
     changeLogNameError("Failed to determine ChangeLog name.") unless $name;
-    # getpwuid seems to always succeed on windows, returning the username instead of the full name.  This check will catch that case.
-    changeLogNameError("'$name' does not contain a space!  ChangeLogs should contain your full name.") unless ($name =~ /\S\s\S/);
 
     return $name;
 }

@@ -35,11 +35,6 @@ class Encoder;
 namespace WebKit {
 
 struct GtkSettingsState {
-    GtkSettingsState() = default;
-
-    void encode(IPC::Encoder&) const;
-    static std::optional<GtkSettingsState> decode(IPC::Decoder&);
-
     std::optional<String> themeName;
     std::optional<String> fontName;
     std::optional<int> xftAntialias;
@@ -50,6 +45,8 @@ struct GtkSettingsState {
     std::optional<bool> cursorBlink;
     std::optional<int> cursorBlinkTime;
     std::optional<bool> primaryButtonWarpsSlider;
+    std::optional<bool> overlayScrolling;
+    std::optional<bool> enableAnimations;
 };
 
 } // namespace WebKit

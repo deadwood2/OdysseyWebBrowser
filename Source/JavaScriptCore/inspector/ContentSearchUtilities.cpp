@@ -35,6 +35,7 @@
 #include "YarrInterpreter.h"
 #include <wtf/BumpPointerAllocator.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringBuilder.h>
 #include <wtf/text/TextPosition.h>
 
@@ -87,11 +88,11 @@ static Vector<std::pair<size_t, String>> getRegularExpressionMatchesByLines(cons
 
     for (size_t lineNumber = 0; lineNumber < size; ++lineNumber) {
         size_t nextStart = endings[lineNumber];
-        String line = text.substring(start, nextStart - start);
+        auto line = StringView(text).substring(start, nextStart - start);
 
         int matchLength;
         if (regex.match(line, 0, &matchLength) != -1)
-            result.append(std::pair<size_t, String>(lineNumber, line));
+            result.append({ lineNumber, line.toString() });
 
         start = nextStart;
     }
@@ -143,7 +144,7 @@ RegularExpression createRegularExpressionForSearchString(const String& searchStr
         pattern = escapeStringForRegularExpressionSource(searchString);
         break;
     }
-    return RegularExpression(pattern, caseSensitive ? TextCaseSensitive : TextCaseInsensitive);
+    return caseSensitive ? RegularExpression(pattern) : RegularExpression(pattern, { Flags::IgnoreCase });
 }
 
 int countRegularExpressionMatches(const RegularExpression& regex, const String& content)
@@ -175,7 +176,7 @@ Ref<JSON::ArrayOf<Protocol::GenericTypes::SearchMatch>> searchInTextByLines(cons
     return result;
 }
 
-static String findMagicComment(const String& content, const String& patternString)
+static String findMagicComment(const String& content, ASCIILiteral patternString)
 {
     if (content.isEmpty())
         return String();

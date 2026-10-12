@@ -28,6 +28,8 @@
 #include "HeapKind.h"
 #include <array>
 
+#if !BUSE(LIBPAS)
+
 namespace bmalloc {
 
 template<typename T>
@@ -71,7 +73,9 @@ public:
     const T& operator[](HeapKind heapKind) const { return at(heapKind); }
 
 private:
+    BALLOW_DEPRECATED_DECLARATIONS_BEGIN
     typedef typename std::array<typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type, numHeaps> Memory;
+    BALLOW_DEPRECATED_DECLARATIONS_END
     Memory m_memory;
 };
 
@@ -105,3 +109,4 @@ public:
 
 } // namespace bmalloc
 
+#endif

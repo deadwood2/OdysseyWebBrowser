@@ -608,9 +608,7 @@ WI.NativePrototypeFunctionParameters = {
     CSSStyleDeclaration: {
         getPropertyCSSValue: "[propertyName]",
         getPropertyPriority: "[propertyName]",
-        getPropertyShorthand: "[propertyName]",
         getPropertyValue: "[propertyName]",
-        isPropertyImplicit: "[propertyName]",
         item: "[index]",
         removeProperty: "[propertyName]",
         setProperty: "[propertyName], [value], [priority]",
@@ -1271,11 +1269,6 @@ WI.NativePrototypeFunctionParameters = {
         __proto__: null,
     },
 
-    QuickTimePluginReplacement: {
-        postEvent: "eventName",
-        __proto__: null,
-    },
-
     RTCDTMFSender: {
         insertDTMF: "tones, [duration], [interToneGap]",
         __proto__: null,
@@ -1696,11 +1689,6 @@ WI.NativePrototypeFunctionParameters = {
 
     StringCallback: {
         handleEvent: "data",
-        __proto__: null,
-    },
-
-    StyleMedia: {
-        matchMedium: "[mediaquery]",
         __proto__: null,
     },
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,8 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CDMSessionMediaSourceAVFObjC_h
-#define CDMSessionMediaSourceAVFObjC_h
+#pragma once
 
 #include "LegacyCDMSession.h"
 #include "SourceBufferPrivateAVFObjC.h"
@@ -38,48 +37,71 @@ OBJC_CLASS AVStreamDataParser;
 OBJC_CLASS NSError;
 
 namespace WebCore {
+class CDMSessionMediaSourceAVFObjC;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::CDMSessionMediaSourceAVFObjC> : std::true_type { };
+}
+
+namespace WebCore {
 
 class CDMPrivateMediaSourceAVFObjC;
 
 class CDMSessionMediaSourceAVFObjC : public LegacyCDMSession, public SourceBufferPrivateAVFObjCErrorClient, public CanMakeWeakPtr<CDMSessionMediaSourceAVFObjC> {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    CDMSessionMediaSourceAVFObjC(CDMPrivateMediaSourceAVFObjC&, LegacyCDMSessionClient*);
+    CDMSessionMediaSourceAVFObjC(CDMPrivateMediaSourceAVFObjC&, LegacyCDMSessionClient&);
     virtual ~CDMSessionMediaSourceAVFObjC();
 
     virtual void addParser(AVStreamDataParser*) = 0;
     virtual void removeParser(AVStreamDataParser*) = 0;
 
     // LegacyCDMSession
-    void setClient(LegacyCDMSessionClient* client) override { m_client = client; }
     const String& sessionId() const override { return m_sessionId; }
 
     // SourceBufferPrivateAVFObjCErrorClient
-    void layerDidReceiveError(AVSampleBufferDisplayLayer *, NSError *, bool& shouldIgnore) override;
-    ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
-    void rendererDidReceiveError(AVSampleBufferAudioRenderer *, NSError *, bool& shouldIgnore) override;
-    ALLOW_NEW_API_WITHOUT_GUARDS_END
+    void videoRendererDidReceiveError(WebSampleBufferVideoRendering *, NSError *, bool& shouldIgnore) override;
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
+    void audioRendererDidReceiveError(AVSampleBufferAudioRenderer *, NSError *, bool& shouldIgnore) override;
+ALLOW_NEW_API_WITHOUT_GUARDS_END
 
     void addSourceBuffer(SourceBufferPrivateAVFObjC*);
     void removeSourceBuffer(SourceBufferPrivateAVFObjC*);
     void setSessionId(const String& sessionId) { m_sessionId = sessionId; }
+
+    using Keys = Vector<Ref<SharedBuffer>>;
+    virtual bool isAnyKeyUsable(const Keys&) const = 0;
+    virtual void attachContentKeyToSample(const MediaSampleAVFObjC&) = 0;
 
     void invalidateCDM() { m_cdm = nullptr; }
 
 protected:
     String storagePath() const;
 
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const { return m_logger; }
+    const void* logIdentifier() const { return m_logIdentifier; }
+    WTFLogChannel& logChannel() const;
+#endif
+
     CDMPrivateMediaSourceAVFObjC* m_cdm;
-    LegacyCDMSessionClient* m_client { nullptr };
+    WeakPtr<LegacyCDMSessionClient> m_client;
     Vector<RefPtr<SourceBufferPrivateAVFObjC>> m_sourceBuffers;
     RefPtr<Uint8Array> m_certificate;
     String m_sessionId;
     bool m_stopped { false };
+
+#if !RELEASE_LOG_DISABLED
+    Ref<const Logger> m_logger;
+    const void* m_logIdentifier;
+#endif
 };
 
 inline CDMSessionMediaSourceAVFObjC* toCDMSessionMediaSourceAVFObjC(LegacyCDMSession* session)
 {
-    if (!session || (session->type() != CDMSessionTypeAVStreamSession && session->type() != CDMSessionTypeAVContentKeySession))
+    if (!session || session->type() != CDMSessionTypeAVContentKeySession)
         return nullptr;
     return static_cast<CDMSessionMediaSourceAVFObjC*>(session);
 }
@@ -87,5 +109,3 @@ inline CDMSessionMediaSourceAVFObjC* toCDMSessionMediaSourceAVFObjC(LegacyCDMSes
 }
 
 #endif // ENABLE(LEGACY_ENCRYPTED_MEDIA) && ENABLE(MEDIA_SOURCE)
-
-#endif // CDMSessionMediaSourceAVFObjC_h

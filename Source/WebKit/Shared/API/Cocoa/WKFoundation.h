@@ -44,6 +44,32 @@
 #define WK_SWIFT_ASYNC(...)
 #endif
 
+#ifdef NS_SWIFT_ASYNC_THROWS_ON_FALSE
+#define WK_SWIFT_ASYNC_THROWS_ON_FALSE(...) NS_SWIFT_ASYNC_THROWS_ON_FALSE(__VA_ARGS__)
+#else
+#define WK_SWIFT_ASYNC_THROWS_ON_FALSE(...)
+#endif
+
+#if __has_attribute(swift_async_error)
+#define WK_NULLABLE_RESULT _Nullable_result
+#else
+#define WK_NULLABLE_RESULT _Nullable
+#endif
+
+#ifdef NS_SWIFT_UI_ACTOR
+#define WK_SWIFT_UI_ACTOR NS_SWIFT_UI_ACTOR
+#else
+#define WK_SWIFT_UI_ACTOR
+#endif
+
+#ifdef NS_HEADER_AUDIT_BEGIN
+#define WK_HEADER_AUDIT_BEGIN NS_HEADER_AUDIT_BEGIN
+#define WK_HEADER_AUDIT_END NS_HEADER_AUDIT_END
+#else
+#define WK_HEADER_AUDIT_BEGIN(...) NS_ASSUME_NONNULL_BEGIN
+#define WK_HEADER_AUDIT_END(...) NS_ASSUME_NONNULL_END
+#endif
+
 #ifndef WK_FRAMEWORK_HEADER_POSTPROCESSING_ENABLED
 
 #define WK_API_AVAILABLE(...)

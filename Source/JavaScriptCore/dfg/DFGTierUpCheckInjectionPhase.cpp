@@ -55,13 +55,13 @@ using NaturalLoop = CPSNaturalLoop;
 class TierUpCheckInjectionPhase : public Phase {
 public:
     TierUpCheckInjectionPhase(Graph& graph)
-        : Phase(graph, "tier-up check injection")
+        : Phase(graph, "tier-up check injection"_s)
     {
     }
     
     bool run()
     {
-        RELEASE_ASSERT(m_graph.m_plan.mode() == JITCompilationMode::DFG);
+        RELEASE_ASSERT(m_graph.m_plan.isDFG());
 
         if (!Options::useFTLJIT())
             return false;
@@ -147,7 +147,7 @@ public:
             }
 
             if (!tierUpCandidates.isEmpty())
-                m_graph.m_plan.tierUpInLoopHierarchy().add(entry.key, tierUpCandidates);
+                m_graph.m_plan.tierUpInLoopHierarchy().ensure(entry.key, [&] { return FixedVector<BytecodeIndex>(WTFMove(tierUpCandidates)); });
         }
         m_graph.m_plan.setWillTryToTierUp(true);
         return true;

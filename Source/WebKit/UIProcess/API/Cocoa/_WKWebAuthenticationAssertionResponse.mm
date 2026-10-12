@@ -55,7 +55,27 @@
 
 - (NSData *)userHandle
 {
-    return wrapper(_response->userHandle());
+    return wrapper(_response->userHandle()).autorelease();
+}
+
+- (BOOL)synchronizable
+{
+    return _response->synchronizable();
+}
+
+- (NSString *)group
+{
+    return _response->group();
+}
+
+- (NSData *)credentialID
+{
+    return wrapper(_response->credentialID()).autorelease();
+}
+
+- (NSString *)accessGroup
+{
+    return _response->accessGroup();
 }
 
 #endif // ENABLE(WEB_AUTHN)

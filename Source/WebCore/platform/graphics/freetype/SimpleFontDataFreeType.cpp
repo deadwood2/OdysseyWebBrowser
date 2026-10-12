@@ -42,7 +42,6 @@
 #include "GlyphBuffer.h"
 #include "OpenTypeTypes.h"
 #include "RefPtrCairo.h"
-#include "UTF16UChar32Iterator.h"
 #include <cairo-ft.h>
 #include <cairo.h>
 #include <fontconfig/fcfreetype.h>
@@ -96,6 +95,14 @@ static std::optional<unsigned> fontUnitsPerEm(FT_Face freeTypeFace)
     return std::nullopt;
 }
 
+static float heightOfCharacter(cairo_scaled_font_t* scaledFont, const char* character, FontOrientation orientation)
+{
+    ASSERT(strlen(character) == 1);
+    cairo_text_extents_t textExtents;
+    cairo_scaled_font_text_extents(scaledFont, character, &textExtents);
+    return narrowPrecisionToFloat(orientation == FontOrientation::Horizontal ? textExtents.height : textExtents.width);
+}
+
 void Font::platformInit()
 {
     if (!m_platformData.size())
@@ -111,8 +118,8 @@ void Font::platformInit()
 
     float ascent = narrowPrecisionToFloat(fontExtents.ascent);
     float descent = narrowPrecisionToFloat(fontExtents.descent);
-    float capHeight = narrowPrecisionToFloat(fontExtents.height);
     float lineGap = narrowPrecisionToFloat(fontExtents.height - fontExtents.ascent - fontExtents.descent);
+    std::optional<float> capHeight;
     std::optional<float> xHeight;
     std::optional<unsigned> unitsPerEm;
     std::optional<float> underlinePosition;
@@ -135,6 +142,7 @@ void Font::platformInit()
                         descent = -narrowPrecisionToFloat(yscale * OS2Table->sTypoDescender);
                         lineGap = narrowPrecisionToFloat(yscale * OS2Table->sTypoLineGap);
                     }
+                    capHeight = narrowPrecisionToFloat(yscale * OS2Table->sCapHeight);
                     xHeight = narrowPrecisionToFloat(yscale * OS2Table->sxHeight);
                 }
 
@@ -147,15 +155,16 @@ void Font::platformInit()
         }
     }
 
-    if (!xHeight) {
-        cairo_text_extents_t textExtents;
-        cairo_scaled_font_text_extents(m_platformData.scaledFont(), "x", &textExtents);
-        xHeight = narrowPrecisionToFloat((platformData().orientation() == FontOrientation::Horizontal) ? textExtents.height : textExtents.width);
-    }
+    // We approximate capHeight and xHeight from cairo_text_extents_t unless
+    // FreeType returns them above. This approach is less precise than using FreeType.
+    if (!capHeight.has_value() || !capHeight.value())
+        capHeight = heightOfCharacter(m_platformData.scaledFont(), "T", platformData().orientation());
+    if (!xHeight.has_value() || !xHeight.value())
+        xHeight = heightOfCharacter(m_platformData.scaledFont(), "x", platformData().orientation());
 
     m_fontMetrics.setAscent(ascent);
     m_fontMetrics.setDescent(descent);
-    m_fontMetrics.setCapHeight(capHeight);
+    m_fontMetrics.setCapHeight(capHeight.value());
     m_fontMetrics.setLineSpacing(lroundf(ascent) + lroundf(descent) + lroundf(lineGap));
     m_fontMetrics.setLineGap(lineGap);
     m_fontMetrics.setXHeight(xHeight.value());
@@ -175,7 +184,7 @@ void Font::platformInit()
     if (FcPatternGetString(m_platformData.fcPattern(), FC_FAMILY, 0, &fontConfigFamilyName) == FcResultMatch) {
         String familyName = String::fromUTF8(reinterpret_cast<char*>(fontConfigFamilyName));
         // Disable antialiasing for the Ahem font because many tests require this.
-        if (equalIgnoringASCIICase(familyName, "Ahem"))
+        if (equalIgnoringASCIICase(familyName, "Ahem"_s))
             m_allowsAntialiasing = false;
     }
 }
@@ -192,12 +201,13 @@ RefPtr<Font> Font::platformCreateScaledFont(const FontDescription& fontDescripti
     ASSERT(m_platformData.scaledFont());
     return Font::create(FontPlatformData(cairo_scaled_font_get_font_face(m_platformData.scaledFont()),
         m_platformData.fcPattern(),
-        scaleFactor * fontDescription.computedSize(),
+        scaleFactor * m_platformData.size(),
         m_platformData.isFixedWidth(),
         m_platformData.syntheticBold(),
         m_platformData.syntheticOblique(),
-        fontDescription.orientation()),
-        origin(), Interstitial::No);
+        fontDescription.orientation(),
+        m_platformData.customPlatformData()),
+        origin(), IsInterstitial::No);
 }
 
 void Font::determinePitch()
@@ -205,7 +215,7 @@ void Font::determinePitch()
     m_treatAsFixedPitch = m_platformData.isFixedPitch();
 }
 
-bool Font::variantCapsSupportsCharacterForSynthesis(FontVariantCaps fontVariantCaps, UChar32) const
+bool Font::variantCapsSupportedForSynthesis(FontVariantCaps fontVariantCaps) const
 {
     switch (fontVariantCaps) {
     case FontVariantCaps::Small:
@@ -219,7 +229,7 @@ bool Font::variantCapsSupportsCharacterForSynthesis(FontVariantCaps fontVariantC
     }
 }
 
-bool Font::platformSupportsCodePoint(UChar32 character, std::optional<UChar32> variation) const
+bool Font::platformSupportsCodePoint(char32_t character, std::optional<char32_t> variation) const
 {
     CairoFtFaceLocker cairoFtFaceLocker(m_platformData.scaledFont());
     if (FT_Face face = cairoFtFaceLocker.ftFace())

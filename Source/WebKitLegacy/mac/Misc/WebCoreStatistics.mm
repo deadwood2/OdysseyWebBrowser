@@ -36,11 +36,10 @@
 #import <WebCore/BackForwardCache.h>
 #import <WebCore/CommonVM.h>
 #import <WebCore/FontCache.h>
-#import <WebCore/Frame.h>
 #import <WebCore/GCController.h>
 #import <WebCore/GlyphPage.h>
 #import <WebCore/GraphicsContextCG.h>
-#import <WebCore/JSDOMWindow.h>
+#import <WebCore/LocalFrame.h>
 #import <WebCore/PageConsoleClient.h>
 #import <WebCore/PrintContext.h>
 #import <WebCore/RenderTreeAsText.h>
@@ -140,17 +139,17 @@ static RetainPtr<NSCountedSet> createNSCountedSet(const HashCountedSet<const cha
 
 + (size_t)cachedFontDataCount
 {
-    return FontCache::singleton().fontCount();
+    return FontCache::forCurrentThread().fontCount();
 }
 
 + (size_t)cachedFontDataInactiveCount
 {
-    return FontCache::singleton().inactiveFontCount();
+    return FontCache::forCurrentThread().inactiveFontCount();
 }
 
 + (void)purgeInactiveFontData
 {
-    FontCache::singleton().purgeInactiveFontData();
+    FontCache::forCurrentThread().purgeInactiveFontData();
 }
 
 + (size_t)glyphPageCount
@@ -292,7 +291,7 @@ static OptionSet<RenderAsTextFlag> toRenderAsTextFlags(WebRenderTreeAsTextOption
 
 - (int)numberOfPagesWithPageWidth:(float)pageWidthInPixels pageHeight:(float)pageHeightInPixels
 {
-    Frame* coreFrame = _private->coreFrame;
+    auto coreFrame = _private->coreFrame;
     if (!coreFrame)
         return -1;
 
@@ -301,7 +300,7 @@ static OptionSet<RenderAsTextFlag> toRenderAsTextFlags(WebRenderTreeAsTextOption
 
 - (void)printToCGContext:(CGContextRef)cgContext pageWidth:(float)pageWidthInPixels pageHeight:(float)pageHeightInPixels
 {
-    Frame* coreFrame = _private->coreFrame;
+    auto coreFrame = _private->coreFrame;
     if (!coreFrame)
         return;
 

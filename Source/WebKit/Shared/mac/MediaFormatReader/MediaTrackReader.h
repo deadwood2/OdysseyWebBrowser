@@ -28,6 +28,7 @@
 #if ENABLE(WEBM_FORMAT_READER)
 
 #include "CoreMediaWrapped.h"
+#include <WebCore/MediaSample.h>
 #include <WebCore/SampleMap.h>
 #include <wtf/Condition.h>
 #include <wtf/Lock.h>
@@ -41,7 +42,7 @@ class WorkQueue;
 namespace WebCore {
 class AudioTrackPrivate;
 class InbandTextTrackPrivate;
-class MediaSample;
+class MediaSamplesBlock;
 class TrackPrivateBase;
 class VideoTrackPrivate;
 }
@@ -49,6 +50,9 @@ class VideoTrackPrivate;
 namespace WebKit {
 
 class MediaFormatReader;
+
+enum class MediaSampleCursorIdentifierType;
+using MediaSampleCursorIdentifier = LegacyNullableAtomicObjectIdentifier<MediaSampleCursorIdentifierType>;
 
 class MediaTrackReader final : public CoreMediaWrapped<MediaTrackReader> {
 public:
@@ -65,12 +69,12 @@ public:
     MediaTime greatestPresentationTime() const;
 
     void setEnabled(bool enabled) { m_isEnabled = enabled ? Enabled::True : Enabled::False; }
-    void addSample(Ref<WebCore::MediaSample>&&, MTPluginByteSourceRef);
+    void addSample(WebCore::MediaSamplesBlock&&, MTPluginByteSourceRef);
     void waitForSample(Function<bool(WebCore::SampleMap&, bool)>&&) const;
     void finishParsing();
 
     const WTF::Logger& logger() const { return m_logger; }
-    const void* nextSampleCursorLogIdentifier(uint64_t cursorID) const;
+    const void* nextSampleCursorLogIdentifier(MediaSampleCursorIdentifier) const;
 
 private:
     using CoreMediaWrapped<MediaTrackReader>::unwrap;
@@ -95,8 +99,8 @@ private:
         bool hasAllSamples { false };
     };
 
-    const char* mediaTypeString() const;
-    const char* logClassName() const { return "MediaTrackReader"; }
+    ASCIILiteral mediaTypeString() const;
+    ASCIILiteral logClassName() const { return "MediaTrackReader"_s; }
     const void* logIdentifier() const { return m_logIdentifier; }
     WTFLogChannel& logChannel() const;
 
@@ -111,6 +115,8 @@ private:
     mutable std::unique_ptr<SampleStorage> m_sampleStorage WTF_GUARDED_BY_LOCK(m_sampleStorageLock);
     Ref<const Logger> m_logger;
     const void* m_logIdentifier;
+    RetainPtr<CMFormatDescriptionRef> m_formatDescription;
+    RefPtr<const WebCore::TrackInfo> m_trackInfo;
 };
 
 constexpr MediaTrackReader::WrapperClass MediaTrackReader::wrapperClass()

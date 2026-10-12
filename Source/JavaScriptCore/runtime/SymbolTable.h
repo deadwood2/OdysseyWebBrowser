@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -454,14 +454,14 @@ public:
     typedef WTF::IteratorRange<typename PrivateNameEnvironment::iterator> PrivateNameIteratorRange;
 
     template<typename CellType, SubspaceAccess>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
-        return &vm.symbolTableSpace;
+        return &vm.symbolTableSpace();
     }
 
     static SymbolTable* create(VM& vm)
     {
-        SymbolTable* symbolTable = new (NotNull, allocateCell<SymbolTable>(vm.heap)) SymbolTable(vm);
+        SymbolTable* symbolTable = new (NotNull, allocateCell<SymbolTable>(vm)) SymbolTable(vm);
         symbolTable->finishCreation(vm);
         return symbolTable;
     }
@@ -469,10 +469,7 @@ public:
     static constexpr bool needsDestruction = true;
     static void destroy(JSCell*);
 
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)
-    {
-        return Structure::create(vm, globalObject, prototype, TypeInfo(CellType, StructureFlags), info());
-    }
+    inline static Structure* createStructure(VM&, JSGlobalObject*, JSValue);
 
     // You must hold the lock until after you're done with the iterator.
     Map::iterator find(const ConcurrentJSLocker&, UniquedStringImpl* key)
@@ -597,22 +594,34 @@ public:
         add(locker, key, std::forward<Entry>(entry));
     }
 
-    bool hasPrivateNames() const { return m_rareData && m_rareData->m_privateNames.size(); }
+    bool hasPrivateNames() const
+    {
+        if (auto* rareData = m_rareData.get())
+            return rareData->m_privateNames.size();
+        return false;
+    }
+
     ALWAYS_INLINE PrivateNameIteratorRange privateNames()
     {
         // Use of the IteratorRange must be guarded to prevent ASSERT failures in checkValidity().
         ASSERT(hasPrivateNames());
-        return makeIteratorRange(m_rareData->m_privateNames.begin(), m_rareData->m_privateNames.end());
+        auto& rareData = ensureRareData();
+        return makeIteratorRange(rareData.m_privateNames.begin(), rareData.m_privateNames.end());
     }
 
     void addPrivateName(const RefPtr<UniquedStringImpl>& key, PrivateNameEntry value)
     {
         ASSERT(key && !key->isSymbol());
-        if (!m_rareData)
-            m_rareData = WTF::makeUnique<SymbolTableRareData>();
+        auto& rareData = ensureRareData();
+        ASSERT(rareData.m_privateNames.find(key) == rareData.m_privateNames.end());
+        rareData.m_privateNames.add(key, value);
+    }
 
-        ASSERT(m_rareData->m_privateNames.find(key) == m_rareData->m_privateNames.end());
-        m_rareData->m_privateNames.add(key, value);
+    bool hasPrivateName(const RefPtr<UniquedStringImpl>& key) const
+    {
+        if (auto* rareData = m_rareData.get())
+            return rareData->m_privateNames.contains(key);
+        return false;
     }
 
     template<typename Entry>
@@ -668,6 +677,7 @@ public:
                 return false;
             m_arguments.set(vm, this, table);
         }
+
         return true;
     }
 
@@ -687,6 +697,16 @@ public:
         return true;
     }
     
+    void prepareToWatchScopedArgument(SymbolTableEntry& entry, uint32_t i)
+    {
+        entry.prepareToWatch();
+        if (!m_arguments)
+            return;
+
+        WatchpointSet* watchpoints = entry.watchpointSet();
+        m_arguments->trySetWatchpointSet(i, watchpoints);
+    }
+
     ScopedArgumentsTable* arguments() const
     {
         if (!m_arguments)
@@ -703,8 +723,8 @@ public:
     RefPtr<TypeSet> globalTypeSetForOffset(const ConcurrentJSLocker&, VarOffset, VM&);
     RefPtr<TypeSet> globalTypeSetForVariable(const ConcurrentJSLocker&, UniquedStringImpl* key, VM&);
 
-    bool usesNonStrictEval() const { return m_usesNonStrictEval; }
-    void setUsesNonStrictEval(bool usesNonStrictEval) { m_usesNonStrictEval = usesNonStrictEval; }
+    bool usesSloppyEval() const { return m_usesSloppyEval; }
+    void setUsesSloppyEval(bool usesSloppyEval) { m_usesSloppyEval = usesSloppyEval; }
 
     bool isNestedLexicalScope() const { return m_nestedLexicalScope; }
     void markIsNestedLexicalScope() { ASSERT(scopeType() == LexicalScope); m_nestedLexicalScope = true; }
@@ -714,6 +734,7 @@ public:
         GlobalLexicalScope,
         LexicalScope,
         CatchScope,
+        CatchScopeWithSimpleParameter,
         FunctionNameScope
     };
     void setScopeType(ScopeType type) { m_scopeType = type; }
@@ -737,19 +758,12 @@ public:
 
     DECLARE_EXPORT_INFO;
 
-    void finalizeUnconditionally(VM&);
+#if ASSERT_ENABLED
+    bool hasScopedWatchpointSet(WatchpointSet*);
+#endif
+
+    void finalizeUnconditionally(VM&, CollectionScope);
     void dump(PrintStream&) const;
-
-private:
-    JS_EXPORT_PRIVATE SymbolTable(VM&);
-    ~SymbolTable();
-    
-    JS_EXPORT_PRIVATE void finishCreation(VM&);
-
-    Map m_map;
-    ScopeOffset m_maxScopeOffset;
-public:
-    mutable ConcurrentJSLock m_lock;
 
     struct SymbolTableRareData {
         WTF_MAKE_STRUCT_FAST_ALLOCATED;
@@ -761,7 +775,25 @@ public:
     };
 
 private:
-    unsigned m_usesNonStrictEval : 1;
+    JS_EXPORT_PRIVATE SymbolTable(VM&);
+    ~SymbolTable();
+    SymbolTableRareData& ensureRareData()
+    {
+        if (LIKELY(m_rareData))
+            return *m_rareData;
+        return ensureRareDataSlow();
+    }
+    
+    DECLARE_DEFAULT_FINISH_CREATION;
+    JS_EXPORT_PRIVATE SymbolTableRareData& ensureRareDataSlow();
+
+    Map m_map;
+    ScopeOffset m_maxScopeOffset;
+public:
+    mutable ConcurrentJSLock m_lock;
+
+private:
+    unsigned m_usesSloppyEval : 1;
     unsigned m_nestedLexicalScope : 1; // Non-function LexicalScope.
     unsigned m_scopeType : 3; // ScopeType
 

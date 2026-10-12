@@ -1,3 +1,4 @@
+#include "config.h"
 #include "MediaSampleMorphOS.h"
 #include "acinerella.h"
 
@@ -7,7 +8,7 @@
 
 namespace WebCore {
 
-MediaSampleMorphOS::MediaSampleMorphOS(RefPtr<Acinerella::AcinerellaPackage>& sample, const FloatSize& presentationSize, const String& trackId)
+MediaSampleMorphOS::MediaSampleMorphOS(RefPtr<Acinerella::AcinerellaPackage>& sample, const FloatSize& presentationSize, TrackID trackId)
     : m_pts(MediaTime::zeroTime())
     , m_dts(MediaTime::zeroTime())
     , m_duration(MediaTime::zeroTime())
@@ -57,7 +58,7 @@ void MediaSampleMorphOS::setTimestamps(const MediaTime& pts, const MediaTime& dt
 	m_dts = dts;
 }
 
-PlatformSample MediaSampleMorphOS::platformSample()
+PlatformSample MediaSampleMorphOS::platformSample() const
 {
 	PlatformSample sample = { PlatformSample::MorphOSSampleType, { .mosSample = m_sample.get() } };
 	return sample;

@@ -25,39 +25,50 @@
 
 #pragma once
 
-#if ENABLE(SERVICE_WORKER)
-
-#include "DataReference.h"
+#include "DownloadID.h"
 #include <WebCore/FetchIdentifier.h>
 #include <WebCore/ResourceRequest.h>
-#include <WebCore/ServiceWorkerClientIdentifier.h>
+#include <WebCore/ScriptExecutionContextIdentifier.h>
 #include <WebCore/ServiceWorkerTypes.h>
 #include <WebCore/Timer.h>
 #include <pal/SessionID.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 class ResourceError;
 class ResourceRequest;
 class ResourceResponse;
+class SWServerRegistration;
 }
 
 namespace IPC {
 class Connection;
 class Decoder;
 class FormDataReference;
+class SharedBufferReference;
+}
+
+namespace WebCore {
+class NetworkLoadMetrics;
 }
 
 namespace WebKit {
-
+class DownloadManager;
 class NetworkResourceLoader;
+class NetworkSession;
+class ServiceWorkerNavigationPreloader;
 class WebSWServerConnection;
 class WebSWServerToContextConnection;
 
-class ServiceWorkerFetchTask : public CanMakeWeakPtr<ServiceWorkerFetchTask> {
-    WTF_MAKE_FAST_ALLOCATED;
+class ServiceWorkerFetchTask : public RefCounted<ServiceWorkerFetchTask>, public CanMakeWeakPtr<ServiceWorkerFetchTask> {
+    WTF_MAKE_TZONE_ALLOCATED(ServiceWorkerFetchTask);
 public:
-    ServiceWorkerFetchTask(WebSWServerConnection&, NetworkResourceLoader&, WebCore::ResourceRequest&&, WebCore::SWServerConnectionIdentifier, WebCore::ServiceWorkerIdentifier, WebCore::ServiceWorkerRegistrationIdentifier, bool shouldSoftUpdate);
+    static RefPtr<ServiceWorkerFetchTask> fromNavigationPreloader(WebSWServerConnection&, NetworkResourceLoader&, const WebCore::ResourceRequest&, NetworkSession*);
+
+    static Ref<ServiceWorkerFetchTask> create(WebSWServerConnection&, NetworkResourceLoader&, WebCore::ResourceRequest&&, WebCore::SWServerConnectionIdentifier, WebCore::ServiceWorkerIdentifier, WebCore::SWServerRegistration&, NetworkSession*, bool isWorkerReady);
+    static Ref<ServiceWorkerFetchTask> create(WebSWServerConnection&, NetworkResourceLoader&, std::unique_ptr<ServiceWorkerNavigationPreloader>&&);
+
     ~ServiceWorkerFetchTask();
 
     void start(WebSWServerToContextConnection&);
@@ -75,37 +86,59 @@ public:
     void cannotHandle();
     void contextClosed();
 
+    bool convertToDownload(DownloadManager&, DownloadID, const WebCore::ResourceRequest&, const WebCore::ResourceResponse&);
+
+    MonotonicTime startTime() const;
+
 private:
+    ServiceWorkerFetchTask(WebSWServerConnection&, NetworkResourceLoader&, WebCore::ResourceRequest&&, WebCore::SWServerConnectionIdentifier, WebCore::ServiceWorkerIdentifier, WebCore::SWServerRegistration&, NetworkSession*, bool isWorkerReady);
+    ServiceWorkerFetchTask(WebSWServerConnection&, NetworkResourceLoader&, std::unique_ptr<ServiceWorkerNavigationPreloader>&&);
+
+    enum class ShouldSetSource : bool { No, Yes };
     void didReceiveRedirectResponse(WebCore::ResourceResponse&&);
     void didReceiveResponse(WebCore::ResourceResponse&&, bool needsContinueDidReceiveResponseMessage);
-    void didReceiveData(const IPC::DataReference&, int64_t encodedDataLength);
+    void didReceiveData(const IPC::SharedBufferReference&, uint64_t encodedDataLength);
+    void didReceiveDataFromPreloader(const WebCore::FragmentedSharedBuffer&, uint64_t encodedDataLength);
     void didReceiveFormData(const IPC::FormDataReference&);
-    void didFinish();
+    void didFinish(const WebCore::NetworkLoadMetrics&);
     void didFail(const WebCore::ResourceError&);
     void didNotHandle();
+    void usePreload();
+
+    void processRedirectResponse(WebCore::ResourceResponse&&, ShouldSetSource);
+    void processResponse(WebCore::ResourceResponse&&, bool needsContinueDidReceiveResponseMessage, ShouldSetSource);
 
     void startFetch();
 
     void timeoutTimerFired();
     void softUpdateIfNeeded();
+    void loadResponseFromPreloader();
+    void loadBodyFromPreloader();
+    void cancelPreloadIfNecessary();
+    NetworkSession* session();
+    void preloadResponseIsReady();
+
+    void workerClosed();
 
     template<typename Message> bool sendToServiceWorker(Message&&);
     template<typename Message> bool sendToClient(Message&&);
 
+    RefPtr<NetworkResourceLoader> protectedLoader() const;
+
     WeakPtr<WebSWServerConnection> m_swServerConnection;
-    NetworkResourceLoader& m_loader;
+    WeakPtr<NetworkResourceLoader> m_loader;
     WeakPtr<WebSWServerToContextConnection> m_serviceWorkerConnection;
     WebCore::FetchIdentifier m_fetchIdentifier;
     WebCore::SWServerConnectionIdentifier m_serverConnectionIdentifier;
     WebCore::ServiceWorkerIdentifier m_serviceWorkerIdentifier;
     WebCore::ResourceRequest m_currentRequest;
-    WebCore::Timer m_timeoutTimer;
+    std::unique_ptr<WebCore::Timer> m_timeoutTimer;
+    WebCore::ServiceWorkerRegistrationIdentifier m_serviceWorkerRegistrationIdentifier;
+    std::unique_ptr<ServiceWorkerNavigationPreloader> m_preloader;
     bool m_wasHandled { false };
     bool m_isDone { false };
-    WebCore::ServiceWorkerRegistrationIdentifier m_serviceWorkerRegistrationIdentifier;
     bool m_shouldSoftUpdate { false };
+    bool m_isLoadingFromPreloader { false };
 };
 
 }
-
-#endif // ENABLE(SERVICE_WORKER)

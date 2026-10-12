@@ -25,21 +25,35 @@
 
 #pragma once
 
-namespace TestWebKitAPI {
-namespace Util {
+#include "WTFTestUtilities.h"
+
+#include <wtf/Seconds.h>
+
+namespace TestWebKitAPI::Util {
 
 // Runs a platform runloop until the 'done' flag is true.
 void run(bool* done);
 
 // Runs a platform runloop until the 'done' flag is true, or until the amount of seconds has passed.
 // Returns true if exiting due to the 'done' flag becoming true, or false if exiting due to a timeout.
-bool runFor(bool* done, double seconds);
+bool runFor(bool* done, Seconds duration);
+
+// Runs a platform runloop until the amount of seconds has passed.
+void runFor(Seconds duration);
 
 // Runs a platform runloop `count` number of spins.
 void spinRunLoop(uint64_t count = 1);
 
-// Runs a platform runloop until the amount of seconds has passed.
-void sleep(double seconds);
+// Waits for 'c' to return true by repeatedly running the platform runloop for 100ms, up to 'maxTries'.
+template <typename Callable>
+void waitFor(Callable&& c, size_t maxTries = 100)
+{
+    size_t tries = 0;
+    do {
+        if (c())
+            break;
+        TestWebKitAPI::Util::runFor(0.1_s);
+    } while (++tries <= maxTries);
+}
 
-} // namespace Util
-} // namespace TestWebKitAPI
+} // namespace TestWebKitAPI::Util

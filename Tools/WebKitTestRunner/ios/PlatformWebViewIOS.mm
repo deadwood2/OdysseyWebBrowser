@@ -28,7 +28,7 @@
 
 #import "TestController.h"
 #import "TestRunnerWKWebView.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <WebKit/WKImageCG.h>
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKSnapshotConfiguration.h>
@@ -91,7 +91,10 @@ static Vector<WebKitTestRunnerWindow *> allWindows;
     [super dealloc];
 }
 
+// FIXME: <https://webkit.org/b/255832> Is this override really necessary?
+ALLOW_DEPRECATED_IMPLEMENTATIONS_BEGIN
 - (void)setFrameOrigin:(CGPoint)point
+ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 {
     _fakeOrigin = point;
 }
@@ -148,6 +151,13 @@ static CGRect viewRectForWindowRect(CGRect, PlatformWebView::WebViewSizingMode);
     return layoutMargins;
 }
 
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    if (TestRunnerWKWebView *view = WTR::TestController::singleton().mainWebView() ? WTR::TestController::singleton().mainWebView()->platformView() : nullptr)
+        return view.supportedInterfaceOrientations;
+    return UIInterfaceOrientationMaskAll;
+}
+
 - (void)viewWillTransitionToSize:(CGSize)toSize withTransitionCoordinator:(id <UIViewControllerTransitionCoordinator>)coordinator
 {
     [super viewWillTransitionToSize:toSize withTransitionCoordinator:coordinator];
@@ -166,7 +176,7 @@ static CGRect viewRectForWindowRect(CGRect, PlatformWebView::WebViewSizingMode);
         if (webView.usesSafariLikeRotation) {
             [webView _beginAnimatedResizeWithUpdates:^{
                 webView.frame = viewRectForWindowRect(self.view.bounds, WTR::PlatformWebView::WebViewSizingMode::HeightRespectsStatusBar);
-                [webView _overrideLayoutParametersWithMinimumLayoutSize:webView.frame.size maximumUnobscuredSizeOverride:webView.frame.size];
+                [webView _overrideLayoutParametersWithMinimumLayoutSize:webView.frame.size minimumUnobscuredSizeOverride:webView.frame.size maximumUnobscuredSizeOverride:webView.frame.size];
                 [webView _setInterfaceOrientationOverride:[[UIApplication sharedApplication] statusBarOrientation]];
             }];
         } else
@@ -203,7 +213,7 @@ static CGRect viewRectForWindowRect(CGRect windowRect, PlatformWebView::WebViewS
     return CGRectMake(windowRect.origin.x, windowRect.origin.y + statusBarBottom, windowRect.size.width, windowRect.size.height - (mode == PlatformWebView::WebViewSizingMode::HeightRespectsStatusBar ? statusBarBottom : 0));
 }
 
-PlatformWebView::PlatformWebView(WKWebViewConfiguration* configuration, const TestOptions& options)
+PlatformWebView::PlatformWebView(WKPageConfigurationRef configuration, const TestOptions& options)
     : m_windowIsKey(true)
     , m_options(options)
 {
@@ -217,7 +227,7 @@ PlatformWebView::PlatformWebView(WKWebViewConfiguration* configuration, const Te
     [webViewController setHorizontalSystemMinimumLayoutMargin:options.horizontalSystemMinimumLayoutMargin()];
     [m_window setRootViewController:webViewController.get()];
 
-    m_view = [[TestRunnerWKWebView alloc] initWithFrame:viewRectForWindowRect(rect, WebViewSizingMode::Default) configuration:configuration];
+    m_view = [[TestRunnerWKWebView alloc] initWithFrame:viewRectForWindowRect(rect, WebViewSizingMode::Default) configuration:(__bridge WKWebViewConfiguration *)configuration];
 
     [m_window.rootViewController.view addSubview:m_view];
     [m_view becomeFirstResponder];
@@ -228,6 +238,7 @@ PlatformWebView::~PlatformWebView()
 {
     m_window.platformWebView = nil;
     [m_view release];
+    [m_window setHidden:YES];
     [m_window release];
 }
 
@@ -389,24 +400,29 @@ RetainPtr<CGImageRef> PlatformWebView::windowSnapshotImage()
     RELEASE_ASSERT(viewSize.width);
     RELEASE_ASSERT(viewSize.height);
 
+#if !HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
     UIView *selectionView = [platformView().contentView valueForKeyPath:@"interactionAssistant.selectionView"];
     UIView *startGrabberView = [selectionView valueForKeyPath:@"rangeView.startGrabber"];
     UIView *endGrabberView = [selectionView valueForKeyPath:@"rangeView.endGrabber"];
     Vector<WeakObjCPtr<UIView>, 3> viewsToUnhide;
     if (![selectionView isHidden]) {
         [selectionView setHidden:YES];
-        viewsToUnhide.uncheckedAppend(selectionView);
+        viewsToUnhide.append(selectionView);
     }
 
     if (![startGrabberView isHidden]) {
         [startGrabberView setHidden:YES];
-        viewsToUnhide.uncheckedAppend(startGrabberView);
+        viewsToUnhide.append(startGrabberView);
     }
 
     if (![endGrabberView isHidden]) {
         [endGrabberView setHidden:YES];
-        viewsToUnhide.uncheckedAppend(endGrabberView);
+        viewsToUnhide.append(endGrabberView);
     }
+#else
+    UITextSelectionDisplayInteraction *interaction = [platformView().contentView valueForKeyPath:@"interactionAssistant._selectionViewManager"];
+    interaction.activated = NO;
+#endif
 
     __block bool isDone = false;
     __block RetainPtr<CGImageRef> result;
@@ -427,8 +443,12 @@ RetainPtr<CGImageRef> PlatformWebView::windowSnapshotImage()
     while (!isDone)
         [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]];
 
+#if !HAVE(UI_TEXT_SELECTION_DISPLAY_INTERACTION)
     for (auto view : viewsToUnhide)
         [view setHidden:NO];
+#else
+    interaction.activated = YES;
+#endif
 
     return result;
 }
@@ -436,6 +456,11 @@ RetainPtr<CGImageRef> PlatformWebView::windowSnapshotImage()
 void PlatformWebView::setNavigationGesturesEnabled(bool enabled)
 {
     [platformView() setAllowsBackForwardNavigationGestures:enabled];
+}
+
+bool PlatformWebView::isSecureEventInputEnabled() const
+{
+    return false;
 }
 
 } // namespace WTR

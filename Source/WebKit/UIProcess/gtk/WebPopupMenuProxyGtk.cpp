@@ -169,17 +169,17 @@ void WebPopupMenuProxyGtk::createPopupMenu(const Vector<WebPopupItem>& items, in
     for (const auto& item : items) {
         if (item.m_isLabel) {
             gtk_tree_store_insert_with_values(model.get(), &parentIter, nullptr, -1,
-                Columns::Label, item.m_text.stripWhiteSpace().utf8().data(),
+                Columns::Label, item.m_text.trim(deprecatedIsSpaceOrNewline).utf8().data(),
                 Columns::IsGroup, TRUE,
                 Columns::IsEnabled, TRUE,
                 -1);
             // We never need the path for group labels.
-            m_paths.uncheckedAppend(nullptr);
+            m_paths.append(nullptr);
         } else {
             GtkTreeIter iter;
             bool isSelected = selectedIndex && static_cast<unsigned>(selectedIndex) == index;
-            gtk_tree_store_insert_with_values(model.get(), &iter, item.m_text.startsWith("    ") ? &parentIter : nullptr, -1,
-                Columns::Label, item.m_text.stripWhiteSpace().utf8().data(),
+            gtk_tree_store_insert_with_values(model.get(), &iter, item.m_text.startsWith("    "_s) ? &parentIter : nullptr, -1,
+                Columns::Label, item.m_text.trim(deprecatedIsSpaceOrNewline).utf8().data(),
                 Columns::Tooltip, item.m_toolTip.isEmpty() ? nullptr : item.m_toolTip.utf8().data(),
                 Columns::IsGroup, FALSE,
                 Columns::IsSelected, isSelected,
@@ -190,7 +190,7 @@ void WebPopupMenuProxyGtk::createPopupMenu(const Vector<WebPopupItem>& items, in
                 ASSERT(!m_selectedItem);
                 m_selectedItem = index;
             }
-            m_paths.uncheckedAppend(GUniquePtr<GtkTreePath>(gtk_tree_model_get_path(GTK_TREE_MODEL(model.get()), &iter)));
+            m_paths.append(GUniquePtr<GtkTreePath>(gtk_tree_model_get_path(GTK_TREE_MODEL(model.get()), &iter)));
         }
         index++;
     }
@@ -412,6 +412,7 @@ void WebPopupMenuProxyGtk::hidePopupMenu()
     }
 
 #if USE(GTK4)
+    gtk_popover_popdown(GTK_POPOVER(m_popup));
     g_clear_pointer(&m_popup, gtk_widget_unparent);
 #else
     gtk_widget_destroy(m_popup);

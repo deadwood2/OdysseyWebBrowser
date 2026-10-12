@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -33,6 +33,18 @@ class TestContributor(unittest.TestCase):
 
         self.assertEqual(contributor.name, 'Jonathan Bedard')
         self.assertEqual(contributor.emails, ['jbedard@apple.com'])
+
+    def test_double_git_log(self):
+        contributor = Contributor.from_scm_log('Author: Jonathan Bedard <jbedard@apple.com, jbedard@webkit.org>')
+
+        self.assertEqual(contributor.name, 'Jonathan Bedard')
+        self.assertEqual(contributor.emails, ['jbedard@apple.com', 'jbedard@webkit.org'])
+
+    def test_triple_git_log(self):
+        contributor = Contributor.from_scm_log('Author: Jonathan Bedard <jbedard@apple.com, jbedard@webkit.org, admin@webkit.org>')
+
+        self.assertEqual(contributor.name, 'Jonathan Bedard')
+        self.assertEqual(contributor.emails, ['jbedard@apple.com', 'jbedard@webkit.org', 'admin@webkit.org'])
 
     def test_git_svn_log(self):
         contributor = Contributor.from_scm_log('Author: Jonathan Bedard <jbedard@apple.com@268f45cc-cd09-0410-ab3c-d52691b4dbfc>')
@@ -96,6 +108,8 @@ class TestContributor(unittest.TestCase):
             Contributor('Jonathan Bedard', ['jbedard@apple.com']),
             Contributor('Aakash Jain', ['aakashjain@apple.com']),
         )
+
+        self.assertNotEqual(Contributor('Jonathan Bedard', ['jbedard@apple.com']), None)
 
     def test_string_comparison(self):
         self.assertEqual(
@@ -173,3 +187,49 @@ class TestContributor(unittest.TestCase):
         self.assertEqual(mapping_a['jbedard@apple.com'], mapping_b['jbedard@apple.com'])
         self.assertEqual(mapping_a['jbedard@apple.com'], mapping_b['JonWBedard'])
         self.assertEqual(mapping_a['slewis@apple.com'], mapping_b['slewis@apple.com'])
+
+    def test_iteration(self):
+        mapping = Contributor.Mapping()
+        mapping.create('Jonathan Bedard', 'jbedard@apple.com')
+        mapping.create('Stephanie Lewis', 'slewis@apple.com')
+
+        self.assertEqual(
+            sorted(['jbedard@apple.com', 'slewis@apple.com']),
+            sorted([contributor.email for contributor in mapping]),
+        )
+
+    def test_github(self):
+        mapping = Contributor.Mapping()
+        mapping.create(
+            'Jonathan Bedard', 'jbedard@apple.com',
+            github='JonWBedard',
+        )
+        mapping.create(
+            'Jonathan Bedard', 'jbedard@apple.com',
+            github='JonWBedard',
+        )
+        mapping.create(
+            'Kocsen Chung', 'kocsen_chung@apple.com',
+            github='kocsenc',
+        )
+
+        self.assertEqual(mapping['JonWBedard'], mapping['jbedard@apple.com'])
+        self.assertEqual(mapping['kocsenc'], mapping['kocsen_chung@apple.com'])
+        self.assertEqual(mapping['jbedard@apple.com'].github, 'JonWBedard')
+        self.assertEqual(mapping['kocsen_chung@apple.com'].github, 'kocsenc')
+
+    def test_bitbucket(self):
+        mapping = Contributor.Mapping()
+        mapping.create(
+            'Jonathan Bedard', 'jbedard@apple.com',
+            bitbucket='jonathan_bedard',
+        )
+        mapping.create(
+            'Kocsen Chung', 'kocsen_chung@apple.com',
+            bitbucket='kocsen_chung',
+        )
+
+        self.assertEqual(mapping['jonathan_bedard'], mapping['jbedard@apple.com'])
+        self.assertEqual(mapping['kocsen_chung'], mapping['kocsen_chung@apple.com'])
+        self.assertEqual(mapping['jbedard@apple.com'].bitbucket, 'jonathan_bedard')
+        self.assertEqual(mapping['kocsen_chung@apple.com'].bitbucket, 'kocsen_chung')

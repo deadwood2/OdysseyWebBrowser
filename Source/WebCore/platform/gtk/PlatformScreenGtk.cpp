@@ -33,52 +33,40 @@
 
 #include "DestinationColorSpace.h"
 #include "FloatRect.h"
-#include "FrameView.h"
-#include "GtkUtilities.h"
 #include "HostWindow.h"
-#include "NotImplemented.h"
+#include "LocalFrameView.h"
+#include "ScreenProperties.h"
 #include "Widget.h"
-
-#include <cmath>
 #include <gtk/gtk.h>
-#include <wtf/HashMap.h>
-#include <wtf/HashSet.h>
-#include <wtf/NeverDestroyed.h>
-#include <wtf/glib/GUniquePtr.h>
 
 namespace WebCore {
 
-#if !USE(GTK4)
-static GdkVisual* systemVisual()
+static PlatformDisplayID widgetDisplayID(Widget* widget)
 {
-    if (auto* screen = gdk_screen_get_default())
-        return gdk_screen_get_system_visual(screen);
+    if (!widget)
+        return 0;
 
-    return nullptr;
-}
-#endif
+    auto* view = widget->root();
+    if (!view)
+        return 0;
 
-int screenDepth(Widget*)
-{
-#if !USE(GTK4)
-    if (auto* visual = systemVisual())
-        return gdk_visual_get_depth(visual);
-#endif
+    auto* hostWindow = view->hostWindow();
+    if (!hostWindow)
+        return 0;
 
-    return 24;
+    return hostWindow->displayID();
 }
 
-int screenDepthPerComponent(Widget*)
+int screenDepth(Widget* widget)
 {
-#if !USE(GTK4)
-    if (auto* visual = systemVisual()) {
-        int redDepth;
-        gdk_visual_get_red_pixel_details(visual, nullptr, nullptr, &redDepth);
-        return redDepth;
-    }
-#endif
+    auto* data = screenData(widgetDisplayID(widget));
+    return data ? data->screenDepth : 24;
+}
 
-    return 8;
+int screenDepthPerComponent(Widget* widget)
+{
+    auto* data = screenData(widgetDisplayID(widget));
+    return data ? data->screenDepthPerComponent : 8;
 }
 
 bool screenIsMonochrome(Widget* widget)
@@ -96,15 +84,15 @@ bool screenHasInvertedColors()
     return false;
 }
 
-double screenDPI()
+double fontDPI()
 {
-    static const double defaultDpi = 96;
 #if !USE(GTK4)
-    GdkScreen* screen = gdk_screen_get_default();
-    if (screen) {
-        double dpi = gdk_screen_get_resolution(screen);
-        if (dpi != -1)
-            return dpi;
+    // The code in this conditionally-compiled block is needed in order to
+    // respect the GDK_DPI_SCALE setting that was present in GTK3 as an
+    // additional font scaling factor.
+    if (auto* display = gdk_display_get_default()) {
+        if (auto* screen = gdk_display_get_default_screen(display))
+            return gdk_screen_get_resolution(screen);
     }
 #endif
 
@@ -115,107 +103,29 @@ double screenDPI()
         return gtkXftDpi / 1024.0;
     }
 
-    static double cachedDpi = 0;
-    if (cachedDpi)
-        return cachedDpi;
-
-    static const double millimetresPerInch = 25.4;
-
-    GdkDisplay* display = gdk_display_get_default();
-    if (!display)
-        return defaultDpi;
-#if USE(GTK4)
-    GdkMonitor* monitor = GDK_MONITOR(g_list_model_get_item(gdk_display_get_monitors(display), 0));
-#else
-    GdkMonitor* monitor = gdk_display_get_monitor(display, 0);
-#endif
-    if (!monitor)
-        return defaultDpi;
-
-    GdkRectangle geometry;
-    gdk_monitor_get_geometry(monitor, &geometry);
-    double diagonalInPixels = std::hypot(geometry.width, geometry.height);
-    double diagonalInInches = std::hypot(gdk_monitor_get_width_mm(monitor), gdk_monitor_get_height_mm(monitor)) / millimetresPerInch;
-    cachedDpi = diagonalInPixels / diagonalInInches;
-
-    return cachedDpi;
+    auto* data = screenData(primaryScreenDisplayID());
+    return data ? data->dpi : 96.;
 }
 
-static WTF::HashMap<void*, Function<void()>>& screenDPIObserverHandlersMap()
+double screenDPI(PlatformDisplayID screendisplayID)
 {
-    static WTF::NeverDestroyed<WTF::HashMap<void*, Function<void()>>> handlersMap;
-    return handlersMap;
-}
-
-static void gtkXftDPIChangedCallback()
-{
-    for (const auto& keyValuePair : screenDPIObserverHandlersMap())
-        keyValuePair.value();
-}
-
-void setScreenDPIObserverHandler(Function<void()>&& handler, void* context)
-{
-    static GtkSettings* gtkSettings = gtk_settings_get_default();
-    static unsigned long gtkXftDpiChangedHandlerID = 0;
-
-    if (!gtkSettings)
-        return;
-
-    if (handler)
-        screenDPIObserverHandlersMap().set(context, WTFMove(handler));
-    else
-        screenDPIObserverHandlersMap().remove(context);
-
-    if (!screenDPIObserverHandlersMap().isEmpty()) {
-        if (!gtkXftDpiChangedHandlerID)
-            gtkXftDpiChangedHandlerID = g_signal_connect(gtkSettings, "notify::gtk-xft-dpi", G_CALLBACK(gtkXftDPIChangedCallback), nullptr);
-    } else if (gtkXftDpiChangedHandlerID) {
-        g_signal_handler_disconnect(gtkSettings, gtkXftDpiChangedHandlerID);
-        gtkXftDpiChangedHandlerID = 0;
-    }
-}
-
-static GRefPtr<GdkMonitor> currentScreenMonitor()
-{
-    GdkDisplay* display = gdk_display_get_default();
-    if (!display)
-        return nullptr;
-
-#if USE(GTK4)
-    return adoptGRef(static_cast<GdkMonitor*>(g_list_model_get_item(gdk_display_get_monitors(display), 0)));
-#else
-    auto* rootWindow = gdk_get_default_root_window();
-    if (!rootWindow)
-        return nullptr;
-
-    return gdk_display_get_monitor_at_window(display, rootWindow);
-#endif
+    auto* data = screenData(screendisplayID);
+    return data ? data->dpi : 96.;
 }
 
 
-FloatRect screenRect(Widget*)
+FloatRect screenRect(Widget* widget)
 {
-    GdkRectangle geometry;
-
-    auto monitor = currentScreenMonitor();
-    if (!monitor)
-        return { };
-
-    gdk_monitor_get_geometry(monitor.get(), &geometry);
-
-    return FloatRect(geometry.x, geometry.y, geometry.width, geometry.height);
+    if (auto* data = screenData(widgetDisplayID(widget)))
+        return data->screenRect;
+    return { };
 }
 
-FloatRect screenAvailableRect(Widget*)
+FloatRect screenAvailableRect(Widget* widget)
 {
-    auto monitor = currentScreenMonitor();
-    if (!monitor)
-        return { };
-
-    GdkRectangle workArea;
-    monitorWorkArea(monitor.get(), &workArea);
-
-    return FloatRect(workArea.x, workArea.y, workArea.width, workArea.height);
+    if (auto* data = screenData(widgetDisplayID(widget)))
+        return data->screenAvailableRect;
+    return { };
 }
 
 bool screenSupportsExtendedColor(Widget*)

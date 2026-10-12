@@ -29,8 +29,10 @@
 #include <JavaScriptCore/InspectorAgentRegistry.h>
 #include <JavaScriptCore/InspectorTargetAgent.h>
 #include <WebCore/PageIdentifier.h>
+#include <wtf/CheckedRef.h>
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/text/WTFString.h>
 
 namespace Inspector {
@@ -45,8 +47,8 @@ class InspectorBrowserAgent;
 struct WebPageAgentContext;
 
 class WebPageInspectorController {
+    WTF_MAKE_TZONE_ALLOCATED(WebPageInspectorController);
     WTF_MAKE_NONCOPYABLE(WebPageInspectorController);
-    WTF_MAKE_FAST_ALLOCATED;
 public:
     WebPageInspectorController(WebPageProxy&);
 
@@ -83,6 +85,7 @@ public:
     void browserExtensionsDisabled(HashSet<String>&&);
 
 private:
+    Ref<WebPageProxy> protectedInspectedPage();
     WebPageAgentContext webPageAgentContext();
     void createLazyAgents();
 
@@ -92,12 +95,12 @@ private:
     Ref<Inspector::BackendDispatcher> m_backendDispatcher;
     Inspector::AgentRegistry m_agents;
 
-    WebPageProxy& m_inspectedPage;
+    WeakRef<WebPageProxy> m_inspectedPage;
 
     Inspector::InspectorTargetAgent* m_targetAgent { nullptr };
     HashMap<String, std::unique_ptr<InspectorTargetProxy>> m_targets;
 
-    InspectorBrowserAgent* m_enabledBrowserAgent;
+    InspectorBrowserAgent* m_enabledBrowserAgent { nullptr };
 
     bool m_didCreateLazyAgents { false };
 };

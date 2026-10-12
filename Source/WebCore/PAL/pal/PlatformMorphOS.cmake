@@ -2,6 +2,7 @@ list(APPEND PAL_PUBLIC_HEADERS
     crypto/gcrypt/Handle.h
     crypto/gcrypt/Initialization.h
     crypto/gcrypt/Utilities.h
+    crypto/tasn1/Utilities.h
 )
 
 list(APPEND PAL_SOURCES
@@ -14,17 +15,8 @@ list(APPEND PAL_SOURCES
     text/KillRing.cpp
 
     unix/LoggingUnix.cpp
+    crypto/tasn1/Utilities.cpp
 )
-
-if (ENABLE_WEB_CRYPTO)
-    list(APPEND PAL_PUBLIC_HEADERS
-        crypto/tasn1/Utilities.h
-    )
-
-    list(APPEND PAL_SOURCES
-        crypto/tasn1/Utilities.cpp
-    )
-endif ()
 
 list(APPEND PAL_SYSTEM_INCLUDE_DIRECTORIES ${OPENSSL_INCLUDE_DIR})
 

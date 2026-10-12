@@ -28,6 +28,7 @@
 
 #include "JSDOMBinding.h"
 #include "JSNode.h"
+#include "WebCoreOpaqueRoot.h"
 
 namespace JSC {
 namespace JSCastingHelpers {
@@ -37,9 +38,9 @@ struct InheritsTraits<WebCore::JSNode> {
     static constexpr std::optional<JSTypeRange> typeRange { { static_cast<JSType>(WebCore::JSNodeType), static_cast<JSType>(WebCore::JSNodeType + WebCore::JSNodeTypeMask) } };
     static_assert(std::numeric_limits<uint8_t>::max() == typeRange->last);
     template<typename From>
-    static inline bool inherits(VM& vm, From* from)
+    static inline bool inherits(From* from)
     {
-        return inheritsJSTypeImpl<WebCore::JSNode>(vm, from, *typeRange);
+        return inheritsJSTypeImpl<WebCore::JSNode>(from, *typeRange);
     }
 };
 
@@ -68,27 +69,16 @@ inline JSC::JSValue toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSDOMGlobalOb
 // root. In the JavaScript DOM, a node tree survives as long as there is a
 // reference to any node in the tree. To model the JavaScript DOM on top of
 // the C++ DOM, we ensure that the root of every tree has a JavaScript wrapper.
-void willCreatePossiblyOrphanedTreeByRemovalSlowCase(Node* root);
-inline void willCreatePossiblyOrphanedTreeByRemoval(Node* root)
+void willCreatePossiblyOrphanedTreeByRemovalSlowCase(Node& root);
+inline void willCreatePossiblyOrphanedTreeByRemoval(Node& root)
 {
-    if (root->wrapper())
-        return;
-
-    if (!root->hasChildNodes())
-        return;
-
-    willCreatePossiblyOrphanedTreeByRemovalSlowCase(root);
+    if (!root.wrapper() && root.hasChildNodes())
+        willCreatePossiblyOrphanedTreeByRemovalSlowCase(root);
 }
 
-inline void* root(Node* node)
-{
-    return node ? node->opaqueRoot() : nullptr;
-}
-
-inline void* root(Node& node)
-{
-    return root(&node);
-}
+inline WebCoreOpaqueRoot root(Node&);
+inline WebCoreOpaqueRoot root(Node*);
+inline WebCoreOpaqueRoot root(Document*);
 
 ALWAYS_INLINE JSC::JSValue JSNode::nodeType(JSC::JSGlobalObject&) const
 {

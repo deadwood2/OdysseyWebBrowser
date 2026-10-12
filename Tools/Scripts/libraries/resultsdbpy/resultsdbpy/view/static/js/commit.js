@@ -142,6 +142,10 @@ class Commit {
         this.branch = json.branch;
         this.message = json.message;
 
+        //FIXME: Need to create a more general solution for tracking bugs  
+        this.bugUrls = json.message.match(/\b(https?):\/{2}[^\s<>&]+[^\.\s<>&,)]/gmi);
+        this.radarUrls = json.message.match(/\b(rdar):\/{2}[^\s<>&]+[^\.\s<>&,)]/gmi);
+
         this.timestamp = json.timestamp;
         this.order = json.order;
         this.uuid = this.timestamp * TIMESTAMP_TO_UUID_MULTIPLIER + this.order;
@@ -166,13 +170,24 @@ class Commit {
 };
 
 const COOKIE_NAME = 'commitRepresentation';
+let _banks = {};
 
 class _CommitBank {
+    forBranch(branch) {
+        let key = branch ? branch : 'main';
+        if (!_banks[key]) {
+            _banks[key] = new _CommitBank();
+            _banks[key]._branches = new Set([branch]);
+            _banks[key]._branchOverride = true;
+        }
+        return _banks[key];
+    }
     constructor() {
         this.commits = [];
 
         const params = queryToParams(document.URL.split('?')[1]);
 
+        this._branchOverride = false;
         this._branches = new Set(params.branch);
         this._repositories = new Set(params.repository_id);
         this._beginUuid = null;
@@ -191,8 +206,11 @@ class _CommitBank {
                 continue;
 
             this._representationCache = JSON.parse(cookies[index].substring(COOKIE_NAME.length + 1));
-            callback(this._representationCache);
-            return;
+            if (!this._representationCache.error) {
+                callback(this._representationCache);
+                return;
+            }
+            this._representationCache = null;
         }
 
         fetch('api/commits/representations').then(response => {
@@ -219,7 +237,8 @@ class _CommitBank {
         document.cookie = `${COOKIE_NAME}=${JSON.stringify(this._representationCache)}`;
     }
     latest(params) {
-        this._branches = new Set(params.branch);
+        if (!this._branchOverride)
+            this._branches = new Set(params.branch);
         this._repositories = new Set(params.repository_id);
         this._beginUuid = null;
         this._endUuid = null;
@@ -471,6 +490,25 @@ class _CommitBank {
         if (this._endUuid && endUuid > this._endUuid)
             promises.push(this._load(this._endUuid, endUuid));
         return Promise.all(promises);
+    }
+    addCommit(ref) {
+        const query = paramsToQuery({
+            branch: [...this._branches],
+            ref: [ref],
+        });
+
+        return fetch(`api/commits?${query}`).then(response => {
+            let self = this;
+            response.json().then(json => {
+                for (const commit of json) {
+                    const uuid = commit.timestamp * 100 + commit.order;
+                    self.add(uuid, uuid);
+                }
+            });
+        }).catch(error => {
+            // If the load fails, log the error and continue
+            console.error(JSON.stringify(error, null, 4));
+        });
     }
     reload() {
         let needReload = false;

@@ -33,16 +33,16 @@ class HTMLAllCollection final : public AllDescendantsCollection {
 public:
     static Ref<HTMLAllCollection> create(Document&, CollectionType);
 
-    std::optional<Variant<RefPtr<HTMLCollection>, RefPtr<Element>>> namedOrIndexedItemOrItems(const AtomString& nameOrIndex) const;
-    std::optional<Variant<RefPtr<HTMLCollection>, RefPtr<Element>>> namedItemOrItems(const AtomString&) const;
+    std::optional<std::variant<RefPtr<HTMLCollection>, RefPtr<Element>>> namedOrIndexedItemOrItems(const AtomString& nameOrIndex) const;
+    std::optional<std::variant<RefPtr<HTMLCollection>, RefPtr<Element>>> namedItemOrItems(const AtomString&) const;
 
 private:
     HTMLAllCollection(Document&, CollectionType);
 };
-static_assert(sizeof(HTMLAllCollection) == sizeof(AllDescendantsCollection), "");
+static_assert(sizeof(HTMLAllCollection) == sizeof(AllDescendantsCollection));
 
 class HTMLAllNamedSubCollection final : public CachedHTMLCollection<HTMLAllNamedSubCollection, CollectionTraversalType::Descendants> {
-    WTF_MAKE_ISO_ALLOCATED(HTMLAllNamedSubCollection);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLAllNamedSubCollection);
 public:
     static Ref<HTMLAllNamedSubCollection> create(Document& document, CollectionType type, const AtomString& name)
     {
@@ -53,17 +53,12 @@ public:
     bool elementMatches(Element&) const;
 
 private:
-    HTMLAllNamedSubCollection(Document& document, CollectionType type, const AtomString& name)
-        : CachedHTMLCollection(document, type)
-        , m_name(name)
-    {
-        ASSERT(type == DocumentAllNamedItems);
-    }
+    HTMLAllNamedSubCollection(Document&, CollectionType, const AtomString&);
 
     AtomString m_name;
 };
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_HTMLCOLLECTION(HTMLAllCollection, DocAll)
-SPECIALIZE_TYPE_TRAITS_HTMLCOLLECTION(HTMLAllNamedSubCollection, DocumentAllNamedItems)
+SPECIALIZE_TYPE_TRAITS_HTMLCOLLECTION(HTMLAllCollection, CollectionType::DocAll)
+SPECIALIZE_TYPE_TRAITS_HTMLCOLLECTION(HTMLAllNamedSubCollection, CollectionType::DocumentAllNamedItems)

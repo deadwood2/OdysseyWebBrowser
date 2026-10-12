@@ -17,6 +17,7 @@
 #include "libANGLE/renderer/metal/mtl_format_utils.h"
 
 #include "common/debug.h"
+#include "common/utilities.h"
 
 namespace rx
 {
@@ -147,6 +148,27 @@ size_t GetVertexCount(BufferMtl *srcBuffer,
     return numVertices;
 }
 
+size_t GetVertexCountWithConversion(BufferMtl *srcBuffer,
+                                    VertexConversionBufferMtl *conversionBuffer,
+                                    const gl::VertexBinding &binding,
+                                    uint32_t srcFormatSize)
+{
+    // Bytes usable for vertex data.
+    GLint64 bytes = srcBuffer->size() -
+                    MIN(static_cast<GLintptr>(conversionBuffer->offset), binding.getOffset());
+    if (bytes < srcFormatSize)
+        return 0;
+
+    // Count the last vertex.  It may occupy less than a full stride.
+    size_t numVertices = 1;
+    bytes -= srcFormatSize;
+
+    // Count how many strides fit remaining space.
+    if (bytes > 0)
+        numVertices += static_cast<size_t>(bytes) / binding.getStride();
+
+    return numVertices;
+}
 inline size_t GetIndexCount(BufferMtl *srcBuffer, size_t offset, gl::DrawElementsType indexType)
 {
     size_t elementSize = gl::GetDrawElementsTypeSize(indexType);
@@ -160,15 +182,32 @@ inline void SetDefaultVertexBufferLayout(mtl::VertexBufferLayoutDesc *layout)
     layout->stride       = 0;
 }
 
+inline MTLVertexFormat GetCurrentAttribFormat(GLenum type)
+{
+    switch (type)
+    {
+        case GL_INT:
+        case GL_INT_VEC2:
+        case GL_INT_VEC3:
+        case GL_INT_VEC4:
+            return MTLVertexFormatInt4;
+        case GL_UNSIGNED_INT:
+        case GL_UNSIGNED_INT_VEC2:
+        case GL_UNSIGNED_INT_VEC3:
+        case GL_UNSIGNED_INT_VEC4:
+            return MTLVertexFormatUInt4;
+        default:
+            return MTLVertexFormatFloat4;
+    }
+}
+
 }  // namespace
 
 // VertexArrayMtl implementation
 VertexArrayMtl::VertexArrayMtl(const gl::VertexArrayState &state, ContextMtl *context)
     : VertexArrayImpl(state),
       mDefaultFloatVertexFormat(
-          context->getVertexFormat(angle::FormatID::R32G32B32A32_FLOAT, false)),
-      mDefaultIntVertexFormat(context->getVertexFormat(angle::FormatID::R32G32B32A32_SINT, false)),
-      mDefaultUIntVertexFormat(context->getVertexFormat(angle::FormatID::R32G32B32A32_UINT, false))
+          context->getVertexFormat(angle::FormatID::R32G32B32A32_FLOAT, false))
 {
     reset(context);
 
@@ -244,13 +283,27 @@ angle::Result VertexArrayMtl::syncState(const gl::Context *context,
     const std::vector<gl::VertexAttribute> &attribs = mState.getVertexAttributes();
     const std::vector<gl::VertexBinding> &bindings  = mState.getVertexBindings();
 
-    for (size_t dirtyBit : dirtyBits)
+    for (auto iter = dirtyBits.begin(), endIter = dirtyBits.end(); iter != endIter; ++iter)
     {
+        size_t dirtyBit = *iter;
         switch (dirtyBit)
         {
+            case gl::VertexArray::DIRTY_BIT_LOST_OBSERVATION:
+            {
+                // If vertex array was not observing while unbound, we need to check buffer's
+                // internal storage and take action if buffer has changed while not observing.
+                // For now we just simply assume buffer storage has changed and always dirty all
+                // binding points.
+                iter.setLaterBits(
+                    gl::VertexArray::DirtyBits(mState.getBufferBindingMask().to_ulong()
+                                               << gl::VertexArray::DIRTY_BIT_BINDING_0));
+                break;
+            }
+
             case gl::VertexArray::DIRTY_BIT_ELEMENT_ARRAY_BUFFER:
             case gl::VertexArray::DIRTY_BIT_ELEMENT_ARRAY_BUFFER_DATA:
             {
+                mVertexDataDirty = true;
                 break;
             }
 
@@ -278,7 +331,7 @@ angle::Result VertexArrayMtl::syncState(const gl::Context *context,
     case gl::VertexArray::DIRTY_BIT_BUFFER_DATA_0 + INDEX:                                        \
         ANGLE_TRY(syncDirtyAttrib(context, attribs[INDEX], bindings[attribs[INDEX].bindingIndex], \
                                   INDEX));                                                        \
-        mVertexArrayDirty = true;                                                                 \
+        mVertexDataDirty = true;                                                                  \
         break;
 
                 ANGLE_VERTEX_INDEX_CASES(ANGLE_VERTEX_DIRTY_BUFFER_DATA_FUNC)
@@ -290,53 +343,6 @@ angle::Result VertexArrayMtl::syncState(const gl::Context *context,
     }
 
     return angle::Result::Continue;
-}
-
-ANGLE_INLINE void VertexArrayMtl::getVertexAttribFormatAndArraySize(const sh::ShaderVariable &var,
-                                                                    MTLVertexFormat *formatOut,
-                                                                    uint32_t *arraySizeOut)
-{
-    uint32_t arraySize = var.getArraySizeProduct();
-
-    MTLVertexFormat format;
-    switch (var.type)
-    {
-        case GL_INT:
-        case GL_INT_VEC2:
-        case GL_INT_VEC3:
-        case GL_INT_VEC4:
-            format = mDefaultIntVertexFormat.metalFormat;
-            break;
-        case GL_UNSIGNED_INT:
-        case GL_UNSIGNED_INT_VEC2:
-        case GL_UNSIGNED_INT_VEC3:
-        case GL_UNSIGNED_INT_VEC4:
-            format = mDefaultUIntVertexFormat.metalFormat;
-            break;
-        case GL_FLOAT_MAT2:
-        case GL_FLOAT_MAT2x3:
-        case GL_FLOAT_MAT2x4:
-            arraySize *= 2;
-            format = mDefaultFloatVertexFormat.metalFormat;
-            break;
-        case GL_FLOAT_MAT3:
-        case GL_FLOAT_MAT3x2:
-        case GL_FLOAT_MAT3x4:
-            arraySize *= 3;
-            format = mDefaultFloatVertexFormat.metalFormat;
-            break;
-        case GL_FLOAT_MAT4:
-        case GL_FLOAT_MAT4x2:
-        case GL_FLOAT_MAT4x3:
-            arraySize *= 4;
-            format = mDefaultFloatVertexFormat.metalFormat;
-            break;
-        default:
-            format = mDefaultFloatVertexFormat.metalFormat;
-    }
-
-    *arraySizeOut = arraySize;
-    *formatOut    = format;
 }
 
 // vertexDescChanged is both input and output, the input value if is true, will force new
@@ -353,7 +359,6 @@ angle::Result VertexArrayMtl::setupDraw(const gl::Context *glContext,
 
     if (dirty)
     {
-        ContextMtl *contextMtl = mtl::GetImpl(glContext);
 
         mVertexArrayDirty = false;
         mEmulatedInstanceAttribs.clear();
@@ -361,7 +366,6 @@ angle::Result VertexArrayMtl::setupDraw(const gl::Context *glContext,
         const gl::ProgramExecutable *executable = glContext->getState().getProgramExecutable();
         const gl::AttributesMask &programActiveAttribsMask =
             executable->getActiveAttribLocationsMask();
-        const gl::ProgramState &programState = glContext->getState().getProgram()->getState();
 
         const std::vector<gl::VertexAttribute> &attribs = mState.getVertexAttributes();
         const std::vector<gl::VertexBinding> &bindings  = mState.getVertexBindings();
@@ -377,6 +381,16 @@ angle::Result VertexArrayMtl::setupDraw(const gl::Context *glContext,
             SetDefaultVertexBufferLayout(&desc.layouts[b]);
         }
 
+        // Cache vertex shader input types
+        std::array<uint8_t, mtl::kMaxVertexAttribs> currentAttribFormats{};
+        for (auto &input : executable->getProgramInputs())
+        {
+            ASSERT(input.getLocation() != -1);
+            ASSERT(input.getLocation() < static_cast<int>(mtl::kMaxVertexAttribs));
+            currentAttribFormats[input.getLocation()] = GetCurrentAttribFormat(input.getType());
+        }
+        MTLVertexFormat currentAttribFormat = MTLVertexFormatInvalid;
+
         for (uint32_t v = 0; v < mtl::kMaxVertexAttribs; ++v)
         {
             if (!programActiveAttribsMask.test(v))
@@ -391,52 +405,41 @@ angle::Result VertexArrayMtl::setupDraw(const gl::Context *glContext,
             const gl::VertexBinding &binding = bindings[attrib.bindingIndex];
 
             bool attribEnabled = attrib.enabled;
-            if (attribEnabled && !mCurrentArrayBuffers[v] && !mCurrentArrayInlineDataPointers[v])
+            if (attribEnabled &&
+                !(mCurrentArrayBuffers[v] && mCurrentArrayBuffers[v]->getCurrentBuffer()) &&
+                !mCurrentArrayInlineDataPointers[v])
             {
                 // Disable it to avoid crash.
                 attribEnabled = false;
             }
 
+            if (currentAttribFormats[v] != MTLVertexFormatInvalid)
+            {
+                currentAttribFormat = static_cast<MTLVertexFormat>(currentAttribFormats[v]);
+            }
+            else
+            {
+                // This is a non-first matrix column
+                ASSERT(currentAttribFormat != MTLVertexFormatInvalid);
+            }
+
             if (!attribEnabled)
             {
+                // Use default attribute
                 desc.attributes[v].bufferIndex = mtl::kDefaultAttribsBindingIndex;
                 desc.attributes[v].offset      = v * mtl::kDefaultAttributeSize;
-                // Need to find the attribute having the exact binding location = v in the program
-                // inputs list to retrieve its coresponding data type:
-                const std::vector<sh::ShaderVariable> &programInputs =
-                    programState.getProgramInputs();
-                std::vector<sh::ShaderVariable>::const_iterator attribInfoIte = std::find_if(
-                    begin(programInputs), end(programInputs), [v](const sh::ShaderVariable &sv) {
-                        return static_cast<uint32_t>(sv.location) <= v &&
-                               v < static_cast<uint32_t>(sv.location) +
-                                       gl::VariableAttributeCount(sv.type);
-                    });
-
-                ASSERT(attribInfoIte != end(programInputs));
-                switch (gl::VariableComponentType(attribInfoIte->type))
-                {
-                    case GL_INT:
-                        desc.attributes[v].format = mDefaultIntVertexFormat.metalFormat;
-                        break;
-                    case GL_UNSIGNED_INT:
-                        desc.attributes[v].format = mDefaultUIntVertexFormat.metalFormat;
-                        break;
-                    default:
-                        desc.attributes[v].format = mDefaultFloatVertexFormat.metalFormat;
-                }
+                desc.attributes[v].format      = currentAttribFormat;
             }
             else
             {
                 uint32_t bufferIdx    = mtl::kVboBindingIndexStart + v;
                 uint32_t bufferOffset = static_cast<uint32_t>(mCurrentArrayBufferOffsets[v]);
 
-                const angle::Format &angleFormat =
-                    mCurrentArrayBufferFormats[v]->actualAngleFormat();
                 desc.attributes[v].format = mCurrentArrayBufferFormats[v]->metalFormat;
 
                 desc.attributes[v].bufferIndex = bufferIdx;
                 desc.attributes[v].offset      = 0;
-                ASSERT((bufferOffset % angleFormat.pixelBytes) == 0);
+                ASSERT((bufferOffset % mtl::kVertexAttribBufferStrideAlignment) == 0);
 
                 ASSERT(bufferIdx < mtl::kMaxVertexAttribs);
                 if (binding.getDivisor() == 0)
@@ -444,76 +447,67 @@ angle::Result VertexArrayMtl::setupDraw(const gl::Context *glContext,
                     desc.layouts[bufferIdx].stepFunction = MTLVertexStepFunctionPerVertex;
                     desc.layouts[bufferIdx].stepRate     = 1;
                 }
-                else if (contextMtl->getDisplay()->getFeatures().hasBaseVertexInstancedDraw.enabled)
+                else
                 {
                     desc.layouts[bufferIdx].stepFunction = MTLVertexStepFunctionPerInstance;
                     desc.layouts[bufferIdx].stepRate     = binding.getDivisor();
                 }
-                else
-                {
-                    // Emulate instance attribute
-                    mEmulatedInstanceAttribs.push_back(v);
-                    desc.layouts[bufferIdx].stepFunction = MTLVertexStepFunctionConstant;
-                    desc.layouts[bufferIdx].stepRate     = 0;
-                }
 
-                desc.layouts[bufferIdx].stride = mCurrentArrayBufferStrides[v];
-
+                // Metal does not allow the sum of the buffer binding
+                // offset and the vertex layout stride to be greater
+                // than the buffer length.
+                // In OpenGL, this is valid only when a draw call accesses just
+                // one vertex, so just replace the stride with the format size.
+                uint32_t stride = mCurrentArrayBufferStrides[v];
                 if (mCurrentArrayBuffers[v])
                 {
-                    cmdEncoder->setVertexBuffer(mCurrentArrayBuffers[v]->getCurrentBuffer(),
-                                                bufferOffset, bufferIdx);
+                    const size_t length = mCurrentArrayBuffers[v]->getCurrentBuffer()->size();
+                    const size_t offset = mCurrentArrayBufferOffsets[v];
+                    ASSERT(offset < length);
+                    if (length - offset < stride)
+                    {
+                        stride = mCurrentArrayBufferFormats[v]->actualAngleFormat().pixelBytes;
+                        ASSERT(stride % mtl::kVertexAttribBufferStrideAlignment == 0);
+                    }
                 }
-                else
-                {
-                    // No buffer specified, use the client memory directly as inline constant data
-                    ASSERT(mCurrentArrayInlineDataSizes[v] <= mInlineDataMaxSize);
-                    cmdEncoder->setVertexBytes(mCurrentArrayInlineDataPointers[v],
-                                               mCurrentArrayInlineDataSizes[v], bufferIdx);
-                }
+                desc.layouts[bufferIdx].stride = stride;
             }
         }  // for (v)
+    }
+
+    if (dirty || mVertexDataDirty)
+    {
+        mVertexDataDirty                        = false;
+        const gl::ProgramExecutable *executable = glContext->getState().getProgramExecutable();
+        const gl::AttributesMask &programActiveAttribsMask =
+            executable->getActiveAttribLocationsMask();
+
+        for (uint32_t v = 0; v < mtl::kMaxVertexAttribs; ++v)
+        {
+            if (!programActiveAttribsMask.test(v))
+            {
+                continue;
+            }
+            uint32_t bufferIdx    = mtl::kVboBindingIndexStart + v;
+            uint32_t bufferOffset = static_cast<uint32_t>(mCurrentArrayBufferOffsets[v]);
+            if (mCurrentArrayBuffers[v])
+            {
+                cmdEncoder->setVertexBuffer(mCurrentArrayBuffers[v]->getCurrentBuffer(),
+                                            bufferOffset, bufferIdx);
+            }
+            else if (mCurrentArrayInlineDataPointers[v])
+            {
+                // No buffer specified, use the client memory directly as inline constant data
+                ASSERT(mCurrentArrayInlineDataSizes[v] <= mInlineDataMaxSize);
+                cmdEncoder->setVertexBytes(mCurrentArrayInlineDataPointers[v],
+                                           mCurrentArrayInlineDataSizes[v], bufferIdx);
+            }
+        }
     }
 
     *vertexDescChanged = dirty;
 
     return angle::Result::Continue;
-}
-
-void VertexArrayMtl::emulateInstanceDrawStep(mtl::RenderCommandEncoder *cmdEncoder,
-                                             uint32_t instanceId)
-{
-
-    const std::vector<gl::VertexAttribute> &attribs = mState.getVertexAttributes();
-    const std::vector<gl::VertexBinding> &bindings  = mState.getVertexBindings();
-
-    for (uint32_t instanceAttribIdx : mEmulatedInstanceAttribs)
-    {
-        uint32_t bufferIdx               = mtl::kVboBindingIndexStart + instanceAttribIdx;
-        const auto &attrib               = attribs[instanceAttribIdx];
-        const gl::VertexBinding &binding = bindings[attrib.bindingIndex];
-        uint32_t offset =
-            instanceId / binding.getDivisor() * mCurrentArrayBufferStrides[instanceAttribIdx];
-        if (mCurrentArrayBuffers[instanceAttribIdx])
-        {
-            offset += static_cast<uint32_t>(mCurrentArrayBufferOffsets[instanceAttribIdx]);
-
-            cmdEncoder->setVertexBuffer(mCurrentArrayBuffers[instanceAttribIdx]->getCurrentBuffer(),
-                                        offset, bufferIdx);
-        }
-        else
-        {
-            // No buffer specified, use the client memory directly as inline constant data
-            ASSERT(mCurrentArrayInlineDataSizes[instanceAttribIdx] <= mInlineDataMaxSize);
-            if (offset > mCurrentArrayInlineDataSizes[instanceAttribIdx])
-            {
-                offset = static_cast<uint32_t>(mCurrentArrayInlineDataSizes[instanceAttribIdx]);
-            }
-            cmdEncoder->setVertexBytes(mCurrentArrayInlineDataPointers[instanceAttribIdx] + offset,
-                                       mCurrentArrayInlineDataSizes[instanceAttribIdx] - offset,
-                                       bufferIdx);
-        }
-    }
 }
 
 angle::Result VertexArrayMtl::updateClientAttribs(const gl::Context *context,
@@ -628,6 +622,12 @@ angle::Result VertexArrayMtl::updateClientAttribs(const gl::Context *context,
                                            streamFormat.vertexLoadFunction,
                                            &mConvertedArrayBufferHolders[attribIndex],
                                            &mCurrentArrayBufferOffsets[attribIndex]));
+                if (contextMtl->getDisplay()->getFeatures().flushAfterStreamVertexData.enabled)
+                {
+                    // WaitUntilScheduled is needed for this workaround. NoWait does not have the
+                    // needed effect.
+                    contextMtl->flushCommandBuffer(mtl::WaitUntilScheduled);
+                }
 
                 mCurrentArrayBuffers[attribIndex] = &mConvertedArrayBufferHolders[attribIndex];
             }
@@ -655,10 +655,13 @@ angle::Result VertexArrayMtl::syncDirtyAttrib(const gl::Context *glContext,
         if (bufferGL)
         {
             BufferMtl *bufferMtl = mtl::GetImpl(bufferGL);
+            // https://bugs.webkit.org/show_bug.cgi?id=236733
+            // even non-converted buffers need to be observed for potential
+            // data rebinds.
+            mContentsObservers->enableForBuffer(bufferGL, static_cast<uint32_t>(attribIndex));
             bool needConversion =
                 format.actualFormatId != format.intendedFormatId ||
-                (binding.getOffset() % format.actualAngleFormat().pixelBytes) != 0 ||
-                (binding.getOffset() % 4) != 0 ||
+                (binding.getOffset() % mtl::kVertexAttribBufferStrideAlignment) != 0 ||
                 (binding.getStride() < format.actualAngleFormat().pixelBytes) ||
                 (binding.getStride() % mtl::kVertexAttribBufferStrideAlignment) != 0;
 
@@ -711,8 +714,7 @@ angle::Result VertexArrayMtl::getIndexBuffer(const gl::Context *context,
     }
     else
     {
-        bool needConversion = type == gl::DrawElementsType::UnsignedByte ||
-                              (convertedOffset % mtl::kIndexBufferOffsetAlignment) != 0;
+        bool needConversion = type == gl::DrawElementsType::UnsignedByte;
         if (needConversion)
         {
             ANGLE_TRY(convertIndexBuffer(context, type, convertedOffset, idxBufferOut,
@@ -738,32 +740,43 @@ angle::Result VertexArrayMtl::getIndexBuffer(const gl::Context *context,
 }
 
 std::vector<DrawCommandRange> VertexArrayMtl::getDrawIndices(const gl::Context *glContext,
-                             gl::DrawElementsType originalIndexType,
-                             gl::DrawElementsType indexType,
-                             gl::PrimitiveMode primitiveMode,
-                             uint32_t indexCount,
-                             size_t offset)
+                                                             gl::DrawElementsType originalIndexType,
+                                                             gl::DrawElementsType indexType,
+                                                             gl::PrimitiveMode primitiveMode,
+                                                             mtl::BufferRef clientBuffer,
+                                                             uint32_t indexCount,
+                                                             size_t offset)
 {
     ContextMtl *contextMtl = mtl::GetImpl(glContext);
     std::vector<DrawCommandRange> drawCommands;
-    // The indexed draw needs to be split to separate draw commands in case primitive restart is enabled
-    // and the drawn primitive supports primitive restart. Otherwise the whole indexed draw can be sent
-    // as one draw command.
-    bool isSimpleType =
-        primitiveMode == gl::PrimitiveMode::Points ||
-        primitiveMode == gl::PrimitiveMode::Lines ||
-        primitiveMode == gl::PrimitiveMode::Triangles;
+    // The indexed draw needs to be split to separate draw commands in case primitive restart is
+    // enabled and the drawn primitive supports primitive restart. Otherwise the whole indexed draw
+    // can be sent as one draw command.
+    bool isSimpleType = primitiveMode == gl::PrimitiveMode::Points ||
+                        primitiveMode == gl::PrimitiveMode::Lines ||
+                        primitiveMode == gl::PrimitiveMode::Triangles;
     if (!isSimpleType || !glContext->getState().isPrimitiveRestartEnabled())
     {
         drawCommands.push_back({indexCount, offset});
         return drawCommands;
     }
-
-    BufferMtl *idxBuffer = mtl::GetImpl(getState().getElementArrayBuffer());
-    const std::vector<IndexRange> &restartIndices = idxBuffer->getRestartIndices(contextMtl, originalIndexType);
+    const std::vector<IndexRange> *restartIndices;
+    std::vector<IndexRange> clientIndexRange;
+    const gl::Buffer *glElementArrayBuffer = getState().getElementArrayBuffer();
+    if (glElementArrayBuffer)
+    {
+        BufferMtl *idxBuffer = mtl::GetImpl(glElementArrayBuffer);
+        restartIndices       = &idxBuffer->getRestartIndices(contextMtl, originalIndexType);
+    }
+    else
+    {
+        clientIndexRange =
+            BufferMtl::getRestartIndicesFromClientData(contextMtl, indexType, clientBuffer);
+        restartIndices = &clientIndexRange;
+    }
     // Reminder, offset is in bytes, not elements.
     // Slice draw commands based off of indices.
-    int nIndicesPerPrimitive;
+    uint32_t nIndicesPerPrimitive;
     switch (primitiveMode)
     {
         case gl::PrimitiveMode::Points:
@@ -780,19 +793,25 @@ std::vector<DrawCommandRange> VertexArrayMtl::getDrawIndices(const gl::Context *
             return drawCommands;
     }
     const GLuint indexTypeBytes = gl::GetDrawElementsTypeSize(indexType);
-    uint32_t indicesLeft = indexCount;
-    size_t currentIndexOffset = offset / indexTypeBytes;
+    uint32_t indicesLeft        = indexCount;
+    size_t currentIndexOffset   = offset / indexTypeBytes;
 
-    for (auto &range : restartIndices)
+    for (auto &range : *restartIndices)
     {
         if (range.restartBegin > currentIndexOffset)
         {
-            int64_t nIndicesInSlice = ((int64_t)range.restartBegin - currentIndexOffset) - ((int64_t) range.restartBegin - currentIndexOffset) % nIndicesPerPrimitive;
+            int64_t nIndicesInSlice =
+                MIN(((int64_t)range.restartBegin - currentIndexOffset) -
+                        ((int64_t)range.restartBegin - currentIndexOffset) % nIndicesPerPrimitive,
+                    indicesLeft);
             size_t restartSize = (range.restartEnd - range.restartBegin) + 1;
-            if (nIndicesInSlice > nIndicesPerPrimitive)
-                drawCommands.push_back({(uint32_t) nIndicesInSlice, currentIndexOffset * indexTypeBytes});
+            if (nIndicesInSlice >= nIndicesPerPrimitive)
+            {
+                drawCommands.push_back(
+                    {(uint32_t)nIndicesInSlice, currentIndexOffset * indexTypeBytes});
+            }
             // Account for dropped indices due to incomplete primitives.
-            size_t indicesUsed = ( (range.restartBegin + restartSize) - currentIndexOffset);
+            size_t indicesUsed = ((range.restartBegin + restartSize) - currentIndexOffset);
             if (indicesLeft <= indicesUsed)
             {
                 indicesLeft = 0;
@@ -803,7 +822,8 @@ std::vector<DrawCommandRange> VertexArrayMtl::getDrawIndices(const gl::Context *
             }
             currentIndexOffset = (size_t)(range.restartBegin + restartSize);
         }
-        // If the initial offset into the index buffer is within a restart zone, move to the end of the restart zone.
+        // If the initial offset into the index buffer is within a restart zone, move to the end of
+        // the restart zone.
         else if (range.restartEnd >= currentIndexOffset)
         {
             size_t restartSize = (range.restartEnd - currentIndexOffset) + 1;
@@ -822,7 +842,6 @@ std::vector<DrawCommandRange> VertexArrayMtl::getDrawIndices(const gl::Context *
         drawCommands.push_back({indicesLeft, currentIndexOffset * indexTypeBytes});
     return drawCommands;
 }
-
 
 angle::Result VertexArrayMtl::convertIndexBuffer(const gl::Context *glContext,
                                                  gl::DrawElementsType indexType,
@@ -857,12 +876,12 @@ angle::Result VertexArrayMtl::convertIndexBuffer(const gl::Context *glContext,
     }
 
     size_t indexCount = GetIndexCount(idxBuffer, offsetModulo, indexType);
-    if ((!contextMtl->getDisplay()->getFeatures().breakRenderPassIsCheap.enabled &&
+    if ((!contextMtl->getDisplay()->getFeatures().hasCheapRenderPass.enabled &&
          contextMtl->getRenderCommandEncoder()))
     {
         // We shouldn't use GPU to convert when we are in a middle of a render pass.
         ANGLE_TRY(StreamIndexData(contextMtl, &conversion->data,
-                                  idxBuffer->getClientShadowCopyData(contextMtl) + offsetModulo,
+                                  idxBuffer->getBufferDataReadOnly(contextMtl) + offsetModulo,
                                   indexType, indexCount, glState.isPrimitiveRestartEnabled(),
                                   &conversion->convertedBuffer, &conversion->convertedOffset));
     }
@@ -871,7 +890,7 @@ angle::Result VertexArrayMtl::convertIndexBuffer(const gl::Context *glContext,
         ANGLE_TRY(convertIndexBufferGPU(glContext, indexType, idxBuffer, offsetModulo, indexCount,
                                         conversion));
     }
-    //Calculate ranges for prim restart simple types.
+    // Calculate ranges for prim restart simple types.
     *idxBufferOut       = conversion->convertedBuffer;
     *idxBufferOffsetOut = conversion->convertedOffset + alignedOffset;
 
@@ -962,28 +981,27 @@ angle::Result VertexArrayMtl::convertVertexBuffer(const gl::Context *glContext,
     // Has the content of the buffer has changed since last conversion?
     if (!conversion->dirty)
     {
+        VertexConversionBufferMtl *vertexConversionMtl =
+            static_cast<VertexConversionBufferMtl *>(conversion);
+        ASSERT((binding.getOffset() - vertexConversionMtl->offset) % binding.getStride() == 0);
         mConvertedArrayBufferHolders[attribIndex].set(conversion->convertedBuffer);
-        mCurrentArrayBufferOffsets[attribIndex] = conversion->convertedOffset;
+        mCurrentArrayBufferOffsets[attribIndex] =
+            conversion->convertedOffset +
+            stride * ((binding.getOffset() - vertexConversionMtl->offset) / binding.getStride());
 
         mCurrentArrayBuffers[attribIndex]       = &mConvertedArrayBufferHolders[attribIndex];
         mCurrentArrayBufferFormats[attribIndex] = &convertedFormat;
         mCurrentArrayBufferStrides[attribIndex] = stride;
         return angle::Result::Continue;
     }
+    numVertices = GetVertexCountWithConversion(
+        srcBuffer, static_cast<VertexConversionBufferMtl *>(conversion), binding, srcFormatSize);
 
     const angle::Format &convertedAngleFormat = convertedFormat.actualAngleFormat();
     bool canConvertToFloatOnGPU =
         convertedAngleFormat.isFloat() && !convertedAngleFormat.isVertexTypeHalfFloat();
 
     bool canExpandComponentsOnGPU = convertedFormat.actualSameGLType;
-
-    if (contextMtl->getRenderCommandEncoder() &&
-        !contextMtl->getDisplay()->getFeatures().breakRenderPassIsCheap.enabled &&
-        !contextMtl->getDisplay()->getFeatures().hasExplicitMemBarrier.enabled)
-    {
-        // Cannot use GPU to convert when we are in a middle of a render pass.
-        canConvertToFloatOnGPU = canExpandComponentsOnGPU = false;
-    }
 
     conversion->data.releaseInFlightBuffers(contextMtl);
     conversion->data.updateAlignment(contextMtl, convertedAngleFormat.pixelBytes);
@@ -1000,14 +1018,15 @@ angle::Result VertexArrayMtl::convertVertexBuffer(const gl::Context *glContext,
                                          convertedFormat, stride, numVertices, conversion));
     }
 
+    mConvertedArrayBufferHolders[attribIndex].set(conversion->convertedBuffer);
+    mCurrentArrayBufferOffsets[attribIndex] =
+        conversion->convertedOffset +
+        stride *
+            ((binding.getOffset() - static_cast<VertexConversionBufferMtl *>(conversion)->offset) /
+             binding.getStride());
     mCurrentArrayBuffers[attribIndex]       = &mConvertedArrayBufferHolders[attribIndex];
     mCurrentArrayBufferFormats[attribIndex] = &convertedFormat;
     mCurrentArrayBufferStrides[attribIndex] = stride;
-
-    // Cache the last converted results to be re-used later if the buffer's content won't ever be
-    // changed.
-    conversion->convertedBuffer = mConvertedArrayBufferHolders[attribIndex].getCurrentBuffer();
-    conversion->convertedOffset = mCurrentArrayBufferOffsets[attribIndex];
 
     ASSERT(conversion->dirty);
     conversion->dirty = false;
@@ -1034,16 +1053,17 @@ angle::Result VertexArrayMtl::convertVertexBufferCPU(ContextMtl *contextMtl,
                                                      ConversionBufferMtl *conversion)
 {
 
-    const uint8_t *srcBytes = srcBuffer->getClientShadowCopyData(contextMtl);
+    const uint8_t *srcBytes = srcBuffer->getBufferDataReadOnly(contextMtl);
     ANGLE_CHECK_GL_ALLOC(contextMtl, srcBytes);
-
-    srcBytes += binding.getOffset();
-
-    ANGLE_TRY(StreamVertexData(
-        contextMtl, &conversion->data, srcBytes, numVertices * targetStride, 0, numVertices,
-        binding.getStride(), convertedFormat.vertexLoadFunction,
-        &mConvertedArrayBufferHolders[attribIndex], &mCurrentArrayBufferOffsets[attribIndex]));
-
+    VertexConversionBufferMtl *vertexConverison =
+        static_cast<VertexConversionBufferMtl *>(conversion);
+    srcBytes += MIN(binding.getOffset(), static_cast<GLintptr>(vertexConverison->offset));
+    SimpleWeakBufferHolderMtl conversionBufferHolder;
+    ANGLE_TRY(StreamVertexData(contextMtl, &conversion->data, srcBytes, numVertices * targetStride,
+                               0, numVertices, binding.getStride(),
+                               convertedFormat.vertexLoadFunction, &conversionBufferHolder,
+                               &conversion->convertedOffset));
+    conversion->convertedBuffer = conversionBufferHolder.getCurrentBuffer();
     return angle::Result::Continue;
 }
 
@@ -1064,14 +1084,23 @@ angle::Result VertexArrayMtl::convertVertexBufferGPU(const gl::Context *glContex
     ANGLE_TRY(conversion->data.allocate(contextMtl, numVertices * targetStride, nullptr, &newBuffer,
                                         &newBufferOffset));
 
-    ANGLE_CHECK_GL_MATH(contextMtl, binding.getOffset() <= std::numeric_limits<uint32_t>::max());
+    GLintptr bindingOffset = binding.getOffset();
+
+    if constexpr (sizeof(bindingOffset) > sizeof(uint32_t))
+        ANGLE_CHECK_GL_MATH(contextMtl, static_cast<std::make_unsigned_t<decltype(bindingOffset)>>(
+                                            bindingOffset) <= std::numeric_limits<uint32_t>::max());
     ANGLE_CHECK_GL_MATH(contextMtl, newBufferOffset <= std::numeric_limits<uint32_t>::max());
     ANGLE_CHECK_GL_MATH(contextMtl, numVertices <= std::numeric_limits<uint32_t>::max());
 
     mtl::VertexFormatConvertParams params;
-
+    VertexConversionBufferMtl *vertexConversion =
+        static_cast<VertexConversionBufferMtl *>(conversion);
+    if constexpr (sizeof(vertexConversion->offset) > sizeof(uint32_t))
+        ANGLE_CHECK_GL_MATH(contextMtl,
+                            vertexConversion->offset <= std::numeric_limits<uint32_t>::max());
     params.srcBuffer            = srcBuffer->getCurrentBuffer();
-    params.srcBufferStartOffset = static_cast<uint32_t>(binding.getOffset());
+    params.srcBufferStartOffset = std::min(static_cast<uint32_t>(vertexConversion->offset),
+                                           static_cast<uint32_t>(bindingOffset));
     params.srcStride            = binding.getStride();
     params.srcDefaultAlphaData  = convertedFormat.defaultAlpha;
 
@@ -1082,43 +1111,25 @@ angle::Result VertexArrayMtl::convertVertexBufferGPU(const gl::Context *glContex
 
     params.vertexCount = static_cast<uint32_t>(numVertices);
 
-    mtl::RenderUtils &utils                  = contextMtl->getDisplay()->getUtils();
-    mtl::RenderCommandEncoder *renderEncoder = contextMtl->getRenderCommandEncoder();
-    if (renderEncoder && contextMtl->getDisplay()->getFeatures().hasExplicitMemBarrier.enabled)
+    mtl::RenderUtils &utils = contextMtl->getDisplay()->getUtils();
+
+    // Compute based buffer conversion.
+    if (!isExpandingComponents)
     {
-        // If we are in the middle of a render pass, use vertex shader based buffer conversion to
-        // avoid breaking the render pass.
-        if (!isExpandingComponents)
-        {
-            ANGLE_TRY(utils.convertVertexFormatToFloatVS(
-                glContext, renderEncoder, convertedFormat.intendedAngleFormat(), params));
-        }
-        else
-        {
-            ANGLE_TRY(utils.expandVertexFormatComponentsVS(
-                glContext, renderEncoder, convertedFormat.intendedAngleFormat(), params));
-        }
+        ANGLE_TRY(utils.convertVertexFormatToFloatCS(
+            contextMtl, convertedFormat.intendedAngleFormat(), params));
     }
     else
     {
-        // Compute based buffer conversion.
-        if (!isExpandingComponents)
-        {
-            ANGLE_TRY(utils.convertVertexFormatToFloatCS(
-                contextMtl, convertedFormat.intendedAngleFormat(), params));
-        }
-        else
-        {
-            ANGLE_TRY(utils.expandVertexFormatComponentsCS(
-                contextMtl, convertedFormat.intendedAngleFormat(), params));
-        }
+        ANGLE_TRY(utils.expandVertexFormatComponentsCS(
+            contextMtl, convertedFormat.intendedAngleFormat(), params));
     }
 
     ANGLE_TRY(conversion->data.commit(contextMtl));
 
-    mConvertedArrayBufferHolders[attribIndex].set(newBuffer);
-    mCurrentArrayBufferOffsets[attribIndex] = newBufferOffset;
+    conversion->convertedBuffer = newBuffer;
+    conversion->convertedOffset = newBufferOffset;
 
     return angle::Result::Continue;
 }
-}
+}  // namespace rx

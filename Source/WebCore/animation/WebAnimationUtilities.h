@@ -25,16 +25,25 @@
 
 #pragma once
 
+#include "ExceptionOr.h"
+#include "RenderStyleConstants.h"
+#include "WebAnimationTypes.h"
 #include <wtf/Forward.h>
 #include <wtf/Markable.h>
 #include <wtf/Seconds.h>
 
 namespace WebCore {
 
-enum class PseudoId : uint16_t;
+enum class PseudoId : uint32_t;
 
+class AnimationEventBase;
+class Document;
 class Element;
 class WebAnimation;
+
+namespace Style {
+struct PseudoElementIdentifier;
+}
 
 inline double secondsToWebAnimationsAPITime(const Seconds time)
 {
@@ -53,7 +62,10 @@ inline double secondsToWebAnimationsAPITime(const Seconds time)
 const auto timeEpsilon = Seconds::fromMilliseconds(0.001);
 
 bool compareAnimationsByCompositeOrder(const WebAnimation&, const WebAnimation&);
-String pseudoIdAsString(PseudoId);
+bool compareAnimationEventsByCompositeOrder(const AnimationEventBase&, const AnimationEventBase&);
+String pseudoElementIdentifierAsString(const std::optional<Style::PseudoElementIdentifier>&);
+std::pair<bool, std::optional<Style::PseudoElementIdentifier>> pseudoElementIdentifierFromString(const String&, Document*);
+AtomString animatablePropertyAsString(AnimatableCSSProperty);
 
 } // namespace WebCore
 

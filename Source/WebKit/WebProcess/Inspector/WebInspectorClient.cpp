@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2014, 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,11 +30,13 @@
 #include "WebInspector.h"
 #include "WebPage.h"
 #include <WebCore/Animation.h>
-#include <WebCore/Frame.h>
+#include <WebCore/GraphicsLayer.h>
 #include <WebCore/InspectorController.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/Page.h>
 #include <WebCore/PageOverlayController.h>
 #include <WebCore/Settings.h>
+#include <wtf/TZoneMallocInlines.h>
 
 #if PLATFORM(IOS_FAMILY)
 #include <WebCore/InspectorOverlay.h>
@@ -44,7 +46,7 @@ namespace WebKit {
 using namespace WebCore;
 
 class RepaintIndicatorLayerClient final : public GraphicsLayerClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(RepaintIndicatorLayerClient);
 public:
     RepaintIndicatorLayerClient(WebInspectorClient& inspectorClient)
         : m_inspectorClient(inspectorClient)
@@ -60,6 +62,8 @@ private:
     WebInspectorClient& m_inspectorClient;
 };
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebInspectorClient);
+
 WebInspectorClient::WebInspectorClient(WebPage* page)
     : m_page(page)
     , m_highlightOverlay(nullptr)
@@ -73,50 +77,62 @@ WebInspectorClient::~WebInspectorClient()
     
     m_paintRectLayers.clear();
 
-    if (m_paintRectOverlay && m_page->corePage())
-        m_page->corePage()->pageOverlayController().uninstallPageOverlay(*m_paintRectOverlay, PageOverlay::FadeMode::Fade);
+    if (m_paintRectOverlay) {
+        RefPtr page = m_page.get();
+        if (page && page->corePage())
+            page->corePage()->pageOverlayController().uninstallPageOverlay(*m_paintRectOverlay, PageOverlay::FadeMode::Fade);
+    }
 }
 
 void WebInspectorClient::inspectedPageDestroyed()
 {
-    if (WebInspector* inspector = m_page->inspector(WebPage::LazyCreationPolicy::UseExistingOnly))
-        inspector->close();
+    RefPtr page = m_page.get();
+    if (!page)
+        return;
 
-    delete this;
+    if (RefPtr inspector = page->inspector(WebPage::LazyCreationPolicy::UseExistingOnly))
+        inspector->close();
 }
 
 void WebInspectorClient::frontendCountChanged(unsigned count)
 {
-    m_page->inspectorFrontendCountChanged(count);
+    if (RefPtr page = m_page.get())
+        page->inspectorFrontendCountChanged(count);
 }
 
 Inspector::FrontendChannel* WebInspectorClient::openLocalFrontend(InspectorController* controller)
 {
-    m_page->inspector()->openLocalInspectorFrontend(controller->isUnderTest());
-
+    if (RefPtr page = m_page.get())
+        page->inspector()->openLocalInspectorFrontend(controller->isUnderTest());
     return nullptr;
 }
 
 void WebInspectorClient::bringFrontendToFront()
 {
-    if (m_page->inspector())
-        m_page->inspector()->bringToFront();
+    RefPtr page = m_page.get();
+    if (page && page->inspector())
+        page->inspector()->bringToFront();
 }
 
-void WebInspectorClient::didResizeMainFrame(Frame*)
+void WebInspectorClient::didResizeMainFrame(LocalFrame*)
 {
-    if (m_page->inspector())
-        m_page->inspector()->updateDockingAvailability();
+    RefPtr page = m_page.get();
+    if (page && page->inspector())
+        page->inspector()->updateDockingAvailability();
 }
 
 void WebInspectorClient::highlight()
 {
-    if (!m_page->corePage()->settings().acceleratedCompositingEnabled()) {
+    RefPtr page = m_page.get();
+    if (!page)
+        return;
+
+    if (!page->corePage()->settings().acceleratedCompositingEnabled()) {
 #if PLATFORM(GTK) || PLATFORM(WIN) || PLATFORM(PLAYSTATION)
         // FIXME: It can be optimized by marking only highlighted rect dirty.
         // setNeedsDisplay always makes whole rect dirty, and could lead to poor performance.
         // https://bugs.webkit.org/show_bug.cgi?id=195933
-        m_page->drawingArea()->setNeedsDisplay();
+        page->drawingArea()->setNeedsDisplay();
 #endif
         return;
     }
@@ -125,7 +141,7 @@ void WebInspectorClient::highlight()
     if (!m_highlightOverlay) {
         auto highlightOverlay = PageOverlay::create(*this);
         m_highlightOverlay = highlightOverlay.ptr();
-        m_page->corePage()->pageOverlayController().installPageOverlay(WTFMove(highlightOverlay), PageOverlay::FadeMode::Fade);
+        page->corePage()->pageOverlayController().installPageOverlay(WTFMove(highlightOverlay), PageOverlay::FadeMode::Fade);
         m_highlightOverlay->setNeedsDisplay();
     } else {
         m_highlightOverlay->stopFadeOutAnimation();
@@ -133,45 +149,53 @@ void WebInspectorClient::highlight()
     }
 #else
     InspectorOverlay::Highlight highlight;
-    m_page->corePage()->inspectorController().getHighlight(highlight, InspectorOverlay::CoordinateSystem::Document);
-    m_page->showInspectorHighlight(highlight);
+    page->corePage()->inspectorController().getHighlight(highlight, InspectorOverlay::CoordinateSystem::Document);
+    page->showInspectorHighlight(highlight);
 #endif
 }
 
 void WebInspectorClient::hideHighlight()
 {
+    RefPtr page = m_page.get();
+    if (!page)
+        return;
+
 #if PLATFORM(GTK) || PLATFORM(WIN) || PLATFORM(PLAYSTATION)
-    if (!m_page->corePage()->settings().acceleratedCompositingEnabled()) {
+    if (!page->corePage()->settings().acceleratedCompositingEnabled()) {
         // FIXME: It can be optimized by marking only highlighted rect dirty.
         // setNeedsDisplay always makes whole rect dirty, and could lead to poor performance.
         // https://bugs.webkit.org/show_bug.cgi?id=195933
-        m_page->drawingArea()->setNeedsDisplay();
+        page->drawingArea()->setNeedsDisplay();
         return;
     }
 #endif
 
 #if !PLATFORM(IOS_FAMILY)
     if (m_highlightOverlay)
-        m_page->corePage()->pageOverlayController().uninstallPageOverlay(*m_highlightOverlay, PageOverlay::FadeMode::Fade);
+        page->corePage()->pageOverlayController().uninstallPageOverlay(*m_highlightOverlay, PageOverlay::FadeMode::Fade);
 #else
-    m_page->hideInspectorHighlight();
+    page->hideInspectorHighlight();
 #endif
 }
 
 void WebInspectorClient::showPaintRect(const FloatRect& rect)
 {
-    if (!m_page->corePage()->settings().acceleratedCompositingEnabled())
+    RefPtr page = m_page.get();
+    if (!page)
+        return;
+
+    if (!page->corePage()->settings().acceleratedCompositingEnabled())
         return;
 
     if (!m_paintRectOverlay) {
         m_paintRectOverlay = PageOverlay::create(*this, PageOverlay::OverlayType::Document);
-        m_page->corePage()->pageOverlayController().installPageOverlay(*m_paintRectOverlay, PageOverlay::FadeMode::DoNotFade);
+        page->corePage()->pageOverlayController().installPageOverlay(*m_paintRectOverlay, PageOverlay::FadeMode::DoNotFade);
     }
 
     if (!m_paintIndicatorLayerClient)
         m_paintIndicatorLayerClient = makeUnique<RepaintIndicatorLayerClient>(*this);
 
-    auto paintLayer = GraphicsLayer::create(m_page->drawingArea()->graphicsLayerFactory(), *m_paintIndicatorLayerClient);
+    Ref paintLayer = GraphicsLayer::create(page->drawingArea()->graphicsLayerFactory(), *m_paintIndicatorLayerClient);
     
     paintLayer->setName(MAKE_STATIC_STRING_IMPL("paint rect"));
     paintLayer->setAnchorPoint(FloatPoint3D());
@@ -179,12 +203,12 @@ void WebInspectorClient::showPaintRect(const FloatRect& rect)
     paintLayer->setSize(rect.size());
     paintLayer->setBackgroundColor(Color::red.colorWithAlphaByte(51));
 
-    KeyframeValueList fadeKeyframes(AnimatedPropertyOpacity);
+    KeyframeValueList fadeKeyframes(AnimatedProperty::Opacity);
     fadeKeyframes.insert(makeUnique<FloatAnimationValue>(0, 1));
 
     fadeKeyframes.insert(makeUnique<FloatAnimationValue>(0.25, 0));
     
-    auto opacityAnimation = Animation::create();
+    Ref opacityAnimation = Animation::create();
     opacityAnimation->setDuration(0.25);
 
     paintLayer->addAnimation(fadeKeyframes, FloatSize(), opacityAnimation.ptr(), "opacity"_s, 0);
@@ -206,40 +230,64 @@ void WebInspectorClient::animationEndedForLayer(const GraphicsLayer* layer)
 #if PLATFORM(IOS_FAMILY)
 void WebInspectorClient::showInspectorIndication()
 {
-    m_page->showInspectorIndication();
+    if (RefPtr page = m_page.get())
+        page->showInspectorIndication();
 }
 
 void WebInspectorClient::hideInspectorIndication()
 {
-    m_page->hideInspectorIndication();
+    if (RefPtr page = m_page.get())
+        page->hideInspectorIndication();
 }
 
 void WebInspectorClient::didSetSearchingForNode(bool enabled)
 {
+    RefPtr page = m_page.get();
+    if (!page)
+        return;
+
     if (enabled)
-        m_page->enableInspectorNodeSearch();
+        page->enableInspectorNodeSearch();
     else
-        m_page->disableInspectorNodeSearch();
+        page->disableInspectorNodeSearch();
 }
 #endif
 
 void WebInspectorClient::elementSelectionChanged(bool active)
 {
-    if (m_page->inspector())
-        m_page->inspector()->elementSelectionChanged(active);
+    RefPtr page = m_page.get();
+    if (page && page->inspector())
+        page->inspector()->elementSelectionChanged(active);
 }
 
 void WebInspectorClient::timelineRecordingChanged(bool active)
 {
-    if (m_page->inspector())
-        m_page->inspector()->timelineRecordingChanged(active);
+    RefPtr page = m_page.get();
+    if (page && page->inspector())
+        page->inspector()->timelineRecordingChanged(active);
 }
 
 void WebInspectorClient::setDeveloperPreferenceOverride(WebCore::InspectorClient::DeveloperPreference developerPreference, std::optional<bool> overrideValue)
 {
-    if (m_page->inspector())
-        m_page->inspector()->setDeveloperPreferenceOverride(developerPreference, overrideValue);
+    RefPtr page = m_page.get();
+    if (page && page->inspector())
+        page->inspector()->setDeveloperPreferenceOverride(developerPreference, overrideValue);
 }
+
+#if ENABLE(INSPECTOR_NETWORK_THROTTLING)
+
+bool WebInspectorClient::setEmulatedConditions(std::optional<int64_t>&& bytesPerSecondLimit)
+{
+    RefPtr page = m_page.get();
+    if (page && page->inspector()) {
+        page->inspector()->setEmulatedConditions(WTFMove(bytesPerSecondLimit));
+        return true;
+    }
+
+    return false;
+}
+
+#endif // ENABLE(INSPECTOR_NETWORK_THROTTLING)
 
 void WebInspectorClient::willMoveToPage(PageOverlay&, Page* page)
 {
@@ -257,7 +305,8 @@ void WebInspectorClient::didMoveToPage(PageOverlay&, Page*)
 
 void WebInspectorClient::drawRect(PageOverlay&, WebCore::GraphicsContext& context, const WebCore::IntRect& /*dirtyRect*/)
 {
-    m_page->corePage()->inspectorController().drawHighlight(context);
+    if (RefPtr page = m_page.get())
+        page->corePage()->inspectorController().drawHighlight(context);
 }
 
 bool WebInspectorClient::mouseEvent(PageOverlay&, const PlatformMouseEvent&)

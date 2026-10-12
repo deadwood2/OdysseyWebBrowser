@@ -24,9 +24,10 @@
  */
 
 #include "config.h"
-#include "WTFStringUtilities.h"
 
+#include "Test.h"
 #include <wtf/HexNumber.h>
+#include <wtf/text/StringBuilder.h>
 
 namespace TestWebKitAPI {
 
@@ -35,9 +36,9 @@ namespace TestWebKitAPI {
 #define expectBuilderContent(expected, builder) \
     { \
         if (builder.is8Bit()) \
-            EXPECT_EQ(String(expected), String(builder.characters8(), builder.length())); \
+            EXPECT_EQ(String(expected), String(builder.span<LChar>())); \
         else \
-            EXPECT_EQ(String(expected), String(builder.characters16(), builder.length())); \
+            EXPECT_EQ(String(expected), String(builder.span<UChar>())); \
     } \
 
 TEST(WTF, HexNumber)
@@ -49,61 +50,61 @@ TEST(WTF, HexNumber)
     {
         StringBuilder builder;
         builder.append(hex(integer));
-        expectBuilderContent("A", builder);
+        expectBuilderContent("A"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(integer, Lowercase));
-        expectBuilderContent("a", builder);
+        expectBuilderContent("a"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(integer, 1, Lowercase));
-        expectBuilderContent("a", builder);
+        expectBuilderContent("a"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(integer, 2, Lowercase));
-        expectBuilderContent("0a", builder);
+        expectBuilderContent("0a"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(integer, 3, Lowercase));
-        expectBuilderContent("00a", builder);
+        expectBuilderContent("00a"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(integer, 4, Lowercase));
-        expectBuilderContent("000a", builder);
+        expectBuilderContent("000a"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(largeInteger));
-        expectBuilderContent("FACE", builder);
+        expectBuilderContent("FACE"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(largeInteger, 2));
-        expectBuilderContent("FACE", builder);
+        expectBuilderContent("FACE"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(byte));
-        expectBuilderContent("80", builder);
+        expectBuilderContent("80"_s, builder);
     }
 
     {
         StringBuilder builder;
         builder.append(hex(static_cast<unsigned char>(integer), 2));
-        expectBuilderContent("0A", builder);
+        expectBuilderContent("0A"_s, builder);
     }
 }
 

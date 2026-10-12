@@ -30,6 +30,7 @@ from webkitpy.layout_tests.controllers import test_result_writer
 from webkitpy.layout_tests.models import test_failures
 from webkitpy.port.driver import DriverOutput
 from webkitpy.port.test import TestPort
+from webkitpy.port.image_diff import ImageDiffResult
 
 
 class TestResultWriterTest(unittest.TestCase):
@@ -39,9 +40,9 @@ class TestResultWriterTest(unittest.TestCase):
         used_tolerance_values = []
 
         class ImageDiffTestPort(TestPort):
-            def diff_image(self, expected_contents, actual_contents, tolerance=None):
+            def diff_image(self, expected_contents, actual_contents, tolerance):
                 used_tolerance_values.append(tolerance)
-                return (True, 1, None)
+                return ImageDiffResult(passed=False, diff_image=b'', difference=1, tolerance=tolerance)
 
         host = MockHost()
         port = ImageDiffTestPort(host)
@@ -49,7 +50,90 @@ class TestResultWriterTest(unittest.TestCase):
         test_reference_file = host.filesystem.join(port.layout_tests_dir(), 'failures/unexpected/reftest-expected.html')
         driver_output1 = DriverOutput('text1', 'image1', 'imagehash1', 'audio1')
         driver_output2 = DriverOutput('text2', 'image2', 'imagehash2', 'audio2')
-        failures = [test_failures.FailureReftestMismatch(test_reference_file)]
+        failures = [test_failures.FailureReftestMismatch(test_reference_file, ImageDiffResult(passed=False, diff_image=b'', difference=1, tolerance=1))]
         test_result_writer.write_test_result(host.filesystem, ImageDiffTestPort(host), port.results_directory(), test_name,
                                              driver_output1, driver_output2, failures)
         self.assertEqual([0], used_tolerance_values)
+
+    def test_output_filename(self):
+        host = MockHost()
+        port = TestPort(host)
+        fs = host.filesystem
+        writer = test_result_writer.TestResultWriter(fs, port, port.results_directory(), 'require-corp-revalidated-images.https.html')
+        self.assertEqual(writer.output_filename('-diff.txt'), fs.join(port.results_directory(), 'require-corp-revalidated-images.https-diff.txt'))
+
+    def test_output_filename_worker_variant(self):
+        host = MockHost()
+        port = TestPort(host)
+        fs = host.filesystem
+        writer = test_result_writer.TestResultWriter(fs, port, port.results_directory(), 'template_test/pbkdf2.https.any.worker.html?1-1000')
+        self.assertEqual(fs.join(port.results_directory(), 'template_test/pbkdf2.https.any.worker_1-1000-diff.txt'), writer.output_filename('-diff.txt'))
+
+    def test_output_filename_variant(self):
+        host = MockHost()
+        port = TestPort(host)
+        fs = host.filesystem
+        writer = test_result_writer.TestResultWriter(fs, port, port.results_directory(), 'template_test2/pbkdf2.https.any.html?1-1000')
+        self.assertEqual(fs.join(port.results_directory(), 'template_test2/pbkdf2.https.any_1-1000-diff.txt'), writer.output_filename('-diff.txt'))
+
+    def test_output_svg_filename(self):
+        host = MockHost()
+        port = TestPort(host)
+        fs = host.filesystem
+        writer = test_result_writer.TestResultWriter(fs, port, port.results_directory(), 'svg/W3C-SVG-1.1/animate-elem-02-t.svg')
+        self.assertEqual(fs.join(port.results_directory(), 'svg/W3C-SVG-1.1/animate-elem-02-t-diff.txt'), writer.output_filename('-diff.txt'))
+
+    def test_expected_filename(self):
+        host = MockHost()
+        port = TestPort(host)
+        fs = host.filesystem
+
+        expected = test_result_writer.TestResultWriter.expected_filename(
+            "fast/dom/foo.html", fs
+        )
+        self.assertEqual("fast/dom/foo-expected.txt", expected)
+
+        expected = test_result_writer.TestResultWriter.expected_filename(
+            "template_test/pbkdf2.https.any.worker.html?1-1000", fs
+        )
+        self.assertEqual(
+            "template_test/pbkdf2.https.any.worker_1-1000-expected.txt", expected
+        )
+
+        expected = test_result_writer.TestResultWriter.expected_filename(
+            "template_test/pbkdf2.https.any.worker.html?a%20b", fs
+        )
+        self.assertEqual(
+            "template_test/pbkdf2.https.any.worker_a%20b-expected.txt", expected
+        )
+
+        expected = test_result_writer.TestResultWriter.expected_filename(
+            "template_test/pbkdf2.https.any.worker.html#1-1000", fs
+        )
+        self.assertEqual(
+            "template_test/pbkdf2.https.any.worker_1-1000-expected.txt", expected
+        )
+
+        expected = test_result_writer.TestResultWriter.expected_filename(
+            "template_test/pbkdf2.https.any.worker.html?1-1000#aaa", fs
+        )
+        self.assertEqual(
+            "template_test/pbkdf2.https.any.worker_1-1000#aaa-expected.txt", expected
+        )
+
+    def test_actual_filename(self):
+        host = MockHost()
+        port = TestPort(host)
+        fs = host.filesystem
+
+        actual = test_result_writer.TestResultWriter.actual_filename(
+            "fast/dom/foo.html", fs
+        )
+        self.assertEqual("fast/dom/foo-actual.txt", actual)
+
+        actual = test_result_writer.TestResultWriter.actual_filename(
+            "template_test/pbkdf2.https.any.worker.html?1-1000", fs
+        )
+        self.assertEqual(
+            "template_test/pbkdf2.https.any.worker_1-1000-actual.txt", actual
+        )

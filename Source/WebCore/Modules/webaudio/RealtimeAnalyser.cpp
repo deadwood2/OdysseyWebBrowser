@@ -42,9 +42,10 @@
 
 namespace WebCore {
 
-RealtimeAnalyser::RealtimeAnalyser()
+RealtimeAnalyser::RealtimeAnalyser(NoiseInjectionPolicy policy)
     : m_inputBuffer(InputBufferSize)
     , m_downmixBus(AudioBus::create(1, AudioUtilities::renderQuantumSize))
+    , m_noiseInjectionPolicy(policy)
 {
     m_analysisFrame = makeUnique<FFTFrame>(DefaultFFTSize);
 }
@@ -173,9 +174,12 @@ void RealtimeAnalyser::doFFTAnalysisIfNecessary()
     size_t n = magnitudeBuffer().size();
     for (size_t i = 0; i < n; ++i) {
         std::complex<double> c(realP[i], imagP[i]);
-        double scalarMagnitude = abs(c) * magnitudeScale;        
+        double scalarMagnitude = std::abs(c) * magnitudeScale;        
         destination[i] = static_cast<float>(k * destination[i] + (1 - k) * scalarMagnitude);
     }
+
+    if (m_noiseInjectionPolicy == NoiseInjectionPolicy::Minimal)
+        AudioUtilities::applyNoise(destination, n, 0.25);
 }
 
 void RealtimeAnalyser::getFloatFrequencyData(Float32Array& destinationArray)
@@ -196,8 +200,9 @@ void RealtimeAnalyser::getByteFrequencyData(Uint8Array& destinationArray)
     doFFTAnalysisIfNecessary();
     
     // Convert from linear magnitude to unsigned-byte decibels.
-    unsigned sourceLength = magnitudeBuffer().size();
-    size_t length = std::min(sourceLength, destinationArray.length());
+    size_t sourceLength = magnitudeBuffer().size();
+    size_t destinationLength = destinationArray.length();
+    size_t length = std::min(sourceLength, destinationLength);
     if (length > 0) {
         const double rangeScaleFactor = m_maxDecibels == m_minDecibels ? 1 : 1 / (m_maxDecibels - m_minDecibels);
         const double minDecibels = m_minDecibels;
@@ -227,8 +232,9 @@ void RealtimeAnalyser::getFloatTimeDomainData(Float32Array& destinationArray)
 {
     ASSERT(isMainThread());
     
-    unsigned fftSize = this->fftSize();
-    size_t length = std::min(fftSize, destinationArray.length());
+    size_t destinationLength = destinationArray.length();
+    size_t fftSize = this->fftSize();
+    size_t length = std::min(fftSize, destinationLength);
     if (length > 0) {
         bool isInputBufferGood = m_inputBuffer.size() == InputBufferSize && m_inputBuffer.size() > fftSize;
         ASSERT(isInputBufferGood);
@@ -251,8 +257,9 @@ void RealtimeAnalyser::getByteTimeDomainData(Uint8Array& destinationArray)
 {
     ASSERT(isMainThread());
 
-    unsigned fftSize = this->fftSize();
-    size_t length = std::min(fftSize, destinationArray.length());
+    size_t destinationLength = destinationArray.length();
+    size_t fftSize = this->fftSize();
+    size_t length = std::min(fftSize, destinationLength);
     if (length > 0) {
         bool isInputBufferGood = m_inputBuffer.size() == InputBufferSize && m_inputBuffer.size() > fftSize;
         ASSERT(isInputBufferGood);

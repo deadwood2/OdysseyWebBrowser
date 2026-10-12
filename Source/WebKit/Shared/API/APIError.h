@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,16 +23,10 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef APIError_h
-#define APIError_h
+#pragma once
 
 #include "APIObject.h"
 #include <WebCore/ResourceError.h>
-
-namespace IPC {
-class Decoder;
-class Encoder;
-}
 
 namespace API {
 
@@ -55,7 +49,9 @@ public:
 
     enum Network {
         Cancelled = 302,
-        FileDoesNotExist = 303
+        FileDoesNotExist = 303,
+        HTTPSUpgradeRedirectLoop = 304,
+        HTTPNavigationWithHTTPSOnlyError = 305,
     };
     static const WTF::String& webKitNetworkErrorDomain();
 
@@ -105,9 +101,6 @@ public:
 
     const WebCore::ResourceError& platformError() const { return m_platformError; }
 
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, RefPtr<Object>&);
-
 private:
     Error()
     {
@@ -123,4 +116,4 @@ private:
 
 } // namespace API
 
-#endif // APIError_h
+SPECIALIZE_TYPE_TRAITS_API_OBJECT(Error);

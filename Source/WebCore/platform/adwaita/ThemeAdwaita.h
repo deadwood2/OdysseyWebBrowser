@@ -25,6 +25,8 @@
 
 #pragma once
 
+#if USE(THEME_ADWAITA)
+
 #include "Color.h"
 #include "StyleColor.h"
 #include "Theme.h"
@@ -35,29 +37,48 @@ class Path;
 
 class ThemeAdwaita : public Theme {
 public:
-    static Color focusColor(bool focusColor);
-    static void paintFocus(GraphicsContext&, const FloatRect&, int offset, bool useDarkAppearance);
-    static void paintFocus(GraphicsContext&, const Path&, const Color&);
-    static void paintFocus(GraphicsContext&, const Vector<FloatRect>&, const Color&);
-    enum class ArrowDirection { Up, Down };
-    static void paintArrow(GraphicsContext&, ArrowDirection, bool);
+    ThemeAdwaita();
 
-    virtual Color activeSelectionForegroundColor() const;
-    virtual Color activeSelectionBackgroundColor() const;
-    virtual Color inactiveSelectionForegroundColor() const;
-    virtual Color inactiveSelectionBackgroundColor() const;
+    enum class PaintRounded : bool { No, Yes };
+
+    static void paintFocus(GraphicsContext&, const FloatRect&, int offset, const Color&, PaintRounded = PaintRounded::No);
+    static void paintFocus(GraphicsContext&, const Path&, const Color&);
+    static void paintFocus(GraphicsContext&, const Vector<FloatRect>&, const Color&, PaintRounded = PaintRounded::No);
+    enum class ArrowDirection { Up, Down };
+    static void paintArrow(GraphicsContext&, const FloatRect&, ArrowDirection, bool);
+
     virtual void platformColorsDidChange() { };
 
-private:
-    LengthSize controlSize(ControlPart, const FontCascade&, const LengthSize&, float) const final;
-    LengthSize minimumControlSize(ControlPart, const FontCascade&, const LengthSize&, float) const final;
-    LengthBox controlBorder(ControlPart, const FontCascade&, const LengthBox&, float) const final;
-    void paint(ControlPart, ControlStates&, GraphicsContext&, const FloatRect&, float, ScrollView*, float, float, bool, bool) final;
+    bool userPrefersContrast() const final;
+    bool userPrefersReducedMotion() const final;
 
-    void paintCheckbox(ControlStates&, GraphicsContext&, const FloatRect&, bool);
-    void paintRadio(ControlStates&, GraphicsContext&, const FloatRect&, bool);
-    void paintButton(ControlStates&, GraphicsContext&, const FloatRect&, bool);
-    void paintSpinButton(ControlStates&, GraphicsContext&, const FloatRect&, bool);
+    void setAccentColor(const Color&);
+    Color accentColor();
+private:
+    LengthSize controlSize(StyleAppearance, const FontCascade&, const LengthSize&, float) const final;
+    LengthSize minimumControlSize(StyleAppearance, const FontCascade&, const LengthSize&, float) const final;
+    LengthBox controlBorder(StyleAppearance, const FontCascade&, const LengthBox&, float) const final;
+    void paint(StyleAppearance, OptionSet<ControlStyle::State>, GraphicsContext&, const FloatRect&, bool, const Color&) final;
+
+    void paintCheckbox(OptionSet<ControlStyle::State>, GraphicsContext&, const FloatRect&, bool, const Color&);
+    void paintRadio(OptionSet<ControlStyle::State>, GraphicsContext&, const FloatRect&, bool, const Color&);
+    void paintButton(OptionSet<ControlStyle::State>, GraphicsContext&, const FloatRect&, bool);
+    void paintSpinButton(OptionSet<ControlStyle::State>, GraphicsContext&, const FloatRect&, bool);
+
+    static Color focusColor(const Color&);
+
+#if PLATFORM(GTK)
+    void refreshGtkSettings();
+#endif // PLATFORM(GTK)
+
+    Color m_accentColor { SRGBA<uint8_t> { 52, 132, 228 } };
+
+    bool m_prefersReducedMotion { false };
+#if !USE(GTK4)
+    bool m_prefersContrast { false };
+#endif
 };
 
 } // namespace WebCore
+
+#endif // USE(THEME_ADWAITA)

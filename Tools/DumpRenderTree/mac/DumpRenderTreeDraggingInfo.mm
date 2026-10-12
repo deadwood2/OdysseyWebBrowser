@@ -141,12 +141,16 @@ static std::pair<NSURL *, NSError *> copyFile(NSURL *sourceURL, NSURL *destinati
 
 - (id)initWithImage:(NSImage *)anImage offset:(NSSize)o pasteboard:(NSPasteboard *)pboard source:(id)source
 {
+    self = [super init];
+    if (!self)
+        return nil;
+
     draggedImage = [anImage retain];
     draggingPasteboard = [pboard retain];
     draggingSource = [source retain];
     offset = o;
-    
-    return [super init];
+
+    return self;
 }
 
 - (void)dealloc
@@ -273,13 +277,7 @@ static NSMutableArray<NSFilePromiseReceiver *> *allFilePromiseReceivers()
         [receiver setDraggingSource:draggingSource];
         [allFilePromiseReceivers() addObject:receiver.get()];
 
-#if HAVE(NSDRAGGINGITEM_INITWITHITEM)
         auto item = adoptNS([[NSDraggingItem alloc] _initWithItem:receiver.get()]);
-#else
-        auto item = adoptNS([[NSDraggingItem alloc] initWithPasteboardWriter:(id <NSPasteboardWriting>)receiver.get()]); // FIXME: <https://webkit.org/b/194060> Pass an object of the right type.
-        [item setItem:receiver.get()];
-#endif
-
         block(item.get(), 0, &stop);
         if (stop)
             return;
@@ -293,6 +291,11 @@ static NSMutableArray<NSFilePromiseReceiver *> *allFilePromiseReceivers()
 
 - (void)resetSpringLoading
 {
+}
+
+- (id)localContext
+{
+    return nil;
 }
 
 @end

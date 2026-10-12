@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2014, 2015 Apple Inc. All rights reserved.
 # Copyright (c) 2014 University of Washington. All rights reserved.
@@ -91,25 +91,22 @@ class BuiltinsCombinedImplementationGenerator(BuiltinsGenerator):
                 ("JavaScriptCore", "builtins/BuiltinExecutables.h"),
             ),
             (["JavaScriptCore", "WebCore"],
-                ("JavaScriptCore", "heap/HeapInlines.h"),
-            ),
-            (["JavaScriptCore", "WebCore"],
                 ("JavaScriptCore", "runtime/UnlinkedFunctionExecutable.h"),
             ),
-            (["JavaScriptCore", "WebCore"],
+            (["JavaScriptCore"],
                 ("JavaScriptCore", "runtime/JSCellInlines.h"),
             ),
             (["WebCore"],
-                ("JavaScriptCore", "runtime/StructureInlines.h"),
-            ),
-            (["WebCore"],
-                ("JavaScriptCore", "runtime/JSCJSValueInlines.h"),
+                ("JavaScriptCore", "runtime/JSObjectInlines.h"),
             ),
             (["JavaScriptCore", "WebCore"],
                 ("JavaScriptCore", "runtime/VM.h"),
             ),
             (["JavaScriptCore", "WebCore"],
                 ("JavaScriptCore", "runtime/IdentifierInlines.h"),
+            ),
+            (["JavaScriptCore", "WebCore"],
+                ("JavaScriptCore", "runtime/ImplementationVisibility.h"),
             ),
             (["JavaScriptCore", "WebCore"],
                 ("JavaScriptCore", "runtime/Intrinsic.h"),

@@ -53,7 +53,8 @@ static NSString *timePickerDateFormat = @"HH:mm";
 
 - (instancetype)initWithDelegate:(id <WKQuickboardViewControllerDelegate>)delegate
 {
-    return [super initWithDelegate:delegate];
+    self = [super initWithDelegate:delegate];
+    return self;
 }
 
 - (NSDateFormatter *)dateFormatter
@@ -106,6 +107,8 @@ static NSString *timePickerDateFormat = @"HH:mm";
 {
     [super viewDidLoad];
 
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
+
     self.headerView.hidden = YES;
 
     _timePicker = adoptNS([allocCLKUIWheelsOfTimeViewInstance() initWithFrame:self.view.bounds style:CLKUIWheelsOfTimeStyleAlarm12]);
@@ -134,14 +137,18 @@ static NSString *timePickerDateFormat = @"HH:mm";
 - (void)leftButtonWOTAction
 {
     // Handle an action on the 'Cancel' button.
-    [self.delegate quickboardInputCancelled:self];
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    [self.delegate quickboardInputCancelled:static_cast<id<PUICQuickboardController>>(self)];
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 - (void)rightButtonWOTAction
 {
     // Handle an action on the 'Set' button.
     auto valueAsAttributedString = adoptNS([[NSAttributedString alloc] initWithString:self.timeValueForFormControls]);
-    [self.delegate quickboard:self textEntered:valueAsAttributedString.get()];
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    [self.delegate quickboard:static_cast<id<PUICQuickboardController>>(self) textEntered:valueAsAttributedString.get()];
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 @end

@@ -28,14 +28,13 @@
 
 #include <wtf/text/CString.h>
 #include <wtf/text/StringBuilder.h>
+#include <wtf/unicode/CharacterNames.h>
 
 namespace WebCore {
 
-static void replaceNonBreakingSpaceWithSpace(String& str)
+static void replaceNonBreakingSpaceWithSpace(String& string)
 {
-    static const UChar NonBreakingSpaceCharacter = 0xA0;
-    static const UChar SpaceCharacter = ' ';
-    str.replace(NonBreakingSpaceCharacter, SpaceCharacter);
+    string = makeStringByReplacingAll(string, noBreakSpace, space);
 }
 
 void SelectionData::setText(const String& newText)
@@ -59,15 +58,15 @@ void SelectionData::setURIList(const String& uriListString)
     // will get an empty string. This is in line with the HTML5 spec (see
     // "The DragEvent and DataTransfer interfaces"). Also extract all filenames
     // from the URI list.
-    bool setURL = false;
+    bool setURL = hasURL();
     for (auto& line : uriListString.split('\n')) {
-        line = line.stripWhiteSpace();
+        line = line.trim(deprecatedIsSpaceOrNewline);
         if (line.isEmpty())
             continue;
         if (line[0] == '#')
             continue;
 
-        URL url = URL(URL(), line);
+        URL url { line };
         if (url.isValid()) {
             if (!setURL) {
                 m_url = url;

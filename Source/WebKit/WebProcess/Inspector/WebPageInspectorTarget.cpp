@@ -30,15 +30,21 @@
 #include "WebPageInspectorTargetFrontendChannel.h"
 #include <WebCore/InspectorController.h>
 #include <WebCore/Page.h>
+#include <wtf/TZoneMallocInlines.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebKit {
 
 using namespace Inspector;
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebPageInspectorTarget);
+
 WebPageInspectorTarget::WebPageInspectorTarget(WebPage& page)
     : m_page(page)
 {
 }
+
+WebPageInspectorTarget::~WebPageInspectorTarget() = default;
 
 String WebPageInspectorTarget::identifier() const
 {
@@ -71,7 +77,7 @@ void WebPageInspectorTarget::sendMessageToTargetBackend(const String& message)
 
 String WebPageInspectorTarget::toTargetID(WebCore::PageIdentifier pageID)
 {
-    return makeString("page-", pageID.toUInt64());
+    return makeString("page-"_s, pageID.toUInt64());
 }
 
 

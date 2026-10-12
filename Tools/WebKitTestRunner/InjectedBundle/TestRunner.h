@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -57,6 +57,33 @@ public:
 #endif
     }
 
+    bool isMac() const
+    {
+#if PLATFORM(MAC)
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    bool keyboardAppearsOverContent() const
+    {
+#if PLATFORM(VISION)
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    bool isKeyboardImmediatelyAvailable()
+    {
+#if PLATFORM(VISION)
+        return true;
+#else
+        return false;
+#endif
+    }
+
     bool isWebKit2() const { return true; }
 
     // The basics.
@@ -75,7 +102,7 @@ public:
     unsigned renderTreeDumpOptions() const { return m_renderTreeDumpOptions; }
 
     // Other dumping.
-    void dumpBackForwardList() { m_shouldDumpBackForwardListsForAllWindows = true; }
+    void dumpBackForwardList();
     void dumpChildFrameScrollPositions() { m_shouldDumpAllFrameScrollPositions = true; }
     void dumpEditingCallbacks() { m_dumpEditingCallbacks = true; }
     void dumpSelectionRect() { m_dumpSelectionRect = true; }
@@ -90,7 +117,7 @@ public:
     void dumpApplicationCacheDelegateCallbacks() { m_dumpApplicationCacheDelegateCallbacks = true; }
     void dumpDatabaseCallbacks() { m_dumpDatabaseCallbacks = true; }
     void dumpDOMAsWebArchive() { setWhatToDump(WhatToDump::DOMAsWebArchive); }
-    void dumpPolicyDelegateCallbacks() { m_dumpPolicyCallbacks = true; }
+    void dumpPolicyDelegateCallbacks();
     void dumpResourceLoadStatistics();
 
     void setShouldDumpFrameLoadCallbacks(bool value);
@@ -99,10 +126,10 @@ public:
     // Special options.
     void keepWebHistory();
     void setAcceptsEditing(bool value) { m_shouldAllowEditing = value; }
-    void setCanOpenWindows();
-    void setCloseRemainingWindowsWhenComplete(bool value) { m_shouldCloseExtraWindows = value; }
+    void preventPopupWindows();
 
     void setCustomPolicyDelegate(bool enabled, bool permissive = false);
+    void skipPolicyDelegateNotifyDone();
     void addOriginAccessAllowListEntry(JSStringRef sourceOrigin, JSStringRef destinationProtocol, JSStringRef destinationHost, bool allowDestinationSubdomains);
     void removeOriginAccessAllowListEntry(JSStringRef sourceOrigin, JSStringRef destinationProtocol, JSStringRef destinationHost, bool allowDestinationSubdomains);
     void setUserStyleSheetEnabled(bool);
@@ -113,6 +140,7 @@ public:
     void setCacheModel(int);
     void setAsynchronousSpellCheckingEnabled(bool);
     void setAllowsAnySSLCertificate(bool);
+
     void setShouldSwapToEphemeralSessionOnNextNavigation(bool);
     void setShouldSwapToDefaultSessionOnNextNavigation(bool);
     void setCustomUserAgent(JSStringRef);
@@ -130,15 +158,17 @@ public:
     void displayAndTrackRepaints();
     void displayOnLoadFinish() { m_displayOnLoadFinish = true; }
     bool shouldDisplayOnLoadFinish() { return m_displayOnLoadFinish; }
+    void dontForceRepaint() { m_forceRepaint = false; }
+    bool shouldForceRepaint() { return m_forceRepaint; }
 
     // UserContent testing.
     void addUserScript(JSStringRef source, bool runAtStart, bool allFrames);
     void addUserStyleSheet(JSStringRef source, bool allFrames);
 
     // Text search testing.
-    bool findString(JSStringRef, JSValueRef optionsArray);
-    void findStringMatchesInPage(JSStringRef, JSValueRef optionsArray);
-    void replaceFindMatchesAtIndices(JSValueRef matchIndices, JSStringRef replacementText, bool selectionOnly);
+    bool findString(JSContextRef, JSStringRef, JSValueRef optionsArray);
+    void findStringMatchesInPage(JSContextRef, JSStringRef, JSValueRef optionsArray);
+    void replaceFindMatchesAtIndices(JSContextRef, JSValueRef matchIndices, JSStringRef replacementText, bool selectionOnly);
 
     // Local storage
     void clearAllDatabases();
@@ -146,26 +176,19 @@ public:
     JSRetainPtr<JSStringRef> pathToLocalResource(JSStringRef);
     void syncLocalStorage();
 
-    // Application Cache
-    void clearAllApplicationCaches();
-    void clearApplicationCacheForOrigin(JSStringRef origin);
-    void setAppCacheMaximumSize(uint64_t);
-    long long applicationCacheDiskUsageForOrigin(JSStringRef origin);
-    void disallowIncreaseForApplicationCacheQuota();
-    bool shouldDisallowIncreaseForApplicationCacheQuota() { return m_disallowIncreaseForApplicationCacheQuota; }
-    JSValueRef originsWithApplicationCache();
-
     void clearDOMCache(JSStringRef origin);
     void clearDOMCaches();
     bool hasDOMCache(JSStringRef origin);
     uint64_t domCacheSize(JSStringRef origin);
     void setAllowStorageQuotaIncrease(bool);
+    void setQuota(uint64_t);
+    void setOriginQuotaRatioEnabled(bool);
 
     // Failed load condition testing
     void forceImmediateCompletion();
 
     // Printing
-    bool isPageBoxVisible(int pageIndex);
+    bool isPageBoxVisible(JSContextRef, int pageIndex);
     bool isPrinting() { return m_isPrinting; }
     void setPrinting() { m_isPrinting = true; }
 
@@ -188,7 +211,7 @@ public:
     void setWhatToDump(WhatToDump);
 
     bool shouldDumpAllFrameScrollPositions() const { return m_shouldDumpAllFrameScrollPositions; }
-    bool shouldDumpBackForwardListsForAllWindows() const { return m_shouldDumpBackForwardListsForAllWindows; }
+    bool shouldDumpBackForwardListsForAllWindows() const;
     bool shouldDumpEditingCallbacks() const { return m_dumpEditingCallbacks; }
     bool shouldDumpMainFrameScrollPosition() const { return whatToDump() == WhatToDump::RenderTree; }
     bool shouldDumpStatusCallbacks() const { return m_dumpStatusCallbacks; }
@@ -203,10 +226,6 @@ public:
     bool shouldDumpApplicationCacheDelegateCallbacks() const { return m_dumpApplicationCacheDelegateCallbacks; }
     bool shouldDumpDatabaseCallbacks() const { return m_dumpDatabaseCallbacks; }
     bool shouldDumpSelectionRect() const { return m_dumpSelectionRect; }
-    bool shouldDumpPolicyCallbacks() const { return m_dumpPolicyCallbacks; }
-
-    bool isPolicyDelegateEnabled() const { return m_policyDelegateEnabled; }
-    bool isPolicyDelegatePermissive() const { return m_policyDelegatePermissive; }
 
     bool didReceiveServerRedirectForProvisionalNavigation() const;
     void clearDidReceiveServerRedirectForProvisionalNavigation();
@@ -216,10 +235,11 @@ public:
     // Downloads
     bool shouldFinishAfterDownload() const { return m_shouldFinishAfterDownload; }
     void setShouldLogDownloadCallbacks(bool);
+    void setShouldLogDownloadSize(bool);
+    void setShouldLogDownloadExpectedSize(bool);
+    void setShouldDownloadContentDispositionAttachments(bool);
 
     bool shouldAllowEditing() const { return m_shouldAllowEditing; }
-
-    bool shouldCloseExtraWindowsAfterRunningTest() const { return m_shouldCloseExtraWindows; }
 
     void evaluateScriptInIsolatedWorld(JSContextRef, unsigned worldID, JSStringRef script);
     static unsigned worldIDForWorld(WKBundleScriptWorldRef);
@@ -238,7 +258,7 @@ public:
     void setWillSendRequestAddsHTTPBody(JSStringRef body) { m_willSendRequestHTTPBody = toWTFString(body); }
     String willSendRequestHTTPBody() const { return m_willSendRequestHTTPBody; }
 
-    void setTextDirection(JSStringRef);
+    void setTextDirection(JSContextRef, JSStringRef);
 
     void setShouldStayOnPageAfterHandlingBeforeUnload(bool);
 
@@ -254,48 +274,53 @@ public:
     double databaseMaxQuota() const { return m_databaseMaxQuota; }
     void setDatabaseMaxQuota(double quota) { m_databaseMaxQuota = quota; }
 
-    void addChromeInputField(JSValueRef);
-    void removeChromeInputField(JSValueRef);
-    void focusWebView(JSValueRef);
+    void addChromeInputField(JSContextRef, JSValueRef);
+    void removeChromeInputField(JSContextRef, JSValueRef);
+    void focusWebView(JSContextRef, JSValueRef);
 
-    void setTextInChromeInputField(JSStringRef text, JSValueRef callback);
-    void selectChromeInputField(JSValueRef callback);
-    void getSelectedTextInChromeInputField(JSValueRef callback);
+    void setTextInChromeInputField(JSContextRef, JSStringRef text, JSValueRef callback);
+    void selectChromeInputField(JSContextRef, JSValueRef callback);
+    void getSelectedTextInChromeInputField(JSContextRef, JSValueRef callback);
 
-    void setBackingScaleFactor(double, JSValueRef);
+    void setBackingScaleFactor(JSContextRef, double, JSValueRef);
 
     void setWindowIsKey(bool);
 
     void setViewSize(double width, double height);
-
-    void callAddChromeInputFieldCallback();
-    void callRemoveChromeInputFieldCallback();
-    void callFocusWebViewCallback();
-    void callSetBackingScaleFactorCallback();
-
-    void callSetTextInChromeInputFieldCallback();
-    void callSelectChromeInputFieldCallback();
-    void callGetSelectedTextInChromeInputFieldCallback(JSStringRef);
 
     static void overridePreference(JSStringRef preference, JSStringRef value);
 
     // Cookies testing
     void setAlwaysAcceptCookies(bool);
     void setOnlyAcceptFirstPartyCookies(bool);
+    void removeAllCookies(JSContextRef, JSValueRef callback);
 
     // Custom full screen behavior.
     void setHasCustomFullScreenBehavior(bool value) { m_customFullScreenBehavior = value; }
     bool hasCustomFullScreenBehavior() const { return m_customFullScreenBehavior; }
-    void setEnterFullscreenForElementCallback(JSValueRef);
+    void setEnterFullscreenForElementCallback(JSContextRef, JSValueRef);
     void callEnterFullscreenForElementCallback();
-    void setExitFullscreenForElementCallback(JSValueRef);
+    void setExitFullscreenForElementCallback(JSContextRef, JSValueRef);
     void callExitFullscreenForElementCallback();
 
     // Web notifications.
-    static void grantWebNotificationPermission(JSStringRef origin);
-    static void denyWebNotificationPermission(JSStringRef origin);
-    static void removeAllWebNotificationPermissions();
-    static void simulateWebNotificationClick(JSValueRef notification);
+    void grantWebNotificationPermission(JSStringRef origin);
+    void denyWebNotificationPermission(JSStringRef origin);
+    void denyWebNotificationPermissionOnPrompt(JSStringRef origin);
+    void removeAllWebNotificationPermissions();
+    void simulateWebNotificationClick(JSContextRef, JSValueRef notification);
+    void simulateWebNotificationClickForServiceWorkerNotifications();
+
+    JSRetainPtr<JSStringRef> getBackgroundFetchIdentifier();
+    void abortBackgroundFetch(JSStringRef);
+    void pauseBackgroundFetch(JSStringRef);
+    void resumeBackgroundFetch(JSStringRef);
+    void simulateClickBackgroundFetch(JSStringRef);
+    void setBackgroundFetchPermission(bool);
+    JSRetainPtr<JSStringRef> lastAddedBackgroundFetchIdentifier() const;
+    JSRetainPtr<JSStringRef> lastRemovedBackgroundFetchIdentifier() const;
+    JSRetainPtr<JSStringRef> lastUpdatedBackgroundFetchIdentifier() const;
+    JSRetainPtr<JSStringRef> backgroundFetchState(JSStringRef);
 
     // Geolocation.
     void setGeolocationPermission(bool);
@@ -303,7 +328,12 @@ public:
     void setMockGeolocationPositionUnavailableError(JSStringRef message);
     bool isGeolocationProviderActive();
 
+    // Screen Wake Lock.
+    void setScreenWakeLockPermission(bool);
+
     // MediaStream
+    void setCameraPermission(bool);
+    void setMicrophonePermission(bool);
     void setUserMediaPermission(bool);
     void resetUserMediaPermission();
     void setUserMediaPersistentPermissionForOrigin(bool permission, JSStringRef origin, JSStringRef parentOrigin);
@@ -314,7 +344,7 @@ public:
     void setPageVisibility(JSStringRef state);
     void resetPageVisibility();
 
-    bool callShouldCloseOnWebView();
+    bool callShouldCloseOnWebView(JSContextRef);
 
     void setCustomTimeout(WTF::Seconds duration) { m_timeout = duration; }
 
@@ -324,14 +354,15 @@ public:
     void queueLoad(JSStringRef url, JSStringRef target, bool shouldOpenExternalURLs);
     void queueLoadHTMLString(JSStringRef content, JSStringRef baseURL, JSStringRef unreachableURL);
     void queueReload();
+    void reloadFromOrigin();
     void queueLoadingScript(JSStringRef script);
     void queueNonLoadingScript(JSStringRef script);
 
     bool secureEventInputIsEnabled() const;
 
-    JSValueRef failNextNewCodeBlock();
-    JSValueRef numberOfDFGCompiles(JSValueRef function);
-    JSValueRef neverInlineFunction(JSValueRef function);
+    JSValueRef failNextNewCodeBlock(JSContextRef);
+    JSValueRef numberOfDFGCompiles(JSContextRef, JSValueRef function);
+    JSValueRef neverInlineFunction(JSContextRef, JSValueRef function);
 
     bool shouldDecideNavigationPolicyAfterDelay() const { return m_shouldDecideNavigationPolicyAfterDelay; }
     void setShouldDecideNavigationPolicyAfterDelay(bool);
@@ -341,23 +372,22 @@ public:
     void setIgnoresViewportScaleLimits(bool);
     void setShouldDownloadUndisplayableMIMETypes(bool);
     void setShouldAllowDeviceOrientationAndMotionAccess(bool);
+    void stopLoading();
 
     bool didCancelClientRedirect() const { return m_didCancelClientRedirect; }
     void setDidCancelClientRedirect(bool value) { m_didCancelClientRedirect = value; }
 
-    void runUIScript(JSStringRef script, JSValueRef callback);
-    void runUIScriptImmediately(JSStringRef script, JSValueRef callback);
+    void runUIScript(JSContextRef, JSStringRef script, JSValueRef callback);
+    void runUIScriptImmediately(JSContextRef, JSStringRef script, JSValueRef callback);
     void runUIScriptCallback(unsigned callbackID, JSStringRef result);
 
     // Contextual menu actions
-    void setAllowedMenuActions(JSValueRef);
-    void installCustomMenuAction(JSStringRef name, bool dismissesAutomatically, JSValueRef callback);
-    void performCustomMenuAction();
+    void setAllowedMenuActions(JSContextRef, JSValueRef);
 
-    void installDidBeginSwipeCallback(JSValueRef);
-    void installWillEndSwipeCallback(JSValueRef);
-    void installDidEndSwipeCallback(JSValueRef);
-    void installDidRemoveSwipeSnapshotCallback(JSValueRef);
+    void installDidBeginSwipeCallback(JSContextRef, JSValueRef);
+    void installWillEndSwipeCallback(JSContextRef, JSValueRef);
+    void installDidEndSwipeCallback(JSContextRef, JSValueRef);
+    void installDidRemoveSwipeSnapshotCallback(JSContextRef, JSValueRef);
     void callDidBeginSwipeCallback();
     void callWillEndSwipeCallback();
     void callDidEndSwipeCallback();
@@ -372,7 +402,7 @@ public:
     // Gamepads
     void connectMockGamepad(unsigned index);
     void disconnectMockGamepad(unsigned index);
-    void setMockGamepadDetails(unsigned index, JSStringRef gamepadID, JSStringRef mapping, unsigned axisCount, unsigned buttonCount);
+    void setMockGamepadDetails(unsigned index, JSStringRef gamepadID, JSStringRef mapping, unsigned axisCount, unsigned buttonCount, bool supportsDualRumble);
     void setMockGamepadAxisValue(unsigned index, unsigned axisIndex, double value);
     void setMockGamepadButtonValue(unsigned index, unsigned buttonIndex, double value);
     
@@ -381,35 +411,26 @@ public:
     bool doesStatisticsDomainIDExistInDatabase(unsigned domainID);
     void setStatisticsEnabled(bool value);
     bool isStatisticsEphemeral();
-    void installStatisticsDidModifyDataRecordsCallback(JSValueRef callback);
-    void installStatisticsDidScanDataRecordsCallback(JSValueRef callback);
+    void installStatisticsDidModifyDataRecordsCallback(JSContextRef, JSValueRef callback);
+    void installStatisticsDidScanDataRecordsCallback(JSContextRef, JSValueRef callback);
     void statisticsDidModifyDataRecordsCallback();
     void statisticsDidScanDataRecordsCallback();
-    bool statisticsNotifyObserver();
-    void statisticsProcessStatisticsAndDataRecords();
-    void statisticsUpdateCookieBlocking(JSValueRef completionHandler);
-    void statisticsCallDidSetBlockCookiesForHostCallback();
-    void setStatisticsDebugMode(bool value, JSValueRef completionHandler);
-    void statisticsCallDidSetDebugModeCallback();
-    void setStatisticsPrevalentResourceForDebugMode(JSStringRef hostName, JSValueRef completionHandler);
-    void statisticsCallDidSetPrevalentResourceForDebugModeCallback();
-    void setStatisticsLastSeen(JSStringRef hostName, double seconds, JSValueRef completionHandler);
-    void statisticsCallDidSetLastSeenCallback();
-    void setStatisticsMergeStatistic(JSStringRef hostName, JSStringRef topFrameDomain1, JSStringRef topFrameDomain2, double lastSeen, bool hadUserInteraction, double mostRecentUserInteraction, bool isGrandfathered, bool isPrevalent, bool isVeryPrevalent, unsigned dataRecordsRemoved, JSValueRef completionHandler);
-    void statisticsCallDidSetMergeStatisticCallback();
-    void setStatisticsExpiredStatistic(JSStringRef hostName, unsigned numberOfOperatingDaysPassed, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, JSValueRef completionHandler);
-    void statisticsCallDidSetExpiredStatisticCallback();
-    void setStatisticsPrevalentResource(JSStringRef hostName, bool value, JSValueRef completionHandler);
-    void statisticsCallDidSetPrevalentResourceCallback();
-    void setStatisticsVeryPrevalentResource(JSStringRef hostName, bool value, JSValueRef completionHandler);
-    void statisticsCallDidSetVeryPrevalentResourceCallback();
+    void statisticsNotifyObserver(JSContextRef, JSValueRef completionHandler);
+    void statisticsProcessStatisticsAndDataRecords(JSContextRef, JSValueRef completionHandler);
+    void statisticsUpdateCookieBlocking(JSContextRef, JSValueRef completionHandler);
+    void setStatisticsDebugMode(JSContextRef, bool value, JSValueRef completionHandler);
+    void setStatisticsPrevalentResourceForDebugMode(JSContextRef, JSStringRef hostName, JSValueRef completionHandler);
+    void setStatisticsLastSeen(JSContextRef, JSStringRef hostName, double seconds, JSValueRef completionHandler);
+    void setStatisticsMergeStatistic(JSContextRef, JSStringRef hostName, JSStringRef topFrameDomain1, JSStringRef topFrameDomain2, double lastSeen, bool hadUserInteraction, double mostRecentUserInteraction, bool isGrandfathered, bool isPrevalent, bool isVeryPrevalent, unsigned dataRecordsRemoved, JSValueRef completionHandler);
+    void setStatisticsExpiredStatistic(JSContextRef, JSStringRef hostName, unsigned numberOfOperatingDaysPassed, bool hadUserInteraction, bool isScheduledForAllButCookieDataRemoval, bool isPrevalent, JSValueRef completionHandler);
+    void setStatisticsPrevalentResource(JSContextRef, JSStringRef hostName, bool value, JSValueRef completionHandler);
+    void setStatisticsVeryPrevalentResource(JSContextRef, JSStringRef hostName, bool value, JSValueRef completionHandler);
     bool isStatisticsPrevalentResource(JSStringRef hostName);
     bool isStatisticsVeryPrevalentResource(JSStringRef hostName);
     bool isStatisticsRegisteredAsSubresourceUnder(JSStringRef subresourceHost, JSStringRef topFrameHost);
     bool isStatisticsRegisteredAsSubFrameUnder(JSStringRef subFrameHost, JSStringRef topFrameHost);
     bool isStatisticsRegisteredAsRedirectingTo(JSStringRef hostRedirectedFrom, JSStringRef hostRedirectedTo);
-    void setStatisticsHasHadUserInteraction(JSStringRef hostName, bool value, JSValueRef completionHandler);
-    void statisticsCallDidSetHasHadUserInteractionCallback();
+    void setStatisticsHasHadUserInteraction(JSContextRef, JSStringRef hostName, bool value, JSValueRef completionHandler);
     bool isStatisticsHasHadUserInteraction(JSStringRef hostName);
     bool isStatisticsOnlyInDatabaseOnce(JSStringRef subHost, JSStringRef topHost);
     void setStatisticsGrandfathered(JSStringRef hostName, bool value);
@@ -420,97 +441,88 @@ public:
     void setStatisticsSubresourceUniqueRedirectFrom(JSStringRef hostName, JSStringRef hostNameRedirectedFrom);
     void setStatisticsTopFrameUniqueRedirectTo(JSStringRef hostName, JSStringRef hostNameRedirectedTo);
     void setStatisticsTopFrameUniqueRedirectFrom(JSStringRef hostName, JSStringRef hostNameRedirectedFrom);
-    void setStatisticsCrossSiteLoadWithLinkDecoration(JSStringRef fromHost, JSStringRef toHost);
+    void setStatisticsCrossSiteLoadWithLinkDecoration(JSStringRef fromHost, JSStringRef toHost, bool wasFiltered);
     void setStatisticsTimeToLiveUserInteraction(double seconds);
     void setStatisticsNotifyPagesWhenDataRecordsWereScanned(bool);
+    void setStatisticsTimeAdvanceForTesting(double);
     void setStatisticsIsRunningTest(bool);
     void setStatisticsShouldClassifyResourcesBeforeDataRecordsRemoval(bool);
     void setStatisticsMinimumTimeBetweenDataRecordsRemoval(double);
     void setStatisticsGrandfatheringTime(double seconds);
     void setStatisticsMaxStatisticsEntries(unsigned);
     void setStatisticsPruneEntriesDownTo(unsigned);
-    void statisticsClearInMemoryAndPersistentStore(JSValueRef callback);
-    void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(unsigned hours, JSValueRef callback);
-    void statisticsClearThroughWebsiteDataRemoval(JSValueRef callback);
-    void statisticsDeleteCookiesForHost(JSStringRef hostName, bool includeHttpOnlyCookies);
-    void statisticsCallClearInMemoryAndPersistentStoreCallback();
-    void statisticsCallClearThroughWebsiteDataRemovalCallback();
+    void statisticsClearInMemoryAndPersistentStore(JSContextRef, JSValueRef callback);
+    void statisticsClearInMemoryAndPersistentStoreModifiedSinceHours(JSContextRef, unsigned hours, JSValueRef callback);
+    void statisticsClearThroughWebsiteDataRemoval(JSContextRef, JSValueRef callback);
+    void statisticsDeleteCookiesForHost(JSContextRef, JSStringRef hostName, bool includeHttpOnlyCookies, JSValueRef callback);
     bool isStatisticsHasLocalStorage(JSStringRef hostName);
     void setStatisticsCacheMaxAgeCap(double seconds);
     bool hasStatisticsIsolatedSession(JSStringRef hostName);
-    void setStatisticsShouldDowngradeReferrer(bool, JSValueRef callback);
-    void statisticsCallDidSetShouldDowngradeReferrerCallback();
-    void setStatisticsShouldBlockThirdPartyCookies(bool value, JSValueRef callback, bool onlyOnSitesWithoutUserInteraction);
-    void statisticsCallDidSetShouldBlockThirdPartyCookiesCallback();
-    void setStatisticsFirstPartyWebsiteDataRemovalMode(bool value, JSValueRef callback);
-    void statisticsCallDidSetFirstPartyWebsiteDataRemovalModeCallback();
-    void statisticsSetToSameSiteStrictCookies(JSStringRef hostName, JSValueRef callback);
-    void statisticsCallDidSetToSameSiteStrictCookiesCallback();
-    void statisticsSetFirstPartyHostCNAMEDomain(JSStringRef firstPartyURLString, JSStringRef cnameURLString, JSValueRef completionHandler);
-    void statisticsCallDidSetFirstPartyHostCNAMEDomainCallback();
-    void statisticsSetThirdPartyCNAMEDomain(JSStringRef cnameURLString, JSValueRef completionHandler);
-    void statisticsCallDidSetThirdPartyCNAMEDomainCallback();
-    void statisticsResetToConsistentState(JSValueRef completionHandler);
-    void statisticsCallDidResetToConsistentStateCallback();
-    void loadedSubresourceDomains(JSValueRef callback);
-    void callDidReceiveLoadedSubresourceDomainsCallback(Vector<String>&& domains);
+    void setStatisticsShouldDowngradeReferrer(JSContextRef, bool, JSValueRef callback);
+    void setStatisticsShouldBlockThirdPartyCookies(JSContextRef, bool value, JSValueRef callback, bool onlyOnSitesWithoutUserInteraction);
+    void setStatisticsFirstPartyWebsiteDataRemovalMode(JSContextRef, bool value, JSValueRef callback);
+    void statisticsSetToSameSiteStrictCookies(JSContextRef, JSStringRef hostName, JSValueRef callback);
+    void statisticsSetFirstPartyHostCNAMEDomain(JSContextRef, JSStringRef firstPartyURLString, JSStringRef cnameURLString, JSValueRef completionHandler);
+    void statisticsSetThirdPartyCNAMEDomain(JSContextRef, JSStringRef cnameURLString, JSValueRef completionHandler);
+    void statisticsResetToConsistentState(JSContextRef, JSValueRef completionHandler);
+    void loadedSubresourceDomains(JSContextRef, JSValueRef callback);
 
     // Injected bundle form client.
-    void installTextDidChangeInTextFieldCallback(JSValueRef callback);
+    void installTextDidChangeInTextFieldCallback(JSContextRef, JSValueRef callback);
     void textDidChangeInTextFieldCallback();
-    void installTextFieldDidBeginEditingCallback(JSValueRef callback);
+    void installTextFieldDidBeginEditingCallback(JSContextRef, JSValueRef callback);
     void textFieldDidBeginEditingCallback();
-    void installTextFieldDidEndEditingCallback(JSValueRef callback);
+    void installTextFieldDidEndEditingCallback(JSContextRef, JSValueRef callback);
     void textFieldDidEndEditingCallback();
 
     // Storage Access API
-    void getAllStorageAccessEntries(JSValueRef callback);
-    void callDidReceiveAllStorageAccessEntriesCallback(Vector<String>& domains);
+    void getAllStorageAccessEntries(JSContextRef, JSValueRef callback);
+    void setRequestStorageAccessThrowsExceptionUntilReload(bool enabled);
 
     // Open panel
-    void setOpenPanelFiles(JSValueRef);
-    void setOpenPanelFilesMediaIcon(JSValueRef);
+    void setOpenPanelFiles(JSContextRef, JSValueRef);
+    void setOpenPanelFilesMediaIcon(JSContextRef, JSValueRef);
 
     // Modal alerts
     void setShouldDismissJavaScriptAlertsAsynchronously(bool);
     void abortModal();
 
+    void terminateGPUProcess();
     void terminateNetworkProcess();
     void terminateServiceWorkers();
     void setUseSeparateServiceWorkerProcess(bool);
 
-    void removeAllSessionCredentials(JSValueRef);
-    void callDidRemoveAllSessionCredentialsCallback();
+    void removeAllSessionCredentials(JSContextRef, JSValueRef);
     
-    void getApplicationManifestThen(JSValueRef);
-    void didGetApplicationManifest();
+    void getApplicationManifestThen(JSContextRef, JSValueRef);
 
     void installFakeHelvetica(JSStringRef configuration);
 
     void dumpAllHTTPRedirectedResponseHeaders() { m_dumpAllHTTPRedirectedResponseHeaders = true; }
     bool shouldDumpAllHTTPRedirectedResponseHeaders() const { return m_dumpAllHTTPRedirectedResponseHeaders; }
 
-    void addMockCameraDevice(JSStringRef persistentId, JSStringRef label);
-    void addMockMicrophoneDevice(JSStringRef persistentId, JSStringRef label);
+    void addMockCameraDevice(JSContextRef, JSStringRef persistentId, JSStringRef label, JSValueRef properties);
+    void addMockMicrophoneDevice(JSContextRef, JSStringRef persistentId, JSStringRef label, JSValueRef propertie);
     void addMockScreenDevice(JSStringRef persistentId, JSStringRef label);
     void clearMockMediaDevices();
     void removeMockMediaDevice(JSStringRef persistentId);
+    void setMockMediaDeviceIsEphemeral(JSStringRef persistentId, bool isEphemeral);
     void resetMockMediaDevices();
     void setMockCameraOrientation(unsigned);
     bool isMockRealtimeMediaSourceCenterEnabled();
+    void setMockCaptureDevicesInterrupted(bool isCameraInterrupted, bool isMicrophoneInterrupted);
+    void triggerMockCaptureConfigurationChange(bool forMicrophone, bool forDisplay);
 
     bool hasAppBoundSession();
     void clearAppBoundSession();
-    void setAppBoundDomains(JSValueRef originArray, JSValueRef callback);
-    void didSetAppBoundDomainsCallback();
+    void setAppBoundDomains(JSContextRef, JSValueRef originArray, JSValueRef callback);
+    void setManagedDomains(JSContextRef, JSValueRef originArray, JSValueRef callback);
 
     bool didLoadAppInitiatedRequest();
     bool didLoadNonAppInitiatedRequest();
 
     size_t userScriptInjectedCount() const;
     void injectUserScript(JSStringRef);
-
-    void sendDisplayConfigurationChangedMessageForTesting();
 
     void setServiceWorkerFetchTimeout(double seconds);
 
@@ -520,6 +532,8 @@ public:
     bool keyExistsInKeychain(JSStringRef attrLabel, JSStringRef applicationLabelBase64);
 
     unsigned long serverTrustEvaluationCallbackCallsCount();
+
+    void clearMemoryCache();
 
     // Private Click Measurement.
     void dumpPrivateClickMeasurement();
@@ -533,11 +547,25 @@ public:
     void markAttributedPrivateClickMeasurementsAsExpiredForTesting();
     void setPrivateClickMeasurementEphemeralMeasurementForTesting(bool value);
     void setPrivateClickMeasurementFraudPreventionValuesForTesting(JSStringRef unlinkableToken, JSStringRef secretToken, JSStringRef signature, JSStringRef keyID);
-    void simulateResourceLoadStatisticsSessionRestart();
+    void setPrivateClickMeasurementAppBundleIDForTesting(JSStringRef);
+    void simulatePrivateClickMeasurementSessionRestart();
 
     void setIsSpeechRecognitionPermissionGranted(bool);
 
     void setIsMediaKeySystemPermissionGranted(bool);
+
+    void takeViewPortSnapshot(JSContextRef, JSValueRef callback);
+
+    void flushConsoleLogs(JSContextRef, JSValueRef callback);
+
+    // Reporting API
+    void generateTestReport(JSContextRef, JSStringRef message, JSStringRef group);
+
+    void getAndClearReportedWindowProxyAccessDomains(JSContextRef, JSValueRef);
+
+    void setTopContentInset(JSContextRef, double, JSValueRef);
+
+    void setPageScaleFactor(JSContextRef, double scaleFactor, long x, long y, JSValueRef callback);
 
 private:
     TestRunner();
@@ -547,7 +575,7 @@ private:
     void setDumpPixels(bool);
     void setWaitUntilDone(bool);
 
-    void addMockMediaDevice(JSStringRef persistentId, JSStringRef label, const char* type);
+    void addMockMediaDevice(JSStringRef persistentId, JSStringRef label, const char* type, WKDictionaryRef);
 
     WKRetainPtr<WKURLRef> m_testURL; // Set by InjectedBundlePage once provisional load starts.
 
@@ -564,9 +592,7 @@ private:
 
     unsigned m_renderTreeDumpOptions { 0 };
     bool m_shouldDumpAllFrameScrollPositions { false };
-    bool m_shouldDumpBackForwardListsForAllWindows { false };
     bool m_shouldAllowEditing { true };
-    bool m_shouldCloseExtraWindows { false };
 
     bool m_dumpEditingCallbacks { false };
     bool m_dumpStatusCallbacks { false };
@@ -580,19 +606,15 @@ private:
     bool m_dumpWillCacheResponse { false };
     bool m_dumpApplicationCacheDelegateCallbacks { false };
     bool m_dumpDatabaseCallbacks { false };
-    bool m_dumpPolicyCallbacks { false };
 
-    bool m_disallowIncreaseForApplicationCacheQuota { false };
     bool m_testRepaint { false };
     bool m_testRepaintSweepHorizontally { false };
     bool m_displayOnLoadFinish { false };
+    bool m_forceRepaint { true };
     bool m_isPrinting { false };
     bool m_willSendRequestReturnsNull { false };
     bool m_willSendRequestReturnsNullOnRedirect { false };
     bool m_shouldStopProvisionalFrameLoads { false };
-
-    bool m_policyDelegateEnabled { false };
-    bool m_policyDelegatePermissive { false };
 
     bool m_globalFlag { false };
     bool m_customFullScreenBehavior { false };
@@ -604,9 +626,6 @@ private:
 
     bool m_userStyleSheetEnabled { false };
     bool m_dumpAllHTTPRedirectedResponseHeaders { false };
-    bool m_hasSetDowngradeReferrerCallback { false };
-    bool m_hasSetBlockThirdPartyCookiesCallback { false };
-    bool m_hasSetFirstPartyWebsiteDataRemovalModeCallback { false };
 };
 
 } // namespace WTR

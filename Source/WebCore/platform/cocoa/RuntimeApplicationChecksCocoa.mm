@@ -91,6 +91,22 @@ void clearApplicationBundleIdentifierTestingOverride()
 #endif
 }
 
+static String& presentingApplicationBundleIdentifierStorage()
+{
+    static MainThreadNeverDestroyed<String> identifier;
+    return identifier;
+}
+
+void setPresentingApplicationBundleIdentifier(const String& identifier)
+{
+    presentingApplicationBundleIdentifierStorage() = identifier;
+}
+
+const String& presentingApplicationBundleIdentifier()
+{
+    return presentingApplicationBundleIdentifierStorage();
+}
+
 static bool applicationBundleIsEqualTo(const String& bundleIdentifierString)
 {
     return applicationBundleIdentifier() == bundleIdentifierString;
@@ -102,13 +118,19 @@ bool CocoaApplication::isIBooks()
     return isIBooks;
 }
 
+bool CocoaApplication::isWebkitTestRunner()
+{
+    static bool isWebkitTestRunner = applicationBundleIsEqualTo("com.apple.WebKit.WebKitTestRunner"_s);
+    return isWebkitTestRunner;
+}
+
 #if PLATFORM(MAC)
 
 bool MacApplication::isSafari()
 {
     static bool isSafari = applicationBundleIsEqualTo("com.apple.Safari"_s)
         || applicationBundleIsEqualTo("com.apple.SafariTechnologyPreview"_s)
-        || applicationBundleIdentifier().startsWith("com.apple.Safari.");
+        || applicationBundleIdentifier().startsWith("com.apple.Safari."_s);
     return isSafari;
 }
 
@@ -118,40 +140,10 @@ bool MacApplication::isAppleMail()
     return isAppleMail;
 }
 
-bool MacApplication::isITunes()
-{
-    static bool isITunes = applicationBundleIsEqualTo("com.apple.iTunes"_s);
-    return isITunes;
-}
-
-bool MacApplication::isMicrosoftMessenger()
-{
-    static bool isMicrosoftMessenger = applicationBundleIsEqualTo("com.microsoft.Messenger"_s);
-    return isMicrosoftMessenger;
-}
-
 bool MacApplication::isAdobeInstaller()
 {
     static bool isAdobeInstaller = applicationBundleIsEqualTo("com.adobe.Installers.Setup"_s);
     return isAdobeInstaller;
-}
-
-bool MacApplication::isAOLInstantMessenger()
-{
-    static bool isAOLInstantMessenger = applicationBundleIsEqualTo("com.aol.aim.desktop"_s);
-    return isAOLInstantMessenger;
-}
-
-bool MacApplication::isMicrosoftMyDay()
-{
-    static bool isMicrosoftMyDay = applicationBundleIsEqualTo("com.microsoft.myday"_s);
-    return isMicrosoftMyDay;
-}
-
-bool MacApplication::isMicrosoftOutlook()
-{
-    static bool isMicrosoftOutlook = applicationBundleIsEqualTo("com.microsoft.Outlook"_s);
-    return isMicrosoftOutlook;
 }
 
 bool MacApplication::isMiniBrowser()
@@ -166,12 +158,6 @@ bool MacApplication::isQuickenEssentials()
     return isQuickenEssentials;
 }
 
-bool MacApplication::isAperture()
-{
-    static bool isAperture = applicationBundleIsEqualTo("com.apple.Aperture"_s);
-    return isAperture;
-}
-
 bool MacApplication::isVersions()
 {
     static bool isVersions = applicationBundleIsEqualTo("com.blackpixel.versions"_s);
@@ -184,12 +170,6 @@ bool MacApplication::isHRBlock()
     return isHRBlock;
 }
 
-bool MacApplication::isIAdProducer()
-{
-    static bool isIAdProducer = applicationBundleIsEqualTo("com.apple.iAdProducer"_s);
-    return isIAdProducer;
-}
-
 bool MacApplication::isSolidStateNetworksDownloader()
 {
     static bool isSolidStateNetworksDownloader = applicationBundleIsEqualTo("com.solidstatenetworks.awkhost"_s);
@@ -200,6 +180,12 @@ bool MacApplication::isEpsonSoftwareUpdater()
 {
     static bool isEpsonSoftwareUpdater = applicationBundleIsEqualTo("com.epson.EPSON_Software_Updater"_s);
     return isEpsonSoftwareUpdater;
+}
+
+bool MacApplication::isMimeoPhotoProject()
+{
+    static bool isMimeoPhotoProject = applicationBundleIsEqualTo("com.mimeo.Mimeo.PhotoProject"_s);
+    return isMimeoPhotoProject;
 }
 
 #endif // PLATFORM(MAC)
@@ -241,6 +227,12 @@ bool IOSApplication::isIMDb()
     return isIMDb;
 }
 
+bool IOSApplication::isGmail()
+{
+    static bool isGmail = applicationBundleIsEqualTo("com.google.Gmail"_s);
+    return isGmail;
+}
+
 bool IOSApplication::isWebBookmarksD()
 {
     static bool isWebBookmarksD = applicationBundleIsEqualTo("com.apple.webbookmarksd"_s);
@@ -271,6 +263,12 @@ bool IOSApplication::isSpringBoard()
 bool IOSApplication::isWebProcess()
 {
     return isInWebProcess();
+}
+
+bool IOSApplication::isBackboneApp()
+{
+    static bool isBackboneApp = applicationBundleIsEqualTo("com.backbonelabs.backboneapp"_s);
+    return isBackboneApp;
 }
 
 bool IOSApplication::isIBooksStorytime()
@@ -307,6 +305,12 @@ bool IOSApplication::isFirefox()
 {
     static bool isFirefox = applicationBundleIsEqualTo("org.mozilla.ios.Firefox"_s);
     return isFirefox;
+}
+
+bool IOSApplication::isHoYoLAB()
+{
+    static bool isHoYoLAB = applicationBundleIsEqualTo("com.miHoYo.HoYoLAB"_s);
+    return isHoYoLAB;
 }
 
 bool IOSApplication::isAppleApplication()
@@ -429,13 +433,31 @@ bool IOSApplication::isWechat()
     return isWechat;
 }
 
+bool IOSApplication::isUNIQLOApp()
+{
+    static bool isUNIQLO = applicationBundleIdentifier().startsWith("com.uniqlo"_s);
+    return isUNIQLO;
+}
+
 bool IOSApplication::isLutron()
 {
     static bool isLutronApp = applicationBundleIsEqualTo("com.lutron.lsb"_s);
     return isLutronApp;
 }
 
-#endif
+bool IOSApplication::isDOFUSTouch()
+{
+    static bool isDOFUSTouch = applicationBundleIsEqualTo("com.ankama.dofustouch"_s);
+    return isDOFUSTouch;
+}
+
+bool IOSApplication::isHimalaya()
+{
+    static bool isHimalayaApp = applicationBundleIsEqualTo("com.gemd.iting"_s);
+    return isHimalayaApp;
+}
+
+#endif // PLATFORM(IOS_FAMILY)
 
 } // namespace WebCore
 

@@ -46,11 +46,12 @@ public:
     ~TestInvocation();
 
     WKURLRef url() const;
-    bool urlContains(const char*) const;
+    bool urlContains(StringView) const;
     
     const TestOptions& options() const { return m_options; }
 
     void setIsPixelTest(const std::string& expectedPixelHash);
+    void setForceDumpPixels(bool forceDumpPixels) { m_forceDumpPixels = forceDumpPixels; }
 
     void setCustomTimeout(Seconds duration) { m_timeout = duration; }
     void setDumpJSConsoleLogInStdErr(bool value) { m_dumpJSConsoleLogInStdErr = value; }
@@ -71,39 +72,17 @@ public:
 
     void notifyDownloadDone();
 
-    void didClearStatisticsInMemoryAndPersistentStore();
-    void didClearStatisticsThroughWebsiteDataRemoval();
-    void didSetShouldDowngradeReferrer();
-    void didSetShouldBlockThirdPartyCookies();
-    void didSetFirstPartyWebsiteDataRemovalMode();
-    void didSetToSameSiteStrictCookies();
-    void didSetFirstPartyHostCNAMEDomain();
-    void didSetThirdPartyCNAMEDomain();
-    void didResetStatisticsToConsistentState();
-    void didSetBlockCookiesForHost();
-    void didSetStatisticsDebugMode();
-    void didSetPrevalentResourceForDebugMode();
-    void didSetLastSeen();
-    void didMergeStatistic();
-    void didSetExpiredStatistic();
-    void didSetPrevalentResource();
-    void didSetVeryPrevalentResource();
-    void didSetHasHadUserInteraction();
-    void didReceiveAllStorageAccessEntries(Vector<String>&& domains);
-    void didReceiveLoadedSubresourceDomains(Vector<String>&& domains);
-
-    void didRemoveAllSessionCredentials();
-
-    void didSetAppBoundDomains();
-
     void dumpResourceLoadStatistics();
 
     bool canOpenWindows() const { return m_canOpenWindows; }
 
     void dumpPrivateClickMeasurement();
-    void performCustomMenuAction();
 
     void willCreateNewPage();
+
+    void loadTestInCrossOriginIframe();
+
+    void dumpResourceLoadStatisticsIfNecessary();
 
 private:
     WKRetainPtr<WKMutableDictionaryRef> createTestSettingsDictionary();
@@ -124,7 +103,7 @@ private:
     enum class SnapshotResultType { WebView, WebContents };
     void dumpPixelsAndCompareWithExpected(SnapshotResultType, WKArrayRef repaintRects, WKImageRef = nullptr);
     void dumpAudio(WKDataRef);
-    bool compareActualHashToExpectedAndDumpResults(const char[33]);
+    bool compareActualHashToExpectedAndDumpResults(const std::string&);
 
     static void forceRepaintDoneCallback(WKErrorRef, void* context);
     
@@ -146,8 +125,8 @@ private:
     
     WKRetainPtr<WKURLRef> m_url;
     String m_urlString;
-    RunLoop::Timer<TestInvocation> m_waitToDumpWatchdogTimer;
-    RunLoop::Timer<TestInvocation> m_waitForPostDumpWatchdogTimer;
+    RunLoop::Timer m_waitToDumpWatchdogTimer;
+    RunLoop::Timer m_waitForPostDumpWatchdogTimer;
 
     std::string m_expectedPixelHash;
 
@@ -164,10 +143,13 @@ private:
     bool m_waitUntilDone { false };
     bool m_dumpFrameLoadCallbacks { false };
     bool m_dumpPixels { false };
+    bool m_forceDumpPixels { false };
     bool m_pixelResultIsPending { false };
+    bool m_forceRepaint { true };
     bool m_shouldDumpResourceLoadStatistics { false };
-    bool m_canOpenWindows { false };
+    bool m_canOpenWindows { true };
     bool m_shouldDumpPrivateClickMeasurement { false };
+    bool m_shouldDumpBackForwardListsForAllWindows { false };
     WhatToDump m_whatToDump { WhatToDump::RenderTree };
 
     StringBuilder m_textOutput;

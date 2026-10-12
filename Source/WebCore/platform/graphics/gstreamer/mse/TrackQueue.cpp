@@ -48,7 +48,15 @@ void TrackQueue::enqueueObject(GRefPtr<GstMiniObject>&& object)
     ASSERT(isMainThread());
     ASSERT(GST_IS_SAMPLE(object.get()) || GST_IS_EVENT(object.get()));
 
-    GST_TRACE("TrackQueue for '%s': Putting object in the queue: %" GST_PTR_FORMAT ". notEmptyCallback currently %s.", m_trackId.string().utf8().data(), object.get(), m_notEmptyCallback ? "set, will be called" : "unset");
+    if (GST_IS_SAMPLE(object.get())) {
+        GST_TRACE("TrackQueue for '%s': Putting object sample in the queue: %" GST_PTR_FORMAT " Buffer: %" GST_PTR_FORMAT ". notEmptyCallback currently %s.",
+            m_trackId.string().utf8().data(), object.get(), gst_sample_get_buffer(GST_SAMPLE(object.get())),
+            m_notEmptyCallback ? "set, will be called" : "unset");
+    } else {
+        GST_DEBUG("TrackQueue for '%s': Putting object event in the queue: %" GST_PTR_FORMAT ". notEmptyCallback currently %s.",
+            m_trackId.string().utf8().data(), object.get(),
+            m_notEmptyCallback ? "set, will be called" : "unset");
+    }
     if (!m_notEmptyCallback)
         m_queue.append(WTFMove(object));
     else {
@@ -93,6 +101,13 @@ GRefPtr<GstMiniObject> TrackQueue::pop()
 {
     ASSERT(!isEmpty());
     GRefPtr<GstMiniObject> object = m_queue.takeFirst();
+    if (GST_IS_SAMPLE(object.get())) {
+        GST_TRACE("TrackQueue for '%s': Popped object sample from the queue: %" GST_PTR_FORMAT " Buffer: %" GST_PTR_FORMAT,
+            m_trackId.string().utf8().data(), object.get(), gst_sample_get_buffer(GST_SAMPLE(object.get())));
+    } else {
+        GST_DEBUG("TrackQueue for '%s': Popped object event from the queue: %" GST_PTR_FORMAT,
+            m_trackId.string().utf8().data(), object.get());
+    }
     checkLowLevel();
     return object;
 }
@@ -146,5 +161,8 @@ GstClockTime TrackQueue::durationEnqueued() const
     return GST_BUFFER_DTS_OR_PTS(back) - GST_BUFFER_DTS_OR_PTS(front);
 }
 
-}
-#endif
+#undef GST_CAT_DEFAULT
+
+} // namespace WebCore
+
+#endif // ENABLE(MEDIA_SOURCE) && USE(GSTREAMER)

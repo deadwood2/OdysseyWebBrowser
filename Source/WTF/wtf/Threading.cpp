@@ -29,20 +29,81 @@
 #include <cstring>
 #include <wtf/DateMath.h>
 #include <wtf/Gigacage.h>
+#include <wtf/NeverDestroyed.h>
 #include <wtf/PrintStream.h>
-#include <wtf/RandomNumberSeed.h>
+#include <wtf/RunLoop.h>
 #include <wtf/ThreadGroup.h>
 #include <wtf/ThreadingPrimitives.h>
 #include <wtf/WTFConfig.h>
+#include <wtf/text/AtomString.h>
 #include <wtf/threads/Signals.h>
 
 #if HAVE(QOS_CLASSES)
 #include <bmalloc/bmalloc.h>
 #endif
 
+#if OS(LINUX)
+#include <wtf/linux/RealTimeThreads.h>
+#endif
+
+#if PLATFORM(COCOA)
+#include <wtf/darwin/LibraryPathDiagnostics.h>
+#endif
+
+#if !USE(SYSTEM_MALLOC)
+#include <bmalloc/BPlatform.h>
+#if BENABLE(LIBPAS)
+#define USE_LIBPAS_THREAD_SUSPEND_LOCK 1
+#include <bmalloc/pas_thread_suspend_lock.h>
+#endif
+#if USE(TZONE_MALLOC)
+#if BUSE(TZONE)
+#include <bmalloc/TZoneHeapManager.h>
+#else
+#error USE(TZONE_MALLOC) requires BUSE(TZONE)
+#endif
+#endif // USE(TZONE_MALLOC)
+#endif // !USE(SYSTEM_MALLOC)
+
 namespace WTF {
 
 Lock Thread::s_allThreadsLock;
+
+
+// During suspend, suspend or resume should not be executed from the other threads.
+// We use global lock instead of per thread lock.
+// Consider the following case, there are threads A and B.
+// And A attempt to suspend B and B attempt to suspend A.
+// A and B send signals. And later, signals are delivered to A and B.
+// In that case, both will be suspended.
+//
+// And it is important to use a global lock to suspend and resume. Let's consider using per-thread lock.
+// Your issuing thread (A) attempts to suspend the target thread (B). Then, you will suspend the thread (C) additionally.
+// This case frequently happens if you stop threads to perform stack scanning. But thread (B) may hold the lock of thread (C).
+// In that case, dead lock happens. Using global lock here avoids this dead lock.
+#if USE(LIBPAS_THREAD_SUSPEND_LOCK)
+ThreadSuspendLocker::ThreadSuspendLocker()
+{
+    pas_thread_suspend_lock_lock();
+}
+
+ThreadSuspendLocker::~ThreadSuspendLocker()
+{
+    pas_thread_suspend_lock_unlock();
+}
+#else
+static Lock globalSuspendLock;
+
+ThreadSuspendLocker::ThreadSuspendLocker()
+{
+    globalSuspendLock.lock();
+}
+
+ThreadSuspendLocker::~ThreadSuspendLocker()
+{
+    globalSuspendLock.unlock();
+}
+#endif
 
 static std::optional<size_t> stackSize(ThreadType threadType)
 {
@@ -55,6 +116,14 @@ static std::optional<size_t> stackSize(ThreadType threadType)
 #elif OS(DARWIN) && ASAN_ENABLED
     if (threadType == ThreadType::Compiler)
         return 1 * MB; // ASan needs more stack space (especially on Debug builds).
+#elif OS(WINDOWS)
+    // WebGL conformance tests need more stack space <https://webkit.org/b/261297>
+    if (threadType == ThreadType::Graphics)
+#if defined(NDEBUG)
+        return 2 * MB;
+#else
+        return 4 * MB;
+#endif
 #else
     UNUSED_PARAM(threadType);
 #endif
@@ -71,11 +140,20 @@ static std::optional<size_t> stackSize(ThreadType threadType)
 #endif
 }
 
-std::atomic<uint32_t> Thread::s_uid { 0 };
+std::atomic<uint32_t> ThreadLike::s_uid;
+
+uint32_t ThreadLike::currentSequence()
+{
+#if PLATFORM(COCOA)
+    if (uint32_t uid = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(dispatch_get_specific(&s_uid))))
+        return uid;
+#endif
+    return Thread::current().uid();
+}
 
 struct Thread::NewThreadContext : public ThreadSafeRefCounted<NewThreadContext> {
 public:
-    NewThreadContext(const char* name, Function<void()>&& entryPoint, Ref<Thread>&& thread)
+    NewThreadContext(ASCIILiteral name, Function<void()>&& entryPoint, Ref<Thread>&& thread)
         : name(name)
         , entryPoint(WTFMove(entryPoint))
         , thread(WTFMove(thread))
@@ -84,7 +162,7 @@ public:
 
     enum class Stage { Start, EstablishedHandle, Initialized };
     Stage stage { Stage::Start };
-    const char* name;
+    ASCIILiteral name;
     Function<void()> entryPoint;
     Ref<Thread> thread;
     Mutex mutex;
@@ -117,7 +195,7 @@ const char* Thread::normalizeThreadName(const char* threadName)
     // This name can be com.apple.WebKit.ProcessLauncher or com.apple.CoreIPC.ReceiveQueue.
     // We are using those names for the thread name, but both are longer than the limit of
     // the platform thread name length, 32 for Windows and 16 for Linux.
-    StringView result(threadName);
+    auto result = StringView::fromLatin1(threadName);
     size_t size = result.reverseFind('.');
     if (size != notFound)
         result = result.substring(size + 1);
@@ -131,8 +209,9 @@ const char* Thread::normalizeThreadName(const char* threadName)
     if (result.length() > kLinuxThreadNameLimit)
         result = result.right(kLinuxThreadNameLimit);
 #endif
-    ASSERT(result.characters8()[result.length()] == '\0');
-    return reinterpret_cast<const char*>(result.characters8());
+    auto characters = result.span8();
+    ASSERT(characters[characters.size()] == '\0');
+    return byteCast<char>(characters.data());
 #endif
 }
 
@@ -187,7 +266,7 @@ void Thread::entryPoint(NewThreadContext* newThreadContext)
     function();
 }
 
-Ref<Thread> Thread::create(const char* name, Function<void()>&& entryPoint, ThreadType threadType, QOS qos)
+Ref<Thread> Thread::create(ASCIILiteral name, Function<void()>&& entryPoint, ThreadType threadType, QOS qos, SchedulingPolicy schedulingPolicy)
 {
     WTF::initialize();
     Ref<Thread> thread = adoptRef(*new Thread());
@@ -200,7 +279,7 @@ Ref<Thread> Thread::create(const char* name, Function<void()>&& entryPoint, Thre
     context->ref();
     {
         MutexLocker locker(context->mutex);
-        bool success = thread->establishHandle(context.ptr(), stackSize(threadType), qos);
+        bool success = thread->establishHandle(context.ptr(), stackSize(threadType), qos, schedulingPolicy);
         RELEASE_ASSERT(success);
         context->stage = NewThreadContext::Stage::EstablishedHandle;
 
@@ -321,7 +400,14 @@ void Thread::registerGCThread(GCThreadType gcThreadType)
 
 bool Thread::mayBeGCThread()
 {
-    return Thread::current().gcThreadType() != GCThreadType::None;
+    // TODO: FIX THIS
+    return Thread::current().gcThreadType() != GCThreadType::None || Thread::current().m_isCompilationThread;
+}
+
+void Thread::registerJSThread(Thread& thread)
+{
+    ASSERT(&thread == &Thread::current());
+    thread.m_isJSThread = true;
 }
 
 void Thread::setCurrentThreadIsUserInteractive(int relativePriority)
@@ -330,6 +416,12 @@ void Thread::setCurrentThreadIsUserInteractive(int relativePriority)
     ASSERT(relativePriority <= 0);
     ASSERT(relativePriority >= QOS_MIN_RELATIVE_PRIORITY);
     pthread_set_qos_class_self_np(adjustedQOSClass(QOS_CLASS_USER_INTERACTIVE), relativePriority);
+#elif OS(LINUX)
+    // We don't allow to make the main thread real time. This is used by secondary processes to match the
+    // UI process, but in linux the UI process is not real time.
+    if (!isMainThread())
+        RealTimeThreads::singleton().registerThread(current());
+    UNUSED_PARAM(relativePriority);
 #else
     UNUSED_PARAM(relativePriority);
 #endif
@@ -343,6 +435,38 @@ void Thread::setCurrentThreadIsUserInitiated(int relativePriority)
     pthread_set_qos_class_self_np(adjustedQOSClass(QOS_CLASS_USER_INITIATED), relativePriority);
 #else
     UNUSED_PARAM(relativePriority);
+#endif
+}
+
+#if HAVE(QOS_CLASSES)
+static Thread::QOS toQOS(qos_class_t qosClass)
+{
+    switch (qosClass) {
+    case QOS_CLASS_USER_INTERACTIVE:
+        return Thread::QOS::UserInteractive;
+    case QOS_CLASS_USER_INITIATED:
+        return Thread::QOS::UserInitiated;
+    case QOS_CLASS_UTILITY:
+        return Thread::QOS::Utility;
+    case QOS_CLASS_BACKGROUND:
+        return Thread::QOS::Background;
+    case QOS_CLASS_UNSPECIFIED:
+    case QOS_CLASS_DEFAULT:
+    default:
+        return Thread::QOS::Default;
+    }
+}
+#endif
+
+auto Thread::currentThreadQOS() -> QOS
+{
+#if HAVE(QOS_CLASSES)
+    qos_class_t qos = QOS_CLASS_DEFAULT;
+    int relativePriority;
+    pthread_get_qos_class_np(pthread_self(), &qos, &relativePriority);
+    return toQOS(qos);
+#else
+    return QOS::Default;
 #endif
 }
 
@@ -377,27 +501,24 @@ void initialize()
     static std::once_flag onceKey;
     std::call_once(onceKey, [] {
         setPermissionsOfConfigPage();
+        Config::initialize();
+#if USE(TZONE_MALLOC)
+        bmalloc::api::TZoneHeapManager::singleton(); // Force initialization.
+#endif
         Gigacage::ensureGigacage();
         Config::AssertNotFrozenScope assertScope;
-        initializeRandomNumberGenerator();
 #if !HAVE(FAST_TLS) && !OS(WINDOWS)
         Thread::initializeTLSKey();
 #endif
         initializeDates();
         Thread::initializePlatformThreading();
-#if USE(PTHREADS) && HAVE(MACHINE_CONTEXT)
-        SignalHandlers::initialize();
+#if PLATFORM(COCOA)
+        initializeLibraryPathDiagnostics();
+#endif
+#if USE(WINDOWS_EVENT_LOOP)
+        RunLoop::registerRunLoopMessageWindowClass();
 #endif
     });
-}
-
-// This is a compatibility hack to prevent linkage errors when launching older
-// versions of Safari. initialize() used to be named initializeThreading(), and
-// Safari.framework used to call it directly from NotificationAgentMain.
-WTF_EXPORT_PRIVATE void initializeThreading();
-void initializeThreading()
-{
-    initialize();
 }
 
 } // namespace WTF

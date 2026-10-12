@@ -117,7 +117,7 @@ bool AudioDestinationOutputMorphOS::ahiInit()
 								D(dprintf("[AD]%s: samples loaded - samplelen %d\n", __func__, m_ahiSampleLength));
 
 								m_ahiThreadShuttingDown = false;
-								m_ahiThread = Thread::create("WebAudio AHI Pump", [this] {
+								m_ahiThread = Thread::create("WebAudio AHI Pump"_s, [this] {
 									ahiThreadEntryPoint();
 								});
 

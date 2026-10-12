@@ -55,24 +55,24 @@
 #import "WebViewInternal.h"
 #import <JavaScriptCore/InitializeThreading.h>
 #import <WebCore/ArchiveResource.h>
+#import <WebCore/DeprecatedGlobalSettings.h>
 #import <WebCore/Document.h>
 #import <WebCore/DocumentFragment.h>
 #import <WebCore/Editor.h>
 #import <WebCore/Event.h>
 #import <WebCore/FloatQuad.h>
-#import <WebCore/Frame.h>
-#import <WebCore/FrameView.h>
 #import <WebCore/HTMLInputElement.h>
 #import <WebCore/HTMLNames.h>
 #import <WebCore/HTMLTextAreaElement.h>
 #import <WebCore/KeyboardEvent.h>
 #import <WebCore/LegacyWebArchive.h>
+#import <WebCore/LocalFrame.h>
+#import <WebCore/LocalFrameView.h>
+#import <WebCore/MutableStyleProperties.h>
 #import <WebCore/Page.h>
 #import <WebCore/PlatformKeyboardEvent.h>
-#import <WebCore/RuntimeEnabledFeatures.h>
 #import <WebCore/Settings.h>
 #import <WebCore/SpellChecker.h>
-#import <WebCore/StyleProperties.h>
 #import <WebCore/TextIterator.h>
 #import <WebCore/UndoStep.h>
 #import <WebCore/UserTypingGestureIndicator.h>
@@ -85,6 +85,7 @@
 #import <wtf/MainThread.h>
 #import <wtf/RefPtr.h>
 #import <wtf/RunLoop.h>
+#import <wtf/TZoneMallocInlines.h>
 #import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/text/WTFString.h>
 
@@ -98,12 +99,6 @@
 using namespace WebCore;
 
 using namespace HTMLNames;
-
-#if !PLATFORM(IOS_FAMILY)
-@interface NSSpellChecker (WebNSSpellCheckerDetails)
-- (NSString *)languageForWordRange:(NSRange)range inString:(NSString *)string orthography:(NSOrthography *)orthography;
-@end
-#endif
 
 // FIXME: Seems likely we can get rid of this legacy code for watchOS and tvOS.
 #if PLATFORM(WATCHOS) || PLATFORM(APPLETV)
@@ -196,6 +191,8 @@ static WebViewInsertAction kit(EditorInsertAction action)
 }
 
 @end
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebEditorClient);
 
 WebEditorClient::WebEditorClient(WebView *webView)
     : m_webView(webView)
@@ -349,9 +346,9 @@ void WebEditorClient::respondToChangedContents()
 #endif
 }
 
-void WebEditorClient::respondToChangedSelection(Frame* frame)
+void WebEditorClient::respondToChangedSelection(LocalFrame* frame)
 {
-    if (frame->editor().isGettingDictionaryPopupInfo())
+    if (!frame || frame->editor().isGettingDictionaryPopupInfo())
         return;
 
     NSView<WebDocumentView> *documentView = [[kit(frame) frameView] documentView];
@@ -362,10 +359,6 @@ void WebEditorClient::respondToChangedSelection(Frame* frame)
     }
 
 #if !PLATFORM(IOS_FAMILY)
-    // FIXME: This quirk is needed due to <rdar://problem/5009625> - We can phase it out once Aperture can adopt the new behavior on their end
-    if (!WebKitLinkedOnOrAfter(WEBKIT_FIRST_VERSION_WITHOUT_APERTURE_QUIRK) && [[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.apple.Aperture"])
-        return;
-
     [[NSNotificationCenter defaultCenter] postNotificationName:WebViewDidChangeSelectionNotification object:m_webView];
 #else
     // Selection can be changed while deallocating down the WebView / Frame / Editor.  Do not post in that case because it's already too late
@@ -378,9 +371,23 @@ void WebEditorClient::respondToChangedSelection(Frame* frame)
     if (frame->editor().canEdit())
         requestCandidatesForSelection(frame->selection().selection());
 #endif
+
+#if ENABLE(TEXT_CARET)
+    if (!frame->editor().ignoreSelectionChanges()) {
+        auto& selection = frame->selection().selection();
+        bool selectionIsPainted = selection.isRange() || (selection.isCaret() && selection.hasEditableStyle());
+
+        if (m_lastSelectionWasPainted || selectionIsPainted) {
+            if (auto* page = frame->page())
+                page->scheduleRenderingUpdate({ RenderingUpdateStep::LayerFlush });
+        }
+
+        m_lastSelectionWasPainted = selectionIsPainted;
+    }
+#endif // ENABLE(TEXT_CARET)
 }
 
-void WebEditorClient::discardedComposition(Frame*)
+void WebEditorClient::discardedComposition(const Document&)
 {
     // The effects of this function are currently achieved via -[WebHTMLView _updateSelectionForInputManager].
 }
@@ -413,7 +420,7 @@ void WebEditorClient::willWriteSelectionToPasteboard(const std::optional<SimpleR
     // Not implemented WebKit, only WebKit2.
 }
 
-void WebEditorClient::getClientPasteboardData(const std::optional<SimpleRange>&, Vector<String>& pasteboardTypes, Vector<RefPtr<WebCore::SharedBuffer>>& pasteboardData)
+void WebEditorClient::getClientPasteboardData(const std::optional<SimpleRange>&, Vector<std::pair<String, RefPtr<WebCore::SharedBuffer>>>& pasteboardTypesAndData)
 {
     // Not implemented WebKit, only WebKit2.
 }
@@ -450,7 +457,7 @@ static NSDictionary *attributesForAttributedStringConversion()
         nil]);
 
 #if ENABLE(ATTACHMENT_ELEMENT)
-    if (!RuntimeEnabledFeatures::sharedFeatures().attachmentElementEnabled())
+    if (!DeprecatedGlobalSettings::attachmentElementEnabled())
         [excludedElements addObject:@"object"];
 #endif
 
@@ -601,7 +608,7 @@ void WebEditorClient::updateEditorStateAfterLayoutIfEditabilityChanged()
     if (m_lastEditorStateWasContentEditable == EditorStateIsContentEditable::Unset)
         return;
 
-    Frame* frame = core([m_webView _selectedOrMainFrame]);
+    auto* frame = core([m_webView _selectedOrMainFrame]);
     if (!frame)
         return;
 
@@ -644,12 +651,12 @@ void WebEditorClient::clearUndoRedoOperations()
     }    
 }
 
-bool WebEditorClient::canCopyCut(Frame*, bool defaultValue) const
+bool WebEditorClient::canCopyCut(LocalFrame*, bool defaultValue) const
 {
     return defaultValue;
 }
 
-bool WebEditorClient::canPaste(Frame*, bool defaultValue) const
+bool WebEditorClient::canPaste(LocalFrame*, bool defaultValue) const
 {
     return defaultValue;
 }
@@ -705,39 +712,49 @@ void WebEditorClient::handleInputMethodKeydown(KeyboardEvent& event)
 
 #define FormDelegateLog(ctrl)  LOG(FormDelegate, "control=%@", ctrl)
 
-void WebEditorClient::textFieldDidBeginEditing(Element* element)
+template <typename T>
+static DOMElement *dynamicDowncastToKit(Element& element)
 {
-    if (!is<HTMLInputElement>(*element))
-        return;
+    auto* coreInputElement = dynamicDowncast<T>(element);
+    if (!coreInputElement)
+        return nil;
 
-    DOMHTMLInputElement* inputElement = kit(downcast<HTMLInputElement>(element));
-    FormDelegateLog(inputElement);
-    CallFormDelegate(m_webView, @selector(textFieldDidBeginEditing:inFrame:), inputElement, kit(element->document().frame()));
+    return kit(coreInputElement);
 }
 
-void WebEditorClient::textFieldDidEndEditing(Element* element)
+void WebEditorClient::textFieldDidBeginEditing(Element& element)
 {
-    if (!is<HTMLInputElement>(*element))
+    auto *inputElement = dynamicDowncastToKit<HTMLInputElement>(element);
+    if (!inputElement)
         return;
 
-    DOMHTMLInputElement* inputElement = kit(downcast<HTMLInputElement>(element));
     FormDelegateLog(inputElement);
-    CallFormDelegate(m_webView, @selector(textFieldDidEndEditing:inFrame:), inputElement, kit(element->document().frame()));
+    CallFormDelegate(m_webView, @selector(textFieldDidBeginEditing:inFrame:), inputElement, kit(element.document().frame()));
 }
 
-void WebEditorClient::textDidChangeInTextField(Element* element)
+void WebEditorClient::textFieldDidEndEditing(Element& element)
 {
-    if (!is<HTMLInputElement>(*element))
+    auto *inputElement = dynamicDowncastToKit<HTMLInputElement>(element);
+    if (!inputElement)
+        return;
+
+    FormDelegateLog(inputElement);
+    CallFormDelegate(m_webView, @selector(textFieldDidEndEditing:inFrame:), inputElement, kit(element.document().frame()));
+}
+
+void WebEditorClient::textDidChangeInTextField(Element& element)
+{
+    auto *inputElement = dynamicDowncastToKit<HTMLInputElement>(element);
+    if (!inputElement)
         return;
 
 #if !PLATFORM(IOS_FAMILY)
-    if (!UserTypingGestureIndicator::processingUserTypingGesture() || UserTypingGestureIndicator::focusedElementAtGestureStart() != element)
+    if (!UserTypingGestureIndicator::processingUserTypingGesture() || UserTypingGestureIndicator::focusedElementAtGestureStart() != &element)
         return;
 #endif
 
-    DOMHTMLInputElement* inputElement = kit(downcast<HTMLInputElement>(element));
     FormDelegateLog(inputElement);
-    CallFormDelegate(m_webView, @selector(textDidChangeInTextField:inFrame:), inputElement, kit(element->document().frame()));
+    CallFormDelegate(m_webView, @selector(textDidChangeInTextField:inFrame:), inputElement, kit(element.document().frame()));
 }
 
 static SEL selectorForKeyEvent(KeyboardEvent* event)
@@ -747,55 +764,55 @@ static SEL selectorForKeyEvent(KeyboardEvent* event)
     // not relying on the selector in the new implementation.
     // The key identifiers are from <http://www.w3.org/TR/DOM-Level-3-Events/keyset.html#KeySet-Set>
     const String& key = event->keyIdentifier();
-    if (key == "Up")
+    if (key == "Up"_s)
         return @selector(moveUp:);
-    if (key == "Down")
+    if (key == "Down"_s)
         return @selector(moveDown:);
 IGNORE_WARNINGS_BEGIN("undeclared-selector")
-    if (key == "U+001B")
+    if (key == "U+001B"_s)
         return @selector(cancel:);
-    if (key == "U+0009") {
+    if (key == "U+0009"_s) {
         if (event->shiftKey())
             return @selector(insertBacktab:);
         return @selector(insertTab:);
     }
-    if (key == "Enter")
+    if (key == "Enter"_s)
         return @selector(insertNewline:);
 IGNORE_WARNINGS_END
     return 0;
 }
 
-bool WebEditorClient::doTextFieldCommandFromEvent(Element* element, KeyboardEvent* event)
+bool WebEditorClient::doTextFieldCommandFromEvent(Element& element, KeyboardEvent* event)
 {
-    if (!is<HTMLInputElement>(*element))
+    auto *inputElement = dynamicDowncastToKit<HTMLInputElement>(element);
+    if (!inputElement)
         return NO;
 
-    DOMHTMLInputElement* inputElement = kit(downcast<HTMLInputElement>(element));
     FormDelegateLog(inputElement);
     if (SEL commandSelector = selectorForKeyEvent(event))
-        return CallFormDelegateReturningBoolean(NO, m_webView, @selector(textField:doCommandBySelector:inFrame:), inputElement, commandSelector, kit(element->document().frame()));
+        return CallFormDelegateReturningBoolean(NO, m_webView, @selector(textField:doCommandBySelector:inFrame:), inputElement, commandSelector, kit(element.document().frame()));
     return NO;
 }
 
-void WebEditorClient::textWillBeDeletedInTextField(Element* element)
+void WebEditorClient::textWillBeDeletedInTextField(Element& element)
 {
-    if (!is<HTMLInputElement>(*element))
+    auto *inputElement = dynamicDowncastToKit<HTMLInputElement>(element);
+    if (!inputElement)
         return;
 
-    DOMHTMLInputElement* inputElement = kit(downcast<HTMLInputElement>(element));
     FormDelegateLog(inputElement);
     // We're using the deleteBackward selector for all deletion operations since the autofill code treats all deletions the same way.
-    CallFormDelegateReturningBoolean(NO, m_webView, @selector(textField:doCommandBySelector:inFrame:), inputElement, @selector(deleteBackward:), kit(element->document().frame()));
+    CallFormDelegateReturningBoolean(NO, m_webView, @selector(textField:doCommandBySelector:inFrame:), inputElement, @selector(deleteBackward:), kit(element.document().frame()));
 }
 
-void WebEditorClient::textDidChangeInTextArea(Element* element)
+void WebEditorClient::textDidChangeInTextArea(Element& element)
 {
-    if (!is<HTMLTextAreaElement>(*element))
+    auto *textAreaElement = dynamicDowncastToKit<HTMLTextAreaElement>(element);
+    if (!textAreaElement)
         return;
 
-    DOMHTMLTextAreaElement* textAreaElement = kit(downcast<HTMLTextAreaElement>(element));
     FormDelegateLog(textAreaElement);
-    CallFormDelegate(m_webView, @selector(textDidChangeInTextArea:inFrame:), textAreaElement, kit(element->document().frame()));
+    CallFormDelegate(m_webView, @selector(textDidChangeInTextArea:inFrame:), textAreaElement, kit(element.document().frame()));
 }
 
 #if PLATFORM(IOS_FAMILY)
@@ -915,13 +932,6 @@ void WebEditorClient::checkSpellingOfString(StringView text, int* misspellingLoc
     
     if (misspellingLength)
         *misspellingLength = range.length;
-}
-
-String WebEditorClient::getAutoCorrectSuggestionForMisspelledWord(const String& inputWord)
-{
-    // This method can be implemented using customized algorithms for the particular browser.
-    // Currently, it computes an empty string.
-    return String();
 }
 
 void WebEditorClient::checkGrammarOfString(StringView text, Vector<GrammarDetail>& details, int* badGrammarLocation, int* badGrammarLength)
@@ -1116,7 +1126,7 @@ void WebEditorClient::requestCandidatesForSelection(const VisibleSelection& sele
     m_paragraphContextForCandidateRequest = contextForCandidateReqeuest;
 
     NSTextCheckingTypes checkingTypes = NSTextCheckingTypeSpelling | NSTextCheckingTypeReplacement | NSTextCheckingTypeCorrection;
-    auto weakEditor = makeWeakPtr(*this);
+    WeakPtr weakEditor { *this };
     m_lastCandidateRequestSequenceNumber = [[NSSpellChecker sharedSpellChecker] requestCandidatesForSelectedRange:m_rangeForCandidates inString:m_paragraphContextForCandidateRequest.get() types:checkingTypes options:nil inSpellDocumentWithTag:spellCheckerDocumentTag() completionHandler:[weakEditor](NSInteger sequenceNumber, NSArray<NSTextCheckingResult *> *candidates) {
         RunLoop::main().dispatch([weakEditor, sequenceNumber, candidates = retainPtr(candidates)] {
             if (!weakEditor)
@@ -1134,7 +1144,7 @@ void WebEditorClient::handleRequestedCandidates(NSInteger sequenceNumber, NSArra
     if (m_lastCandidateRequestSequenceNumber != sequenceNumber)
         return;
 
-    Frame* frame = core([m_webView _selectedOrMainFrame]);
+    auto* frame = core([m_webView _selectedOrMainFrame]);
     if (!frame)
         return;
 
@@ -1161,7 +1171,7 @@ void WebEditorClient::handleRequestedCandidates(NSInteger sequenceNumber, NSArra
 
 void WebEditorClient::handleAcceptedCandidateWithSoftSpaces(TextCheckingResult acceptedCandidate)
 {
-    Frame* frame = core([m_webView _selectedOrMainFrame]);
+    auto* frame = core([m_webView _selectedOrMainFrame]);
     if (!frame)
         return;
 
@@ -1175,7 +1185,7 @@ void WebEditorClient::handleAcceptedCandidateWithSoftSpaces(TextCheckingResult a
         if (replacementLength > 0) {
             NSRange replacedRange = NSMakeRange(acceptedCandidate.range.location, replacementLength);
             NSRange softSpaceRange = NSMakeRange(NSMaxRange(replacedRange) - 1, 1);
-            if (acceptedCandidate.replacement.endsWith(" "))
+            if (acceptedCandidate.replacement.endsWith(' '))
                 [(WebHTMLView *)view _setSoftSpaceRange:softSpaceRange];
         }
     }
@@ -1237,11 +1247,11 @@ void WebEditorClient::requestCheckingOfString(TextCheckingRequest& request, cons
     auto identifier = request.data().identifier().value();
 
     ASSERT(!m_requestsInFlight.contains(identifier));
-    m_requestsInFlight.add(identifier, makeRef(request));
+    m_requestsInFlight.add(identifier, request);
 
     NSRange range = NSMakeRange(0, request.data().text().length());
     NSRunLoop *currentLoop = [NSRunLoop currentRunLoop];
-    WeakPtr<WebEditorClient> weakThis = makeWeakPtr(*this);
+    WeakPtr weakThis { *this };
     NSDictionary *options = @{ NSTextCheckingInsertionPointKey : [NSNumber numberWithUnsignedInteger:insertionPointFromCurrentSelection(currentSelection)] };
     NSTextCheckingType types = NSTextCheckingTypeSpelling | NSTextCheckingTypeGrammar | NSTextCheckingTypeLink | NSTextCheckingTypeQuote | NSTextCheckingTypeDash | NSTextCheckingTypeReplacement | NSTextCheckingTypeCorrection;
     [[NSSpellChecker sharedSpellChecker] requestCheckingOfString:request.data().text() range:range types:types options:options inSpellDocumentWithTag:0 completionHandler:^(NSInteger, NSArray *results, NSOrthography *, NSInteger) {

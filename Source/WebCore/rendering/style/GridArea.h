@@ -58,14 +58,16 @@ public:
         return GridSpan(0, 1, Indefinite);
     }
 
-    bool operator==(const GridSpan& o) const
+    static GridSpan masonryAxisTranslatedDefiniteGridSpan()
     {
-        return m_type == o.m_type && m_startLine == o.m_startLine && m_endLine == o.m_endLine;
+        return GridSpan(0, 1, TranslatedDefinite);
     }
+
+    friend bool operator==(const GridSpan&, const GridSpan&) = default;
 
     unsigned integerSpan() const
     {
-        ASSERT(isTranslatedDefinite());
+        ASSERT(!isIndefinite());
         return m_endLine - m_startLine;
     }
 
@@ -141,6 +143,44 @@ public:
         ASSERT(m_endLine > 0);
     }
 
+    // Moves this span to be in the same coordinate space as |parent|.
+    // If reverse is specified, then swaps the direction to handle RTL/LTR changes.
+    void translateTo(const GridSpan& parent, bool reverse)
+    {
+        ASSERT(m_type == TranslatedDefinite);
+        ASSERT(parent.m_type == TranslatedDefinite);
+        if (reverse) {
+            int start = m_startLine;
+            m_startLine = parent.endLine() - m_endLine;
+            m_endLine = parent.endLine() - start;
+        } else {
+            m_startLine += parent.m_startLine;
+            m_endLine += parent.m_startLine;
+        }
+    }
+
+    void clamp(int max)
+    {
+        ASSERT(m_type != Indefinite);
+        m_startLine = std::max(m_startLine, 0);
+        m_endLine = std::max(std::min(m_endLine, max), 1);
+        if (m_startLine >= m_endLine)
+            m_startLine = m_endLine - 1;
+    }
+
+    bool clamp(int min, int max)
+    {
+        ASSERT(min < max);
+        ASSERT(m_startLine < m_endLine);
+        ASSERT(m_type != Indefinite);
+        if (min >= m_endLine || max <= m_startLine)
+            return false;
+        m_startLine = std::max(m_startLine, min);
+        m_endLine = std::min(m_endLine, max);
+        ASSERT(m_startLine < m_endLine);
+        return true;
+    }
+
 private:
 
     enum GridSpanType {UntranslatedDefinite, TranslatedDefinite, Indefinite};
@@ -163,8 +203,6 @@ private:
     int m_startLine;
     int m_endLine;
     GridSpanType m_type;
-
-
 };
 
 // This represents a grid area that spans in both rows' and columns' direction.
@@ -189,15 +227,14 @@ public:
         return columns == o.columns && rows == o.rows;
     }
 
-    bool operator!=(const GridArea& o) const
-    {
-        return !(*this == o);
-    }
-
     GridSpan columns;
     GridSpan rows;
 };
 
-typedef HashMap<String, GridArea> NamedGridAreaMap;
+struct NamedGridAreaMap {
+    HashMap<String, GridArea> map;
+
+    friend bool operator==(const NamedGridAreaMap&, const NamedGridAreaMap&) = default;
+};
 
 } // namespace WebCore

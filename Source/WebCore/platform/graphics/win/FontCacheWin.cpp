@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2006-2008, 2013-2014 Apple Inc.  All rights reserved.
+ * Copyright (C) 2006-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,29 +42,10 @@
 #include <wtf/text/win/WCharStringExtras.h>
 #include <wtf/win/GDIObject.h>
 
-#if USE(CG)
-#include <pal/spi/cg/CoreGraphicsSPI.h>
-#endif
-
-#if USE(DIRECT2D)
-#include <dwrite_3.h>
-#endif
-
-using std::min;
-
-namespace WebCore
-{
+namespace WebCore {
 
 void FontCache::platformInit()
 {
-#if USE(CG)
-    // Turn on CG's local font cache.
-    size_t size = 1536 * 1024 * 4; // This size matches Mac.
-    CGFontSetShouldUseMulticache(true);
-    CGFontCache* fontCache = CGFontCacheGetLocalCache();
-    CGFontCacheSetShouldAutoExpire(fontCache, false);
-    CGFontCacheSetMaxSize(fontCache, size);
-#endif
 }
 
 IMLangFontLinkType* FontCache::getFontLinkInterface()
@@ -84,7 +65,7 @@ IMLangFontLinkType* FontCache::getFontLinkInterface()
     return langFontLink;
 }
 
-static int CALLBACK metaFileEnumProc(HDC hdc, HANDLETABLE* table, CONST ENHMETARECORD* record, int tableEntries, LPARAM logFont)
+static int CALLBACK metaFileEnumProc(HDC, HANDLETABLE*, CONST ENHMETARECORD* record, int, LPARAM logFont)
 {
     if (record->iType == EMR_EXTCREATEFONTINDIRECTW) {
         const EMREXTCREATEFONTINDIRECTW* createFontRecord = reinterpret_cast<const EMREXTCREATEFONTINDIRECTW*>(record);
@@ -93,7 +74,7 @@ static int CALLBACK metaFileEnumProc(HDC hdc, HANDLETABLE* table, CONST ENHMETAR
     return true;
 }
 
-static int CALLBACK linkedFontEnumProc(CONST LOGFONT* logFont, CONST TEXTMETRIC* metrics, DWORD fontType, LPARAM hfont)
+static int CALLBACK linkedFontEnumProc(CONST LOGFONT* logFont, CONST TEXTMETRIC*, DWORD, LPARAM hfont)
 {
     *reinterpret_cast<HFONT*>(hfont) = CreateFontIndirect(logFont);
     return false;
@@ -146,7 +127,7 @@ static const Vector<String>* getLinkedFonts(String& family)
     return result;
 }
 
-static const Vector<DWORD, 4>& getCJKCodePageMasks()
+static const Vector<DWORD, 4>& getCJKCodePageMasks(FontCache& fontCache)
 {
     // The default order in which we look for a font for a CJK character. If the user's default code page is
     // one of these, we will use it first.
@@ -161,7 +142,7 @@ static const Vector<DWORD, 4>& getCJKCodePageMasks()
     static bool initialized;
     if (!initialized) {
         initialized = true;
-        IMLangFontLinkType* langFontLink = FontCache::singleton().getFontLinkInterface();
+        IMLangFontLinkType* langFontLink = fontCache.getFontLinkInterface();
         if (!langFontLink)
             return codePageMasks;
 
@@ -183,9 +164,9 @@ static const Vector<DWORD, 4>& getCJKCodePageMasks()
     return codePageMasks;
 }
 
-static bool currentFontContainsCharacterNonBMP(HDC hdc, const UChar* str)
+static bool currentFontContainsCharacterNonBMP(HDC hdc, StringView stringView)
 {
-    ASSERT(U_IS_LEAD(str[0]) && U_IS_TRAIL(str[1]));
+    ASSERT(U_IS_LEAD(stringView[0]) && U_IS_TRAIL(stringView[1]));
 
     SCRIPT_CACHE sc = { };
     SCRIPT_FONTPROPERTIES fp = { };
@@ -198,7 +179,7 @@ static bool currentFontContainsCharacterNonBMP(HDC hdc, const UChar* str)
     gcpResults.lStructSize = sizeof gcpResults;
     gcpResults.nGlyphs = 2;
     gcpResults.lpGlyphs = glyphs;
-    GetCharacterPlacement(hdc, wcharFrom(str), 2, 0, &gcpResults, GCP_GLYPHSHAPE);
+    GetCharacterPlacement(hdc, wcharFrom(stringView.upconvertedCharacters()), 2, 0, &gcpResults, GCP_GLYPHSHAPE);
 
     if (gcpResults.nGlyphs != 1)
         return false;
@@ -206,12 +187,12 @@ static bool currentFontContainsCharacterNonBMP(HDC hdc, const UChar* str)
     return !(glyph == fp.wgBlank || glyph == fp.wgInvalid || glyph == fp.wgDefault);
 }
 
-static bool currentFontContainsCharacter(HDC hdc, const UChar* str, size_t length)
+static bool currentFontContainsCharacter(HDC hdc, StringView stringView)
 {
-    ASSERT(length <= 2);
-    if (length == 2)
-        return currentFontContainsCharacterNonBMP(hdc, str);
-    UChar character = str[0];
+    char32_t utf32Character = *stringView.codePoints().begin();
+    if (U_IS_SUPPLEMENTARY(utf32Character))
+        return currentFontContainsCharacterNonBMP(hdc, stringView);
+    UChar character = utf32Character;
 
     static Vector<char, 512> glyphsetBuffer;
     glyphsetBuffer.resize(GetFontUnicodeRanges(hdc, 0));
@@ -239,17 +220,17 @@ static HFONT createMLangFont(IMLangFontLinkType* langFontLink, HDC hdc, DWORD co
     return hfont;
 }
 
-RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& description, const Font* originalFontData, IsForPlatformFont, PreferColoredFont, const UChar* characters, unsigned length)
+RefPtr<Font> FontCache::systemFallbackForCharacterCluster(const FontDescription& description, const Font& originalFontData, IsForPlatformFont, PreferColoredFont, StringView stringView)
 {
     RefPtr<Font> fontData;
     HWndDC hdc(0);
-    HFONT primaryFont = originalFontData->platformData().hfont();
+    HFONT primaryFont = originalFontData.platformData().hfont();
     HGDIOBJ oldFont = SelectObject(hdc, primaryFont);
     HFONT hfont = 0;
     IMLangFontLinkType* langFontLink = getFontLinkInterface();
 
-    if (length == 1 && langFontLink) {
-        UChar character = characters[0];
+    if (stringView.length() == 1 && langFontLink) {
+        UChar character = stringView[0];
         // Try MLang font linking first.
         DWORD codePages = 0;
         if (SUCCEEDED(langFontLink->GetCharCodePages(character, &codePages))) {
@@ -257,7 +238,7 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
                 // The CJK character may belong to multiple code pages. We want to
                 // do font linking against a single one of them, preferring the default
                 // code page for the user's locale.
-                const Vector<DWORD, 4>& CJKCodePageMasks = getCJKCodePageMasks();
+                const Vector<DWORD, 4>& CJKCodePageMasks = getCJKCodePageMasks(*this);
                 unsigned numCodePages = CJKCodePageMasks.size();
                 for (unsigned i = 0; i < numCodePages && !hfont; ++i) {
                     hfont = createMLangFont(langFontLink, hdc, CJKCodePageMasks[i]);
@@ -265,7 +246,7 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
                         // We asked about a code page that is not one of the code pages
                         // returned by MLang, so the font might not contain the character.
                         SelectObject(hdc, hfont);
-                        if (!currentFontContainsCharacter(hdc, characters, length)) {
+                        if (!currentFontContainsCharacter(hdc, stringView)) {
                             DeleteObject(hfont);
                             hfont = 0;
                         }
@@ -291,8 +272,8 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
 
         // FIXME: If length is greater than 1, we actually return the font for the last character.
         // This function should be renamed getFontDataForCharacter and take a single 32-bit character.
-        if (SUCCEEDED(ScriptStringAnalyse(metaFileDc, characters, length, 0, -1, SSA_METAFILE | SSA_FALLBACK | SSA_GLYPHS | SSA_LINK,
-            0, NULL, NULL, NULL, NULL, NULL, &ssa))) {
+        auto upconvertedCharacters = stringView.upconvertedCharacters();
+        if (SUCCEEDED(ScriptStringAnalyse(metaFileDc, upconvertedCharacters, stringView.length(), 0, -1, SSA_METAFILE | SSA_FALLBACK | SSA_GLYPHS | SSA_LINK, 0, nullptr, nullptr, nullptr, nullptr, nullptr, &ssa))) {
             scriptStringOutSucceeded = SUCCEEDED(ScriptStringOut(ssa, 0, 0, 0, NULL, 0, 0, FALSE));
             ScriptStringFree(&ssa);
         }
@@ -316,7 +297,7 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
         GetTextFace(hdc, LF_FACESIZE, name);
         familyName = String(name);
 
-        if (containsCharacter || currentFontContainsCharacter(hdc, characters, length))
+        if (containsCharacter || currentFontContainsCharacter(hdc, stringView))
             break;
 
         if (!linkedFonts)
@@ -330,7 +311,7 @@ RefPtr<Font> FontCache::systemFallbackForCharacters(const FontDescription& descr
 
         LOGFONT logFont;
         logFont.lfCharSet = DEFAULT_CHARSET;
-        StringView(linkedFonts->at(linkedFontIndex)).getCharactersWithUpconvert(ucharFrom(logFont.lfFaceName));
+        StringView(linkedFonts->at(linkedFontIndex)).getCharacters(ucharFrom(logFont.lfFaceName));
         logFont.lfFaceName[linkedFonts->at(linkedFontIndex).length()] = 0;
         EnumFontFamiliesEx(hdc, &logFont, linkedFontEnumProc, reinterpret_cast<LPARAM>(&hfont), 0);
         linkedFontIndex++;
@@ -382,13 +363,13 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
         // Sorted by most to least glyphs according to http://en.wikipedia.org/wiki/Unicode_typefaces
         // Start with Times New Roman also since it is the default if the user doesn't change prefs.
         static NeverDestroyed<const String> fallbackFonts[] = {
-            String("Times New Roman", String::ConstructFromLiteral),
-            String("Microsoft Sans Serif", String::ConstructFromLiteral),
-            String("Tahoma", String::ConstructFromLiteral),
-            String("Lucida Sans Unicode", String::ConstructFromLiteral),
-            String("Arial", String::ConstructFromLiteral)
+            "Times New Roman"_str,
+            "Microsoft Sans Serif"_str,
+            "Tahoma"_str,
+            "Lucida Sans Unicode"_str,
+            "Arial"_str
         };
-        for (size_t i = 0; i < WTF_ARRAY_LENGTH(fallbackFonts); ++i) {
+        for (size_t i = 0; i < std::size(fallbackFonts); ++i) {
             if (fontForFamily(fontDescription, fallbackFonts[i])) {
                 fallbackFontName.get() = fallbackFonts[i];
                 return;
@@ -427,11 +408,11 @@ Ref<Font> FontCache::lastResortFallbackFont(const FontDescription& fontDescripti
     }
 
     auto hFont = adoptGDIObject(static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT)));
-    FontPlatformData platformData(WTFMove(hFont), fontDescription.computedPixelSize(), false, false, false);
+    FontPlatformData platformData(WTFMove(hFont), fontDescription.computedSize(), false, false);
     return fontForPlatformData(platformData);
 }
 
-static LONG toGDIFontWeight(FontSelectionValue fontWeight)
+LONG toGDIFontWeight(FontSelectionValue fontWeight)
 {
     if (fontWeight < FontSelectionValue(150))
         return FW_THIN;
@@ -452,14 +433,14 @@ static LONG toGDIFontWeight(FontSelectionValue fontWeight)
     return FW_HEAVY;
 }
 
-static inline bool isGDIFontWeightBold(LONG gdiFontWeight)
+bool isGDIFontWeightBold(LONG gdiFontWeight)
 {
     return gdiFontWeight >= FW_SEMIBOLD;
 }
 
-static LONG adjustedGDIFontWeight(LONG gdiFontWeight, const String& family)
+LONG adjustedGDIFontWeight(LONG gdiFontWeight, const String& family)
 {
-    if (equalLettersIgnoringASCIICase(family, "lucida grande")) {
+    if (equalLettersIgnoringASCIICase(family, "lucida grande"_s)) {
         if (gdiFontWeight == FW_NORMAL)
             return FW_MEDIUM;
         if (gdiFontWeight == FW_BOLD)
@@ -482,7 +463,7 @@ struct MatchImprovingProcData {
     LOGFONT m_chosen;
 };
 
-static int CALLBACK matchImprovingEnumProc(CONST LOGFONT* candidate, CONST TEXTMETRIC* metrics, DWORD fontType, LPARAM lParam)
+static int CALLBACK matchImprovingEnumProc(CONST LOGFONT* candidate, CONST TEXTMETRIC*, DWORD, LPARAM lParam)
 {
     MatchImprovingProcData* matchData = reinterpret_cast<MatchImprovingProcData*>(lParam);
 
@@ -499,11 +480,11 @@ static int CALLBACK matchImprovingEnumProc(CONST LOGFONT* candidate, CONST TEXTM
         return 1;
     }
 
-    unsigned chosenWeightDeltaMagnitude = abs(matchData->m_chosen.lfWeight - matchData->m_desiredWeight);
-    unsigned candidateWeightDeltaMagnitude = abs(candidate->lfWeight - matchData->m_desiredWeight);
+    unsigned chosenWeightDeltaMagnitude = std::abs(matchData->m_chosen.lfWeight - matchData->m_desiredWeight);
+    unsigned candidateWeightDeltaMagnitude = std::abs(candidate->lfWeight - matchData->m_desiredWeight);
 
     // If both are the same distance from the desired weight, prefer the candidate if it is further from regular.
-    if (chosenWeightDeltaMagnitude == candidateWeightDeltaMagnitude && abs(candidate->lfWeight - FW_NORMAL) > abs(matchData->m_chosen.lfWeight - FW_NORMAL)) {
+    if (chosenWeightDeltaMagnitude == candidateWeightDeltaMagnitude && std::abs(candidate->lfWeight - FW_NORMAL) > std::abs(matchData->m_chosen.lfWeight - FW_NORMAL)) {
         matchData->m_chosen = *candidate;
         return 1;
     }
@@ -515,14 +496,14 @@ static int CALLBACK matchImprovingEnumProc(CONST LOGFONT* candidate, CONST TEXTM
     return 1;
 }
 
-static GDIObject<HFONT> createGDIFont(const AtomString& family, LONG desiredWeight, bool desiredItalic, int size, bool synthesizeItalic)
+GDIObject<HFONT> createGDIFont(const AtomString& family, LONG desiredWeight, bool desiredItalic, int size)
 {
     HWndDC hdc(0);
 
     LOGFONT logFont;
     logFont.lfCharSet = DEFAULT_CHARSET;
-    StringView truncatedFamily = StringView(family).substring(0, static_cast<unsigned>(LF_FACESIZE - 1));
-    truncatedFamily.getCharactersWithUpconvert(ucharFrom(logFont.lfFaceName));
+    StringView truncatedFamily = StringView(family).left(static_cast<unsigned>(LF_FACESIZE - 1));
+    truncatedFamily.getCharacters(ucharFrom(logFont.lfFaceName));
     logFont.lfFaceName[truncatedFamily.length()] = 0;
     logFont.lfPitchAndFamily = 0;
 
@@ -539,21 +520,12 @@ static GDIObject<HFONT> createGDIFont(const AtomString& family, LONG desiredWeig
     matchData.m_chosen.lfUnderline = false;
     matchData.m_chosen.lfStrikeOut = false;
     matchData.m_chosen.lfCharSet = DEFAULT_CHARSET;
-#if USE(CG) || USE(CAIRO) || USE(DIRECT2D)
     matchData.m_chosen.lfOutPrecision = OUT_TT_ONLY_PRECIS;
-#else
-    matchData.m_chosen.lfOutPrecision = OUT_TT_PRECIS;
-#endif
     matchData.m_chosen.lfQuality = DEFAULT_QUALITY;
     matchData.m_chosen.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
 
-#if USE(CAIRO)
     if (isGDIFontWeightBold(desiredWeight) && !isGDIFontWeightBold(matchData.m_chosen.lfWeight))
         matchData.m_chosen.lfWeight = desiredWeight;
-#endif
-
-    if (desiredItalic && !matchData.m_chosen.lfItalic && synthesizeItalic)
-        matchData.m_chosen.lfItalic = 1;
 
     auto chosenFont = adoptGDIObject(::CreateFontIndirect(&matchData.m_chosen));
     if (!chosenFont)
@@ -582,7 +554,7 @@ struct TraitsInFamilyProcData {
     Vector<FontSelectionCapabilities> m_capabilities;
 };
 
-static int CALLBACK traitsInFamilyEnumProc(CONST LOGFONT* logFont, CONST TEXTMETRIC* metrics, DWORD fontType, LPARAM lParam)
+static int CALLBACK traitsInFamilyEnumProc(CONST LOGFONT* logFont, CONST TEXTMETRIC*, DWORD, LPARAM lParam)
 {
     TraitsInFamilyProcData* procData = reinterpret_cast<TraitsInFamilyProcData*>(lParam);
 
@@ -635,64 +607,16 @@ Vector<FontSelectionCapabilities> FontCache::getFontSelectionCapabilitiesInFamil
 
     LOGFONT logFont;
     logFont.lfCharSet = DEFAULT_CHARSET;
-    StringView truncatedFamily = StringView(familyName).substring(0, static_cast<unsigned>(LF_FACESIZE - 1));
-    truncatedFamily.getCharactersWithUpconvert(ucharFrom(logFont.lfFaceName));
+    StringView truncatedFamily = StringView(familyName).left(static_cast<unsigned>(LF_FACESIZE - 1));
+    truncatedFamily.getCharacters(ucharFrom(logFont.lfFaceName));
     logFont.lfFaceName[truncatedFamily.length()] = 0;
     logFont.lfPitchAndFamily = 0;
 
     TraitsInFamilyProcData procData(familyName);
     EnumFontFamiliesEx(hdc, &logFont, traitsInFamilyEnumProc, reinterpret_cast<LPARAM>(&procData), 0);
-    Vector<FontSelectionCapabilities> result;
-    result.reserveInitialCapacity(procData.m_capabilities.size());
-    for (auto capabilities : procData.m_capabilities)
-        result.uncheckedAppend(capabilities);
-    return result;
-}
-
-std::unique_ptr<FontPlatformData> FontCache::createFontPlatformData(const FontDescription& fontDescription, const AtomString& family, const FontFeatureSettings*, FontSelectionSpecifiedCapabilities)
-{
-    bool isLucidaGrande = equalLettersIgnoringASCIICase(family, "lucida grande");
-
-    bool useGDI = fontDescription.renderingMode() == FontRenderingMode::Alternate && !isLucidaGrande;
-
-    // The logical size constant is 32. We do this for subpixel precision when rendering using Uniscribe.
-    // This masks rounding errors related to the HFONT metrics being  different from the CGFont metrics.
-    // FIXME: We will eventually want subpixel precision for GDI mode, but the scaled rendering doesn't
-    // look as nice. That may be solvable though.
-    LONG weight = adjustedGDIFontWeight(toGDIFontWeight(fontDescription.weight()), family);
-    auto hfont = createGDIFont(family, weight, isItalic(fontDescription.italic()),
-        fontDescription.computedPixelSize() * (useGDI ? 1 : 32), useGDI);
-
-    if (!hfont)
-        return nullptr;
-
-    if (isLucidaGrande)
-        useGDI = false; // Never use GDI for Lucida Grande.
-
-    LOGFONT logFont;
-    GetObject(hfont.get(), sizeof(LOGFONT), &logFont);
-
-    bool synthesizeBold = isGDIFontWeightBold(weight) && !isGDIFontWeightBold(logFont.lfWeight);
-    bool synthesizeItalic = isItalic(fontDescription.italic()) && !logFont.lfItalic;
-
-    auto result = makeUnique<FontPlatformData>(WTFMove(hfont), fontDescription.computedPixelSize(), synthesizeBold, synthesizeItalic, useGDI);
-
-#if USE(CG)
-    bool fontCreationFailed = !result->cgFont();
-#elif USE(DIRECT2D)
-    bool fontCreationFailed = !result->dwFont();
-#elif USE(CAIRO)
-    bool fontCreationFailed = !result->scaledFont();
-#endif
-
-    if (fontCreationFailed) {
-        // The creation of the CGFontRef failed for some reason.  We already asserted in debug builds, but to make
-        // absolutely sure that we don't use this font, go ahead and return 0 so that we can fall back to the next
-        // font.
-        return nullptr;
-    }
-
-    return result;
+    return WTF::map(procData.m_capabilities, [](auto& capabilities) -> FontSelectionCapabilities {
+        return capabilities;
+    });
 }
 
 std::optional<ASCIILiteral> FontCache::platformAlternateFamilyName(const String& familyName)
@@ -704,7 +628,7 @@ std::optional<ASCIILiteral> FontCache::platformAlternateFamilyName(const String&
     // FIXME: Seems unlikely this is still needed. If it was really needed, I think we
     // would need it on other platforms too.
     case 8:
-        if (equalLettersIgnoringASCIICase(familyName, "ms serif"))
+        if (equalLettersIgnoringASCIICase(familyName, "ms serif"_s))
             return "Times New Roman"_s;
         break;
     // On Windows, we don't support bitmap fonts, but legacy content expects support.
@@ -713,11 +637,15 @@ std::optional<ASCIILiteral> FontCache::platformAlternateFamilyName(const String&
     // FIXME: Seems unlikely this is still needed. If it was really needed, I think we
     // would need it on other platforms too.
     case 13:
-        if (equalLettersIgnoringASCIICase(familyName, "ms sans serif"))
+        if (equalLettersIgnoringASCIICase(familyName, "ms sans serif"_s))
             return "Microsoft Sans Serif"_s;
         break;
     }
     return std::nullopt;
 }
 
+void FontCache::platformInvalidate()
+{
 }
+
+} // namespace WebCore

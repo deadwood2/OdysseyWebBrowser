@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2019-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,6 +29,7 @@
 #import "Pasteboard.h"
 #import "PasteboardItemInfo.h"
 #import "WebCoreNSURLExtras.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #if PLATFORM(IOS_FAMILY)
 #import "AbstractPasteboard.h"
@@ -51,7 +52,7 @@ std::optional<Vector<PasteboardItemInfo>> PlatformPasteboard::allPasteboardItemI
         if (!item)
             return std::nullopt;
 
-        itemInfo.uncheckedAppend(WTFMove(*item));
+        itemInfo.append(WTFMove(*item));
     }
     return itemInfo;
 }
@@ -74,10 +75,8 @@ String PlatformPasteboard::urlStringSuitableForLoading(String& title)
 
 #if PLATFORM(IOS_FAMILY)
     UNUSED_PARAM(title);
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    String urlPasteboardType = kUTTypeURL;
-    String stringPasteboardType = kUTTypeText;
-ALLOW_DEPRECATED_DECLARATIONS_END
+    String urlPasteboardType = UTTypeURL.identifier;
+    String stringPasteboardType = UTTypeText.identifier;
 #else
     String urlPasteboardType = legacyURLPasteboardType();
     String stringPasteboardType = legacyStringPasteboardType();

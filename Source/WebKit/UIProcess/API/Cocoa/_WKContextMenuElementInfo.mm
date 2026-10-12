@@ -26,6 +26,13 @@
 #import "config.h"
 #import "_WKContextMenuElementInfo.h"
 
+#import "APIHitTestResult.h"
+#import "APIString.h"
+#import "_WKContextMenuElementInfoInternal.h"
+#import "_WKHitTestResultInternal.h"
+#import <WebCore/WebCoreObjCExtras.h>
+#import <wtf/RetainPtr.h>
+
 #if !PLATFORM(IOS_FAMILY)
 
 @implementation _WKContextMenuElementInfo
@@ -35,6 +42,39 @@
     return [self retain];
 }
 
+- (void)dealloc
+{
+    if (WebCoreObjCScheduleDeallocateOnMainRunLoop(_WKContextMenuElementInfo.class, self))
+        return;
+    _contextMenuElementInfoMac->API::ContextMenuElementInfoMac::~ContextMenuElementInfoMac();
+    [super dealloc];
+}
+
+- (_WKHitTestResult *)hitTestResult
+{
+    auto& hitTestResultData = _contextMenuElementInfoMac->hitTestResultData();
+    auto apiHitTestResult = API::HitTestResult::create(hitTestResultData, _contextMenuElementInfoMac->page());
+    return retainPtr(wrapper(apiHitTestResult)).autorelease();
+}
+
+- (NSString *)qrCodePayloadString
+{
+    auto& qrCodePayloadString = _contextMenuElementInfoMac->qrCodePayloadString();
+    return nsStringNilIfEmpty(qrCodePayloadString);
+}
+
+- (BOOL)hasEntireImage
+{
+    return _contextMenuElementInfoMac->hasEntireImage();
+}
+
+// MARK: WKObject protocol implementation
+
+- (API::Object&)_apiObject
+{
+    return *_contextMenuElementInfoMac;
+}
+
 @end
 
-#endif
+#endif // !PLATFORM(IOS_FAMILY)

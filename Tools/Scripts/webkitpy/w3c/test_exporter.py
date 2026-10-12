@@ -52,7 +52,7 @@ WEBKIT_WPT_DIR = 'LayoutTests/imported/w3c/web-platform-tests'
 WPT_PR_URL = "%s/pull/" % WPT_GH_URL
 WEBKIT_EXPORT_PR_LABEL = 'webkit-export'
 
-EXCLUDED_FILE_SUFFIXES = ['-expected.txt', '.worker.html', '.any.html', '.any.worker.html', 'w3c-import.log']
+EXCLUDED_FILE_SUFFIXES = ['-expected.txt', '-expected.html', '-expected-mismatch.html', '.worker.html', '.any.html', '.any.worker.html', '.any.serviceworker.html', '.any.sharedworker.html', 'w3c-import.log']
 
 
 class WebPlatformTestExporter(object):
@@ -147,7 +147,7 @@ class WebPlatformTestExporter(object):
     @property
     @memoized
     def _wpt_patch(self):
-        patch_data = self._host.scm().create_patch(self._options.git_commit, [WEBKIT_WPT_DIR]) or b''
+        patch_data = self._host.scm().create_patch(self._options.git_commit, [WEBKIT_WPT_DIR], commit_message=False) or b''
         patch_data = self._strip_ignored_files_from_diff(patch_data)
         if b'diff' not in patch_data:
             return ''
@@ -157,10 +157,12 @@ class WebPlatformTestExporter(object):
         return bool(self._wpt_patch)
 
     def _find_filename(self, line):
-        return line.split(b' ')[-1]
+        return line.split(b' ')[-1][2:]
 
     def _is_ignored_file(self, filename):
         filename = string_utils.decode(filename, target_type=str)
+        if not filename.startswith(WEBKIT_WPT_DIR):
+            return True
         for suffix in EXCLUDED_FILE_SUFFIXES:
             if filename.endswith(suffix):
                 return True
@@ -179,7 +181,7 @@ class WebPlatformTestExporter(object):
             if include_file:
                 new_lines.append(line)
 
-        return b'\n'.join(new_lines)
+        return b'\n'.join(new_lines) + b'\n'
 
     def write_git_patch_file(self):
         _, patch_file = self._filesystem.open_binary_tempfile('wpt_export_patch')
@@ -273,22 +275,6 @@ class WebPlatformTestExporter(object):
             counter = counter + 1
         return branch_name
 
-    def download_and_commit_patch(self):
-        if self._options.git_commit:
-            return True
-
-        patch_options = ["--no-update", "--no-clean", "--local-commit"]
-        if self._options.attachment_id:
-            patch_options.insert("apply-attachment")
-            patch_options.append(self._options.attachment_id)
-        elif self._options.bug_id:
-            patch_options.insert("apply-from-bug")
-            patch_options.append(self._options.bug_id)
-        else:
-            _log.info("Exporting local changes")
-            return
-        raise TypeError("Retrieval of patch from bugzilla is not yet implemented")
-
     def clean(self):
         _log.info('Cleaning web-platform-tests master branch')
         self._git.checkout('master')
@@ -304,7 +290,7 @@ class WebPlatformTestExporter(object):
             self._git.delete_branch(self._branch_name)
             self._git.checkout_new_branch(self._branch_name)
         try:
-            self._git.apply_mail_patch([patch])
+            self._git.apply_mail_patch([patch, '-3'])
         except Exception as e:
             _log.warning(e)
             return False
@@ -348,12 +334,15 @@ class WebPlatformTestExporter(object):
         pr_number = None
         try:
             pr_number = self._github.create_pr(remote_branch_name, title, body)
-        except Exception as e:
+        except HTTPError as e:
             if e.code == 422:
                 _log.info('Unable to create a new pull request for branch "%s" because a pull request already exists. The branch has been updated and there is no further action needed.' % (remote_branch_name))
             else:
                 _log.warning(e)
                 _log.info('Error creating a pull request on github. Please ensure that the provided github token has the "public_repo" scope.')
+        except Exception as e:
+            _log.warning(e)
+            _log.info('Error creating a pull request on github. Please ensure that the provided github token has the "public_repo" scope.')
         return pr_number
 
     def delete_local_branch(self):
@@ -383,12 +372,13 @@ class WebPlatformTestExporter(object):
         if git_patch_file:
             self._filesystem.remove(git_patch_file)
 
-        lint_errors = self._linter.lint()
-        if lint_errors:
-            _log.error("The wpt linter detected %s linting error(s). Please address the above errors before attempting to export changes to the web-platform-test repository." % (lint_errors,))
-            self.delete_local_branch()
-            self.clean()
-            return
+        if self._options.use_linter:
+            lint_errors = self._linter.lint()
+            if lint_errors:
+                _log.error("The wpt linter detected %s linting error(s). Please address the above errors before attempting to export changes to the web-platform-test repository." % (lint_errors,))
+                self.delete_local_branch()
+                self.clean()
+                return
 
         try:
             if self.push_to_wpt_fork():
@@ -405,10 +395,13 @@ def parse_args(args):
     'Tools/Scripts/export-w3c-test-changes -c -g HEAD -b XYZ' will do the following:
     - Clone web-platform-tests repository if not done already and set it up for pushing branches.
     - Gather WebKit bug id XYZ bug and changes to apply to web-platform-tests repository based on the HEAD commit
-    - Create a remote branch named webkit-XYZ on https://github.com/USERNAME/%s.git repository based on the locally applied patch.
-    -    USERNAME may be set using the environment variable GITHUB_USERNAME or as a command line option. It is then stored in git config as github.username.
-    -    Github credential may be set using the environment variable GITHUB_TOKEN or as a command line option. (Please provide a valid GitHub 'Personal access token' with 'repo' as scope). It is then stored in git config as github.token.
-    - Make the related pull request on %s.git repository.
+    - Create a remote branch named webkit-XYZ on https://github.com/USERNAME/%(wpt_name)s.git repository based on the locally applied patch.
+       * USERNAME may be set using the environment variable GITHUB_USERNAME or as a command line option. It is then stored in git config as github.username.
+       * %(wpt_url)s.git should have already been cloned to https://github.com/USERNAME/%(wpt_name)s.git.
+       * Github credential may be set using the environment variable GITHUB_TOKEN or as a command line option.
+         (Please provide a valid GitHub 'Personal access token' with 'repo' as scope, it may be generated at https://github.com/settings/tokens).
+         It is then stored in git config as github.token.
+    - Make the related pull request on %(wpt_url)s.git repository.
     - Clean the local Git repository
     Notes:
     - It is safer to provide a bug id using -b option (bug id from a git commit is not always working).
@@ -417,7 +410,7 @@ def parse_args(args):
     FIXME:
     - The script is not yet able to update an existing pull request
     - Need a way to monitor the progress of the pul request so that status of all pending pull requests can be done at import time.
-    """ % (WPT_GH_REPO_NAME, WPT_GH_URL)
+    """ % {"wpt_name": WPT_GH_REPO_NAME, "wpt_url": WPT_GH_URL}
     parser = argparse.ArgumentParser(prog='export-w3c-test-changes ...', description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('-g', '--git-commit', dest='git_commit', default=None, help='Git commit to apply')
@@ -432,6 +425,7 @@ def parse_args(args):
     parser.add_argument('-d', '--repository', dest='repository_directory', default=None, help='repository directory')
     parser.add_argument('-c', '--create-pr', dest='create_pull_request', action='store_true', default=False, help='create pull request to w3c web-platform-tests')
     parser.add_argument('--non-interactive', action='store_true', dest='non_interactive', default=False, help='Never prompt the user, fail as fast as possible.')
+    parser.add_argument('--no-linter', action='store_false', dest='use_linter', default=True, help='Disable linter.')
 
     options, args = parser.parse_known_args(args)
 

@@ -31,6 +31,7 @@
 #include "ApplePayPaymentHandler.h"
 #include "Document.h"
 #include "EventNames.h"
+#include "FrameDestructionObserverInlines.h"
 #include "JSDOMPromise.h"
 #include "JSDOMPromiseDeferred.h"
 #include "JSPaymentDetailsUpdate.h"
@@ -51,21 +52,22 @@
 #include <JavaScriptCore/JSONObject.h>
 #include <JavaScriptCore/ThrowScope.h>
 #include <wtf/ASCIICType.h>
-#include <wtf/IsoMallocInlines.h>
 #include <wtf/RunLoop.h>
 #include <wtf/Scope.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/UUID.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(PaymentRequest);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(PaymentRequest);
 
 // Implements the IsWellFormedCurrencyCode abstract operation from ECMA 402
 // https://tc39.github.io/ecma402/#sec-iswellformedcurrencycode
 static bool isWellFormedCurrencyCode(const String& currency)
 {
     if (currency.length() == 3)
-        return currency.isAllSpecialCharacters<isASCIIAlpha>();
+        return currency.containsOnly<isASCIIAlpha>();
     return false;
 }
 
@@ -78,7 +80,7 @@ static ExceptionOr<String> checkAndCanonicalizeData(ScriptExecutionContext& cont
         auto scope = DECLARE_THROW_SCOPE(globalObject->vm());
         serializedData = JSONStringify(globalObject, value.data.get(), 0);
         if (scope.exception())
-            return Exception { ExistingExceptionError };
+            return Exception { ExceptionCode::ExistingExceptionError };
         value.data.clear();
     }
     return { WTFMove(serializedData) };
@@ -89,16 +91,16 @@ static ExceptionOr<String> checkAndCanonicalizeData(ScriptExecutionContext& cont
 static ExceptionOr<void> checkAndCanonicalizeAmount(PaymentCurrencyAmount& amount)
 {
     if (!isWellFormedCurrencyCode(amount.currency))
-        return Exception { RangeError, makeString("\"", amount.currency, "\" is not a valid currency code.") };
+        return Exception { ExceptionCode::RangeError, makeString('"', amount.currency, "\" is not a valid currency code."_s) };
 
     if (!isValidDecimalMonetaryValue(amount.value))
-        return Exception { TypeError, makeString("\"", amount.value, "\" is not a valid decimal monetary value.") };
+        return Exception { ExceptionCode::TypeError, makeString('"', amount.value, "\" is not a valid decimal monetary value."_s) };
 
     amount.currency = amount.currency.convertToASCIIUppercase();
     return { };
 }
 
-enum class NegativeAmountAllowed { Yes, No };
+enum class NegativeAmountAllowed : bool { No, Yes };
 static ExceptionOr<void> checkAndCanonicalizePaymentItem(PaymentItem& item, NegativeAmountAllowed negativeAmountAllowed)
 {
     auto exception = checkAndCanonicalizeAmount(item.amount);
@@ -106,7 +108,7 @@ static ExceptionOr<void> checkAndCanonicalizePaymentItem(PaymentItem& item, Nega
         return exception.releaseException();
 
     if (negativeAmountAllowed == NegativeAmountAllowed::No && item.amount.value[0] == '-')
-        return Exception { TypeError, "Total currency values cannot be negative."_s };
+        return Exception { ExceptionCode::TypeError, "Total currency values cannot be negative."_s };
 
     return { };
 }
@@ -169,14 +171,14 @@ static bool isValidStandardizedPaymentMethodIdentifier(StringView identifier)
 // https://www.w3.org/TR/payment-method-id/#validation
 static bool isValidURLBasedPaymentMethodIdentifier(const URL& url)
 {
-    return url.protocolIs("https") && !url.hasCredentials();
+    return url.protocolIs("https"_s) && !url.hasCredentials();
 }
 
 // Implements "validate a payment method identifier"
 // https://www.w3.org/TR/payment-method-id/#validity
 std::optional<PaymentRequest::MethodIdentifier> convertAndValidatePaymentMethodIdentifier(const String& identifier)
 {
-    URL url { URL(), identifier };
+    URL url { identifier };
     if (!url.isValid()) {
         if (isValidStandardizedPaymentMethodIdentifier(identifier))
             return { identifier };
@@ -216,15 +218,21 @@ static ExceptionOr<std::tuple<String, Vector<String>>> checkAndCanonicalizeDetai
 
                 auto addResult = seenShippingOptionIDs.add(shippingOption.id);
                 if (!addResult.isNewEntry)
-                    return Exception { TypeError, "Shipping option IDs must be unique." };
+                    return Exception { ExceptionCode::TypeError, "Shipping option IDs must be unique."_s };
 
-                // FIXME: <rdar://problem/73464404>
+#if ENABLE(PAYMENT_REQUEST_SELECTED_SHIPPING_OPTION)
+                if (shippingOption.selected)
+                    selectedShippingOption = shippingOption.id;
+                UNUSED_PARAM(context);
+                UNUSED_VARIABLE(didLog);
+#else
                 if (!selectedShippingOption)
                     selectedShippingOption = shippingOption.id;
                 else if (!didLog && shippingOption.selected) {
                     context.addConsoleMessage(JSC::MessageSource::PaymentRequest, JSC::MessageLevel::Warning, "WebKit currently uses the first shipping option even if other shipping options are marked as selected."_s);
                     didLog = true;
                 }
+#endif
             }
         } else if (isUpdate == IsUpdate::No)
             details.shippingOptions = { { } };
@@ -238,7 +246,7 @@ static ExceptionOr<std::tuple<String, Vector<String>>> checkAndCanonicalizeDetai
             if (isUpdate == IsUpdate::Yes) {
                 auto paymentMethodIdentifier = convertAndValidatePaymentMethodIdentifier(modifier.supportedMethods);
                 if (!paymentMethodIdentifier)
-                    return Exception { RangeError, makeString('"', modifier.supportedMethods, "\" is an invalid payment method identifier.") };
+                    return Exception { ExceptionCode::RangeError, makeString('"', modifier.supportedMethods, "\" is an invalid payment method identifier."_s) };
             }
 
             if (modifier.total) {
@@ -261,7 +269,7 @@ static ExceptionOr<std::tuple<String, Vector<String>>> checkAndCanonicalizeDetai
 
                 serializedData = dataResult.releaseReturnValue();
             }
-            serializedModifierData.uncheckedAppend(WTFMove(serializedData));
+            serializedModifierData.append(WTFMove(serializedData));
         }
     } else if (isUpdate == IsUpdate::No)
         details.modifiers = { { } };
@@ -274,7 +282,7 @@ static ExceptionOr<JSC::JSValue> parse(ScriptExecutionContext& context, const St
     auto scope = DECLARE_THROW_SCOPE(context.vm());
     JSC::JSValue data = JSONParse(context.globalObject(), string);
     if (scope.exception())
-        return Exception { ExistingExceptionError };
+        return Exception { ExceptionCode::ExistingExceptionError };
     return data;
 }
 
@@ -295,10 +303,10 @@ ExceptionOr<Ref<PaymentRequest>> PaymentRequest::create(Document& document, Vect
         return canCreateSession.releaseException();
 
     if (details.id.isNull())
-        details.id = createCanonicalUUIDString();
+        details.id = createVersion4UUIDString();
 
     if (methodData.isEmpty())
-        return Exception { TypeError, "At least one payment method is required."_s };
+        return Exception { ExceptionCode::TypeError, "At least one payment method is required."_s };
 
     Vector<Method> serializedMethodData;
     serializedMethodData.reserveInitialCapacity(methodData.size());
@@ -306,17 +314,17 @@ ExceptionOr<Ref<PaymentRequest>> PaymentRequest::create(Document& document, Vect
     for (auto& paymentMethod : methodData) {
         auto identifier = convertAndValidatePaymentMethodIdentifier(paymentMethod.supportedMethods);
         if (!identifier)
-            return Exception { RangeError, makeString('"', paymentMethod.supportedMethods, "\" is an invalid payment method identifier.") };
+            return Exception { ExceptionCode::RangeError, makeString('"', paymentMethod.supportedMethods, "\" is an invalid payment method identifier."_s) };
 
         if (!seenMethodIDs.add(stringify(*identifier)))
-            return Exception { RangeError, "Payment method IDs must be unique."_s };
+            return Exception { ExceptionCode::RangeError, "Payment method IDs must be unique."_s };
 
         String serializedData;
         if (paymentMethod.data) {
             auto scope = DECLARE_THROW_SCOPE(document.globalObject()->vm());
             serializedData = JSONStringify(document.globalObject(), paymentMethod.data.get(), 0);
             if (scope.exception())
-                return Exception { ExistingExceptionError };
+                return Exception { ExceptionCode::ExistingExceptionError };
             
             auto parsedDataOrException = parse(document, serializedData);
             if (parsedDataOrException.hasException())
@@ -326,7 +334,7 @@ ExceptionOr<Ref<PaymentRequest>> PaymentRequest::create(Document& document, Vect
             if (exception.hasException())
                 return exception.releaseException();
         }
-        serializedMethodData.uncheckedAppend({ WTFMove(*identifier), WTFMove(serializedData) });
+        serializedMethodData.append({ WTFMove(*identifier), WTFMove(serializedData) });
     }
 
     auto totalResult = checkAndCanonicalizeTotal(details.total);
@@ -338,12 +346,9 @@ ExceptionOr<Ref<PaymentRequest>> PaymentRequest::create(Document& document, Vect
         return detailsResult.releaseException();
 
     auto shippingOptionAndModifierData = detailsResult.releaseReturnValue();
-    return adoptRef(*new PaymentRequest(document, WTFMove(options), WTFMove(details), WTFMove(std::get<1>(shippingOptionAndModifierData)), WTFMove(serializedMethodData), WTFMove(std::get<0>(shippingOptionAndModifierData))));
-}
-
-bool PaymentRequest::enabledForContext(ScriptExecutionContext& context)
-{
-    return PaymentHandler::enabledForContext(context);
+    auto request = adoptRef(*new PaymentRequest(document, WTFMove(options), WTFMove(details), WTFMove(std::get<1>(shippingOptionAndModifierData)), WTFMove(serializedMethodData), WTFMove(std::get<0>(shippingOptionAndModifierData))));
+    request->suspendIfNeeded();
+    return request;
 }
 
 PaymentRequest::PaymentRequest(Document& document, PaymentOptions&& options, PaymentDetailsInit&& details, Vector<String>&& serializedModifierData, Vector<Method>&& serializedMethodData, String&& selectedShippingOption)
@@ -354,12 +359,11 @@ PaymentRequest::PaymentRequest(Document& document, PaymentOptions&& options, Pay
     , m_serializedMethodData { WTFMove(serializedMethodData) }
     , m_shippingOption { WTFMove(selectedShippingOption) }
 {
-    suspendIfNeeded();
 }
 
 PaymentRequest::~PaymentRequest()
 {
-    ASSERT(!hasPendingActivity());
+    ASSERT(!hasPendingActivity() || isContextStopped());
     ASSERT(!m_activePaymentHandler);
 }
 
@@ -367,30 +371,30 @@ PaymentRequest::~PaymentRequest()
 void PaymentRequest::show(Document& document, RefPtr<DOMPromise>&& detailsPromise, ShowPromise&& promise)
 {
     if (!document.frame()) {
-        promise.reject(Exception { AbortError });
+        promise.reject(Exception { ExceptionCode::AbortError });
         return;
     }
 
-    auto* window = document.frame()->window();
+    RefPtr window = document.frame()->window();
     if (!window || !window->consumeTransientActivation()) {
-        promise.reject(Exception { SecurityError, "show() must be triggered by user activation." });
+        promise.reject(Exception { ExceptionCode::SecurityError, "show() must be triggered by user activation."_s });
         return;
     }
 
     if (m_state != State::Created) {
-        promise.reject(Exception { InvalidStateError });
+        promise.reject(Exception { ExceptionCode::InvalidStateError });
         return;
     }
 
     if (PaymentHandler::hasActiveSession(document)) {
-        promise.reject(Exception { AbortError });
+        promise.reject(Exception { ExceptionCode::AbortError });
         m_state = State::Closed;
         return;
     }
 
     m_state = State::Interactive;
     ASSERT(!m_showPromise);
-    m_showPromise = WTF::makeUnique<ShowPromise>(WTFMove(promise));
+    m_showPromise = makeUnique<ShowPromise>(WTFMove(promise));
 
     RefPtr<PaymentHandler> selectedPaymentHandler;
     for (auto& paymentMethod : m_serializedMethodData) {
@@ -404,7 +408,7 @@ void PaymentRequest::show(Document& document, RefPtr<DOMPromise>&& detailsPromis
         if (!handler)
             continue;
 
-        auto result = handler->convertData(data.releaseReturnValue());
+        auto result = handler->convertData(document, data.releaseReturnValue());
         if (result.hasException()) {
             settleShowPromise(result.releaseException());
             return;
@@ -415,7 +419,7 @@ void PaymentRequest::show(Document& document, RefPtr<DOMPromise>&& detailsPromis
     }
 
     if (!selectedPaymentHandler) {
-        settleShowPromise(Exception { NotSupportedError });
+        settleShowPromise(Exception { ExceptionCode::NotSupportedError });
         return;
     }
 
@@ -437,6 +441,10 @@ void PaymentRequest::show(Document& document, RefPtr<DOMPromise>&& detailsPromis
 
 void PaymentRequest::abortWithException(Exception&& exception)
 {
+    // If state is "closed", then the request has already been aborted.
+    if (m_state == State::Closed)
+        return;
+
     ASSERT(m_state == State::Interactive);
     closeActivePaymentHandler();
 
@@ -464,7 +472,9 @@ void PaymentRequest::closeActivePaymentHandler()
 void PaymentRequest::stop()
 {
     closeActivePaymentHandler();
-    settleShowPromise(Exception { AbortError });
+    queueTaskKeepingObjectAlive(*this, TaskSource::Payment, [this] {
+        settleShowPromise(Exception { ExceptionCode::AbortError });
+    });
 }
 
 void PaymentRequest::suspend(ReasonForSuspension reason)
@@ -485,16 +495,21 @@ void PaymentRequest::suspend(ReasonForSuspension reason)
 void PaymentRequest::abort(AbortPromise&& promise)
 {
     if (m_response && m_response->hasRetryPromise()) {
-        promise.reject(Exception { InvalidStateError });
+        promise.reject(Exception { ExceptionCode::InvalidStateError });
         return;
     }
 
     if (m_state != State::Interactive) {
-        promise.reject(Exception { InvalidStateError });
+        promise.reject(Exception { ExceptionCode::InvalidStateError });
         return;
     }
 
-    abortWithException(Exception { AbortError });
+    if (m_activePaymentHandler && !activePaymentHandler()->canAbortSession()) {
+        promise.reject(Exception { ExceptionCode::InvalidStateError });
+        return;
+    }
+
+    abortWithException(Exception { ExceptionCode::AbortError });
     promise.resolve();
 }
 
@@ -502,7 +517,7 @@ void PaymentRequest::abort(AbortPromise&& promise)
 void PaymentRequest::canMakePayment(Document& document, CanMakePaymentPromise&& promise)
 {
     if (m_state != State::Created) {
-        promise.reject(Exception { InvalidStateError });
+        promise.reject(Exception { ExceptionCode::InvalidStateError });
         return;
     }
 
@@ -534,7 +549,7 @@ std::optional<PaymentShippingType> PaymentRequest::shippingType() const
 
 void PaymentRequest::shippingAddressChanged(Ref<PaymentAddress>&& shippingAddress)
 {
-    whenDetailsSettled([this, protectedThis = makeRefPtr(this), shippingAddress = makeRefPtr(shippingAddress.get())]() mutable {
+    whenDetailsSettled([this, protectedThis = Ref { *this }, shippingAddress = WTFMove(shippingAddress)]() mutable {
         m_shippingAddress = WTFMove(shippingAddress);
         dispatchAndCheckUpdateEvent(PaymentRequestUpdateEvent::create(eventNames().shippingaddresschangeEvent));
     });
@@ -542,7 +557,7 @@ void PaymentRequest::shippingAddressChanged(Ref<PaymentAddress>&& shippingAddres
 
 void PaymentRequest::shippingOptionChanged(const String& shippingOption)
 {
-    whenDetailsSettled([this, protectedThis = makeRefPtr(this), shippingOption]() mutable {
+    whenDetailsSettled([this, protectedThis = Ref { *this }, shippingOption]() mutable {
         m_shippingOption = shippingOption;
         dispatchAndCheckUpdateEvent(PaymentRequestUpdateEvent::create(eventNames().shippingoptionchangeEvent));
     });
@@ -550,28 +565,31 @@ void PaymentRequest::shippingOptionChanged(const String& shippingOption)
 
 void PaymentRequest::paymentMethodChanged(const String& methodName, PaymentMethodChangeEvent::MethodDetailsFunction&& methodDetailsFunction)
 {
-    whenDetailsSettled([this, protectedThis = makeRefPtr(this), methodName, methodDetailsFunction = WTFMove(methodDetailsFunction)]() mutable {
+    whenDetailsSettled([this, protectedThis = Ref { *this }, methodName, methodDetailsFunction = WTFMove(methodDetailsFunction)]() mutable {
         auto& eventName = eventNames().paymentmethodchangeEvent;
-        if (hasEventListeners(eventName))
+        if (hasEventListeners(eventName)) {
             dispatchAndCheckUpdateEvent(PaymentMethodChangeEvent::create(eventName, methodName, WTFMove(methodDetailsFunction)));
-        else
-            activePaymentHandler()->detailsUpdated(UpdateReason::PaymentMethodChanged, { }, { }, { }, { });
+            return;
+        }
+
+        Ref activePaymentHandler = *this->activePaymentHandler();
+        activePaymentHandler->detailsUpdated(UpdateReason::PaymentMethodChanged, { }, { }, { }, { });
     });
 }
 
 ExceptionOr<void> PaymentRequest::updateWith(UpdateReason reason, Ref<DOMPromise>&& promise)
 {
     if (m_state != State::Interactive)
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     if (m_isUpdating)
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     m_isUpdating = true;
 
     ASSERT(!m_detailsPromise);
     m_detailsPromise = WTFMove(promise);
-    m_detailsPromise->whenSettled([this, protectedThis = makeRefPtr(this), reason]() {
+    m_detailsPromise->whenSettled([this, protectedThis = Ref { *this }, reason]() {
         settleDetailsPromise(reason);
     });
 
@@ -581,22 +599,23 @@ ExceptionOr<void> PaymentRequest::updateWith(UpdateReason reason, Ref<DOMPromise
 ExceptionOr<void> PaymentRequest::completeMerchantValidation(Event& event, Ref<DOMPromise>&& merchantSessionPromise)
 {
     if (m_state != State::Interactive)
-        return Exception { InvalidStateError };
+        return Exception { ExceptionCode::InvalidStateError };
 
     event.stopPropagation();
     event.stopImmediatePropagation();
 
     m_merchantSessionPromise = WTFMove(merchantSessionPromise);
-    m_merchantSessionPromise->whenSettled([this, protectedThis = makeRefPtr(this)]() {
+    m_merchantSessionPromise->whenSettled([this, protectedThis = Ref { *this }]() {
         if (m_state != State::Interactive)
             return;
 
         if (m_merchantSessionPromise->status() == DOMPromise::Status::Rejected) {
-            abortWithException(Exception { AbortError });
+            abortWithException(Exception { ExceptionCode::AbortError });
             return;
         }
 
-        auto exception = activePaymentHandler()->merchantValidationCompleted(m_merchantSessionPromise->result());
+        Ref activePaymentHandler = *this->activePaymentHandler();
+        auto exception = activePaymentHandler->merchantValidationCompleted(m_merchantSessionPromise->result());
         if (exception.hasException()) {
             abortWithException(exception.releaseException());
             return;
@@ -628,17 +647,20 @@ void PaymentRequest::settleDetailsPromise(UpdateReason reason)
         return;
 
     if (m_isCancelPending || m_detailsPromise->status() == DOMPromise::Status::Rejected) {
-        abortWithException(Exception { AbortError });
+        abortWithException(Exception { ExceptionCode::AbortError });
         return;
     }
 
+    Ref activePaymentHandler = *this->activePaymentHandler();
+
     auto& context = *m_detailsPromise->scriptExecutionContext();
     auto throwScope = DECLARE_THROW_SCOPE(context.vm());
-    auto detailsUpdate = convertDictionary<PaymentDetailsUpdate>(*context.globalObject(), m_detailsPromise->result());
-    if (throwScope.exception()) {
-        abortWithException(Exception { ExistingExceptionError });
+    auto detailsUpdateConversion = convertDictionary<PaymentDetailsUpdate>(*context.globalObject(), m_detailsPromise->result());
+    if (detailsUpdateConversion.hasException(throwScope)) {
+        abortWithException(Exception { ExceptionCode::ExistingExceptionError });
         return;
     }
+    auto detailsUpdate = detailsUpdateConversion.releaseReturnValue();
 
     if (detailsUpdate.total) {
         auto totalResult = checkAndCanonicalizeTotal(*detailsUpdate.total);
@@ -669,7 +691,7 @@ void PaymentRequest::settleDetailsPromise(UpdateReason reason)
         m_serializedModifierData = WTFMove(std::get<1>(shippingOptionAndModifierData));
     }
 
-    auto result = activePaymentHandler()->detailsUpdated(reason, WTFMove(detailsUpdate.error), WTFMove(detailsUpdate.shippingAddressErrors), WTFMove(detailsUpdate.payerErrors), detailsUpdate.paymentMethodErrors.get());
+    auto result = activePaymentHandler->detailsUpdated(reason, WTFMove(detailsUpdate.error), WTFMove(detailsUpdate.shippingAddressErrors), WTFMove(detailsUpdate.payerErrors), detailsUpdate.paymentMethodErrors.get());
     if (result.hasException()) {
         abortWithException(result.releaseException());
         return;
@@ -691,10 +713,39 @@ void PaymentRequest::whenDetailsSettled(std::function<void()>&& callback)
         return;
     }
 
-    m_detailsPromise->whenSettled([this, protectedThis = makeRefPtr(this), whenSettledFunction = WTFMove(whenSettledFunction)] {
+    m_detailsPromise->whenSettled([this, protectedThis = Ref { *this }, whenSettledFunction = WTFMove(whenSettledFunction)] {
         if (m_state == State::Interactive)
             whenSettledFunction();
     });
+}
+
+void PaymentRequest::accept(const String& methodName, PaymentResponse::DetailsFunction&& detailsFunction)
+{
+    ASSERT(!m_isUpdating);
+    ASSERT(m_state == State::Interactive);
+
+    bool isRetry = m_response;
+    if (!isRetry) {
+        m_response = PaymentResponse::create(scriptExecutionContext(), *this);
+        m_response->setRequestId(m_details.id);
+    }
+
+    m_response->setMethodName(methodName);
+    m_response->setDetailsFunction(WTFMove(detailsFunction));
+    m_response->setShippingAddress(nullptr);
+    m_response->setShippingOption(nullString());
+    m_response->setPayerName(nullString());
+    m_response->setPayerEmail(nullString());
+    m_response->setPayerPhone(nullString());
+
+    if (!isRetry)
+        settleShowPromise(*m_response);
+    else {
+        ASSERT(m_response->hasRetryPromise());
+        m_response->settleRetryPromise();
+    }
+
+    m_state = State::Closed;
 }
 
 void PaymentRequest::accept(const String& methodName, PaymentResponse::DetailsFunction&& detailsFunction, Ref<PaymentAddress>&& shippingAddress, const String& payerName, const String& payerEmail, const String& payerPhone)
@@ -726,13 +777,22 @@ void PaymentRequest::accept(const String& methodName, PaymentResponse::DetailsFu
     m_state = State::Closed;
 }
 
-ExceptionOr<void> PaymentRequest::complete(std::optional<PaymentComplete>&& result)
+void PaymentRequest::reject(Exception&& exception)
+{
+    abortWithException(WTFMove(exception));
+}
+
+ExceptionOr<void> PaymentRequest::complete(Document& document, std::optional<PaymentComplete>&& result, String&& serializedData)
 {
     ASSERT(m_state == State::Closed);
     if (!m_activePaymentHandler)
-        return Exception { AbortError };
+        return Exception { ExceptionCode::AbortError };
 
-    activePaymentHandler()->complete(WTFMove(result));
+    Ref activePaymentHandler = *this->activePaymentHandler();
+    auto exception = activePaymentHandler->complete(document, WTFMove(result), WTFMove(serializedData));
+    if (exception.hasException())
+        return exception.releaseException();
+
     m_activePaymentHandler = std::nullopt;
     return { };
 }
@@ -741,10 +801,12 @@ ExceptionOr<void> PaymentRequest::retry(PaymentValidationErrors&& errors)
 {
     ASSERT(m_state == State::Closed);
     if (!m_activePaymentHandler)
-        return Exception { AbortError };
+        return Exception { ExceptionCode::AbortError };
 
     m_state = State::Interactive;
-    return activePaymentHandler()->retry(WTFMove(errors));
+
+    Ref activePaymentHandler = *this->activePaymentHandler();
+    return activePaymentHandler->retry(WTFMove(errors));
 }
 
 void PaymentRequest::cancel()
@@ -757,7 +819,7 @@ void PaymentRequest::cancel()
         return;
     }
 
-    abortWithException(Exception { AbortError });
+    abortWithException(Exception { ExceptionCode::AbortError });
 }
 
 } // namespace WebCore

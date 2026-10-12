@@ -417,7 +417,7 @@ SQLTransactionBackend::StateFunction SQLTransactionBackend::stateFunctionFor(SQL
         &SQLTransactionBackend::unreachableState             // 12. deliverSuccessCallback
     };
 
-    ASSERT(WTF_ARRAY_LENGTH(stateFunctions) == static_cast<int>(SQLTransactionState::NumberOfStates));
+    ASSERT(std::size(stateFunctions) == static_cast<int>(SQLTransactionState::NumberOfStates));
     ASSERT(state < SQLTransactionState::NumberOfStates);
 
     return stateFunctions[static_cast<int>(state)];
@@ -436,7 +436,7 @@ void SQLTransactionBackend::computeNextStateAndCleanupIfNeeded()
             || m_nextState == SQLTransactionState::CleanupAndTerminate
             || m_nextState == SQLTransactionState::CleanupAfterTransactionErrorCallback);
 
-        LOG(StorageAPI, "State %s\n", nameForSQLTransactionState(m_nextState));
+        LOG(StorageAPI, "State %s\n", nameForSQLTransactionState(m_nextState).characters());
         return;
     }
 
@@ -505,7 +505,7 @@ void SQLTransactionBackend::cleanupAfterTransactionErrorCallback()
 // modify is m_requestedState which is meant for this purpose.
 void SQLTransactionBackend::requestTransitToState(SQLTransactionState nextState)
 {
-    LOG(StorageAPI, "Scheduling %s for transaction %p\n", nameForSQLTransactionState(nextState), this);
+    LOG(StorageAPI, "Scheduling %s for transaction %p\n", nameForSQLTransactionState(nextState).characters(), this);
     m_requestedState = nextState;
     ASSERT(m_requestedState != SQLTransactionState::End);
     m_frontend.m_database->scheduleTransactionStep(m_frontend);

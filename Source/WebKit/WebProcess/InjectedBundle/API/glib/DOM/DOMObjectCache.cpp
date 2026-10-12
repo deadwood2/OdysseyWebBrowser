@@ -19,15 +19,17 @@
 #include "config.h"
 #include "DOMObjectCache.h"
 
-#include <WebCore/DOMWindow.h>
 #include <WebCore/Document.h>
-#include <WebCore/Frame.h>
 #include <WebCore/FrameDestructionObserver.h>
+#include <WebCore/FrameDestructionObserverInlines.h>
+#include <WebCore/LocalDOMWindow.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/Node.h>
 #include <glib-object.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/Vector.h>
 #include <wtf/glib/GRefPtr.h>
 
@@ -70,7 +72,7 @@ struct DOMObjectCacheData {
 };
 
 class DOMObjectCacheFrameObserver;
-typedef HashMap<WebCore::Frame*, std::unique_ptr<DOMObjectCacheFrameObserver>> DOMObjectCacheFrameObserverMap;
+typedef HashMap<WebCore::LocalFrame*, std::unique_ptr<DOMObjectCacheFrameObserver>> DOMObjectCacheFrameObserverMap;
 
 static DOMObjectCacheFrameObserverMap& domObjectCacheFrameObservers()
 {
@@ -79,9 +81,9 @@ static DOMObjectCacheFrameObserverMap& domObjectCacheFrameObservers()
 }
 
 class DOMObjectCacheFrameObserver final: public WebCore::FrameDestructionObserver {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(DOMObjectCacheFrameObserver);
 public:
-    DOMObjectCacheFrameObserver(WebCore::Frame& frame)
+    DOMObjectCacheFrameObserver(WebCore::LocalFrame& frame)
         : FrameDestructionObserver(&frame)
     {
     }
@@ -95,9 +97,9 @@ public:
     {
         ASSERT(!m_objects.contains(&data));
 
-        WebCore::DOMWindow* domWindow = m_frame->document()->domWindow();
+        auto* domWindow = m_frame->document()->domWindow();
         if (domWindow && (!m_domWindowObserver || m_domWindowObserver->window() != domWindow)) {
-            // New DOMWindow, clear the cache and create a new DOMWindowObserver.
+            // New LocalDOMWindow, clear the cache and create a new DOMWindowObserver.
             clear();
             m_domWindowObserver = makeUnique<DOMWindowObserver>(*domWindow, *this);
         }
@@ -107,11 +109,11 @@ public:
     }
 
 private:
-    class DOMWindowObserver final : public WebCore::DOMWindow::Observer {
-        WTF_MAKE_FAST_ALLOCATED;
+    class DOMWindowObserver final : public WebCore::LocalDOMWindowObserver {
+        WTF_MAKE_TZONE_ALLOCATED_INLINE(DOMWindowObserver);
     public:
-        DOMWindowObserver(WebCore::DOMWindow& window, DOMObjectCacheFrameObserver& frameObserver)
-            : m_window(makeWeakPtr(window))
+        DOMWindowObserver(WebCore::LocalDOMWindow& window, DOMObjectCacheFrameObserver& frameObserver)
+            : m_window(window)
             , m_frameObserver(frameObserver)
         {
             window.registerObserver(*this);
@@ -123,7 +125,7 @@ private:
                 m_window->unregisterObserver(*this);
         }
 
-        WebCore::DOMWindow* window() const { return m_window.get(); }
+        WebCore::LocalDOMWindow* window() const { return m_window.get(); }
 
     private:
         void willDetachGlobalObjectFromFrame() override
@@ -131,7 +133,7 @@ private:
             m_frameObserver.willDetachGlobalObjectFromFrame();
         }
 
-        WeakPtr<WebCore::DOMWindow> m_window;
+        WeakPtr<WebCore::LocalDOMWindow, WebCore::WeakPtrImplWithEventTargetData> m_window;
         DOMObjectCacheFrameObserver& m_frameObserver;
     };
 
@@ -170,7 +172,7 @@ private:
     void frameDestroyed() override
     {
         clear();
-        WebCore::Frame* frame = m_frame.get();
+        auto* frame = m_frame.get();
         FrameDestructionObserver::frameDestroyed();
         domObjectCacheFrameObservers().remove(frame);
     }
@@ -185,7 +187,7 @@ private:
     std::unique_ptr<DOMWindowObserver> m_domWindowObserver;
 };
 
-static DOMObjectCacheFrameObserver& getOrCreateDOMObjectCacheFrameObserver(WebCore::Frame& frame)
+static DOMObjectCacheFrameObserver& getOrCreateDOMObjectCacheFrameObserver(WebCore::LocalFrame& frame)
 {
     DOMObjectCacheFrameObserverMap::AddResult result = domObjectCacheFrameObservers().add(&frame, nullptr);
     if (result.isNewEntry)
@@ -227,7 +229,7 @@ void DOMObjectCache::put(WebCore::Node* objectHandle, void* wrapper)
         return;
 
     result.iterator->value = makeUnique<DOMObjectCacheData>(G_OBJECT(wrapper));
-    if (WebCore::Frame* frame = objectHandle->document().frame())
+    if (auto* frame = objectHandle->document().frame())
         getOrCreateDOMObjectCacheFrameObserver(*frame).addObjectCacheData(*result.iterator->value);
 }
 

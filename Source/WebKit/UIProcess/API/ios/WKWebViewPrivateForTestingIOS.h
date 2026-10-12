@@ -25,6 +25,7 @@
 
 #import <WebKit/WKWebView.h>
 #import <WebKit/_WKElementAction.h>
+#import <WebKit/_WKFrameHandle.h>
 #import <WebKit/_WKTapHandlingResult.h>
 
 #if TARGET_OS_IPHONE
@@ -32,23 +33,24 @@
 @class _WKTextInputContext;
 @class UIEventAttribution;
 @class UIGestureRecognizer;
-@class UIWKDocumentContext;
+@class BEDocumentContext;
 @class UIWKDocumentRequest;
+@class UITapGestureRecognizer;
 
 @interface WKWebView (WKTestingIOS)
 
 @property (nonatomic, readonly) NSString *textContentTypeForTesting;
 @property (nonatomic, readonly) NSString *selectFormPopoverTitle;
 @property (nonatomic, readonly) NSString *formInputLabel;
-@property (nonatomic, readonly) NSArray<NSValue *> *_uiTextSelectionRects;
 @property (nonatomic, readonly) CGRect _inputViewBoundsInWindow;
-@property (nonatomic, readonly) NSString *_scrollingTreeAsText;
 @property (nonatomic, readonly) NSString *_uiViewTreeAsText;
 @property (nonatomic, readonly) NSNumber *_stableStateOverride;
 @property (nonatomic, readonly) CGRect _dragCaretRect;
 @property (nonatomic, readonly, getter=_isAnimatingDragCancel) BOOL _animatingDragCancel;
 @property (nonatomic, readonly) CGRect _tapHighlightViewRect;
 @property (nonatomic, readonly) UIGestureRecognizer *_imageAnalysisGestureRecognizer;
+@property (nonatomic, readonly) UITapGestureRecognizer *_singleTapGestureRecognizer;
+@property (nonatomic, readonly, getter=_isKeyboardScrollingAnimationRunning) BOOL _keyboardScrollingAnimationRunning;
 
 - (void)keyboardAccessoryBarNext;
 - (void)keyboardAccessoryBarPrevious;
@@ -60,19 +62,16 @@
 - (void)setSelectedColorForColorPicker:(UIColor *)color;
 - (void)_selectDataListOption:(int)optionIndex;
 - (BOOL)_isShowingDataListSuggestions;
+- (void)selectWordBackwardForTesting;
 
 - (BOOL)_mayContainEditableElementsInRect:(CGRect)rect;
 - (void)_requestTextInputContextsInRect:(CGRect)rect completionHandler:(void (^)(NSArray<_WKTextInputContext *> *))completionHandler;
 - (void)_focusTextInputContext:(_WKTextInputContext *)context placeCaretAt:(CGPoint)point completionHandler:(void (^)(UIResponder<UITextInput> *))completionHandler;
 - (void)_willBeginTextInteractionInTextInputContext:(_WKTextInputContext *)context;
 - (void)_didFinishTextInteractionInTextInputContext:(_WKTextInputContext *)context;
-- (void)_requestDocumentContext:(UIWKDocumentRequest *)request completionHandler:(void (^)(UIWKDocumentContext *))completionHandler;
-- (void)_adjustSelectionWithDelta:(NSRange)deltaRange completionHandler:(void (^)(void))completionHandler;
 - (void)setTimePickerValueToHour:(NSInteger)hour minute:(NSInteger)minute;
 - (double)timePickerValueHour;
 - (double)timePickerValueMinute;
-
-- (void)applyAutocorrection:(NSString *)newString toString:(NSString *)oldString withCompletionHandler:(void (^)(void))completionHandler;
 
 - (NSDictionary *)_propertiesOfLayerWithID:(unsigned long long)layerID;
 - (void)_simulateElementAction:(_WKElementActionType)actionType atLocation:(CGPoint)location;
@@ -81,13 +80,21 @@
 
 - (void)_doAfterReceivingEditDragSnapshotForTesting:(dispatch_block_t)action;
 
-- (void)_triggerSystemPreviewActionOnElement:(uint64_t)elementID document:(uint64_t)documentID page:(uint64_t)pageID;
+- (void)_triggerSystemPreviewActionOnElement:(uint64_t)elementID document:(NSString*)documentID page:(uint64_t)pageID;
 
 - (void)_setDeviceOrientationUserPermissionHandlerForTesting:(BOOL (^)(void))handler;
 
 - (void)_setDeviceHasAGXCompilerServiceForTesting;
 
-- (NSString *)_serializedSelectionCaretBackgroundColorForTesting;
+- (void)_resetObscuredInsetsForTesting;
+- (BOOL)_hasResizeAssertion;
+- (void)_simulateSelectionStart;
+
++ (void)_resetPresentLockdownModeMessage;
+
+- (void)_doAfterNextVisibleContentRectAndStablePresentationUpdate:(void (^)(void))updateBlock;
+
+- (NSString *)_scrollbarState:(unsigned long long)scrollingNodeID processID: (unsigned long long)processID isVertical:(bool)isVertical;
 
 @end
 

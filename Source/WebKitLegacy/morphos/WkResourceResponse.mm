@@ -1,5 +1,6 @@
 #import "WkResourceResponse_private.h"
 #undef __OBJC__
+#import "WebKit.h"
 #import <wtf/FastMalloc.h>
 #import <WebCore/ResourceResponse.h>
 #define __OBJC__

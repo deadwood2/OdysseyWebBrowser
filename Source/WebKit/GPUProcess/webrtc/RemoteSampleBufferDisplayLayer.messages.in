@@ -28,14 +28,15 @@ messages -> RemoteSampleBufferDisplayLayer NotRefCounted {
     SetLogIdentifier(String logIdentifier)
 #endif
     UpdateDisplayMode(bool hideDisplayLayer, bool hideRootLayer)
-    UpdateAffineTransform(CGAffineTransform transform)
-    UpdateBoundsAndPosition(CGRect bounds, WebCore::MediaSample::VideoRotation rotation)
     Flush()
     FlushAndRemoveImage()
-    EnqueueSample(WebCore::RemoteVideoSample sample)
-    ClearEnqueuedSamples()
+    EnqueueVideoFrame(struct WebKit::SharedVideoFrame frame)
+    ClearVideoFrames()
     Play()
     Pause()
+    SetSharedVideoFrameSemaphore(IPC::Semaphore semaphore)
+    SetSharedVideoFrameMemory(WebCore::SharedMemory::Handle storageHandle)
+    SetShouldMaintainAspectRatio(bool shouldMaintainAspectRatio)
 }
 
 #endif

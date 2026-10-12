@@ -29,9 +29,25 @@
 
 #include <WebCore/LibWebRTCProvider.h>
 #include <WebCore/LibWebRTCSocketIdentifier.h>
-#include <webrtc/rtc_base/async_packet_socket.h>
-#include <wtf/Deque.h>
 #include <wtf/Forward.h>
+#include <wtf/Identified.h>
+#include <wtf/TZoneMalloc.h>
+#include <wtf/WeakPtr.h>
+
+ALLOW_COMMA_BEGIN
+
+#include <webrtc/rtc_base/async_packet_socket.h>
+
+ALLOW_COMMA_END
+
+namespace WebKit {
+class LibWebRTCSocket;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::LibWebRTCSocket> : std::true_type { };
+}
 
 namespace IPC {
 class Connection;
@@ -42,16 +58,15 @@ namespace WebKit {
 
 class LibWebRTCSocketFactory;
 
-class LibWebRTCSocket final : public rtc::AsyncPacketSocket {
-    WTF_MAKE_FAST_ALLOCATED;
+class LibWebRTCSocket final : public rtc::AsyncPacketSocket, public CanMakeWeakPtr<LibWebRTCSocket>, public Identified<WebCore::LibWebRTCSocketIdentifier> {
+    WTF_MAKE_TZONE_ALLOCATED(LibWebRTCSocket);
 public:
-    enum class Type { UDP, ServerTCP, ClientTCP, ServerConnectionTCP };
+    enum class Type { UDP, ClientTCP, ServerConnectionTCP };
 
-    LibWebRTCSocket(LibWebRTCSocketFactory&, const void* socketGroup, Type, const rtc::SocketAddress& localAddress, const rtc::SocketAddress& remoteAddress);
+    LibWebRTCSocket(LibWebRTCSocketFactory&, WebCore::ScriptExecutionContextIdentifier, Type, const rtc::SocketAddress& localAddress, const rtc::SocketAddress& remoteAddress);
     ~LibWebRTCSocket();
 
-    const void* socketGroup() const { return m_socketGroup; }
-    WebCore::LibWebRTCSocketIdentifier identifier() const { return m_identifier; }
+    WebCore::ScriptExecutionContextIdentifier contextIdentifier() const { return m_contextIdentifier; }
     const rtc::SocketAddress& localAddress() const { return m_localAddress; }
     const rtc::SocketAddress& remoteAddress() const { return m_remoteAddress; }
 
@@ -65,12 +80,12 @@ private:
     bool willSend(size_t);
 
     friend class LibWebRTCNetwork;
-    void signalReadPacket(const uint8_t*, size_t, rtc::SocketAddress&&, int64_t);
-    void signalSentPacket(int, int64_t);
+    void signalReadPacket(std::span<const uint8_t>, rtc::SocketAddress&&, int64_t);
+    void signalSentPacket(int64_t, int64_t);
     void signalAddressReady(const rtc::SocketAddress&);
     void signalConnect();
     void signalClose(int);
-    void signalNewConnection(rtc::AsyncPacketSocket*);
+    void signalUsedInterface(String&&);
 
     // AsyncPacketSocket API
     int GetError() const final { return m_error; }
@@ -85,7 +100,6 @@ private:
     int SetOption(rtc::Socket::Option, int) final;
 
     LibWebRTCSocketFactory& m_factory;
-    WebCore::LibWebRTCSocketIdentifier m_identifier;
     Type m_type;
     rtc::SocketAddress m_localAddress;
     rtc::SocketAddress m_remoteAddress;
@@ -96,11 +110,8 @@ private:
     static const unsigned MAX_SOCKET_OPTION { rtc::Socket::OPT_RTP_SENDTIME_EXTN_ID + 1 };
     std::optional<int> m_options[MAX_SOCKET_OPTION];
 
-    Deque<size_t> m_beingSentPacketSizes;
-    size_t m_availableSendingBytes { 65536 };
-    bool m_shouldSignalReadyToSend { false };
     bool m_isSuspended { false };
-    const void* m_socketGroup { nullptr };
+    WebCore::ScriptExecutionContextIdentifier m_contextIdentifier;
 };
 
 } // namespace WebKit

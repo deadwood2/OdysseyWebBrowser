@@ -27,9 +27,11 @@
 
 #if ENABLE(MEDIA_STREAM)
 
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import "TestWKWebView.h"
+#import "UserMediaCaptureUIDelegate.h"
 #import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKUIDelegate.h>
 #import <WebKit/WKWebView.h>
@@ -40,6 +42,16 @@
 
 static bool okToProceed = false;
 static bool shouldReleaseInEnumerate = false;
+
+@interface GetUserMeidaNavigationMessageHandler : NSObject <WKScriptMessageHandler>
+@end
+
+@implementation GetUserMeidaNavigationMessageHandler
+- (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message
+{
+    receivedScriptMessage = true;
+}
+@end
 
 @interface NavigationWhileGetUserMediaPromptDisplayedUIDelegate : NSObject<WKUIDelegate>
 - (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision decision))decisionHandler;
@@ -67,6 +79,16 @@ static bool shouldReleaseInEnumerate = false;
 
 namespace TestWebKitAPI {
 
+static void initializeMediaCaptureConfiguration(WKWebViewConfiguration* configuration)
+{
+    auto preferences = [configuration preferences];
+
+    configuration._mediaCaptureEnabled = YES;
+    preferences._mediaCaptureRequiresSecureConnection = NO;
+    preferences._mockCaptureDevicesEnabled = YES;
+    preferences._getUserMediaRequiresFocus = NO;
+}
+
 TEST(WebKit, NavigateDuringGetUserMediaPrompt)
 {
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
@@ -88,10 +110,7 @@ TEST(WebKit, NavigateDuringDeviceEnumeration)
 {
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     auto processPoolConfig = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
-    auto preferences = [configuration preferences];
-    preferences._mediaCaptureRequiresSecureConnection = NO;
-    configuration.get()._mediaCaptureEnabled = YES;
-    preferences._mockCaptureDevicesEnabled = YES;
+    initializeMediaCaptureConfiguration(configuration.get());
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration.get() processPoolConfiguration:processPoolConfig.get()]);
     auto delegate = adoptNS([[NavigationWhileGetUserMediaPromptDisplayedUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
@@ -117,10 +136,7 @@ TEST(WebKit, DefaultDeviceIdHashSaltsDirectory)
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     [configuration setWebsiteDataStore:adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]).get()];
     auto processPoolConfig = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
-    auto preferences = [configuration preferences];
-    preferences._mediaCaptureRequiresSecureConnection = NO;
-    configuration.get()._mediaCaptureEnabled = YES;
-    preferences._mockCaptureDevicesEnabled = YES;
+    initializeMediaCaptureConfiguration(configuration.get());
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration.get() processPoolConfiguration:processPoolConfig.get()]);
     auto delegate = adoptNS([[NavigationWhileGetUserMediaPromptDisplayedUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
@@ -147,10 +163,7 @@ TEST(WebKit, DeviceIdHashSaltsDirectory)
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     [configuration setWebsiteDataStore:adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]).get()];
     auto processPoolConfig = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
-    auto preferences = [configuration preferences];
-    preferences._mediaCaptureRequiresSecureConnection = NO;
-    configuration.get()._mediaCaptureEnabled = YES;
-    preferences._mockCaptureDevicesEnabled = YES;
+    initializeMediaCaptureConfiguration(configuration.get());
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration.get() processPoolConfiguration:processPoolConfig.get()]);
     auto delegate = adoptNS([[NavigationWhileGetUserMediaPromptDisplayedUIDelegate alloc] init]);
     [webView setUIDelegate:delegate.get()];
@@ -162,6 +175,56 @@ TEST(WebKit, DeviceIdHashSaltsDirectory)
     NSError *error = nil;
     [fileManager removeItemAtPath:tempDir.path error:&error];
     EXPECT_FALSE(error);
+}
+
+TEST(WebKit, DeviceIdHashSaltsRemoval)
+{
+    auto dataTypeHashSalt = adoptNS([[NSSet alloc] initWithArray:@[WKWebsiteDataTypeHashSalt]]);
+    auto websiteDataStoreConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
+    @autoreleasepool {
+        auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+        auto websiteDataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]);
+        [configuration setWebsiteDataStore:websiteDataStore.get()];
+        auto messageHandler = adoptNS([[GetUserMeidaNavigationMessageHandler alloc] init]);
+        [[configuration userContentController] addScriptMessageHandler:messageHandler.get() name:@"testHandler"];
+        auto processPoolConfig = adoptNS([[_WKProcessPoolConfiguration alloc] init]);
+        initializeMediaCaptureConfiguration(configuration.get());
+        auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 500) configuration:configuration.get() processPoolConfiguration:processPoolConfig.get()]);
+        auto delegate = adoptNS([[UserMediaCaptureUIDelegate alloc] init]);
+        [webView setUIDelegate:delegate.get()];
+
+        NSString *htmlString = @"<script> \
+        navigator.mediaDevices.enumerateDevices().then(() => { \
+            window.webkit.messageHandlers.testHandler.postMessage('done'); \
+        }); \
+        </script>";
+        receivedScriptMessage = false;
+        [webView loadHTMLString:htmlString baseURL:[NSURL URLWithString:@"https://webkit.org"]];
+        TestWebKitAPI::Util::run(&receivedScriptMessage);
+        
+
+        done = false;
+        [websiteDataStore fetchDataRecordsOfTypes:dataTypeHashSalt.get() completionHandler:^(NSArray<WKWebsiteDataRecord *> * records) {
+            EXPECT_GT(records.count, 0u);
+            done = true;
+        }];
+        TestWebKitAPI::Util::run(&done);
+    }
+
+    // Create a new WebsiteDataStore to ensure DeviceHashSaltStorage receives delete task before storage is loaded from disk.
+    auto websiteDataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfiguration.get()]);
+    done = false;
+    [websiteDataStore removeDataOfTypes:dataTypeHashSalt.get() modifiedSince:[NSDate distantPast] completionHandler:^() {
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+
+    done = false;
+    [websiteDataStore fetchDataRecordsOfTypes:dataTypeHashSalt.get() completionHandler:^(NSArray<WKWebsiteDataRecord *> * records) {
+        EXPECT_EQ(records.count, 0u);
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
 }
 
 } // namespace TestWebKitAPI

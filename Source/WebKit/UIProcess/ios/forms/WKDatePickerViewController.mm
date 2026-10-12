@@ -223,12 +223,15 @@ struct EraAndYear {
 
 - (instancetype)initWithDelegate:(id <WKQuickboardViewControllerDelegate>)delegate
 {
-    return [super initWithDelegate:delegate];
+    self = [super initWithDelegate:delegate];
+    return self;
 }
 
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+
+    self.view.backgroundColor = UIColor.systemBackgroundColor;
 
     self.headerView.hidden = YES;
 
@@ -324,7 +327,9 @@ struct EraAndYear {
 
 - (void)_handleStatusBarNavigation
 {
-    [self.delegate quickboardInputCancelled:self];
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    [self.delegate quickboardInputCancelled:static_cast<id<PUICQuickboardController>>(self)];
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 - (void)viewWillLayoutSubviews
@@ -424,7 +429,9 @@ struct EraAndYear {
     [self _canonicalizeAndUpdateSelectedDate];
 
     auto attributedStringValue = adoptNS([[NSAttributedString alloc] initWithString:[self _valueForInput]]);
-    [self.delegate quickboard:self textEntered:attributedStringValue.get()];
+    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    [self.delegate quickboard:static_cast<id<PUICQuickboardController>>(self) textEntered:attributedStringValue.get()];
+    ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 - (void)_updateSelectedPickerViewIndices

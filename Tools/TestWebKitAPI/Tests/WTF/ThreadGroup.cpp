@@ -34,7 +34,7 @@ namespace TestWebKitAPI {
 enum class Mode { Add, AddCurrentThread };
 static void testThreadGroup(Mode mode)
 {
-    std::shared_ptr<ThreadGroup> threadGroup = ThreadGroup::create();
+    auto threadGroup = ThreadGroup::create();
     unsigned numberOfThreads = 16;
     unsigned waitingThreads = 0;
     bool restarting = false;
@@ -46,7 +46,7 @@ static void testThreadGroup(Mode mode)
     {
         Locker locker { lock };
         for (unsigned i = 0; i < numberOfThreads; ++i) {
-            Ref<Thread> thread = Thread::create("ThreadGroupWorker", [&] {
+            Ref<Thread> thread = Thread::create("ThreadGroupWorker"_s, [&] {
                 Locker locker { lock };
                 if (mode == Mode::AddCurrentThread)
                     threadGroup->addCurrentThread();
@@ -101,8 +101,8 @@ TEST(WTF, ThreadGroupAddCurrentThread)
 
 TEST(WTF, ThreadGroupDoNotAddDeadThread)
 {
-    std::shared_ptr<ThreadGroup> threadGroup = ThreadGroup::create();
-    Ref<Thread> thread = Thread::create("ThreadGroupWorker", [&] { });
+    auto threadGroup = ThreadGroup::create();
+    Ref<Thread> thread = Thread::create("ThreadGroupWorker"_s, [&] { });
     thread->waitForCompletion();
     EXPECT_TRUE(threadGroup->add(thread.get()) == ThreadGroupAddResult::NotAdded);
 
@@ -115,8 +115,8 @@ TEST(WTF, ThreadGroupAddDuplicateThreads)
     bool restarting = false;
     Lock lock;
     Condition restartCondition;
-    std::shared_ptr<ThreadGroup> threadGroup = ThreadGroup::create();
-    Ref<Thread> thread = Thread::create("ThreadGroupWorker", [&] {
+    auto threadGroup = ThreadGroup::create();
+    Ref<Thread> thread = Thread::create("ThreadGroupWorker"_s, [&] {
         Locker locker { lock };
         restartCondition.wait(lock, [&] {
             return restarting;
@@ -165,7 +165,7 @@ TEST(WTF, ThreadGroupRemove)
 
     auto threadGroup = ThreadGroup::create();
     for (unsigned i = 0; i < NumberOfThreads; i++) {
-        auto thread = Thread::create("ThreadGroupWorker", [&]() {
+        auto thread = Thread::create("ThreadGroupWorker"_s, [&]() {
             Locker locker { lock };
             ++waitingThreads;
             condition.notifyOne();

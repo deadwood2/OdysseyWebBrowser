@@ -32,12 +32,13 @@
 #include <ImageIO/ImageIO.h>
 #include <wtf/FileSystem.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
 WorkQueue& sharedImageTranscodingQueue()
 {
-    static NeverDestroyed<Ref<WorkQueue>> queue(WorkQueue::create("com.apple.WebKit.ImageTranscoding"));
+    static NeverDestroyed<Ref<WorkQueue>> queue(WorkQueue::create("com.apple.WebKit.ImageTranscoding"_s));
     return queue.get();
 }
 
@@ -49,7 +50,7 @@ static String transcodeImage(const String& path, const String& destinationUTI, c
         return nullString();
 
     auto sourceUTI = String(CGImageSourceGetType(source.get()));
-    if (sourceUTI == destinationUTI)
+    if (!sourceUTI || sourceUTI == destinationUTI)
         return nullString();
 
 #if !HAVE(IMAGEIO_FIX_FOR_RADAR_59589723)
@@ -67,9 +68,7 @@ static String transcodeImage(const String& path, const String& destinationUTI, c
     // It is important to add the appropriate file extension to the temporary file path.
     // The File object depends solely on the extension to know the MIME type of the file.
     auto suffix = makeString('.', destinationExtension);
-
-    FileSystem::PlatformFileHandle destinationFileHandle;
-    String destinationPath = FileSystem::openTemporaryFile("tempImage"_s, destinationFileHandle, suffix);
+    auto [destinationPath, destinationFileHandle] = FileSystem::openTemporaryFile("tempImage"_s, suffix);
     if (destinationFileHandle == FileSystem::invalidPlatformFileHandle) {
         RELEASE_LOG_ERROR(Images, "transcodeImage: Destination image could not be created: %s %s\n", path.utf8().data(), destinationUTI.utf8().data());
         return nullString();
@@ -78,7 +77,7 @@ static String transcodeImage(const String& path, const String& destinationUTI, c
     CGDataConsumerCallbacks callbacks = {
         [](void* info, const void* buffer, size_t count) -> size_t {
             auto handle = *static_cast<FileSystem::PlatformFileHandle*>(info);
-            return FileSystem::writeToFile(handle, buffer, count);
+            return FileSystem::writeToFile(handle, { static_cast<const uint8_t*>(buffer), count });
         },
         nullptr
     };
@@ -101,19 +100,15 @@ static String transcodeImage(const String& path, const String& destinationUTI, c
 
 Vector<String> findImagesForTranscoding(const Vector<String>& paths, const Vector<String>& allowedMIMETypes)
 {
-    Vector<String> transcodingPaths;
-    transcodingPaths.reserveInitialCapacity(paths.size());
-
     bool needsTranscoding = false;
-
-    for (auto& path : paths) {
+    auto transcodingPaths = paths.map([&](auto& path) {
         // Append a path of the image which needs transcoding. Otherwise append a null string.
         if (!allowedMIMETypes.contains(WebCore::MIMETypeRegistry::mimeTypeForPath(path))) {
-            transcodingPaths.uncheckedAppend(path);
             needsTranscoding = true;
-        } else
-            transcodingPaths.uncheckedAppend(nullString());
-    }
+            return path;
+        }
+        return nullString();
+    });
 
     // If none of the files needs image transcoding, return an empty Vector.
     return needsTranscoding ? transcodingPaths : Vector<String>();
@@ -124,18 +119,10 @@ Vector<String> transcodeImages(const Vector<String>& paths, const String& destin
     ASSERT(!destinationUTI.isNull());
     ASSERT(!destinationExtension.isNull());
     
-    Vector<String> transcodedPaths;
-    transcodedPaths.reserveInitialCapacity(paths.size());
-
-    for (auto& path : paths) {
+    return paths.map([&](auto& path) {
         // Append the transcoded path if the image needs transcoding. Otherwise append a null string.
-        if (!path.isNull())
-            transcodedPaths.uncheckedAppend(transcodeImage(path, destinationUTI, destinationExtension));
-        else
-            transcodedPaths.uncheckedAppend(nullString());
-    }
-
-    return transcodedPaths;
+        return path.isNull() ? nullString() : transcodeImage(path, destinationUTI, destinationExtension);
+    });
 }
 
 } // namespace WebCore

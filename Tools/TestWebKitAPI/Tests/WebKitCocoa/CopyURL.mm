@@ -27,6 +27,7 @@
 
 #if PLATFORM(COCOA)
 
+#import "PasteboardUtilities.h"
 #import "PlatformUtilities.h"
 #import "TestWKWebView.h"
 #import <WebKit/WKPreferencesPrivate.h>
@@ -34,7 +35,7 @@
 #import <wtf/text/WTFString.h>
 
 #if PLATFORM(IOS_FAMILY)
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <MobileCoreServices/MobileCoreServices.h>
 #endif
 
@@ -57,19 +58,6 @@ NSString *readURLFromPasteboard()
     return [UIPasteboard generalPasteboard].URL.absoluteString;
 }
 #endif
-
-static RetainPtr<TestWKWebView> createWebViewWithCustomPasteboardDataEnabled()
-{
-#if PLATFORM(IOS_FAMILY)
-    UIApplicationInitialize();
-#endif
-
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 400, 400)]);
-    auto preferences = (__bridge WKPreferencesRef)[[webView configuration] preferences];
-    WKPreferencesSetDataTransferItemsEnabled(preferences, true);
-    WKPreferencesSetCustomPasteboardDataEnabled(preferences, true);
-    return webView;
-}
 
 TEST(CopyURL, ValidURL)
 {

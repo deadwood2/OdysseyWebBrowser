@@ -28,13 +28,8 @@
 
 #import <WebKitLegacy/WebAllowDenyPolicyListener.h>
 #import <WebKitLegacy/WebUIDelegate.h>
-
-#if !defined(ENABLE_DASHBOARD_SUPPORT)
-#if !TARGET_OS_IPHONE
-#define ENABLE_DASHBOARD_SUPPORT 1
-#else
-#define ENABLE_DASHBOARD_SUPPORT 0
-#endif
+#if TARGET_OS_IPHONE
+#import <WebKitLegacy/WAKView.h>
 #endif
 
 #if !defined(ENABLE_FULLSCREEN_API)
@@ -45,7 +40,7 @@
 #endif
 #endif
 
-#if TARGET_OS_IOS
+#if TARGET_OS_IOS || (defined(TARGET_OS_VISION) && TARGET_OS_VISION)
 @protocol UIDropSession;
 #endif
 
@@ -107,10 +102,16 @@ enum {
     WebMenuItemTagToggleVideoFullscreen,
     WebMenuItemTagShareMenu,
     WebMenuItemTagToggleVideoEnhancedFullscreen,
+    WebMenuItemTagToggleVideoViewer,
     WebMenuItemTagAddHighlightToCurrentQuickNote,
     WebMenuItemTagAddHighlightToNewQuickNote,
     WebMenuItemTagRevealImage,
     WebMenuItemTagTranslate,
+    WebMenuItemTagPlayAllAnimations,
+    WebMenuItemTagPauseAllAnimations,
+    WebMenuItemTagPlayAnimation,
+    WebMenuItemTagPauseAnimation,
+    WebMenuItemTagWritingTools,
 };
 
 // Deprecated; remove when there are no more clients.
@@ -204,12 +205,10 @@ extern NSString *WebConsoleMessageErrorMessageLevel;
 */
 - (void)webView:(WebView *)webView addMessageToConsole:(NSDictionary *)message withSource:(NSString *)source;
 
+#if TARGET_OS_IPHONE
+- (WAKView *)webView:(WebView *)webView plugInViewWithArguments:(NSDictionary *)arguments;
+#else
 - (NSView *)webView:(WebView *)webView plugInViewWithArguments:(NSDictionary *)arguments;
-
-#if ENABLE_DASHBOARD_SUPPORT
-// FIXME: Remove this method once it is verified no one is dependent on it.
-// regions is an dictionary whose keys are regions label and values are arrays of WebDashboardRegions.
-- (void)webView:(WebView *)webView dashboardRegionsChanged:(NSDictionary *)regions;
 #endif
 
 #if !TARGET_OS_IPHONE
@@ -304,7 +303,7 @@ extern NSString *WebConsoleMessageErrorMessageLevel;
 - (BOOL)webViewCanCheckGeolocationAuthorizationStatus:(WebView *)sender;
 #endif
 
-#if TARGET_OS_IOS
+#if TARGET_OS_IOS || (defined(TARGET_OS_VISION) && TARGET_OS_VISION)
 /*!
  @method webView:dragDestinationActionMaskForSession:
  @param sender The WebView sending the delegate method
@@ -315,7 +314,5 @@ extern NSString *WebConsoleMessageErrorMessageLevel;
 #endif
 
 - (NSData *)webCryptoMasterKeyForWebView:(WebView *)sender;
-
-- (NSString *)signedPublicKeyAndChallengeStringForWebView:(WebView *)sender;
 
 @end

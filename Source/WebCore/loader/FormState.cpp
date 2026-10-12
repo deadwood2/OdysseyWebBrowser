@@ -28,6 +28,7 @@
 
 #include "config.h"
 #include "FormState.h"
+#include "FrameDestructionObserverInlines.h"
 
 #include "Document.h"
 #include "HTMLFormElement.h"
@@ -44,6 +45,8 @@ inline FormState::FormState(HTMLFormElement& form, StringPairVector&& textFieldV
     RELEASE_ASSERT(sourceDocument.frame());
 }
 
+FormState::~FormState() = default;
+
 Ref<FormState> FormState::create(HTMLFormElement& form, StringPairVector&& textFieldValues, Document& sourceDocument, FormSubmissionTrigger formSubmissionTrigger)
 {
     return adoptRef(*new FormState(form, WTFMove(textFieldValues), sourceDocument, formSubmissionTrigger));
@@ -52,7 +55,12 @@ Ref<FormState> FormState::create(HTMLFormElement& form, StringPairVector&& textF
 void FormState::willDetachPage()
 {
     // Beartrap for <rdar://problem/37579354>
-    RELEASE_ASSERT(hasOneRef());
+    RELEASE_ASSERT(refCount());
+}
+
+Ref<Document> FormState::protectedSourceDocument() const
+{
+    return m_sourceDocument;
 }
 
 }

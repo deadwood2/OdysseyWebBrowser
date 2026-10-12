@@ -29,26 +29,26 @@
 
 #include "WebGLVertexArrayObjectOES.h"
 
-#include "ExtensionsGL.h"
 #include "WebGLRenderingContextBase.h"
 
 namespace WebCore {
 
-Ref<WebGLVertexArrayObjectOES> WebGLVertexArrayObjectOES::create(WebGLRenderingContextBase& context, Type type)
+Ref<WebGLVertexArrayObjectOES> WebGLVertexArrayObjectOES::createDefault(WebGLRenderingContextBase& context)
 {
-    return adoptRef(*new WebGLVertexArrayObjectOES(context, type));
+    return adoptRef(*new WebGLVertexArrayObjectOES(context, 0, Type::Default));
 }
 
-WebGLVertexArrayObjectOES::WebGLVertexArrayObjectOES(WebGLRenderingContextBase& context, Type type)
-    : WebGLVertexArrayObjectBase(context, type)
+RefPtr<WebGLVertexArrayObjectOES> WebGLVertexArrayObjectOES::createUser(WebGLRenderingContextBase& context)
 {
-    switch (type) {
-    case Type::Default:
-        break;
-    case Type::User:
-        setObject(this->context()->graphicsContextGL()->createVertexArray());
-        break;
-    }
+    auto object = context.protectedGraphicsContextGL()->createVertexArray();
+    if (!object)
+        return nullptr;
+    return adoptRef(*new WebGLVertexArrayObjectOES { context, object, Type::User });
+}
+
+WebGLVertexArrayObjectOES::WebGLVertexArrayObjectOES(WebGLRenderingContextBase& context, PlatformGLObject object, Type type)
+    : WebGLVertexArrayObjectBase(context, object, type)
+{
 }
 
 WebGLVertexArrayObjectOES::~WebGLVertexArrayObjectOES()
@@ -59,7 +59,7 @@ WebGLVertexArrayObjectOES::~WebGLVertexArrayObjectOES()
     runDestructor();
 }
 
-void WebGLVertexArrayObjectOES::deleteObjectImpl(const WTF::AbstractLocker& locker, GraphicsContextGL* context3d, PlatformGLObject object)
+void WebGLVertexArrayObjectOES::deleteObjectImpl(const AbstractLocker& locker, GraphicsContextGL* context3d, PlatformGLObject object)
 {
     switch (m_type) {
     case Type::Default:

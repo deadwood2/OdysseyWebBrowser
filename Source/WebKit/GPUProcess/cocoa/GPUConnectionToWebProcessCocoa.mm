@@ -28,11 +28,21 @@
 
 #if ENABLE(GPU_PROCESS)
 
-#import "SystemStatusSPI.h"
+#import "Logging.h"
+#import "MediaPermissionUtilities.h"
 #import <WebCore/LocalizedStrings.h>
+#import <WebCore/RealtimeMediaSourceCenter.h>
 #import <WebCore/RegistrableDomain.h>
 #import <WebCore/SecurityOrigin.h>
+#import <pal/spi/cocoa/LaunchServicesSPI.h>
+#import <wtf/OSObjectPtr.h>
+
+#if HAVE(SYSTEM_STATUS)
+#import "SystemStatusSPI.h"
 #import <pal/ios/SystemStatusSoftLink.h>
+#endif
+
+#import "TCCSoftLink.h"
 
 namespace WebKit {
 
@@ -40,25 +50,79 @@ namespace WebKit {
 bool GPUConnectionToWebProcess::setCaptureAttributionString()
 {
 #if HAVE(SYSTEM_STATUS)
-    if (![PAL::getSTDynamicActivityAttributionPublisherClass() respondsToSelector:@selector(setCurrentAttributionStringWithFormat:auditToken:)])
+    if (![PAL::getSTDynamicActivityAttributionPublisherClass() respondsToSelector:@selector(setCurrentAttributionStringWithFormat:auditToken:)]
+        && ![PAL::getSTDynamicActivityAttributionPublisherClass() respondsToSelector:@selector(setCurrentAttributionWebsiteString:auditToken:)]) {
         return true;
-
-    auto domain = WebCore::RegistrableDomain { m_captureOrigin->data() };
-    if (domain.isEmpty())
-        return false;
+    }
 
     auto auditToken = gpuProcess().parentProcessConnection()->getAuditToken();
     if (!auditToken)
         return false;
 
-    RetainPtr<NSString> formatString = [NSString stringWithFormat:WEB_UI_STRING("“%@” in “%%@”", "The domain and application using the camera and/or microphone. The first argument is domain, the second is the application name (iOS only)."), (NSString *)domain.string()];
+    auto *visibleName = applicationVisibleNameFromOrigin(m_captureOrigin->data());
+    if (!visibleName)
+        visibleName = gpuProcess().applicationVisibleName();
 
-    [PAL::getSTDynamicActivityAttributionPublisherClass() setCurrentAttributionStringWithFormat:formatString.get() auditToken:auditToken.value()];
+    if ([PAL::getSTDynamicActivityAttributionPublisherClass() respondsToSelector:@selector(setCurrentAttributionWebsiteString:auditToken:)])
+        [PAL::getSTDynamicActivityAttributionPublisherClass() setCurrentAttributionWebsiteString:visibleName auditToken:auditToken.value()];
+    else {
+        RetainPtr<NSString> formatString = [NSString stringWithFormat:WEB_UI_NSSTRING(@"%@ in %%@", "The domain and application using the camera and/or microphone. The first argument is domain, the second is the application name (iOS only)."), visibleName];
+        [PAL::getSTDynamicActivityAttributionPublisherClass() setCurrentAttributionStringWithFormat:formatString.get() auditToken:auditToken.value()];
+    }
 #endif
 
     return true;
 }
 #endif // ENABLE(MEDIA_STREAM)
+
+#if ENABLE(APP_PRIVACY_REPORT)
+void GPUConnectionToWebProcess::setTCCIdentity()
+{
+#if !PLATFORM(MACCATALYST)
+    auto auditToken = gpuProcess().parentProcessConnection()->getAuditToken();
+    if (!auditToken) {
+        RELEASE_LOG_ERROR(WebRTC, "getAuditToken returned null");
+        return;
+    }
+
+    NSError *error = nil;
+    auto bundleProxy = [LSBundleProxy bundleProxyWithAuditToken:*auditToken error:&error];
+    if (error) {
+        RELEASE_LOG_ERROR(WebRTC, "-[LSBundleProxy bundleProxyWithAuditToken:error:] failed with error %s", [[error localizedDescription] UTF8String]);
+        return;
+    }
+
+    const auto* bundleIdentifier = [bundleProxy.bundleIdentifier UTF8String];
+    if (!bundleIdentifier) {
+        RELEASE_LOG_ERROR(WebRTC, "Unable to get the bundle identifier, bundle is %d", !!bundleProxy);
+        return;
+    }
+
+    auto identity = adoptOSObject(tcc_identity_create(TCC_IDENTITY_CODE_BUNDLE_ID, bundleIdentifier));
+    if (!identity) {
+        RELEASE_LOG_ERROR(WebRTC, "tcc_identity_create returned null");
+        return;
+    }
+
+    WebCore::RealtimeMediaSourceCenter::singleton().setIdentity(WTFMove(identity));
+#endif // !PLATFORM(MACCATALYST)
+}
+#endif // ENABLE(APP_PRIVACY_REPORT)
+
+#if ENABLE(EXTENSION_CAPABILITIES)
+String GPUConnectionToWebProcess::mediaEnvironment(WebCore::PageIdentifier pageIdentifier)
+{
+    return m_mediaEnvironments.get(pageIdentifier);
+}
+
+void GPUConnectionToWebProcess::setMediaEnvironment(WebCore::PageIdentifier pageIdentifier, const String& mediaEnvironment)
+{
+    if (mediaEnvironment.isEmpty())
+        m_mediaEnvironments.remove(pageIdentifier);
+    else
+        m_mediaEnvironments.set(pageIdentifier, mediaEnvironment);
+}
+#endif
 
 } // namespace WebKit
 

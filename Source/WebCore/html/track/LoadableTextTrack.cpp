@@ -29,24 +29,25 @@
 
 #if ENABLE(VIDEO)
 
-#include "HTMLTrackElement.h"
+#include "ElementInlines.h"
+#include "ScriptExecutionContext.h"
 #include "TextTrackCueList.h"
 #include "VTTCue.h"
 #include "VTTRegionList.h"
-#include <wtf/IsoMallocInlines.h>
 #include <wtf/SetForScope.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(LoadableTextTrack);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(LoadableTextTrack);
 
-LoadableTextTrack::LoadableTextTrack(HTMLTrackElement& track, const String& kind, const String& label, const String& language)
-    : TextTrack(&track.document(), &track, kind, emptyString(), label, language, TrackElement)
-    , m_trackElement(&track)
+LoadableTextTrack::LoadableTextTrack(HTMLTrackElement& track, const AtomString& kind, const AtomString& label, const AtomString& language)
+    : TextTrack(track.scriptExecutionContext(), kind, emptyAtom(), label, language, TrackElement)
+    , m_trackElement(track)
 {
 }
 
-Ref<LoadableTextTrack> LoadableTextTrack::create(HTMLTrackElement& track, const String& kind, const String& label, const String& language)
+Ref<LoadableTextTrack> LoadableTextTrack::create(HTMLTrackElement& track, const AtomString& kind, const AtomString& label, const AtomString& language)
 {
     auto textTrack = adoptRef(*new LoadableTextTrack(track, kind, label, language));
     textTrack->suspendIfNeeded();
@@ -77,7 +78,7 @@ void LoadableTextTrack::scheduleLoad(const URL& url)
     // 3. Asynchronously run the remaining steps, while continuing with whatever task
     // was responsible for creating the text track or changing the text track mode.
     m_trackElement->scheduleTask([this]() mutable {
-        SetForScope<bool> loadPending { m_loadPending, true, false };
+        SetForScope loadPending { m_loadPending, true, false };
 
         if (m_loader)
             m_loader->cancelLoad();
@@ -96,11 +97,6 @@ void LoadableTextTrack::scheduleLoad(const URL& url)
     });
 }
 
-Element* LoadableTextTrack::element()
-{
-    return m_trackElement;
-}
-
 void LoadableTextTrack::newCuesAvailable(TextTrackLoader& loader)
 {
     ASSERT_UNUSED(loader, m_loader.get() == &loader);
@@ -114,8 +110,7 @@ void LoadableTextTrack::newCuesAvailable(TextTrackLoader& loader)
         m_cues->add(WTFMove(newCue));
     }
 
-    if (client())
-        client()->textTrackAddCues(*this, *m_cues);
+    TextTrack::newCuesAvailable(*m_cues);
 }
 
 void LoadableTextTrack::cueLoadingCompleted(TextTrackLoader& loader, bool loadingFailed)
@@ -133,10 +128,8 @@ void LoadableTextTrack::cueLoadingCompleted(TextTrackLoader& loader, bool loadin
 void LoadableTextTrack::newRegionsAvailable(TextTrackLoader& loader)
 {
     ASSERT_UNUSED(loader, m_loader.get() == &loader);
-    for (auto& newRegion : m_loader->getNewRegions()) {
-        newRegion->setTrack(this);
+    for (auto& newRegion : m_loader->getNewRegions())
         regions()->add(WTFMove(newRegion));
-    }
 }
 
 void LoadableTextTrack::newStyleSheetsAvailable(TextTrackLoader& loader)
@@ -161,7 +154,7 @@ size_t LoadableTextTrack::trackElementIndex()
     for (RefPtr<Node> node = m_trackElement->parentNode()->firstChild(); node; node = node->nextSibling()) {
         if (!node->hasTagName(trackTag) || !node->parentNode())
             continue;
-        if (node == m_trackElement)
+        if (node.get() == m_trackElement.get())
             return index;
         ++index;
     }

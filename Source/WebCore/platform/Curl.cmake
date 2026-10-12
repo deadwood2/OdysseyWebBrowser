@@ -8,7 +8,6 @@ list(APPEND WebCore_SOURCES
     platform/network/curl/CookieJarDB.cpp
     platform/network/curl/CookieStorageCurl.cpp
     platform/network/curl/CookieUtil.cpp
-    platform/network/curl/CredentialStorageCurl.cpp
     platform/network/curl/CurlCacheEntry.cpp
     platform/network/curl/CurlCacheManager.cpp
     platform/network/curl/CurlContext.cpp
@@ -27,14 +26,14 @@ list(APPEND WebCore_SOURCES
     platform/network/curl/NetworkStorageSessionCurl.cpp
     platform/network/curl/OpenSSLHelper.cpp
     platform/network/curl/ProtectionSpaceCurl.cpp
-    platform/network/curl/ProxyServerCurl.cpp
     platform/network/curl/PublicSuffixCurl.cpp
+    platform/network/curl/PublicSuffixStoreCurl.cpp
     platform/network/curl/ResourceErrorCurl.cpp
     platform/network/curl/ResourceHandleCurl.cpp
     platform/network/curl/ResourceRequestCurl.cpp
     platform/network/curl/ResourceResponseCurl.cpp
-    platform/network/curl/SocketStreamHandleImplCurl.cpp
     platform/network/curl/SynchronousLoaderClientCurl.cpp
+    platform/network/curl/SocketStreamHandleImplCurl.cpp
 )
 
 list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS

@@ -68,7 +68,7 @@ Vector<String> platformUserPreferredLanguages(ShouldMinimizeLanguages)
 			{
 				if (0 == strcmp(mappings[i].locName, locale->loc_PrefLanguages[index]))
 				{
-					languages.append(mappings[i].code);
+					languages.append(String::fromUTF8(mappings[i].code));
 					break;
 				}
 			}
@@ -79,7 +79,7 @@ Vector<String> platformUserPreferredLanguages(ShouldMinimizeLanguages)
 	}
 
 	if (languages.isEmpty())
-		languages.append("en");
+		languages.append(String::fromLatin1("en"));
 
     return languages;
 }

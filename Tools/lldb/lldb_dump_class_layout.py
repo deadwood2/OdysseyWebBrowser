@@ -29,7 +29,7 @@ import subprocess
 import sys
 
 from webkitpy.common.system.systemhost import SystemHost
-sys.path.append(SystemHost().path_to_lldb_python_directory())
+sys.path.append(SystemHost.get_default().path_to_lldb_python_directory())
 import lldb
 
 # lldb Python reference:
@@ -97,26 +97,26 @@ class ClassLayoutBase(object):
             str_list.append('%+4u <%3u> %s%s%s%s %s' % (total_offset, self.total_byte_size, '    ' * depth, type_start, self.typename, color_end, member_name))
         else:
             str_list.append('%+4u <%3u> %s%s%s%s' % (total_offset, self.total_byte_size, '    ' * depth, type_start, self.typename, color_end))
-
+        depth += 1
         start_offset = total_offset
 
         for data_member in self.data_members:
             member_total_offset = start_offset + data_member[self.MEMBER_OFFSET]
             if self.MEMBER_CLASS_INSTANCE in data_member:
-                data_member[self.MEMBER_CLASS_INSTANCE]._to_string_recursive(str_list, colorize, data_member[self.MEMBER_NAME_KEY], depth + 1, member_total_offset)
+                data_member[self.MEMBER_CLASS_INSTANCE]._to_string_recursive(str_list, colorize, data_member[self.MEMBER_NAME_KEY], depth, member_total_offset)
             else:
                 byte_size = data_member[self.MEMBER_BYTE_SIZE]
 
                 if self.MEMBER_IS_BITFIELD in data_member:
                     num_bits = data_member[self.MEMBER_BITFIELD_BIT_SIZE]
-                    str_list.append('%+4u < :%1u> %s  %s %s : %d' % (member_total_offset, num_bits, '    ' * depth, data_member[self.MEMBER_TYPE_KEY], data_member[self.MEMBER_NAME_KEY], num_bits))
+                    str_list.append('%+4u < :%1u> %s%s %s : %d' % (member_total_offset, num_bits, '    ' * depth, data_member[self.MEMBER_TYPE_KEY], data_member[self.MEMBER_NAME_KEY], num_bits))
                 elif data_member[self.MEMBER_TYPE_KEY] == self.PADDING_BYTES_TYPE:
-                    str_list.append('%+4u <%3u> %s  %s<PADDING: %d %s>%s' % (member_total_offset, byte_size, '    ' * depth, warn_start, byte_size, 'bytes' if byte_size > 1 else 'byte', color_end))
+                    str_list.append('%+4u <%3u> %s%s<PADDING: %d %s>%s' % (member_total_offset, byte_size, '    ' * depth, warn_start, byte_size, 'bytes' if byte_size > 1 else 'byte', color_end))
                 elif data_member[self.MEMBER_TYPE_KEY] == self.PADDING_BITS_TYPE:
                     padding_bits = data_member[self.PADDING_BITS_SIZE]
-                    str_list.append('%+4u < :%1u> %s  %s<UNUSED BITS: %d %s>%s' % (member_total_offset, padding_bits, '    ' * depth, warn_start, padding_bits, 'bits' if padding_bits > 1 else 'bit', color_end))
+                    str_list.append('%+4u < :%1u> %s%s<UNUSED BITS: %d %s>%s' % (member_total_offset, padding_bits, '    ' * depth, warn_start, padding_bits, 'bits' if padding_bits > 1 else 'bit', color_end))
                 else:
-                    str_list.append('%+4u <%3u> %s  %s %s' % (member_total_offset, byte_size, '    ' * depth, data_member[self.MEMBER_TYPE_KEY], data_member[self.MEMBER_NAME_KEY]))
+                    str_list.append('%+4u <%3u> %s%s %s' % (member_total_offset, byte_size, '    ' * depth, data_member[self.MEMBER_TYPE_KEY], data_member[self.MEMBER_NAME_KEY]))
 
     def as_string_list(self, colorize=False):
         str_list = []
@@ -137,7 +137,7 @@ class ClassLayoutBase(object):
 class ClassLayout(ClassLayoutBase):
     "Stores the layout of a class or struct."
 
-    def __init__(self, target, type, containerClass=None, derivedClass=None):
+    def __init__(self, target, type, containerClass=None, derivedClass=None, skip_nested=False):
         super(ClassLayout, self).__init__(type.GetName())
 
         self.target = target
@@ -147,7 +147,7 @@ class ClassLayout(ClassLayoutBase):
         self.total_pad_bytes = 0
         self.data_members = []
         self.virtual_base_classes = self._virtual_base_classes_dictionary()
-        self._parse(containerClass, derivedClass)
+        self._parse(containerClass, derivedClass, skip_nested)
         if containerClass == None and derivedClass == None:
             self.total_pad_bytes = self._compute_padding()
 
@@ -171,13 +171,13 @@ class ClassLayout(ClassLayoutBase):
             result[virtual_base.GetName()] = ClassLayout(self.target, virtual_base.GetType(), self)
         return result
 
-    def _parse(self, containerClass=None, derivedClass=None):
+    def _parse(self, containerClass=None, derivedClass=None, skip_nested=False):
         # It's moot where we actually show the vtable pointer, but to match clang -fdump-record-layouts, assign it to the
         # base-most polymorphic class (unless virtual inheritance is involved).
         if self.type.IsPolymorphicClass() and not self._has_polymorphic_non_virtual_base_class():
             data_member = {
-                self.MEMBER_NAME_KEY : '__vtbl_ptr_type * _vptr',
-                self.MEMBER_TYPE_KEY : '',
+                self.MEMBER_NAME_KEY: '_vptr',
+                self.MEMBER_TYPE_KEY: '__vtbl_ptr_type *',
                 self.MEMBER_BYTE_SIZE : self.pointer_size,
                 self.MEMBER_OFFSET : 0
             }
@@ -201,7 +201,7 @@ class ClassLayout(ClassLayoutBase):
                 member_offset = direct_base.GetOffsetInBytes()
                 member_byte_size = member_type.GetByteSize()
 
-                base_class = ClassLayout(self.target, member_type, None, self)
+                base_class = ClassLayout(self.target, member_type, None, self, skip_nested)
 
                 data_member = {
                     self.MEMBER_NAME_KEY : member_name,
@@ -243,7 +243,8 @@ class ClassLayout(ClassLayoutBase):
                 data_member[self.MEMBER_BYTE_SIZE] = (field.GetBitfieldSizeInBits() + 7) / 8
             elif member_type_class == lldb.eTypeClassStruct or member_type_class == lldb.eTypeClassClass:
                 nested_class = ClassLayout(self.target, member_type, self)
-                data_member[self.MEMBER_CLASS_INSTANCE] = nested_class
+                if not skip_nested:
+                    data_member[self.MEMBER_CLASS_INSTANCE] = nested_class
 
             self.data_members.append(data_member)
 
@@ -262,7 +263,7 @@ class ClassLayout(ClassLayoutBase):
                 member_offset = virtual_base.GetOffsetInBytes()
                 member_byte_size = member_type.GetByteSize()
 
-                nested_class = ClassLayout(self.target, member_type, None, self)
+                nested_class = ClassLayout(self.target, member_type, None, self, skip_nested)
 
                 data_member = {
                     self.MEMBER_NAME_KEY : member_name,
@@ -381,11 +382,7 @@ class LLDBDebuggerInstance:
 
         self.debugger = lldb.SBDebugger.Create()
         self.debugger.SetAsync(False)
-        architecture = self.architecture
-        if not architecture:
-            architecture = self._get_first_file_architecture()
-
-        self.target = self.debugger.CreateTargetWithFileAndArch(str(self.binary_path), architecture)
+        self.target = self.debugger.CreateTargetWithFileAndArch(str(self.binary_path), self.architecture)
         if not self.target:
             print("Failed to make target for " + self.binary_path)
 
@@ -397,25 +394,11 @@ class LLDBDebuggerInstance:
         if lldb:
             lldb.SBDebugger.Destroy(self.debugger)
 
-    def _get_first_file_architecture(self):
-        p = re.compile(r'shared library +(\w+)$')
-        file_result = subprocess.check_output(["file", self.binary_path], encoding='UTF-8').split('\n')
-        arches = []
-        for line in file_result:
-            match = p.search(line)
-            if match:
-                arches.append(match.group(1))
-
-        if len(arches) > 0:
-            return arches[0]
-
-        return lldb.LLDB_ARCH_DEFAULT
-
-    def layout_for_classname(self, classname):
+    def layout_for_classname(self, classname, skip_nested=False):
         types = self.module.FindTypes(classname)
         if types.GetSize():
             # There can be more that one type with a given name, but for now just return the first one.
-            return ClassLayout(self.target, types.GetTypeAtIndex(0))
+            return ClassLayout(self.target, types.GetTypeAtIndex(0), skip_nested=skip_nested)
 
         print('error: no type matches "%s" in "%s"' % (classname, self.module.file))
         return None

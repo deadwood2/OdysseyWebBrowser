@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,9 +28,14 @@
 #include "LayerTreeContext.h"
 #include "RemoteLayerBackingStoreCollection.h"
 #include "RemoteLayerTreeTransaction.h"
+#include <WebCore/FloatSize.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/GraphicsLayerFactory.h>
+#include <WebCore/HTMLMediaElementIdentifier.h>
 #include <WebCore/LayerPool.h>
 #include <WebCore/PlatformCALayer.h>
+#include <wtf/CheckedPtr.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/Vector.h>
 
 namespace WebKit {
@@ -38,79 +43,96 @@ namespace WebKit {
 class GraphicsLayerCARemote;
 class PlatformCALayerRemote;
 class RemoteRenderingBackendProxy;
+class WebFrame;
 class WebPage;
 
 // FIXME: This class doesn't do much now. Roll into RemoteLayerTreeDrawingArea?
-class RemoteLayerTreeContext : public WebCore::GraphicsLayerFactory {
+class RemoteLayerTreeContext : public WebCore::GraphicsLayerFactory,  public RefCounted<RemoteLayerTreeContext>, public CanMakeWeakPtr<RemoteLayerTreeContext> {
+    WTF_MAKE_TZONE_ALLOCATED(RemoteLayerTreeContext);
 public:
-    explicit RemoteLayerTreeContext(WebPage&);
+    static Ref<RemoteLayerTreeContext> create(WebPage& webpage)
+    {
+        return adoptRef(*new RemoteLayerTreeContext(webpage));
+    }
+
     ~RemoteLayerTreeContext();
 
     void layerDidEnterContext(PlatformCALayerRemote&, WebCore::PlatformCALayer::LayerType);
+#if HAVE(AVKIT)
+    void layerDidEnterContext(PlatformCALayerRemote&, WebCore::PlatformCALayer::LayerType, WebCore::HTMLVideoElement&);
+#endif
     void layerWillLeaveContext(PlatformCALayerRemote&);
 
     void graphicsLayerDidEnterContext(GraphicsLayerCARemote&);
     void graphicsLayerWillLeaveContext(GraphicsLayerCARemote&);
-
-    void backingStoreWasCreated(RemoteLayerBackingStore&);
-    void backingStoreWillBeDestroyed(RemoteLayerBackingStore&);
-    bool backingStoreWillBeDisplayed(RemoteLayerBackingStore&);
 
     WebCore::LayerPool& layerPool() { return m_layerPool; }
 
     float deviceScaleFactor() const;
 
     LayerHostingMode layerHostingMode() const;
+    
+    std::optional<WebCore::DestinationColorSpace> displayColorSpace() const;
 
-    void buildTransaction(RemoteLayerTreeTransaction&, WebCore::PlatformCALayer& rootLayer);
+    DrawingAreaIdentifier drawingAreaIdentifier() const;
+
+    void buildTransaction(RemoteLayerTreeTransaction&, WebCore::PlatformCALayer& rootLayer, WebCore::FrameIdentifier);
 
     void layerPropertyChangedWhileBuildingTransaction(PlatformCALayerRemote&);
 
     // From the UI process
-    void animationDidStart(WebCore::GraphicsLayer::PlatformLayerID, const String& key, MonotonicTime startTime);
-    void animationDidEnd(WebCore::GraphicsLayer::PlatformLayerID, const String& key);
+    void animationDidStart(WebCore::PlatformLayerIdentifier, const String& key, MonotonicTime startTime);
+    void animationDidEnd(WebCore::PlatformLayerIdentifier, const String& key);
 
     void willStartAnimationOnLayer(PlatformCALayerRemote&);
 
-    RemoteLayerBackingStoreCollection& backingStoreCollection() { return m_backingStoreCollection; }
+    RemoteLayerBackingStoreCollection& backingStoreCollection() { return *m_backingStoreCollection; }
     
-    void setNextRenderingUpdateRequiresSynchronousImageDecoding(bool requireSynchronousDecoding) { m_nextRenderingUpdateRequiresSynchronousImageDecoding = requireSynchronousDecoding; }
+    void setNextRenderingUpdateRequiresSynchronousImageDecoding() { m_nextRenderingUpdateRequiresSynchronousImageDecoding = true; }
     bool nextRenderingUpdateRequiresSynchronousImageDecoding() const { return m_nextRenderingUpdateRequiresSynchronousImageDecoding; }
 
     void adoptLayersFromContext(RemoteLayerTreeContext&);
 
     RemoteRenderingBackendProxy& ensureRemoteRenderingBackendProxy();
 
-    bool useCGDisplayListsForDOMRendering() const { return m_useCGDisplayListsForDOMRendering; }
-    void setUseCGDisplayListsForDOMRendering(bool useCGDisplayLists) { m_useCGDisplayListsForDOMRendering = useCGDisplayLists; }
-    
+    bool useDynamicContentScalingDisplayListsForDOMRendering() const { return m_useDynamicContentScalingDisplayListsForDOMRendering; }
+    void setUseDynamicContentScalingDisplayListsForDOMRendering(bool useDynamicContentScalingDisplayLists) { m_useDynamicContentScalingDisplayListsForDOMRendering = useDynamicContentScalingDisplayLists; }
+
+    void gpuProcessConnectionWasDestroyed();
+
 #if PLATFORM(IOS_FAMILY)
     bool canShowWhileLocked() const;
 #endif
 
+    WebPage& webPage() { return m_webPage; }
+
 private:
+    explicit RemoteLayerTreeContext(WebPage&);
+
     // WebCore::GraphicsLayerFactory
     Ref<WebCore::GraphicsLayer> createGraphicsLayer(WebCore::GraphicsLayer::Type, WebCore::GraphicsLayerClient&) override;
 
     WebPage& m_webPage;
 
-    HashMap<WebCore::GraphicsLayer::PlatformLayerID, RemoteLayerTreeTransaction::LayerCreationProperties> m_createdLayers;
-    Vector<WebCore::GraphicsLayer::PlatformLayerID> m_destroyedLayers;
+    HashMap<WebCore::PlatformLayerIdentifier, RemoteLayerTreeTransaction::LayerCreationProperties> m_createdLayers;
+    Vector<WebCore::PlatformLayerIdentifier> m_destroyedLayers;
 
-    HashMap<WebCore::GraphicsLayer::PlatformLayerID, PlatformCALayerRemote*> m_livePlatformLayers;
-    HashMap<WebCore::GraphicsLayer::PlatformLayerID, PlatformCALayerRemote*> m_layersWithAnimations;
+    HashMap<WebCore::PlatformLayerIdentifier, WeakPtr<PlatformCALayerRemote>> m_livePlatformLayers;
+    HashMap<WebCore::PlatformLayerIdentifier, WeakPtr<PlatformCALayerRemote>> m_layersWithAnimations;
+#if HAVE(AVKIT)
+    HashMap<WebCore::PlatformLayerIdentifier, PlaybackSessionContextIdentifier> m_videoLayers;
+#endif
 
-    HashSet<GraphicsLayerCARemote*> m_liveGraphicsLayers;
+    HashSet<WeakRef<GraphicsLayerCARemote>> m_liveGraphicsLayers;
 
-    RemoteLayerBackingStoreCollection m_backingStoreCollection;
-    
-    RemoteLayerTreeTransaction* m_currentTransaction;
+    std::unique_ptr<RemoteLayerBackingStoreCollection> m_backingStoreCollection;
 
     WebCore::LayerPool m_layerPool;
-    
-    bool m_nextRenderingUpdateRequiresSynchronousImageDecoding { false };
 
-    bool m_useCGDisplayListsForDOMRendering { false };
+    RemoteLayerTreeTransaction* m_currentTransaction { nullptr };
+
+    bool m_nextRenderingUpdateRequiresSynchronousImageDecoding { false };
+    bool m_useDynamicContentScalingDisplayListsForDOMRendering { false };
 };
 
 } // namespace WebKit

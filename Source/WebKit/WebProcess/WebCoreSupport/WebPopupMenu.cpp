@@ -27,7 +27,7 @@
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
 #include "WebProcess.h"
-#include <WebCore/FrameView.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/PopupMenuClient.h>
 
@@ -47,6 +47,11 @@ WebPopupMenu::WebPopupMenu(WebPage* page, PopupMenuClient* client)
 
 WebPopupMenu::~WebPopupMenu()
 {
+}
+
+WebPage* WebPopupMenu::page()
+{
+    return m_page.get();
 }
 
 void WebPopupMenu::disconnectClient()
@@ -74,27 +79,18 @@ void WebPopupMenu::setTextForIndex(int index)
 
 Vector<WebPopupItem> WebPopupMenu::populateItems()
 {
-    size_t size = m_popupClient->listSize();
-
-    Vector<WebPopupItem> items;
-    items.reserveInitialCapacity(size);
-    
-    for (size_t i = 0; i < size; ++i) {
+    return Vector<WebPopupItem>(m_popupClient->listSize(), [&](size_t i) {
         if (m_popupClient->itemIsSeparator(i))
-            items.append(WebPopupItem(WebPopupItem::Type::Separator));
-        else {
-            // FIXME: Add support for styling the font.
-            // FIXME: Add support for styling the foreground and background colors.
-            // FIXME: Find a way to customize text color when an item is highlighted.
-            PopupMenuStyle itemStyle = m_popupClient->itemStyle(i);
-            items.append(WebPopupItem(WebPopupItem::Type::Item, m_popupClient->itemText(i), itemStyle.textDirection(), itemStyle.hasTextDirectionOverride(), m_popupClient->itemToolTip(i), m_popupClient->itemAccessibilityText(i), m_popupClient->itemIsEnabled(i), m_popupClient->itemIsLabel(i), m_popupClient->itemIsSelected(i)));
-        }
-    }
-
-    return items;
+            return WebPopupItem(WebPopupItem::Type::Separator);
+        // FIXME: Add support for styling the font.
+        // FIXME: Add support for styling the foreground and background colors.
+        // FIXME: Find a way to customize text color when an item is highlighted.
+        PopupMenuStyle itemStyle = m_popupClient->itemStyle(i);
+        return WebPopupItem(WebPopupItem::Type::Item, m_popupClient->itemText(i), itemStyle.textDirection(), itemStyle.hasTextDirectionOverride(), m_popupClient->itemToolTip(i), m_popupClient->itemAccessibilityText(i), m_popupClient->itemIsEnabled(i), m_popupClient->itemIsLabel(i), m_popupClient->itemIsSelected(i));
+    });
 }
 
-void WebPopupMenu::show(const IntRect& rect, FrameView* view, int selectedIndex)
+void WebPopupMenu::show(const IntRect& rect, LocalFrameView& view, int selectedIndex)
 {
     // FIXME: We should probably inform the client to also close the menu.
     Vector<WebPopupItem> items = populateItems();
@@ -109,18 +105,12 @@ void WebPopupMenu::show(const IntRect& rect, FrameView* view, int selectedIndex)
     m_page->setActivePopupMenu(this);
 
     // Move to page coordinates
-    IntRect pageCoordinates(view->contentsToWindow(rect.location()), rect.size());
+    IntRect pageCoordinates(view.contentsToWindow(rect.location()), rect.size());
 
     PlatformPopupMenuData platformData;
     setUpPlatformData(pageCoordinates, platformData);
 
-    WebProcess::singleton().parentProcessConnection()->send(Messages::WebPageProxy::ShowPopupMenu(pageCoordinates, static_cast<uint64_t>(m_popupClient->menuStyle().textDirection()), items, selectedIndex, platformData), m_page->identifier());
-
-#if USE(DIRECT2D)
-    // Don't destroy the shared handle in the WebContent process. It will be destroyed in the UIProcess.
-    platformData.m_notSelectedBackingStore->leakSharedResource();
-    platformData.m_selectedBackingStore->leakSharedResource();
-#endif
+    WebProcess::singleton().parentProcessConnection()->send(Messages::WebPageProxy::ShowPopupMenuFromFrame(view.frame().frameID(), pageCoordinates, static_cast<uint64_t>(m_popupClient->menuStyle().textDirection()), items, selectedIndex, platformData), m_page->identifier());
 }
 
 void WebPopupMenu::hide()

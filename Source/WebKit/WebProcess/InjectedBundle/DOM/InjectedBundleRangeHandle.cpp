@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2015-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,25 +27,26 @@
 #include "InjectedBundleRangeHandle.h"
 
 #include "InjectedBundleNodeHandle.h"
-#include "ShareableBitmap.h"
 #include "WebImage.h"
 #include <JavaScriptCore/APICast.h>
 #include <JavaScriptCore/HeapInlines.h>
 #include <WebCore/Document.h>
 #include <WebCore/FloatRect.h>
-#include <WebCore/Frame.h>
 #include <WebCore/FrameSelection.h>
-#include <WebCore/FrameView.h>
 #include <WebCore/GeometryUtilities.h>
 #include <WebCore/GraphicsContext.h>
 #include <WebCore/IntRect.h>
 #include <WebCore/JSRange.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/Page.h>
 #include <WebCore/Range.h>
 #include <WebCore/RenderView.h>
+#include <WebCore/ShareableBitmap.h>
 #include <WebCore/SimpleRange.h>
 #include <WebCore/TextIterator.h>
 #include <WebCore/VisibleSelection.h>
+#include <wtf/CheckedPtr.h>
 #include <wtf/HashMap.h>
 #include <wtf/NeverDestroyed.h>
 
@@ -56,7 +57,7 @@
 namespace WebKit {
 using namespace WebCore;
 
-using DOMRangeHandleCache = HashMap<Range*, InjectedBundleRangeHandle*>;
+using DOMRangeHandleCache = HashMap<SingleThreadWeakRef<WebCore::Range>, WeakRef<InjectedBundleRangeHandle>>;
 
 static DOMRangeHandleCache& domRangeHandleCache()
 {
@@ -69,29 +70,30 @@ RefPtr<InjectedBundleRangeHandle> InjectedBundleRangeHandle::getOrCreate(JSConte
     return getOrCreate(JSRange::toWrapped(toJS(context)->vm(), toJS(object)));
 }
 
-RefPtr<InjectedBundleRangeHandle> InjectedBundleRangeHandle::getOrCreate(Range* range)
+RefPtr<InjectedBundleRangeHandle> InjectedBundleRangeHandle::getOrCreate(WebCore::Range* range)
 {
     if (!range)
         return nullptr;
-    auto result = domRangeHandleCache().add(range, nullptr);
-    if (!result.isNewEntry)
-        return result.iterator->value;
-    auto rangeHandle = adoptRef(*new InjectedBundleRangeHandle(*range));
-    result.iterator->value = rangeHandle.ptr();
-    return rangeHandle;
+
+    RefPtr<InjectedBundleRangeHandle> newRange;
+    auto result = domRangeHandleCache().ensure(*range, [&] {
+        newRange = adoptRef(*new InjectedBundleRangeHandle(*range));
+        return WeakRef { *newRange };
+    });
+    return newRange ? newRange.releaseNonNull() : Ref { result.iterator->value.get() };
 }
 
-InjectedBundleRangeHandle::InjectedBundleRangeHandle(Range& range)
+InjectedBundleRangeHandle::InjectedBundleRangeHandle(WebCore::Range& range)
     : m_range(range)
 {
 }
 
 InjectedBundleRangeHandle::~InjectedBundleRangeHandle()
 {
-    domRangeHandleCache().remove(m_range.ptr());
+    domRangeHandleCache().remove(m_range.get());
 }
 
-Range& InjectedBundleRangeHandle::coreRange() const
+WebCore::Range& InjectedBundleRangeHandle::coreRange() const
 {
     return m_range.get();
 }
@@ -117,9 +119,9 @@ RefPtr<WebImage> InjectedBundleRangeHandle::renderedImage(SnapshotOptions option
 {
     auto range = makeSimpleRange(m_range);
 
-    auto document = makeRef(range.start.document());
+    Ref document = range.start.document();
 
-    auto frame = makeRefPtr(document->frame());
+    RefPtr frame = document->frame();
     if (!frame)
         return nullptr;
 
@@ -134,49 +136,46 @@ RefPtr<WebImage> InjectedBundleRangeHandle::renderedImage(SnapshotOptions option
     VisibleSelection oldSelection = frame->selection().selection();
     frame->selection().setSelection(range);
 
-    float scaleFactor = (options & SnapshotOptionsExcludeDeviceScaleFactor) ? 1 : frame->page()->deviceScaleFactor();
+    float scaleFactor = options.contains(SnapshotOption::ExcludeDeviceScaleFactor) ? 1 : frame->page()->deviceScaleFactor();
     IntRect paintRect = enclosingIntRect(unionRectIgnoringZeroRects(RenderObject::absoluteBorderAndTextRects(range)));
     IntSize backingStoreSize = paintRect.size();
     backingStoreSize.scale(scaleFactor);
 
-    auto backingStore = ShareableBitmap::createShareable(backingStoreSize, { });
-    if (!backingStore)
+    auto snapshot = WebImage::create(backingStoreSize, snapshotOptionsToImageOptions(options | SnapshotOption::Shareable), DestinationColorSpace::SRGB());
+    if (!snapshot->context())
         return nullptr;
 
-    auto graphicsContext = backingStore->createGraphicsContext();
-    if (!graphicsContext)
-        return nullptr;
-
-    graphicsContext->scale(scaleFactor);
+    auto& graphicsContext = *snapshot->context();
+    graphicsContext.scale(scaleFactor);
 
     paintRect.move(frameView->frameRect().x(), frameView->frameRect().y());
     paintRect.moveBy(-frameView->scrollPosition());
 
-    graphicsContext->translate(-paintRect.location());
+    graphicsContext.translate(-paintRect.location());
 
     OptionSet<PaintBehavior> oldPaintBehavior = frameView->paintBehavior();
     OptionSet<PaintBehavior> paintBehavior = oldPaintBehavior;
     paintBehavior.add({ PaintBehavior::SelectionOnly, PaintBehavior::FlattenCompositingLayers, PaintBehavior::Snapshotting });
-    if (options & SnapshotOptionsForceBlackText)
+    if (options.contains(SnapshotOption::ForceBlackText))
         paintBehavior.add(PaintBehavior::ForceBlackText);
-    if (options & SnapshotOptionsForceWhiteText)
+    if (options.contains(SnapshotOption::ForceWhiteText))
         paintBehavior.add(PaintBehavior::ForceWhiteText);
 
     frameView->setPaintBehavior(paintBehavior);
     document->updateLayout();
 
-    frameView->paint(*graphicsContext, paintRect);
+    frameView->paint(graphicsContext, paintRect);
     frameView->setPaintBehavior(oldPaintBehavior);
 
     frame->selection().setSelection(oldSelection);
 
-    return WebImage::create(backingStore.releaseNonNull());
+    return snapshot;
 }
 
 String InjectedBundleRangeHandle::text() const
 {
     auto range = makeSimpleRange(m_range);
-    range.start.document().updateLayout();
+    range.start.protectedDocument()->updateLayout();
     return plainText(range);
 }
 

@@ -31,6 +31,7 @@
 // changes in its output.
 
 enum TestEnumType { "", "enumValue1", "EnumValue2", "EnumValue3" };
+enum TestEnumTrailingComma { "enumValue1", "enumValue2", };
 
 // Leading underscore on an enum should be removed.
 enum _optional { "", "OptionalValue1", "OptionalValue2", "OptionalValue3" };
@@ -49,7 +50,7 @@ enum TestConfidence { "high", "kinda-low" };
     InterfaceName=TestObject,
     Exposed=(Window,Worker)
 ] interface TestObj {
-    [CallWith=Document] constructor(TestCallbackInterface testCallback, TestCallbackFunction testCallbackFunction);
+    [CallWith=CurrentDocument] constructor(TestCallbackInterface testCallback, TestCallbackFunction testCallbackFunction);
 
     // Attributes
     readonly attribute long            readOnlyLongAttr;
@@ -58,8 +59,9 @@ enum TestConfidence { "high", "kinda-low" };
     static readonly attribute long     staticReadOnlyLongAttr;
     static attribute DOMString         staticStringAttr;
     static readonly attribute TestSubObjConstructor TestSubObj;
-    [CallWith=Document] static readonly attribute TestObj testStaticReadonlyObj;
+    [CallWith=CurrentDocument] static readonly attribute TestObj testStaticReadonlyObj;
     attribute TestEnumType enumAttr;
+    attribute TestEnumType? nullableEnumAttr;
     attribute byte byteAttr;
     attribute octet octetAttr;
     [Unscopable] attribute short shortAttr;
@@ -73,8 +75,10 @@ enum TestConfidence { "high", "kinda-low" };
     attribute USVString usvstringAttr;
     attribute TestObj testObjAttr;
     attribute TestObj? testNullableObjAttr;
+    [LegacyLenientSetter] readonly attribute DOMString legacyLenientSetterTestAttr;
     [LegacyLenientThis] attribute TestObj lenientTestObjAttr;
     [LegacyUnforgeable] readonly attribute DOMString unforgeableAttr;
+    [ReturnsPromisePair] PromisePair returnsPromisePair();
     attribute [LegacyNullToEmptyString] DOMString stringAttrTreatingNullAsEmptyString;
     attribute [LegacyNullToEmptyString] USVString usvstringAttrTreatingNullAsEmptyString;
     attribute [LegacyNullToEmptyString] ByteString byteStringAttrTreatingNullAsEmptyString;
@@ -103,6 +107,8 @@ enum TestConfidence { "high", "kinda-low" };
     [Reflect] attribute long reflectedIntegralAttr;
     [Reflect] attribute unsigned long reflectedUnsignedIntegralAttr;
     [Reflect] attribute boolean reflectedBooleanAttr;
+    [Reflect] attribute Element reflectedElementAttr;
+    [Reflect] attribute FrozenArray<Element> reflectedElementsArrayAttr;
     [Reflect, URL] attribute DOMString reflectedURLAttr;
     [Reflect, URL] attribute USVString reflectedUSVURLAttr;
     [Reflect=customContentStringAttr] attribute DOMString reflectedStringAttr;
@@ -110,21 +116,21 @@ enum TestConfidence { "high", "kinda-low" };
     [Reflect=customContentBooleanAttr] attribute boolean reflectedCustomBooleanAttr;
     [Reflect=customContentURLAttr, URL] attribute DOMString reflectedCustomURLAttr;
 
-    // [EnabledAtRuntime] attributes and operations.
-    [Conditional=TEST_FEATURE, EnabledAtRuntime=TestFeature&TestFeature1] attribute DOMString enabledAtRuntimeAttribute;
-    [Conditional=TEST_FEATURE, EnabledAtRuntime=TestFeature] undefined enabledAtRuntimeOperation(DOMString testParam);
-    [Conditional=TEST_FEATURE, EnabledAtRuntime=TestFeature] undefined enabledAtRuntimeOperation(long testParam);
-    [Conditional=TEST_FEATURE, EnabledAtRuntime=TestFeature] static undefined enabledAtRuntimeOperationStatic(long testParam);
-    [Conditional=TEST_FEATURE, EnabledAtRuntime=TestFeature] static attribute DOMString enabledAtRuntimeAttributeStatic;
+    // [EnabledByDeprecatedGlobalSetting] attributes and operations.
+    [Conditional=TEST_FEATURE, EnabledByDeprecatedGlobalSetting=TestFeatureEnabled&TestFeature1Enabled] attribute DOMString enabledAtRuntimeAttribute;
+    [Conditional=TEST_FEATURE, EnabledByDeprecatedGlobalSetting=TestFeatureEnabled] undefined enabledAtRuntimeOperation(DOMString testParam);
+    [Conditional=TEST_FEATURE, EnabledByDeprecatedGlobalSetting=TestFeatureEnabled] undefined enabledAtRuntimeOperation(long testParam);
+    [Conditional=TEST_FEATURE, EnabledByDeprecatedGlobalSetting=TestFeatureEnabled] static undefined enabledAtRuntimeOperationStatic(long testParam);
+    [Conditional=TEST_FEATURE, EnabledByDeprecatedGlobalSetting=TestFeatureEnabled] static attribute DOMString enabledAtRuntimeAttributeStatic;
 
-    [EnabledForWorld=someWorld, EnabledAtRuntime=TestFeature] undefined enabledInSpecificWorldWhenRuntimeFeatureEnabled(long testParam);
+    [EnabledForWorld=someWorld, EnabledByDeprecatedGlobalSetting=TestFeatureEnabled] undefined enabledInSpecificWorldWhenRuntimeFeatureEnabled(long testParam);
     [EnabledForWorld=someWorld] undefined worldSpecificMethod(long testParam);
 
     // [SecureContext] attributes and operations; will not be exposed to a non-secure context.
     // From <https://w3c.github.io/webappsec-secure-contexts/#integration-idl> (Editor's Draft, 17 November 2016)
     [SecureContext] Promise<double> calculateSecretResult();
     [SecureContext] boolean getSecretBoolean();
-    [Conditional=TEST_FEATURE, SecureContext, EnabledAtRuntime=TestFeature] boolean testFeatureGetSecretBoolean();
+    [Conditional=TEST_FEATURE, SecureContext, EnabledByDeprecatedGlobalSetting=TestFeatureEnabled] boolean testFeatureGetSecretBoolean();
 
     // TypedArray attribute
     attribute Float32Array typedArrayAttr;
@@ -189,17 +195,20 @@ enum TestConfidence { "high", "kinda-low" };
     [ImplementedAs=onfoo] attribute EventHandler onwebkitfoo;
 
     // 'CallWith' extended attribute
-    [CallWith=GlobalObject] undefined withExecStateVoid();
-    [CallWith=GlobalObject] TestObj withExecStateObj();
-    [CallWith=ScriptExecutionContext] undefined withScriptExecutionContext();
-    [CallWith=ScriptExecutionContext&ExecState] undefined withScriptExecutionContextAndExecState();
-    [CallWith=  ScriptExecutionContext  &  ExecState  ] TestObj withScriptExecutionContextAndExecStateWithSpaces();
-    [CallWith=Document] undefined withDocumentArgument();
+    [CallWith=CurrentGlobalObject] undefined withCurrentGlobalObjectVoid();
+    [CallWith=RelevantGlobalObject] undefined withRelevantGlobalObjectVoid();
+    [CallWith=CurrentGlobalObject] TestObj withCurrentGlobalObjectObj();
+    [CallWith=CurrentScriptExecutionContext] undefined withCurrentScriptExecutionContext();
+    [CallWith=RelevantScriptExecutionContext] undefined withRelevantScriptExecutionContext();
+    [CallWith=CurrentScriptExecutionContext&CurrentGlobalObject] undefined withCurrentScriptExecutionContextAndGlobalObject();
+    [CallWith=  CurrentScriptExecutionContext  &  CurrentGlobalObject  ] TestObj withCurrentScriptExecutionContextAndGlobalObjectWithSpaces();
+    [CallWith=CurrentDocument] undefined withCurrentDocumentArgument();
+    [CallWith=RelevantDocument] undefined withRelevantDocumentArgument();
     [CallWith=IncumbentDocument] undefined withCallerDocumentArgument();
     [CallWith=IncumbentWindow] undefined withCallerWindowArgument();
 
-    [CallWith=GlobalObject] attribute long withExecStateAttribute;
-    [CallWith=GlobalObject, SetterCallWith=ActiveWindow&FirstWindow] attribute long withCallWithAndSetterCallWithAttribute;
+    [CallWith=CurrentGlobalObject] attribute long withCurrentGlobalObjectAttribute;
+    [CallWith=CurrentGlobalObject, SetterCallWith=ActiveWindow&FirstWindow] attribute long withCallWithAndSetterCallWithAttribute;
     [SetterCallWith=IncumbentWindow&FirstWindow] attribute DOMString withSetterCallWithAttribute;
 
     // Optional parameters.
@@ -236,6 +245,7 @@ enum TestConfidence { "high", "kinda-low" };
     undefined    methodWithOptionalXPathNSResolver(optional XPathNSResolver? resolver);
     undefined    methodWithOptionalRecord(optional record<DOMString, long>? record = null);
     undefined    methodWithOptionalPromise(optional Promise<undefined> promise);
+    undefined    methodWithOptionalDictIsDefault(optional TestDictionary dict = {});
 
     // Callback interface parameters.
     undefined    methodWithCallbackInterfaceArg(TestCallbackInterface callback);
@@ -325,6 +335,9 @@ enum TestConfidence { "high", "kinda-low" };
     [Conditional=Condition1] static undefined overloadedMethod1(long arg);
     [Conditional=Condition1] static undefined overloadedMethod1(DOMString type);
 
+    undefined instanceAndStaticMethodWithTheSameIdentifier();
+    [ImplementedAs=instanceAndStaticMethodWithTheSameIdentifier2] static undefined instanceAndStaticMethodWithTheSameIdentifier();
+
     undefined classMethodWithClamp([Clamp] unsigned short objArgsShort, [Clamp] unsigned long objArgsLong);
     undefined classMethodWithClampOnOptional(optional [Clamp] long objArgsLong = 0);
     undefined classMethodWithEnforceRange([EnforceRange] unsigned short objArgsShort, [EnforceRange] unsigned long objArgsLong);
@@ -378,6 +391,7 @@ enum TestConfidence { "high", "kinda-low" };
     undefined variadicDoubleMethod(unrestricted double head, unrestricted double... tail);
     undefined variadicNodeMethod(Node head, Node... tail);
     undefined variadicUnionMethod(DOMString head, (Node or DOMString)... tail);
+    undefined variadicUnionElementOrTextMethod((Element or Text)... nodes);
 
     // Nullable attributes.
     readonly attribute unrestricted double? nullableDoubleAttribute;
@@ -466,7 +480,8 @@ enum TestConfidence { "high", "kinda-low" };
 typedef any AnyTypedef;
 
 [
-    JSGenerateToJSObject
+    JSGenerateToJSObject,
+    JSGenerateToNativeObject
 ] dictionary TestDictionary {
     TestEnumType enumerationValueWithoutDefault;
     TestEnumType enumerationValueWithDefault = "enumValue1";
@@ -507,6 +522,7 @@ typedef any AnyTypedef;
     [ImplementedAs=fooWithDefault] any fooWithDefaultAlias = 0;
     AnyTypedef anyTypedefValue;
     TestDictionaryThatShouldTolerateNull dictionaryMember;
+    ParentDictionary dictionaryMemberWithDefault = {};
     (long or Node) unionMember;
     (long or Node)? nullableUnionMember = null;
     BufferSource bufferSourceValue;
@@ -560,4 +576,9 @@ dictionary ChildDictionary : ParentDictionary {
     Conditional=Condition1|Condition2
 ] dictionary TestConditionalDictionaryC {
     DOMString stringWithoutDefault;
+};
+
+dictionary PromisePair {
+    Promise<undefined> promise1;
+    Promise<undefined> promise2;
 };

@@ -36,7 +36,7 @@
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 
 #if PLATFORM(MAC)
-#import <pal/spi/cocoa/NSColorSPI.h>
+#import <pal/spi/mac/NSColorSPI.h>
 #endif
 
 constexpr CFTimeInterval bounceWithCrossfadeAnimationDuration = 0.3;
@@ -130,6 +130,7 @@ static bool indicatorWantsFadeIn(const WebCore::TextIndicator& indicator)
     
     self.anchorPoint = CGPointZero;
     self.frame = frame;
+    self.name = @"WebTextIndicatorLayer";
 
     _textIndicator = &textIndicator;
     _margin = margin;
@@ -237,7 +238,7 @@ static bool indicatorWantsFadeIn(const WebCore::TextIndicator& indicator)
 
 static RetainPtr<CAKeyframeAnimation> createBounceAnimation(CFTimeInterval duration)
 {
-    RetainPtr<CAKeyframeAnimation> bounceAnimation = [CAKeyframeAnimation animationWithKeyPath:@"transform"];
+    RetainPtr bounceAnimation = [CAKeyframeAnimation animationWithKeyPath:@"transform"];
     [bounceAnimation setValues:@[
         [NSValue valueWithCATransform3D:CATransform3DIdentity],
         [NSValue valueWithCATransform3D:CATransform3DMakeScale(WebCore::midBounceScale, WebCore::midBounceScale, 1)],
@@ -250,8 +251,8 @@ static RetainPtr<CAKeyframeAnimation> createBounceAnimation(CFTimeInterval durat
 
 static RetainPtr<CABasicAnimation> createContentCrossfadeAnimation(CFTimeInterval duration, WebCore::TextIndicator& textIndicator)
 {
-    RetainPtr<CABasicAnimation> crossfadeAnimation = [CABasicAnimation animationWithKeyPath:@"contents"];
-    auto contentsImage = textIndicator.contentImage()->nativeImage();
+    RetainPtr crossfadeAnimation = [CABasicAnimation animationWithKeyPath:@"contents"];
+    RefPtr contentsImage = textIndicator.protectedContentImage()->nativeImage();
     [crossfadeAnimation setToValue:(__bridge id)contentsImage->platformImage().get()];
     [crossfadeAnimation setFillMode:kCAFillModeForwards];
     [crossfadeAnimation setRemovedOnCompletion:NO];
@@ -302,9 +303,10 @@ static RetainPtr<CABasicAnimation> createFadeInAnimation(CFTimeInterval duration
 
 - (void)present
 {
-    bool wantsBounce = [self indicatorWantsBounce:*_textIndicator];
-    bool wantsCrossfade = indicatorWantsContentCrossfade(*_textIndicator);
-    bool wantsFadeIn = indicatorWantsFadeIn(*_textIndicator);
+    RefPtr textIndicator = _textIndicator;
+    bool wantsBounce = [self indicatorWantsBounce:*textIndicator];
+    bool wantsCrossfade = indicatorWantsContentCrossfade(*textIndicator);
+    bool wantsFadeIn = indicatorWantsFadeIn(*textIndicator);
     CFTimeInterval animationDuration = [self _animationDuration];
 
     _hasCompletedAnimation = false;
@@ -318,13 +320,13 @@ static RetainPtr<CABasicAnimation> createFadeInAnimation(CFTimeInterval duration
     RetainPtr<CABasicAnimation> crossfadeAnimation;
     RetainPtr<CABasicAnimation> fadeShadowInAnimation;
     if (wantsCrossfade) {
-        crossfadeAnimation = createContentCrossfadeAnimation(animationDuration, *_textIndicator);
+        crossfadeAnimation = createContentCrossfadeAnimation(animationDuration, *textIndicator);
         fadeShadowInAnimation = createShadowFadeAnimation(animationDuration);
     }
 
     [CATransaction begin];
     for (CALayer *bounceLayer in _bounceLayers.get()) {
-        if ([self indicatorWantsManualAnimation:*_textIndicator])
+        if ([self indicatorWantsManualAnimation:*textIndicator])
             bounceLayer.speed = 0;
 
         if (!wantsFadeIn)
@@ -377,11 +379,6 @@ static RetainPtr<CABasicAnimation> createFadeInAnimation(CFTimeInterval duration
         for (CALayer *bounceLayer in _bounceLayers.get())
             bounceLayer.timeOffset = progress * animationDuration;
     }
-}
-
-- (BOOL)isFlipped
-{
-    return YES;
 }
 
 @end

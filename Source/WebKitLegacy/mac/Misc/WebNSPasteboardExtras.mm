@@ -71,32 +71,30 @@ NSString *WebURLNamePboardType = @"public.url-name";
     return types;
 }
 
-static NSArray *_writableTypesForImageWithoutArchive (void)
+static NSArray *writableTypesForImageWithoutArchive()
 {
-    static auto types = makeNeverDestroyed([] {
+    static NeverDestroyed types = [] {
         auto types = adoptNS([[NSMutableArray alloc] initWithObjects:legacyTIFFPasteboardType(), nil]);
         [types addObjectsFromArray:[NSPasteboard _web_writableTypesForURL]];
         return types;
-    }());
+    }();
     return types.get().get();
 }
 
-static NSArray *_writableTypesForImageWithArchive (void)
+static NSArray *writableTypesForImageWithArchive()
 {
-    static auto types = makeNeverDestroyed([] {
-        auto types = adoptNS([_writableTypesForImageWithoutArchive() mutableCopy]);
+    static NeverDestroyed types = [] {
+        auto types = adoptNS([writableTypesForImageWithoutArchive() mutableCopy]);
         [types addObject:legacyRTFDPasteboardType()];
         [types addObject:WebArchivePboardType];
         return types;
-    }());
+    }();
     return types.get().get();
 }
 
 + (NSArray *)_web_writableTypesForImageIncludingArchive:(BOOL)hasArchive
 {
-    return hasArchive 
-        ? _writableTypesForImageWithArchive()
-        : _writableTypesForImageWithoutArchive();
+    return hasArchive ? writableTypesForImageWithArchive() : writableTypesForImageWithoutArchive();
 }
 
 + (NSArray *)_web_dragTypesForURL
@@ -177,9 +175,7 @@ static NSArray *_writableTypesForImageWithArchive (void)
 
 + (int)_web_setFindPasteboardString:(NSString *)string withOwner:(id)owner
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    NSPasteboard *findPasteboard = [NSPasteboard pasteboardWithName:NSFindPboard];
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    NSPasteboard *findPasteboard = [NSPasteboard pasteboardWithName:NSPasteboardNameFind];
     [findPasteboard declareTypes:@[legacyStringPasteboardType()] owner:owner];
     [findPasteboard setString:string forType:legacyStringPasteboardType()];
     return [findPasteboard changeCount];
@@ -205,13 +201,13 @@ static NSArray *_writableTypesForImageWithArchive (void)
     if (containsImage && [subresources count] > 0) {
         WebResource *subresource = [subresources objectAtIndex:0];
         NSString *subresourceMIMEType = [subresource MIMEType];
-        if (MIMETypeRegistry::isSupportedImageMIMEType(subresourceMIMEType) || MIMETypeRegistry::isPDFOrPostScriptMIMEType(subresourceMIMEType))
+        if (MIMETypeRegistry::isSupportedImageMIMEType(subresourceMIMEType) || MIMETypeRegistry::isPDFMIMEType(subresourceMIMEType))
             resource = subresource;
     }
     ASSERT(resource != nil);
     
-    ASSERT(!containsImage || MIMETypeRegistry::isSupportedImageMIMEType([resource MIMEType]) || MIMETypeRegistry::isPDFOrPostScriptMIMEType([resource MIMEType]));
-    if (!containsImage || MIMETypeRegistry::isSupportedImageMIMEType([resource MIMEType]) || MIMETypeRegistry::isPDFOrPostScriptMIMEType([resource MIMEType]))
+    ASSERT(!containsImage || MIMETypeRegistry::isSupportedImageMIMEType([resource MIMEType]) || MIMETypeRegistry::isPDFMIMEType([resource MIMEType]));
+    if (!containsImage || MIMETypeRegistry::isSupportedImageMIMEType([resource MIMEType]) || MIMETypeRegistry::isPDFMIMEType([resource MIMEType]))
         [self _web_writeFileWrapperAsRTFDAttachment:[resource _fileWrapperRepresentation]];
     
 }
@@ -269,16 +265,14 @@ static CachedImage* imageFromElement(DOMElement *domElement)
                                    archive:(WebArchive *)archive
                                     source:(WebHTMLView *)source
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    ASSERT(self == [NSPasteboard pasteboardWithName:NSDragPboard]);
-    ALLOW_DEPRECATED_DECLARATIONS_END
+    ASSERT(self == [NSPasteboard pasteboardWithName:NSPasteboardNameDrag]);
 
     NSString *extension = @"";
     RetainPtr<NSMutableArray> types = adoptNS([[NSMutableArray alloc] initWithObjects:legacyFilesPromisePasteboardType(), nil]);
     NSString *originIdentifier = core(element)->document().originIdentifierForPasteboard();
     RetainPtr<NSData> customDataBuffer;
     if (originIdentifier.length) {
-        [types addObject:@(PasteboardCustomData::cocoaType())];
+        [types addObject:@(PasteboardCustomData::cocoaType().characters())];
         PasteboardCustomData customData;
         customData.setOrigin(originIdentifier);
         customDataBuffer = customData.createSharedBuffer()->createNSData();
@@ -307,7 +301,7 @@ static CachedImage* imageFromElement(DOMElement *domElement)
 
     [self _web_writeImage:nil element:element URL:URL title:title archive:archive types:types.get() source:source];
     if (customDataBuffer)
-        [self setData:customDataBuffer.get() forType:@(PasteboardCustomData::cocoaType())];
+        [self setData:customDataBuffer.get() forType:@(PasteboardCustomData::cocoaType().characters())];
 
     [self setPropertyList:@[extension] forType:legacyFilesPromisePasteboardType()];
 

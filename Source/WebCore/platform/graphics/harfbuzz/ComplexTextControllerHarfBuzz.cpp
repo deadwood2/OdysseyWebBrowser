@@ -28,10 +28,11 @@
 
 #include "CairoUtilities.h"
 #include "FontCascade.h"
+#include "FontFeatureValues.h"
 #include "FontTaggedSettings.h"
 #include "HbUniquePtr.h"
 #include "SurrogatePairAwareTextIterator.h"
-
+#include "text/TextFlags.h"
 #if OS(MORPHOS)
 #define _NO_PPCINLINE
 #include <proto/harfbuzz.h>
@@ -189,190 +190,6 @@ ComplexTextController::ComplexTextRun::ComplexTextRun(hb_buffer_t* buffer, const
     m_initialAdvance = toFloatSize(m_glyphOrigins[0]);
 }
 
-using FeaturesMap = HashMap<FontTag, int, FourCharacterTagHash, FourCharacterTagHashTraits>;
-
-static void setFeatureSettingsFromVariants(const FontVariantSettings& variantSettings, FeaturesMap& features)
-{
-    switch (variantSettings.commonLigatures) {
-    case FontVariantLigatures::Normal:
-        break;
-    case FontVariantLigatures::Yes:
-        features.set(fontFeatureTag("liga"), 1);
-        features.set(fontFeatureTag("clig"), 1);
-        break;
-    case FontVariantLigatures::No:
-        features.set(fontFeatureTag("liga"), 0);
-        features.set(fontFeatureTag("clig"), 0);
-        break;
-    }
-
-    switch (variantSettings.discretionaryLigatures) {
-    case FontVariantLigatures::Normal:
-        break;
-    case FontVariantLigatures::Yes:
-        features.set(fontFeatureTag("dlig"), 1);
-        break;
-    case FontVariantLigatures::No:
-        features.set(fontFeatureTag("dlig"), 0);
-        break;
-    }
-
-    switch (variantSettings.historicalLigatures) {
-    case FontVariantLigatures::Normal:
-        break;
-    case FontVariantLigatures::Yes:
-        features.set(fontFeatureTag("hlig"), 1);
-        break;
-    case FontVariantLigatures::No:
-        features.set(fontFeatureTag("hlig"), 0);
-        break;
-    }
-
-    switch (variantSettings.contextualAlternates) {
-    case FontVariantLigatures::Normal:
-        break;
-    case FontVariantLigatures::Yes:
-        features.set(fontFeatureTag("calt"), 1);
-        break;
-    case FontVariantLigatures::No:
-        features.set(fontFeatureTag("calt"), 0);
-        break;
-    }
-
-    switch (variantSettings.position) {
-    case FontVariantPosition::Normal:
-        break;
-    case FontVariantPosition::Subscript:
-        features.set(fontFeatureTag("subs"), 1);
-        break;
-    case FontVariantPosition::Superscript:
-        features.set(fontFeatureTag("sups"), 1);
-        break;
-    }
-
-    switch (variantSettings.caps) {
-    case FontVariantCaps::Normal:
-        break;
-    case FontVariantCaps::AllSmall:
-        features.set(fontFeatureTag("c2sc"), 1);
-        FALLTHROUGH;
-    case FontVariantCaps::Small:
-        features.set(fontFeatureTag("smcp"), 1);
-        break;
-    case FontVariantCaps::AllPetite:
-        features.set(fontFeatureTag("c2pc"), 1);
-        FALLTHROUGH;
-    case FontVariantCaps::Petite:
-        features.set(fontFeatureTag("pcap"), 1);
-        break;
-    case FontVariantCaps::Unicase:
-        features.set(fontFeatureTag("unic"), 1);
-        break;
-    case FontVariantCaps::Titling:
-        features.set(fontFeatureTag("titl"), 1);
-        break;
-    }
-
-    switch (variantSettings.numericFigure) {
-    case FontVariantNumericFigure::Normal:
-        break;
-    case FontVariantNumericFigure::LiningNumbers:
-        features.set(fontFeatureTag("lnum"), 1);
-        break;
-    case FontVariantNumericFigure::OldStyleNumbers:
-        features.set(fontFeatureTag("onum"), 1);
-        break;
-    }
-
-    switch (variantSettings.numericSpacing) {
-    case FontVariantNumericSpacing::Normal:
-        break;
-    case FontVariantNumericSpacing::ProportionalNumbers:
-        features.set(fontFeatureTag("pnum"), 1);
-        break;
-    case FontVariantNumericSpacing::TabularNumbers:
-        features.set(fontFeatureTag("tnum"), 1);
-        break;
-    }
-
-    switch (variantSettings.numericFraction) {
-    case FontVariantNumericFraction::Normal:
-        break;
-    case FontVariantNumericFraction::DiagonalFractions:
-        features.set(fontFeatureTag("frac"), 1);
-        break;
-    case FontVariantNumericFraction::StackedFractions:
-        features.set(fontFeatureTag("afrc"), 1);
-        break;
-    }
-
-    switch (variantSettings.numericOrdinal) {
-    case FontVariantNumericOrdinal::Normal:
-        break;
-    case FontVariantNumericOrdinal::Yes:
-        features.set(fontFeatureTag("ordn"), 1);
-        break;
-    }
-
-    switch (variantSettings.numericSlashedZero) {
-    case FontVariantNumericSlashedZero::Normal:
-        break;
-    case FontVariantNumericSlashedZero::Yes:
-        features.set(fontFeatureTag("zero"), 1);
-        break;
-    }
-
-    switch (variantSettings.alternates) {
-    case FontVariantAlternates::Normal:
-        break;
-    case FontVariantAlternates::HistoricalForms:
-        features.set(fontFeatureTag("hist"), 1);
-        break;
-    }
-
-    switch (variantSettings.eastAsianVariant) {
-    case FontVariantEastAsianVariant::Normal:
-        break;
-    case FontVariantEastAsianVariant::Jis78:
-        features.set(fontFeatureTag("jp78"), 1);
-        break;
-    case FontVariantEastAsianVariant::Jis83:
-        features.set(fontFeatureTag("jp83"), 1);
-        break;
-    case FontVariantEastAsianVariant::Jis90:
-        features.set(fontFeatureTag("jp90"), 1);
-        break;
-    case FontVariantEastAsianVariant::Jis04:
-        features.set(fontFeatureTag("jp04"), 1);
-        break;
-    case FontVariantEastAsianVariant::Simplified:
-        features.set(fontFeatureTag("smpl"), 1);
-        break;
-    case FontVariantEastAsianVariant::Traditional:
-        features.set(fontFeatureTag("trad"), 1);
-        break;
-    }
-
-    switch (variantSettings.eastAsianWidth) {
-    case FontVariantEastAsianWidth::Normal:
-        break;
-    case FontVariantEastAsianWidth::Full:
-        features.set(fontFeatureTag("fwid"), 1);
-        break;
-    case FontVariantEastAsianWidth::Proportional:
-        features.set(fontFeatureTag("pwid"), 1);
-        break;
-    }
-
-    switch (variantSettings.eastAsianRuby) {
-    case FontVariantEastAsianRuby::Normal:
-        break;
-    case FontVariantEastAsianRuby::Yes:
-        features.set(fontFeatureTag("ruby"), 1);
-        break;
-    }
-}
-
 static Vector<hb_feature_t, 4> fontFeatures(const FontCascade& font, const FontPlatformData& fontPlatformData)
 {
     FeaturesMap featuresToBeApplied;
@@ -391,7 +208,12 @@ static Vector<hb_feature_t, 4> fontFeatures(const FontCascade& font, const FontP
 
     // 3. Font features implied by the value of the ‘font-variant’ property, the related ‘font-variant’
     //    subproperties and any other CSS property that uses OpenType features.
-    setFeatureSettingsFromVariants(font.fontDescription().variantSettings(), featuresToBeApplied);
+
+    // FIXME: pass a proper FontFeatureValues object.
+    // https://bugs.webkit.org/show_bug.cgi?id=246121
+    for (auto& feature : computeFeatureSettingsFromVariants(font.fontDescription().variantSettings(), { }))
+        featuresToBeApplied.set(feature.key, feature.value);
+
     featuresToBeApplied.set(fontFeatureTag("kern"), font.enableKerning() ? 1 : 0);
 
     // 4. Feature settings determined by properties other than ‘font-variant’ or ‘font-feature-settings’.
@@ -414,7 +236,7 @@ static Vector<hb_feature_t, 4> fontFeatures(const FontCascade& font, const FontP
     return features;
 }
 
-static std::optional<UScriptCode> characterScript(UChar32 character)
+static std::optional<UScriptCode> characterScript(char32_t character)
 {
     UErrorCode errorCode = U_ZERO_ERROR;
     UScriptCode script = uscript_getScript(character, &errorCode);
@@ -429,10 +251,10 @@ struct HBRun {
     UScriptCode script;
 };
 
-static std::optional<HBRun> findNextRun(const UChar* characters, unsigned length, unsigned offset)
+static std::optional<HBRun> findNextRun(std::span<const UChar> characters, unsigned offset)
 {
-    SurrogatePairAwareTextIterator textIterator(characters + offset, offset, length, length);
-    UChar32 character;
+    SurrogatePairAwareTextIterator textIterator(characters.subspan(offset), offset, characters.size());
+    char32_t character;
     unsigned clusterLength = 0;
     if (!textIterator.consume(character, clusterLength))
         return std::nullopt;
@@ -670,18 +492,18 @@ morphosHBICUBinding morphosHBICUBinding::_instance;
 
 #endif
 
-void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* characters, unsigned length, unsigned stringLocation, const Font* font)
+void ComplexTextController::collectComplexTextRunsForCharacters(std::span<const UChar> characters, unsigned stringLocation, const Font* font)
 {
     if (!font) {
         // Create a run of missing glyphs from the primary font.
-        m_complexTextRuns.append(ComplexTextRun::create(m_font.primaryFont(), characters, stringLocation, length, 0, length, m_run.ltr()));
+        m_complexTextRuns.append(ComplexTextRun::create(m_font.primaryFont(), characters.data(), stringLocation, characters.size(), 0, characters.size(), m_run.ltr()));
         return;
     }
 
     Vector<HBRun> runList;
     unsigned offset = 0;
-    while (offset < length) {
-        auto run = findNextRun(characters, length, offset);
+    while (offset < characters.size()) {
+        auto run = findNextRun(characters, offset);
         if (!run)
             break;
         runList.append(run.value());
@@ -744,15 +566,16 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cha
             // Leaving direction to HarfBuzz to guess is *really* bad, but will do for now.
             hb_buffer_guess_segment_properties(buffer.get());
         }
-        
+
         #if OS(MORPHOS)
         // NOTE: re-bind ICU functions, must be done after each hb_buffer_reset
         morphosHBICUBinding::bind(buffer);
         #endif
-        hb_buffer_add_utf16(buffer.get(), reinterpret_cast<const uint16_t*>(characters), length, run.startIndex, run.endIndex - run.startIndex);
+
+        hb_buffer_add_utf16(buffer.get(), reinterpret_cast<const uint16_t*>(characters.data()), characters.size(), run.startIndex, run.endIndex - run.startIndex);
 
         hb_shape(harfBuzzFont.get(), buffer.get(), features.isEmpty() ? nullptr : features.data(), features.size());
-        m_complexTextRuns.append(ComplexTextRun::create(buffer.get(), *font, characters, stringLocation, length, run.startIndex, run.endIndex));
+        m_complexTextRuns.append(ComplexTextRun::create(buffer.get(), *font, characters.data(), stringLocation, characters.size(), run.startIndex, run.endIndex));
         hb_buffer_reset(buffer.get());
     }
 }

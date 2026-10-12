@@ -26,14 +26,17 @@
 #include "config.h"
 #include "RemoteMediaResourceProxy.h"
 
-#if ENABLE(GPU_PROCESS)
+#if ENABLE(GPU_PROCESS) && ENABLE(VIDEO)
 
-#include "DataReference.h"
 #include "RemoteMediaResourceManagerMessages.h"
+#include "SharedBufferReference.h"
 #include "WebCoreArgumentCoders.h"
 #include <wtf/CompletionHandler.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteMediaResourceProxy);
 
 RemoteMediaResourceProxy::RemoteMediaResourceProxy(Ref<IPC::Connection>&& connection, WebCore::PlatformMediaResource& platformMediaResource, RemoteMediaResourceIdentifier identifier)
     : m_connection(WTFMove(connection))
@@ -55,7 +58,7 @@ void RemoteMediaResourceProxy::responseReceived(WebCore::PlatformMediaResource&,
 
 void RemoteMediaResourceProxy::redirectReceived(WebCore::PlatformMediaResource&, WebCore::ResourceRequest&& request, const WebCore::ResourceResponse& response, CompletionHandler<void(WebCore::ResourceRequest&&)>&& completionHandler)
 {
-    m_connection->sendWithAsyncReply(Messages::RemoteMediaResourceManager::RedirectReceived(m_id, request, response), [completionHandler = WTFMove(completionHandler)](auto&& request) mutable {
+    m_connection->sendWithAsyncReply(Messages::RemoteMediaResourceManager::RedirectReceived(m_id, request, response), [completionHandler = WTFMove(completionHandler)](WebCore::ResourceRequest&& request) mutable {
         completionHandler(WTFMove(request));
     });
 }
@@ -71,9 +74,13 @@ void RemoteMediaResourceProxy::dataSent(WebCore::PlatformMediaResource&, unsigne
     m_connection->send(Messages::RemoteMediaResourceManager::DataSent(m_id, bytesSent, totalBytesToBeSent), 0);
 }
 
-void RemoteMediaResourceProxy::dataReceived(WebCore::PlatformMediaResource&, const uint8_t* data, int length)
+void RemoteMediaResourceProxy::dataReceived(WebCore::PlatformMediaResource&, const WebCore::SharedBuffer& buffer)
 {
-    m_connection->send(Messages::RemoteMediaResourceManager::DataReceived(m_id, IPC::DataReference(data, length)), 0);
+    m_connection->sendWithAsyncReply(Messages::RemoteMediaResourceManager::DataReceived(m_id, IPC::SharedBufferReference { buffer }), [] (auto&& bufferHandle) {
+        // Take ownership of shared memory and mark it as media-related memory.
+        if (bufferHandle)
+            bufferHandle->takeOwnershipOfMemory(WebCore::MemoryLedger::Media);
+    }, 0);
 }
 
 void RemoteMediaResourceProxy::accessControlCheckFailed(WebCore::PlatformMediaResource&, const WebCore::ResourceError& error)
@@ -93,4 +100,4 @@ void RemoteMediaResourceProxy::loadFinished(WebCore::PlatformMediaResource&, con
 
 }
 
-#endif
+#endif // ENABLE(GPU_PROCESS) && ENABLE(VIDEO)

@@ -25,6 +25,8 @@
 
 #include "config.h"
 
+#if ENABLE(CONTENT_EXTENSIONS)
+
 #include "DFAHelpers.h"
 #include <wtf/MainThread.h>
 
@@ -40,7 +42,7 @@ public:
 
 TEST_F(DFAMinimizerTest, BasicSearch)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ ".*foo", ".*bar", ".*bang"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ ".*foo"_s, ".*bar"_s, ".*bang"_s });
     EXPECT_EQ(static_cast<size_t>(8), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(7), countLiveNodes(dfa));
@@ -48,7 +50,7 @@ TEST_F(DFAMinimizerTest, BasicSearch)
 
 TEST_F(DFAMinimizerTest, MergeSuffixes)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ ".*aaa", ".*aab", ".*aba", ".*abb", ".*baa", ".*bab", ".*bba", ".*bbb"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ ".*aaa"_s, ".*aab"_s, ".*aba"_s, ".*abb"_s, ".*baa"_s, ".*bab"_s, ".*bba"_s, ".*bbb"_s });
     EXPECT_EQ(static_cast<size_t>(12), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(4), countLiveNodes(dfa));
@@ -56,7 +58,7 @@ TEST_F(DFAMinimizerTest, MergeSuffixes)
 
 TEST_F(DFAMinimizerTest, MergeInfixes)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ ".*aaakit", ".*aabkit", ".*abakit", ".*abbkit", ".*baakit", ".*babkit", ".*bbakit", ".*bbbkit"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ ".*aaakit"_s, ".*aabkit"_s, ".*abakit"_s, ".*abbkit"_s, ".*baakit"_s, ".*babkit"_s, ".*bbakit"_s, ".*bbbkit"_s });
     EXPECT_EQ(static_cast<size_t>(15), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(7), countLiveNodes(dfa));
@@ -64,7 +66,7 @@ TEST_F(DFAMinimizerTest, MergeInfixes)
 
 TEST_F(DFAMinimizerTest, FallbackTransitionsWithDifferentiatorDoNotMerge1)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^a.a", "^b.a", "^bac", "^bbc", "^BCC"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^a.a"_s, "^b.a"_s, "^bac"_s, "^bbc"_s, "^BCC"_s });
     EXPECT_EQ(static_cast<size_t>(6), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(6), countLiveNodes(dfa));
@@ -72,7 +74,7 @@ TEST_F(DFAMinimizerTest, FallbackTransitionsWithDifferentiatorDoNotMerge1)
 
 TEST_F(DFAMinimizerTest, FallbackTransitionsWithDifferentiatorDoNotMerge2)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^bbc", "^BCC", "^a.a", "^b.a"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^bbc"_s, "^BCC"_s, "^a.a"_s, "^b.a"_s });
     EXPECT_EQ(static_cast<size_t>(6), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(6), countLiveNodes(dfa));
@@ -80,7 +82,7 @@ TEST_F(DFAMinimizerTest, FallbackTransitionsWithDifferentiatorDoNotMerge2)
 
 TEST_F(DFAMinimizerTest, FallbackTransitionsWithDifferentiatorDoNotMerge3)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^a.c", "^b.c", "^baa", "^bba", "^BCA"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^a.c"_s, "^b.c"_s, "^baa"_s, "^bba"_s, "^BCA"_s });
     EXPECT_EQ(static_cast<size_t>(6), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(6), countLiveNodes(dfa));
@@ -88,7 +90,7 @@ TEST_F(DFAMinimizerTest, FallbackTransitionsWithDifferentiatorDoNotMerge3)
 
 TEST_F(DFAMinimizerTest, FallbackTransitionsWithDifferentiatorDoNotMerge4)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^baa", "^bba", "^BCA", "^a.c", "^b.c"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^baa"_s, "^bba"_s, "^BCA"_s, "^a.c"_s, "^b.c"_s });
     EXPECT_EQ(static_cast<size_t>(6), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(6), countLiveNodes(dfa));
@@ -96,7 +98,7 @@ TEST_F(DFAMinimizerTest, FallbackTransitionsWithDifferentiatorDoNotMerge4)
 
 TEST_F(DFAMinimizerTest, FallbackTransitionsToOtherNodeInSameGroupDoesNotDifferentiateGroup)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^aac", "^a.c", "^b.c"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^aac"_s, "^a.c"_s, "^b.c"_s });
     EXPECT_EQ(static_cast<size_t>(5), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(4), countLiveNodes(dfa));
@@ -104,7 +106,7 @@ TEST_F(DFAMinimizerTest, FallbackTransitionsToOtherNodeInSameGroupDoesNotDiffere
 
 TEST_F(DFAMinimizerTest, SimpleFallBackTransitionDifferentiator1)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^a.bc.de", "^a.bd.ef"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^a.bc.de"_s, "^a.bd.ef"_s });
     EXPECT_EQ(static_cast<size_t>(11), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(11), countLiveNodes(dfa));
@@ -112,10 +114,12 @@ TEST_F(DFAMinimizerTest, SimpleFallBackTransitionDifferentiator1)
 
 TEST_F(DFAMinimizerTest, SimpleFallBackTransitionDifferentiator2)
 {
-    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^cb.", "^db.b"});
+    ContentExtensions::DFA dfa = buildDFAFromPatterns({ "^cb."_s, "^db.b"_s });
     EXPECT_EQ(static_cast<size_t>(7), countLiveNodes(dfa));
     dfa.minimize();
     EXPECT_EQ(static_cast<size_t>(7), countLiveNodes(dfa));
 }
 
 } // namespace TestWebKitAPI
+
+#endif // ENABLE(CONTENT_EXTENSIONS)

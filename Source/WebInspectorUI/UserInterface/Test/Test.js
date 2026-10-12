@@ -125,7 +125,7 @@ WI.performOneTimeFrontendInitializationsUsingTarget = function(target)
     // FIXME: This slows down test debug logging considerably.
     if (!WI.__didPerformCSSInitialization && target.hasDomain("CSS")) {
         WI.__didPerformCSSInitialization = true;
-        WI.CSSCompletions.initializeCSSCompletions(target);
+        WI.cssManager.initializeCSSPropertyNameCompletions(target);
     }
 };
 
@@ -158,7 +158,8 @@ WI.assumingMainTarget = () => WI.mainTarget;
 WI.isDebugUIEnabled = () => false;
 
 WI.isEngineeringBuild = false;
-WI.isExperimentalBuild = true;
+
+WI.engineeringSettingsAllowed = () => WI.isEngineeringBuild;
 
 WI.unlocalizedString = (string) => string;
 WI.UIString = (string, key, comment) => string;

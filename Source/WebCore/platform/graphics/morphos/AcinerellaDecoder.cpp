@@ -1,3 +1,4 @@
+#include "config.h"
 #include "AcinerellaDecoder.h"
 
 #if ENABLE(VIDEO)
@@ -6,12 +7,12 @@
 #include "MediaPlayerMorphOS.h"
 #include <proto/exec.h>
 
-#define D(x)
-#define DNF(x)  //if (!isAudio()) {x;}
+#define D(x) 
+#define DNF(x) // if (!isAudio()) {x;}
 #define DI(x)
 #define DBF(x)
-#define DPOS(x) 
-#define DLIFETIME(x) 
+#define DPOS(x)
+#define DLIFETIME(x)
 
 // #pragma GCC optimize ("O0")
 
@@ -37,12 +38,17 @@ AcinerellaDecoder::AcinerellaDecoder(AcinerellaDecoderClient *client, RefPtr<Aci
 
 	m_bitrate = ac->info.bitrate;
 	m_lastDecoder = acinerella->decoder(m_index);
-	m_codec = ac_codec_name(acinerella->instance(), index);
+	m_codec = String::fromUTF8(ac_codec_name(acinerella->instance(), index));
 }
 
 AcinerellaDecoder::~AcinerellaDecoder()
 {
 	DLIFETIME(dprintf("%s: %p --\033[0m\n", __func__, this));
+    if (!m_terminating)
+    {
+        dprintf("Wayfarer's media decoder shut down incorrectly, please send the following log to wayfarer@wayfarer.icu\n");
+        DumpTaskState(FindTask(0));
+    }
 }
 
 void AcinerellaDecoder::warmUp()
@@ -50,7 +56,7 @@ void AcinerellaDecoder::warmUp()
 	if (!m_terminating && !m_thread)
 	{
 		DI(dprintf("%s: %p starting thread\033[0m\n", __func__, this));
-		m_thread = Thread::create(isAudio() ? "Acinerella Audio Decoder" : "Acinerella Video Decoder", [this] {
+		m_thread = Thread::create(isAudio() ? "Acinerella Audio Decoder"_s : "Acinerella Video Decoder"_s, [this] {
 			threadEntryPoint();
 		});
 	}
@@ -111,7 +117,7 @@ void AcinerellaDecoder::onReadyToPlay()
 	{
 		m_readying = false;
 		if (m_client)
-			m_client->onDecoderReadyToPlay(makeRef(*this));
+			m_client->onDecoderReadyToPlay(Ref{*this});
 	}
 }
 
@@ -125,7 +131,7 @@ void AcinerellaDecoder::pause(bool willSeek)
 		m_readying = false;
 		stopPlaying();
 		if (willSeek)
-			flush();
+			flush(true);
 	});
 }
 
@@ -171,7 +177,7 @@ bool AcinerellaDecoder::decodeNextFrame()
 			if (!m_isHLS)
 			{
 				ac_flush_buffers(decoder);
-				flush();
+				flush(false);
 			}
 
 			return true;
@@ -180,6 +186,9 @@ bool AcinerellaDecoder::decodeNextFrame()
 		if (buffer->package())
 		{
 			double pts = ac_get_package_pts(acinerella->instance(), buffer->package());
+
+            if (!acceptPackage(buffer, pts))
+                return true;
 
 			if (m_droppingFrames)
 			{
@@ -242,7 +251,7 @@ bool AcinerellaDecoder::decodeNextFrame()
 					auto lock = Locker(m_lock);
 					onFrameDecoded(frame);
 					DNF(dprintf("[%s]%s: decoded frame @ %f\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, float(frame.frame()->timecode)));
-					m_decodedFrames.emplace(WTFMove(frame));
+					m_decodedFrames.append(WTFMove(frame));
 					m_decoderEOF = false;
 				}
 				break;
@@ -284,7 +293,7 @@ void AcinerellaDecoder::decodeUntilBufferFull()
 	{
 		m_warminUp = false;
 		if (m_client)
-			m_client->onDecoderWarmedUp(makeRef(*this));
+			m_client->onDecoderWarmedUp(Ref{*this});
 	}
 
 	if (isReadyToPlay() && m_readying)
@@ -304,15 +313,16 @@ void AcinerellaDecoder::dropUntilPTS(double pts)
 	m_droppingUntilKeyFrame = false;
 }
 
-void AcinerellaDecoder::flush()
+void AcinerellaDecoder::flush(bool willSeek)
 {
 	D(dprintf("[%s]%s: islive %d\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, this, m_isLive));
 	auto lock = Locker(m_lock);
 
-	while (!m_decodedFrames.empty())
-		m_decodedFrames.pop();
+    m_decodedFrames.clear();
 		
 	m_decoderEOF = false;
+    m_droppingFrames = false;
+    m_droppingUntilKeyFrame = false;
 }
 
 void AcinerellaDecoder::onPositionChanged()
@@ -326,14 +336,14 @@ void AcinerellaDecoder::onPositionChanged()
 #endif
 	DPOS(dprintf("[%s]%s: %p to %f\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, this, position()));
 	if (m_client)
-		m_client->onDecoderUpdatedPosition(makeRef(*this), position());
+		m_client->onDecoderUpdatedPosition(Ref{*this}, position());
 }
 
 void AcinerellaDecoder::onDurationChanged()
 {
 	D(dprintf("[%s]%s: %p to %f\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, this, duration()));
 	if (m_client)
-		m_client->onDecoderUpdatedDuration(makeRef(*this), duration());
+		m_client->onDecoderUpdatedDuration(Ref{*this}, duration());
 }
 
 void AcinerellaDecoder::onEnded()
@@ -341,7 +351,7 @@ void AcinerellaDecoder::onEnded()
 	EP_EVENT(ended);
 	D(dprintf("[%s]%s: %p\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, this));
 	if (m_client)
-		m_client->onDecoderEnded(makeRef(*this));
+		m_client->onDecoderEnded(Ref{*this});
 }
 
 void AcinerellaDecoder::terminate()
@@ -366,17 +376,16 @@ void AcinerellaDecoder::terminate()
 	m_thread = nullptr;
 	m_client = nullptr;
 	m_muxer = nullptr;
-	while (!m_decodedFrames.empty())
-		m_decodedFrames.pop();
+    m_decodedFrames.clear();
 
 	DLIFETIME(dprintf("[%s]%s: %p done\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, this));
 }
 
 void AcinerellaDecoder::threadEntryPoint()
 {
-	SetTaskPri(FindTask(0), isAudio() ? 3 : 2);
+	SetTaskPri(FindTask(0), isAudio() ? 3 : 0);
 
-	RefPtr<AcinerellaDecoder> refSelf = WTF::makeRef(*this);
+	RefPtr<AcinerellaDecoder> refSelf = WTF::Ref{*this};
 
 	DI(dprintf("[%s]%s: %p\033[0m\n", isAudio() ? "\033[33mA":"\033[35mV", __func__, this));
 	if (!onThreadInitialize())
@@ -396,7 +405,7 @@ void AcinerellaDecoder::threadEntryPoint()
 
 void AcinerellaDecoder::dispatch(Function<void ()>&& function)
 {
-	ASSERT(!m_queue.killed() && m_thread);
+	ASSERT(!m_queue.killed());
 	if (m_terminating)
 		return;
 	m_queue.append(makeUnique<Function<void ()>>(WTFMove(function)));

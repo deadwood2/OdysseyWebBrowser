@@ -31,11 +31,11 @@
 #import "Test.h"
 #import "TestNavigationDelegate.h"
 #import "TestWKWebView.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import <WebKit/WKWebViewPrivate.h>
 
-// FIXME: Likely we can remove this special case for watchOS and tvOS.
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+// FIXME: Likely we can remove this special case for watchOS.
+#if !PLATFORM(WATCHOS)
 static NSString *const UIScrollViewIndicatorClass = @"_UIScrollViewScrollIndicator";
 #else
 static NSString *const UIScrollViewIndicatorClass = @"UIImageView";

@@ -27,7 +27,6 @@
 
 #import "HTTPServer.h"
 #import "PlatformUtilities.h"
-#import "TCPServer.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
 #import "TestUIDelegate.h"
@@ -213,8 +212,8 @@ TEST(ContentRuleList, PerformedActionForURL)
         TestWebKitAPI::Util::spinRunLoop();
 
     Vector<Notification> expectedNotifications {
-        { "firstList", "apitest:///notify", false, false, false, { "testnotification" } },
-        { "secondList", "apitest:///block", true, false, false, { } }
+        { "firstList"_s, "apitest:///notify"_s, false, false, false, { "testnotification"_s } },
+        { "secondList"_s, "apitest:///block"_s, true, false, false, { } }
     };
     EXPECT_TRUE(expectedNotifications == notificationList);
 }
@@ -272,17 +271,19 @@ TEST(ContentRuleList, ResourceTypes)
     EXPECT_WK_STREQ([webView _test_waitForAlert], "xhr finished");
     
     HTTPServer beaconServer({
-        { "/", { "<script>navigator.sendBeacon('/testBeaconTarget', 'hello');fetch('/testFetchTarget').then(()=>{alert('fetch done')})</script>" } },
-        { "/testBeaconTarget", { "hi" } },
-        { "/testFetchTarget", { "hi" } },
+        { "/"_s, { "<script>navigator.sendBeacon('/testBeaconTarget', 'hello');fetch('/testFetchTarget').then(()=>{alert('fetch done')})</script>"_s } },
+        { "/testBeaconTarget"_s, { "hi"_s } },
+        { "/testFetchTarget"_s, { "hi"_s } },
     });
     [webView loadRequest:beaconServer.request()];
     EXPECT_WK_STREQ([webView _test_waitForAlert], "fetch done");
-    EXPECT_EQ(beaconServer.totalRequests(), 3u);
+    while (beaconServer.totalRequests() != 3)
+        Util::spinRunLoop();
     [userContentController addContentRuleList:listWithResourceType("other").get()];
     [webView reload];
     EXPECT_WK_STREQ([webView _test_waitForAlert], "fetch done");
-    EXPECT_EQ(beaconServer.totalRequests(), 5u);
+    while (beaconServer.totalRequests() != 5)
+        Util::spinRunLoop();
 }
 
 TEST(ContentRuleList, ThirdParty)
@@ -352,6 +353,42 @@ TEST(ContentRuleList, SupportsRegex)
         EXPECT_FALSE([WKContentRuleList _supportsRegularExpression:regex]);
 }
 
+TEST(ContentRuleList, ParseRuleList)
+{
+    NSArray<NSString *> *passingRuleLists = @[
+        @"[ { \"action\": { \"type\" : \"css-display-none\", \"selector\": \"a[href*='apple.com']\" }, \"trigger\": { \"url-filter\": \".*\" }} ]",
+        @"[ { \"action\": { \"type\" : \"block\" }, \"trigger\": { \"url-filter\": \"webkit.org\" }} ]",
+        @"[ { \"action\": { \"type\" : \"ignore-previous-rules\" }, \"trigger\": { \"url-filter\": \"example.com\" }} ]",
+    ];
+
+    for (NSString *passingRuleList in passingRuleLists) {
+        NSError *parsingError = [WKContentRuleList _parseRuleList:passingRuleList];
+        EXPECT_NULL(parsingError);
+    }
+
+    NSArray<NSString *> *failingRuleLists = @[
+        // Invalid JSON.
+        @"{{ \"action\": { \"type\" : \"css-display-none\", \"selector\": \"a[href*='apple.com']\" }, \"trigger\": { \"url-filter\": \".*\" }}",
+
+        // Top level object not an array.
+        @"{ \"action\": { \"type\" : \"css-display-none\", \"selector\": \"a[href*='apple.com']\" }, \"trigger\": { \"url-filter\": \".*\" }}",
+
+        // No trigger.
+        @"[ { \"action\": { \"type\" : \"block\" }} ]",
+
+        // No action.
+        @"[ { \"trigger\": { \"url-filter\": \"webkit.org\" }} ]",
+
+        // Fake action type.
+        @"[ { \"action\": { \"type\" : \"dance\" }, \"trigger\": { \"url-filter\": \"webkit.org\" }} ]",
+    ];
+
+    for (NSString *failingRuleList in failingRuleLists) {
+        NSError *parsingError = [WKContentRuleList _parseRuleList:failingRuleList];
+        EXPECT_NOT_NULL(parsingError);
+    }
+}
+
 TEST(ContentRuleList, TopFrameChildFrame)
 {
     auto handler = [[TestURLSchemeHandler new] autorelease];
@@ -417,117 +454,35 @@ TEST(ContentRuleList, TopFrameChildFrame)
     EXPECT_WK_STREQ([webView _test_waitForAlert], "iframe fetched successfully");
 }
 
-TEST(ContentRuleList, LegacyVersionAndName)
+TEST(ContentRuleList, CSPReport)
 {
-    NSString *directory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ContentRuleListTestDirectory"];
-    WKContentRuleListStore *store = [WKContentRuleListStore storeWithURL:[NSURL fileURLWithPath:directory]];
-    
-    auto handler = [[TestURLSchemeHandler new] autorelease];
-    handler.startURLSchemeTaskHandler = ^(WKWebView *, id<WKURLSchemeTask> task) {
-        respond(task, "hi");
-    };
+    TestWebKitAPI::HTTPServer server({ { "/"_s, { {
+        { "Content-Security-Policy"_s, "frame-src 'none'; report-uri resources/save-report.py"_s }
+    }, "<iframe src=\"https://webkit.org/\"></iframe>"_s } } });
 
-    auto setupLegacyContentRuleList = [directory] {
-        // Compiled with CurrentContentRuleListFileVersion = 10
-        std::array<uint8_t, 163> oldVersionCompiledContentRuleList {
-            0x0a, 0x00, 0x00, 0x00, 0x3e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x01, 0x5b, 0x7b, 0x22, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x22, 0x3a, 0x7b, 0x22, 0x74, 0x79,
-            0x70, 0x65, 0x22, 0x3a, 0x22, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x22, 0x7d, 0x2c, 0x22, 0x74, 0x72,
-            0x69, 0x67, 0x67, 0x65, 0x72, 0x22, 0x3a, 0x7b, 0x22, 0x75, 0x72, 0x6c, 0x2d, 0x66, 0x69, 0x6c,
-            0x74, 0x65, 0x72, 0x22, 0x3a, 0x22, 0x74, 0x65, 0x73, 0x74, 0x22, 0x7d, 0x7d, 0x5d, 0x00, 0x2a,
-            0x00, 0x00, 0x00, 0x10, 0x74, 0x05, 0x1b, 0xfd, 0x10, 0x65, 0x08, 0x10, 0x74, 0xfd, 0x1b, 0xf5,
-            0x12, 0x73, 0x74, 0x07, 0xf8, 0x1b, 0xee, 0x10, 0x74, 0x05, 0x1b, 0xe9, 0x06, 0x00, 0x00, 0x00,
-            0x00, 0x10, 0x65, 0xef, 0x10, 0x74, 0xe4, 0x1b, 0xdc, 0x05, 0x00, 0x00, 0x00, 0x0a, 0x05, 0x00,
-            0x00, 0x00, 0x0a
-        };
-        NSData *data = [NSData dataWithBytes:oldVersionCompiledContentRuleList.data() length:oldVersionCompiledContentRuleList.size()];
-        [data writeToFile:[directory stringByAppendingPathComponent:@"ContentExtension-test"] atomically:YES];
-        [[NSFileManager defaultManager] removeItemAtPath:[directory stringByAppendingPathComponent:@"ContentRuleList-test"] error:nil];
-    };
-    
-    auto legacyFileExists = [directory] {
-        return [[NSFileManager defaultManager] fileExistsAtPath:[directory stringByAppendingPathComponent:@"ContentRuleList-test"]];
-    };
-
-    setupLegacyContentRuleList();
-    __block RetainPtr<WKContentRuleList> retainedList;
-    [store lookUpContentRuleListForIdentifier:@"test" completionHandler:^(WKContentRuleList *list, NSError *) {
-        retainedList = list;
-    }];
-    while (!retainedList)
+    auto configuration = adoptNS([WKWebViewConfiguration new]);
+    [[configuration userContentController] addContentRuleList:makeContentRuleList(@"[{\"action\":{\"type\":\"block\"},\"trigger\":{\"url-filter\":\".*\",\"resource-type\":[\"csp-report\"]}}]").get()];
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSZeroRect configuration:configuration.get()]);
+    auto delegate = adoptNS([ContentRuleListNotificationDelegate new]);
+    [webView setNavigationDelegate:delegate.get()];
+    [webView loadRequest:server.request()];
+    while (notificationList.isEmpty())
         TestWebKitAPI::Util::spinRunLoop();
-    auto configuration = [[WKWebViewConfiguration new] autorelease];
-    [configuration setURLSchemeHandler:handler forURLScheme:@"test"];
-    [configuration setURLSchemeHandler:handler forURLScheme:@"scheme"];
-    configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
-    auto webView = [[[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration] autorelease];
-    [webView.configuration.userContentController addContentRuleList:retainedList.get()];
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"scheme:///"]]];
-    [webView _test_waitForDidFinishNavigation];
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"test:///"]]];
-    [webView _test_waitForDidFailProvisionalNavigation];
 
-    setupLegacyContentRuleList();
-    __block bool removed = false;
-    [store removeContentRuleListForIdentifier:@"test" completionHandler:^(NSError *error) {
-        EXPECT_NULL(error);
-        EXPECT_FALSE(legacyFileExists());
-        removed = true;
-    }];
-    TestWebKitAPI::Util::run(&removed);
-    
-    setupLegacyContentRuleList();
-    __block bool foundAvailable = false;
-    [store getAvailableContentRuleListIdentifiers:^(NSArray<NSString *> *identifiers) {
-        EXPECT_EQ(identifiers.count, 1u);
-        EXPECT_WK_STREQ(identifiers[0], @"test");
-        foundAvailable = true;
-    }];
-    TestWebKitAPI::Util::run(&removed);
-
-    __block bool gotSource = false;
-    [store _getContentRuleListSourceForIdentifier:@"test" completionHandler:^(NSString *source) {
-        EXPECT_WK_STREQ(source, "[{\"action\":{\"type\":\"block\"},\"trigger\":{\"url-filter\":\"test\"}}]");
-        gotSource = true;
-    }];
-    TestWebKitAPI::Util::run(&gotSource);
+    URL expectedURL = server.request().URL;
+    expectedURL.setPath("/resources/save-report.py"_s);
+    EXPECT_STREQ(expectedURL.string().utf8().data(), notificationList.first().url.utf8().data());
 }
-
-#if HAVE(SSL)
 
 TEST(WebKit, RedirectToPlaintextHTTPSUpgrade)
 {
     using namespace TestWebKitAPI;
-    TCPServer server([connectionCount = 0] (int socket) mutable {
-        TCPServer::read(socket);
-        if (!connectionCount++) {
-            const char* connectionEstablished =
-                "HTTP/1.1 200 Connection Established\r\n"
-                "Connection: close\r\n"
-                "\r\n";
-            TCPServer::write(socket, connectionEstablished, strlen(connectionEstablished));
-            TCPServer::startSecureConnection(socket, [] (SSL* ssl) {
-                TCPServer::read(ssl);
-                const char* redirect = ""
-                "HTTP/1.1 302 Found\r\n"
-                "Location: http://download/\r\n"
-                "Content-Length: 0\r\n\r\n";
-                TCPServer::write(ssl, redirect, strlen(redirect));
-            });
-            return;
-        }
-        const char* content = ""
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Length: 34\r\n\r\n"
-        "<script>alert('success!')</script>";
-        TCPServer::write(socket, content, strlen(content));
-    }, 2);
+    HTTPServer plaintextServer({ { "http://download/redirectTarget"_s, { "<script>alert('success!')</script>"_s } } });
+    HTTPServer secureServer({ { "/originalRequest"_s, { 302, { { "Location"_s, "http://download/redirectTarget"_s } }, emptyString() } } }, HTTPServer::Protocol::HttpsProxy);
 
     auto storeConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] initNonPersistentConfiguration]);
-    [storeConfiguration setHTTPProxy:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", server.port()]]];
-    [storeConfiguration setHTTPSProxy:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", server.port()]]];
+    [storeConfiguration setHTTPProxy:[NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%d/", plaintextServer.port()]]];
+    [storeConfiguration setHTTPSProxy:[NSURL URLWithString:[NSString stringWithFormat:@"https://127.0.0.1:%d/", secureServer.port()]]];
     [storeConfiguration setAllowsServerPreconnect:NO];
     auto viewConfiguration = adoptNS([WKWebViewConfiguration new]);
     [viewConfiguration setWebsiteDataStore:adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration.get()]).get()];
@@ -537,8 +492,6 @@ TEST(WebKit, RedirectToPlaintextHTTPSUpgrade)
         completionHandler(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
     };
     webView.get().navigationDelegate = delegate.get();
-    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://download/"]]];
+    [webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"https://download/originalRequest"]]];
     EXPECT_WK_STREQ([webView _test_waitForAlert], "success!");
 }
-
-#endif

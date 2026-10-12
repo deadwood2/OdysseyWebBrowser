@@ -27,15 +27,15 @@
 
 #include "APIObject.h"
 #include "FrameInfoData.h"
-#include "WebPageProxy.h"
 #include <WebCore/ResourceRequest.h>
 
 namespace WebCore {
-struct SecurityOriginData;
+class SecurityOriginData;
 }
 
 namespace WebKit {
 class WebFrameProxy;
+class WebPageProxy;
 struct FrameInfoData;
 }
 
@@ -46,18 +46,23 @@ class SecurityOrigin;
 
 class FrameInfo final : public ObjectImpl<Object::Type::FrameInfo> {
 public:
-    static Ref<FrameInfo> create(WebKit::FrameInfoData&&, WebKit::WebPageProxy*);
+    static Ref<FrameInfo> create(WebKit::FrameInfoData&&, RefPtr<WebKit::WebPageProxy>&&);
     virtual ~FrameInfo();
 
     bool isMainFrame() const { return m_data.isMainFrame; }
+    bool isLocalFrame() const { return m_data.frameType == WebKit::FrameType::Local; }
     const WebCore::ResourceRequest& request() const { return m_data.request; }
     WebCore::SecurityOriginData& securityOrigin() { return m_data.securityOrigin; }
     Ref<FrameHandle> handle() const;
     WebKit::WebPageProxy* page() { return m_page.get(); }
     RefPtr<FrameHandle> parentFrameHandle() const;
+    ProcessID processID() const { return m_data.processID; }
+    bool isFocused() const { return m_data.isFocused; }
+    bool errorOccurred() const { return m_data.errorOccurred; }
+    WTF::String title() const;
 
 private:
-    FrameInfo(WebKit::FrameInfoData&&, WebKit::WebPageProxy*);
+    FrameInfo(WebKit::FrameInfoData&&, RefPtr<WebKit::WebPageProxy>&&);
 
     WebKit::FrameInfoData m_data;
     RefPtr<WebKit::WebPageProxy> m_page;

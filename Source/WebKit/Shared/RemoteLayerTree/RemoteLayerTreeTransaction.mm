@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,766 +27,33 @@
 #import "RemoteLayerTreeTransaction.h"
 
 #import "ArgumentCoders.h"
-#import "PlatformCAAnimationRemote.h"
+#import "LayerProperties.h"
 #import "PlatformCALayerRemote.h"
 #import "WebCoreArgumentCoders.h"
 #import <QuartzCore/QuartzCore.h>
 #import <WebCore/EventRegion.h>
 #import <WebCore/LengthFunctions.h>
 #import <WebCore/Model.h>
+#import <WebCore/RuntimeApplicationChecks.h>
 #import <WebCore/TimingFunction.h>
+#import <wtf/TZoneMallocInlines.h>
 #import <wtf/text/CString.h>
+#import <wtf/text/MakeString.h>
 #import <wtf/text/TextStream.h>
 
 namespace WebKit {
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteLayerTreeTransaction);
+
 RemoteLayerTreeTransaction::RemoteLayerTreeTransaction(RemoteLayerTreeTransaction&&) = default;
+
 RemoteLayerTreeTransaction& RemoteLayerTreeTransaction::operator=(RemoteLayerTreeTransaction&&) = default;
 
-RemoteLayerTreeTransaction::LayerCreationProperties::LayerCreationProperties()
-    : layerID(0)
-    , type(WebCore::PlatformCALayer::LayerTypeLayer)
-    , hostingContextID(0)
-    , hostingDeviceScaleFactor(1)
-{
-}
-
-void RemoteLayerTreeTransaction::LayerCreationProperties::encode(IPC::Encoder& encoder) const
-{
-    encoder << layerID;
-    encoder << type;
-    
-    // PlatformCALayerRemoteCustom
-    encoder << hostingContextID;
-    encoder << hostingDeviceScaleFactor;
-    
-#if ENABLE(MODEL_ELEMENT)
-    // PlatformCALayerRemoteModelHosting
-    encoder << !!model;
-    if (model)
-        encoder << *model;
-#endif
-}
-
-auto RemoteLayerTreeTransaction::LayerCreationProperties::decode(IPC::Decoder& decoder) -> std::optional<LayerCreationProperties>
-{
-    LayerCreationProperties result;
-    if (!decoder.decode(result.layerID))
-        return std::nullopt;
-
-    if (!decoder.decode(result.type))
-        return std::nullopt;
-    
-    // PlatformCALayerRemoteCustom
-    if (!decoder.decode(result.hostingContextID))
-        return std::nullopt;
-
-    if (!decoder.decode(result.hostingDeviceScaleFactor))
-        return std::nullopt;
-    
-#if ENABLE(MODEL_ELEMENT)
-    // PlatformCALayerRemoteModelHosting
-    bool hasModel;
-    if (!decoder.decode(hasModel))
-        return std::nullopt;
-    if (hasModel) {
-        auto model = WebCore::Model::decode(decoder);
-        if (!model)
-            return std::nullopt;
-        result.model = model;
-    }
-#endif
-
-    return WTFMove(result);
-}
-
-RemoteLayerTreeTransaction::LayerProperties::LayerProperties()
-    : anchorPoint(0.5, 0.5, 0)
-    , contentsRect(WebCore::FloatPoint(), WebCore::FloatSize(1, 1))
-    , maskLayerID(0)
-    , clonedLayerID(0)
-    , timeOffset(0)
-    , speed(1)
-    , contentsScale(1)
-    , cornerRadius(0)
-    , borderWidth(0)
-    , opacity(1)
-    , backgroundColor(WebCore::Color::transparentBlack)
-    , borderColor(WebCore::Color::black)
-    , edgeAntialiasingMask(kCALayerLeftEdge | kCALayerRightEdge | kCALayerBottomEdge | kCALayerTopEdge)
-    , customAppearance(WebCore::GraphicsLayer::CustomAppearance::None)
-    , minificationFilter(WebCore::PlatformCALayer::FilterType::Linear)
-    , magnificationFilter(WebCore::PlatformCALayer::FilterType::Linear)
-    , blendMode(WebCore::BlendMode::Normal)
-    , windRule(WebCore::WindRule::NonZero)
-    , hidden(false)
-    , backingStoreAttached(true)
-    , geometryFlipped(false)
-    , doubleSided(true)
-    , masksToBounds(false)
-    , opaque(false)
-    , contentsHidden(false)
-    , userInteractionEnabled(true)
-#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
-    , isSeparated(false)
-#if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
-    , isSeparatedPortal(false)
-    , isDescendentOfSeparatedPortal(false)
-#endif
-#endif
-{
-}
-
-RemoteLayerTreeTransaction::LayerProperties::LayerProperties(const LayerProperties& other)
-    : changedProperties(other.changedProperties)
-    , name(other.name)
-    , children(other.children)
-    , addedAnimations(other.addedAnimations)
-    , keyPathsOfAnimationsToRemove(other.keyPathsOfAnimationsToRemove)
-    , position(other.position)
-    , anchorPoint(other.anchorPoint)
-    , bounds(other.bounds)
-    , contentsRect(other.contentsRect)
-    , shapePath(other.shapePath)
-    , maskLayerID(other.maskLayerID)
-    , clonedLayerID(other.clonedLayerID)
-    , timeOffset(other.timeOffset)
-    , speed(other.speed)
-    , contentsScale(other.contentsScale)
-    , cornerRadius(other.cornerRadius)
-    , borderWidth(other.borderWidth)
-    , opacity(other.opacity)
-    , backgroundColor(other.backgroundColor)
-    , borderColor(other.borderColor)
-    , edgeAntialiasingMask(other.edgeAntialiasingMask)
-    , customAppearance(other.customAppearance)
-    , minificationFilter(other.minificationFilter)
-    , magnificationFilter(other.magnificationFilter)
-    , blendMode(other.blendMode)
-    , windRule(other.windRule)
-    , hidden(other.hidden)
-    , backingStoreAttached(other.backingStoreAttached)
-    , geometryFlipped(other.geometryFlipped)
-    , doubleSided(other.doubleSided)
-    , masksToBounds(other.masksToBounds)
-    , opaque(other.opaque)
-    , contentsHidden(other.contentsHidden)
-    , userInteractionEnabled(other.userInteractionEnabled)
-    , eventRegion(other.eventRegion)
-#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
-    , isSeparated(other.isSeparated)
-#if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
-    , isSeparatedPortal(other.isSeparatedPortal)
-    , isDescendentOfSeparatedPortal(other.isDescendentOfSeparatedPortal)
-#endif
-#endif
-{
-    // FIXME: LayerProperties should reference backing store by ID, so that two layers can have the same backing store (for clones).
-    // FIXME: LayerProperties shouldn't be copyable; PlatformCALayerRemote::clone should copy the relevant properties.
-
-    if (other.transform)
-        transform = makeUnique<WebCore::TransformationMatrix>(*other.transform);
-
-    if (other.sublayerTransform)
-        sublayerTransform = makeUnique<WebCore::TransformationMatrix>(*other.sublayerTransform);
-
-    if (other.filters)
-        filters = makeUnique<WebCore::FilterOperations>(*other.filters);
-}
-
-void RemoteLayerTreeTransaction::LayerProperties::encode(IPC::Encoder& encoder) const
-{
-    encoder << changedProperties;
-
-    if (changedProperties & NameChanged)
-        encoder << name;
-
-    if (changedProperties & ChildrenChanged)
-        encoder << children;
-
-    if (changedProperties & AnimationsChanged) {
-        encoder << addedAnimations;
-        encoder << keyPathsOfAnimationsToRemove;
-    }
-
-    if (changedProperties & PositionChanged)
-        encoder << position;
-
-    if (changedProperties & BoundsChanged)
-        encoder << bounds;
-
-    if (changedProperties & BackgroundColorChanged)
-        encoder << backgroundColor;
-
-    if (changedProperties & AnchorPointChanged)
-        encoder << anchorPoint;
-
-    if (changedProperties & BorderWidthChanged)
-        encoder << borderWidth;
-
-    if (changedProperties & BorderColorChanged)
-        encoder << borderColor;
-
-    if (changedProperties & OpacityChanged)
-        encoder << opacity;
-
-    if (changedProperties & TransformChanged)
-        encoder << *transform;
-
-    if (changedProperties & SublayerTransformChanged)
-        encoder << *sublayerTransform;
-
-    if (changedProperties & HiddenChanged)
-        encoder << hidden;
-
-    if (changedProperties & GeometryFlippedChanged)
-        encoder << geometryFlipped;
-
-    if (changedProperties & DoubleSidedChanged)
-        encoder << doubleSided;
-
-    if (changedProperties & MasksToBoundsChanged)
-        encoder << masksToBounds;
-
-    if (changedProperties & OpaqueChanged)
-        encoder << opaque;
-
-    if (changedProperties & ContentsHiddenChanged)
-        encoder << contentsHidden;
-
-    if (changedProperties & MaskLayerChanged)
-        encoder << maskLayerID;
-
-    if (changedProperties & ClonedContentsChanged)
-        encoder << clonedLayerID;
-
-    if (changedProperties & ContentsRectChanged)
-        encoder << contentsRect;
-
-    if (changedProperties & ContentsScaleChanged)
-        encoder << contentsScale;
-
-    if (changedProperties & CornerRadiusChanged)
-        encoder << cornerRadius;
-
-    if (changedProperties & ShapeRoundedRectChanged)
-        encoder << *shapeRoundedRect;
-
-    if (changedProperties & ShapePathChanged)
-        encoder << shapePath;
-
-    if (changedProperties & MinificationFilterChanged)
-        encoder << minificationFilter;
-
-    if (changedProperties & MagnificationFilterChanged)
-        encoder << magnificationFilter;
-
-    if (changedProperties & BlendModeChanged)
-        encoder << blendMode;
-
-    if (changedProperties & WindRuleChanged)
-        encoder << windRule;
-
-    if (changedProperties & SpeedChanged)
-        encoder << speed;
-
-    if (changedProperties & TimeOffsetChanged)
-        encoder << timeOffset;
-
-    if (changedProperties & BackingStoreChanged) {
-        bool hasFrontBuffer = backingStore && backingStore->hasFrontBuffer();
-        encoder << hasFrontBuffer;
-        if (hasFrontBuffer)
-            encoder << *backingStore;
-    }
-
-    if (changedProperties & BackingStoreAttachmentChanged)
-        encoder << backingStoreAttached;
-
-    if (changedProperties & FiltersChanged)
-        encoder << *filters;
-
-    if (changedProperties & EdgeAntialiasingMaskChanged)
-        encoder << edgeAntialiasingMask;
-
-    if (changedProperties & CustomAppearanceChanged)
-        encoder << customAppearance;
-
-    if (changedProperties & UserInteractionEnabledChanged)
-        encoder << userInteractionEnabled;
-
-    if (changedProperties & EventRegionChanged)
-        encoder << eventRegion;
-
-#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
-    if (changedProperties & SeparatedChanged)
-        encoder << isSeparated;
-
-#if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
-    if (changedProperties & SeparatedPortalChanged)
-        encoder << isSeparatedPortal;
-
-    if (changedProperties & DescendentOfSeparatedPortalChanged)
-        encoder << isDescendentOfSeparatedPortal;
-#endif
-#endif
-}
-
-bool RemoteLayerTreeTransaction::LayerProperties::decode(IPC::Decoder& decoder, LayerProperties& result)
-{
-    if (!decoder.decode(result.changedProperties))
-        return false;
-
-    if (result.changedProperties & NameChanged) {
-        if (!decoder.decode(result.name))
-            return false;
-    }
-
-    if (result.changedProperties & ChildrenChanged) {
-        if (!decoder.decode(result.children))
-            return false;
-
-        for (auto& layerID : result.children) {
-            if (!layerID)
-                return false;
-        }
-    }
-
-    if (result.changedProperties & AnimationsChanged) {
-        if (!decoder.decode(result.addedAnimations))
-            return false;
-
-        if (!decoder.decode(result.keyPathsOfAnimationsToRemove))
-            return false;
-    }
-
-    if (result.changedProperties & PositionChanged) {
-        if (!decoder.decode(result.position))
-            return false;
-    }
-
-    if (result.changedProperties & BoundsChanged) {
-        if (!decoder.decode(result.bounds))
-            return false;
-    }
-
-    if (result.changedProperties & BackgroundColorChanged) {
-        if (!decoder.decode(result.backgroundColor))
-            return false;
-    }
-
-    if (result.changedProperties & AnchorPointChanged) {
-        if (!decoder.decode(result.anchorPoint))
-            return false;
-    }
-
-    if (result.changedProperties & BorderWidthChanged) {
-        if (!decoder.decode(result.borderWidth))
-            return false;
-    }
-
-    if (result.changedProperties & BorderColorChanged) {
-        if (!decoder.decode(result.borderColor))
-            return false;
-    }
-
-    if (result.changedProperties & OpacityChanged) {
-        if (!decoder.decode(result.opacity))
-            return false;
-    }
-
-    if (result.changedProperties & TransformChanged) {
-        WebCore::TransformationMatrix transform;
-        if (!decoder.decode(transform))
-            return false;
-        
-        result.transform = makeUnique<WebCore::TransformationMatrix>(transform);
-    }
-
-    if (result.changedProperties & SublayerTransformChanged) {
-        WebCore::TransformationMatrix transform;
-        if (!decoder.decode(transform))
-            return false;
-
-        result.sublayerTransform = makeUnique<WebCore::TransformationMatrix>(transform);
-    }
-
-    if (result.changedProperties & HiddenChanged) {
-        if (!decoder.decode(result.hidden))
-            return false;
-    }
-
-    if (result.changedProperties & GeometryFlippedChanged) {
-        if (!decoder.decode(result.geometryFlipped))
-            return false;
-    }
-
-    if (result.changedProperties & DoubleSidedChanged) {
-        if (!decoder.decode(result.doubleSided))
-            return false;
-    }
-
-    if (result.changedProperties & MasksToBoundsChanged) {
-        if (!decoder.decode(result.masksToBounds))
-            return false;
-    }
-
-    if (result.changedProperties & OpaqueChanged) {
-        if (!decoder.decode(result.opaque))
-            return false;
-    }
-
-    if (result.changedProperties & ContentsHiddenChanged) {
-        if (!decoder.decode(result.contentsHidden))
-            return false;
-    }
-
-    if (result.changedProperties & MaskLayerChanged) {
-        if (!decoder.decode(result.maskLayerID))
-            return false;
-    }
-
-    if (result.changedProperties & ClonedContentsChanged) {
-        if (!decoder.decode(result.clonedLayerID))
-            return false;
-    }
-
-    if (result.changedProperties & ContentsRectChanged) {
-        if (!decoder.decode(result.contentsRect))
-            return false;
-    }
-
-    if (result.changedProperties & ContentsScaleChanged) {
-        if (!decoder.decode(result.contentsScale))
-            return false;
-    }
-
-    if (result.changedProperties & CornerRadiusChanged) {
-        if (!decoder.decode(result.cornerRadius))
-            return false;
-    }
-
-    if (result.changedProperties & ShapeRoundedRectChanged) {
-        WebCore::FloatRoundedRect roundedRect;
-        if (!decoder.decode(roundedRect))
-            return false;
-        
-        result.shapeRoundedRect = makeUnique<WebCore::FloatRoundedRect>(roundedRect);
-    }
-
-    if (result.changedProperties & ShapePathChanged) {
-        WebCore::Path path;
-        if (!decoder.decode(path))
-            return false;
-        
-        result.shapePath = WTFMove(path);
-    }
-
-    if (result.changedProperties & MinificationFilterChanged) {
-        if (!decoder.decode(result.minificationFilter))
-            return false;
-    }
-
-    if (result.changedProperties & MagnificationFilterChanged) {
-        if (!decoder.decode(result.magnificationFilter))
-            return false;
-    }
-
-    if (result.changedProperties & BlendModeChanged) {
-        if (!decoder.decode(result.blendMode))
-            return false;
-    }
-
-    if (result.changedProperties & WindRuleChanged) {
-        if (!decoder.decode(result.windRule))
-            return false;
-    }
-
-    if (result.changedProperties & SpeedChanged) {
-        if (!decoder.decode(result.speed))
-            return false;
-    }
-
-    if (result.changedProperties & TimeOffsetChanged) {
-        if (!decoder.decode(result.timeOffset))
-            return false;
-    }
-
-    if (result.changedProperties & BackingStoreChanged) {
-        bool hasFrontBuffer = false;
-        if (!decoder.decode(hasFrontBuffer))
-            return false;
-        if (hasFrontBuffer) {
-            auto backingStore = makeUnique<RemoteLayerBackingStore>(nullptr);
-            if (!decoder.decode(*backingStore))
-                return false;
-            
-            result.backingStore = WTFMove(backingStore);
-        } else
-            result.backingStore = nullptr;
-    }
-
-    if (result.changedProperties & BackingStoreAttachmentChanged) {
-        if (!decoder.decode(result.backingStoreAttached))
-            return false;
-    }
-
-    if (result.changedProperties & FiltersChanged) {
-        auto filters = makeUnique<WebCore::FilterOperations>();
-        if (!decoder.decode(*filters))
-            return false;
-        result.filters = WTFMove(filters);
-    }
-
-    if (result.changedProperties & EdgeAntialiasingMaskChanged) {
-        if (!decoder.decode(result.edgeAntialiasingMask))
-            return false;
-    }
-
-    if (result.changedProperties & CustomAppearanceChanged) {
-        if (!decoder.decode(result.customAppearance))
-            return false;
-    }
-
-    if (result.changedProperties & UserInteractionEnabledChanged) {
-        if (!decoder.decode(result.userInteractionEnabled))
-            return false;
-    }
-
-    if (result.changedProperties & EventRegionChanged) {
-        std::optional<WebCore::EventRegion> eventRegion;
-        decoder >> eventRegion;
-        if (!eventRegion)
-            return false;
-        result.eventRegion = WTFMove(*eventRegion);
-    }
-
-#if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
-    if (result.changedProperties & SeparatedChanged) {
-        if (!decoder.decode(result.isSeparated))
-            return false;
-    }
-
-#if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
-    if (result.changedProperties & SeparatedPortalChanged) {
-        if (!decoder.decode(result.isSeparatedPortal))
-            return false;
-    }
-
-    if (result.changedProperties & DescendentOfSeparatedPortalChanged) {
-        if (!decoder.decode(result.isDescendentOfSeparatedPortal))
-            return false;
-    }
-#endif
-#endif
-
-    return true;
-}
-
 RemoteLayerTreeTransaction::RemoteLayerTreeTransaction() = default;
+
 RemoteLayerTreeTransaction::~RemoteLayerTreeTransaction() = default;
 
-void RemoteLayerTreeTransaction::encode(IPC::Encoder& encoder) const
-{
-    encoder << m_rootLayerID;
-    encoder << m_createdLayers;
-
-    encoder << static_cast<uint64_t>(m_changedLayers.size());
-
-    for (const auto& layer : m_changedLayers) {
-        encoder << layer->layerID();
-        encoder << layer->properties();
-    }
-    
-    encoder << m_destroyedLayerIDs;
-    encoder << m_videoLayerIDsPendingFullscreen;
-    encoder << m_layerIDsWithNewlyUnreachableBackingStore;
-
-    encoder << m_contentsSize;
-    encoder << m_scrollOrigin;
-
-    encoder << m_baseLayoutViewportSize;
-    encoder << m_minStableLayoutViewportOrigin;
-    encoder << m_maxStableLayoutViewportOrigin;
-
-    encoder << m_scrollPosition;
-
-    encoder << m_themeColor;
-    encoder << m_pageExtendedBackgroundColor;
-    encoder << m_sampledPageTopColor;
-
-    encoder << m_pageScaleFactor;
-    encoder << m_minimumScaleFactor;
-    encoder << m_maximumScaleFactor;
-    encoder << m_initialScaleFactor;
-    encoder << m_viewportMetaTagWidth;
-
-    encoder << m_renderTreeSize;
-    encoder << m_transactionID;
-    encoder << m_activityStateChangeID;
-
-    encoder << m_newlyReachedPaintingMilestones;
-
-    encoder << m_scaleWasSetByUIProcess;
-    encoder << m_allowsUserScaling;
-
-    encoder << m_avoidsUnsafeArea;
-
-    encoder << m_viewportMetaTagWidthWasExplicit;
-    encoder << m_viewportMetaTagCameFromImageDocument;
-
-    encoder << m_isInStableState;
-
-    encoder << m_callbackIDs;
-
-    encoder << hasEditorState();
-    if (m_editorState)
-        encoder << *m_editorState;
-
-    encoder << m_dynamicViewportSizeUpdateID;
-}
-
-bool RemoteLayerTreeTransaction::decode(IPC::Decoder& decoder, RemoteLayerTreeTransaction& result)
-{
-    if (!decoder.decode(result.m_rootLayerID))
-        return false;
-    if (!result.m_rootLayerID)
-        return false;
-
-    if (!decoder.decode(result.m_createdLayers))
-        return false;
-
-    uint64_t numChangedLayerProperties;
-    if (!decoder.decode(numChangedLayerProperties))
-        return false;
-
-    for (uint64_t i = 0; i < numChangedLayerProperties; ++i) {
-        WebCore::GraphicsLayer::PlatformLayerID layerID;
-        if (!decoder.decode(layerID))
-            return false;
-
-        std::unique_ptr<LayerProperties> layerProperties = makeUnique<LayerProperties>();
-        if (!decoder.decode(*layerProperties))
-            return false;
-
-        result.changedLayerProperties().set(layerID, WTFMove(layerProperties));
-    }
-
-    if (!decoder.decode(result.m_destroyedLayerIDs))
-        return false;
-
-    for (auto& layerID : result.m_destroyedLayerIDs) {
-        if (!layerID)
-            return false;
-    }
-
-    if (!decoder.decode(result.m_videoLayerIDsPendingFullscreen))
-        return false;
-
-    if (!decoder.decode(result.m_layerIDsWithNewlyUnreachableBackingStore))
-        return false;
-
-    for (auto& layerID : result.m_layerIDsWithNewlyUnreachableBackingStore) {
-        if (!layerID)
-            return false;
-    }
-
-    if (!decoder.decode(result.m_contentsSize))
-        return false;
-
-    if (!decoder.decode(result.m_scrollOrigin))
-        return false;
-
-    if (!decoder.decode(result.m_baseLayoutViewportSize))
-        return false;
-
-    if (!decoder.decode(result.m_minStableLayoutViewportOrigin))
-        return false;
-
-    if (!decoder.decode(result.m_maxStableLayoutViewportOrigin))
-        return false;
-
-    if (!decoder.decode(result.m_scrollPosition))
-        return false;
-
-    if (!decoder.decode(result.m_themeColor))
-        return false;
-
-    if (!decoder.decode(result.m_pageExtendedBackgroundColor))
-        return false;
-
-    if (!decoder.decode(result.m_sampledPageTopColor))
-        return false;
-
-    if (!decoder.decode(result.m_pageScaleFactor))
-        return false;
-
-    if (!decoder.decode(result.m_minimumScaleFactor))
-        return false;
-
-    if (!decoder.decode(result.m_maximumScaleFactor))
-        return false;
-
-    if (!decoder.decode(result.m_initialScaleFactor))
-        return false;
-
-    if (!decoder.decode(result.m_viewportMetaTagWidth))
-        return false;
-
-    if (!decoder.decode(result.m_renderTreeSize))
-        return false;
-
-    if (!decoder.decode(result.m_transactionID))
-        return false;
-
-    if (!decoder.decode(result.m_activityStateChangeID))
-        return false;
-
-    if (!decoder.decode(result.m_newlyReachedPaintingMilestones))
-        return false;
-
-    if (!decoder.decode(result.m_scaleWasSetByUIProcess))
-        return false;
-
-    if (!decoder.decode(result.m_allowsUserScaling))
-        return false;
-
-    if (!decoder.decode(result.m_avoidsUnsafeArea))
-        return false;
-
-    if (!decoder.decode(result.m_viewportMetaTagWidthWasExplicit))
-        return false;
-
-    if (!decoder.decode(result.m_viewportMetaTagCameFromImageDocument))
-        return false;
-
-    if (!decoder.decode(result.m_isInStableState))
-        return false;
-
-    std::optional<Vector<TransactionCallbackID>> callbackIDs;
-    decoder >> callbackIDs;
-    if (!callbackIDs)
-        return false;
-    result.m_callbackIDs = WTFMove(*callbackIDs);
-
-    bool hasEditorState;
-    if (!decoder.decode(hasEditorState))
-        return false;
-
-    if (hasEditorState) {
-        EditorState editorState;
-        if (!decoder.decode(editorState))
-            return false;
-        result.setEditorState(editorState);
-    }
-
-    if (!decoder.decode(result.m_dynamicViewportSizeUpdateID))
-        return false;
-
-    return true;
-}
-
-void RemoteLayerTreeTransaction::setRootLayerID(WebCore::GraphicsLayer::PlatformLayerID rootLayerID)
+void RemoteLayerTreeTransaction::setRootLayerID(WebCore::PlatformLayerIdentifier rootLayerID)
 {
     ASSERT_ARG(rootLayerID, rootLayerID);
 
@@ -795,7 +62,8 @@ void RemoteLayerTreeTransaction::setRootLayerID(WebCore::GraphicsLayer::Platform
 
 void RemoteLayerTreeTransaction::layerPropertiesChanged(PlatformCALayerRemote& remoteLayer)
 {
-    m_changedLayers.append(&remoteLayer);
+    ASSERT(WebCore::isInWebProcess());
+    m_changedLayers.changedLayers.add(remoteLayer);
 }
 
 void RemoteLayerTreeTransaction::setCreatedLayers(Vector<LayerCreationProperties> createdLayers)
@@ -803,40 +71,19 @@ void RemoteLayerTreeTransaction::setCreatedLayers(Vector<LayerCreationProperties
     m_createdLayers = WTFMove(createdLayers);
 }
 
-void RemoteLayerTreeTransaction::setDestroyedLayerIDs(Vector<WebCore::GraphicsLayer::PlatformLayerID> destroyedLayerIDs)
+void RemoteLayerTreeTransaction::setDestroyedLayerIDs(Vector<WebCore::PlatformLayerIdentifier> destroyedLayerIDs)
 {
     m_destroyedLayerIDs = WTFMove(destroyedLayerIDs);
 }
 
-void RemoteLayerTreeTransaction::setLayerIDsWithNewlyUnreachableBackingStore(Vector<WebCore::GraphicsLayer::PlatformLayerID> layerIDsWithNewlyUnreachableBackingStore)
+void RemoteLayerTreeTransaction::setLayerIDsWithNewlyUnreachableBackingStore(Vector<WebCore::PlatformLayerIdentifier> layerIDsWithNewlyUnreachableBackingStore)
 {
     m_layerIDsWithNewlyUnreachableBackingStore = WTFMove(layerIDsWithNewlyUnreachableBackingStore);
 }
 
 #if !defined(NDEBUG) || !LOG_DISABLED
 
-static const char* nameForBackingStoreType(RemoteLayerBackingStore::Type type)
-{
-    switch (type) {
-    case RemoteLayerBackingStore::Type::IOSurface:
-        return "IOSurface";
-    case RemoteLayerBackingStore::Type::Bitmap:
-        return "Bitmap";
-    }
-    return nullptr;
-}
-
-static TextStream& operator<<(TextStream& ts, const RemoteLayerBackingStore& backingStore)
-{
-    ts << backingStore.size();
-    ts << " scale=" << backingStore.scale();
-    if (backingStore.isOpaque())
-        ts << " opaque";
-    ts << " " << nameForBackingStoreType(backingStore.type());
-    return ts;
-}
-
-static void dumpChangedLayers(TextStream& ts, const RemoteLayerTreeTransaction::LayerPropertiesMap& changedLayerProperties)
+static void dumpChangedLayers(TextStream& ts, const LayerPropertiesMap& changedLayerProperties)
 {
     if (changedLayerProperties.isEmpty())
         return;
@@ -849,143 +96,158 @@ static void dumpChangedLayers(TextStream& ts, const RemoteLayerTreeTransaction::
     std::sort(layerIDs.begin(), layerIDs.end());
 
     for (auto& layerID : layerIDs) {
-        const RemoteLayerTreeTransaction::LayerProperties& layerProperties = *changedLayerProperties.get(layerID);
+        const auto& layerProperties = *changedLayerProperties.get(layerID);
 
         TextStream::GroupScope group(ts);
         ts << "layer " << layerID;
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::NameChanged)
+        if (layerProperties.changedProperties & LayerChange::NameChanged)
             ts.dumpProperty("name", layerProperties.name);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::ChildrenChanged)
-            ts.dumpProperty<Vector<WebCore::GraphicsLayer::PlatformLayerID>>("children", layerProperties.children);
+        if (layerProperties.changedProperties & LayerChange::ChildrenChanged)
+            ts.dumpProperty<Vector<WebCore::PlatformLayerIdentifier>>("children", layerProperties.children);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::PositionChanged)
+        if (layerProperties.changedProperties & LayerChange::PositionChanged)
             ts.dumpProperty("position", layerProperties.position);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::BoundsChanged)
+        if (layerProperties.changedProperties & LayerChange::BoundsChanged)
             ts.dumpProperty("bounds", layerProperties.bounds);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::AnchorPointChanged)
+        if (layerProperties.changedProperties & LayerChange::AnchorPointChanged)
             ts.dumpProperty("anchorPoint", layerProperties.anchorPoint);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::BackgroundColorChanged)
+        if (layerProperties.changedProperties & LayerChange::BackgroundColorChanged)
             ts.dumpProperty("backgroundColor", layerProperties.backgroundColor);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::BorderColorChanged)
+        if (layerProperties.changedProperties & LayerChange::BorderColorChanged)
             ts.dumpProperty("borderColor", layerProperties.borderColor);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::BorderWidthChanged)
+        if (layerProperties.changedProperties & LayerChange::BorderWidthChanged)
             ts.dumpProperty("borderWidth", layerProperties.borderWidth);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::OpacityChanged)
+        if (layerProperties.changedProperties & LayerChange::OpacityChanged)
             ts.dumpProperty("opacity", layerProperties.opacity);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::TransformChanged)
+        if (layerProperties.changedProperties & LayerChange::TransformChanged)
             ts.dumpProperty("transform", layerProperties.transform ? *layerProperties.transform : WebCore::TransformationMatrix());
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::SublayerTransformChanged)
+        if (layerProperties.changedProperties & LayerChange::SublayerTransformChanged)
             ts.dumpProperty("sublayerTransform", layerProperties.sublayerTransform ? *layerProperties.sublayerTransform : WebCore::TransformationMatrix());
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::HiddenChanged)
+        if (layerProperties.changedProperties & LayerChange::HiddenChanged)
             ts.dumpProperty("hidden", layerProperties.hidden);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::GeometryFlippedChanged)
+        if (layerProperties.changedProperties & LayerChange::GeometryFlippedChanged)
             ts.dumpProperty("geometryFlipped", layerProperties.geometryFlipped);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::DoubleSidedChanged)
+        if (layerProperties.changedProperties & LayerChange::DoubleSidedChanged)
             ts.dumpProperty("doubleSided", layerProperties.doubleSided);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::MasksToBoundsChanged)
+        if (layerProperties.changedProperties & LayerChange::MasksToBoundsChanged)
             ts.dumpProperty("masksToBounds", layerProperties.masksToBounds);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::OpaqueChanged)
+        if (layerProperties.changedProperties & LayerChange::OpaqueChanged)
             ts.dumpProperty("opaque", layerProperties.opaque);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::ContentsHiddenChanged)
+        if (layerProperties.changedProperties & LayerChange::ContentsHiddenChanged)
             ts.dumpProperty("contentsHidden", layerProperties.contentsHidden);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::MaskLayerChanged)
+        if (layerProperties.changedProperties & LayerChange::MaskLayerChanged)
             ts.dumpProperty("maskLayer", layerProperties.maskLayerID);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::ClonedContentsChanged)
+        if (layerProperties.changedProperties & LayerChange::ClonedContentsChanged)
             ts.dumpProperty("clonedLayer", layerProperties.clonedLayerID);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::ContentsRectChanged)
+#if ENABLE(SCROLLING_THREAD)
+        if (layerProperties.changedProperties & LayerChange::ScrollingNodeIDChanged)
+            ts.dumpProperty("scrollingNodeID", layerProperties.scrollingNodeID);
+#endif
+
+        if (layerProperties.changedProperties & LayerChange::ContentsRectChanged)
             ts.dumpProperty("contentsRect", layerProperties.contentsRect);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::ContentsScaleChanged)
+        if (layerProperties.changedProperties & LayerChange::ContentsScaleChanged)
             ts.dumpProperty("contentsScale", layerProperties.contentsScale);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::CornerRadiusChanged)
+        if (layerProperties.changedProperties & LayerChange::CornerRadiusChanged)
             ts.dumpProperty("cornerRadius", layerProperties.cornerRadius);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::ShapeRoundedRectChanged)
+        if (layerProperties.changedProperties & LayerChange::ShapeRoundedRectChanged)
             ts.dumpProperty("shapeRect", layerProperties.shapeRoundedRect ? *layerProperties.shapeRoundedRect : WebCore::FloatRoundedRect());
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::MinificationFilterChanged)
+        if (layerProperties.changedProperties & LayerChange::MinificationFilterChanged)
             ts.dumpProperty("minificationFilter", layerProperties.minificationFilter);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::MagnificationFilterChanged)
+        if (layerProperties.changedProperties & LayerChange::MagnificationFilterChanged)
             ts.dumpProperty("magnificationFilter", layerProperties.magnificationFilter);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::BlendModeChanged)
+        if (layerProperties.changedProperties & LayerChange::BlendModeChanged)
             ts.dumpProperty("blendMode", layerProperties.blendMode);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::SpeedChanged)
+        if (layerProperties.changedProperties & LayerChange::SpeedChanged)
             ts.dumpProperty("speed", layerProperties.speed);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::TimeOffsetChanged)
+        if (layerProperties.changedProperties & LayerChange::TimeOffsetChanged)
             ts.dumpProperty("timeOffset", layerProperties.timeOffset);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::BackingStoreChanged) {
-            if (const RemoteLayerBackingStore* backingStore = layerProperties.backingStore.get())
-                ts.dumpProperty<const RemoteLayerBackingStore&>("backingStore", *backingStore);
+        if (layerProperties.changedProperties & LayerChange::BackingStoreChanged) {
+            if (auto* backingStoreProperties = layerProperties.backingStoreOrProperties.properties.get())
+                ts.dumpProperty("backingStore", *backingStoreProperties);
             else
                 ts.dumpProperty("backingStore", "removed");
         }
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::BackingStoreAttachmentChanged)
+        if (layerProperties.changedProperties & LayerChange::BackingStoreAttachmentChanged)
             ts.dumpProperty("backingStoreAttached", layerProperties.backingStoreAttached);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::FiltersChanged)
+        if (layerProperties.changedProperties & LayerChange::FiltersChanged)
             ts.dumpProperty("filters", layerProperties.filters ? *layerProperties.filters : WebCore::FilterOperations());
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::AnimationsChanged) {
-            for (const auto& keyAnimationPair : layerProperties.addedAnimations)
-                ts.dumpProperty("animation " +  keyAnimationPair.first, keyAnimationPair.second);
+        if (layerProperties.changedProperties & LayerChange::AnimationsChanged) {
+            for (const auto& keyAnimationPair : layerProperties.animationChanges.addedAnimations)
+                ts.dumpProperty(makeString("animation "_s, keyAnimationPair.first), keyAnimationPair.second);
 
-            for (const auto& name : layerProperties.keyPathsOfAnimationsToRemove)
+            for (const auto& name : layerProperties.animationChanges.keysOfAnimationsToRemove)
                 ts.dumpProperty("removed animation", name);
         }
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::EdgeAntialiasingMaskChanged)
-            ts.dumpProperty("edgeAntialiasingMask", layerProperties.edgeAntialiasingMask);
+        if (layerProperties.changedProperties & LayerChange::AntialiasesEdgesChanged)
+            ts.dumpProperty("antialiasesEdges", layerProperties.antialiasesEdges);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::CustomAppearanceChanged)
+        if (layerProperties.changedProperties & LayerChange::CustomAppearanceChanged)
             ts.dumpProperty("customAppearance", layerProperties.customAppearance);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::UserInteractionEnabledChanged)
+        if (layerProperties.changedProperties & LayerChange::UserInteractionEnabledChanged)
             ts.dumpProperty("userInteractionEnabled", layerProperties.userInteractionEnabled);
 
+        if (layerProperties.changedProperties & LayerChange::EventRegionChanged)
+            ts.dumpProperty("eventRegion", layerProperties.eventRegion);
+
+#if ENABLE(INTERACTION_REGIONS_IN_EVENT_REGION)
+        if (layerProperties.changedProperties & LayerChange::VisibleRectChanged)
+            ts.dumpProperty("visibleRect", layerProperties.visibleRect);
+#endif
 #if HAVE(CORE_ANIMATION_SEPARATED_LAYERS)
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::SeparatedChanged)
+        if (layerProperties.changedProperties & LayerChange::SeparatedChanged)
             ts.dumpProperty("isSeparated", layerProperties.isSeparated);
 
 #if HAVE(CORE_ANIMATION_SEPARATED_PORTALS)
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::SeparatedPortalChanged)
+        if (layerProperties.changedProperties & LayerChange::SeparatedPortalChanged)
             ts.dumpProperty("isSeparatedPortal", layerProperties.isSeparatedPortal);
 
-        if (layerProperties.changedProperties & RemoteLayerTreeTransaction::DescendentOfSeparatedPortalChanged)
+        if (layerProperties.changedProperties & LayerChange::DescendentOfSeparatedPortalChanged)
             ts.dumpProperty("isDescendentOfSeparatedPortal", layerProperties.isDescendentOfSeparatedPortal);
 #endif
 #endif
+
+        if (layerProperties.changedProperties & LayerChange::VideoGravityChanged)
+            ts.dumpProperty("videoGravity", layerProperties.videoGravity);
     }
 }
 
 void RemoteLayerTreeTransaction::dump() const
 {
-    fprintf(stderr, "%s", description().utf8().data());
+    WTFLogAlways("%s", description().utf8().data());
 }
 
 String RemoteLayerTreeTransaction::description() const
@@ -1009,6 +271,11 @@ String RemoteLayerTreeTransaction::description() const
     if (m_pageScaleFactor != 1)
         ts.dumpProperty("pageScaleFactor", m_pageScaleFactor);
 
+#if PLATFORM(MAC)
+    ts.dumpProperty("pageScalingLayer", m_pageScalingLayerID);
+    ts.dumpProperty("scrolledContentsLayerID", m_scrolledContentsLayerID);
+#endif
+
     ts.dumpProperty("minimumScaleFactor", m_minimumScaleFactor);
     ts.dumpProperty("maximumScaleFactor", m_maximumScaleFactor);
     ts.dumpProperty("initialScaleFactor", m_initialScaleFactor);
@@ -1028,18 +295,16 @@ String RemoteLayerTreeTransaction::description() const
             TextStream::GroupScope group(ts);
             ts << createdLayer.type <<" " << createdLayer.layerID;
             switch (createdLayer.type) {
-            case WebCore::PlatformCALayer::LayerTypeAVPlayerLayer:
-                ts << " (context-id " << createdLayer.hostingContextID << ")";
+            case WebCore::PlatformCALayer::LayerType::LayerTypeAVPlayerLayer:
+                ts << " (context-id " << createdLayer.hostingContextID() << ")";
                 break;
-            case WebCore::PlatformCALayer::LayerTypeContentsProvidedLayer:
-                ts << " (context-id " << createdLayer.hostingContextID << ")";
-                break;
-            case WebCore::PlatformCALayer::LayerTypeCustom:
-                ts << " (context-id " << createdLayer.hostingContextID << ")";
+            case WebCore::PlatformCALayer::LayerType::LayerTypeCustom:
+                ts << " (context-id " << createdLayer.hostingContextID() << ")";
                 break;
 #if ENABLE(MODEL_ELEMENT)
-            case WebCore::PlatformCALayer::LayerTypeModelLayer:
-                ts << " (model " << *createdLayer.model << ")";
+            case WebCore::PlatformCALayer::LayerType::LayerTypeModelLayer:
+                if (auto* model = std::get_if<Ref<WebCore::Model>>(&createdLayer.additionalData))
+                    ts << " (model " << model->get() << ")";
                 break;
 #endif
             default:
@@ -1048,10 +313,10 @@ String RemoteLayerTreeTransaction::description() const
         }
     }
 
-    dumpChangedLayers(ts, m_changedLayerProperties);
+    dumpChangedLayers(ts, m_changedLayers.changedLayerProperties);
 
     if (!m_destroyedLayerIDs.isEmpty())
-        ts.dumpProperty<Vector<WebCore::GraphicsLayer::PlatformLayerID>>("destroyed-layers", m_destroyedLayerIDs);
+        ts.dumpProperty<Vector<WebCore::PlatformLayerIdentifier>>("destroyed-layers", m_destroyedLayerIDs);
 
     if (m_editorState) {
         TextStream::GroupScope scope(ts);
@@ -1066,4 +331,119 @@ String RemoteLayerTreeTransaction::description() const
 
 #endif // !defined(NDEBUG) || !LOG_DISABLED
 
+bool RemoteLayerTreeTransaction::hasAnyLayerChanges() const
+{
+    return m_changedLayers.changedLayers.size()
+        || m_changedLayers.changedLayerProperties.size()
+        || m_createdLayers.size()
+        || m_destroyedLayerIDs.size()
+        || m_layerIDsWithNewlyUnreachableBackingStore.size();
+}
+
+HashSet<Ref<PlatformCALayerRemote>>& RemoteLayerTreeTransaction::changedLayers()
+{
+    ASSERT(WebCore::isInWebProcess());
+    return m_changedLayers.changedLayers;
+}
+
+const LayerPropertiesMap& RemoteLayerTreeTransaction::changedLayerProperties() const
+{
+    ASSERT(!WebCore::isInAuxiliaryProcess());
+    return m_changedLayers.changedLayerProperties;
+}
+
+LayerPropertiesMap& RemoteLayerTreeTransaction::changedLayerProperties()
+{
+    ASSERT(!WebCore::isInAuxiliaryProcess());
+    return m_changedLayers.changedLayerProperties;
+}
+
+ChangedLayers::ChangedLayers() = default;
+
+ChangedLayers::~ChangedLayers() = default;
+
+ChangedLayers::ChangedLayers(ChangedLayers&&) = default;
+
+ChangedLayers& ChangedLayers::operator=(ChangedLayers&&) = default;
+
+ChangedLayers::ChangedLayers(LayerPropertiesMap&& changedLayerProperties)
+    : changedLayerProperties(WTFMove(changedLayerProperties)) { }
+
+RemoteLayerTreeTransaction::LayerCreationProperties::LayerCreationProperties() = default;
+
+RemoteLayerTreeTransaction::LayerCreationProperties::LayerCreationProperties(LayerCreationProperties&&) = default;
+
+auto RemoteLayerTreeTransaction::LayerCreationProperties::operator=(LayerCreationProperties&&) -> LayerCreationProperties& = default;
+
+RemoteLayerBackingStoreOrProperties::~RemoteLayerBackingStoreOrProperties() = default;
+
+RemoteLayerTreeTransaction::LayerCreationProperties::LayerCreationProperties(WebCore::PlatformLayerIdentifier layerID, WebCore::PlatformCALayer::LayerType type, std::optional<RemoteLayerTreeTransaction::LayerCreationProperties::VideoElementData>&& videoElementData, RemoteLayerTreeTransaction::LayerCreationProperties::AdditionalData&& additionalData)
+    : layerID(layerID)
+    , type(type)
+    , videoElementData(WTFMove(videoElementData))
+    , additionalData(WTFMove(additionalData)) { }
+
+std::optional<WebCore::LayerHostingContextIdentifier> RemoteLayerTreeTransaction::LayerCreationProperties::hostIdentifier() const
+{
+    if (auto* identifier = std::get_if<WebCore::LayerHostingContextIdentifier>(&additionalData))
+        return *identifier;
+    return std::nullopt;
+}
+
+uint32_t RemoteLayerTreeTransaction::LayerCreationProperties::hostingContextID() const
+{
+    if (auto* customData = std::get_if<CustomData>(&additionalData))
+        return customData->hostingContextID;
+    return 0;
+}
+
+bool RemoteLayerTreeTransaction::LayerCreationProperties::preservesFlip() const
+{
+    if (auto* customData = std::get_if<CustomData>(&additionalData))
+        return customData->preservesFlip;
+    return false;
+}
+
+float RemoteLayerTreeTransaction::LayerCreationProperties::hostingDeviceScaleFactor() const
+{
+    if (auto* customData = std::get_if<CustomData>(&additionalData))
+        return customData->hostingDeviceScaleFactor;
+    return 1;
+}
+
 } // namespace WebKit
+
+namespace IPC {
+
+void ArgumentCoder<WebKit::ChangedLayers>::encode(Encoder& encoder, const WebKit::ChangedLayers& instance)
+{
+    // Although the data is not stored as a LayerPropertiesMap in the web content process, we want it to
+    // decode as a LayerPropertiesMap in the UI process without doing any unnecessary transformations or allocations.
+    ASSERT(WebCore::isInWebProcess());
+    encoder << instance.changedLayers.size();
+    for (const auto& layer : instance.changedLayers) {
+        encoder << layer->layerID();
+        encoder << layer->properties();
+    }
+}
+
+template<> struct ArgumentCoder<WebKit::RemoteLayerBackingStore> {
+    static void encode(Encoder& encoder, const WebKit::RemoteLayerBackingStore& store)
+    {
+        store.encode(encoder);
+    }
+    // This intentionally has no decode because it is only decoded as a RemoteLayerBackingStoreProperties.
+};
+
+void ArgumentCoder<WebKit::RemoteLayerBackingStoreOrProperties>::encode(Encoder& encoder, const WebKit::RemoteLayerBackingStoreOrProperties& instance)
+{
+    // The web content process has a std::unique_ptr<RemoteLayerBackingStore> but we want it to decode
+    // in the UI process as a std::unique_ptr<RemoteLayerBackingStoreProperties>.
+    ASSERT(WebCore::isInWebProcess());
+    bool hasFrontBuffer = instance.store && instance.store->hasFrontBuffer();
+    encoder << hasFrontBuffer;
+    if (hasFrontBuffer)
+        encoder << *instance.store;
+}
+
+}

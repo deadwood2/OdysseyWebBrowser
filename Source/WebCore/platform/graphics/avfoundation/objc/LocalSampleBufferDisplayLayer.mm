@@ -31,27 +31,31 @@
 #import "Color.h"
 #import "IntSize.h"
 #import "Logging.h"
-#import "MediaSampleAVFObjC.h"
-
+#import "MediaUtilities.h"
+#import "VideoFrame.h"
+#import "VideoFrameMetadata.h"
 #import <AVFoundation/AVSampleBufferDisplayLayer.h>
 #import <QuartzCore/CALayer.h>
 #import <QuartzCore/CATransaction.h>
-
+#import <pal/avfoundation/MediaTimeAVFoundation.h>
+#import <pal/spi/cocoa/AVFoundationSPI.h>
 #import <wtf/MainThread.h>
 #import <wtf/MonotonicTime.h>
 #import <wtf/cf/TypeCastsCF.h>
 
+#import <pal/cf/CoreMediaSoftLink.h>
 #import <pal/cocoa/AVFoundationSoftLink.h>
 
 using namespace WebCore;
 
 @interface WebAVSampleBufferStatusChangeListener : NSObject {
-    WeakPtr<LocalSampleBufferDisplayLayer> _parent;
+    RetainPtr<PlatformLayer> _displayLayer;
+    ThreadSafeWeakPtr<LocalSampleBufferDisplayLayer> _parent;
 }
 
 - (id)initWithParent:(LocalSampleBufferDisplayLayer*)callback;
 - (void)invalidate;
-- (void)begin;
+- (void)begin:(PlatformLayer*)displayLayer;
 - (void)stop;
 @end
 
@@ -62,7 +66,7 @@ using namespace WebCore;
     if (!(self = [super init]))
         return nil;
 
-    _parent = makeWeakPtr(parent);
+    _parent = parent;
 
     return self;
 }
@@ -79,25 +83,21 @@ using namespace WebCore;
     _parent = nullptr;
 }
 
-- (void)begin
+- (void)begin:(PlatformLayer*)displayLayer
 {
-    ASSERT(_parent);
-    ASSERT(_parent->displayLayer());
-    ASSERT(_parent->rootLayer());
-
-    [_parent->displayLayer() addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
-    [_parent->displayLayer() addObserver:self forKeyPath:@"error" options:NSKeyValueObservingOptionNew context:nil];
+    _displayLayer = displayLayer;
+    [_displayLayer addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
+    [_displayLayer addObserver:self forKeyPath:@"error" options:NSKeyValueObservingOptionNew context:nil];
 }
 
 - (void)stop
 {
-    if (!_parent)
+    if (!_displayLayer)
         return;
 
-    if (_parent->displayLayer()) {
-        [_parent->displayLayer() removeObserver:self forKeyPath:@"status"];
-        [_parent->displayLayer() removeObserver:self forKeyPath:@"error"];
-    }
+    [_displayLayer removeObserver:self forKeyPath:@"status"];
+    [_displayLayer removeObserver:self forKeyPath:@"error"];
+    _displayLayer = nullptr;
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
@@ -111,16 +111,16 @@ using namespace WebCore;
 
     if ([keyPath isEqualToString:@"status"]) {
         callOnMainThread([protectedSelf = RetainPtr<WebAVSampleBufferStatusChangeListener>(self)] {
-            if (protectedSelf->_parent)
-                protectedSelf->_parent->layerStatusDidChange();
+            if (auto parent = protectedSelf->_parent.get())
+                parent->layerStatusDidChange();
         });
         return;
     }
 
     if ([keyPath isEqualToString:@"error"]) {
         callOnMainThread([protectedSelf = RetainPtr<WebAVSampleBufferStatusChangeListener>(self)] {
-            if (protectedSelf->_parent)
-                protectedSelf->_parent->layerErrorDidChange();
+            if (auto parent = protectedSelf->_parent.get())
+                parent->layerErrorDidChange();
         });
         return;
     }
@@ -138,20 +138,25 @@ static void runWithoutAnimations(const WTF::Function<void()>& function)
     [CATransaction commit];
 }
 
-std::unique_ptr<LocalSampleBufferDisplayLayer> LocalSampleBufferDisplayLayer::create(Client& client)
+RefPtr<LocalSampleBufferDisplayLayer> LocalSampleBufferDisplayLayer::create(SampleBufferDisplayLayerClient& client)
 {
-    auto sampleBufferDisplayLayer = adoptNS([PAL::allocAVSampleBufferDisplayLayerInstance() init]);
+    RetainPtr<AVSampleBufferDisplayLayer> sampleBufferDisplayLayer;
+    @try {
+        sampleBufferDisplayLayer = adoptNS([PAL::allocAVSampleBufferDisplayLayerInstance() init]);
+    } @catch(id exception) {
+        RELEASE_LOG_ERROR(WebRTC, "LocalSampleBufferDisplayLayer::create failed to allocate display layer");
+    }
     if (!sampleBufferDisplayLayer)
         return nullptr;
 
-    return makeUnique<LocalSampleBufferDisplayLayer>(WTFMove(sampleBufferDisplayLayer), client);
+    return adoptRef(*new LocalSampleBufferDisplayLayer(WTFMove(sampleBufferDisplayLayer), client));
 }
 
-LocalSampleBufferDisplayLayer::LocalSampleBufferDisplayLayer(RetainPtr<AVSampleBufferDisplayLayer>&& sampleBufferDisplayLayer, Client& client)
+LocalSampleBufferDisplayLayer::LocalSampleBufferDisplayLayer(RetainPtr<AVSampleBufferDisplayLayer>&& sampleBufferDisplayLayer, SampleBufferDisplayLayerClient& client)
     : SampleBufferDisplayLayer(client)
     , m_statusChangeListener(adoptNS([[WebAVSampleBufferStatusChangeListener alloc] initWithParent:this]))
     , m_sampleBufferDisplayLayer(WTFMove(sampleBufferDisplayLayer))
-    , m_processingQueue(WorkQueue::create("LocalSampleBufferDisplayLayer queue"))
+    , m_processingQueue(WorkQueue::create("LocalSampleBufferDisplayLayer queue"_s))
 #if !RELEASE_LOG_DISABLED
     , m_frameRateMonitor([this](auto info) { onIrregularFrameRateNotification(info.frameTime, info.lastFrameTime); })
 #endif
@@ -159,29 +164,27 @@ LocalSampleBufferDisplayLayer::LocalSampleBufferDisplayLayer(RetainPtr<AVSampleB
     ASSERT(isMainThread());
 }
 
-void LocalSampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size, CompletionHandler<void(bool didSucceed)>&& callback)
+void LocalSampleBufferDisplayLayer::initialize(bool hideRootLayer, IntSize size, bool shouldMaintainAspectRatio, CompletionHandler<void(bool didSucceed)>&& callback)
 {
-    m_sampleBufferDisplayLayer.get().backgroundColor = cachedCGColor(Color::black);
     m_sampleBufferDisplayLayer.get().anchorPoint = { .5, .5 };
-    m_sampleBufferDisplayLayer.get().needsDisplayOnBoundsChange = YES;
-    m_sampleBufferDisplayLayer.get().videoGravity = AVLayerVideoGravityResizeAspectFill;
+    m_sampleBufferDisplayLayer.get().videoGravity = shouldMaintainAspectRatio ? AVLayerVideoGravityResizeAspect : AVLayerVideoGravityResize;
 
     m_rootLayer = adoptNS([[CALayer alloc] init]);
     m_rootLayer.get().hidden = hideRootLayer;
 
-    m_rootLayer.get().backgroundColor = cachedCGColor(Color::black);
-    m_rootLayer.get().needsDisplayOnBoundsChange = YES;
+    auto bounds = CGRectMake(0, 0, size.width(), size.height());
+    m_rootLayer.get().bounds = bounds;
+    m_rootLayer.get().position = { bounds.size.width / 2, bounds.size.height / 2 };
+    m_sampleBufferDisplayLayer.get().bounds = bounds;
+    m_sampleBufferDisplayLayer.get().position = { bounds.size.width / 2, bounds.size.height / 2 };
 
-    m_rootLayer.get().bounds = CGRectMake(0, 0, size.width(), size.height());
-
-    [m_statusChangeListener begin];
+    [m_statusChangeListener begin:m_sampleBufferDisplayLayer.get()];
 
     [m_rootLayer addSublayer:m_sampleBufferDisplayLayer.get()];
 
-#ifndef NDEBUG
     [m_sampleBufferDisplayLayer setName:@"LocalSampleBufferDisplayLayer AVSampleBufferDisplayLayer"];
     [m_rootLayer setName:@"LocalSampleBufferDisplayLayer AVSampleBufferDisplayLayer parent"];
-#endif
+
     callback(true);
 }
 
@@ -189,32 +192,54 @@ LocalSampleBufferDisplayLayer::~LocalSampleBufferDisplayLayer()
 {
     ASSERT(isMainThread());
 
-    m_processingQueue->dispatchSync([] { });
-
-    m_processingQueue = nullptr;
-
     [m_statusChangeListener stop];
 
-    m_pendingVideoSampleQueue.clear();
+    m_pendingVideoFrameQueue.clear();
 
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [m_sampleBufferDisplayLayer stopRequestingMediaData];
     [m_sampleBufferDisplayLayer flush];
+ALLOW_DEPRECATED_DECLARATIONS_END
     m_sampleBufferDisplayLayer = nullptr;
 
     m_rootLayer = nullptr;
 }
 
+void LocalSampleBufferDisplayLayer::setShouldMaintainAspectRatio(bool shouldMaintainAspectRatio)
+{
+    ensureOnMainThread([this, weakThis = ThreadSafeWeakPtr { *this }, shouldMaintainAspectRatio]() mutable {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
+            return;
+
+        runWithoutAnimations([&] {
+            m_sampleBufferDisplayLayer.get().videoGravity = shouldMaintainAspectRatio ? AVLayerVideoGravityResizeAspect : AVLayerVideoGravityResize;
+        });
+    });
+}
+
 void LocalSampleBufferDisplayLayer::layerStatusDidChange()
 {
     ASSERT(isMainThread());
-    if (m_client && m_sampleBufferDisplayLayer.get().status == AVQueuedSampleBufferRenderingStatusFailed)
-        m_client->sampleBufferDisplayLayerStatusDidFail();
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    if (m_client && m_sampleBufferDisplayLayer.get().status == AVQueuedSampleBufferRenderingStatusFailed) {
+ALLOW_DEPRECATED_DECLARATIONS_END
+        RELEASE_LOG_ERROR(WebRTC, "LocalSampleBufferDisplayLayer::layerStatusDidChange going to failed status (%{public}s) ", m_logIdentifier.utf8().data());
+        if (!m_didFail) {
+            m_didFail = true;
+            m_client->sampleBufferDisplayLayerStatusDidFail();
+        }
+    }
 }
 
 void LocalSampleBufferDisplayLayer::layerErrorDidChange()
 {
     ASSERT(isMainThread());
-    // FIXME: Log error.
+    RELEASE_LOG_ERROR(WebRTC, "LocalSampleBufferDisplayLayer::layerErrorDidChange (%{public}s) ", m_logIdentifier.utf8().data());
+    if (!m_client || m_didFail)
+        return;
+    m_didFail = true;
+    m_client->sampleBufferDisplayLayerStatusDidFail();
 }
 
 PlatformLayer* LocalSampleBufferDisplayLayer::displayLayer()
@@ -229,7 +254,9 @@ PlatformLayer* LocalSampleBufferDisplayLayer::rootLayer()
 
 bool LocalSampleBufferDisplayLayer::didFail() const
 {
-    return [m_sampleBufferDisplayLayer status] == AVQueuedSampleBufferRenderingStatusFailed;
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    return m_didFail || [m_sampleBufferDisplayLayer status] == AVQueuedSampleBufferRenderingStatusFailed;
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 void LocalSampleBufferDisplayLayer::updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer)
@@ -238,6 +265,10 @@ void LocalSampleBufferDisplayLayer::updateDisplayMode(bool hideDisplayLayer, boo
         return;
 
     runWithoutAnimations([&] {
+        if (hideDisplayLayer && !hideRootLayer)
+            m_rootLayer.get().backgroundColor = cachedCGColor(Color::black).get();
+        else
+            m_rootLayer.get().backgroundColor = nil;
         m_sampleBufferDisplayLayer.get().hidden = hideDisplayLayer;
         m_rootLayer.get().hidden = hideRootLayer;
     });
@@ -248,97 +279,136 @@ CGRect LocalSampleBufferDisplayLayer::bounds() const
     return m_rootLayer.get().bounds;
 }
 
-void LocalSampleBufferDisplayLayer::updateRootLayerAffineTransform(CGAffineTransform transform)
+void LocalSampleBufferDisplayLayer::updateBoundsAndPosition(CGRect bounds, std::optional<WTF::MachSendRight>&&)
 {
-    runWithoutAnimations([&] {
-        m_rootLayer.get().affineTransform = transform;
-    });
+    updateSampleLayerBoundsAndPosition(bounds);
 }
 
-void LocalSampleBufferDisplayLayer::updateAffineTransform(CGAffineTransform transform)
+void LocalSampleBufferDisplayLayer::updateSampleLayerBoundsAndPosition(std::optional<CGRect> bounds)
 {
-    runWithoutAnimations([&] {
-        m_sampleBufferDisplayLayer.get().affineTransform = transform;
-    });
-}
+    ensureOnMainThread([this, weakThis = ThreadSafeWeakPtr { *this }, bounds, rotation = m_videoFrameRotation, affineTransform = m_affineTransform]() mutable {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
+            return;
 
-void LocalSampleBufferDisplayLayer::updateBoundsAndPosition(CGRect bounds, MediaSample::VideoRotation rotation)
-{
-    updateRootLayerBoundsAndPosition(bounds, rotation, ShouldUpdateRootLayer::No);
-}
-
-void LocalSampleBufferDisplayLayer::updateRootLayerBoundsAndPosition(CGRect bounds, MediaSample::VideoRotation rotation, ShouldUpdateRootLayer shouldUpdateRootLayer)
-{
-    runWithoutAnimations([&] {
-        CGPoint position = { bounds.size.width / 2, bounds.size.height / 2};
-
-        if (shouldUpdateRootLayer == ShouldUpdateRootLayer::Yes) {
-            m_rootLayer.get().position = position;
-            m_rootLayer.get().bounds = bounds;
-        }
-
-        if (rotation == MediaSample::VideoRotation::Right || rotation == MediaSample::VideoRotation::Left)
-            std::swap(bounds.size.width, bounds.size.height);
-
-        m_sampleBufferDisplayLayer.get().position = position;
-        m_sampleBufferDisplayLayer.get().bounds = bounds;
+        auto layerBounds = bounds.value_or(m_rootLayer.get().bounds);
+        CGPoint layerPosition { layerBounds.size.width / 2, layerBounds.size.height / 2 };
+        if (rotation == VideoFrame::Rotation::Right || rotation == VideoFrame::Rotation::Left)
+            std::swap(layerBounds.size.width, layerBounds.size.height);
+        runWithoutAnimations([&] {
+            if (bounds) {
+                m_rootLayer.get().position = { bounds->size.width / 2, bounds->size.height / 2 };
+                m_rootLayer.get().bounds = *bounds;
+            }
+            m_sampleBufferDisplayLayer.get().affineTransform = affineTransform;
+            m_sampleBufferDisplayLayer.get().position = layerPosition;
+            m_sampleBufferDisplayLayer.get().bounds = layerBounds;
+        });
     });
 }
 
 void LocalSampleBufferDisplayLayer::flush()
 {
-    m_processingQueue->dispatch([this] {
+    m_processingQueue->dispatch([this, weakThis = ThreadSafeWeakPtr { *this }] {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
+            return;
+
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         [m_sampleBufferDisplayLayer flush];
+ALLOW_DEPRECATED_DECLARATIONS_END
     });
 }
 
 void LocalSampleBufferDisplayLayer::flushAndRemoveImage()
 {
-    m_processingQueue->dispatch([this] {
-        [m_sampleBufferDisplayLayer flushAndRemoveImage];
+    m_processingQueue->dispatch([this, weakThis = ThreadSafeWeakPtr { *this }] {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
+            return;
+
+        @try {
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+            [m_sampleBufferDisplayLayer flushAndRemoveImage];
+ALLOW_DEPRECATED_DECLARATIONS_END
+        } @catch(id exception) {
+            RELEASE_LOG_ERROR(WebRTC, "LocalSampleBufferDisplayLayer::flushAndRemoveImage failed");
+            layerErrorDidChange();
+        }
+    });
+}
+
+static void setSampleBufferAsDisplayImmediately(CMSampleBufferRef sampleBuffer)
+{
+    CFArrayRef attachmentsArray = PAL::CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, true);
+    if (!attachmentsArray)
+        return;
+    for (CFIndex i = 0; i < CFArrayGetCount(attachmentsArray); ++i) {
+        CFMutableDictionaryRef attachments = checked_cf_cast<CFMutableDictionaryRef>(CFArrayGetValueAtIndex(attachmentsArray, i));
+        CFDictionarySetValue(attachments, PAL::kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
+    }
+}
+
+static inline CGAffineTransform transformationMatrixForVideoFrame(VideoFrame& videoFrame)
+{
+    auto size = videoFrame.presentationSize();
+    size_t width = static_cast<size_t>(size.width());
+    size_t height = static_cast<size_t>(size.height());
+    if (!width || !height)
+        return CGAffineTransformIdentity;
+
+#if PLATFORM(MAC)
+    int rotationAngle = -static_cast<int>(videoFrame.rotation());
+#else
+    int rotationAngle = static_cast<int>(videoFrame.rotation());
+#endif
+    auto videoTransform = CGAffineTransformMakeRotation(rotationAngle * M_PI / 180);
+    if (videoFrame.isMirrored())
+        videoTransform = CGAffineTransformScale(videoTransform, -1, 1);
+
+    return videoTransform;
+}
+
+void LocalSampleBufferDisplayLayer::enqueueVideoFrame(VideoFrame& videoFrame)
+{
+    auto affineTransform = transformationMatrixForVideoFrame(videoFrame);
+    if (!CGAffineTransformEqualToTransform(affineTransform, m_affineTransform)) {
+        m_affineTransform = affineTransform;
+        m_videoFrameRotation = videoFrame.rotation();
+        updateSampleLayerBoundsAndPosition({ });
+    }
+
+    m_processingQueue->dispatch([this, weakThis = ThreadSafeWeakPtr { *this }, pixelBuffer = RetainPtr { videoFrame.pixelBuffer() }, presentationTime = videoFrame.presentationTime()]() mutable {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
+            return;
+
+        assertIsCurrent(workQueue());
+        enqueueBufferInternal(pixelBuffer.get(), presentationTime);
     });
 }
 
 static const double rendererLatency = 0.02;
 
-void LocalSampleBufferDisplayLayer::enqueueSample(MediaSample& sample)
+void LocalSampleBufferDisplayLayer::enqueueBufferInternal(CVPixelBufferRef pixelBuffer, MediaTime presentationTime)
 {
-    if (m_paused) {
-#if !RELEASE_LOG_DISABLED
-        m_frameRateMonitor.update();
-#endif
-        return;
-    }
+    assertIsCurrent(workQueue());
 
-    m_processingQueue->dispatch([this, sample = makeRef(sample)] {
-        if (![m_sampleBufferDisplayLayer isReadyForMoreMediaData]) {
-            RELEASE_LOG(WebRTC, "LocalSampleBufferDisplayLayer::enqueueSample (%{public}s) not ready for more media data", m_logIdentifier.utf8().data());
-            addSampleToPendingQueue(sample);
-            requestNotificationWhenReadyForVideoData();
-            return;
-        }
-        enqueueSampleBuffer(sample);
-    });
-}
-
-void LocalSampleBufferDisplayLayer::enqueueSampleBuffer(MediaSample& sample)
-{
-    ASSERT(!isMainThread());
-
-    auto sampleToEnqueue = sample.platformSample().sample.cmSampleBuffer;
+    auto sampleBuffer = createVideoSampleBuffer(pixelBuffer, PAL::toCMTime(presentationTime));
     auto now = MediaTime::createWithDouble(MonotonicTime::now().secondsSinceEpoch().value() + rendererLatency);
+    if (m_renderPolicy == RenderPolicy::Immediately || now >= presentationTime)
+        setSampleBufferAsDisplayImmediately(sampleBuffer.get());
 
-    // If needed, we set the sample buffer to kCMSampleAttachmentKey_DisplayImmediately as a workaround to rdar://problem/49274083.
-    // We clone the sample buffer as modifying the attachments of a sample buffer used elsewhere (encoding e.g.) may not be thread safe.
-    RetainPtr<CMSampleBufferRef> newSampleBuffer;
-    if (m_renderPolicy == RenderPolicy::Immediately || now >= sample.presentationTime()) {
-        newSampleBuffer = MediaSampleAVFObjC::cloneSampleBufferAndSetAsDisplayImmediately(sampleToEnqueue);
-        sampleToEnqueue = newSampleBuffer.get();
-    }
-
-    [m_sampleBufferDisplayLayer enqueueSampleBuffer:sampleToEnqueue];
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+    [m_sampleBufferDisplayLayer enqueueSampleBuffer:sampleBuffer.get()];
+ALLOW_DEPRECATED_DECLARATIONS_END
 
 #if !RELEASE_LOG_DISABLED
+    constexpr size_t frameCountPerLog = 1800; // log every minute at 30 fps
+    if (!(m_frameRateMonitor.frameCount() % frameCountPerLog)) {
+        if (auto* metrics = [m_sampleBufferDisplayLayer videoPerformanceMetrics])
+            RELEASE_LOG(WebRTC, "LocalSampleBufferDisplayLayer (%{public}s) metrics, total=%lu, dropped=%lu, corrupted=%lu, display-composited=%lu, non-display-composited=%lu (pending=%lu)", m_logIdentifier.utf8().data(), metrics.totalNumberOfVideoFrames, metrics.numberOfDroppedVideoFrames, metrics.numberOfCorruptedVideoFrames, metrics.numberOfDisplayCompositedVideoFrames, metrics.numberOfNonDisplayCompositedVideoFrames, m_pendingVideoFrameQueue.size());
+    }
     m_frameRateMonitor.update();
 #endif
 }
@@ -346,70 +416,89 @@ void LocalSampleBufferDisplayLayer::enqueueSampleBuffer(MediaSample& sample)
 #if !RELEASE_LOG_DISABLED
 void LocalSampleBufferDisplayLayer::onIrregularFrameRateNotification(MonotonicTime frameTime, MonotonicTime lastFrameTime)
 {
-    callOnMainThread([frameTime = frameTime.secondsSinceEpoch().value(), lastFrameTime = lastFrameTime.secondsSinceEpoch().value(), observedFrameRate = m_frameRateMonitor.observedFrameRate(), frameCount = m_frameRateMonitor.frameCount(), weakThis = makeWeakPtr(this)] {
-        if (!weakThis)
+    assertIsCurrent(workQueue());
+
+    callOnMainThread([frameTime = frameTime.secondsSinceEpoch().value(), lastFrameTime = lastFrameTime.secondsSinceEpoch().value(), observedFrameRate = m_frameRateMonitor.observedFrameRate(), frameCount = m_frameRateMonitor.frameCount(), weakThis = ThreadSafeWeakPtr { *this }] {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
             return;
-        RELEASE_LOG(WebRTC, "LocalSampleBufferDisplayLayer::enqueueSampleBuffer (%{public}s) at %f, previous frame was at %f, observed frame rate is %f, delay since last frame is %f ms, frame count is %lu", weakThis->m_logIdentifier.utf8().data(), frameTime, lastFrameTime, observedFrameRate, (frameTime - lastFrameTime) * 1000, frameCount);
+
+        RELEASE_LOG(WebRTC, "LocalSampleBufferDisplayLayer::enqueueVideoFrame (%{public}s) at %f, previous frame was at %f, observed frame rate is %f, delay since last frame is %f ms, frame count is %lu", protectedThis->m_logIdentifier.utf8().data(), frameTime, lastFrameTime, observedFrameRate, (frameTime - lastFrameTime) * 1000, frameCount);
     });
 }
 #endif
 
-void LocalSampleBufferDisplayLayer::removeOldSamplesFromPendingQueue()
+void LocalSampleBufferDisplayLayer::removeOldVideoFramesFromPendingQueue()
 {
-    ASSERT(!isMainThread());
+    assertIsCurrent(workQueue());
 
-    if (m_pendingVideoSampleQueue.isEmpty())
+    if (m_pendingVideoFrameQueue.isEmpty())
         return;
 
     if (m_renderPolicy == RenderPolicy::Immediately) {
-        m_pendingVideoSampleQueue.clear();
+        m_pendingVideoFrameQueue.clear();
         return;
     }
 
     auto now = MediaTime::createWithDouble(MonotonicTime::now().secondsSinceEpoch().value());
-    while (!m_pendingVideoSampleQueue.isEmpty()) {
-        auto presentationTime = m_pendingVideoSampleQueue.first()->presentationTime();
+    while (!m_pendingVideoFrameQueue.isEmpty()) {
+        auto presentationTime = m_pendingVideoFrameQueue.first()->presentationTime();
         if (presentationTime.isValid() && presentationTime > now)
             break;
-        m_pendingVideoSampleQueue.removeFirst();
+        m_pendingVideoFrameQueue.removeFirst();
     }
 }
 
-void LocalSampleBufferDisplayLayer::addSampleToPendingQueue(MediaSample& sample)
+void LocalSampleBufferDisplayLayer::addVideoFrameToPendingQueue(Ref<VideoFrame>&& videoFrame)
 {
-    ASSERT(!isMainThread());
+    assertIsCurrent(workQueue());
 
-    removeOldSamplesFromPendingQueue();
-    m_pendingVideoSampleQueue.append(sample);
+    removeOldVideoFramesFromPendingQueue();
+    m_pendingVideoFrameQueue.append(WTFMove(videoFrame));
 }
 
-void LocalSampleBufferDisplayLayer::clearEnqueuedSamples()
+void LocalSampleBufferDisplayLayer::clearVideoFrames()
 {
-    m_processingQueue->dispatch([this] {
-        m_pendingVideoSampleQueue.clear();
+    m_processingQueue->dispatch([this, weakThis = ThreadSafeWeakPtr { *this }] {
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
+            return;
+
+        assertIsCurrent(workQueue());
+
+        m_pendingVideoFrameQueue.clear();
     });
 }
 
 void LocalSampleBufferDisplayLayer::requestNotificationWhenReadyForVideoData()
 {
-    auto weakThis = makeWeakPtr(*this);
+    assertIsCurrent(workQueue());
+
+    ThreadSafeWeakPtr weakThis { *this };
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [m_sampleBufferDisplayLayer requestMediaDataWhenReadyOnQueue:dispatch_get_main_queue() usingBlock:^{
-        if (!weakThis)
+        auto protectedThis = weakThis.get();
+        if (!protectedThis)
             return;
 
-        m_processingQueue->dispatch([this] {
+        m_processingQueue->dispatch([this, weakThis] {
+            auto protectedThis = weakThis.get();
+            if (!protectedThis)
+                return;
+
             [m_sampleBufferDisplayLayer stopRequestingMediaData];
 
-            while (!m_pendingVideoSampleQueue.isEmpty()) {
+            while (!m_pendingVideoFrameQueue.isEmpty()) {
                 if (![m_sampleBufferDisplayLayer isReadyForMoreMediaData]) {
                     requestNotificationWhenReadyForVideoData();
                     return;
                 }
-                auto sample = m_pendingVideoSampleQueue.takeFirst();
-                enqueueSampleBuffer(sample);
+                auto videoFrame = m_pendingVideoFrameQueue.takeFirst();
+                enqueueBufferInternal(videoFrame->pixelBuffer(), videoFrame->presentationTime());
             }
         });
     }];
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 }

@@ -29,7 +29,10 @@
 
 namespace WebCore {
 
+class LegacyRenderSVGContainer;
+class LegacyRenderSVGRoot;
 class RenderSVGContainer;
+class RenderSVGViewportContainer;
 class RenderSVGInline;
 class RenderSVGRoot;
 class RenderSVGText;
@@ -39,17 +42,23 @@ class RenderTreeBuilder::SVG {
 public:
     SVG(RenderTreeBuilder&);
 
-    void attach(RenderSVGContainer& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
-    void attach(RenderSVGInline& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
-    void attach(RenderSVGRoot& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
-    void attach(RenderSVGText& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+    void updateAfterDescendants(RenderSVGRoot&);
 
-    RenderPtr<RenderObject> detach(RenderSVGText& parent, RenderObject& child) WARN_UNUSED_RETURN;
-    RenderPtr<RenderObject> detach(RenderSVGInline& parent, RenderObject& child) WARN_UNUSED_RETURN;
-    RenderPtr<RenderObject> detach(RenderSVGContainer& parent, RenderObject& child) WARN_UNUSED_RETURN;
-    RenderPtr<RenderObject> detach(RenderSVGRoot& parent, RenderObject& child) WARN_UNUSED_RETURN;
+    void attach(LegacyRenderSVGRoot& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+    void attach(LegacyRenderSVGContainer& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+    void attach(RenderSVGInline& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+    void attach(RenderSVGText& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+    void attach(RenderSVGRoot& parent, RenderPtr<RenderObject> child, RenderObject* beforeChild);
+
+    RenderPtr<RenderObject> detach(LegacyRenderSVGRoot& parent, RenderObject& child, RenderTreeBuilder::WillBeDestroyed) WARN_UNUSED_RETURN;
+    RenderPtr<RenderObject> detach(LegacyRenderSVGContainer& parent, RenderObject& child, RenderTreeBuilder::WillBeDestroyed) WARN_UNUSED_RETURN;
+    RenderPtr<RenderObject> detach(RenderSVGInline& parent, RenderObject& child, RenderTreeBuilder::WillBeDestroyed) WARN_UNUSED_RETURN;
+
+    RenderPtr<RenderObject> detach(RenderSVGText& parent, RenderObject& child, RenderTreeBuilder::WillBeDestroyed) WARN_UNUSED_RETURN;
 
 private:
+    RenderSVGViewportContainer& findOrCreateParentForChild(RenderSVGRoot&);
+    RenderSVGViewportContainer& createViewportContainer(RenderSVGRoot&);
     RenderTreeBuilder& m_builder;
 };
 

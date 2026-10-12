@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,7 +32,7 @@
 
 namespace JSC {
 
-const ClassInfo ScopedArgumentsTable::s_info = { "ScopedArgumentsTable", nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(ScopedArgumentsTable) };
+const ClassInfo ScopedArgumentsTable::s_info = { "ScopedArgumentsTable"_s, nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(ScopedArgumentsTable) };
 
 ScopedArgumentsTable::ScopedArgumentsTable(VM& vm)
     : Base(vm, vm.scopedArgumentsTableStructure.get())
@@ -41,9 +41,7 @@ ScopedArgumentsTable::ScopedArgumentsTable(VM& vm)
 {
 }
 
-ScopedArgumentsTable::~ScopedArgumentsTable()
-{
-}
+ScopedArgumentsTable::~ScopedArgumentsTable() = default;
 
 void ScopedArgumentsTable::destroy(JSCell* cell)
 {
@@ -53,14 +51,14 @@ void ScopedArgumentsTable::destroy(JSCell* cell)
 ScopedArgumentsTable* ScopedArgumentsTable::create(VM& vm)
 {
     ScopedArgumentsTable* result =
-        new (NotNull, allocateCell<ScopedArgumentsTable>(vm.heap)) ScopedArgumentsTable(vm);
+        new (NotNull, allocateCell<ScopedArgumentsTable>(vm)) ScopedArgumentsTable(vm);
     result->finishCreation(vm);
     return result;
 }
 
 ScopedArgumentsTable* ScopedArgumentsTable::tryCreate(VM& vm, uint32_t length)
 {
-    void* buffer = tryAllocateCell<ScopedArgumentsTable>(vm.heap);
+    void* buffer = tryAllocateCell<ScopedArgumentsTable>(vm);
     if (UNLIKELY(!buffer))
         return nullptr;
     ScopedArgumentsTable* result = new (NotNull, buffer) ScopedArgumentsTable(vm);
@@ -70,6 +68,7 @@ ScopedArgumentsTable* ScopedArgumentsTable::tryCreate(VM& vm, uint32_t length)
     result->m_arguments = ArgumentsPtr::tryCreate(length);
     if (UNLIKELY(!result->m_arguments))
         return nullptr;
+    result->m_watchpointSets.fill(nullptr, length);
     return result;
 }
 
@@ -80,6 +79,7 @@ ScopedArgumentsTable* ScopedArgumentsTable::tryClone(VM& vm)
         return nullptr;
     for (unsigned i = m_length; i--;)
         result->at(i) = this->at(i);
+    result->m_watchpointSets = this->m_watchpointSets;
     return result;
 }
 
@@ -90,21 +90,25 @@ ScopedArgumentsTable* ScopedArgumentsTable::trySetLength(VM& vm, uint32_t newLen
         if (UNLIKELY(!newArguments))
             return nullptr;
         for (unsigned i = std::min(m_length, newLength); i--;)
-            newArguments.at(i, newLength) = this->at(i);
+            newArguments.at(i) = this->at(i);
         m_length = newLength;
         m_arguments = WTFMove(newArguments);
+        m_watchpointSets.resize(newLength);
         return this;
     }
     
     ScopedArgumentsTable* result = tryCreate(vm, newLength);
     if (UNLIKELY(!result))
         return nullptr;
-    for (unsigned i = std::min(m_length, newLength); i--;)
+    m_watchpointSets.resize(newLength);
+    for (unsigned i = std::min(m_length, newLength); i--;) {
         result->at(i) = this->at(i);
+        result->m_watchpointSets[i] = this->m_watchpointSets[i];
+    }
     return result;
 }
 
-static_assert(std::is_trivially_destructible<ScopeOffset>::value, "");
+static_assert(std::is_trivially_destructible<ScopeOffset>::value);
 
 ScopedArgumentsTable* ScopedArgumentsTable::trySet(VM& vm, uint32_t i, ScopeOffset value)
 {
@@ -117,6 +121,17 @@ ScopedArgumentsTable* ScopedArgumentsTable::trySet(VM& vm, uint32_t i, ScopeOffs
         result = this;
     result->at(i) = value;
     return result;
+}
+
+void ScopedArgumentsTable::trySetWatchpointSet(uint32_t i, WatchpointSet* watchpoints)
+{
+    if (!watchpoints)
+        return;
+
+    if (i >= m_watchpointSets.size())
+        return;
+
+    m_watchpointSets[i] = watchpoints;
 }
 
 Structure* ScopedArgumentsTable::createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype)

@@ -93,11 +93,17 @@
 #endif
 
 #if defined(__SCE__)
-#define BPLATORM_PLAYSTATION 1
+#define BPLATFORM_PLAYSTATION 1
 #endif
 
-#ifdef __MORPHOS__
-#define BOS_MORPHOS 1
+#if defined(BUILDING_GTK__)
+#define BPLATFORM_GTK 1
+#elif defined(BUILDING_WPE__)
+#define BPLATFORM_WPE 1
+#elif defined(BUILDING_JSCONLY__)
+/* JSCOnly does not provide BPLATFORM() macro */
+#elif BOS(WINDOWS)
+#define BPLATFORM_WIN 1
 #endif
 
 /* ==== Feature decision macros: these define feature choices for a particular port. ==== */
@@ -137,6 +143,9 @@
 /* BCPU(ARM64) */
 #if defined(__arm64__) || defined(__aarch64__)
 #define BCPU_ARM64 1
+#if defined(__arm64e__)
+#define BCPU_ARM64E 1
+#endif
 #endif
 
 /* BCPU(ARM) - ARM, any version*/
@@ -218,7 +227,9 @@
 || defined(__ARM_ARCH_7K__) \
 || defined(__ARM_ARCH_7M__) \
 || defined(__ARM_ARCH_7R__) \
-|| defined(__ARM_ARCH_7S__)
+|| defined(__ARM_ARCH_7S__) \
+|| defined(__ARM_ARCH_8__) \
+|| defined(__ARM_ARCH_8A__)
 #define BTHUMB_ARCH_VERSION 4
 
 /* RVCT sets __TARGET_ARCH_THUMB */
@@ -259,6 +270,12 @@
 #else
 #error "Unsupported pointer width"
 #endif
+#elif BCOMPILER(MSVC)
+#if defined(_WIN64)
+#define BCPU_ADDRESS64 1
+#else
+#define BCPU_ADDRESS32 1
+#endif
 #else
 #error "Unsupported compiler for bmalloc"
 #endif
@@ -273,12 +290,14 @@
 #else
 #error "Unknown endian"
 #endif
+#elif BCOMPILER(MSVC)
+#define BCPU_LITTLE_ENDIAN 1
 #else
 #error "Unsupported compiler for bmalloc"
 #endif
 
 #if BCPU(ADDRESS64)
-#if BOS(DARWIN)
+#if BOS(DARWIN) && !BPLATFORM(IOS_FAMILY_SIMULATOR)
 #define BOS_EFFECTIVE_ADDRESS_WIDTH (bmalloc::getMSBSetConstexpr(MACH_VM_MAX_ADDRESS) + 1)
 #else
 /* We strongly assume that effective address width is <= 48 in 64bit architectures (e.g. NaN boxing). */
@@ -288,7 +307,11 @@
 #define BOS_EFFECTIVE_ADDRESS_WIDTH 32
 #endif
 
+#if BCOMPILER(GCC_COMPATIBLE)
 #define BATTRIBUTE_PRINTF(formatStringArgument, extraArguments) __attribute__((__format__(printf, formatStringArgument, extraArguments)))
+#else
+#define BATTRIBUTE_PRINTF(formatStringArgument, extraArguments)
+#endif
 
 /* Export macro support. Detects the attributes available for shared library symbol export
    decorations. */
@@ -315,8 +338,11 @@
 
 /* BENABLE(LIBPAS) is enabling libpas build. But this does not mean we use libpas for bmalloc replacement. */
 #if !defined(BENABLE_LIBPAS)
-#if BCPU(ARM64) && BOS(MAC)
+#if BCPU(ADDRESS64) && (BOS(DARWIN) || (BOS(LINUX) && (BCPU(X86_64) || BCPU(ARM64))) || BPLATFORM(PLAYSTATION))
 #define BENABLE_LIBPAS 1
+#ifndef PAS_BMALLOC
+#define PAS_BMALLOC 1
+#endif
 #else
 #define BENABLE_LIBPAS 0
 #endif
@@ -324,7 +350,11 @@
 
 /* BUSE(LIBPAS) is using libpas for bmalloc replacement. */
 #if !defined(BUSE_LIBPAS)
+#if defined(BENABLE_LIBPAS) && BENABLE_LIBPAS
+#define BUSE_LIBPAS 1
+#else
 #define BUSE_LIBPAS 0
+#endif
 #endif
 
 #if !defined(BUSE_PRECOMPUTED_CONSTANTS_VMPAGE4K)
@@ -335,20 +365,19 @@
 #define BUSE_PRECOMPUTED_CONSTANTS_VMPAGE16K 1
 #endif
 
-/* The unified Config record feature is not available for Windows because the
-   Windows port puts WTF in a separate DLL, and the offlineasm code accessing
-   the config record expects the config record to be directly accessible like
-   a global variable (and not have to go thru DLL shenanigans). C++ code would
-   resolve these DLL bindings automatically, but offlineasm does not.
-
-   The permanently freezing feature also currently relies on the Config records
-   being unified, and the Windows port also does not currently have an
-   implementation for the freezing mechanism anyway. For simplicity, we just
-   disable both the use of unified Config record and config freezing for the
-   Windows port.
-*/
-#if BOS(WINDOWS)
-#define BENABLE_UNIFIED_AND_FREEZABLE_CONFIG_RECORD 0
+/* We only export the mallocSize and mallocGoodSize APIs if they're supported by the DebugHeap allocator (currently only Darwin) and the current bmalloc allocator (currently only libpas). */
+#if BUSE(LIBPAS) && BOS(DARWIN)
+#define BENABLE_MALLOC_SIZE 1
+#define BENABLE_MALLOC_GOOD_SIZE 1
 #else
-#define BENABLE_UNIFIED_AND_FREEZABLE_CONFIG_RECORD 1
+#define BENABLE_MALLOC_SIZE 0
+#define BENABLE_MALLOC_GOOD_SIZE 0
+#endif
+
+#if !defined(BUSE_TZONE)
+#if BUSE(LIBPAS) && BOS(DARWIN) && BCPU(ARM64)
+#define BUSE_TZONE 1
+#else
+#define BUSE_TZONE 0
+#endif
 #endif

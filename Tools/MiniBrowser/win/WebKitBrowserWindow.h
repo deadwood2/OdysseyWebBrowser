@@ -47,6 +47,8 @@ private:
     void navigateToHistory(UINT menuID) override;
     void setPreference(UINT menuID, bool enable) override;
 
+    void resetFeatureMenu(FeatureType, HMENU, bool resetsSettingsToDefaults) override;
+
     void print() override;
     void launchInspector() override;
     void openProxySettings() override;
@@ -61,7 +63,11 @@ private:
     void zoomIn() override;
     void zoomOut() override;
 
+    void clearCookies() override;
+    void clearWebsiteData() override;
+
     void updateProxySettings();
+    void adjustScaleFactors() override;
 
     bool canTrustServerCertificate(WKProtectionSpaceRef);
 
@@ -69,13 +75,31 @@ private:
     static void didChangeIsLoading(const void*);
     static void didChangeEstimatedProgress(const void*);
     static void didChangeActiveURL(const void*);
+    static void decidePolicyForNavigationResponse(WKPageRef, WKNavigationResponseRef, WKFramePolicyListenerRef, WKTypeRef, const void*);
+    static void didFailProvisionalNavigation(WKPageRef, WKNavigationRef, WKErrorRef, WKTypeRef, const void*);
     static void didReceiveAuthenticationChallenge(WKPageRef, WKAuthenticationChallengeRef, const void*);
+    static void navigationActionDidBecomeDownload(WKPageRef, WKNavigationActionRef, WKDownloadRef, const void*);
+    static void navigationResponseDidBecomeDownload(WKPageRef, WKNavigationResponseRef, WKDownloadRef, const void*);
+    static void contextMenuDidCreateDownload(WKPageRef, WKDownloadRef, const void*);
+    static void setDownloadClient(WKDownloadRef, const void*);
+    static WKStringRef downloadDecideDestinationWithResponse(WKDownloadRef, WKURLResponseRef, WKStringRef, const void*);
+    static void downloadDidFinish(WKDownloadRef, const void*);
+    static void downloadDidFailWithError(WKDownloadRef, WKErrorRef, WKDataRef, const void*);
+    static void close(WKPageRef, const void*);
     static WKPageRef createNewPage(WKPageRef, WKPageConfigurationRef, WKNavigationActionRef, WKWindowFeaturesRef, const void *);
     static void didNotHandleKeyEvent(WKPageRef, WKNativeEventPtr, const void*);
+    static WKRect getWindowFrame(WKPageRef, const void*);
+    static void runJavaScriptAlert(WKPageRef, WKStringRef, WKFrameRef, WKSecurityOriginRef, WKPageRunJavaScriptAlertResultListenerRef, const void *);
+    static void runJavaScriptConfirm(WKPageRef, WKStringRef, WKFrameRef, WKSecurityOriginRef, WKPageRunJavaScriptConfirmResultListenerRef, const void *);
+    static void runJavaScriptPrompt(WKPageRef, WKStringRef, WKStringRef, WKFrameRef, WKSecurityOriginRef, WKPageRunJavaScriptPromptResultListenerRef, const void *);
 
     BrowserWindowClient& m_client;
     WKRetainPtr<WKViewRef> m_view;
     HWND m_hMainWnd { nullptr };
     ProxySettings m_proxy { };
     std::unordered_map<std::wstring, std::wstring> m_acceptedServerTrustCerts;
+    std::vector<WKRetainPtr<WKStringRef>> m_experimentalFeatureKeys;
+    std::vector<WKRetainPtr<WKStringRef>> m_internalDebugFeatureKeys;
+
+    float m_defaultResetPageZoomFactor = 1;
 };

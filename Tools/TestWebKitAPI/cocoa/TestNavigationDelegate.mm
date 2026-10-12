@@ -26,13 +26,12 @@
 #import "config.h"
 #import "TestNavigationDelegate.h"
 
+#import "PlatformUtilities.h"
 #import "Utilities.h"
 #import <WebKit/WKWebViewPrivateForTesting.h>
 #import <wtf/RetainPtr.h>
 
-@implementation TestNavigationDelegate {
-    RetainPtr<NSError> _navigationError;
-}
+@implementation TestNavigationDelegate
 
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction preferences:(WKWebpagePreferences *)preferences decisionHandler:(void (^)(WKNavigationActionPolicy, WKWebpagePreferences *))decisionHandler
 {
@@ -66,10 +65,28 @@
         _didCommitNavigation(webView, navigation);
 }
 
+- (void)_webView:(WKWebView *)webView didCommitLoadWithRequest:(NSURLRequest *)request inFrame:(WKFrameInfo *)frame
+{
+    if (_didCommitLoadWithRequestInFrame)
+        _didCommitLoadWithRequestInFrame(webView, request, frame);
+}
+
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error
 {
     if (_didFailProvisionalNavigation)
         _didFailProvisionalNavigation(webView, navigation, error);
+}
+
+- (void)_webView:(WKWebView *)webView didFailProvisionalLoadWithRequest:(NSURLRequest *)request inFrame:(WKFrameInfo *)frame withError:(NSError *)error
+{
+    if (_didFailProvisionalLoadWithRequestInFrameWithError)
+        _didFailProvisionalLoadWithRequestInFrameWithError(webView, request, frame, error);
+}
+
+- (void)_webView:(WKWebView *)webView navigation:(WKNavigation *)navigation didFailProvisionalLoadInSubframe:(WKFrameInfo *)subframe withError:(NSError *)error
+{
+    if (_didFailProvisionalLoadInSubframeWithError)
+        _didFailProvisionalLoadInSubframeWithError(webView, subframe, error);
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation
@@ -78,10 +95,16 @@
         _didFinishNavigation(webView, navigation);
 }
 
-- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView
+- (void)_webView:(WKWebView *)webView navigation:(WKNavigation *)navigation didSameDocumentNavigation:(_WKSameDocumentNavigationType)navigationType
+{
+    if (_didSameDocumentNavigation)
+        _didSameDocumentNavigation(webView, navigation);
+}
+
+- (void)_webView:(WKWebView *)webView webContentProcessDidTerminateWithReason:(_WKProcessTerminationReason)reason
 {
     if (_webContentProcessDidTerminate)
-        _webContentProcessDidTerminate(webView);
+        _webContentProcessDidTerminate(webView, reason);
 }
 
 - (void)_webView:(WKWebView *)webView renderingProgressDidChange:(_WKRenderingProgressEvents)progressEvents
@@ -96,6 +119,15 @@
         _didReceiveAuthenticationChallenge(webView, challenge, completionHandler);
     else
         completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+}
+
+- (void)allowAnyTLSCertificate
+{
+    EXPECT_FALSE(self.didReceiveAuthenticationChallenge);
+    self.didReceiveAuthenticationChallenge = ^(WKWebView *, NSURLAuthenticationChallenge *challenge, void (^callback)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)) {
+        EXPECT_WK_STREQ(challenge.protectionSpace.authenticationMethod, NSURLAuthenticationMethodServerTrust);
+        callback(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
+    };
 }
 
 - (void)waitForDidStartProvisionalNavigation
@@ -126,18 +158,35 @@
     self.didFinishNavigation = nil;
 }
 
-- (void)waitForWebContentProcessDidTerminate
+- (void)waitForDidSameDocumentNavigation
+{
+    EXPECT_FALSE(self.didSameDocumentNavigation);
+
+    __block bool finished = false;
+    self.didSameDocumentNavigation = ^(WKWebView *, WKNavigation *) {
+        finished = true;
+    };
+
+    TestWebKitAPI::Util::run(&finished);
+
+    self.didSameDocumentNavigation = nil;
+}
+
+- (_WKProcessTerminationReason)waitForWebContentProcessDidTerminate
 {
     EXPECT_FALSE(self.webContentProcessDidTerminate);
 
     __block bool crashed = false;
-    self.webContentProcessDidTerminate = ^(WKWebView *) {
+    __block _WKProcessTerminationReason crashReason;
+    self.webContentProcessDidTerminate = ^(WKWebView *, _WKProcessTerminationReason reason) {
         crashed = true;
+        crashReason = reason;
     };
 
     TestWebKitAPI::Util::run(&crashed);
 
     self.webContentProcessDidTerminate = nil;
+    return crashReason;
 }
 
 - (void)waitForDidFinishNavigationWithPreferences:(WKWebpagePreferences *)preferences
@@ -158,15 +207,46 @@
     EXPECT_FALSE(self.didFailProvisionalNavigation);
 
     __block bool finished = false;
+    __block RetainPtr<NSError> navigationError;
     self.didFailProvisionalNavigation = ^(WKWebView *, WKNavigation *, NSError *error) {
-        _navigationError = error;
+        navigationError = error;
         finished = true;
     };
 
     TestWebKitAPI::Util::run(&finished);
 
     self.didFailProvisionalNavigation = nil;
-    return _navigationError.autorelease();
+    return navigationError.autorelease();
+}
+
+- (void)_webView:(WKWebView *)webView contentRuleListWithIdentifier:(NSString *)identifier performedAction:(_WKContentRuleListAction *)action forURL:(NSURL *)url
+{
+    if (_contentRuleListPerformedAction)
+        _contentRuleListPerformedAction(webView, identifier, action, url);
+}
+
+- (void)_webView:(WKWebView *)webView didChangeLookalikeCharactersFromURL:(NSURL *)originalURL toURL:(NSURL *)adjustedURL
+{
+    if (_didChangeLookalikeCharactersFromURL)
+        _didChangeLookalikeCharactersFromURL(webView, originalURL, adjustedURL);
+}
+
+- (void)_webView:(WKWebView *)webView didPromptForStorageAccess:(NSString *)topFrameDomain forSubFrameDomain:(NSString *)subFrameDomain forQuirk:(BOOL)hasQuirk
+{
+    if (_didPromptForStorageAccess)
+        _didPromptForStorageAccess(webView, topFrameDomain, subFrameDomain, hasQuirk);
+}
+
+- (void)webView:(WKWebView *)webView navigationAction:(WKNavigationAction *)navigationAction didBecomeDownload:(WKDownload *)download
+{
+    if (_navigationActionDidBecomeDownload)
+        _navigationActionDidBecomeDownload(navigationAction, download);
+}
+
+- (void)webView:(WKWebView *)webView navigationResponse:(WKNavigationResponse *)navigationResponse didBecomeDownload:(WKDownload *)download
+{
+    if (_navigationResponseDidBecomeDownload)
+        _navigationResponseDidBecomeDownload(navigationResponse, download);
 }
 
 @end
@@ -236,15 +316,49 @@
 #endif
 }
 
-- (void)_test_waitForWebContentProcessDidTerminate
+- (void)_test_waitForDidSameDocumentNavigation
 {
     EXPECT_FALSE(self.navigationDelegate);
 
     auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
     self.navigationDelegate = navigationDelegate.get();
-    [navigationDelegate waitForWebContentProcessDidTerminate];
+    [navigationDelegate waitForDidSameDocumentNavigation];
 
     self.navigationDelegate = nil;
+}
+
+- (void)_test_waitForDidFinishNavigationWhileIgnoringSSLErrors
+{
+    EXPECT_FALSE(self.navigationDelegate);
+
+    auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    navigationDelegate.get().didReceiveAuthenticationChallenge = ^(WKWebView *, NSURLAuthenticationChallenge *challenge, void (^completionHandler)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)) {
+        completionHandler(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
+    };
+    self.navigationDelegate = navigationDelegate.get();
+    [navigationDelegate waitForDidFinishNavigation];
+
+    self.navigationDelegate = nil;
+
+#if PLATFORM(IOS_FAMILY)
+    __block bool presentationUpdateHappened = false;
+    [self _doAfterNextPresentationUpdateWithoutWaitingForAnimatedResizeForTesting:^{
+        presentationUpdateHappened = true;
+    }];
+    TestWebKitAPI::Util::run(&presentationUpdateHappened);
+#endif
+}
+
+- (_WKProcessTerminationReason)_test_waitForWebContentProcessDidTerminate
+{
+    EXPECT_FALSE(self.navigationDelegate);
+
+    auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    self.navigationDelegate = navigationDelegate.get();
+    auto result = [navigationDelegate waitForWebContentProcessDidTerminate];
+
+    self.navigationDelegate = nil;
+    return result;
 }
 
 @end

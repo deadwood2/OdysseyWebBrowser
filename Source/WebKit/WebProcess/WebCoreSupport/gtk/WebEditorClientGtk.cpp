@@ -23,21 +23,21 @@
 #include <WebCore/Document.h>
 #include <WebCore/Editor.h>
 #include <WebCore/EventNames.h>
-#include <WebCore/Frame.h>
 #include <WebCore/KeyboardEvent.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/PagePasteboardContext.h>
 #include <WebCore/Pasteboard.h>
 #include <WebCore/PlatformKeyboardEvent.h>
 #include <WebCore/TextIterator.h>
 #include <WebCore/markup.h>
 #include <WebPage.h>
-#include <wtf/Variant.h>
+#include <variant>
 #include <wtf/glib/GRefPtr.h>
 
 namespace WebKit {
 using namespace WebCore;
 
-bool WebEditorClient::handleGtkEditorCommand(Frame& frame, const String& command, bool allowTextInsertion)
+bool WebEditorClient::handleGtkEditorCommand(LocalFrame& frame, const String& command, bool allowTextInsertion)
 {
     if (command == "GtkInsertEmoji"_s) {
         if (!allowTextInsertion)
@@ -49,11 +49,11 @@ bool WebEditorClient::handleGtkEditorCommand(Frame& frame, const String& command
     return false;
 }
 
-bool WebEditorClient::executePendingEditorCommands(Frame& frame, const Vector<WTF::String>& pendingEditorCommands, bool allowTextInsertion)
+bool WebEditorClient::executePendingEditorCommands(LocalFrame& frame, const Vector<WTF::String>& pendingEditorCommands, bool allowTextInsertion)
 {
-    Vector<Variant<Editor::Command, String>> commands;
+    Vector<std::variant<Editor::Command, String>> commands;
     for (auto& commandString : pendingEditorCommands) {
-        if (commandString.startsWith("Gtk"))
+        if (commandString.startsWith("Gtk"_s))
             commands.append(commandString);
         else {
             Editor::Command command = frame.editor().command(commandString);
@@ -65,11 +65,11 @@ bool WebEditorClient::executePendingEditorCommands(Frame& frame, const Vector<WT
     }
 
     for (auto& commandVariant : commands) {
-        if (WTF::holds_alternative<String>(commandVariant)) {
-            if (!handleGtkEditorCommand(frame, WTF::get<String>(commandVariant), allowTextInsertion))
+        if (std::holds_alternative<String>(commandVariant)) {
+            if (!handleGtkEditorCommand(frame, std::get<String>(commandVariant), allowTextInsertion))
                 return false;
         } else {
-            auto& command = WTF::get<Editor::Command>(commandVariant);
+            auto& command = std::get<Editor::Command>(commandVariant);
             if (!command.execute())
                 return false;
         }
@@ -98,7 +98,7 @@ void WebEditorClient::handleKeyboardEvent(KeyboardEvent& event)
         // During RawKeyDown events if an editor command will insert text, defer
         // the insertion until the keypress event. We want keydown to bubble up
         // through the DOM first.
-        if (platformEvent->type() == PlatformEvent::RawKeyDown) {
+        if (platformEvent->type() == PlatformEvent::Type::RawKeyDown) {
             if (executePendingEditorCommands(*frame, pendingEditorCommands, false))
                 event.setDefaultHandled();
 
@@ -134,7 +134,7 @@ void WebEditorClient::handleKeyboardEvent(KeyboardEvent& event)
         event.setDefaultHandled();
 }
 
-void WebEditorClient::updateGlobalSelection(Frame* frame)
+void WebEditorClient::updateGlobalSelection(LocalFrame* frame)
 {
     if (!frame->selection().isRange())
         return;
@@ -145,7 +145,7 @@ void WebEditorClient::updateGlobalSelection(Frame* frame)
     PasteboardWebContent pasteboardContent;
     pasteboardContent.canSmartCopyOrDelete = false;
     pasteboardContent.text = plainText(*range);
-    pasteboardContent.markup = serializePreservingVisualAppearance(frame->selection().selection(), ResolveURLs::YesExcludingLocalFileURLsForPrivacy);
+    pasteboardContent.markup = serializePreservingVisualAppearance(frame->selection().selection(), ResolveURLs::YesExcludingURLsForPrivacy);
     Pasteboard::createForGlobalSelection(PagePasteboardContext::create(frame->pageID()))->write(pasteboardContent);
 }
 

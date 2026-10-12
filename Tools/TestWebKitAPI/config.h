@@ -42,7 +42,7 @@
 #if defined(BUILDING_WITH_CMAKE)
 
 // CMake path
-#if defined(BUILDING_TestJSC)
+#if defined(BUILDING_TestJSC) || defined(BUILDING_TestJavaScriptCore)
 #include <JavaScriptCore/JSExportMacros.h>
 #endif
 
@@ -86,11 +86,13 @@
 // Work around the less strict coding standards of the gtest framework.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wundef"
 #endif
 
 #ifdef __cplusplus
 // The TestJSC executable doesn't use gtest it uses glib's testing
 #if !defined(BUILDING_TestJSC) && !defined(NO_GTEST_USAGE)
+#undef UniversalPrint
 #include <gtest/gtest.h>
 #endif
 #include <wtf/Assertions.h>
@@ -116,21 +118,16 @@
 #endif
 
 // FIXME: Move this to PlatformHave.h.
-#if PLATFORM(MAC) || PLATFORM(IOS)
-#define HAVE_PDFKIT 1
-#endif
-
-// FIXME: Move this to PlatformHave.h.
 #if PLATFORM(IOS_FAMILY) && !(PLATFORM(MACCATALYST) && __MAC_OS_X_VERSION_MIN_REQUIRED < 110000)
 #define HAVE_UIWEBVIEW 1
 #endif
 
 // FIXME: Move this to PlatformHave.h.
-#if PLATFORM(COCOA) && !(PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED < 101500)
-#define HAVE_TLS_PROTOCOL_VERSION_T 1
-#endif
-
-// FIXME: Move this to PlatformHave.h.
 #if (PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 110000) || (PLATFORM(IOS_FAMILY) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 140000)
 #define HAVE_TLS_VERSION_DURING_CHALLENGE 1
+#endif
+
+// FIXME (rdar://133488399): Weak link PDFKit on tvOS and use HAVE(PDFKit) in TestWebKitAPI.
+#if HAVE(PDFKIT) && !PLATFORM(APPLETV)
+#define USE_PDFKIT_FOR_TESTING 1
 #endif

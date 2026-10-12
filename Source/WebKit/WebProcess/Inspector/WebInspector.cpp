@@ -34,13 +34,13 @@
 #include "WebProcess.h"
 #include <WebCore/Chrome.h>
 #include <WebCore/Document.h>
-#include <WebCore/Frame.h>
 #include <WebCore/FrameLoadRequest.h>
 #include <WebCore/FrameLoader.h>
-#include <WebCore/FrameView.h>
 #include <WebCore/InspectorController.h>
 #include <WebCore/InspectorFrontendClient.h>
 #include <WebCore/InspectorPageAgent.h>
+#include <WebCore/LocalFrame.h>
+#include <WebCore/LocalFrameView.h>
 #include <WebCore/NavigationAction.h>
 #include <WebCore/NotImplemented.h>
 #include <WebCore/Page.h>
@@ -54,12 +54,12 @@ static const float minimumAttachedWidth = 500;
 namespace WebKit {
 using namespace WebCore;
 
-Ref<WebInspector> WebInspector::create(WebPage* page)
+Ref<WebInspector> WebInspector::create(WebPage& page)
 {
     return adoptRef(*new WebInspector(page));
 }
 
-WebInspector::WebInspector(WebPage* page)
+WebInspector::WebInspector(WebPage& page)
     : m_page(page)
 {
 }
@@ -70,12 +70,17 @@ WebInspector::~WebInspector()
         m_frontendConnection->invalidate();
 }
 
+WebPage* WebInspector::page() const
+{
+    return m_page.get();
+}
+
 void WebInspector::openLocalInspectorFrontend(bool underTest)
 {
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorUIProxy::OpenLocalInspectorFrontend(canAttachWindow(), underTest), m_page->identifier());
 }
 
-void WebInspector::setFrontendConnection(IPC::Attachment encodedConnectionIdentifier)
+void WebInspector::setFrontendConnection(IPC::Connection::Handle&& connectionHandle)
 {
     // We might receive multiple updates if this web process got swapped into a WebPageProxy
     // shortly after another process established the connection.
@@ -84,22 +89,11 @@ void WebInspector::setFrontendConnection(IPC::Attachment encodedConnectionIdenti
         m_frontendConnection = nullptr;
     }
 
-#if USE(UNIX_DOMAIN_SOCKETS)
-    IPC::Connection::Identifier connectionIdentifier(encodedConnectionIdentifier.releaseFileDescriptor());
-#elif OS(DARWIN)
-    IPC::Connection::Identifier connectionIdentifier(encodedConnectionIdentifier.port());
-#elif OS(WINDOWS)
-    IPC::Connection::Identifier connectionIdentifier(encodedConnectionIdentifier.handle());
-#else
-    notImplemented();
-    return;
-#endif
-
-    if (!IPC::Connection::identifierIsValid(connectionIdentifier))
+    if (!connectionHandle)
         return;
 
-    m_frontendConnection = IPC::Connection::createClientConnection(connectionIdentifier, *this);
-    m_frontendConnection->open();
+    m_frontendConnection = IPC::Connection::createClientConnection(IPC::Connection::Identifier { WTFMove(connectionHandle) });
+    m_frontendConnection->open(*this);
 
     for (auto& callback : m_frontendConnectionActions)
         callback();
@@ -173,7 +167,7 @@ void WebInspector::showConsole()
 
     m_page->corePage()->inspectorController().show();
 
-    whenFrontendConnectionEstablished([=] {
+    whenFrontendConnectionEstablished([=, this] {
         m_frontendConnection->send(Messages::WebInspectorUI::ShowConsole(), 0);
     });
 }
@@ -185,7 +179,7 @@ void WebInspector::showResources()
 
     m_page->corePage()->inspectorController().show();
 
-    whenFrontendConnectionEstablished([=] {
+    whenFrontendConnectionEstablished([=, this] {
         m_frontendConnection->send(Messages::WebInspectorUI::ShowResources(), 0);
     });
 }
@@ -201,9 +195,9 @@ void WebInspector::showMainResourceForFrame(WebCore::FrameIdentifier frameIdenti
 
     m_page->corePage()->inspectorController().show();
 
-    String inspectorFrameIdentifier = m_page->corePage()->inspectorController().ensurePageAgent().frameId(frame->coreFrame());
+    String inspectorFrameIdentifier = m_page->corePage()->inspectorController().ensurePageAgent().frameId(frame->coreLocalFrame());
 
-    whenFrontendConnectionEstablished([=] {
+    whenFrontendConnectionEstablished([=, this] {
         m_frontendConnection->send(Messages::WebInspectorUI::ShowMainResourceForFrame(inspectorFrameIdentifier), 0);
     });
 }
@@ -215,7 +209,7 @@ void WebInspector::startPageProfiling()
 
     m_page->corePage()->inspectorController().show();
 
-    whenFrontendConnectionEstablished([=] {
+    whenFrontendConnectionEstablished([=, this] {
         m_frontendConnection->send(Messages::WebInspectorUI::StartPageProfiling(), 0);
     });
 }
@@ -227,7 +221,7 @@ void WebInspector::stopPageProfiling()
 
     m_page->corePage()->inspectorController().show();
 
-    whenFrontendConnectionEstablished([=] {
+    whenFrontendConnectionEstablished([=, this] {
         m_frontendConnection->send(Messages::WebInspectorUI::StopPageProfiling(), 0);
     });
 }
@@ -237,7 +231,7 @@ void WebInspector::startElementSelection()
     if (!m_page->corePage())
         return;
 
-    whenFrontendConnectionEstablished([=] {
+    whenFrontendConnectionEstablished([=, this] {
         m_frontendConnection->send(Messages::WebInspectorUI::StartElementSelection(), 0);
     });
 }
@@ -247,7 +241,7 @@ void WebInspector::stopElementSelection()
     if (!m_page->corePage())
         return;
 
-    whenFrontendConnectionEstablished([=] {
+    whenFrontendConnectionEstablished([=, this] {
         m_frontendConnection->send(Messages::WebInspectorUI::StopElementSelection(), 0);
     });
 }
@@ -267,6 +261,15 @@ void WebInspector::setDeveloperPreferenceOverride(InspectorClient::DeveloperPref
     WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorUIProxy::SetDeveloperPreferenceOverride(developerPreference, overrideValue), m_page->identifier());
 }
 
+#if ENABLE(INSPECTOR_NETWORK_THROTTLING)
+
+void WebInspector::setEmulatedConditions(std::optional<int64_t>&& bytesPerSecondLimit)
+{
+    WebProcess::singleton().parentProcessConnection()->send(Messages::WebInspectorUIProxy::SetEmulatedConditions(WTFMove(bytesPerSecondLimit)), m_page->identifier());
+}
+
+#endif // ENABLE(INSPECTOR_NETWORK_THROTTLING)
+
 bool WebInspector::canAttachWindow()
 {
     if (!m_page->corePage())
@@ -281,8 +284,11 @@ bool WebInspector::canAttachWindow()
         return true;
 
     // Don't allow the attach if the window would be too small to accommodate the minimum inspector size.
-    unsigned inspectedPageHeight = m_page->corePage()->mainFrame().view()->visibleHeight();
-    unsigned inspectedPageWidth = m_page->corePage()->mainFrame().view()->visibleWidth();
+    auto* localMainFrame = dynamicDowncast<LocalFrame>(m_page->corePage()->mainFrame());
+    if (!localMainFrame)
+        return false;
+    unsigned inspectedPageHeight = localMainFrame->view()->visibleHeight();
+    unsigned inspectedPageWidth = localMainFrame->view()->visibleWidth();
     unsigned maximumAttachedHeight = inspectedPageHeight * maximumAttachedHeightRatio;
     return minimumAttachedHeight <= maximumAttachedHeight && minimumAttachedWidth <= inspectedPageWidth;
 }

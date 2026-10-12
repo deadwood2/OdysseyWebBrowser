@@ -25,8 +25,6 @@
 #include "config.h"
 #include "ComplexTextController.h"
 
-#if !USE(DIRECT2D)
-
 #include "FontCache.h"
 #include "FontCascade.h"
 #include "HWndDC.h"
@@ -140,7 +138,6 @@ static Vector<unsigned> stringIndicesFromClusters(const Vector<WORD>& clusters, 
     BidiRange<unsigned> stringIndicesRange(stringIndices, isLTR);
     auto glyphIndex = stringIndicesRange.begin();
     unsigned stringIndex = 0;
-    int i = 0;
     for (;;) {
         auto startStringIndex = stringIndex;
         auto startGlyphIndex = clusters[stringIndex];
@@ -172,11 +169,11 @@ static Vector<unsigned> stringIndicesFromClusters(const Vector<WORD>& clusters, 
     return stringIndices;
 }
 
-void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp, unsigned stringLength, unsigned stringLocation, const Font* font)
+void ComplexTextController::collectComplexTextRunsForCharacters(std::span<const UChar> cp, unsigned stringLocation, const Font* font)
 {
     if (!font) {
         // Create a run of missing glyphs from the primary font.
-        m_complexTextRuns.append(ComplexTextRun::create(m_font.primaryFont(), cp, stringLocation, stringLength, 0, stringLength, m_run.ltr()));
+        m_complexTextRuns.append(ComplexTextRun::create(m_font.primaryFont(), cp.data(), stringLocation, cp.size(), 0, cp.size(), m_run.ltr()));
         return;
     }
 
@@ -192,7 +189,7 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
         state.fOverrideDirection = m_run.directionalOverride();
 
         // ScriptItemize may write (cMaxItems + 1) SCRIPT_ITEM.
-        HRESULT hr = ScriptItemize(wcharFrom(cp), stringLength, items.size() - 1, &control, &state, items.data(), &numItems);
+        HRESULT hr = ScriptItemize(wcharFrom(cp.data()), cp.size(), items.size() - 1, &control, &state, items.data(), &numItems);
         if (hr != E_OUTOFMEMORY) {
             ASSERT(SUCCEEDED(hr));
             break;
@@ -203,7 +200,7 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
 
     for (int i = 0; i < numItems; i++) {
         // Determine the string for this item.
-        const UChar* str = cp + items[i].iCharPos;
+        const UChar* str = cp.data() + items[i].iCharPos;
         int length = items[i+1].iCharPos - items[i].iCharPos;
         SCRIPT_ITEM& item = items[i];
 
@@ -244,7 +241,7 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
             continue;
 
         if (m_fallbackFonts)
-            m_fallbackFonts->add(font);
+            m_fallbackFonts->add(*font);
 
         Vector<FloatSize> baseAdvances;
         Vector<FloatPoint> origins;
@@ -252,28 +249,19 @@ void ComplexTextController::collectComplexTextRunsForCharacters(const UChar* cp,
         origins.reserveCapacity(glyphs.size());
 
         for (unsigned k = 0; k < glyphs.size(); k++) {
-            const float cLogicalScale = font->platformData().useGDI() ? 1 : 32;
+            const float cLogicalScale = cWindowsFontScaleFactor;
             float advance = advances[k] / cLogicalScale;
             float offsetX = offsets[k].du / cLogicalScale;
             float offsetY = offsets[k].dv / cLogicalScale;
 
-            // Match AppKit's rules for the integer vs. non-integer rendering modes.
-            if (!font->platformData().isSystemFont()) {
-                advance = roundf(advance);
-                offsetX = roundf(offsetX);
-                offsetY = roundf(offsetY);
-            }
-
-            baseAdvances.uncheckedAppend({ advance, 0 });
-            origins.uncheckedAppend({ offsetX, offsetY });
+            baseAdvances.append({ advance, 0 });
+            origins.append({ offsetX, offsetY });
         }
         bool ltr = !item.a.fRTL;
-        auto stringIndices = stringIndicesFromClusters(clusters, StringView(str, length), item.iCharPos, glyphs.size(), ltr);
+        auto stringIndices = stringIndicesFromClusters(clusters, std::span(str, length), item.iCharPos, glyphs.size(), ltr);
         FloatSize initialAdvance = toFloatSize(origins[0]);
-        m_complexTextRuns.append(ComplexTextRun::create(baseAdvances, origins, glyphs, stringIndices, initialAdvance, *font, cp, stringLocation, stringLength, item.iCharPos, items[i+1].iCharPos, ltr));
+        m_complexTextRuns.append(ComplexTextRun::create(baseAdvances, origins, glyphs, stringIndices, initialAdvance, *font, cp.data(), stringLocation, cp.size(), item.iCharPos, items[i+1].iCharPos, ltr));
     }
 }
 
 }
-
-#endif // !USE(DIRECT2D)

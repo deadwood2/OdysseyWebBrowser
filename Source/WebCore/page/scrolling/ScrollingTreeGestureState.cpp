@@ -66,8 +66,8 @@ void ScrollingTreeGestureState::nodeDidHandleEvent(ScrollingNodeID nodeID, const
         m_scrollingTree.handleWheelEventPhase(nodeID, event.phase());
         break;
     case PlatformWheelEventPhase::Cancelled:
-        // handleGestureCancel() should have been called first.
-        ASSERT_NOT_REACHED();
+        // We can get here for via handleWheelEventAfterMainThread(), in which case handleGestureCancel() was not called first.
+        handleGestureCancel(event);
         break;
     case PlatformWheelEventPhase::Began:
         m_activeNodeID = nodeID;
@@ -105,8 +105,8 @@ void ScrollingTreeGestureState::nodeDidHandleEvent(ScrollingNodeID nodeID, const
 
 void ScrollingTreeGestureState::clearAllNodes()
 {
-    m_mayBeginNodeID = 0;
-    m_activeNodeID = 0;
+    m_mayBeginNodeID = std::nullopt;
+    m_activeNodeID = std::nullopt;
 }
 
 };

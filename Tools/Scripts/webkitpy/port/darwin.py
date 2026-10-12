@@ -1,4 +1,4 @@
-# Copyright (C) 2014-2019 Apple Inc. All rights reserved.
+# Copyright (C) 2014-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -22,6 +22,7 @@
 
 import logging
 import os
+import re
 import time
 
 from webkitpy.common.memoized import memoized
@@ -41,6 +42,8 @@ class DarwinPort(ApplePort):
     CURRENT_VERSION = None
     SDK = None
 
+    API_TEST_BINARY_NAMES = ['TestWTF', 'TestWebKitAPI', 'TestIPC', 'TestWGSL']
+
     def __init__(self, host, port_name, **kwargs):
         ApplePort.__init__(self, host, port_name, **kwargs)
 
@@ -49,6 +52,11 @@ class DarwinPort(ApplePort):
             # DumpRenderTree slows down noticably if we run more than about 1000 tests in a batch
             # with MallocStackLogging enabled.
             self.set_option_default("batch_size", 1000)
+
+    def sharding_groups(self):
+        return {
+            'media': lambda shard: 'media' in shard.name or 'webaudio' in shard.name,
+        }
 
     def default_timeout_ms(self):
         if self.get_option('guard_malloc'):
@@ -78,9 +86,6 @@ class DarwinPort(ApplePort):
         total_leaks = self._leak_detector.count_total_leaks(leaks_files)
         _log.info("%s total leaks found for a total of %s." % (total_leaks, total_bytes_string))
         _log.info("%s unique leaks found." % unique_leaks)
-
-    def _path_to_webcore_library(self):
-        return self._build_path('WebCore.framework/Versions/A/WebCore')
 
     def show_results_html_file(self, results_filename):
         # We don't use self._run_script() because we don't want to wait for the script
@@ -188,7 +193,7 @@ class DarwinPort(ApplePort):
                     host.executive.run_command(spindump_command)
                 host.filesystem.move_to_base_host(DarwinPort.tailspin_file_path(host, name, pid, str(tempdir)),
                                                   DarwinPort.tailspin_file_path(self.host, name, pid, self.results_directory()))
-            except (IOError, ScriptError) as e:
+            except (IOError, ScriptError, OSError) as e:
                 _log.warning('Unable to symbolicate tailspin log of process:' + str(e))
         else:  # Tailspin failed, run sample instead
             try:
@@ -202,7 +207,7 @@ class DarwinPort(ApplePort):
                 ])
                 host.filesystem.move_to_base_host(DarwinPort.sample_file_path(host, name, pid, str(tempdir)),
                                                   DarwinPort.sample_file_path(self.host, name, pid, self.results_directory()))
-            except ScriptError as e:
+            except (ScriptError, OSError) as e:
                 _log.warning('Unable to sample process:' + str(e))
         host.filesystem.rmtree(str(tempdir))
 
@@ -247,17 +252,6 @@ class DarwinPort(ApplePort):
 
         return _image_diff_in_build_path
 
-    def make_command(self):
-        return self.xcrun_find('make', '/usr/bin/make')
-
-    def xcrun_find(self, command, fallback=None):
-        fallback = fallback or command
-        try:
-            return self._executive.run_command(['xcrun', '--sdk', self.SDK, '-find', command]).rstrip()
-        except ScriptError:
-            _log.warn("xcrun failed; falling back to '%s'." % fallback)
-            return fallback
-
     @memoized
     def _plist_data_from_bundle(self, app_bundle, entry):
         plist_path = self._filesystem.join(app_bundle, 'Info.plist')
@@ -279,3 +273,9 @@ class DarwinPort(ApplePort):
         for name in ['DYLD_LIBRARY_PATH', '__XPC_DYLD_LIBRARY_PATH', 'DYLD_FRAMEWORK_PATH', '__XPC_DYLD_FRAMEWORK_PATH']:
             self._append_value_colon_separated(environment, name, build_root_path)
         return environment
+
+    def stderr_patterns_to_strip(self):
+        worthless_patterns = super(DarwinPort, self).stderr_patterns_to_strip()
+        # Suppress log message from <rdar://56920527>
+        worthless_patterns.append((re.compile('.*nil host used in call to allows.+HTTPSCertificateForHost.*\n'), ''))
+        return worthless_patterns

@@ -25,8 +25,9 @@
 
 #pragma once
 
+#include "AnchorPositionEvaluator.h"
 #include "SelectorChecker.h"
-#include "SelectorFilter.h"
+#include "SelectorMatchingState.h"
 #include "StyleChange.h"
 #include "StyleSharingResolver.h"
 #include "StyleUpdate.h"
@@ -45,6 +46,12 @@ class ShadowRoot;
 namespace Style {
 
 class Resolver;
+struct MatchResult;
+struct PseudoElementIdentifier;
+struct ResolutionContext;
+struct ResolvedStyle;
+
+enum class IsInDisplayNoneTree : bool { No, Yes };
 
 DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(TreeResolverScope);
 class TreeResolver {
@@ -54,25 +61,43 @@ public:
 
     std::unique_ptr<Update> resolve();
 
+    bool hasUnresolvedQueryContainers() const { return m_hasUnresolvedQueryContainers; }
+    bool hasUnresolvedAnchorPositionedElements() const { return m_hasUnresolvedAnchorPositionedElements; }
+
 private:
-    std::unique_ptr<RenderStyle> styleForStyleable(const Styleable&, const RenderStyle& inheritedStyle);
+    enum class ResolutionType : uint8_t { RebuildUsingExisting, AnimationOnly, FastPathInherit, FullWithMatchResultCache, Full };
+    ResolvedStyle styleForStyleable(const Styleable&, ResolutionType, const ResolutionContext&, const RenderStyle* existingStyle);
 
     void resolveComposedTree();
 
-    ElementUpdates resolveElement(Element&);
+    const RenderStyle* existingStyle(const Element&);
 
-    static ElementUpdate createAnimatedElementUpdate(std::unique_ptr<RenderStyle>, const Styleable&, Change, const RenderStyle& parentStyle, const RenderStyle* parentBoxStyle);
-    std::optional<ElementUpdate> resolvePseudoStyle(Element&, const ElementUpdate&, PseudoId);
+    enum class AnchorPositionedElementAction : bool { None, SkipDescendants };
+    enum class QueryContainerAction : uint8_t { None, Resolve, Continue };
+    enum class DescendantsToResolve : uint8_t { None, RebuildAllUsingExisting, ChildrenWithExplicitInherit, Children, All };
+
+    QueryContainerAction updateStateForQueryContainer(Element&, const RenderStyle*, Change&, DescendantsToResolve&);
+
+    std::pair<ElementUpdate, DescendantsToResolve> resolveElement(Element&, const RenderStyle* existingStyle, ResolutionType);
+
+    ElementUpdate createAnimatedElementUpdate(ResolvedStyle&&, const Styleable&, Change, const ResolutionContext&, IsInDisplayNoneTree = IsInDisplayNoneTree::No);
+    std::unique_ptr<RenderStyle> resolveStartingStyle(const ResolvedStyle&, const Styleable&, const ResolutionContext&) const;
+    HashSet<AnimatableCSSProperty> applyCascadeAfterAnimation(RenderStyle&, const HashSet<AnimatableCSSProperty>&, bool isTransition, const MatchResult&, const Element&, const ResolutionContext&);
+
+    std::optional<ElementUpdate> resolvePseudoElement(Element&, const PseudoElementIdentifier&, const ElementUpdate&, IsInDisplayNoneTree);
+    std::optional<ElementUpdate> resolveAncestorPseudoElement(Element&, const PseudoElementIdentifier&, const ElementUpdate&);
+    std::optional<ResolvedStyle> resolveAncestorFirstLinePseudoElement(Element&, const ElementUpdate&);
+    std::optional<ResolvedStyle> resolveAncestorFirstLetterPseudoElement(Element&, const ElementUpdate&, ResolutionContext&);
 
     struct Scope : RefCounted<Scope> {
         WTF_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(TreeResolverScope);
         Ref<Resolver> resolver;
-        SelectorFilter selectorFilter;
+        SelectorMatchingState selectorMatchingState;
         SharingResolver sharingResolver;
         RefPtr<ShadowRoot> shadowRoot;
         RefPtr<Scope> enclosingScope;
 
-        Scope(Document&);
+        Scope(Document&, Update&);
         Scope(ShadowRoot&, Scope& enclosingScope);
         ~Scope();
     };
@@ -83,24 +108,45 @@ private:
         Change change { Change::None };
         DescendantsToResolve descendantsToResolve { DescendantsToResolve::None };
         bool didPushScope { false };
+        bool resolvedFirstLineAndLetterChild { false };
+        bool needsUpdateQueryContainerDependentStyle { false };
+        IsInDisplayNoneTree isInDisplayNoneTree { IsInDisplayNoneTree::No };
 
         Parent(Document&);
-        Parent(Element&, const RenderStyle&, Change, DescendantsToResolve);
+        Parent(Element&, const RenderStyle&, Change, DescendantsToResolve, IsInDisplayNoneTree);
     };
 
     Scope& scope() { return m_scopeStack.last(); }
+    const Scope& scope() const { return m_scopeStack.last(); }
+
     Parent& parent() { return m_parentStack.last(); }
+    const Parent& parent() const { return m_parentStack.last(); }
 
     void pushScope(ShadowRoot&);
     void pushEnclosingScope();
     void popScope();
 
-    void pushParent(Element&, const RenderStyle&, Change, DescendantsToResolve);
+    void pushParent(Element&, const RenderStyle&, Change, DescendantsToResolve, IsInDisplayNoneTree);
     void popParent();
     void popParentsToDepth(unsigned depth);
 
+    DescendantsToResolve computeDescendantsToResolve(const ElementUpdate&, const RenderStyle* existingStyle, Validity) const;
+    static std::optional<ResolutionType> determineResolutionType(const Element&, const RenderStyle*, DescendantsToResolve, Change parentChange);
+    static void resetDescendantStyleRelations(Element&, DescendantsToResolve);
+
+    ResolutionContext makeResolutionContext();
+    ResolutionContext makeResolutionContextForPseudoElement(const ElementUpdate&, const PseudoElementIdentifier&);
+    std::optional<ResolutionContext> makeResolutionContextForInheritedFirstLine(const ElementUpdate&, const RenderStyle& inheritStyle);
+    const Parent* boxGeneratingParent() const;
     const RenderStyle* parentBoxStyle() const;
-    const RenderStyle* parentBoxStyleForPseudo(const ElementUpdate&) const;
+    const RenderStyle* parentBoxStyleForPseudoElement(const ElementUpdate&) const;
+
+    AnchorPositionedElementAction updateAnchorPositioningState(Element&, const RenderStyle*);
+
+    struct QueryContainerState {
+        Change change { Change::None };
+        DescendantsToResolve descendantsToResolve { DescendantsToResolve::None };
+    };
 
     Document& m_document;
     std::unique_ptr<RenderStyle> m_documentElementStyle;
@@ -109,15 +155,22 @@ private:
     Vector<Parent, 32> m_parentStack;
     bool m_didSeePendingStylesheet { false };
 
+    HashMap<Ref<Element>, std::optional<QueryContainerState>> m_queryContainerStates;
+    bool m_hasUnresolvedQueryContainers { false };
+
+    bool m_hasUnresolvedAnchorPositionedElements { false };
+    bool m_canFindAnchorsForNextAnchorPositionedElement { false };
+
     std::unique_ptr<Update> m_update;
 };
 
-void queuePostResolutionCallback(Function<void ()>&&);
+// Integrate with the HTML5 event loop instead, see EventLoop.cpp and consumers.
+void deprecatedQueuePostResolutionCallback(Function<void()>&&);
 bool postResolutionCallbacksAreSuspended();
 
 class PostResolutionCallbackDisabler {
 public:
-    enum class DrainCallbacks { Yes, No };
+    enum class DrainCallbacks : bool { No, Yes };
     explicit PostResolutionCallbackDisabler(Document&, DrainCallbacks = DrainCallbacks::Yes);
     ~PostResolutionCallbackDisabler();
 private:

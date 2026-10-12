@@ -3,6 +3,7 @@
 #include <WebCore/BackForwardClient.h>
 #include <wtf/HashSet.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 	class HistoryItem;
@@ -23,7 +24,7 @@ public:
         return WTF::adoptRef(*new BackForwardClientMorphOS(view));
     }
 	
-    void addItem(WTF::Ref<WebCore::HistoryItem>&&) override;
+    void addItem(WebCore::FrameIdentifier, WTF::Ref<WebCore::HistoryItem>&&) override;
     void goBack();
     void goForward();
     void goToItem(WebCore::HistoryItem&) override;
@@ -42,7 +43,7 @@ public:
     void setEnabled(bool);
     unsigned backListCount() const final;
     unsigned forwardListCount() const final;
-    bool containsItem(WebCore::HistoryItem*);
+    bool containsItem(const WebCore::HistoryItem&) const final;
 
     void close() override;
     bool closed();
@@ -53,7 +54,7 @@ public:
 private:
     explicit BackForwardClientMorphOS(WebPage *page);
 
-	WebPage *m_page;
+	WeakPtr<WebPage> m_page;
     HistoryItemVector m_entries;
     HistoryItemHashSet m_entryHash;
     unsigned m_current;

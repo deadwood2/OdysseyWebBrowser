@@ -25,13 +25,13 @@
 
 #pragma once
 
+#include "AdvancedPrivacyProtections.h"
 #include "EventLoop.h"
 #include "Microtasks.h"
 #include "ReferrerPolicy.h"
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
-
-#include <wtf/IsoMalloc.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 
@@ -40,6 +40,11 @@ public:
     static Ref<EmptyScriptExecutionContext> create(JSC::VM& vm)
     {
         return adoptRef(*new EmptyScriptExecutionContext(vm));
+    }
+
+    ~EmptyScriptExecutionContext()
+    {
+        m_eventLoop->removeAssociatedContext(*this);
     }
 
     bool isSecureContext() const final { return false; }
@@ -56,6 +61,7 @@ public:
 
     void disableEval(const String&) final { };
     void disableWebAssembly(const String&) final { };
+    void setRequiresTrustedTypes(bool) final { };
 
     IDBClient::IDBConnectionProxy* idbConnectionProxy() final { return nullptr; }
     SocketProvider* socketProvider() final { return nullptr; }
@@ -65,34 +71,42 @@ public:
 
     SecurityOrigin& topOrigin() const final { return m_origin.get(); };
 
+    OptionSet<AdvancedPrivacyProtections> advancedPrivacyProtections() const final { return { }; }
+    std::optional<uint64_t> noiseInjectionHashSalt() const { return std::nullopt; }
+
     void postTask(Task&&) final { ASSERT_NOT_REACHED(); }
     EventTarget* errorEventTarget() final { return nullptr; };
 
-#if ENABLE(WEB_CRYPTO)
-    bool wrapCryptoKey(const Vector<uint8_t>&, Vector<uint8_t>&) final { return false; }
-    bool unwrapCryptoKey(const Vector<uint8_t>&, Vector<uint8_t>&) final { return false; }
-#endif
+    std::optional<Vector<uint8_t>> wrapCryptoKey(const Vector<uint8_t>&) final { return std::nullopt; }
+    std::optional<Vector<uint8_t>> unwrapCryptoKey(const Vector<uint8_t>&) final { return std::nullopt; }
 
     JSC::VM& vm() final { return m_vm; }
 
     using RefCounted::ref;
     using RefCounted::deref;
+    using RefCounted::refAllowingPartiallyDestroyed;
+    using RefCounted::derefAllowingPartiallyDestroyed;
 
 private:
     EmptyScriptExecutionContext(JSC::VM& vm)
-        : m_vm(vm)
-        , m_origin(SecurityOrigin::createUnique())
+        : ScriptExecutionContext(Type::EmptyScriptExecutionContext)
+        , m_vm(vm)
+        , m_origin(SecurityOrigin::createOpaque())
         , m_eventLoop(EmptyEventLoop::create(vm))
         , m_eventLoopTaskGroup(makeUnique<EventLoopTaskGroup>(m_eventLoop))
     {
+        relaxAdoptionRequirement();
+        m_eventLoop->addAssociatedContext(*this);
     }
 
     void addMessage(MessageSource, MessageLevel, const String&, const String&, unsigned, unsigned, RefPtr<Inspector::ScriptCallStack>&&, JSC::JSGlobalObject* = nullptr, unsigned long = 0) final { }
-    void logExceptionToConsole(const String&, const String&, int, int, RefPtr<Inspector::ScriptCallStack>&&) final { };
-    void refScriptExecutionContext() final { ref(); };
-    void derefScriptExecutionContext() final { deref(); };
+    void logExceptionToConsole(const String&, const String&, int, int, RefPtr<Inspector::ScriptCallStack>&&) final { }
 
     const Settings::Values& settingsValues() const final { return m_settingsValues; }
+
+#if ENABLE(NOTIFICATIONS)
+    NotificationClient* notificationClient() final { return nullptr; }
+#endif
 
     class EmptyEventLoop final : public EventLoop {
     public:
@@ -105,7 +119,7 @@ private:
 
     private:
         explicit EmptyEventLoop(JSC::VM& vm)
-            : m_queue(MicrotaskQueue(vm))
+            : m_queue(MicrotaskQueue(vm, *this))
         {
         }
 
@@ -124,3 +138,7 @@ private:
 };
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::EmptyScriptExecutionContext)
+    static bool isType(const WebCore::ScriptExecutionContext& context) { return context.isEmptyScriptExecutionContext(); }
+SPECIALIZE_TYPE_TRAITS_END()

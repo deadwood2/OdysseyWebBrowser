@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,10 @@
 #import "PlatformUtilities.h"
 #import "TestUIDelegate.h"
 #import "TestWKWebView.h"
-#import <wtf/text/StringConcatenateNumbers.h>
+#import <wtf/cocoa/VectorCocoa.h>
+#import <wtf/text/MakeString.h>
+
+#import <pal/cocoa/AVFoundationSoftLink.h>
 
 #if ENABLE(VIDEO) && USE(AVFOUNDATION)
 
@@ -37,8 +40,8 @@ namespace TestWebKitAPI {
 
 static String parseUserAgent(const Vector<char>& request)
 {
-    auto headers = String::fromUTF8(request.data(), request.size()).split("\r\n");
-    auto index = headers.findMatching([] (auto& header) { return header.startsWith("User-Agent:"); });
+    auto headers = String::fromUTF8(request.span()).split("\r\n"_s);
+    auto index = headers.findIf([] (auto& header) { return header.startsWith("User-Agent:"_s); });
     if (index != notFound)
         return headers[index];
     return emptyString();
@@ -98,13 +101,13 @@ TEST(MediaLoading, UserAgentStringHLS)
                 "#EXT-X-MEDIA-SEQUENCE:0\n"
                 "#EXT-X-PLAYLIST-TYPE:VOD\n"
                 "#EXTINF:6.0272,\n"
-                "http://127.0.0.1:", mediaServerPort, "/main1.ts\n",
-                "#EXT-X-ENDLIST\n"
+                "http://127.0.0.1:"_s, mediaServerPort, "/main1.ts\n"_s,
+                "#EXT-X-ENDLIST\n"_s
             );
 
-            connection.send(makeString("HTTP/1.1 200 OK\r\n",
-                "Content-Length: ", payload.length(), "\r\n",
-                "\r\n",
+            connection.send(makeString("HTTP/1.1 200 OK\r\n"_s,
+                "Content-Length: "_s, payload.length(), "\r\n"_s,
+                "\r\n"_s,
                 payload
             ));
 
@@ -117,7 +120,7 @@ TEST(MediaLoading, UserAgentStringHLS)
     Util::run(&receivedMediaRequest);
 }
 
-const char* videoPlayTestHTML ="<script>"
+constexpr auto videoPlayTestHTML ="<script>"
     "function createVideoElement() {"
         "let video = document.createElement('video');"
         "video.addEventListener('error', ()=>{alert('error')});"
@@ -127,14 +130,11 @@ const char* videoPlayTestHTML ="<script>"
         "document.body.appendChild(video);"
     "}"
 "</script>"
-"<body onload='createVideoElement()'></body>";
+"<body onload='createVideoElement()'></body>"_s;
 
 static Vector<uint8_t> testVideoBytes()
 {
-    NSData *data = [NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"test" withExtension:@"mp4" subdirectory:@"TestWebKitAPI.resources"]];
-    Vector<uint8_t> vector;
-    vector.append(static_cast<const uint8_t*>(data.bytes), data.length);
-    return vector;
+    return makeVector([NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"test" withExtension:@"mp4" subdirectory:@"TestWebKitAPI.resources"]]);
 }
 
 static void runVideoTest(NSURLRequest *request, const char* expectedMessage)
@@ -149,8 +149,8 @@ static void runVideoTest(NSURLRequest *request, const char* expectedMessage)
 TEST(MediaLoading, RangeRequestSynthesisWithContentLength)
 {
     HTTPServer server({
-        {"/", { videoPlayTestHTML }},
-        {"/video.mp4", { testVideoBytes() }}
+        {"/"_s, { videoPlayTestHTML }},
+        {"/video.mp4"_s, { testVideoBytes() }}
     });
     runVideoTest(server.request(), "playing");
     EXPECT_EQ(server.totalRequests(), 2u);
@@ -163,15 +163,15 @@ TEST(MediaLoading, RangeRequestSynthesisWithoutContentLength)
     respondToRequests = [&] (Connection connection) {
         connection.receiveHTTPRequest([&, connection] (Vector<char>&& request) {
             auto sendResponse = [&, connection] (HTTPResponse response, HTTPResponse::IncludeContentLength includeContentLength) {
-                connection.send(response.serialize(includeContentLength), [&, connection] {
-                    respondToRequests(connection);
+                connection.send(response.serialize(includeContentLength), [connection] () mutable {
+                    connection.terminate();
                 });
             };
             totalRequests++;
             auto path = HTTPServer::parsePath(request);
-            if (path == "/")
+            if (path == "/"_s)
                 sendResponse({ videoPlayTestHTML }, HTTPResponse::IncludeContentLength::Yes);
-            else if (path == "/video.mp4")
+            else if (path == "/video.mp4"_s)
                 sendResponse(testVideoBytes(), HTTPResponse::IncludeContentLength::No);
             else
                 ASSERT(path.isNull());
@@ -183,6 +183,60 @@ TEST(MediaLoading, RangeRequestSynthesisWithoutContentLength)
     });
     runVideoTest(server.request(), "error");
     EXPECT_EQ(totalRequests, 2u);
+}
+
+TEST(MediaLoading, LockdownModeHLS)
+{
+    if (!PAL::canLoad_AVFoundation_AVURLAssetAllowableTypeCategoriesKey())
+        return;
+    
+    constexpr auto hlsPlayTestHTML = "<script>"
+        "function createVideoElement() {"
+            "let video = document.createElement('video');"
+            "video.addEventListener('error', () => { alert('error') });"
+            "video.addEventListener('playing', () => { alert('playing') });"
+            "video.src='video.m3u8';"
+            "video.autoplay=1;"
+            "document.body.appendChild(video);"
+        "}"
+    "</script>"
+    "<body onload='createVideoElement()'></body>"_s;
+
+    auto testTransportStreamBytes = [&] () -> Vector<uint8_t> {
+        return makeVector([NSData dataWithContentsOfURL:[[NSBundle mainBundle] URLForResource:@"start-offset" withExtension:@"ts" subdirectory:@"TestWebKitAPI.resources"]]);
+    };
+
+    HTTPServer server({
+        { "/"_s, { hlsPlayTestHTML } },
+        { "/start-offset.ts"_s, { testTransportStreamBytes() } }
+    });
+    auto serverPort = server.port();
+    auto m3u8Source = makeString(
+        "#EXTM3U\n"_s,
+        "#EXT-X-PLAYLIST-TYPE:EVENT\n"_s,
+        "#EXT-X-VERSION:3\n"_s,
+        "#EXT-X-MEDIA-SEQUENCE:0\n"_s,
+        "#EXT-X-TARGETDURATION:8\n"_s,
+        "#EXT-X-PROGRAM-DATE-TIME:1970-01-01T00:00:00.001Z\n"_s,
+        "#EXTINF:6.0272,\n"_s,
+        "http://127.0.0.1:"_s, serverPort, "/start-offset.ts\n"_s,
+        "#EXTINF:6.0272,\n"_s,
+        "http://127.0.0.1:"_s, serverPort, "/start-offset.ts\n"_s,
+        "#EXTINF:6.0272,\n"_s,
+        "http://127.0.0.1:"_s, serverPort, "/start-offset.ts\n"_s,
+        "#EXTINF:6.0272,\n"_s,
+        "http://127.0.0.1:"_s, serverPort, "/start-offset.ts\n"_s,
+        "#EXTINF:6.0272,\n"_s,
+        "http://127.0.0.1:"_s, serverPort, "/start-offset.ts\n"_s
+    );
+    server.addResponse("/video.m3u8"_s, { m3u8Source });
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    [configuration setMediaTypesRequiringUserActionForPlayback:WKAudiovisualMediaTypeNone];
+    configuration.get().defaultWebpagePreferences.lockdownModeEnabled = YES;
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 300, 300) configuration:configuration.get() addToWindow:YES]);
+    [webView loadRequest:server.request()];
+    EXPECT_WK_STREQ([webView _test_waitForAlert], "playing");
 }
 
 } // namespace TestWebKitAPI

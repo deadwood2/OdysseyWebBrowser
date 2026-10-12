@@ -36,7 +36,8 @@ ModuleInformation::ModuleInformation()
     : nameSection(NameSection::create())
 {
 }
-ModuleInformation::~ModuleInformation() { }
+
+ModuleInformation::~ModuleInformation() = default;
 
 } } // namespace JSC::Wasm
 

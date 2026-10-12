@@ -63,12 +63,16 @@ bool FloatRoundedRect::Radii::isZero() const
     return m_topLeft.isZero() && m_topRight.isZero() && m_bottomLeft.isZero() && m_bottomRight.isZero();
 }
 
-bool FloatRoundedRect::Radii::isUniformCornerRadius() const
+bool FloatRoundedRect::Radii::hasEvenCorners() const
 {
-    return WTF::areEssentiallyEqual(m_topLeft.width(), m_topLeft.height())
-        && areEssentiallyEqual(m_topLeft, m_topRight)
+    return areEssentiallyEqual(m_topLeft, m_topRight)
         && areEssentiallyEqual(m_topLeft, m_bottomLeft)
         && areEssentiallyEqual(m_topLeft, m_bottomRight);
+}
+
+bool FloatRoundedRect::Radii::isUniformCornerRadius() const
+{
+    return WTF::areEssentiallyEqual(m_topLeft.width(), m_topLeft.height()) && hasEvenCorners();
 }
 
 void FloatRoundedRect::Radii::scale(float factor)
@@ -203,18 +207,85 @@ bool FloatRoundedRect::intersectionIsRectangular(const FloatRect& rect) const
     return !(rect.intersects(topLeftCorner()) || rect.intersects(topRightCorner()) || rect.intersects(bottomLeftCorner()) || rect.intersects(bottomRightCorner()));
 }
 
-TextStream& operator<<(TextStream& ts, const FloatRoundedRect& roundedRect)
+Region approximateAsRegion(const FloatRoundedRect& roundedRect, unsigned stepLength)
 {
-    ts << roundedRect.rect().x() << " " << roundedRect.rect().y() << " " << roundedRect.rect().width() << " " << roundedRect.rect().height() << "\n";
+    Region region;
 
-    TextStream::IndentScope indentScope(ts);
-    ts << indent << "topLeft=" << roundedRect.topLeftCorner().width() << " " << roundedRect.topLeftCorner().height() << "\n";
-    ts << indent << "topRight=" << roundedRect.topRightCorner().width() << " " << roundedRect.topRightCorner().height() << "\n";
-    ts << indent << "bottomLeft=" << roundedRect.bottomLeftCorner().width() << " " << roundedRect.bottomLeftCorner().height() << "\n";
-    ts << indent << "bottomRight=" << roundedRect.bottomRightCorner().width() << " " << roundedRect.bottomRightCorner().height();
-    return ts;
+    if (roundedRect.isEmpty())
+        return region;
+
+    auto rect = LayoutRect(roundedRect.rect());
+    region.unite(enclosingIntRect(rect));
+
+    if (!roundedRect.isRounded())
+        return region;
+
+    auto& radii = roundedRect.radii();
+
+    auto makeIntRect = [] (LayoutPoint a, LayoutPoint b) {
+        return enclosingIntRect(LayoutRect {
+            LayoutPoint { std::min(a.x(), b.x()), std::min(a.y(), b.y()) },
+            LayoutPoint { std::max(a.x(), b.x()), std::max(a.y(), b.y()) }
+        });
+    };
+
+    auto subtractCornerRects = [&] (LayoutPoint corner, LayoutPoint ellipsisCenter, FloatSize axes, double fromAngle) {
+        double toAngle = fromAngle + piDouble / 2;
+
+        // Substract more rects for longer, more rounded arcs.
+        auto arcLengthFactor = roundToInt(std::min(axes.width(), axes.height()));
+        auto count = (arcLengthFactor + (stepLength / 2)) / stepLength;
+
+        constexpr auto maximumCount = 20u;
+        count = std::min(maximumCount, count);
+
+        for (auto i = 0u; i < count; ++i) {
+            auto angle = fromAngle + (i + 1) * (toAngle - fromAngle) / (count + 1);
+            auto ellipsisPoint = LayoutPoint { axes.width() * cos(angle), axes.height() * sin(angle) };
+            auto cornerRect = makeIntRect(corner, ellipsisCenter + ellipsisPoint);
+            region.subtract(cornerRect);
+        }
+    };
+
+    {
+        auto corner = rect.maxXMaxYCorner();
+        auto axes = radii.bottomRight();
+        auto ellipsisCenter = LayoutPoint(corner.x() - axes.width(), corner.y() - axes.height());
+        subtractCornerRects(corner, ellipsisCenter, axes, 0);
+    }
+
+    {
+        auto corner = rect.minXMaxYCorner();
+        auto axes = radii.bottomLeft();
+        auto ellipsisCenter = LayoutPoint(corner.x() + axes.width(), corner.y() - axes.height());
+        subtractCornerRects(corner, ellipsisCenter, axes, piDouble / 2);
+    }
+
+    {
+        auto corner = rect.minXMinYCorner();
+        auto axes = radii.topLeft();
+        auto ellipsisCenter = LayoutPoint(corner.x() + axes.width(), corner.y() + axes.height());
+        subtractCornerRects(corner, ellipsisCenter, axes, piDouble);
+    }
+
+    {
+        auto corner = rect.maxXMinYCorner();
+        auto axes = radii.topRight();
+        auto ellipsisCenter = LayoutPoint(corner.x() - axes.width(), corner.y() + axes.height());
+        subtractCornerRects(corner, ellipsisCenter, axes, piDouble * 3 / 2);
+    }
+
+    return region;
 }
 
-
+TextStream& operator<<(TextStream& ts, const FloatRoundedRect& roundedRect)
+{
+    ts << roundedRect.rect();
+    ts.dumpProperty("top-left", roundedRect.radii().topLeft());
+    ts.dumpProperty("top-right", roundedRect.radii().topRight());
+    ts.dumpProperty("bottom-left", roundedRect.radii().bottomLeft());
+    ts.dumpProperty("bottom-right", roundedRect.radii().bottomRight());
+    return ts;
+}
 
 } // namespace WebCore

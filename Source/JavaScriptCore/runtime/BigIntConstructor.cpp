@@ -45,7 +45,7 @@ namespace JSC {
 
 STATIC_ASSERT_IS_TRIVIALLY_DESTRUCTIBLE(BigIntConstructor);
 
-const ClassInfo BigIntConstructor::s_info = { "Function", &Base::s_info, &bigIntConstructorTable, nullptr, CREATE_METHOD_TABLE(BigIntConstructor) };
+const ClassInfo BigIntConstructor::s_info = { "Function"_s, &Base::s_info, &bigIntConstructorTable, nullptr, CREATE_METHOD_TABLE(BigIntConstructor) };
 
 /* Source for BigIntConstructor.lut.h
 @begin bigIntConstructorTable
@@ -65,7 +65,7 @@ BigIntConstructor::BigIntConstructor(VM& vm, Structure* structure)
 void BigIntConstructor::finishCreation(VM& vm, BigIntPrototype* bigIntPrototype)
 {
     Base::finishCreation(vm, 1, "BigInt"_s, PropertyAdditionMode::WithoutStructureTransition);
-    ASSERT(inherits(vm, info()));
+    ASSERT(inherits(info()));
 
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, bigIntPrototype, PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly);
 }
@@ -78,7 +78,7 @@ JSC_DEFINE_HOST_FUNCTION(callBigIntConstructor, (JSGlobalObject* globalObject, C
     auto scope = DECLARE_THROW_SCOPE(vm);
     
     JSValue value = callFrame->argument(0);
-    JSValue primitive = value.toPrimitive(globalObject);
+    JSValue primitive = value.toPrimitive(globalObject, PreferNumber);
     RETURN_IF_EXCEPTION(scope, encodedJSValue());
 
     if (primitive.isInt32()) {
@@ -111,7 +111,7 @@ JSC_DEFINE_HOST_FUNCTION(bigIntConstructorFuncAsUintN, (JSGlobalObject* globalOb
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    auto numberOfBits = callFrame->argument(0).toIndex(globalObject, "number of bits");
+    auto numberOfBits = callFrame->argument(0).toIndex(globalObject, "number of bits"_s);
     RETURN_IF_EXCEPTION(scope, { });
 
     JSValue bigInt = callFrame->argument(1).toBigInt(globalObject);
@@ -131,7 +131,7 @@ JSC_DEFINE_HOST_FUNCTION(bigIntConstructorFuncAsIntN, (JSGlobalObject* globalObj
     VM& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
 
-    auto numberOfBits = callFrame->argument(0).toIndex(globalObject, "number of bits");
+    auto numberOfBits = callFrame->argument(0).toIndex(globalObject, "number of bits"_s);
     RETURN_IF_EXCEPTION(scope, { });
 
     JSValue bigInt = callFrame->argument(1).toBigInt(globalObject);

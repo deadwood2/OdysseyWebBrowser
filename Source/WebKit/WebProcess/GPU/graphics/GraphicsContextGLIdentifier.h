@@ -31,8 +31,8 @@
 
 namespace WebKit {
 
-enum GraphicsContextGLIdentifierType { };
-using GraphicsContextGLIdentifier = ObjectIdentifier<GraphicsContextGLIdentifierType>;
+enum class GraphicsContextGLIdentifierType { };
+using GraphicsContextGLIdentifier = LegacyNullableAtomicObjectIdentifier<GraphicsContextGLIdentifierType>;
 
 } // namespace WebKit
 

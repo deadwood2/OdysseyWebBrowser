@@ -29,6 +29,18 @@
 
 #import <AppKit/NSCell_Private.h>
 
+#else
+
+#if USE(NSPRESENTATIONSTATE)
+
+typedef NS_ENUM(NSInteger, NSPresentationState) {
+    NSPresentationStateActiveKey = 0,
+    NSPresentationStateActive,
+    NSPresentationStateInactive,
+};
+
+#endif // USE(NSPRESENTATIONSTATE)
+
 #endif
 
 WTF_EXTERN_C_BEGIN
@@ -36,3 +48,12 @@ WTF_EXTERN_C_BEGIN
 void _NSDrawCarbonThemeListBox(NSRect, BOOL enabled, BOOL flipped, BOOL textured);
 
 WTF_EXTERN_C_END
+
+typedef NS_ENUM(NSInteger, NSPresentationState);
+typedef NS_ENUM(NSInteger, NSViewSemanticContext);
+
+@interface NSCell ()
+@property (setter=_setFallbackBackingScaleFactor:) CGFloat _fallbackBackingScaleFactor;
+@property (setter=_setFallbackBezelPresentationState:) NSPresentationState _fallbackBezelPresentationState;
+@property (setter=_setFallbackSemanticContext:) NSViewSemanticContext _fallbackSemanticContext;
+@end

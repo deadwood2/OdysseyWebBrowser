@@ -31,12 +31,17 @@
 #include "SessionState.h"
 #include "WebBackForwardCache.h"
 #include "WebBackForwardListCounts.h"
+#include "WebFrameProxy.h"
 #include "WebPageProxy.h"
 #include <WebCore/DiagnosticLoggingClient.h>
 #include <WebCore/DiagnosticLoggingKeys.h>
 #include <wtf/DebugUtilities.h>
 #include <wtf/HexNumber.h>
 #include <wtf/text/StringBuilder.h>
+
+#if PLATFORM(COCOA)
+#include <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#endif
 
 namespace WebKit {
 using namespace WebCore;
@@ -83,7 +88,7 @@ void WebBackForwardList::pageClosed()
             didRemoveItem(m_entries[i]);
     }
 
-    m_page = nullptr;
+    m_page.clear();
     m_entries.clear();
     m_currentIndex = std::nullopt;
 }
@@ -92,17 +97,18 @@ void WebBackForwardList::addItem(Ref<WebBackForwardListItem>&& newItem)
 {
     ASSERT(!m_currentIndex || *m_currentIndex < m_entries.size());
 
-    if (!m_page)
+    RefPtr page = m_page.get();
+    if (!page)
         return;
 
     Vector<Ref<WebBackForwardListItem>> removedItems;
     
     if (m_currentIndex) {
-        m_page->recordAutomaticNavigationSnapshot();
+        page->recordAutomaticNavigationSnapshot();
 
         // Toss everything in the forward list.
         unsigned targetSize = *m_currentIndex + 1;
-        removedItems.reserveCapacity(m_entries.size() - targetSize);
+        removedItems.reserveInitialCapacity(m_entries.size() - targetSize);
         while (m_entries.size() > targetSize) {
             didRemoveItem(m_entries.last());
             removedItems.append(WTFMove(m_entries.last()));
@@ -140,7 +146,7 @@ void WebBackForwardList::addItem(Ref<WebBackForwardListItem>&& newItem)
         ASSERT(m_entries.isEmpty());
         m_currentIndex = 0;
     } else {
-        shouldKeepCurrentItem = m_page->shouldKeepCurrentBackForwardListItemInList(m_entries[*m_currentIndex]);
+        shouldKeepCurrentItem = page->shouldKeepCurrentBackForwardListItemInList(m_entries[*m_currentIndex]);
         if (shouldKeepCurrentItem)
             ++*m_currentIndex;
     }
@@ -163,19 +169,35 @@ void WebBackForwardList::addItem(Ref<WebBackForwardListItem>&& newItem)
     }
 
     LOG(BackForward, "(Back/Forward) WebBackForwardList %p added an item. Current size %zu, current index %zu, threw away %zu items", this, m_entries.size(), *m_currentIndex, removedItems.size());
-    m_page->didChangeBackForwardList(newItemPtr, WTFMove(removedItems));
+    page->didChangeBackForwardList(newItemPtr, WTFMove(removedItems));
+}
+
+void WebBackForwardList::addRootChildFrameItem(Ref<WebBackForwardListItem>&& newItem) const
+{
+    if (!m_page || !m_page->mainFrame())
+        return;
+    auto mainFrameID = m_page->mainFrame()->frameID();
+    for (int itemIndex = 0; auto* item = itemAtIndex(itemIndex); --itemIndex) {
+        if (item->frameID() == mainFrameID) {
+            newItem->setMainFrameItem(item);
+            item->addRootChildFrameItem(WTFMove(newItem));
+            break;
+        }
+    }
 }
 
 void WebBackForwardList::goToItem(WebBackForwardListItem& item)
 {
     ASSERT(!m_currentIndex || *m_currentIndex < m_entries.size());
 
-    if (!m_entries.size() || !m_page || !m_currentIndex)
+    RefPtr page = m_page.get();
+    if (!m_entries.size() || !page || !m_currentIndex)
         return;
 
+    auto* targetItem = item.mainFrameItem() ? item.mainFrameItem() : &item;
     size_t targetIndex = notFound;
     for (size_t i = 0; i < m_entries.size(); ++i) {
-        if (m_entries[i].ptr() == &item) {
+        if (m_entries[i].ptr() == targetItem) {
             targetIndex = i;
             break;
         }
@@ -183,23 +205,23 @@ void WebBackForwardList::goToItem(WebBackForwardListItem& item)
 
     // If the target item wasn't even in the list, there's nothing else to do.
     if (targetIndex == notFound) {
-        LOG(BackForward, "(Back/Forward) WebBackForwardList %p could not go to item %s (%s) because it was not found", this, item.itemID().logString(), item.url().utf8().data());
+        LOG(BackForward, "(Back/Forward) WebBackForwardList %p could not go to item %s (%s) because it was not found", this, targetItem->itemID().toString().utf8().data(), targetItem->url().utf8().data());
         return;
     }
 
     if (targetIndex < *m_currentIndex) {
         unsigned delta = m_entries.size() - targetIndex - 1;
         String deltaValue = delta > 10 ? "over10"_s : String::number(delta);
-        m_page->logDiagnosticMessage(WebCore::DiagnosticLoggingKeys::backNavigationDeltaKey(), deltaValue, ShouldSample::No);
+        page->logDiagnosticMessage(WebCore::DiagnosticLoggingKeys::backNavigationDeltaKey(), deltaValue, ShouldSample::No);
     }
 
     // If we're going to an item different from the current item, ask the client if the current
     // item should remain in the list.
     auto& currentItem = m_entries[*m_currentIndex];
     bool shouldKeepCurrentItem = true;
-    if (currentItem.ptr() != &item) {
-        m_page->recordAutomaticNavigationSnapshot();
-        shouldKeepCurrentItem = m_page->shouldKeepCurrentBackForwardListItemInList(m_entries[*m_currentIndex]);
+    if (currentItem.ptr() != targetItem) {
+        page->recordAutomaticNavigationSnapshot();
+        shouldKeepCurrentItem = page->shouldKeepCurrentBackForwardListItemInList(m_entries[*m_currentIndex]);
     }
 
     // If the client said to remove the current item, remove it and then update the target index.
@@ -209,7 +231,7 @@ void WebBackForwardList::goToItem(WebBackForwardListItem& item)
         m_entries.remove(*m_currentIndex);
         targetIndex = notFound;
         for (size_t i = 0; i < m_entries.size(); ++i) {
-            if (m_entries[i].ptr() == &item) {
+            if (m_entries[i].ptr() == targetItem) {
                 targetIndex = i;
                 break;
             }
@@ -219,8 +241,8 @@ void WebBackForwardList::goToItem(WebBackForwardListItem& item)
 
     m_currentIndex = targetIndex;
 
-    LOG(BackForward, "(Back/Forward) WebBackForwardList %p going to item %s, is now at index %zu", this, item.itemID().logString(), targetIndex);
-    m_page->didChangeBackForwardList(nullptr, WTFMove(removedItems));
+    LOG(BackForward, "(Back/Forward) WebBackForwardList %p going to item %s, is now at index %zu", this, targetItem->itemID().toString().utf8().data(), targetIndex);
+    page->didChangeBackForwardList(nullptr, WTFMove(removedItems));
 }
 
 WebBackForwardListItem* WebBackForwardList::currentItem() const
@@ -228,6 +250,11 @@ WebBackForwardListItem* WebBackForwardList::currentItem() const
     ASSERT(!m_currentIndex || *m_currentIndex < m_entries.size());
 
     return m_page && m_currentIndex ? m_entries[*m_currentIndex].ptr() : nullptr;
+}
+
+RefPtr<WebBackForwardListItem> WebBackForwardList::protectedCurrentItem() const
+{
+    return currentItem();
 }
 
 WebBackForwardListItem* WebBackForwardList::backItem() const
@@ -302,12 +329,11 @@ Ref<API::Array> WebBackForwardList::backListAsAPIArrayWithLimit(unsigned limit) 
     if (!size)
         return API::Array::create();
 
-    Vector<RefPtr<API::Object>> vector;
-    vector.reserveInitialCapacity(size);
-
     ASSERT(backListSize >= size);
-    for (unsigned i = backListSize - size; i < backListSize; ++i)
-        vector.uncheckedAppend(m_entries[i].ptr());
+    size_t startIndex = backListSize - size;
+    Vector<RefPtr<API::Object>> vector(size, [&](size_t i) -> RefPtr<API::Object> {
+        return m_entries[startIndex + i].ptr();
+    });
 
     return API::Array::create(WTFMove(vector));
 }
@@ -323,13 +349,10 @@ Ref<API::Array> WebBackForwardList::forwardListAsAPIArrayWithLimit(unsigned limi
     if (!size)
         return API::Array::create();
 
-    Vector<RefPtr<API::Object>> vector;
-    vector.reserveInitialCapacity(size);
-
-    size_t last = *m_currentIndex + size;
-    ASSERT(last < m_entries.size());
-    for (size_t i = *m_currentIndex + 1; i <= last; ++i)
-        vector.uncheckedAppend(m_entries[i].ptr());
+    size_t startIndex = *m_currentIndex + 1;
+    Vector<RefPtr<API::Object>> vector(size, [&](size_t i) -> RefPtr<API::Object> {
+        return m_entries[startIndex + i].ptr();
+    });
 
     return API::Array::create(WTFMove(vector));
 }
@@ -340,16 +363,11 @@ void WebBackForwardList::removeAllItems()
 
     LOG(BackForward, "(Back/Forward) WebBackForwardList %p removeAllItems (has %zu of them)", this, m_entries.size());
 
-    Vector<Ref<WebBackForwardListItem>> removedItems;
-
-    for (auto& entry : m_entries) {
+    for (auto& entry : m_entries)
         didRemoveItem(entry);
-        removedItems.append(WTFMove(entry));
-    }
 
-    m_entries.clear();
     m_currentIndex = std::nullopt;
-    m_page->didChangeBackForwardList(nullptr, WTFMove(removedItems));
+    protectedPage()->didChangeBackForwardList(nullptr, std::exchange(m_entries, { }));
 }
 
 void WebBackForwardList::clear()
@@ -358,26 +376,23 @@ void WebBackForwardList::clear()
 
     LOG(BackForward, "(Back/Forward) WebBackForwardList %p clear (has %zu of them)", this, m_entries.size());
 
+    RefPtr page = m_page.get();
     size_t size = m_entries.size();
-    if (!m_page || size <= 1)
+    if (!page || size <= 1)
         return;
 
     RefPtr<WebBackForwardListItem> currentItem = this->currentItem();
-    Vector<Ref<WebBackForwardListItem>> removedItems;
 
     if (!currentItem) {
         // We should only ever have no current item if we also have no current item index.
         ASSERT(!m_currentIndex);
 
         // But just in case it does happen in practice we should get back into a consistent state now.
-        for (size_t i = 0; i < size; ++i) {
-            didRemoveItem(m_entries[i]);
-            removedItems.append(WTFMove(m_entries[i]));
-        }
+        for (auto& entry : m_entries)
+            didRemoveItem(entry);
 
-        m_entries.clear();
         m_currentIndex = std::nullopt;
-        m_page->didChangeBackForwardList(nullptr, WTFMove(removedItems));
+        page->didChangeBackForwardList(nullptr, std::exchange(m_entries, { }));
 
         return;
     }
@@ -387,7 +402,8 @@ void WebBackForwardList::clear()
             didRemoveItem(m_entries[i]);
     }
 
-    removedItems.reserveCapacity(size - 1);
+    Vector<Ref<WebBackForwardListItem>> removedItems;
+    removedItems.reserveInitialCapacity(size - 1);
     for (size_t i = 0; i < size; ++i) {
         if (m_currentIndex && i != *m_currentIndex)
             removedItems.append(WTFMove(m_entries[i]));
@@ -400,7 +416,7 @@ void WebBackForwardList::clear()
         m_entries.append(currentItem.releaseNonNull());
     else
         m_currentIndex = std::nullopt;
-    m_page->didChangeBackForwardList(nullptr, WTFMove(removedItems));
+    page->didChangeBackForwardList(nullptr, WTFMove(removedItems));
 }
 
 BackForwardListState WebBackForwardList::backForwardListState(WTF::Function<bool (WebBackForwardListItem&)>&& filter) const
@@ -438,31 +454,23 @@ void WebBackForwardList::restoreFromState(BackForwardListState backForwardListSt
     if (!m_page)
         return;
 
-    Vector<Ref<WebBackForwardListItem>> items;
-    items.reserveInitialCapacity(backForwardListState.items.size());
-
     // FIXME: Enable restoring resourceDirectoryURL.
-    for (auto& backForwardListItemState : backForwardListState.items) {
-        backForwardListItemState.identifier = { Process::identifier(), ObjectIdentifier<BackForwardItemIdentifier::ItemIdentifierType>::generate() };
-        items.uncheckedAppend(WebBackForwardListItem::create(WTFMove(backForwardListItemState), m_page->identifier()));
-    }
+    m_entries = WTF::map(WTFMove(backForwardListState.items), [this](auto&& state) {
+        state.identifier = BackForwardItemIdentifier::generate();
+        return WebBackForwardListItem::create(WTFMove(state), m_page->identifier());
+    });
     m_currentIndex = backForwardListState.currentIndex ? std::optional<size_t>(*backForwardListState.currentIndex) : std::nullopt;
-    m_entries = WTFMove(items);
 
     LOG(BackForward, "(Back/Forward) WebBackForwardList %p restored from state (has %zu entries)", this, m_entries.size());
 }
 
 Vector<BackForwardListItemState> WebBackForwardList::filteredItemStates(Function<bool(WebBackForwardListItem&)>&& functor) const
 {
-    Vector<BackForwardListItemState> itemStates;
-    itemStates.reserveInitialCapacity(m_entries.size());
-
-    for (const auto& entry : m_entries) {
+    return WTF::compactMap(m_entries, [&](auto& entry) -> std::optional<BackForwardListItemState> {
         if (functor(entry))
-            itemStates.uncheckedAppend(entry->itemState());
-    }
-
-    return itemStates;
+            return entry->itemState();
+        return std::nullopt;
+    });
 }
 
 Vector<BackForwardListItemState> WebBackForwardList::itemStates() const
@@ -476,31 +484,104 @@ void WebBackForwardList::didRemoveItem(WebBackForwardListItem& backForwardListIt
 {
     backForwardListItem.wasRemovedFromBackForwardList();
 
-    m_page->backForwardRemovedItem(backForwardListItem.itemID());
+    protectedPage()->backForwardRemovedItem(backForwardListItem.itemID());
 
 #if PLATFORM(COCOA) || PLATFORM(GTK)
     backForwardListItem.setSnapshot(nullptr);
 #endif
 }
 
+enum class NavigationDirection { Backward, Forward };
+static WebBackForwardListItem* itemSkippingBackForwardItemsAddedByJSWithoutUserGesture(const WebBackForwardList& backForwardList, NavigationDirection direction)
+{
+    auto delta = direction == NavigationDirection::Backward ? -1 : 1;
+    int itemIndex = delta;
+    auto* item = backForwardList.itemAtIndex(itemIndex);
+    if (!item)
+        return nullptr;
+
+#if PLATFORM(COCOA)
+    if (!linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::UIBackForwardSkipsHistoryItemsWithoutUserGesture))
+        return item;
+#endif
+
+    // For example:
+    // Yahoo -> Yahoo#a (no userInteraction) -> Google -> Google#a (no user interaction) -> Google#b (no user interaction)
+    // If we're on Google and navigate back, we don't want to skip anything and load Yahoo#a.
+    // However, if we're on Yahoo and navigate forward, we do want to skip items and end up on Google#b.
+    if (direction == NavigationDirection::Backward && !backForwardList.currentItem()->wasCreatedByJSWithoutUserInteraction())
+        return item;
+
+    // For example:
+    // Yahoo -> Yahoo#a (no userInteraction) -> Google -> Google#a (no user interaction) -> Google#b (no user interaction)
+    // If we are on Google#b and navigate backwards, we want to skip over Google#a and Google, to end up on Yahoo#a.
+    // If we are on Yahoo#a and navigate forwards, we want to skip over Google and Google#a, to end up on Google#b.
+
+    auto* originalItem = item;
+    while (item->wasCreatedByJSWithoutUserInteraction()) {
+        itemIndex += delta;
+        item = backForwardList.itemAtIndex(itemIndex);
+        if (!item)
+            return originalItem;
+        RELEASE_LOG(Loading, "UI Navigation is skipping a WebBackForwardListItem because it was added by JavaScript without user interaction");
+    }
+
+    // We are now on the next item that has user interaction.
+    ASSERT(!item->wasCreatedByJSWithoutUserInteraction());
+
+    if (direction == NavigationDirection::Backward) {
+        // If going backwards, skip over next item with user iteraction since this is the one the user
+        // thinks they're on.
+        --itemIndex;
+        item = backForwardList.itemAtIndex(itemIndex);
+        if (!item)
+            return originalItem;
+        RELEASE_LOG(Loading, "UI Navigation is skipping a WebBackForwardListItem that has user interaction because we started on an item that didn't have interaction");
+    } else {
+        // If going forward and there are items that we created by JS without user interaction, move forward to the last
+        // one in the series.
+        auto* nextItem = backForwardList.itemAtIndex(itemIndex + 1);
+        while (nextItem && nextItem->wasCreatedByJSWithoutUserInteraction()) {
+            item = nextItem;
+            nextItem = backForwardList.itemAtIndex(++itemIndex);
+        }
+    }
+    return item;
+}
+
+WebBackForwardListItem* WebBackForwardList::goBackItemSkippingItemsWithoutUserGesture() const
+{
+    return itemSkippingBackForwardItemsAddedByJSWithoutUserGesture(*this, NavigationDirection::Backward);
+}
+
+WebBackForwardListItem* WebBackForwardList::goForwardItemSkippingItemsWithoutUserGesture() const
+{
+    return itemSkippingBackForwardItemsAddedByJSWithoutUserGesture(*this, NavigationDirection::Forward);
+}
+
+RefPtr<WebPageProxy> WebBackForwardList::protectedPage()
+{
+    return m_page.get();
+}
+
 #if !LOG_DISABLED
 
-const char* WebBackForwardList::loggingString()
+String WebBackForwardList::loggingString()
 {
     StringBuilder builder;
 
-    builder.append("WebBackForwardList 0x", hex(reinterpret_cast<uintptr_t>(this)), " - ", m_entries.size(), " entries, has current index ", m_currentIndex ? "YES" : "NO", " (", m_currentIndex ? *m_currentIndex : 0, ')');
+    builder.append("\nWebBackForwardList 0x"_s, hex(reinterpret_cast<uintptr_t>(this)), " - "_s, m_entries.size(), " entries, has current index "_s, m_currentIndex ? "YES"_s : "NO"_s, " ("_s, m_currentIndex ? *m_currentIndex : 0, ')');
 
     for (size_t i = 0; i < m_entries.size(); ++i) {
-        const char* prefix;
+        ASCIILiteral prefix;
         if (m_currentIndex && *m_currentIndex == i)
-            prefix = " * ";
+            prefix = " * "_s;
         else
-            prefix = " - ";
+            prefix = " - "_s;
         builder.append('\n', prefix, m_entries[i]->loggingString());
     }
 
-    return debugString("\n", builder.toString());
+    return builder.toString();
 }
 
 #endif // !LOG_DISABLED

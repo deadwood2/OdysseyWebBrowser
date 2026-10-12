@@ -47,7 +47,7 @@ BackForwardList::~BackForwardList()
     ASSERT(m_closed);
 }
 
-void BackForwardList::addItem(Ref<HistoryItem>&& newItem)
+void BackForwardList::addItem(WebCore::FrameIdentifier, Ref<HistoryItem>&& newItem)
 {
     if (!m_capacity || !m_enabled)
         return;
@@ -256,7 +256,7 @@ void BackForwardList::removeItem(HistoryItem& item)
     }
 }
 
-bool BackForwardList::containsItem(HistoryItem& entry)
+bool BackForwardList::containsItem(const HistoryItem& entry) const
 {
-    return m_entryHash.contains(&entry);
+    return m_entryHash.contains(const_cast<HistoryItem*>(&entry));
 }

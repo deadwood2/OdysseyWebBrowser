@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2018 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2008-2024 Apple Inc. All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,24 +31,15 @@
 #include "InlineCallFrame.h"
 #include "JSCInlines.h"
 #include "JSWebAssemblyInstance.h"
+#include "JSWebAssemblyModule.h"
 #include "LLIntPCRanges.h"
+#include "NativeCallee.h"
 #include "VMEntryRecord.h"
-#include "VMEntryScope.h"
-#include "WasmContextInlines.h"
-#include "WasmInstance.h"
+#include "VMEntryScopeInlines.h"
+#include "WasmContext.h"
 #include <wtf/StringPrintStream.h>
 
 namespace JSC {
-
-void CallFrame::initDeprecatedCallFrameForDebugger(CallFrame* globalExec, JSCallee* globalCallee)
-{
-    globalExec->setCodeBlock(nullptr);
-    globalExec->setCallerFrame(noCaller());
-    globalExec->setReturnPC(nullptr);
-    globalExec->setArgumentCountIncludingThis(0);
-    globalExec->setCallee(globalCallee);
-    ASSERT(globalExec->isDeprecatedCallFrameForDebugger());
-}
 
 bool CallFrame::callSiteBitsAreBytecodeOffset() const
 {
@@ -108,13 +99,13 @@ SUPPRESS_ASAN CallSiteIndex CallFrame::unsafeCallSiteIndex() const
     return CallSiteIndex::fromBits(unsafeCallSiteAsRawBits());
 }
 
-const Instruction* CallFrame::currentVPC() const
+const JSInstruction* CallFrame::currentVPC() const
 {
     ASSERT(callSiteBitsAreBytecodeOffset());
     return codeBlock()->instructions().at(callSiteBitsAsBytecodeOffset()).ptr();
 }
 
-void CallFrame::setCurrentVPC(const Instruction* vpc)
+void CallFrame::setCurrentVPC(const JSInstruction* vpc)
 {
     CallSiteIndex callSite(codeBlock()->bytecodeIndex(vpc));
     this[static_cast<int>(CallFrameSlot::argumentCountIncludingThis)].tag() = callSite.bits();
@@ -130,7 +121,8 @@ unsigned CallFrame::callSiteBitsAsBytecodeOffset() const
 
 BytecodeIndex CallFrame::bytecodeIndex() const
 {
-    ASSERT(!callee().isWasm());
+    if (callee().isNativeCallee())
+        return callSiteIndex().bytecodeIndex();
     if (!codeBlock())
         return BytecodeIndex(0);
 #if ENABLE(DFG_JIT)
@@ -169,19 +161,6 @@ Register* CallFrame::topOfFrameInternal()
     return registers() + codeBlock->stackPointerOffset();
 }
 
-bool CallFrame::isAnyWasmCallee()
-{
-    CalleeBits callee = this->callee();
-    if (callee.isWasm())
-        return true;
-
-    ASSERT(callee.isCell());
-    if (!!callee.rawPtr() && isWebAssemblyModule(callee.asCell()))
-        return true;
-
-    return false;
-}
-
 CallFrame* CallFrame::callerFrame(EntryFrame*& currEntryFrame) const
 {
     if (callerFrameOrEntryFrame() == currEntryFrame) {
@@ -209,7 +188,7 @@ SourceOrigin CallFrame::callerSourceOrigin(VM& vm)
     bool haveSkippedFirstFrame = false;
     StackVisitor::visit(this, vm, [&](StackVisitor& visitor) {
         if (!std::exchange(haveSkippedFirstFrame, true))
-            return StackVisitor::Status::Continue;
+            return IterationStatus::Continue;
 
         switch (visitor->codeType()) {
         case StackVisitor::Frame::CodeType::Function:
@@ -222,25 +201,25 @@ SourceOrigin CallFrame::callerSourceOrigin(VM& vm)
             // At that time, the generated eval code should have the source origin to the original caller of the forEach function
             // instead of the source origin of the forEach function.
             if (static_cast<FunctionExecutable*>(visitor->codeBlock()->ownerExecutable())->isBuiltinFunction())
-                return StackVisitor::Status::Continue;
+                return IterationStatus::Continue;
             FALLTHROUGH;
 
         case StackVisitor::Frame::CodeType::Eval:
         case StackVisitor::Frame::CodeType::Module:
         case StackVisitor::Frame::CodeType::Global:
             sourceOrigin = visitor->codeBlock()->ownerExecutable()->sourceOrigin();
-            return StackVisitor::Status::Done;
+            return IterationStatus::Done;
 
         case StackVisitor::Frame::CodeType::Native:
-            return StackVisitor::Status::Continue;
+            return IterationStatus::Continue;
 
         case StackVisitor::Frame::CodeType::Wasm:
             // FIXME: Should return the source origin for WASM.
-            return StackVisitor::Status::Done;
+            return IterationStatus::Done;
         }
 
         RELEASE_ASSERT_NOT_REACHED();
-        return StackVisitor::Status::Done;
+        return IterationStatus::Done;
     });
     return sourceOrigin;
 }
@@ -251,18 +230,19 @@ JSGlobalObject* CallFrame::globalObjectOfClosestCodeBlock(VM& vm, CallFrame* cal
     // rdar://83691438
     JSGlobalObject* globalObject = nullptr;
     StackVisitor::visit(callFrame, vm, [&](StackVisitor& visitor) {
-        if (visitor->isWasmFrame()) {
+        // Note that this is OK for InlineCache Callee.
+        if (visitor->isNativeCalleeFrame()) {
             globalObject = visitor->callFrame()->lexicalGlobalObject(vm);
-            return StackVisitor::Status::Done;
+            return IterationStatus::Done;
         }
         if (auto* codeBlock = visitor->codeBlock()) {
             if (codeBlock->codeType() == CodeType::FunctionCode && static_cast<FunctionExecutable*>(codeBlock->ownerExecutable())->isBuiltinFunction())
-                return StackVisitor::Status::Continue;
+                return IterationStatus::Continue;
             globalObject = codeBlock->globalObject();
-            return StackVisitor::Status::Done;
+            return IterationStatus::Done;
         }
         ASSERT(visitor->codeType() == StackVisitor::Frame::CodeType::Native);
-        return StackVisitor::Status::Continue;
+        return IterationStatus::Continue;
     });
     if (globalObject)
         return globalObject;
@@ -273,6 +253,9 @@ JSGlobalObject* CallFrame::globalObjectOfClosestCodeBlock(VM& vm, CallFrame* cal
 
 String CallFrame::friendlyFunctionName()
 {
+    if (this->isNativeCalleeFrame())
+        return emptyString();
+
     CodeBlock* codeBlock = this->codeBlock();
     if (!codeBlock)
         return emptyString();
@@ -296,6 +279,26 @@ String CallFrame::friendlyFunctionName()
 
 void CallFrame::dump(PrintStream& out) const
 {
+    if (this->isNativeCalleeFrame()) {
+        auto* nativeCallee = callee().asNativeCallee();
+        switch (nativeCallee->category()) {
+        case NativeCallee::Category::Wasm: {
+#if ENABLE(WEBASSEMBLY)
+            auto* wasmCallee = static_cast<Wasm::Callee*>(nativeCallee);
+            out.print(Wasm::makeString(wasmCallee->indexOrName()), " [", Wasm::makeString(wasmCallee->compilationMode()), "]");
+            out.print("(JSWebAssemblyInstance: ", RawPointer(wasmInstance()), ")");
+#else
+            out.print(RawPointer(returnPCForInspection()));
+#endif
+            break;
+        }
+        case NativeCallee::Category::InlineCache:
+            out.print(RawPointer(returnPCForInspection()));
+            break;
+        }
+        return;
+    }
+
     if (CodeBlock* codeBlock = this->codeBlock()) {
         out.print(codeBlock->inferredName(), "#", codeBlock->hashAsStringIfPossible(), " [", codeBlock->jitType(), " ", bytecodeIndex(), "]");
 
@@ -313,7 +316,7 @@ void CallFrame::dump(PrintStream& out) const
         return;
     }
 
-    out.print(returnPC());
+    out.print(RawPointer(returnPCForInspection()));
 }
 
 const char* CallFrame::describeFrame()
@@ -337,29 +340,61 @@ const char* CallFrame::describeFrame()
 
 void CallFrame::convertToStackOverflowFrame(VM& vm, CodeBlock* codeBlockToKeepAliveUntilFrameIsUnwound)
 {
-    ASSERT(!isDeprecatedCallFrameForDebugger());
-    ASSERT(codeBlockToKeepAliveUntilFrameIsUnwound->inherits<CodeBlock>(vm));
+    ASSERT(!isEmptyTopLevelCallFrameForDebugger());
+    ASSERT(codeBlockToKeepAliveUntilFrameIsUnwound->inherits<CodeBlock>());
 
     EntryFrame* entryFrame = vm.topEntryFrame;
     CallFrame* throwOriginFrame = this;
     do {
         throwOriginFrame = throwOriginFrame->callerFrame(entryFrame);
-    } while (throwOriginFrame && throwOriginFrame->callee().isWasm());
+    } while (throwOriginFrame && throwOriginFrame->callee().isNativeCallee());
 
-    JSObject* originCallee = throwOriginFrame ? throwOriginFrame->jsCallee() : vmEntryRecord(vm.topEntryFrame)->callee();
-    JSObject* stackOverflowCallee = originCallee->globalObject()->stackOverflowFrameCallee();
+    JSGlobalObject* globalObject = nullptr;
+    if (throwOriginFrame)
+        globalObject = throwOriginFrame->jsCallee()->globalObject();
+    else
+        globalObject = vm.entryScope->globalObject();
+    JSObject* partiallyInitializedFrameCallee = globalObject->partiallyInitializedFrameCallee();
 
     setCodeBlock(codeBlockToKeepAliveUntilFrameIsUnwound);
-    setCallee(stackOverflowCallee);
+    setCallee(partiallyInitializedFrameCallee);
     setArgumentCountIncludingThis(0);
 }
 
-#if ENABLE(WEBASSEMBLY)
-JSGlobalObject* CallFrame::lexicalGlobalObjectFromWasmCallee(VM& vm) const
+JSGlobalObject* CallFrame::lexicalGlobalObjectFromNativeCallee(VM& vm) const
 {
-    return vm.wasmContext.load()->owner<JSWebAssemblyInstance>()->globalObject();
-}
+    auto* nativeCallee = callee().asNativeCallee();
+    switch (nativeCallee->category()) {
+    case NativeCallee::Category::Wasm: {
+#if ENABLE(WEBASSEMBLY)
+        return wasmInstance()->globalObject();
+#else
+        return nullptr;
 #endif
+    }
+    case NativeCallee::Category::InlineCache: {
+        return callerFrame()->lexicalGlobalObject(vm);
+    }
+    }
+    return nullptr;
+}
+
+JSCell* CallFrame::codeOwnerCellSlow() const
+{
+    auto* nativeCallee = callee().asNativeCallee();
+    switch (nativeCallee->category()) {
+    case NativeCallee::Category::Wasm: {
+#if ENABLE(WEBASSEMBLY)
+        return wasmInstance()->jsModule();
+#else
+        return nullptr;
+#endif
+    }
+    case NativeCallee::Category::InlineCache:
+        return callerFrame()->codeOwnerCell();
+    }
+    return nullptr;
+}
 
 bool isFromJSCode(void* returnAddress)
 {
@@ -374,5 +409,18 @@ bool isFromJSCode(void* returnAddress)
     return LLInt::isLLIntPC(returnAddress);
 #endif
 }
+
+#if ENABLE(WEBASSEMBLY)
+JSWebAssemblyInstance* CallFrame::wasmInstance() const
+{
+    ASSERT(callee().isNativeCallee());
+#if USE(JSVALUE32_64)
+    return bitwise_cast<JSWebAssemblyInstance*>(this[static_cast<int>(CallFrameSlot::codeBlock)].asanUnsafePointer());
+#else
+    return jsCast<JSWebAssemblyInstance*>(this[static_cast<int>(CallFrameSlot::codeBlock)].jsValue());
+#endif
+}
+#endif
+
 
 } // namespace JSC

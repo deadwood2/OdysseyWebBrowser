@@ -28,6 +28,7 @@
 #include <WebCore/Page.h>
 #include <wtf/HashMap.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
@@ -35,7 +36,7 @@ class WebPageProxy;
 class WebProcessPool;
 
 class PerActivityStateCPUUsageSampler {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(PerActivityStateCPUUsageSampler);
 public:
     explicit PerActivityStateCPUUsageSampler(WebProcessPool&);
     ~PerActivityStateCPUUsageSampler();
@@ -44,10 +45,10 @@ public:
 
 private:
     void loggingTimerFired();
-    WebPageProxy* pageForLogging() const;
+    RefPtr<WebPageProxy> pageForLogging() const;
 
     WebProcessPool& m_processPool;
-    RunLoop::Timer<PerActivityStateCPUUsageSampler> m_loggingTimer;
+    RunLoop::Timer m_loggingTimer;
     typedef HashMap<WebCore::ActivityStateForCPUSampling, Seconds, WTF::IntHash<WebCore::ActivityStateForCPUSampling>, WTF::StrongEnumHashTraits<WebCore::ActivityStateForCPUSampling>> CPUTimeInActivityStateMap;
     CPUTimeInActivityStateMap m_cpuTimeInActivityState;
     MonotonicTime m_lastCPUTime;

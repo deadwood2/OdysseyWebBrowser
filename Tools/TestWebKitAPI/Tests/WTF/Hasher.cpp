@@ -27,7 +27,11 @@
 
 #include <array>
 #include <limits>
+#include <wtf/CheckedRef.h>
+#include <wtf/Compiler.h>
+#include <wtf/FastMalloc.h>
 #include <wtf/Hasher.h>
+#include <wtf/RefCounted.h>
 #include <wtf/Vector.h>
 
 namespace TestWebKitAPI {
@@ -123,7 +127,8 @@ TEST(WTF, Hasher_floatingPoint)
 {
     EXPECT_EQ(zero64BitHash, computeHash(0.0));
     EXPECT_EQ(1264532604U, computeHash(-0.0)); // Note, not same as hash of 0.0.
-    EXPECT_EQ(one64BitHash, computeHash(std::numeric_limits<double>::denorm_min()));
+    if (std::numeric_limits<double>::has_denorm == std::denorm_present)
+        EXPECT_EQ(one64BitHash, computeHash(std::numeric_limits<double>::denorm_min()));
 
     EXPECT_EQ(2278399980U, computeHash(1.0));
     EXPECT_EQ(3870689297U, computeHash(-1.0));
@@ -140,7 +145,8 @@ TEST(WTF, Hasher_floatingPoint)
 
     EXPECT_EQ(zero32BitHash, computeHash(0.0f));
     EXPECT_EQ(2425683428U, computeHash(-0.0f)); // Note, not same as hash of 0.0f.
-    EXPECT_EQ(one32BitHash, computeHash(std::numeric_limits<float>::denorm_min()));
+    if (std::numeric_limits<float>::has_denorm == std::denorm_present)
+        EXPECT_EQ(one32BitHash, computeHash(std::numeric_limits<float>::denorm_min()));
 
     EXPECT_EQ(1081575966U, computeHash(1.0f));
     EXPECT_EQ(3262093188U, computeHash(-1.0f));
@@ -187,6 +193,80 @@ TEST(WTF, Hasher_multiple)
     EXPECT_EQ(1652352321U, computeHash(std::make_pair(std::make_pair(1, 2), std::make_pair(3, 4))));
 }
 
+TEST(WTF, Hasher_pointer)
+{
+    char* nullPtr = nullptr;
+    char* onePtr = nullPtr + 1;
+    char* ffffffPtr = nullPtr + 0xffffff;
+
+    EXPECT_EQ(computeHash(static_cast<uintptr_t>(0)), computeHash(nullPtr));
+    EXPECT_EQ(computeHash(static_cast<uintptr_t>(0x1)), computeHash(onePtr));
+    EXPECT_EQ(computeHash(static_cast<uintptr_t>(0xffffff)), computeHash(ffffffPtr));
+}
+
+TEST(WTF, Hasher_RefPtr)
+{
+    struct Test : public RefCounted<Test> {
+        Test() = default;
+    };
+
+    RefPtr<Test> nullRefPtr;
+    RefPtr<Test> nonNullRefPtr = adoptRef(*new Test);
+
+    EXPECT_EQ(computeHash(nullRefPtr), computeHash(nullRefPtr.get()));
+    EXPECT_EQ(computeHash(nonNullRefPtr), computeHash(nonNullRefPtr.get()));
+
+    Vector<RefPtr<Test>> refPtrVector;
+    Vector<Test*> ptrVector;
+    EXPECT_EQ(computeHash(refPtrVector), computeHash(ptrVector));
+
+    refPtrVector.append(nonNullRefPtr);
+    ptrVector.append(nonNullRefPtr.get());
+    EXPECT_EQ(computeHash(refPtrVector), computeHash(ptrVector));
+
+    RefPtr<Test> nonNullRefPtr2 = adoptRef(*new Test);
+
+    refPtrVector.append(nonNullRefPtr2);
+    ptrVector.append(nonNullRefPtr2.get());
+    EXPECT_EQ(computeHash(refPtrVector), computeHash(ptrVector));
+}
+
+namespace {
+
+struct CheckedObject final : public CanMakeCheckedPtr<CheckedObject> {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
+    WTF_STRUCT_OVERRIDE_DELETE_FOR_CHECKED_PTR(CheckedObject);
+    CheckedObject() = default;
+};
+
+}
+
+TEST(WTF, Hasher_CheckedPtr)
+{
+    CheckedObject test;
+    CheckedObject test2;
+
+    CheckedPtr<CheckedObject> nullCheckedPtr;
+    CheckedPtr<CheckedObject> nonNullCheckedPtr = &test;
+
+    EXPECT_EQ(computeHash(nullCheckedPtr), computeHash(nullCheckedPtr.get()));
+    EXPECT_EQ(computeHash(nonNullCheckedPtr), computeHash(nonNullCheckedPtr.get()));
+
+    Vector<CheckedPtr<CheckedObject>> checkedPtrVector;
+    Vector<CheckedObject*> ptrVector;
+    EXPECT_EQ(computeHash(checkedPtrVector), computeHash(ptrVector));
+
+    checkedPtrVector.append(nonNullCheckedPtr);
+    ptrVector.append(nonNullCheckedPtr.get());
+    EXPECT_EQ(computeHash(checkedPtrVector), computeHash(ptrVector));
+
+    CheckedPtr<CheckedObject> nonNullCheckedPtr2 = &test2;
+
+    checkedPtrVector.append(nonNullCheckedPtr2);
+    ptrVector.append(nonNullCheckedPtr2.get());
+    EXPECT_EQ(computeHash(checkedPtrVector), computeHash(ptrVector));
+}
+
 struct HasherAddCustom1 { };
 
 void add(Hasher& hasher, const HasherAddCustom1&)
@@ -198,7 +278,7 @@ struct HasherAddCustom2 { };
 
 void add(Hasher& hasher, const HasherAddCustom2&)
 {
-    add(hasher, { 1, 2, 3, 4 });
+    add(hasher, std::initializer_list<int> { 1, 2, 3, 4 });
 }
 
 TEST(WTF, Hasher_custom)

@@ -26,14 +26,43 @@
 #import "config.h"
 #import "AuxiliaryProcess.h"
 
+#import "Logging.h"
 #import "OSStateSPI.h"
+#import "SharedBufferReference.h"
 #import "WKCrashReporter.h"
+#import "WKProcessExtension.h"
+#import "WKWebView.h"
 #import "XPCServiceEntryPoint.h"
 #import <WebCore/FloatingPointEnvironment.h>
 #import <WebCore/RuntimeApplicationChecks.h>
 #import <mach/task.h>
+#import <objc/runtime.h>
+#import <pal/spi/cg/CoreGraphicsSPI.h>
+#import <pal/spi/cocoa/NSKeyedUnarchiverSPI.h>
+#import <pal/spi/cocoa/NotifySPI.h>
+#import <wtf/FileSystem.h>
+#import <wtf/RetainPtr.h>
 #import <wtf/cocoa/Entitlements.h>
 #import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
+#import <wtf/cocoa/SoftLinking.h>
+#import <wtf/text/MakeString.h>
+
+#if ENABLE(CFPREFS_DIRECT_MODE)
+#import "AccessibilitySupportSPI.h"
+#import <pal/spi/cocoa/AccessibilitySupportSPI.h>
+#endif
+
+#if PLATFORM(MAC)
+#import "AppKitSPI.h"
+#import <pal/spi/mac/HIServicesSPI.h>
+#endif
+
+#import <pal/cf/AudioToolboxSoftLink.h>
+
+#if HAVE(UPDATE_WEB_ACCESSIBILITY_SETTINGS) && ENABLE(CFPREFS_DIRECT_MODE)
+SOFT_LINK_LIBRARY_OPTIONAL(libAccessibility)
+SOFT_LINK_OPTIONAL(libAccessibility, _AXSUpdateWebAccessibilitySettings, void, (), ());
+#endif
 
 namespace WebKit {
 
@@ -44,6 +73,16 @@ static void initializeTimerCoalescingPolicy()
     struct task_qos_policy qosinfo = { LATENCY_QOS_TIER_0, THROUGHPUT_QOS_TIER_0 };
     kern_return_t kr = task_policy_set(mach_task_self(), TASK_BASE_QOS_POLICY, (task_policy_t)&qosinfo, TASK_QOS_POLICY_COUNT);
     ASSERT_UNUSED(kr, kr == KERN_SUCCESS);
+}
+#endif
+
+#if PLATFORM(MAC)
+static void disableDowngradeToLayoutManager()
+{
+    NSDictionary *existingArguments = [[NSUserDefaults standardUserDefaults] volatileDomainForName:NSArgumentDomain];
+    auto newArguments = adoptNS([existingArguments mutableCopy]);
+    [newArguments setValue:@NO forKey:@"NSTextViewAllowsDowngradeToLayoutManager"];
+    [[NSUserDefaults standardUserDefaults] setVolatileDomain:newArguments.get() forName:NSArgumentDomain];
 }
 #endif
 
@@ -62,24 +101,32 @@ void AuxiliaryProcess::platformInitialize(const AuxiliaryProcessInitializationPa
     [[NSFileManager defaultManager] changeCurrentDirectoryPath:[[NSBundle mainBundle] bundlePath]];
 
     WebCore::setApplicationBundleIdentifier(parameters.clientBundleIdentifier);
-    setApplicationSDKVersion(parameters.clientSDKVersion);
+    setSDKAlignedBehaviors(parameters.clientSDKAlignedBehaviors);
+
+#if PLATFORM(MAC)
+    disableDowngradeToLayoutManager();
+#endif
+
+#if USE(EXTENSIONKIT)
+    setProcessIsExtension(!!WKProcessExtension.sharedInstance);
+#endif
 }
 
-void AuxiliaryProcess::didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName messageName)
+void AuxiliaryProcess::didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName messageName, int32_t indexOfObjectFailingDecoding)
 {
-    auto errorMessage = makeString("Received invalid message: '", description(messageName), "' (", messageName, ')');
+    auto errorMessage = makeString("Received invalid message: '"_s, description(messageName), "' ("_s, messageName, ", "_s, indexOfObjectFailingDecoding, ')');
     logAndSetCrashLogMessage(errorMessage.utf8().data());
-    CRASH_WITH_INFO(WTF::enumToUnderlyingType(messageName));
+    CRASH_WITH_INFO(WTF::enumToUnderlyingType(messageName), indexOfObjectFailingDecoding);
 }
 
-bool AuxiliaryProcess::parentProcessHasEntitlement(const char* entitlement)
+bool AuxiliaryProcess::parentProcessHasEntitlement(ASCIILiteral entitlement)
 {
     return WTF::hasEntitlement(m_connection->xpcConnection(), entitlement);
 }
 
 void AuxiliaryProcess::platformStopRunLoop()
 {
-    XPCServiceExit(WTFMove(m_priorityBoostMessage));
+    XPCServiceExit();
 }
 
 #if USE(OS_STATE)
@@ -109,7 +156,7 @@ void AuxiliaryProcess::registerWithStateDumper(ASCIILiteral title)
             auto data = [NSPropertyListSerialization dataWithPropertyList:stateDictionary.get() format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
 
             if (!data) {
-                ASSERT(data);
+                ASSERT_NOT_REACHED_WITH_MESSAGE("Failed to serialize OS state info with error: %@", error);
                 return os_state;
             }
 
@@ -129,5 +176,174 @@ void AuxiliaryProcess::registerWithStateDumper(ASCIILiteral title)
 }
 
 #endif // USE(OS_STATE)
+
+#if ENABLE(CFPREFS_DIRECT_MODE)
+id AuxiliaryProcess::decodePreferenceValue(const std::optional<String>& encodedValue)
+{
+    if (!encodedValue)
+        return nil;
+    
+    auto encodedData = adoptNS([[NSData alloc] initWithBase64EncodedString:*encodedValue options:0]);
+    auto classes = [NSSet setWithObjects:
+        NSString.class,
+        NSMutableString.class,
+        NSNumber.class,
+        NSDate.class,
+        NSDictionary.class,
+        NSMutableDictionary.class,
+        NSArray.class,
+        NSMutableArray.class,
+        NSData.class,
+        NSMutableData.class,
+    nil];
+    NSError *error { nil };
+    id result = [NSKeyedUnarchiver _strictlyUnarchivedObjectOfClasses:classes fromData:encodedData.get() error:&error];
+    ASSERT(!error);
+    return result;
+}
+
+void AuxiliaryProcess::setPreferenceValue(const String& domain, const String& key, id value)
+{
+    if (domain.isEmpty()) {
+        CFPreferencesSetValue(key.createCFString().get(), (__bridge CFPropertyListRef)value, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+#if ASSERT_ENABLED
+        id valueAfterSetting = [[NSUserDefaults standardUserDefaults] objectForKey:key];
+        ASSERT(valueAfterSetting == value || [valueAfterSetting isEqual:value] || key == "AppleLanguages"_s);
+#endif
+    } else
+        CFPreferencesSetValue(key.createCFString().get(), (__bridge CFPropertyListRef)value, domain.createCFString().get(), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+}
+
+void AuxiliaryProcess::preferenceDidUpdate(const String& domain, const String& key, const std::optional<String>& encodedValue)
+{
+    id value = nil;
+    if (encodedValue) {
+        value = decodePreferenceValue(encodedValue);
+        if (!value)
+            return;
+    }
+    setPreferenceValue(domain, key, value);
+    handlePreferenceChange(domain, key, value);
+}
+
+#if ENABLE(CFPREFS_DIRECT_MODE)
+void AuxiliaryProcess::preferencesDidUpdate(HashMap<String, std::optional<String>> domainlessPreferences, HashMap<std::pair<String, String>, std::optional<String>> preferences)
+{
+    for (auto& [key, value] : domainlessPreferences)
+        preferenceDidUpdate(String(), key, value);
+    for (auto& [key, value] : preferences)
+        preferenceDidUpdate(key.first, key.second, value);
+}
+#endif
+
+#if !HAVE(UPDATE_WEB_ACCESSIBILITY_SETTINGS) && PLATFORM(IOS_FAMILY)
+static const WTF::String& increaseContrastPreferenceKey()
+{
+    static NeverDestroyed<WTF::String> key(MAKE_STATIC_STRING_IMPL("DarkenSystemColors"));
+    return key;
+}
+#endif
+
+#if USE(APPKIT)
+static const WTF::String& invertColorsPreferenceKey()
+{
+    static NeverDestroyed<WTF::String> key(MAKE_STATIC_STRING_IMPL("whiteOnBlack"));
+    return key;
+}
+#endif
+
+void AuxiliaryProcess::handleAXPreferenceChange(const String& domain, const String& key, id value)
+{
+#if HAVE(UPDATE_WEB_ACCESSIBILITY_SETTINGS)
+    if (!libAccessibilityLibrary())
+        return;
+#endif
+
+    if (domain == String(kAXSAccessibilityPreferenceDomain)) {
+#if HAVE(UPDATE_WEB_ACCESSIBILITY_SETTINGS)
+        if (_AXSUpdateWebAccessibilitySettingsPtr())
+            _AXSUpdateWebAccessibilitySettingsPtr()();
+#elif PLATFORM(IOS_FAMILY)
+        // If the update method is not available, to update the cache inside AccessibilitySupport,
+        // these methods need to be called directly.
+        if (CFEqual(key.createCFString().get(), kAXSReduceMotionPreference) && [value isKindOfClass:[NSNumber class]])
+            _AXSSetReduceMotionEnabled([(NSNumber *)value boolValue]);
+        else if (CFEqual(key.createCFString().get(), increaseContrastPreferenceKey()) && [value isKindOfClass:[NSNumber class]])
+            _AXSSetDarkenSystemColors([(NSNumber *)value boolValue]);
+#endif
+    }
+
+#if USE(APPKIT)
+    auto cfKey = key.createCFString();
+    if (CFEqual(cfKey.get(), kAXInterfaceReduceMotionKey) || CFEqual(cfKey.get(), kAXInterfaceIncreaseContrastKey) || CFEqual(cfKey.get(), kAXInterfaceDifferentiateWithoutColorKey) || key == invertColorsPreferenceKey()) {
+        [NSWorkspace _invalidateAccessibilityDisplayValues];
+        accessibilitySettingsDidChange();
+    }
+#endif
+}
+
+void AuxiliaryProcess::handlePreferenceChange(const String& domain, const String& key, id value)
+{
+    handleAXPreferenceChange(domain, key, value);
+    dispatchSimulatedNotificationsForPreferenceChange(key);
+}
+
+#endif // ENABLE(CFPREFS_DIRECT_MODE)
+
+void AuxiliaryProcess::setApplicationIsDaemon()
+{
+#if PLATFORM(MAC)
+    // Having a window server connection in this process would result in spin logs (<rdar://problem/13239119>).
+    OSStatus error = SetApplicationIsDaemon(true);
+    ASSERT_UNUSED(error, error == noErr);
+#elif PLATFORM(MACCATALYST)
+    CGSSetDenyWindowServerConnections(true);
+#endif
+}
+
+#if HAVE(AUDIO_COMPONENT_SERVER_REGISTRATIONS)
+void AuxiliaryProcess::consumeAudioComponentRegistrations(const IPC::SharedBufferReference& data)
+{
+    using namespace PAL;
+
+    if (!PAL::isAudioToolboxCoreFrameworkAvailable() || !PAL::canLoad_AudioToolboxCore_AudioComponentApplyServerRegistrations())
+        return;
+
+    if (data.isNull())
+        return;
+    auto registrations = data.unsafeBuffer()->createCFData();
+
+    auto err = AudioComponentApplyServerRegistrations(registrations.get());
+    if (noErr != err)
+        RELEASE_LOG_ERROR(Process, "Could not apply AudioComponent registrations, err(%ld)", static_cast<long>(err));
+}
+#endif
+
+bool AuxiliaryProcess::isSystemWebKit()
+{
+    static bool isSystemWebKit = []() -> bool {
+        auto imagePath = class_getImageName([WKWebView class]);
+        if (!imagePath)
+            return false;
+
+        RetainPtr path = adoptNS([[NSString alloc] initWithUTF8String:imagePath]);
+#if HAVE(READ_ONLY_SYSTEM_VOLUME)
+        if ([path hasPrefix:@"/Library/Apple/System/"])
+            return true;
+#endif
+        return [path hasPrefix:FileSystem::systemDirectoryPath()];
+    }();
+
+    return isSystemWebKit;
+}
+
+void AuxiliaryProcess::setNotifyOptions()
+{
+#if ENABLE(NOTIFY_BLOCKING)
+    notify_set_options(NOTIFY_OPT_DISPATCH);
+#elif ENABLE(NOTIFY_FILTERING)
+    notify_set_options(NOTIFY_OPT_DISPATCH | NOTIFY_OPT_REGEN | NOTIFY_OPT_FILTERED);
+#endif
+}
 
 } // namespace WebKit

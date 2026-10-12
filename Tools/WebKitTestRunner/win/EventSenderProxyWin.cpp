@@ -140,9 +140,10 @@ void EventSenderProxy::mouseScrollBy(int x, int y)
     }
 }
 
-void EventSenderProxy::mouseScrollByWithWheelAndMomentumPhases(int, int, int, int)
+void EventSenderProxy::mouseScrollByWithWheelAndMomentumPhases(int x, int y, int /* phase */, int /* momentum */)
 {
-    notImplemented();
+    // Ignore arguments `phase` and `momentum` because they are used only if ENABLE(KINETIC_SCROLLING).
+    mouseScrollBy(x, y);
 }
 
 void EventSenderProxy::continuousMouseScrollBy(int, int, bool)
@@ -314,6 +315,14 @@ void EventSenderProxy::keyDown(WKStringRef keyRef, WKEventModifiers wkModifiers,
         SetKeyboardState(keyState);
 }
 
+void EventSenderProxy::rawKeyDown(WKStringRef key, WKEventModifiers modifiers, unsigned keyLocation)
+{
+}
+
+void EventSenderProxy::rawKeyUp(WKStringRef key, WKEventModifiers modifiers, unsigned keyLocation)
+{
+}
+
 #if ENABLE(TOUCH_EVENTS)
 void EventSenderProxy::addTouchPoint(int, int)
 {
@@ -359,5 +368,9 @@ void EventSenderProxy::cancelTouchPoint(int)
 {
 }
 #endif // ENABLE(TOUCH_EVENTS)
+
+void EventSenderProxy::waitForPendingMouseEvents()
+{
+}
 
 } // namespace WTR

@@ -29,8 +29,23 @@
 
 #include "MessageReceiver.h"
 #include "MessageSender.h"
-#include "SharedMemory.h"
 #include <WebCore/RealtimeMediaSourceIdentifier.h>
+#include <wtf/TZoneMalloc.h>
+#include <wtf/WeakRef.h>
+
+#if PLATFORM(COCOA)
+#include "SharedCARingBuffer.h"
+#endif
+
+namespace WebKit {
+class SpeechRecognitionRemoteRealtimeMediaSourceManager;
+struct SharedPreferencesForWebProcess;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::SpeechRecognitionRemoteRealtimeMediaSourceManager> : std::true_type { };
+}
 
 namespace WTF {
 class MediaTime;
@@ -38,22 +53,21 @@ class MediaTime;
 
 namespace WebCore {
 class CaptureDevice;
-
-#if PLATFORM(COCOA)
-class CAAudioStreamDescription;
-#endif
 }
 
 namespace WebKit {
 
 class SpeechRecognitionRemoteRealtimeMediaSource;
+class WebProcessProxy;
 
 class SpeechRecognitionRemoteRealtimeMediaSourceManager final : public IPC::MessageReceiver, public IPC::MessageSender {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(SpeechRecognitionRemoteRealtimeMediaSourceManager);
 public:
-    explicit SpeechRecognitionRemoteRealtimeMediaSourceManager(Ref<IPC::Connection>&&);
+    explicit SpeechRecognitionRemoteRealtimeMediaSourceManager(const WebProcessProxy&);
     void addSource(SpeechRecognitionRemoteRealtimeMediaSource&, const WebCore::CaptureDevice&);
     void removeSource(SpeechRecognitionRemoteRealtimeMediaSource&);
+
+    const SharedPreferencesForWebProcess& sharedPreferencesForWebProcess() const;
 
 private:
     // Messages::SpeechRecognitionRemoteRealtimeMediaSourceManager
@@ -61,7 +75,7 @@ private:
     void remoteCaptureFailed(WebCore::RealtimeMediaSourceIdentifier);
     void remoteSourceStopped(WebCore::RealtimeMediaSourceIdentifier);
 #if PLATFORM(COCOA)
-    void setStorage(WebCore::RealtimeMediaSourceIdentifier, const SharedMemory::IPCHandle&, const WebCore::CAAudioStreamDescription&, uint64_t numberOfFrames);
+    void setStorage(WebCore::RealtimeMediaSourceIdentifier, ConsumerSharedCARingBuffer::Handle&&, const WebCore::CAAudioStreamDescription&);
 #endif
 
     // IPC::MessageReceiver.
@@ -71,9 +85,8 @@ private:
     IPC::Connection* messageSenderConnection() const final;
     uint64_t messageSenderDestinationID() const final;
 
-    Ref<IPC::Connection> m_connection;
-    HashMap<WebCore::RealtimeMediaSourceIdentifier, WeakPtr<SpeechRecognitionRemoteRealtimeMediaSource>> m_sources;
-    HashSet<WebCore::RealtimeMediaSourceIdentifier> m_sourcesNeedingSandboxExtension;
+    WeakRef<const WebProcessProxy> m_process;
+    HashMap<WebCore::RealtimeMediaSourceIdentifier, ThreadSafeWeakPtr<SpeechRecognitionRemoteRealtimeMediaSource>> m_sources;
 };
 
 } // namespace WebKit

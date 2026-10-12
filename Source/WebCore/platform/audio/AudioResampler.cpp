@@ -42,8 +42,9 @@ AudioResampler::AudioResampler()
 
 AudioResampler::AudioResampler(unsigned numberOfChannels)
 {
-    for (unsigned i = 0; i < numberOfChannels; ++i)
-        m_kernels.append(makeUnique<AudioResamplerKernel>(this));
+    m_kernels = Vector<std::unique_ptr<AudioResamplerKernel>>(numberOfChannels, [&](size_t) {
+        return makeUnique<AudioResamplerKernel>(this);
+    });
 
     m_sourceBus = AudioBus::create(numberOfChannels, 0, false);
 }

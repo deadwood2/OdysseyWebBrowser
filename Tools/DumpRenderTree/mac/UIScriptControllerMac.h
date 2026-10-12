@@ -47,11 +47,15 @@ public:
     void removeViewFromWindow(JSValueRef) override;
     void addViewToWindow(JSValueRef) override;
     void toggleCapsLock(JSValueRef) override;
+    void setWebViewEditable(bool) override;
     void simulateAccessibilitySettingsChangeNotification(JSValueRef) override;
     NSUndoManager *platformUndoManager() const override;
     void copyText(JSStringRef) override;
     void activateDataListSuggestion(unsigned, JSValueRef) override;
     void setSpellCheckerResults(JSValueRef) override;
+    void sendEventStream(JSStringRef, JSValueRef) override;
+
+    int64_t pasteboardChangeCount() const final;
 };
 
 }

@@ -31,8 +31,6 @@
 #include "config.h"
 #include "PerformanceEntry.h"
 
-#include "RuntimeEnabledFeatures.h"
-
 namespace WebCore {
 
 DEFINE_ALLOCATOR_WITH_HEAP_IDENTIFIER(PerformanceEntry);
@@ -48,21 +46,19 @@ PerformanceEntry::~PerformanceEntry() = default;
 
 std::optional<PerformanceEntry::Type> PerformanceEntry::parseEntryTypeString(const String& entryType)
 {
-    if (entryType == "navigation")
+    if (entryType == "navigation"_s)
         return std::optional<Type>(Type::Navigation);
 
-    if (entryType == "mark")
+    if (entryType == "mark"_s)
         return std::optional<Type>(Type::Mark);
-    if (entryType == "measure")
+    if (entryType == "measure"_s)
         return std::optional<Type>(Type::Measure);
 
-    if (entryType == "resource")
+    if (entryType == "resource"_s)
         return std::optional<Type>(Type::Resource);
 
-    if (RuntimeEnabledFeatures::sharedFeatures().paintTimingEnabled()) {
-        if (entryType == "paint")
-            return std::optional<Type>(Type::Paint);
-    }
+    if (entryType == "paint"_s)
+        return std::optional<Type>(Type::Paint);
 
     return std::nullopt;
 }

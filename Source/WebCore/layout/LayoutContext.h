@@ -25,10 +25,8 @@
 
 #pragma once
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
-#include <wtf/IsoMalloc.h>
 #include <wtf/OptionSet.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 
@@ -39,8 +37,7 @@ class RenderView;
 
 namespace Layout {
 
-class ContainerBox;
-class InvalidationState;
+class ElementBox;
 class LayoutState;
 class FormattingContext;
 
@@ -50,22 +47,21 @@ class FormattingContext;
 // subsequent layouts (subtree layout). A non-initial, subtree layout could be initiated on multiple formatting contexts.
 // Each formatting context has an entry point for layout, which potenitally means multiple entry points per layout frame.
 class LayoutContext {
-    WTF_MAKE_ISO_ALLOCATED(LayoutContext);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(LayoutContext);
 public:
     LayoutContext(LayoutState&);
 
-    void layout(const LayoutSize& rootContentBoxSize, InvalidationState&);
-    void layoutWithPreparedRootGeometry(InvalidationState&);
+    void layout(const LayoutSize& rootContentBoxSize);
 
-    static std::unique_ptr<FormattingContext> createFormattingContext(const ContainerBox& formattingContextRoot, LayoutState&);
+    static std::unique_ptr<FormattingContext> createFormattingContext(const ElementBox& formattingContextRoot, LayoutState&);
 
-#ifndef NDEBUG
+#if ASSERT_ENABLED
     // For testing purposes only
     static void verifyAndOutputMismatchingLayoutTree(const LayoutState&, const RenderView&);
 #endif
 
 private:
-    void layoutFormattingContextSubtree(const ContainerBox&, InvalidationState&);
+    void layoutFormattingContextSubtree(const ElementBox&);
     LayoutState& layoutState() { return m_layoutState; }
 
     LayoutState& m_layoutState;
@@ -73,4 +69,3 @@ private:
 
 }
 }
-#endif

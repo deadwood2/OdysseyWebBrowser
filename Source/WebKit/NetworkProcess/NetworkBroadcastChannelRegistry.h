@@ -27,8 +27,9 @@
 
 #include "Connection.h"
 #include <WebCore/BroadcastChannelIdentifier.h>
-#include <WebCore/SecurityOriginData.h>
+#include <WebCore/ClientOrigin.h>
 #include <wtf/HashMap.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 struct MessageWithMessagePorts;
@@ -36,33 +37,25 @@ struct MessageWithMessagePorts;
 
 namespace WebKit {
 
+class NetworkProcess;
+
 class NetworkBroadcastChannelRegistry {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(NetworkBroadcastChannelRegistry);
 public:
-    NetworkBroadcastChannelRegistry();
+    explicit NetworkBroadcastChannelRegistry(NetworkProcess&);
 
     void removeConnection(IPC::Connection&);
 
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
 
-    void registerChannel(IPC::Connection&, const WebCore::SecurityOriginData&, const String& name, WebCore::BroadcastChannelIdentifier);
-    void unregisterChannel(IPC::Connection&, const WebCore::SecurityOriginData&, const String& name, WebCore::BroadcastChannelIdentifier);
-    void postMessage(IPC::Connection&, const WebCore::SecurityOriginData&, const String& name, WebCore::BroadcastChannelIdentifier source, WebCore::MessageWithMessagePorts&&, CompletionHandler<void()>&&);
+    void registerChannel(IPC::Connection&, const WebCore::ClientOrigin&, const String& name);
+    void unregisterChannel(IPC::Connection&, const WebCore::ClientOrigin&, const String& name);
+    void postMessage(IPC::Connection&, const WebCore::ClientOrigin&, const String& name, WebCore::MessageWithMessagePorts&&, CompletionHandler<void()>&&);
 
 private:
-    struct GlobalBroadcastChannelIdentifier {
-        IPC::Connection::UniqueID connectionIdentifier;
-        WebCore::BroadcastChannelIdentifier channelIndentifierInProcess;
-
-        bool operator==(const GlobalBroadcastChannelIdentifier& other) const
-        {
-            return connectionIdentifier == other.connectionIdentifier && channelIndentifierInProcess == other.channelIndentifierInProcess;
-        }
-    };
-
-    // FIXME: BroadcastChannel needs partitioning (https://github.com/whatwg/html/issues/5803).
-    using NameToChannelIdentifiersMap = HashMap<String, Vector<GlobalBroadcastChannelIdentifier>>;
-    HashMap<WebCore::SecurityOriginData, NameToChannelIdentifiersMap> m_broadcastChannels;
+    Ref<NetworkProcess> m_networkProcess;
+    using NameToConnectionIdentifiersMap = HashMap<String, Vector<IPC::Connection::UniqueID>>;
+    HashMap<WebCore::ClientOrigin, NameToConnectionIdentifiersMap> m_broadcastChannels;
 };
 
 } // namespace WebKit

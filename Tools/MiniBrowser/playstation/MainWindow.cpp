@@ -23,7 +23,6 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "config.h"
 #include "MainWindow.h"
 
 #include "ImageButton.h"
@@ -32,16 +31,19 @@
 #include "URLBar.h"
 #include "WebViewWindow.h"
 #include <KeyboardCodes.h>
+#include <WebKit/WKPage.h>
 #include <WebKit/WKString.h>
+#include <WebKit/WKWebsiteDataStoreRef.h>
 #include <sstream>
 #include <toolkitten/Application.h>
+#include <vector>
 
 constexpr int LineHeight = 40;
 constexpr int FontSize = 32;
 
 using namespace toolkitten;
 
-MainWindow::MainWindow()
+MainWindow::MainWindow(const std::vector<std::string>& options)
 {
     IntSize size = Application::singleton().windowSize();
     auto windowWidth = size.w;
@@ -106,7 +108,26 @@ MainWindow::MainWindow()
     }});
 
     createNewWebView(nullptr);
-    activeWebView()->loadURL("https://webkit.org");
+
+    std::string requestedURL = "https://webkit.org";
+
+    parseOptions(options, requestedURL);
+
+    activeWebView()->loadURL(requestedURL.c_str());
+}
+
+void MainWindow::parseOptions(const std::vector<std::string>& options, std::string& requestedURL)
+{
+    auto context = WebContext::singleton();
+    WKWebsiteDataStoreRef websiteDataStore = context->websiteDataStore();
+    for (auto& option : options) {
+        if (!option.compare("--resource-load-statistics-enabled"))
+            WKWebsiteDataStoreSetResourceLoadStatisticsEnabled(websiteDataStore, true);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+        else if (!option.compare("--resource-load-statistics-disabled"))
+            WKWebsiteDataStoreSetResourceLoadStatisticsEnabled(websiteDataStore, false);
+        else
+            requestedURL = option;
+    }
 }
 
 void MainWindow::paintSelf(toolkitten::IntPoint)
@@ -148,7 +169,7 @@ WebViewWindow* MainWindow::createNewWebView(WKPageConfigurationRef configuration
     webViewWindow->fill(WHITE);
 
     WebViewWindow* rawWebViewWindow = webViewWindow.get();
-    m_webviewFrame->appendChild(move(webViewWindow));
+    m_webviewFrame->appendChild(std::move(webViewWindow));
 
     // Acrivate the new window.
     rawWebViewWindow->setActive(true);

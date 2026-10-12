@@ -24,6 +24,7 @@
 #include "DOMObjectCache.h"
 #include <WebCore/DOMException.h>
 #include <WebCore/Document.h>
+#include <WebCore/ElementInlines.h>
 #include "GObjectEventListener.h"
 #include <WebCore/HTMLNames.h>
 #include <WebCore/JSExecState.h>
@@ -190,8 +191,7 @@ void webkit_dom_html_map_element_set_name(WebKitDOMHTMLMapElement* self, const g
     g_return_if_fail(WEBKIT_DOM_IS_HTML_MAP_ELEMENT(self));
     g_return_if_fail(value);
     WebCore::HTMLMapElement* item = WebKit::core(self);
-    WTF::String convertedValue = WTF::String::fromUTF8(value);
-    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::nameAttr, convertedValue);
+    item->setAttributeWithoutSynchronization(WebCore::HTMLNames::nameAttr, WTF::AtomString::fromUTF8(value));
 }
 
 G_GNUC_END_IGNORE_DEPRECATIONS;

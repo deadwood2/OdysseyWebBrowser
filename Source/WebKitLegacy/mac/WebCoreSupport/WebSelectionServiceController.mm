@@ -32,8 +32,11 @@
 #import <WebCore/HTMLConverter.h>
 #import <WebCore/Range.h>
 #import <pal/spi/mac/NSSharingServiceSPI.h>
+#import <wtf/TZoneMallocInlines.h>
 
 using namespace WebCore;
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebSelectionServiceController);
 
 WebSelectionServiceController::WebSelectionServiceController(WebView *webView) 
     : WebSharingServicePickerClient(webView)
@@ -50,7 +53,7 @@ void WebSelectionServiceController::handleSelectionServiceClick(WebCore::FrameSe
     if (!range)
         return;
 
-    auto attributedSelection = attributedString(*range).string;
+    auto attributedSelection = attributedString(*range).nsAttributedString();
     if (!attributedSelection)
         return;
 

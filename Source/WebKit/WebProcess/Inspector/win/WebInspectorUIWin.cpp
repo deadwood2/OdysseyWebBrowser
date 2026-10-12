@@ -26,15 +26,33 @@
 #include "config.h"
 #include "WebInspectorUI.h"
 
-#include "RemoteWebInspectorUI.h"
-
 #include <WebCore/WebCoreBundleWin.h>
 #include <wtf/FileSystem.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
+using namespace WebCore;
 
-bool WebInspectorUI::canSave()
+bool WebInspectorUI::canSave(InspectorFrontendClient::SaveMode saveMode)
+{
+    switch (saveMode) {
+    case InspectorFrontendClient::SaveMode::SingleFile:
+        return true;
+
+    case InspectorFrontendClient::SaveMode::FileVariants:
+        return false;
+    }
+
+    ASSERT_NOT_REACHED();
+    return false;
+}
+
+bool WebInspectorUI::canLoad()
+{
+    return false;
+}
+
+bool WebInspectorUI::canPickColorFromScreen()
 {
     return false;
 }
@@ -44,9 +62,8 @@ String WebInspectorUI::localizedStringsURL() const
     return "inspector-resource:///localizedStrings.js"_s;
 }
 
-String RemoteWebInspectorUI::localizedStringsURL() const
+void WebInspectorUI::didEstablishConnection()
 {
-    return "inspector-resource:///localizedStrings.js"_s;
 }
 
 } // namespace WebKit

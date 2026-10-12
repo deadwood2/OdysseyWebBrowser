@@ -28,11 +28,14 @@
 #if ENABLE(WEBM_FORMAT_READER)
 
 #include "CoreMediaWrapped.h"
+#include "MediaSampleByteRange.h"
+#include <WebCore/MediaSample.h>
 #include <WebCore/SampleMap.h>
+#include <variant>
 #include <wtf/Identified.h>
 #include <wtf/Lock.h>
 #include <wtf/MediaTime.h>
-#include <wtf/Variant.h>
+#include <wtf/ObjectIdentifier.h>
 
 DECLARE_CORE_MEDIA_TRAITS(SampleCursor);
 
@@ -40,19 +43,18 @@ namespace WTF {
 class Logger;
 }
 
-namespace WebCore {
-class MediaSample;
-};
-
 namespace WebKit {
 
 class MediaTrackReader;
 
-class MediaSampleCursor : public CoreMediaWrapped<MediaSampleCursor>, ThreadSafeIdentified<MediaSampleCursor> {
+enum class MediaSampleCursorIdentifierType { };
+using MediaSampleCursorIdentifier = LegacyNullableAtomicObjectIdentifier<MediaSampleCursorIdentifierType>;
+
+class MediaSampleCursor : public CoreMediaWrapped<MediaSampleCursor>, private Identified<MediaSampleCursorIdentifier> {
 public:
     using DecodeOrderIterator = WebCore::DecodeOrderSampleMap::iterator;
     using PresentationOrderIterator = WebCore::PresentationOrderSampleMap::iterator;
-    using Locator = Variant<MediaTime, DecodeOrderIterator, PresentationOrderIterator>;
+    using Locator = std::variant<MediaTime, DecodeOrderIterator, PresentationOrderIterator>;
 
     struct Timing {
         MediaTime decodeTime;
@@ -74,7 +76,8 @@ private:
     MediaSampleCursor(Allocator&&, const MediaSampleCursor&);
 
     template<typename OrderedMap> std::optional<typename OrderedMap::iterator> locateIterator(OrderedMap&, bool hasAllSamples) const WTF_REQUIRES_LOCK(m_locatorLock);
-    WebCore::MediaSample* locateMediaSample(WebCore::SampleMap&, bool hasAllSamples) const WTF_REQUIRES_LOCK(m_locatorLock);
+    using SampleType = std::optional<std::pair<const WebCore::MediaSample*, const WebCore::MediaSamplesBlock::MediaSampleItem*>>;
+    SampleType locateMediaSample(WebCore::SampleMap&, bool hasAllSamples) const WTF_REQUIRES_LOCK(m_locatorLock);
     Timing locateTiming(WebCore::SampleMap&, bool hasAllSamples) const WTF_REQUIRES_LOCK(m_locatorLock);
 
     template<typename Function> OSStatus getSampleMap(Function&&) const;
@@ -102,12 +105,15 @@ private:
     OSStatus getPlayableHorizon(CMTime*) const;
 
     const WTF::Logger& logger() const { return m_logger; }
-    const char* logClassName() const { return "MediaSampleCursor"; }
+    ASCIILiteral logClassName() const { return "MediaSampleCursor"_s; }
     const void* logIdentifier() const { return m_logIdentifier; }
     WTFLogChannel& logChannel() const;
 
+    void setLocator(Locator&&) const WTF_REQUIRES_LOCK(m_locatorLock);
+
     Ref<MediaTrackReader> m_trackReader;
     mutable Locator m_locator WTF_GUARDED_BY_LOCK(m_locatorLock);
+    mutable std::optional<MediaSampleByteRange::const_iterator> m_currentEntry WTF_GUARDED_BY_LOCK(m_locatorLock);
     mutable Lock m_locatorLock;
     Ref<const WTF::Logger> m_logger;
     const void* m_logIdentifier;
@@ -145,11 +151,11 @@ constexpr MediaSampleCursor::WrapperClass MediaSampleCursor::wrapperClass()
         .getSyncInfo = [](MTPluginSampleCursorRef sampleCursor, MTPluginSampleCursorSyncInfo* syncInfo) -> OSStatus {
             return unwrap(sampleCursor)->getSyncInfo(syncInfo);
         },
-        .copyFormatDescription = [](MTPluginSampleCursorRef sampleCursor, CMFormatDescriptionRef* formatDescription) {
-            return unwrap(sampleCursor)->copyFormatDescription(formatDescription);
-        },
         .copySampleLocation = [](MTPluginSampleCursorRef sampleCursor, MTPluginSampleCursorStorageRange* storageRange, MTPluginByteSourceRef* byteSource) {
             return unwrap(sampleCursor)->copySampleLocation(storageRange, byteSource);
+        },
+        .copyFormatDescription = [](MTPluginSampleCursorRef sampleCursor, CMFormatDescriptionRef* formatDescription) {
+            return unwrap(sampleCursor)->copyFormatDescription(formatDescription);
         },
 #if HAVE(MT_PLUGIN_SAMPLE_CURSOR_PLAYABLE_HORIZON)
         .getPlayableHorizon = [](MTPluginSampleCursorRef sampleCursor, CMTime* playableHorizon) {

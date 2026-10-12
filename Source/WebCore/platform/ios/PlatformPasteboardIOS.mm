@@ -28,8 +28,10 @@
 
 #if PLATFORM(IOS_FAMILY)
 
-#import "Color.h"
+#import "ColorCocoa.h"
+#import "CommonAtomStrings.h"
 #import "Image.h"
+#import "NSURLUtilities.h"
 #import "Pasteboard.h"
 #import "RuntimeApplicationChecks.h"
 #import "SharedBuffer.h"
@@ -39,6 +41,7 @@
 #import <UIKit/UIColor.h>
 #import <UIKit/UIImage.h>
 #import <UIKit/UIPasteboard.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <pal/spi/ios/UIKitSPI.h>
 #import <wtf/ListHashSet.h>
 #import <wtf/URL.h>
@@ -50,12 +53,19 @@
 
 #define PASTEBOARD_SUPPORTS_ITEM_PROVIDERS (PLATFORM(IOS_FAMILY) && !(PLATFORM(WATCHOS) || PLATFORM(APPLETV)))
 #define PASTEBOARD_SUPPORTS_PRESENTATION_STYLE_AND_TEAM_DATA (PASTEBOARD_SUPPORTS_ITEM_PROVIDERS && !PLATFORM(MACCATALYST))
-#define NSURL_SUPPORTS_TITLE (!PLATFORM(MACCATALYST))
+
+@interface UIPasteboard () <AbstractPasteboard>
+@end
 
 namespace WebCore {
 
+static UIPasteboard *generalUIPasteboard()
+{
+    return static_cast<UIPasteboard *>([PAL::getUIPasteboardClass() generalPasteboard]);
+}
+
 PlatformPasteboard::PlatformPasteboard()
-    : m_pasteboard([PAL::getUIPasteboardClass() generalPasteboard])
+    : m_pasteboard(generalUIPasteboard())
 {
 }
 
@@ -65,30 +75,30 @@ PlatformPasteboard::PlatformPasteboard(const String& name)
     if (name == Pasteboard::nameOfDragPasteboard())
         m_pasteboard = [WebItemProviderPasteboard sharedInstance];
     else
-        m_pasteboard = [PAL::getUIPasteboardClass() generalPasteboard];
+        m_pasteboard = generalUIPasteboard();
 }
 #else
 PlatformPasteboard::PlatformPasteboard(const String&)
-    : m_pasteboard([PAL::getUIPasteboardClass() generalPasteboard])
+    : m_pasteboard(generalUIPasteboard())
 {
 }
 #endif
 
-void PlatformPasteboard::getTypes(Vector<String>& types)
+void PlatformPasteboard::getTypes(Vector<String>& types) const
 {
     types = makeVector<String>([m_pasteboard pasteboardTypes]);
 }
 
-RefPtr<SharedBuffer> PlatformPasteboard::bufferForType(const String& type)
+PasteboardBuffer PlatformPasteboard::bufferForType(const String& type) const
 {
-    if (NSData *data = [m_pasteboard dataForPasteboardType:type])
-        return SharedBuffer::create(data);
-    return nullptr;
+    PasteboardBuffer pasteboardBuffer;
+    pasteboardBuffer.data = readBuffer(0, type);
+    pasteboardBuffer.type = type;
+    return pasteboardBuffer;
 }
 
 void PlatformPasteboard::performAsDataOwner(DataOwnerType type, Function<void()>&& actions)
 {
-#if HAVE(PASTEBOARD_DATA_OWNER)
     auto dataOwner = _UIDataOwnerUndefined;
     switch (type) {
     case DataOwnerType::Undefined:
@@ -108,10 +118,6 @@ void PlatformPasteboard::performAsDataOwner(DataOwnerType type, Function<void()>
     [PAL::getUIPasteboardClass() _performAsDataOwner:dataOwner block:^{
         actions();
     }];
-#else
-    UNUSED_PARAM(type);
-    actions();
-#endif
 }
 
 void PlatformPasteboard::getPathnamesForType(Vector<String>&, const String&) const
@@ -159,7 +165,7 @@ static Vector<String> webSafeTypes(NSArray<NSString *> *platformTypes, PlatformP
 {
     ListHashSet<String> domPasteboardTypes;
     for (NSString *type in platformTypes) {
-        if ([type isEqualToString:@(PasteboardCustomData::cocoaType())])
+        if ([type isEqualToString:@(PasteboardCustomData::cocoaType().characters())])
             continue;
 
         if (Pasteboard::isSafeTypeForDOMToReadAndWrite(type)) {
@@ -216,18 +222,18 @@ std::optional<PasteboardItemInfo> PlatformPasteboard::informationForItemAtIndex(
 
         info.pathsForFileUpload.reserveInitialCapacity(urls.count);
         for (NSURL *url in urls)
-            info.pathsForFileUpload.uncheckedAppend(url.path);
+            info.pathsForFileUpload.append(url.path);
 
         info.platformTypesForFileUpload.reserveInitialCapacity(fileTypes.count);
         for (NSString *fileType in fileTypes)
-            info.platformTypesForFileUpload.uncheckedAppend(fileType);
+            info.platformTypesForFileUpload.append(fileType);
     } else {
         NSArray *fileTypes = itemProvider.web_fileUploadContentTypes;
         info.platformTypesForFileUpload.reserveInitialCapacity(fileTypes.count);
         info.pathsForFileUpload.reserveInitialCapacity(fileTypes.count);
         for (NSString *fileType in fileTypes) {
-            info.platformTypesForFileUpload.uncheckedAppend(fileType);
-            info.pathsForFileUpload.uncheckedAppend({ });
+            info.platformTypesForFileUpload.append(fileType);
+            info.pathsForFileUpload.append({ });
         }
     }
 
@@ -248,7 +254,7 @@ std::optional<PasteboardItemInfo> PlatformPasteboard::informationForItemAtIndex(
     NSArray<NSString *> *registeredTypeIdentifiers = itemProvider.registeredTypeIdentifiers;
     info.platformTypesByFidelity.reserveInitialCapacity(registeredTypeIdentifiers.count);
     for (NSString *typeIdentifier in registeredTypeIdentifiers) {
-        info.platformTypesByFidelity.uncheckedAppend(typeIdentifier);
+        info.platformTypesByFidelity.append(typeIdentifier);
         CFStringRef cfTypeIdentifier = (CFStringRef)typeIdentifier;
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         if (!UTTypeIsDeclared(cfTypeIdentifier))
@@ -361,16 +367,16 @@ int64_t PlatformPasteboard::changeCount() const
 String PlatformPasteboard::platformPasteboardTypeForSafeTypeForDOMToReadAndWrite(const String& domType, IncludeImageTypes includeImageTypes)
 {
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    if (domType == "text/plain")
+    if (domType == textPlainContentTypeAtom())
         return kUTTypePlainText;
 
-    if (domType == "text/html")
+    if (domType == textHTMLContentTypeAtom())
         return kUTTypeHTML;
 
-    if (domType == "text/uri-list")
+    if (domType == "text/uri-list"_s)
         return kUTTypeURL;
 
-    if (includeImageTypes == IncludeImageTypes::Yes && domType == "image/png")
+    if (includeImageTypes == IncludeImageTypes::Yes && domType == "image/png"_s)
         return kUTTypePNG;
 ALLOW_DEPRECATED_DECLARATIONS_END
 
@@ -421,8 +427,7 @@ static void registerItemToPasteboard(WebItemProviderRegistrationInfoList *repres
 int64_t PlatformPasteboard::setColor(const Color& color)
 {
     auto representationsToRegister = adoptNS([[WebItemProviderRegistrationInfoList alloc] init]);
-    UIColor *uiColor = [PAL::getUIColorClass() colorWithCGColor:cachedCGColor(color)];
-    [representationsToRegister addData:[NSKeyedArchiver archivedDataWithRootObject:uiColor requiringSecureCoding:NO error:nil] forType:UIColorPboardType];
+    [representationsToRegister addData:[NSKeyedArchiver archivedDataWithRootObject:cocoaColor(color).get() requiringSecureCoding:NO error:nil] forType:UIColorPboardType];
     registerItemToPasteboard(representationsToRegister.get(), m_pasteboard.get());
     return 0;
 }
@@ -432,7 +437,12 @@ static void addRepresentationsForPlainText(WebItemProviderRegistrationInfoList *
     if (plainText.isEmpty())
         return;
 
+#if HAVE(NSURL_ENCODING_INVALID_CHARACTERS)
+    NSURL *platformURL = [NSURL URLWithString:plainText encodingInvalidCharacters:NO];
+#else
     NSURL *platformURL = [NSURL URLWithString:plainText];
+#endif
+
     if (URL(platformURL).isValid())
         [itemsToRegister addRepresentingObject:platformURL];
 
@@ -462,25 +472,19 @@ void PlatformPasteboard::write(const PasteboardWebContent& content)
     [representationsToRegister addData:[webIOSPastePboardType dataUsingEncoding:NSUTF8StringEncoding] forType:webIOSPastePboardType];
 #endif
 
-    ASSERT(content.clientTypes.size() == content.clientData.size());
-    for (size_t i = 0, size = content.clientTypes.size(); i < size; ++i)
-        [representationsToRegister addData:content.clientData[i]->createNSData().get() forType:content.clientTypes[i]];
+    for (size_t i = 0, size = content.clientTypesAndData.size(); i < size; ++i)
+        [representationsToRegister addData:content.clientTypesAndData[i].second->makeContiguous()->createNSData().get() forType:content.clientTypesAndData[i].first];
 
     if (content.dataInWebArchiveFormat) {
         auto webArchiveData = content.dataInWebArchiveFormat->createNSData();
-#if PLATFORM(MACCATALYST)
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        NSString *webArchiveType = (__bridge NSString *)kUTTypeWebArchive;
-ALLOW_DEPRECATED_DECLARATIONS_END
-#else
-        // FIXME: We should additionally register "com.apple.webarchive" once <rdar://problem/46830277> is fixed.
-        NSString *webArchiveType = WebArchivePboardType;
+#if !PLATFORM(MACCATALYST)
+        [representationsToRegister addData:webArchiveData.get() forType:WebArchivePboardType];
 #endif
-        [representationsToRegister addData:webArchiveData.get() forType:webArchiveType];
+        [representationsToRegister addData:webArchiveData.get() forType:UTTypeWebArchive.identifier];
     }
 
     if (content.dataInAttributedStringFormat) {
-        if (NSAttributedString *attributedString = [NSKeyedUnarchiver unarchivedObjectOfClasses:[NSSet setWithObject:NSAttributedString.class] fromData:content.dataInAttributedStringFormat->createNSData().get() error:nullptr])
+        if (NSAttributedString *attributedString = [NSKeyedUnarchiver unarchivedObjectOfClasses:[NSSet setWithObject:NSAttributedString.class] fromData:content.dataInAttributedStringFormat->makeContiguous()->createNSData().get() error:nullptr])
             [representationsToRegister addRepresentingObject:attributedString];
     }
 
@@ -502,7 +506,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
     PasteboardCustomData customData;
     customData.setOrigin(content.contentOrigin);
-    [representationsToRegister addData:customData.createSharedBuffer()->createNSData().get() forType:@(PasteboardCustomData::cocoaType())];
+    [representationsToRegister addData:customData.createSharedBuffer()->createNSData().get() forType:@(PasteboardCustomData::cocoaType().characters())];
 
     registerItemToPasteboard(representationsToRegister.get(), m_pasteboard.get());
 }
@@ -511,18 +515,15 @@ void PlatformPasteboard::write(const PasteboardImage& pasteboardImage)
 {
     auto representationsToRegister = adoptNS([[WebItemProviderRegistrationInfoList alloc] init]);
 
-    auto& types = pasteboardImage.clientTypes;
-    auto& data = pasteboardImage.clientData;
-    ASSERT(types.size() == data.size());
-    for (size_t i = 0, size = types.size(); i < size; ++i)
-        [representationsToRegister addData:data[i]->createNSData().get() forType:types[i]];
+    for (size_t i = 0, size = pasteboardImage.clientTypesAndData.size(); i < size; ++i)
+        [representationsToRegister addData:pasteboardImage.clientTypesAndData[i].second->createNSData().get() forType:pasteboardImage.clientTypesAndData[i].first];
 
     if (pasteboardImage.resourceData && !pasteboardImage.resourceMIMEType.isEmpty()) {
         auto utiOrMIMEType = pasteboardImage.resourceMIMEType;
         if (!isDeclaredUTI(utiOrMIMEType))
             utiOrMIMEType = UTIFromMIMEType(utiOrMIMEType);
 
-        auto imageData = pasteboardImage.resourceData->createNSData();
+        auto imageData = pasteboardImage.resourceData->makeContiguous()->createNSData();
         [representationsToRegister addData:imageData.get() forType:(NSString *)utiOrMIMEType];
         [representationsToRegister setPreferredPresentationSize:pasteboardImage.imageSize];
         [representationsToRegister setSuggestedName:pasteboardImage.suggestedName];
@@ -533,8 +534,8 @@ void PlatformPasteboard::write(const PasteboardImage& pasteboardImage)
     // the URL (i.e. the anchor's href attribute) to be a higher fidelity representation.
     auto& pasteboardURL = pasteboardImage.url;
     if (NSURL *nsURL = pasteboardURL.url) {
-#if NSURL_SUPPORTS_TITLE
-        nsURL._title = pasteboardURL.title.isEmpty() ? WTF::userVisibleString(pasteboardURL.url) : (NSString *)pasteboardURL.title;
+#if HAVE(NSURL_TITLE)
+        [nsURL _web_setTitle:pasteboardURL.title.isEmpty() ? WTF::userVisibleString(pasteboardURL.url) : (NSString *)pasteboardURL.title];
 #endif
         [representationsToRegister addRepresentingObject:nsURL];
     }
@@ -567,9 +568,9 @@ void PlatformPasteboard::write(const PasteboardURL& url)
     [representationsToRegister setPreferredPresentationStyle:WebPreferredPresentationStyleInline];
 
     if (NSURL *nsURL = url.url) {
-#if NSURL_SUPPORTS_TITLE
+#if HAVE(NSURL_TITLE)
         if (!url.title.isEmpty())
-            nsURL._title = url.title;
+            [nsURL _web_setTitle:url.title];
 #endif
         [representationsToRegister addRepresentingObject:nsURL];
         [representationsToRegister addRepresentingObject:(NSString *)url.url.string()];
@@ -609,7 +610,7 @@ Vector<String> PlatformPasteboard::typesSafeForDOMToReadAndWrite(const String& o
     }
 #endif // PASTEBOARD_SUPPORTS_PRESENTATION_STYLE_AND_TEAM_DATA
 
-    if (NSData *serializedCustomData = [m_pasteboard dataForPasteboardType:@(PasteboardCustomData::cocoaType())]) {
+    if (NSData *serializedCustomData = [m_pasteboard dataForPasteboardType:@(PasteboardCustomData::cocoaType().characters())]) {
         auto data = PasteboardCustomData::fromSharedBuffer(SharedBuffer::create(serializedCustomData).get());
         if (data.origin() == origin) {
             for (auto& type : data.orderedTypes())
@@ -646,7 +647,7 @@ static RetainPtr<WebItemProviderRegistrationInfoList> createItemProviderRegistra
             NSDictionary *teamDataDictionary = @{ @(originKeyForTeamData) : data.origin(), @(customTypesKeyForTeamData) : createNSArray(data.orderedTypes()).get() };
             if (NSData *teamData = [NSKeyedArchiver archivedDataWithRootObject:teamDataDictionary requiringSecureCoding:YES error:nullptr]) {
                 [representationsToRegister setTeamData:teamData];
-                [representationsToRegister addData:serializedSharedBuffer.get() forType:@(PasteboardCustomData::cocoaType())];
+                [representationsToRegister addData:serializedSharedBuffer.get() forType:@(PasteboardCustomData::cocoaType().characters())];
             }
         }
     }
@@ -656,11 +657,11 @@ static RetainPtr<WebItemProviderRegistrationInfoList> createItemProviderRegistra
         if (cocoaType.isEmpty())
             return;
 
-        if (WTF::holds_alternative<String>(value)) {
-            if (WTF::get<String>(value).isNull())
+        if (std::holds_alternative<String>(value)) {
+            if (std::get<String>(value).isNull())
                 return;
 
-            NSString *nsStringValue = WTF::get<String>(value);
+            NSString *nsStringValue = std::get<String>(value);
             auto cfType = cocoaType.createCFString();
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             if (UTTypeConformsTo(cfType.get(), kUTTypeURL))
@@ -673,7 +674,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
             return;
         }
 
-        auto buffer = WTF::get<Ref<SharedBuffer>>(value);
+        auto buffer = std::get<Ref<SharedBuffer>>(value);
         [representationsToRegister addData:buffer->createNSData().get() forType:(NSString *)cocoaType];
     });
 
@@ -742,23 +743,35 @@ Vector<String> PlatformPasteboard::allStringsForType(const String& type) const
     for (int index = 0; index < numberOfItems; ++index) {
         String value = readString(index, type);
         if (!value.isEmpty())
-            strings.uncheckedAppend(WTFMove(value));
+            strings.append(WTFMove(value));
     }
     return strings;
 }
 
-RefPtr<SharedBuffer> PlatformPasteboard::readBuffer(size_t index, const String& type) const
+static bool isDisallowedTypeForReadBuffer(NSString *type)
 {
-    if ((NSInteger)index < 0 || (NSInteger)index >= [m_pasteboard numberOfItems])
+    return [type isEqualToString:UIImagePboardType];
+}
+
+RefPtr<SharedBuffer> PlatformPasteboard::readBuffer(std::optional<size_t> index, const String& type) const
+{
+    if (isDisallowedTypeForReadBuffer(type))
         return nullptr;
 
-    NSIndexSet *indexSet = [NSIndexSet indexSetWithIndex:index];
+    NSInteger integerIndex = index.value_or(0);
+    if (integerIndex < 0 || integerIndex >= [m_pasteboard numberOfItems])
+        return nullptr;
+
+    NSIndexSet *indexSet = [NSIndexSet indexSetWithIndex:integerIndex];
 
     RetainPtr<NSArray> pasteboardItem = [m_pasteboard dataForPasteboardType:type inItemSet:indexSet];
 
     if (![pasteboardItem count])
         return nullptr;
-    return SharedBuffer::create([pasteboardItem.get() objectAtIndex:0]);
+
+    if (NSData *data = [pasteboardItem firstObject])
+        return SharedBuffer::create(data);
+    return nullptr;
 }
 
 String PlatformPasteboard::readString(size_t index, const String& type) const
@@ -807,21 +820,25 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (!value)
         return { };
 
-    ASSERT([value isKindOfClass:[NSURL class]]);
-    if (![value isKindOfClass:[NSURL class]])
+    RetainPtr url = dynamic_objc_cast<NSURL>(value);
+    if (!url) {
+        if (auto *urlData = dynamic_objc_cast<NSData>(value))
+            url = adoptNS([[NSURL alloc] initWithDataRepresentation:urlData relativeToURL:nil]);
+    }
+
+    if (!url)
         return { };
 
-    NSURL *url = (NSURL *)value;
-    if (!allowReadingURLAtIndex(url, index))
+    if (!allowReadingURLAtIndex(url.get(), index))
         return { };
 
-#if PASTEBOARD_SUPPORTS_ITEM_PROVIDERS && NSURL_SUPPORTS_TITLE
-    title = [url _title];
+#if PASTEBOARD_SUPPORTS_ITEM_PROVIDERS && HAVE(NSURL_TITLE)
+    title = [url _web_title];
 #else
     UNUSED_PARAM(title);
 #endif
 
-    return url;
+    return url.get();
 }
 
 void PlatformPasteboard::updateSupportedTypeIdentifiers(const Vector<String>& types)

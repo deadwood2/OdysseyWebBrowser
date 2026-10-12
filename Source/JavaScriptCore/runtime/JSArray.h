@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 1999-2000 Harri Porten (porten@kde.org)
- *  Copyright (C) 2003-2020 Apple Inc. All rights reserved.
+ *  Copyright (C) 2003-2023 Apple Inc. All rights reserved.
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
@@ -37,6 +37,7 @@ class JSArray : public JSNonFinalObject {
     friend class LLIntOffsetsExtractor;
     friend class Walker;
     friend class JIT;
+    WTF_ALLOW_COMPACT_POINTERS;
 
 public:
     typedef JSNonFinalObject Base;
@@ -49,9 +50,9 @@ public:
     }
 
     template<typename CellType, SubspaceAccess>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
-        return &vm.arraySpace;
+        return &vm.arraySpace();
     }
         
 protected:
@@ -104,68 +105,46 @@ public:
     JS_EXPORT_PRIVATE void push(JSGlobalObject*, JSValue);
     JS_EXPORT_PRIVATE JSValue pop(JSGlobalObject*);
 
-    JSArray* fastSlice(JSGlobalObject*, unsigned startIndex, unsigned count);
+    static JSArray* fastSlice(JSGlobalObject*, JSObject* source, uint64_t startIndex, uint64_t count);
 
-    bool canFastCopy(VM&, JSArray* otherArray);
-    bool canDoFastIndexedAccess(VM&);
+    bool holesMustForwardToPrototype() const;
+    bool canFastCopy(JSArray* otherArray) const;
+    bool canFastAppend(JSArray* otherArray) const;
+    bool canDoFastIndexedAccess() const;
     // This function returns NonArray if the indexing types are not compatable for copying.
-    IndexingType mergeIndexingTypeForCopying(IndexingType other);
+    IndexingType mergeIndexingTypeForCopying(IndexingType other, bool allowPromotion);
     bool appendMemcpy(JSGlobalObject*, VM&, unsigned startIndex, JSArray* otherArray);
+    bool appendMemcpy(JSGlobalObject*, VM&, unsigned startIndex, IndexingType, std::span<const EncodedJSValue>);
+
+    ALWAYS_INLINE bool definitelyNegativeOneMiss() const;
 
     enum ShiftCountMode {
         // This form of shift hints that we're doing queueing. With this assumption in hand,
         // we convert to ArrayStorage, which has queue optimizations.
         ShiftCountForShift,
-            
+
         // This form of shift hints that we're just doing care and feeding on an array that
         // is probably typically used for ordinary accesses. With this assumption in hand,
         // we try to preserve whatever indexing type it has already.
         ShiftCountForSplice
     };
 
-    bool shiftCountForShift(JSGlobalObject* globalObject, unsigned startIndex, unsigned count)
-    {
-        VM& vm = getVM(globalObject);
-        return shiftCountWithArrayStorage(vm, startIndex, count, ensureArrayStorage(vm));
-    }
-    bool shiftCountForSplice(JSGlobalObject* globalObject, unsigned& startIndex, unsigned count)
-    {
-        return shiftCountWithAnyIndexingType(globalObject, startIndex, count);
-    }
     template<ShiftCountMode shiftCountMode>
     bool shiftCount(JSGlobalObject* globalObject, unsigned& startIndex, unsigned count)
     {
-        switch (shiftCountMode) {
-        case ShiftCountForShift:
-            return shiftCountForShift(globalObject, startIndex, count);
-        case ShiftCountForSplice:
-            return shiftCountForSplice(globalObject, startIndex, count);
-        default:
-            CRASH();
-            return false;
-        }
+        constexpr unsigned shiftThreashold = 128;
+        UNUSED_VARIABLE(shiftThreashold);
+        if constexpr (shiftCountMode == ShiftCountForShift)
+            return shiftCountWithAnyIndexingType(globalObject, startIndex, count, shiftThreashold);
+        else if constexpr (shiftCountMode == ShiftCountForSplice)
+            return shiftCountWithAnyIndexingType(globalObject, startIndex, count, UINT32_MAX);
+        RELEASE_ASSERT_NOT_REACHED();
+        return false;
     }
-        
-    bool unshiftCountForShift(JSGlobalObject* globalObject, unsigned startIndex, unsigned count)
-    {
-        return unshiftCountWithArrayStorage(globalObject, startIndex, count, ensureArrayStorage(getVM(globalObject)));
-    }
-    bool unshiftCountForSplice(JSGlobalObject* globalObject, unsigned startIndex, unsigned count)
-    {
-        return unshiftCountWithAnyIndexingType(globalObject, startIndex, count);
-    }
-    template<ShiftCountMode shiftCountMode>
+
     bool unshiftCount(JSGlobalObject* globalObject, unsigned startIndex, unsigned count)
     {
-        switch (shiftCountMode) {
-        case ShiftCountForShift:
-            return unshiftCountForShift(globalObject, startIndex, count);
-        case ShiftCountForSplice:
-            return unshiftCountForSplice(globalObject, startIndex, count);
-        default:
-            CRASH();
-            return false;
-        }
+        return unshiftCountWithAnyIndexingType(globalObject, startIndex, count);
     }
 
     JS_EXPORT_PRIVATE void fillArgList(JSGlobalObject*, MarkedArgumentBuffer&);
@@ -173,18 +152,17 @@ public:
 
     JS_EXPORT_PRIVATE bool isIteratorProtocolFastAndNonObservable();
 
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype, IndexingType indexingType)
-    {
-        return Structure::create(vm, globalObject, prototype, TypeInfo(ArrayType, StructureFlags), info(), indexingType);
-    }
+    inline static Structure* createStructure(VM&, JSGlobalObject*, JSValue, IndexingType);
         
 protected:
+#if ASSERT_ENABLED
     void finishCreation(VM& vm)
     {
         Base::finishCreation(vm);
-        ASSERT(jsDynamicCast<JSArray*>(vm, this));
+        ASSERT(jsDynamicCast<JSArray*>(this));
         ASSERT_WITH_MESSAGE(type() == ArrayType || type() == DerivedArrayType, "Instance inheriting JSArray should have either ArrayType or DerivedArrayType");
     }
+#endif
 
     static bool put(JSCell*, JSGlobalObject*, PropertyName, JSValue, PutPropertySlot&);
 
@@ -201,7 +179,7 @@ private:
         return !map || !map->lengthIsReadOnly();
     }
         
-    bool shiftCountWithAnyIndexingType(JSGlobalObject*, unsigned& startIndex, unsigned count);
+    bool shiftCountWithAnyIndexingType(JSGlobalObject*, unsigned& startIndex, unsigned count, unsigned shiftArrayStorageThreshold);
     JS_EXPORT_PRIVATE bool shiftCountWithArrayStorage(VM&, unsigned startIndex, unsigned count, ArrayStorage*);
 
     bool unshiftCountWithAnyIndexingType(JSGlobalObject*, unsigned startIndex, unsigned count);
@@ -244,7 +222,7 @@ inline JSArray* JSArray::tryCreate(VM& vm, Structure* structure, unsigned initia
             return nullptr;
 
         unsigned vectorLength = Butterfly::optimalContiguousVectorLength(structure, vectorLengthHint);
-        void* temp = vm.jsValueGigacageAuxiliarySpace.allocateNonVirtual(
+        void* temp = vm.auxiliarySpace().allocate(
             vm,
             Butterfly::totalSize(0, outOfLineStorage, true, vectorLength * sizeof(EncodedJSValue)),
             nullptr, AllocationFailureMode::ReturnNull);
@@ -286,7 +264,7 @@ inline JSArray* JSArray::create(VM& vm, Structure* structure, unsigned initialLe
 
 inline JSArray* JSArray::createWithButterfly(VM& vm, GCDeferralContext* deferralContext, Structure* structure, Butterfly* butterfly)
 {
-    JSArray* array = new (NotNull, allocateCell<JSArray>(vm.heap, deferralContext)) JSArray(vm, structure, butterfly);
+    JSArray* array = new (NotNull, allocateCell<JSArray>(vm, deferralContext)) JSArray(vm, structure, butterfly);
     array->finishCreation(vm);
     return array;
 }
@@ -295,7 +273,7 @@ JSArray* asArray(JSValue);
 
 inline JSArray* asArray(JSCell* cell)
 {
-    ASSERT(cell->inherits<JSArray>(cell->vm()));
+    ASSERT(cell->inherits<JSArray>());
     return jsCast<JSArray*>(cell);
 }
 
@@ -306,7 +284,7 @@ inline JSArray* asArray(JSValue value)
 
 inline bool isJSArray(JSCell* cell)
 {
-    ASSERT((cell->classInfo(cell->vm()) == JSArray::info()) == (cell->type() == ArrayType));
+    ASSERT((cell->classInfo() == JSArray::info()) == (cell->type() == ArrayType));
     return cell->type() == ArrayType;
 }
 
@@ -315,5 +293,7 @@ inline bool isJSArray(JSValue v) { return v.isCell() && isJSArray(v.asCell()); }
 JS_EXPORT_PRIVATE JSArray* constructArray(JSGlobalObject*, Structure*, const ArgList& values);
 JS_EXPORT_PRIVATE JSArray* constructArray(JSGlobalObject*, Structure*, const JSValue* values, unsigned length);
 JS_EXPORT_PRIVATE JSArray* constructArrayNegativeIndexed(JSGlobalObject*, Structure*, const JSValue* values, unsigned length);
+
+ALWAYS_INLINE uint64_t toLength(JSGlobalObject*, JSObject*);
 
 } // namespace JSC

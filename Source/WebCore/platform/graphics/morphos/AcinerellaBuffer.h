@@ -1,7 +1,5 @@
 #pragma once
 
-#include "config.h"
-
 #if ENABLE(VIDEO)
 
 #include <wtf/MainThread.h>
@@ -13,7 +11,6 @@
 #include "SharedBuffer.h"
 #include "acinerella.h"
 #include "AcinerellaPointer.h"
-#include <queue>
 
 namespace WebCore {
 
@@ -67,6 +64,8 @@ public:
 	virtual bool markLastFrameRead() { return true; };
 	
 	virtual bool isEncrypted() const { return false; }
+ 
+    virtual void getErrorMessage(WTF::String& error) { (void)error; };
 
 	// Acinerella Thread Methods
 	static const int eRead_EOFWhileInitializing = -3;

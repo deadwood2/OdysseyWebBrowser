@@ -25,9 +25,11 @@
 
 #pragma once
 
-#include "FrameViewLayoutContext.h"
 #include "LayoutRect.h"
+#include "LocalFrameViewLayoutContext.h"
+#include "StyleTextEdge.h"
 #include <wtf/Noncopyable.h>
+#include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
@@ -42,6 +44,18 @@ class RenderLayoutState {
     WTF_MAKE_NONCOPYABLE(RenderLayoutState); WTF_MAKE_FAST_ALLOCATED;
 
 public:
+    struct TextBoxTrim {
+        bool trimFirstFormattedLine { false };
+        TextEdge propagatedTextBoxEdge { };
+        SingleThreadWeakPtr<const RenderBlockFlow> lastFormattedLineRoot;
+    };
+    struct LineClamp {
+        size_t maximumLineCount { 0 };
+        size_t currentLineCount { 0 };
+        std::optional<LayoutUnit> clampedContentLogicalHeight;
+        SingleThreadWeakPtr<const RenderBlockFlow> clampedRenderer;
+    };
+
     RenderLayoutState()
         : m_clipped(false)
         , m_isPaginated(false)
@@ -50,11 +64,11 @@ public:
         , m_layoutDeltaXSaturated(false)
         , m_layoutDeltaYSaturated(false)
 #endif
+        , m_blockStartTrimming(Vector<bool>(0))
     {
     }
-    RenderLayoutState(const FrameViewLayoutContext::LayoutStateStack&, RenderBox&, const LayoutSize& offset, LayoutUnit pageHeight, bool pageHeightChanged);
-    enum class IsPaginated { No, Yes };
-    explicit RenderLayoutState(RenderElement&, IsPaginated = IsPaginated::No);
+    RenderLayoutState(const LocalFrameViewLayoutContext::LayoutStateStack&, RenderBox&, const LayoutSize& offset, LayoutUnit pageHeight, bool pageHeightChanged, std::optional<LineClamp>, std::optional<TextBoxTrim>);
+    explicit RenderLayoutState(RenderElement&);
 
     bool isPaginated() const { return m_isPaginated; }
 
@@ -88,13 +102,30 @@ public:
     bool layoutDeltaMatches(LayoutSize) const;
 #endif
 
+    void setLineClamp(std::optional<LineClamp> lineClamp) { m_lineClamp = lineClamp; }
+    std::optional<LineClamp> lineClamp() const { return m_lineClamp; }
+
+    std::optional<TextBoxTrim> textBoxTrim() { return m_textBoxTrim; }
+    void setTextBoxTrim(std::optional<TextBoxTrim> textBoxTrim) { m_textBoxTrim = textBoxTrim; }
+
+    bool hasTextBoxTrimStart() const { return m_textBoxTrim && m_textBoxTrim->trimFirstFormattedLine; }
+    bool hasTextBoxTrimEnd(const RenderBlockFlow& candidate) const { return m_textBoxTrim && m_textBoxTrim->lastFormattedLineRoot.get() == &candidate; }
+    void removeTextBoxTrimStart();
+
+    void pushBlockStartTrimming(bool blockStartTrimming) { m_blockStartTrimming.append(blockStartTrimming); }
+    std::optional<bool> blockStartTrimming() const { return m_blockStartTrimming.isEmpty() ? std::nullopt : std::optional(m_blockStartTrimming.last()); }
+    void popBlockStartTrimming() 
+    {
+        m_blockStartTrimming.removeLast(); 
+    }
+
 private:
     void computeOffsets(const RenderLayoutState& ancestor, RenderBox&, LayoutSize offset);
     void computeClipRect(const RenderLayoutState& ancestor, RenderBox&);
-    // FIXME: webkit.org/b/179440 these functions should be part of the pagination code/FrameViewLayoutContext.
-    void computePaginationInformation(const FrameViewLayoutContext::LayoutStateStack&, RenderBox&, LayoutUnit pageLogicalHeight, bool pageLogicalHeightChanged);
+    // FIXME: webkit.org/b/179440 these functions should be part of the pagination code/LocalFrameViewLayoutContext.
+    void computePaginationInformation(const LocalFrameViewLayoutContext::LayoutStateStack&, RenderBox&, LayoutUnit pageLogicalHeight, bool pageLogicalHeightChanged);
     void propagateLineGridInfo(const RenderLayoutState& ancestor, RenderBox&);
-    void establishLineGrid(const FrameViewLayoutContext::LayoutStateStack&, RenderBlockFlow&);
+    void establishLineGrid(const LocalFrameViewLayoutContext::LayoutStateStack&, RenderBlockFlow&);
     void computeLineGridPaginationOrigin(const RenderMultiColumnFlow&);
 
     // Do not add anything apart from bitfields. See https://bugs.webkit.org/show_bug.cgi?id=100173
@@ -106,8 +137,10 @@ private:
     bool m_layoutDeltaXSaturated : 1;
     bool m_layoutDeltaYSaturated : 1;
 #endif
+    Vector<bool> m_blockStartTrimming;
+
     // The current line grid that we're snapping to and the offset of the start of the grid.
-    WeakPtr<RenderBlockFlow> m_lineGrid;
+    SingleThreadWeakPtr<RenderBlockFlow> m_lineGrid;
 
     // FIXME: Distinguish between the layout clip rect and the paint clip rect which may be larger,
     // e.g., because of composited scrolling.
@@ -128,6 +161,8 @@ private:
     LayoutSize m_pageOffset;
     LayoutSize m_lineGridOffset;
     LayoutSize m_lineGridPaginationOrigin;
+    std::optional<LineClamp> m_lineClamp;
+    std::optional<TextBoxTrim> m_textBoxTrim;
 #if ASSERT_ENABLED
     RenderElement* m_renderer { nullptr };
 #endif
@@ -141,7 +176,7 @@ public:
     ~LayoutStateMaintainer();
 
 private:
-    FrameViewLayoutContext& m_context;
+    LocalFrameViewLayoutContext& m_context;
     bool m_paintOffsetCacheIsDisabled { false };
     bool m_didPushLayoutState { false };
 };
@@ -152,28 +187,33 @@ public:
     ~SubtreeLayoutStateMaintainer();
 
 private:
-    FrameViewLayoutContext* m_context { nullptr };
+    LocalFrameViewLayoutContext* m_context { nullptr };
     bool m_didDisablePaintOffsetCache { false };
 };
 
 class LayoutStateDisabler {
     WTF_MAKE_NONCOPYABLE(LayoutStateDisabler);
 public:
-    LayoutStateDisabler(FrameViewLayoutContext&);
+    LayoutStateDisabler(LocalFrameViewLayoutContext&);
     ~LayoutStateDisabler();
 
 private:
-    FrameViewLayoutContext& m_context;
+    LocalFrameViewLayoutContext& m_context;
 };
 
-class PaginatedLayoutStateMaintainer {
+class ContentVisibilityForceLayoutScope {
 public:
-    PaginatedLayoutStateMaintainer(RenderBlockFlow&);
-    ~PaginatedLayoutStateMaintainer();
+    ContentVisibilityForceLayoutScope(RenderView&, const Element*);
+    ~ContentVisibilityForceLayoutScope();
 
 private:
-    FrameViewLayoutContext& m_context;
-    bool m_pushed { false };
+    LocalFrameViewLayoutContext* m_context { nullptr };
 };
+
+inline void RenderLayoutState::removeTextBoxTrimStart()
+{
+    ASSERT(m_textBoxTrim && m_textBoxTrim->trimFirstFormattedLine);
+    m_textBoxTrim->trimFirstFormattedLine = false;
+}
 
 } // namespace WebCore

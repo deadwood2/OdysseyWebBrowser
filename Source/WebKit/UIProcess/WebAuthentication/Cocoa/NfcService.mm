@@ -39,7 +39,7 @@
 
 namespace WebKit {
 
-NfcService::NfcService(Observer& observer)
+NfcService::NfcService(AuthenticatorTransportServiceObserver& observer)
     : FidoService(observer)
     , m_restartTimer(RunLoop::main(), this, &NfcService::platformStartDiscovery)
 {
@@ -101,7 +101,7 @@ void NfcService::platformStartDiscovery()
         return;
 
     // Will be executed in a different thread.
-    auto callback = makeBlockPtr([weakThis = makeWeakPtr(*this), this] (NFReaderSession *session, NSError *error) mutable {
+    auto callback = makeBlockPtr([weakThis = WeakPtr { *this }, this] (NFReaderSession *session, NSError *error) mutable {
         ASSERT(!RunLoop::isMain());
         if (error) {
             LOG_ERROR("Couldn't start a NFC reader session: %@", error);

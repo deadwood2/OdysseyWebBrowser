@@ -29,25 +29,31 @@
 #pragma once
 
 #include "CSSPropertyNames.h"
+#include "CompositeOperation.h"
+#include "IterationCompositeOperation.h"
+#include "WebAnimationTypes.h"
 #include <wtf/HashSet.h>
 
 namespace WebCore {
 
 class CSSPropertyBlendingClient;
+class Document;
 class RenderStyle;
+class Settings;
 
 class CSSPropertyAnimation {
 public:
-    static bool isPropertyAnimatable(CSSPropertyID);
-    static bool animationOfPropertyIsAccelerated(CSSPropertyID);
-    static bool propertiesEqual(CSSPropertyID, const RenderStyle& a, const RenderStyle& b);
-    static bool canPropertyBeInterpolated(CSSPropertyID, const RenderStyle& a, const RenderStyle& b);
+    static bool isPropertyAnimatable(const AnimatableCSSProperty&);
+    static bool isPropertyAdditiveOrCumulative(const AnimatableCSSProperty&);
+    static bool propertyRequiresBlendingForAccumulativeIteration(const CSSPropertyBlendingClient&, const AnimatableCSSProperty&, const RenderStyle& a, const RenderStyle& b);
+    static bool animationOfPropertyIsAccelerated(const AnimatableCSSProperty&, const Settings&);
+    static bool propertiesEqual(const AnimatableCSSProperty&, const RenderStyle& a, const RenderStyle& b, const Document&);
+    static bool canPropertyBeInterpolated(const AnimatableCSSProperty&, const RenderStyle& a, const RenderStyle& b, const Document&);
     static CSSPropertyID getPropertyAtIndex(int, std::optional<bool>& isShorthand);
+    static std::optional<CSSPropertyID> getAcceleratedPropertyAtIndex(int, const Settings&);
     static int getNumProperties();
 
-    static HashSet<CSSPropertyID> animatableShorthandsAffectingProperty(CSSPropertyID);
-
-    static void blendProperties(const CSSPropertyBlendingClient*, CSSPropertyID, RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, double progress);
+    static void blendProperty(const CSSPropertyBlendingClient&, const AnimatableCSSProperty&, RenderStyle& destination, const RenderStyle& from, const RenderStyle& to, double progress, CompositeOperation, IterationCompositeOperation = IterationCompositeOperation::Replace, double currentIteration = 0);
 };
 
 } // namespace WebCore

@@ -25,10 +25,10 @@
 
 #import "config.h"
 
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import "TestURLSchemeHandler.h"
-
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKUserContentControllerPrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
@@ -39,9 +39,7 @@
 
 #if PLATFORM(IOS_FAMILY)
 
-static bool receivedScriptMessage;
-static bool idbAcitivitiesStarted;
-static RetainPtr<WKScriptMessage> lastScriptMessage;
+static bool idbActivitiesStarted;
 
 @interface IndexedDBSuspendImminentlyMessageHandler : NSObject <WKScriptMessageHandler>
 @end
@@ -50,50 +48,50 @@ static RetainPtr<WKScriptMessage> lastScriptMessage;
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message
 {
-    idbAcitivitiesStarted = true;
+    idbActivitiesStarted = true;
     receivedScriptMessage = true;
     lastScriptMessage = message;
 }
 
 @end
 
-static void runTestAndCheckResult(NSString* expectedResult)
+static void runUntilMessageReceived(NSString* expectedMessage)
 {
-    receivedScriptMessage = false;
     TestWebKitAPI::Util::run(&receivedScriptMessage);
     RetainPtr<NSString> string = (NSString *)[lastScriptMessage body];
-    EXPECT_WK_STREQ(expectedResult, string.get());
+    EXPECT_WK_STREQ(expectedMessage, string.get());
+    receivedScriptMessage = false;
 }
 
 static void keepNetworkProcessActive()
 {
     [[WKWebsiteDataStore defaultDataStore] fetchDataRecordsOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] completionHandler:^(NSArray<WKWebsiteDataRecord *> *dataRecords) {
-        if (!idbAcitivitiesStarted)
+        if (!idbActivitiesStarted)
             keepNetworkProcessActive();
     }];
 }
 
 TEST(IndexedDB, IndexedDBSuspendImminently)
 {
+    readyToContinue = false;
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:[WKWebsiteDataStore allWebsiteDataTypes] modifiedSince:[NSDate distantPast] completionHandler:^() {
+        readyToContinue = true;
+    }];
+    TestWebKitAPI::Util::run(&readyToContinue);
+
     auto handler = adoptNS([[IndexedDBSuspendImminentlyMessageHandler alloc] init]);
     auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
     [[configuration userContentController] addScriptMessageHandler:handler.get() name:@"testHandler"];
-
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
-
     NSURLRequest *request = [NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"IndexedDBSuspendImminently" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
-    idbAcitivitiesStarted = false;
     [webView loadRequest:request];
-
-    keepNetworkProcessActive();
-
-    runTestAndCheckResult(@"Continue");
+    runUntilMessageReceived(@"Continue");
 
     [configuration.get().websiteDataStore _sendNetworkProcessWillSuspendImminently];
-    [configuration.get().websiteDataStore _sendNetworkProcessDidResume];
+    runUntilMessageReceived(@"Expected Abort For Suspension");
 
-    runTestAndCheckResult(@"Expected Abort For Suspension");
-    runTestAndCheckResult(@"Expected Success After Resume");
+    [configuration.get().websiteDataStore _sendNetworkProcessDidResume];
+    runUntilMessageReceived(@"Expected Success After Resume");
 }
 
 static NSString *mainFrameString = @"<script> \
@@ -157,12 +155,12 @@ TEST(IndexedDB, SuspendImminentlyForThirdPartyDatabases)
 
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration.get()]);
     [webView loadHTMLString:mainFrameString baseURL:[NSURL URLWithString:@"http://webkit.org"]];
-    runTestAndCheckResult(@"database is created");
+    runUntilMessageReceived(@"database is created");
 
     [configuration.get().websiteDataStore _sendNetworkProcessWillSuspendImminently];
     [configuration.get().websiteDataStore _sendNetworkProcessDidResume];
 
-    runTestAndCheckResult(@"transaction is completed");
+    runUntilMessageReceived(@"transaction is completed");
 }
 
 #endif // PLATFORM(IOS_FAMILY)

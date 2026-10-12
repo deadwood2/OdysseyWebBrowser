@@ -30,14 +30,17 @@
 #include "WorkerThreadType.h"
 #include <JavaScriptCore/Debugger.h>
 #include <JavaScriptCore/JSRunLoopTimer.h>
+#include <wtf/CheckedPtr.h>
 #include <wtf/Forward.h>
 #include <wtf/Lock.h>
 #include <wtf/MessageQueue.h>
 #include <wtf/NakedPtr.h>
 
 namespace JSC {
+class AbstractModuleRecord;
 class Exception;
 class JSGlobalObject;
+class JSModuleRecord;
 class VM;
 }
 
@@ -50,12 +53,12 @@ class WorkerConsoleClient;
 class WorkerOrWorkletGlobalScope;
 class WorkerScriptFetcher;
 
-class WorkerOrWorkletScriptController {
+class WorkerOrWorkletScriptController final : public CanMakeCheckedPtr<WorkerOrWorkletScriptController> {
     WTF_MAKE_NONCOPYABLE(WorkerOrWorkletScriptController);
     WTF_MAKE_FAST_ALLOCATED;
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(WorkerOrWorkletScriptController);
 public:
     WorkerOrWorkletScriptController(WorkerThreadType, Ref<JSC::VM>&&, WorkerOrWorkletGlobalScope*);
-    explicit WorkerOrWorkletScriptController(WorkerThreadType, WorkerOrWorkletGlobalScope*);
     ~WorkerOrWorkletScriptController();
 
     void releaseHeapAccess();
@@ -92,14 +95,15 @@ public:
 
     void disableEval(const String& errorMessage);
     void disableWebAssembly(const String& errorMessage);
+    void setRequiresTrustedTypes(bool required);
 
     void evaluate(const ScriptSourceCode&, String* returnedExceptionMessage = nullptr);
     void evaluate(const ScriptSourceCode&, NakedPtr<JSC::Exception>& returnedException, String* returnedExceptionMessage = nullptr);
 
-    JSC::JSValue evaluateModule(JSC::JSModuleRecord&, JSC::JSValue awaitedValue, JSC::JSValue resumeMode);
+    JSC::JSValue evaluateModule(JSC::AbstractModuleRecord&, JSC::JSValue awaitedValue, JSC::JSValue resumeMode);
 
     void linkAndEvaluateModule(WorkerScriptFetcher&, const ScriptSourceCode&, String* returnedExceptionMessage = nullptr);
-    MessageQueueWaitResult loadModuleSynchronously(WorkerScriptFetcher&, const ScriptSourceCode&);
+    bool loadModuleSynchronously(WorkerScriptFetcher&, const ScriptSourceCode&);
 
     void loadAndEvaluateModule(const URL& moduleURL, FetchOptions::Credentials, CompletionHandler<void(std::optional<Exception>&&)>&&);
 

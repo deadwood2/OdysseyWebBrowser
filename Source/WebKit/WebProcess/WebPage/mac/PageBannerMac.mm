@@ -29,19 +29,20 @@
 #if PLATFORM(MAC)
 
 #import "WebPage.h"
-#import <WebCore/FrameView.h>
 #import <WebCore/GraphicsLayer.h>
+#import <WebCore/LocalFrameView.h>
+#import <WebCore/Page.h>
 
 namespace WebKit {
 using namespace WebCore;
 
-Ref<PageBanner> PageBanner::create(CALayer *layer, int height, Client* client)
+Ref<PageBanner> PageBanner::create(CALayer *layer, int height, std::unique_ptr<Client>&& client)
 {
-    return adoptRef(*new PageBanner(layer, height, client));
+    return adoptRef(*new PageBanner(layer, height, WTFMove(client)));
 }
 
-PageBanner::PageBanner(CALayer *layer, int height, Client* client)
-    : m_client(client)
+PageBanner::PageBanner(CALayer *layer, int height, std::unique_ptr<Client>&& client)
+    : m_client(WTFMove(client))
     , m_layer(layer)
     , m_height(height)
 {
@@ -114,7 +115,7 @@ void PageBanner::showIfHidden()
 
     // This will re-create a parent layer in the WebCore layer tree, and we will re-add
     // m_layer as a child of it. 
-    addToPage(m_type, m_webPage);
+    addToPage(m_type, RefPtr { m_webPage.get() }.get());
 }
 
 void PageBanner::didChangeDeviceScaleFactor(float scaleFactor)
@@ -128,7 +129,7 @@ bool PageBanner::mouseEvent(const WebMouseEvent& mouseEvent)
     if (m_isHidden)
         return false;
 
-    FrameView* frameView = m_webPage->mainFrameView();
+    RefPtr frameView = m_webPage->localMainFrameView();
     if (!frameView)
         return false;
 
@@ -150,9 +151,9 @@ bool PageBanner::mouseEvent(const WebMouseEvent& mouseEvent)
     if (!m_mouseDownInBanner && (positionInBannerSpace.y() < 0 || positionInBannerSpace.y() > m_height))
         return false;
 
-    if (mouseEvent.type() == WebEvent::MouseDown)
+    if (mouseEvent.type() == WebEventType::MouseDown)
         m_mouseDownInBanner = true;
-    else if (mouseEvent.type() == WebEvent::MouseUp)
+    else if (mouseEvent.type() == WebEventType::MouseUp)
         m_mouseDownInBanner = false;
 
     return m_client->mouseEvent(this, mouseEvent.type(), mouseEvent.button(), positionInBannerSpace);

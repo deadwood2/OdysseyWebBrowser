@@ -36,6 +36,7 @@
 namespace WebCore {
 class CertificateInfo;
 class Page;
+class PageOverlay;
 }
 
 namespace WebKit {
@@ -45,8 +46,10 @@ class WebNodeHighlight;
 class WebPage;
 
 class WebInspectorClient final : public WebCore::InspectorClient, public Inspector::FrontendChannel {
+    WTF_MAKE_FAST_ALLOCATED;
 public:
     explicit WebInspectorClient(WebPage*);
+    ~WebInspectorClient();
 
     // InspectorClient API.
     void inspectedPageDestroyed() override;
@@ -57,12 +60,17 @@ public:
     void highlight() override;
     void hideHighlight() override;
 
+	void inspectedPageWillBeDestroyed();
+	void releaseFrontend();
+	void closeInspector();
+
     // FrontendChannel API.
     ConnectionType connectionType() const override { return ConnectionType::Local; }
     void sendMessageToFrontend(const WTF::String&) override;
-
+    
 private:
-    virtual ~WebInspectorClient();
+	WebPage *m_inspectedPage;
+    std::unique_ptr<WebInspectorFrontendClient> m_frontendClient;
 };
 }
 

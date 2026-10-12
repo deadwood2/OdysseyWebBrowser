@@ -30,6 +30,7 @@
 
 #include "Document.h"
 #include "ScriptElement.h"
+#include <wtf/WeakRef.h>
 
 namespace WebCore {
 
@@ -39,17 +40,19 @@ public:
     CurrentScriptIncrementer(Document& document, ScriptElement& scriptElement)
         : m_document(document)
     {
-        bool shouldPushNullForCurrentScript = scriptElement.element().isInShadowTree() || scriptElement.scriptType() != ScriptElement::ScriptType::Classic;
-        m_document.pushCurrentScript(shouldPushNullForCurrentScript ? nullptr : &scriptElement.element());
+        bool shouldPushNullForCurrentScript = scriptElement.element().isInShadowTree() || scriptElement.scriptType() != ScriptType::Classic;
+        protectedDocument()->pushCurrentScript(shouldPushNullForCurrentScript ? nullptr : &scriptElement.element());
     }
 
     ~CurrentScriptIncrementer()
     {
-        m_document.popCurrentScript();
+        protectedDocument()->popCurrentScript();
     }
 
 private:
-    Document& m_document;
+    Ref<Document> protectedDocument() const { return m_document.get(); }
+
+    WeakRef<Document, WeakPtrImplWithEventTargetData> m_document;
 };
 
 } // namespace WebCore

@@ -29,6 +29,7 @@
 #include <Shlwapi.h>
 #include <wtf/FileSystem.h>
 #include <wtf/URL.h>
+#include <wtf/text/MakeString.h>
 
 namespace TestWebKitAPI {
 namespace Util {
@@ -44,13 +45,13 @@ static String moduleDirectory()
 
 WKStringRef createInjectedBundlePath()
 {
-    auto path = FileSystem::pathByAppendingComponent(moduleDirectory(), "TestWebKitAPIInjectedBundle.dll");
+    auto path = FileSystem::pathByAppendingComponent(moduleDirectory(), "TestWebKitAPIInjectedBundle.dll"_s);
     return WKStringCreateWithUTF8CString(path.utf8().data());
 }
 
 WKURLRef createURLForResource(const char* resource, const char* extension)
 {
-    String filename = makeString("..\\..\\..\\Tools\\TestWebKitAPI\\Tests\\WebKit\\", resource, '.', extension);
+    String filename = makeString("..\\..\\..\\Tools\\TestWebKitAPI\\Tests\\WebKit\\"_s, span(resource), '.', span(extension));
     auto url = URL::fileURLWithFileSystemPath(FileSystem::pathByAppendingComponent(moduleDirectory(), filename));
     return WKURLCreateWithUTF8CString(url.string().utf8().data());
 }
@@ -62,8 +63,7 @@ WKURLRef URLForNonExistentResource()
 
 bool isKeyDown(WKNativeEventPtr event)
 {
-    // FIXME
-    return false;
+    return event->message == WM_KEYDOWN;
 }
 
 } // namespace Util

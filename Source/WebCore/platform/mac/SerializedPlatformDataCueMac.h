@@ -28,6 +28,8 @@
 #if ENABLE(VIDEO) && ENABLE(DATACUE_VALUE)
 
 #include "SerializedPlatformDataCue.h"
+#include "SerializedPlatformDataCueValue.h"
+#include <wtf/HashSet.h>
 
 namespace WebCore {
 
@@ -44,13 +46,10 @@ public:
 
     WEBCORE_EXPORT SerializedPlatformDataCueValue encodableValue() const final;
 
-    id nativeValue() const { return m_nativeValue.get(); }
-
-    WEBCORE_EXPORT static NSArray *allowedClassesForNativeValues();
+    WEBCORE_EXPORT static const HashSet<Class>& allowedClassesForNativeValues();
 
 private:
-
-    RetainPtr<id> m_nativeValue;
+    SerializedPlatformDataCueValue m_value;
 };
 
 SerializedPlatformDataCueMac* toSerializedPlatformDataCueMac(SerializedPlatformDataCue*);

@@ -38,9 +38,13 @@
 #import <WebKit/WebFramePrivate.h>
 #import <WebKit/WebFrameView.h>
 #import <WebKit/WebHTMLView.h>
+#import <pal/spi/mac/HIServicesSPI.h>
 
 AccessibilityController::AccessibilityController()
 {
+    // Override the client identifier to be kAXClientTypeWebKitTesting which is treated the same as the VoiceOver identifier in isolated tree mode.
+    // This also allows to enable some APIs during testing only for unit test purposes, not for other clients consumption.
+    _AXSetClientIdentificationOverride((AXClientType)kAXClientTypeWebKitTesting);
 }
 
 AccessibilityController::~AccessibilityController()
@@ -75,7 +79,7 @@ AccessibilityUIElement AccessibilityController::rootElement()
 static id findAccessibleObjectById(id obj, NSString *idAttribute)
 {
     BEGIN_AX_OBJC_EXCEPTIONS
-    id objIdAttribute = [obj accessibilityAttributeValue:@"AXDRTElementIdAttribute"];
+    id objIdAttribute = [obj accessibilityAttributeValue:@"AXDOMIdentifier"];
     if ([objIdAttribute isKindOfClass:[NSString class]] && [objIdAttribute isEqualToString:idAttribute])
         return obj;
     END_AX_OBJC_EXCEPTIONS
@@ -90,7 +94,7 @@ static id findAccessibleObjectById(id obj, NSString *idAttribute)
     }
     END_AX_OBJC_EXCEPTIONS
 
-    return nullptr;
+    return nil;
 }
 
 AccessibilityUIElement AccessibilityController::accessibleElementById(JSStringRef idAttributeRef)

@@ -26,18 +26,33 @@
 #pragma once
 
 #include "AnimationList.h"
+#include "AnimationMalloc.h"
 #include "CSSPropertyNames.h"
 #include "WebAnimationTypes.h"
 #include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
 
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+#include <wtf/WeakListHashSet.h>
+#endif
+
 namespace WebCore {
 
+class Document;
 class KeyframeEffect;
 class RenderStyle;
+class Settings;
+
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+class AcceleratedEffect;
+#endif
+
+namespace Style {
+struct ResolutionContext;
+}
 
 class KeyframeEffectStack {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Animation);
 public:
     explicit KeyframeEffectStack();
     ~KeyframeEffectStack();
@@ -48,20 +63,46 @@ public:
     Vector<WeakPtr<KeyframeEffect>> sortedEffects();
     const AnimationList* cssAnimationList() const { return m_cssAnimationList.get(); }
     void setCSSAnimationList(RefPtr<const AnimationList>&&);
+    bool containsProperty(CSSPropertyID) const;
     bool isCurrentlyAffectingProperty(CSSPropertyID) const;
     bool requiresPseudoElement() const;
-    OptionSet<AnimationImpact> applyKeyframeEffects(RenderStyle& targetStyle, const RenderStyle& previousLastStyleChangeEventStyle, const RenderStyle* parentElementStyle);
+    OptionSet<AnimationImpact> applyKeyframeEffects(RenderStyle& targetStyle, HashSet<AnimatableCSSProperty>& affectedProperties, const RenderStyle* previousLastStyleChangeEventStyle, const Style::ResolutionContext&);
     bool hasEffectWithImplicitKeyframes() const;
 
-    void stopAcceleratingTransformRelatedProperties(UseAcceleratedAction);
+    void effectAbilityToBeAcceleratedDidChange(const KeyframeEffect&);
+    bool allowsAcceleration() const;
+
+    void clearInvalidCSSAnimationNames();
+    bool hasInvalidCSSAnimationNames() const;
+    bool containsInvalidCSSAnimationName(const String&) const;
+    void addInvalidCSSAnimationName(const String&);
+
+    void lastStyleChangeEventStyleDidChange(const RenderStyle* previousStyle, const RenderStyle* currentStyle);
+    void cascadeDidOverrideProperties(const HashSet<AnimatableCSSProperty>&, const Document&);
+
+    const HashSet<AnimatableCSSProperty>& acceleratedPropertiesOverriddenByCascade() const { return m_acceleratedPropertiesOverriddenByCascade; }
+
+    void applyPendingAcceleratedActions() const;
+
+    bool hasAcceleratedEffects(const Settings&) const;
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+    void setAcceleratedEffects(WeakListHashSet<AcceleratedEffect>&& acceleratedEffects) { m_acceleratedEffects = WTFMove(acceleratedEffects); }
+#endif
 
 private:
     void ensureEffectsAreSorted();
+    bool hasMatchingEffect(const Function<bool(const KeyframeEffect&)>&) const;
+    void startAcceleratedAnimationsIfPossible();
+    void stopAcceleratedAnimations();
 
     Vector<WeakPtr<KeyframeEffect>> m_effects;
+#if ENABLE(THREADED_ANIMATION_RESOLUTION)
+    WeakListHashSet<AcceleratedEffect> m_acceleratedEffects;
+#endif
+    HashSet<String> m_invalidCSSAnimationNames;
+    HashSet<AnimatableCSSProperty> m_acceleratedPropertiesOverriddenByCascade;
     RefPtr<const AnimationList> m_cssAnimationList;
     bool m_isSorted { true };
-
 };
 
 } // namespace WebCore

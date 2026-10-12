@@ -29,7 +29,7 @@
 namespace WebCore {
 
 class MutationEvent final : public Event {
-    WTF_MAKE_ISO_ALLOCATED(MutationEvent);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(MutationEvent);
 public:
     enum {
         MODIFICATION = 1,
@@ -56,10 +56,8 @@ public:
     unsigned short attrChange() const { return m_attrChange; }
 
 private:
-    MutationEvent() = default;
+    MutationEvent();
     MutationEvent(const AtomString& type, CanBubble, IsCancelable, Node* relatedNode, const String& prevValue, const String& newValue);
-
-    EventInterface eventInterface() const final;
 
     RefPtr<Node> m_relatedNode;
     String m_prevValue;

@@ -45,7 +45,7 @@ class VersionNameMap(object):
     def __init__(self, platform=None):
         if platform is None:
             from webkitpy.common.system.systemhost import SystemHost
-            platform = SystemHost().platform
+            platform = SystemHost.get_default().platform
         self.mapping = {}
 
         self.default_system_platform = platform.os_name
@@ -64,10 +64,14 @@ class VersionNameMap(object):
                 'Catalina': Version(10, 15),
                 'Big Sur': Version(11, 0),
                 'Monterey': Version(12, 0),
+                'Ventura': Version(13, 0),
+                'Sonoma': Version(14, 0),
+                'Sequoia': Version(15, 0),
             },
-            'ios': self._automap_to_major_version('iOS', minimum=Version(10), maximum=Version(15)),
-            'tvos': self._automap_to_major_version('tvOS', minimum=Version(10), maximum=Version(15)),
-            'watchos': self._automap_to_major_version('watchOS', minimum=Version(1), maximum=Version(8)),
+            'ios': self._automap_to_major_version('iOS', minimum=Version(10), maximum=Version(18)),
+            'tvos': self._automap_to_major_version('tvOS', minimum=Version(10), maximum=Version(18)),
+            'watchos': self._automap_to_major_version('watchOS', minimum=Version(1), maximum=Version(11)),
+            'visionos': self._automap_to_major_version('visionOS', minimum=Version(1), maximum=Version(2)),
             'win': {
                 'Win10': Version(10),
                 '8.1': Version(6, 3),
@@ -84,9 +88,6 @@ class VersionNameMap(object):
 
         # wincairo uses the same versions as Windows
         self.mapping[PUBLIC_TABLE]['wincairo'] = self.mapping[PUBLIC_TABLE]['win']
-
-        # FTW uses the same versions as Windows
-        self.mapping[PUBLIC_TABLE]['ftw'] = self.mapping[PUBLIC_TABLE]['win']
 
 
     @classmethod

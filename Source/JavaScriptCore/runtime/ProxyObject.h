@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2016-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,19 +25,41 @@
 
 #pragma once
 
-#include "JSGlobalObject.h"
-#include "JSObject.h"
+#include "JSInternalFieldObjectImpl.h"
 
 namespace JSC {
 
-class ProxyObject final : public JSNonFinalObject {
+class ProxyObject final : public JSInternalFieldObjectImpl<2> {
 public:
-    typedef JSNonFinalObject Base;
+    using Base = JSInternalFieldObjectImpl<2>;
 
-    static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetOwnPropertyNames | OverridesGetPrototype | OverridesGetCallData | OverridesPut | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | ProhibitsPropertyCaching;
+    static constexpr unsigned StructureFlags = Base::StructureFlags | OverridesGetOwnPropertySlot | OverridesGetOwnPropertyNames | OverridesGetPrototype | OverridesGetCallData | OverridesPut | OverridesIsExtensible | InterceptsGetOwnPropertySlotByIndexEvenWhenLengthIsNotZero | ProhibitsPropertyCaching;
+
+    enum class Field : uint32_t {
+        Target = 0,
+        Handler,
+    };
+    static_assert(numberOfInternalFields == 2);
+    static std::array<JSValue, numberOfInternalFields> initialValues()
+    {
+        return { {
+            jsNull(),
+            jsUndefined(),
+        } };
+    }
+
+    enum class HandlerTrap : uint8_t {
+        Has = 0,
+        Get,
+        GetOwnPropertyDescriptor,
+        OwnKeys,
+        Set,
+    };
+
+    static constexpr unsigned numberOfCachedHandlerTrapsOffsets = 5;
 
     template<typename CellType, SubspaceAccess mode>
-    static IsoSubspace* subspaceFor(VM& vm)
+    static GCClient::IsoSubspace* subspaceFor(VM& vm)
     {
         return vm.proxyObjectSpace<mode>();
     }
@@ -46,26 +68,21 @@ public:
     {
         VM& vm = getVM(globalObject);
         Structure* structure = ProxyObject::structureForTarget(globalObject, target);
-        ProxyObject* proxy = new (NotNull, allocateCell<ProxyObject>(vm.heap)) ProxyObject(vm, structure);
+        ProxyObject* proxy = new (NotNull, allocateCell<ProxyObject>(vm)) ProxyObject(vm, structure);
         proxy->finishCreation(vm, globalObject, target, handler);
         return proxy;
     }
 
-    static Structure* createStructure(VM& vm, JSGlobalObject* globalObject, JSValue prototype, bool isCallable)
-    {
-        unsigned flags = StructureFlags;
-        if (isCallable)
-            flags |= (ImplementsHasInstance | ImplementsDefaultHasInstance);
-        Structure* result = Structure::create(vm, globalObject, prototype, TypeInfo(ProxyObjectType, flags), info(), NonArray | MayHaveIndexedAccessors);
-        RELEASE_ASSERT(!result->canAccessPropertiesQuicklyForEnumeration());
-        RELEASE_ASSERT(!result->canCachePropertyNameEnumerator(vm));
-        return result;
-    }
+    inline static Structure* createStructure(VM&, JSGlobalObject*, JSValue, bool);
 
     DECLARE_EXPORT_INFO;
 
-    JSObject* target() const { return m_target.get(); }
-    JSValue handler() const { return m_handler.get(); }
+    JSObject* target() const { return jsCast<JSObject*>(internalField(Field::Target).get()); }
+    JSValue handler() const { return internalField(Field::Handler).get(); }
+
+    static void validateNegativeHasTrapResult(JSGlobalObject*, JSObject*, PropertyName);
+    static void validatePositiveSetTrapResult(JSGlobalObject*, JSObject*, PropertyName, JSValue putValue);
+    static void validateGetTrapResult(JSGlobalObject*, JSValue trapResult, JSObject*, PropertyName);
 
     static bool put(JSCell*, JSGlobalObject*, PropertyName, JSValue, PutPropertySlot&);
     static bool putByIndex(JSCell*, JSGlobalObject*, unsigned propertyName, JSValue, bool shouldThrow);
@@ -74,10 +91,19 @@ public:
     void revoke(VM&);
     bool isRevoked() const;
 
+    const WriteBarrier<Unknown>& internalField(Field field) const { return Base::internalField(static_cast<uint32_t>(field)); }
+    WriteBarrier<Unknown>& internalField(Field field) { return Base::internalField(static_cast<uint32_t>(field)); }
+
+    JSObject* getHandlerTrap(JSGlobalObject*, JSObject*, CallData&, const Identifier&, HandlerTrap);
+    bool forwardsGetOwnPropertyNamesToTarget(DontEnumPropertiesMode);
+
 private:
     JS_EXPORT_PRIVATE ProxyObject(VM&, Structure*);
     JS_EXPORT_PRIVATE void finishCreation(VM&, JSGlobalObject*, JSValue target, JSValue handler);
     JS_EXPORT_PRIVATE static Structure* structureForTarget(JSGlobalObject*, JSValue target);
+
+    bool isHandlerTrapsCacheValid(JSObject* handler);
+    void clearHandlerTrapsOffsetsCache();
 
     static bool getOwnPropertySlot(JSObject*, JSGlobalObject*, PropertyName, PropertySlot&);
     static bool getOwnPropertySlotByIndex(JSObject*, JSGlobalObject*, unsigned propertyName, PropertySlot&);
@@ -108,10 +134,16 @@ private:
     void performGetOwnEnumerablePropertyNames(JSGlobalObject*, PropertyNameArray&);
     bool performSetPrototype(JSGlobalObject*, JSValue prototype, bool shouldThrowIfCantSet);
 
-    WriteBarrier<JSObject> m_target;
-    WriteBarrier<Unknown> m_handler;
-    bool m_isCallable : 1;
-    bool m_isConstructible : 1;
+    bool m_isCallable : 1 { false };
+    bool m_isConstructible : 1 { false };
+    PropertyOffset m_handlerTrapsOffsetsCache[numberOfCachedHandlerTrapsOffsets];
+    WriteBarrierStructureID m_handlerStructureID;
+    WriteBarrierStructureID m_handlerPrototypeStructureID;
 };
+
+ALWAYS_INLINE bool ProxyObject::isHandlerTrapsCacheValid(JSObject* handler)
+{
+    return handler->structureID() == m_handlerStructureID.value() && asObject(handler->getPrototypeDirect())->structureID() == m_handlerPrototypeStructureID.value();
+}
 
 } // namespace JSC

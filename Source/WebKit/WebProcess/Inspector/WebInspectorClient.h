@@ -28,6 +28,7 @@
 #include <WebCore/InspectorClient.h>
 #include <WebCore/PageOverlay.h>
 #include <wtf/HashSet.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 class GraphicsContext;
@@ -41,8 +42,8 @@ namespace WebKit {
 class WebPage;
 class RepaintIndicatorLayerClient;
 
-class WebInspectorClient : public WebCore::InspectorClient, private WebCore::PageOverlay::Client {
-    WTF_MAKE_FAST_ALLOCATED;
+class WebInspectorClient : public WebCore::InspectorClient, private WebCore::PageOverlayClient {
+    WTF_MAKE_TZONE_ALLOCATED(WebInspectorClient);
 friend class RepaintIndicatorLayerClient;
 public:
     WebInspectorClient(WebPage*);
@@ -55,7 +56,7 @@ private:
 
     Inspector::FrontendChannel* openLocalFrontend(WebCore::InspectorController*) override;
     void bringFrontendToFront() override;
-    void didResizeMainFrame(WebCore::Frame*) override;
+    void didResizeMainFrame(WebCore::LocalFrame*) override;
 
     void highlight() override;
     void hideHighlight() override;
@@ -72,10 +73,14 @@ private:
 
     bool overridesShowPaintRects() const override { return true; }
     void showPaintRect(const WebCore::FloatRect&) override;
+    unsigned paintRectCount() const override { return m_paintRectLayers.size(); }
 
     void setDeveloperPreferenceOverride(WebCore::InspectorClient::DeveloperPreference, std::optional<bool>) final;
+#if ENABLE(INSPECTOR_NETWORK_THROTTLING)
+    bool setEmulatedConditions(std::optional<int64_t>&& bytesPerSecondLimit) final;
+#endif
 
-    // PageOverlay::Client
+    // PageOverlayClient
     void willMoveToPage(WebCore::PageOverlay&, WebCore::Page*) override;
     void didMoveToPage(WebCore::PageOverlay&, WebCore::Page*) override;
     void drawRect(WebCore::PageOverlay&, WebCore::GraphicsContext&, const WebCore::IntRect&) override;
@@ -83,7 +88,7 @@ private:
 
     void animationEndedForLayer(const WebCore::GraphicsLayer*);
 
-    WebPage* m_page;
+    WeakPtr<WebPage> m_page;
     WebCore::PageOverlay* m_highlightOverlay;
     
     RefPtr<WebCore::PageOverlay> m_paintRectOverlay;

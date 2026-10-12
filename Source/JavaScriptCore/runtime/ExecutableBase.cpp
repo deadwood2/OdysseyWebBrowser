@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2009-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,7 +35,7 @@
 
 namespace JSC {
 
-const ClassInfo ExecutableBase::s_info = { "Executable", nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(ExecutableBase) };
+const ClassInfo ExecutableBase::s_info = { "Executable"_s, nullptr, nullptr, nullptr, CREATE_METHOD_TABLE(ExecutableBase) };
 
 void ExecutableBase::destroy(JSCell* cell)
 {
@@ -49,7 +49,7 @@ void ExecutableBase::dump(PrintStream& out) const
     switch (type()) {
     case NativeExecutableType: {
         NativeExecutable* native = jsCast<NativeExecutable*>(realThis);
-        out.print("NativeExecutable:", RawPointer(bitwise_cast<void*>(native->function())), "/", RawPointer(bitwise_cast<void*>(native->constructor())));
+        out.print("NativeExecutable:"_s, RawPointer(native->function().taggedPtr()), "/"_s, RawPointer(native->constructor().taggedPtr()));
         return;
     }
     case EvalExecutableType: {
@@ -57,7 +57,7 @@ void ExecutableBase::dump(PrintStream& out) const
         if (CodeBlock* codeBlock = eval->codeBlock())
             out.print(*codeBlock);
         else
-            out.print("EvalExecutable w/o CodeBlock");
+            out.print("EvalExecutable w/o CodeBlock"_s);
         return;
     }
     case ProgramExecutableType: {
@@ -65,7 +65,7 @@ void ExecutableBase::dump(PrintStream& out) const
         if (CodeBlock* codeBlock = eval->codeBlock())
             out.print(*codeBlock);
         else
-            out.print("ProgramExecutable w/o CodeBlock");
+            out.print("ProgramExecutable w/o CodeBlock"_s);
         return;
     }
     case ModuleProgramExecutableType: {
@@ -73,15 +73,15 @@ void ExecutableBase::dump(PrintStream& out) const
         if (CodeBlock* codeBlock = executable->codeBlock())
             out.print(*codeBlock);
         else
-            out.print("ModuleProgramExecutable w/o CodeBlock");
+            out.print("ModuleProgramExecutable w/o CodeBlock"_s);
         return;
     }
     case FunctionExecutableType: {
         FunctionExecutable* function = jsCast<FunctionExecutable*>(realThis);
         if (!function->eitherCodeBlock())
-            out.print("FunctionExecutable w/o CodeBlock");
+            out.print("FunctionExecutable w/o CodeBlock"_s);
         else {
-            CommaPrinter comma("/");
+            CommaPrinter comma("/"_s);
             if (function->codeBlockForCall())
                 out.print(comma, *function->codeBlockForCall());
             if (function->codeBlockForConstruct())

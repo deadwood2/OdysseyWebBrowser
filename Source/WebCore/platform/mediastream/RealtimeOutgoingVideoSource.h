@@ -32,14 +32,16 @@
 
 #include "LibWebRTCMacros.h"
 #include "MediaStreamTrackPrivate.h"
-#include <Timer.h>
+#include "Timer.h"
 #include <wtf/Lock.h>
 
 ALLOW_UNUSED_PARAMETERS_BEGIN
+ALLOW_COMMA_BEGIN
 
 #include <webrtc/api/media_stream_interface.h>
 
 ALLOW_UNUSED_PARAMETERS_END
+ALLOW_COMMA_END
 
 #include <wtf/LoggerHelper.h>
 #include <wtf/ThreadSafeRefCounted.h>
@@ -49,8 +51,8 @@ namespace WebCore {
 class RealtimeOutgoingVideoSource
     : public ThreadSafeRefCounted<RealtimeOutgoingVideoSource, WTF::DestructionThread::Main>
     , public webrtc::VideoTrackSourceInterface
-    , private MediaStreamTrackPrivate::Observer
-    , private RealtimeMediaSource::VideoSampleObserver
+    , private MediaStreamTrackPrivateObserver
+    , private RealtimeMediaSource::VideoFrameObserver
 #if !RELEASE_LOG_DISABLED
     , private LoggerHelper
 #endif
@@ -65,13 +67,14 @@ public:
     MediaStreamTrackPrivate& source() const { return m_videoSource.get(); }
 
     void AddRef() const final { ref(); }
-    rtc::RefCountReleaseStatus Release() const final
+    webrtc::RefCountReleaseStatus Release() const final
     {
         deref();
-        return rtc::RefCountReleaseStatus::kOtherRefsRemained;
+        return webrtc::RefCountReleaseStatus::kOtherRefsRemained;
     }
 
     void applyRotation();
+    void disableVideoScaling() { m_enableVideoFrameScaling = false; }
 
 protected:
     explicit RealtimeOutgoingVideoSource(Ref<MediaStreamTrackPrivate>&&);
@@ -88,21 +91,24 @@ protected:
     // LoggerHelper API
     const Logger& logger() const final { return m_logger.get(); }
     const void* logIdentifier() const final { return m_logIdentifier; }
-    const char* logClassName() const final { return "RealtimeOutgoingVideoSource"; }
+    ASCIILiteral logClassName() const final { return "RealtimeOutgoingVideoSource"_s; }
     WTFLogChannel& logChannel() const final;
 #endif
+
+    double videoFrameScaling() const { return m_enableVideoFrameScaling ? (double)m_videoFrameScaling : 1; }
 
 private:
     void sendBlackFramesIfNeeded();
     void sendOneBlackFrame();
     void initializeFromSource();
-    void updateBlackFramesSending();
+    void updateFramesSending();
 
     void observeSource();
     void unobserveSource();
 
-    using MediaStreamTrackPrivate::Observer::weakPtrFactory;
-    using WeakValueType = MediaStreamTrackPrivate::Observer::WeakValueType;
+    using MediaStreamTrackPrivateObserver::weakPtrFactory;
+    using MediaStreamTrackPrivateObserver::WeakValueType;
+    using MediaStreamTrackPrivateObserver::WeakPtrImplType;
 
     // Notifier API
     void RegisterObserver(webrtc::ObserverInterface*) final { }
@@ -127,15 +133,16 @@ private:
 
     void sourceMutedChanged();
     void sourceEnabledChanged();
+    void startObservingVideoFrames();
 
-    // MediaStreamTrackPrivate::Observer API
+    // MediaStreamTrackPrivateObserver API
     void trackMutedChanged(MediaStreamTrackPrivate&) final { sourceMutedChanged(); }
     void trackEnabledChanged(MediaStreamTrackPrivate&) final { sourceEnabledChanged(); }
     void trackSettingsChanged(MediaStreamTrackPrivate&) final { initializeFromSource(); }
     void trackEnded(MediaStreamTrackPrivate&) final { }
 
-    // RealtimeMediaSource::VideoSampleObserver API
-    void videoSampleAvailable(MediaSample&) override { }
+    // RealtimeMediaSource::VideoFrameObserver API
+    void videoFrameAvailable(VideoFrame&, VideoFrameTimeMetadata) override { }
 
     Ref<MediaStreamTrackPrivate> m_videoSource;
     Timer m_blackFrameTimer;
@@ -149,6 +156,11 @@ private:
     bool m_muted { false };
     uint32_t m_width { 0 };
     uint32_t m_height { 0 };
+    std::optional<double> m_maxFrameRate;
+    std::optional<double> m_maxPixelCount;
+    std::atomic<double> m_videoFrameScaling { 1.0 };
+    bool m_enableVideoFrameScaling { true };
+    bool m_isObservingVideoFrames { false };
 
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;

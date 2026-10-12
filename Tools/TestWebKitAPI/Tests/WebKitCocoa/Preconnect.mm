@@ -33,6 +33,7 @@
 #import "WKWebViewConfigurationExtras.h"
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
+#import <WebKit/WKWebpagePreferencesPrivate.h>
 #import <pal/spi/cf/CFNetworkSPI.h>
 #import <wtf/RetainPtr.h>
 
@@ -87,25 +88,17 @@ TEST(Preconnect, ConnectionCount)
     });
     auto webView = adoptNS([WKWebView new]);
 
-    // The preconnect to the server will use the default setting of "use the credential store",
-    // and therefore use the credential-store-blessed NSURLSession.
     [webView _preconnectToServer:server.request().URL];
     Util::run(&anyConnections);
     Util::spinRunLoop(10);
     EXPECT_FALSE(requested);
 
-    // Then this request will *not* use the credential store, therefore using a different NSURLSession
-    // that doesn't know about the above preconnect, triggering a second connection to the server.
     webView.get()._canUseCredentialStorage = NO;
     [webView loadRequest:server.request()];
     Util::run(&requested);
 
-    EXPECT_EQ(connectionCount, 2u);
+    EXPECT_EQ(connectionCount, 1u);
 }
-
-// Mojave CFNetwork _preconnect SPI seems to have a bug causing this to time out.
-// That's no problem, because this is a test for SPI only to be used on later OS versions.
-#if !PLATFORM(MAC) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
 
 TEST(Preconnect, HTTPS)
 {
@@ -135,8 +128,6 @@ TEST(Preconnect, HTTPS)
     Util::run(&requested);
     EXPECT_TRUE(receivedChallenge);
 }
-
-#endif
 
 #if HAVE(PRECONNECT_PING)
 static void pingPong(Ref<H2::Connection>&& connection, size_t* headersCount)
@@ -270,5 +261,39 @@ TEST(Preconnect, DisablePreconnect)
         configuration._loadsSubresources = NO;
     });
 }
+
+#if HAVE(SYSTEM_SUPPORT_FOR_ADVANCED_PRIVACY_PROTECTIONS)
+
+TEST(Preconnect, PrivacyProxyRequestFlags)
+{
+    size_t connectionCount = 0;
+    bool connected = false;
+    bool requested = false;
+    HTTPServer server([&] (Connection connection) {
+        ++connectionCount;
+        connected = true;
+        connection.receiveHTTPRequest([&](Vector<char>&&) {
+            requested = true;
+        });
+    });
+
+    constexpr auto policies = _WKWebsiteNetworkConnectionIntegrityPolicyEnabled
+        | _WKWebsiteNetworkConnectionIntegrityPolicyFailClosed
+        | _WKWebsiteNetworkConnectionIntegrityPolicyRequestValidation;
+
+    auto configuration = adoptNS([WKWebViewConfiguration new]);
+    [configuration defaultWebpagePreferences]._networkConnectionIntegrityPolicy = policies;
+
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:CGRectMake(0, 0, 800, 600) configuration:configuration.get()]);
+    auto request = adoptNS(server.request().mutableCopy);
+    [request _setPrivacyProxyFailClosedForUnreachableHosts:YES];
+    [request _setUseEnhancedPrivacyMode:YES];
+    [webView loadRequest:request.get()];
+
+    Util::run(&requested);
+    EXPECT_EQ(connectionCount, 1U);
+}
+
+#endif // HAVE(SYSTEM_SUPPORT_FOR_ADVANCED_PRIVACY_PROTECTIONS)
 
 }

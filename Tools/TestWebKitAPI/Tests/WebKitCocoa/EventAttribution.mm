@@ -25,15 +25,32 @@
 
 #import "config.h"
 
+#import "ASN1Utilities.h"
+#import "DaemonTestUtilities.h"
 #import "HTTPServer.h"
 #import "PlatformUtilities.h"
+#import "Test.h"
 #import "TestNavigationDelegate.h"
+#import "TestUIDelegate.h"
 #import "TestWKWebView.h"
 #import "Utilities.h"
+#import "WKWebViewConfigurationExtras.h"
+#import <WebKit/WKMain.h>
+#import <WebKit/WKNavigationActionPrivate.h>
+#import <WebKit/WKNavigationDelegatePrivate.h>
+#import <WebKit/WKPage.h>
+#import <WebKit/WKPageInjectedBundleClient.h>
+#import <WebKit/WKPreferencesPrivate.h>
+#import <WebKit/WKString.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
+#import <WebKit/_WKFeature.h>
+#import <WebKit/_WKInspector.h>
 #import <WebKit/_WKWebsiteDataStoreConfiguration.h>
+#import <wtf/cocoa/VectorCocoa.h>
+#import <wtf/spi/darwin/XPCSPI.h>
+#import <wtf/text/MakeString.h>
 
 #if HAVE(RSA_BSSA)
 
@@ -43,6 +60,10 @@
 #include <wtf/spi/cocoa/SecuritySPI.h>
 
 #endif // HAVE(RSA_BSSA)
+
+@interface WKWebView ()
+- (WKPageRef)_pageForTesting;
+@end
 
 @interface MockEventAttribution : NSObject
 
@@ -75,13 +96,53 @@
 
 namespace TestWebKitAPI {
 
+static RetainPtr<SecTrustRef> secTrustFromCertificateChain(NSArray *chain)
+{
+    SecTrustRef trustRef = nullptr;
+    if (SecTrustCreateWithCertificates((__bridge CFArrayRef)chain, nullptr, &trustRef) != noErr)
+        return nullptr;
+    return adoptCF(trustRef);
+}
+
+static TestNavigationDelegate *delegateAllowingAllTLS()
+{
+    static RetainPtr<TestNavigationDelegate> delegate = [] {
+        auto delegate = adoptNS([TestNavigationDelegate new]);
+        delegate.get().didReceiveAuthenticationChallenge = ^(WKWebView *, NSURLAuthenticationChallenge *challenge, void (^completionHandler)(NSURLSessionAuthChallengeDisposition, NSURLCredential *)) {
+            completionHandler(NSURLSessionAuthChallengeUseCredential, [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust]);
+        };
+        return delegate;
+    }();
+    return delegate.get();
+}
+
 static NSURL *exampleURL()
 {
     return [NSURL URLWithString:@"https://example.com/"];
 }
 
-void runBasicEventAttributionTest(WKWebViewConfiguration *configuration, Function<void(WKWebView *, const HTTPServer&)>&& addAttributionToWebView)
+static void clearState()
 {
+    [[NSFileManager defaultManager] removeItemAtURL:adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]).get()._resourceLoadStatisticsDirectory error:nil];
+}
+
+static RetainPtr<WKWebViewConfiguration> configurationWithoutUsingDaemon()
+{
+    auto dataStoreConfiguration = adoptNS([_WKWebsiteDataStoreConfiguration new]);
+    dataStoreConfiguration.get().pcmMachServiceName = nil;
+    auto configuration = adoptNS([WKWebViewConfiguration new]);
+    configuration.get().websiteDataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration.get()]).get();
+    return configuration;
+}
+
+static RetainPtr<WKWebView> webViewWithoutUsingDaemon()
+{
+    return adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configurationWithoutUsingDaemon().get()]);
+}
+
+void runBasicPCMTest(WKWebViewConfiguration *configuration, Function<void(WKWebView *, const HTTPServer&)>&& addAttributionToWebView, bool setTestAppBundleID = true)
+{
+    clearState();
     [WKWebsiteDataStore _setNetworkProcessSuspensionAllowedForTesting:NO];
     bool done = false;
     HTTPServer server([&done, connectionCount = 0] (Connection connection) mutable {
@@ -89,14 +150,14 @@ void runBasicEventAttributionTest(WKWebViewConfiguration *configuration, Functio
         case 1:
             connection.receiveHTTPRequest([connection] (Vector<char>&& request1) {
                 EXPECT_TRUE(strnstr(request1.data(), "GET /conversionRequestBeforeRedirect HTTP/1.1\r\n", request1.size()));
-                const char* redirect = "HTTP/1.1 302 Found\r\n"
+                constexpr auto redirect = "HTTP/1.1 302 Found\r\n"
                     "Location: /.well-known/private-click-measurement/trigger-attribution/12\r\n"
-                    "Content-Length: 0\r\n\r\n";
+                    "Content-Length: 0\r\n\r\n"_s;
                 connection.send(redirect, [connection] {
                     connection.receiveHTTPRequest([connection] (Vector<char>&& request2) {
                         EXPECT_TRUE(strnstr(request2.data(), "GET /.well-known/private-click-measurement/trigger-attribution/12 HTTP/1.1\r\n", request2.size()));
-                        const char* response = "HTTP/1.1 200 OK\r\n"
-                            "Content-Length: 0\r\n\r\n";
+                        constexpr auto response = "HTTP/1.1 200 OK\r\n"
+                            "Content-Length: 0\r\n\r\n"_s;
                         connection.send(response);
                     });
                 });
@@ -107,7 +168,7 @@ void runBasicEventAttributionTest(WKWebViewConfiguration *configuration, Functio
                 request3.append('\0');
                 EXPECT_TRUE(strnstr(request3.data(), "POST / HTTP/1.1\r\n", request3.size()));
                 const char* bodyBegin = strnstr(request3.data(), "\r\n\r\n", request3.size()) + strlen("\r\n\r\n");
-                EXPECT_STREQ(bodyBegin, "{\"source_engagement_type\":\"click\",\"source_site\":\"127.0.0.1\",\"source_id\":42,\"attributed_on_site\":\"example.com\",\"trigger_data\":12,\"version\":2}");
+                EXPECT_STREQ(bodyBegin, "{\"source_engagement_type\":\"click\",\"source_site\":\"127.0.0.1\",\"source_id\":42,\"attributed_on_site\":\"example.com\",\"trigger_data\":12,\"version\":3}");
                 done = true;
             });
             break;
@@ -115,21 +176,65 @@ void runBasicEventAttributionTest(WKWebViewConfiguration *configuration, Functio
     }, HTTPServer::Protocol::Https);
     NSURL *serverURL = server.request().URL;
 
-    auto webView = configuration ? adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration]) : adoptNS([WKWebView new]);
+    auto webView = configuration ? adoptNS([[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration]) : webViewWithoutUsingDaemon();
+    webView.get().navigationDelegate = delegateAllowingAllTLS();
     addAttributionToWebView(webView.get(), server);
     [[webView configuration].websiteDataStore _setResourceLoadStatisticsEnabled:YES];
-    [[webView configuration].websiteDataStore _allowTLSCertificateChain:@[(id)testCertificate().get()] forHost:serverURL.host];
+    [[webView configuration].websiteDataStore _trustServerForLocalPCMTesting:secTrustFromCertificateChain(@[(id)testCertificate().get()]).get()];
     [webView _setPrivateClickMeasurementAttributionReportURLsForTesting:serverURL destinationURL:exampleURL() completionHandler:^{
         [webView _setPrivateClickMeasurementOverrideTimerForTesting:YES completionHandler:^{
             NSString *html = [NSString stringWithFormat:@"<script>fetch('%@conversionRequestBeforeRedirect',{mode:'no-cors'})</script>", serverURL];
-            [webView loadHTMLString:html baseURL:exampleURL()];
+            if (setTestAppBundleID) {
+                [webView _setPrivateClickMeasurementAppBundleIDForTesting:@"test.bundle.id" completionHandler:^{
+                    [webView loadHTMLString:html baseURL:exampleURL()];
+                }];
+            } else
+                [webView loadHTMLString:html baseURL:exampleURL()];
         }];
     }];
     Util::run(&done);
 }
 
 #if HAVE(RSA_BSSA)
-TEST(EventAttribution, FraudPrevention)
+
+enum class TokenSigningParty : bool { Source, Destination };
+
+static void triggerAttributionWithSubresourceRedirect(Connection& connection, const String& attributionDestinationNonce)
+{
+    auto optionalQueryString = attributionDestinationNonce.isEmpty() ? attributionDestinationNonce : makeString("?attributionDestinationNonce="_s, attributionDestinationNonce);
+    auto location = makeString("/.well-known/private-click-measurement/trigger-attribution/12"_s, optionalQueryString);
+    connection.receiveHTTPRequest([connection, location] (Vector<char>&& request1) {
+        EXPECT_TRUE(strnstr(request1.data(), "GET /conversionRequestBeforeRedirect HTTP/1.1\r\n", request1.size()));
+        auto redirect = makeString("HTTP/1.1 302 Found\r\nLocation: "_s, location, "\r\nContent-Length: 0\r\n\r\n"_s);
+        connection.send(WTFMove(redirect), [connection, location] {
+            connection.receiveHTTPRequest([connection, location] (Vector<char>&& request2) {
+                auto expectedHttpGetString = makeString("GET "_s, location, " HTTP/1.1\r\n"_s).utf8();
+                EXPECT_TRUE(strnstr(request2.data(), expectedHttpGetString.data(), request2.size()));
+                constexpr auto response = "HTTP/1.1 200 OK\r\n"
+                    "Content-Length: 0\r\n\r\n"_s;
+                connection.send(response);
+            });
+        });
+    });
+}
+
+static void runDestinationWebView(RetainPtr<WKWebView> webView, NSURL *serverURL)
+{
+    [webView _setPrivateClickMeasurementAttributionReportURLsForTesting:serverURL destinationURL:exampleURL() completionHandler:^{
+        [webView _setPrivateClickMeasurementOverrideTimerForTesting:YES completionHandler:^{
+            [webView _setPrivateClickMeasurementAttributionTokenPublicKeyURLForTesting:serverURL completionHandler:^{
+                [webView _setPrivateClickMeasurementAttributionTokenSignatureURLForTesting:serverURL completionHandler:^{
+                    [webView _setPrivateClickMeasurementAppBundleIDForTesting:@"test.bundle.id" completionHandler:^{
+                        NSString *html = [NSString stringWithFormat:@"<script>setTimeout(function(){ fetch('%@conversionRequestBeforeRedirect',{mode:'no-cors'}); }, 100);</script>", serverURL];
+                        [webView loadHTMLString:html baseURL:exampleURL()];
+                    }];
+                }];
+            }];
+        }];
+    }];
+}
+
+static void signUnlinkableTokenAndSendSecretToken(TokenSigningParty signingParty)
 {
     [WKWebsiteDataStore _setNetworkProcessSuspensionAllowedForTesting:NO];
     bool done = false;
@@ -155,30 +260,31 @@ TEST(EventAttribution, FraudPrevention)
         (__bridge id)kSecAttrKeyType: (__bridge id)kSecAttrKeyTypeRSA,
         (__bridge id)kSecAttrKeyClass: (__bridge id)kSecAttrKeyClassPublic
     }, nil));
+    auto wrappedKeyBytes = wrapPublicKeyWithRSAPSSOID(makeVector(publicKey.get()));
 
-    auto spkiData = adoptCF(SecKeyCopySubjectPublicKeyInfo(secKey.get()));
-    auto *nsSpkiData = (__bridge NSData *)spkiData.get();
-
-    auto keyData = base64URLEncodeToString(nsSpkiData.bytes, nsSpkiData.length);
-
+    auto keyData = base64URLEncodeToString(wrappedKeyBytes);
     // The server.
-    HTTPServer server([&done, connectionCount = 0, &rsaPrivateKey, &modulusNBytes, &rng, &keyData, &secKey] (Connection connection) mutable {
+    HTTPServer server([signingParty, &done, connectionCount = signingParty == TokenSigningParty::Source ? 1 : 0, &rsaPrivateKey, &modulusNBytes, &rng, &keyData, &secKey] (Connection connection) mutable {
         switch (++connectionCount) {
         case 1:
-            connection.receiveHTTPRequest([connection, &rsaPrivateKey, &modulusNBytes, &rng, &keyData, &done, &secKey] (Vector<char>&& request1) {
+            EXPECT_TRUE(signingParty == TokenSigningParty::Destination);
+            triggerAttributionWithSubresourceRedirect(connection, "ABCDEFabcdef0123456789"_s);
+            break;
+        case 2:
+            connection.receiveHTTPRequest([signingParty, connection, &rsaPrivateKey, &modulusNBytes, &rng, &keyData, &done, &secKey] (Vector<char>&& request1) {
                 EXPECT_TRUE(strnstr(request1.data(), "GET / HTTP/1.1\r\n", request1.size()));
 
                 // Example response: { "token_public_key": "ABCD" }. "ABCD" should be Base64URL encoded.
                 auto response = makeString("HTTP/1.1 200 OK\r\n"
                     "Content-Type: application/json\r\n"
-                    "Content-Length: ", 24 + keyData.length(), "\r\n\r\n"
-                    "{\"token_public_key\": \"", keyData, "\"}");
-                connection.send(WTFMove(response), [connection, &rsaPrivateKey, &modulusNBytes, &rng, &keyData, &done, &secKey] {
-                    connection.receiveHTTPRequest([connection, &rsaPrivateKey, &modulusNBytes, &rng, &keyData, &done, &secKey] (Vector<char>&& request2) {
+                    "Content-Length: "_s, 24 + keyData.length(), "\r\n\r\n"
+                    "{\"token_public_key\": \""_s, keyData, "\"}"_s);
+                connection.send(WTFMove(response), [signingParty, connection, &rsaPrivateKey, &modulusNBytes, &rng, &keyData, &done, &secKey] {
+                    connection.receiveHTTPRequest([signingParty, connection, &rsaPrivateKey, &modulusNBytes, &rng, &keyData, &done, &secKey] (Vector<char>&& request2) {
                         EXPECT_TRUE(strnstr(request2.data(), "POST / HTTP/1.1\r\n", request2.size()));
 
-                        auto request2String = String(request2.data());
-                        auto key = String("source_unlinkable_token");
+                        auto request2String = String(request2.span());
+                        auto key = signingParty == TokenSigningParty::Source ? "source_unlinkable_token"_s : "destination_unlinkable_token"_s;
                         auto start = request2String.find(key);
                         start += key.length() + 3;
                         auto end = request2String.find('"', start);
@@ -189,34 +295,34 @@ TEST(EventAttribution, FraudPrevention)
                         const struct ccrsabssa_ciphersuite *ciphersuite = &ccrsabssa_ciphersuite_rsa4096_sha384;
                         auto blindedSignature = adoptNS([[NSMutableData alloc] initWithLength:modulusNBytes]);
                         ccrsabssa_sign_blinded_message(ciphersuite, rsaPrivateKey, blindedMessage->data(), blindedMessage->size(), static_cast<uint8_t *>([blindedSignature mutableBytes]), [blindedSignature length], rng);
-                        auto unlinkableToken = base64URLEncodeToString([blindedSignature bytes], [blindedSignature length]);
+                        auto unlinkableToken = base64URLEncodeToString(span(blindedSignature.get()));
 
                         // Example response: { "unlinkable_token": "ABCD" }. "ABCD" should be Base64URL encoded.
                         auto response = makeString("HTTP/1.1 200 OK\r\n"
                             "Content-Type: application/json\r\n"
-                            "Content-Length: ", 24 + unlinkableToken.length(), "\r\n\r\n"
-                            "{\"unlinkable_token\": \"", unlinkableToken, "\"}");
-                        connection.send(WTFMove(response), [connection, &keyData, &done, unlinkableToken, token, &secKey] {
-                            connection.receiveHTTPRequest([connection, &keyData, &done, unlinkableToken, token, &secKey] (Vector<char>&& request3) {
+                            "Content-Length: "_s, 24 + unlinkableToken.length(), "\r\n\r\n"
+                            "{\"unlinkable_token\": \""_s, unlinkableToken, "\"}"_s);
+                        connection.send(WTFMove(response), [signingParty, connection, &keyData, &done, unlinkableToken, token, &secKey] {
+                            connection.receiveHTTPRequest([signingParty, connection, &keyData, &done, unlinkableToken, token, &secKey] (Vector<char>&& request3) {
                                 EXPECT_TRUE(strnstr(request3.data(), "GET / HTTP/1.1\r\n", request3.size()));
 
                                 // Example response: { "token_public_key": "ABCD" }. "ABCD" should be Base64URL encoded.
                                 auto response = makeString("HTTP/1.1 200 OK\r\n"
                                     "Content-Type: application/json\r\n"
-                                    "Content-Length: ", 24 + keyData.length(), "\r\n\r\n"
-                                    "{\"token_public_key\": \"", keyData, "\"}");
-                                connection.send(WTFMove(response), [connection, &done, unlinkableToken, token, &secKey] {
-                                    connection.receiveHTTPRequest([connection, &done, unlinkableToken, token, &secKey] (Vector<char>&& request4) {
+                                    "Content-Length: "_s, 24 + keyData.length(), "\r\n\r\n"
+                                    "{\"token_public_key\": \""_s, keyData, "\"}"_s);
+                                connection.send(WTFMove(response), [signingParty, connection, &done, unlinkableToken, token, &secKey] {
+                                    connection.receiveHTTPRequest([signingParty, connection, &done, unlinkableToken, token, &secKey] (Vector<char>&& request4) {
                                         EXPECT_TRUE(strnstr(request4.data(), "POST / HTTP/1.1\r\n", request4.size()));
-                                        EXPECT_TRUE(strnstr(request4.data(), "{\"source_engagement_type\":\"click\",\"source_site\":\"127.0.0.1\",\"source_id\":42,\"attributed_on_site\":\"example.com\",\"trigger_data\":12,\"version\":2,",
+                                        EXPECT_TRUE(strnstr(request4.data(), "{\"source_engagement_type\":\"click\",\"source_site\":\"127.0.0.1\",\"source_id\":42,\"attributed_on_site\":\"example.com\",\"trigger_data\":12,\"version\":3,",
                                             request4.size()));
 
                                         EXPECT_FALSE(strnstr(request4.data(), token.utf8().data(), request4.size()));
                                         EXPECT_FALSE(strnstr(request4.data(), unlinkableToken.utf8().data(), request4.size()));
 
-                                        auto request4String = String(request4.data());
+                                        auto request4String = String(request4.span());
 
-                                        auto key = String("source_secret_token");
+                                        auto key = signingParty == TokenSigningParty::Source ? "source_secret_token"_s : "destination_secret_token"_s;
                                         auto start = request4String.find(key);
                                         start += key.length() + 3;
                                         auto end = request4String.find('"', start);
@@ -224,7 +330,7 @@ TEST(EventAttribution, FraudPrevention)
                                         auto tokenVector = base64URLDecode(token);
                                         auto tokenData = adoptNS([[NSData alloc] initWithBytes:tokenVector->data() length:tokenVector->size()]);
 
-                                        key = String("source_secret_token_signature");
+                                        key = signingParty == TokenSigningParty::Source ? "source_secret_token_signature"_s : "destination_secret_token_signature"_s;
                                         start = request4String.find(key);
                                         start += key.length() + 3;
                                         end = request4String.find('"', start);
@@ -243,53 +349,53 @@ TEST(EventAttribution, FraudPrevention)
                 });
             });
             break;
-        case 2:
-            connection.receiveHTTPRequest([connection] (Vector<char>&& request1) {
-                EXPECT_TRUE(strnstr(request1.data(), "GET /conversionRequestBeforeRedirect HTTP/1.1\r\n", request1.size()));
-                const char* redirect = "HTTP/1.1 302 Found\r\n"
-                    "Location: /.well-known/private-click-measurement/trigger-attribution/12\r\n"
-                    "Content-Length: 0\r\n\r\n";
-                connection.send(redirect, [connection] {
-                    connection.receiveHTTPRequest([connection] (Vector<char>&& request2) {
-                        EXPECT_TRUE(strnstr(request2.data(), "GET /.well-known/private-click-measurement/trigger-attribution/12 HTTP/1.1\r\n", request2.size()));
-                        const char* response = "HTTP/1.1 200 OK\r\n"
-                            "Content-Length: 0\r\n\r\n";
-                        connection.send(response);
-                    });
-                });
-            });
+        case 3:
+            EXPECT_TRUE(signingParty == TokenSigningParty::Source);
+            triggerAttributionWithSubresourceRedirect(connection, emptyString());
             break;
         }
     }, HTTPServer::Protocol::Https);
     NSURL *serverURL = server.request().URL;
 
-    auto webView = adoptNS([WKWebView new]);
-    [webView _addEventAttributionWithSourceID:42 destinationURL:exampleURL() sourceDescription:@"test source description" purchaser:@"test purchaser" reportEndpoint:serverURL optionalNonce:@"ABCDEFabcdef0123456789"];
+    auto webView = webViewWithoutUsingDaemon();
+    webView.get().navigationDelegate = delegateAllowingAllTLS();
+    auto clickNonce = signingParty == TokenSigningParty::Source ? @"ABCDEFabcdef0123456789" : nil;
+    [webView _addEventAttributionWithSourceID:42 destinationURL:exampleURL() sourceDescription:@"test source description" purchaser:@"test purchaser" reportEndpoint:serverURL optionalNonce:clickNonce applicationBundleID:@"test.bundle.id" ephemeral:NO];
     [[webView configuration].websiteDataStore _setResourceLoadStatisticsEnabled:YES];
-    [[webView configuration].websiteDataStore _allowTLSCertificateChain:@[(id)testCertificate().get()] forHost:serverURL.host];
+    [[webView configuration].websiteDataStore _trustServerForLocalPCMTesting:secTrustFromCertificateChain(@[(id)testCertificate().get()]).get()];
 
-    [webView _setPrivateClickMeasurementAttributionReportURLsForTesting:serverURL destinationURL:exampleURL() completionHandler:^{
-        [webView _setPrivateClickMeasurementOverrideTimerForTesting:YES completionHandler:^{
-            [webView _setPrivateClickMeasurementAttributionTokenPublicKeyURLForTesting:serverURL completionHandler:^{
-                [webView _setPrivateClickMeasurementAttributionTokenSignatureURLForTesting:serverURL completionHandler:^{
-                    NSString *html = [NSString stringWithFormat:@"<script>setTimeout(function(){ fetch('%@conversionRequestBeforeRedirect',{mode:'no-cors'}); }, 100);</script>", serverURL];
-                    [webView loadHTMLString:html baseURL:exampleURL()];
-                }];
-            }];
-        }];
-    }];
+    runDestinationWebView(webView, serverURL);
     Util::run(&done);
+}
+
+TEST(PrivateClickMeasurement, SourceClickFraudPrevention)
+{
+    signUnlinkableTokenAndSendSecretToken(TokenSigningParty::Source);
+}
+
+TEST(PrivateClickMeasurement, DestinationClickFraudPrevention)
+{
+    signUnlinkableTokenAndSendSecretToken(TokenSigningParty::Destination);
 }
 #endif
 
-TEST(EventAttribution, Basic)
+TEST(PrivateClickMeasurement, Basic)
 {
-    runBasicEventAttributionTest(nil, [](WKWebView *webView, const HTTPServer& server) {
-        [webView _addEventAttributionWithSourceID:42 destinationURL:exampleURL() sourceDescription:@"test source description" purchaser:@"test purchaser" reportEndpoint:server.request().URL optionalNonce:nil];
+    runBasicPCMTest(nil, [](WKWebView *webView, const HTTPServer& server) {
+        [webView _addEventAttributionWithSourceID:42 destinationURL:exampleURL() sourceDescription:@"test source description" purchaser:@"test purchaser" reportEndpoint:server.request().URL optionalNonce:nil applicationBundleID:@"test.bundle.id" ephemeral:NO];
     });
 }
 
-TEST(EventAttribution, DatabaseLocation)
+TEST(PrivateClickMeasurement, EphemeralWithAttributedBundleIdentifier)
+{
+    auto configuration = configurationWithoutUsingDaemon();
+    configuration.get()._attributedBundleIdentifier = @"other.test.bundle.id";
+    runBasicPCMTest(configuration.get(), [](WKWebView *webView, const HTTPServer& server) {
+        [webView _addEventAttributionWithSourceID:42 destinationURL:exampleURL() sourceDescription:@"test source description" purchaser:@"test purchaser" reportEndpoint:server.request().URL optionalNonce:nil applicationBundleID:@"other.test.bundle.id" ephemeral:YES];
+    }, false);
+}
+
+TEST(PrivateClickMeasurement, DatabaseLocation)
 {
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSURL *tempDir = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"EventAttributionDatabaseLocationTest"] isDirectory:YES];
@@ -302,12 +408,13 @@ TEST(EventAttribution, DatabaseLocation)
     pid_t originalNetworkProcessPid = 0;
     @autoreleasepool {
         auto dataStoreConfiguration = adoptNS([_WKWebsiteDataStoreConfiguration new]);
-        dataStoreConfiguration.get().privateClickMeasurementStorageDirectory = tempDir;
-        auto viewConfiguration = adoptNS([WKWebViewConfiguration new]);
+        dataStoreConfiguration.get()._resourceLoadStatisticsDirectory = tempDir;
+        dataStoreConfiguration.get().pcmMachServiceName = nil;
+        auto viewConfiguration = configurationWithoutUsingDaemon();
         auto dataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration.get()]);
         viewConfiguration.get().websiteDataStore = dataStore.get();
-        runBasicEventAttributionTest(viewConfiguration.get(), [](WKWebView *webView, const HTTPServer& server) {
-            [webView _addEventAttributionWithSourceID:42 destinationURL:exampleURL() sourceDescription:@"test source description" purchaser:@"test purchaser" reportEndpoint:server.request().URL optionalNonce:nil];
+        runBasicPCMTest(viewConfiguration.get(), [](WKWebView *webView, const HTTPServer& server) {
+            [webView _addEventAttributionWithSourceID:42 destinationURL:exampleURL() sourceDescription:@"test source description" purchaser:@"test purchaser" reportEndpoint:server.request().URL optionalNonce:nil applicationBundleID:@"test.bundle.id" ephemeral:NO];
         });
         originalNetworkProcessPid = [dataStore _networkProcessIdentifier];
         EXPECT_GT(originalNetworkProcessPid, 0);
@@ -332,19 +439,235 @@ TEST(EventAttribution, DatabaseLocation)
     EXPECT_EQ(webViewToKeepNetworkProcessAlive.get().configuration.websiteDataStore._networkProcessIdentifier, originalNetworkProcessPid);
 }
 
+#if PLATFORM(MAC) || PLATFORM(IOS) || PLATFORM(VISION)
+
+static RetainPtr<NSURL> testPCMDaemonLocation()
+{
+    return [currentExecutableDirectory() URLByAppendingPathComponent:@"adattributiond" isDirectory:NO];
+}
+
+static NSDictionary<NSString *, id> *testDaemonPList(NSURL *storageLocation)
+{
+    return @{
+        @"Label" : @"org.webkit.pcmtestdaemon",
+        @"LaunchOnlyOnce" : @YES,
+        @"StandardErrorPath" : [storageLocation URLByAppendingPathComponent:@"daemon_stderr"].path,
+        @"EnvironmentVariables" : @{ @"DYLD_FRAMEWORK_PATH" : currentExecutableDirectory().get().path },
+        @"MachServices" : @{ @"org.webkit.pcmtestdaemon.service" : @YES },
+        @"ProgramArguments" : @[
+            testPCMDaemonLocation().get().path,
+            @"--machServiceName",
+            @"org.webkit.pcmtestdaemon.service",
+            @"--storageLocation",
+            storageLocation.path
+        ]
+    };
+}
+
+static std::pair<NSURL *, WKWebViewConfiguration *> setUpDaemon(WKWebViewConfiguration *viewConfiguration)
+{
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSURL *tempDir = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"EventAttributionDaemonTest"] isDirectory:YES];
+    NSError *error = nil;
+    if ([fileManager fileExistsAtPath:tempDir.path])
+        [fileManager removeItemAtURL:tempDir error:&error];
+    EXPECT_NULL(error);
+
+    killFirstInstanceOfDaemon(@"adattributiond");
+
+    registerPlistWithLaunchD(testDaemonPList(tempDir), tempDir);
+
+    auto dataStoreConfiguration = adoptNS([_WKWebsiteDataStoreConfiguration new]);
+    dataStoreConfiguration.get().pcmMachServiceName = @"org.webkit.pcmtestdaemon.service";
+    viewConfiguration.websiteDataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration.get()]).get();
+
+    return std::make_pair(tempDir, viewConfiguration);
+}
+
+static void cleanUpDaemon(NSURL *tempDir)
+{
+    killFirstInstanceOfDaemon(@"adattributiond");
+
+    EXPECT_TRUE([[NSFileManager defaultManager] fileExistsAtPath:tempDir.path]);
+    NSError *error = nil;
+    [[NSFileManager defaultManager] removeItemAtURL:tempDir error:&error];
+    EXPECT_NULL(error);
+}
+
+static void attemptConnectionInProcessWithoutEntitlement()
+{
+#if USE(APPLE_INTERNAL_SDK)
+    __block bool done = false;
+    auto connection = adoptNS(xpc_connection_create_mach_service("org.webkit.pcmtestdaemon.service", dispatch_get_main_queue(), 0));
+    xpc_connection_set_event_handler(connection.get(), ^(xpc_object_t event) {
+        EXPECT_EQ(event, XPC_ERROR_CONNECTION_INTERRUPTED);
+        done = true;
+    });
+    xpc_connection_activate(connection.get());
+    auto dictionary = adoptNS(xpc_dictionary_create(nullptr, nullptr, 0));
+    xpc_connection_send_message(connection.get(), dictionary.get());
+    TestWebKitAPI::Util::run(&done);
+#endif
+}
+
+TEST(PrivateClickMeasurement, DaemonBasicFunctionality)
+{
+    auto [tempDir, configuration] = setUpDaemon(configurationWithoutUsingDaemon().autorelease());
+    attemptConnectionInProcessWithoutEntitlement();
+    runBasicPCMTest(configuration, [](WKWebView *webView, const HTTPServer& server) {
+        [webView _addEventAttributionWithSourceID:42 destinationURL:exampleURL() sourceDescription:@"test source description" purchaser:@"test purchaser" reportEndpoint:server.request().URL optionalNonce:nil applicationBundleID:@"test.bundle.id" ephemeral:NO];
+    });
+    cleanUpDaemon(tempDir);
+}
+
+#if PLATFORM(MAC)
+static void setInjectedBundleClient(WKWebView *webView, Vector<String>& consoleMessages)
+{
+    WKPageInjectedBundleClientV0 injectedBundleClient = {
+        { 0, &consoleMessages },
+        [] (WKPageRef, WKStringRef messageName, WKTypeRef message, const void* clientInfo) {
+            auto& consoleMessages = *reinterpret_cast<Vector<String>*>(const_cast<void*>(clientInfo));
+            if (WKStringIsEqualToUTF8CString(messageName, "ConsoleMessage"))
+                consoleMessages.append(Util::toNS((WKStringRef)message));
+        },
+        nullptr,
+    };
+    WKPageSetPageInjectedBundleClient(webView._pageForTesting, &injectedBundleClient.base);
+};
+
+static RetainPtr<TestWKWebView> webViewWithOpenInspector(WKWebViewConfiguration *configuration)
+{
+    configuration.preferences._developerExtrasEnabled = YES;
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSZeroRect configuration:configuration]);
+    [webView synchronouslyLoadHTMLString:@"start processes"];
+    [[webView _inspector] show];
+    [webView _test_waitForInspectorToShow];
+    return webView;
+}
+
+TEST(PrivateClickMeasurement, DaemonDebugMode)
+{
+    auto [tempDir, configuration] = setUpDaemon([WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"BundlePageConsoleMessage"]);
+    Vector<String> consoleMessages;
+    auto webView = webViewWithOpenInspector(configuration);
+    setInjectedBundleClient(webView.get(), consoleMessages);
+    [configuration.websiteDataStore _setPrivateClickMeasurementDebugModeEnabled:YES];
+    while (consoleMessages.isEmpty())
+        Util::spinRunLoop();
+    EXPECT_WK_STREQ(consoleMessages[0], "[Private Click Measurement] Turned Debug Mode on.");
+    [configuration.websiteDataStore _setPrivateClickMeasurementDebugModeEnabled:NO];
+    while (consoleMessages.size() < 2)
+        Util::spinRunLoop();
+    EXPECT_WK_STREQ(consoleMessages[1], "[Private Click Measurement] Turned Debug Mode off.");
+    cleanUpDaemon(tempDir);
+}
+
+static void setupSKAdNetworkTest(Vector<String>& consoleMessages, id<WKNavigationDelegate> navigationDelegate)
+{
+    HTTPServer server({ { "/app/id1234567890"_s, { "hello"_s } } }, HTTPServer::Protocol::HttpsProxy);
+
+    auto storeConfiguration = adoptNS([[_WKWebsiteDataStoreConfiguration alloc] init]);
+    [storeConfiguration setProxyConfiguration:@{
+        (NSString *)kCFStreamPropertyHTTPSProxyHost: @"127.0.0.1",
+        (NSString *)kCFStreamPropertyHTTPSProxyPort: @(server.port())
+    }];
+
+    WKWebViewConfiguration *viewConfiguration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"BundlePageConsoleMessage"];
+    viewConfiguration.websiteDataStore = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:storeConfiguration.get()]).get();
+    auto webView = webViewWithOpenInspector(viewConfiguration);
+
+    for (_WKFeature *feature in [WKPreferences _features]) {
+        if ([feature.key isEqualToString:@"SKAttributionEnabled"]) {
+            [[viewConfiguration preferences] _setEnabled:YES forFeature:feature];
+            break;
+        }
+    }
+
+    setInjectedBundleClient(webView.get(), consoleMessages);
+    [viewConfiguration.websiteDataStore _setPrivateClickMeasurementDebugModeEnabled:YES];
+
+    [webView synchronouslyLoadHTMLString:@"<body>"
+        "<a href='https://apps.apple.com/app/id1234567890' id='anchorid' attributiondestination='https://destination/' attributionSourceNonce='MTIzNDU2Nzg5MDEyMzQ1Ng'>anchor</a>"
+        "</body>" baseURL:[NSURL URLWithString:@"https://example.com/"]];
+
+    while (consoleMessages.isEmpty())
+        Util::spinRunLoop();
+    EXPECT_WK_STREQ(consoleMessages[0], "[Private Click Measurement] Turned Debug Mode on.");
+    consoleMessages.clear();
+
+    webView.get().navigationDelegate = navigationDelegate;
+
+    [webView clickOnElementID:@"anchorid"];
+}
+
+const char* expectedSKAdNetworkConsoleMessage = "Submitting potential install attribution for AdamId: 1234567890, adNetworkRegistrableDomain: destination, impressionId: MTIzNDU2Nzg5MDEyMzQ1Ng, sourceWebRegistrableDomain: example.com, version: 3";
+
+TEST(PrivateClickMeasurement, SKAdNetwork)
+{
+    Vector<String> consoleMessages;
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    [delegate allowAnyTLSCertificate];
+    delegate.get().decidePolicyForNavigationAction = ^(WKNavigationAction *navigationAction, void (^decisionHandler)(WKNavigationActionPolicy)) {
+        decisionHandler(_WKNavigationActionPolicyAllowWithoutTryingAppLink);
+    };
+    setupSKAdNetworkTest(consoleMessages, delegate.get());
+    while (consoleMessages.isEmpty())
+        Util::spinRunLoop();
+    EXPECT_WK_STREQ(consoleMessages[0], expectedSKAdNetworkConsoleMessage);
+}
+
+TEST(PrivateClickMeasurement, SKAdNetworkWithoutNavigatingToAppStoreLink)
+{
+    Vector<String> consoleMessages;
+    auto delegate = adoptNS([TestNavigationDelegate new]);
+    [delegate allowAnyTLSCertificate];
+    delegate.get().decidePolicyForNavigationAction = ^(WKNavigationAction *navigationAction, void (^decisionHandler)(WKNavigationActionPolicy)) {
+        decisionHandler(WKNavigationActionPolicyCancel);
+        Util::runFor(0.1_s);
+        EXPECT_EQ(0u, consoleMessages.size());
+        [navigationAction _storeSKAdNetworkAttribution];
+    };
+    setupSKAdNetworkTest(consoleMessages, delegate.get());
+
+    while (consoleMessages.isEmpty())
+        Util::spinRunLoop();
+    EXPECT_WK_STREQ(consoleMessages[0], expectedSKAdNetworkConsoleMessage);
+}
+
+TEST(PrivateClickMeasurement, NetworkProcessDebugMode)
+{
+    auto configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"BundlePageConsoleMessage"];
+    Vector<String> consoleMessages;
+    auto webView = webViewWithOpenInspector(configuration);
+    setInjectedBundleClient(webView.get(), consoleMessages);
+    [configuration.websiteDataStore _setPrivateClickMeasurementDebugModeEnabled:YES];
+    while (consoleMessages.isEmpty())
+        Util::spinRunLoop();
+    EXPECT_WK_STREQ(consoleMessages[0], "[Private Click Measurement] Turned Debug Mode on.");
+    [configuration.websiteDataStore _setPrivateClickMeasurementDebugModeEnabled:NO];
+    while (consoleMessages.size() < 2)
+        Util::spinRunLoop();
+    EXPECT_WK_STREQ(consoleMessages[1], "[Private Click Measurement] Turned Debug Mode off.");
+}
+#endif // PLATFORM(MAC)
+
+#endif // PLATFORM(MAC) || PLATFORM(IOS) || PLATFORM(VISION)
+
 #if HAVE(UI_EVENT_ATTRIBUTION)
 
-TEST(EventAttribution, BasicWithIOSSPI)
+TEST(PrivateClickMeasurement, BasicWithIOSSPI)
 {
-    runBasicEventAttributionTest(nil, [](WKWebView *webView, const HTTPServer& server) {
+    runBasicPCMTest(nil, [](WKWebView *webView, const HTTPServer& server) {
         auto attribution = adoptNS([[MockEventAttribution alloc] initWithReportEndpoint:server.request().URL destinationURL:exampleURL()]);
         webView._uiEventAttribution = (UIEventAttribution *)attribution.get();
+        EXPECT_WK_STREQ(webView._uiEventAttribution.sourceDescription, "test source description");
+        EXPECT_WK_STREQ(webView._uiEventAttribution.purchaser, "test purchaser");
     });
 }
 
-TEST(EventAttribution, BasicWithEphemeralIOSSPI)
+TEST(PrivateClickMeasurement, BasicWithEphemeralIOSSPI)
 {
-    runBasicEventAttributionTest(nil, [](WKWebView *webView, const HTTPServer& server) {
+    runBasicPCMTest(nil, [](WKWebView *webView, const HTTPServer& server) {
         auto attribution = adoptNS([[MockEventAttribution alloc] initWithReportEndpoint:server.request().URL destinationURL:exampleURL()]);
         webView._ephemeralUIEventAttribution = (UIEventAttribution *)attribution.get();
     });

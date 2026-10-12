@@ -25,6 +25,8 @@
 
 #import "config.h"
 
+#import "DeprecatedGlobalValues.h"
+#import "HTTPServer.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
@@ -43,7 +45,6 @@ static _WKProcessTerminationReason expectedCrashReason;
 static bool startedLoad;
 static bool finishedLoad;
 static bool shouldLoadAgainOnCrash;
-static bool receivedScriptMessage;
 static bool calledAllCallbacks;
 static unsigned callbackCount;
 static unsigned crashHandlerCount;
@@ -81,7 +82,7 @@ static NSString *testHTML = @"<script>window.webkit.messageHandlers.testHandler.
 
 @implementation BasicNavigationDelegateWithoutCrashHandler
 
-- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(null_unspecified WKNavigation *)navigation
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation
 {
     startedLoad = true;
 }
@@ -179,9 +180,10 @@ TEST(WKNavigation, FailureToStartWebProcessAfterCrashRecovery)
     EXPECT_TRUE(receivedScriptMessage);
 }
 
-TEST(WKNavigation, AutomaticViewReloadAfterWebProcessCrash)
+TEST(WKNavigation, AutomaticVisibleViewReloadAfterWebProcessCrash)
 {
-    RetainPtr<WKWebView> webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)]);
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get() addToWindow:YES]);
 
     auto delegate = adoptNS([[BasicNavigationDelegateWithoutCrashHandler alloc] init]);
     [webView setNavigationDelegate:delegate.get()];
@@ -209,8 +211,45 @@ TEST(WKNavigation, AutomaticViewReloadAfterWebProcessCrash)
 
     // WebKit should not attempt to reload again.
     EXPECT_FALSE(startedLoad);
-    TestWebKitAPI::Util::sleep(0.5);
+    TestWebKitAPI::Util::runFor(0.5_s);
     EXPECT_FALSE(startedLoad);
+}
+
+TEST(WKNavigation, AutomaticHiddenViewDelayedReloadAfterWebProcessCrash)
+{
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get() addToWindow:YES]);
+
+    auto delegate = adoptNS([[BasicNavigationDelegateWithoutCrashHandler alloc] init]);
+    [webView setNavigationDelegate:delegate.get()];
+
+    // Make sure the view is not visible.
+    [webView removeFromSuperview];
+
+    startedLoad = false;
+    finishedLoad = false;
+
+    [webView loadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"rich-and-plain-text" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]]];
+    TestWebKitAPI::Util::run(&finishedLoad);
+
+    startedLoad = false;
+    finishedLoad = false;
+
+    // Simulate crash.
+    [webView _killWebContentProcess];
+
+    TestWebKitAPI::Util::runFor(0.5_s);
+
+    // WebKit should not have attempted a reload since the view is not visible.
+    EXPECT_FALSE(startedLoad);
+    EXPECT_FALSE(finishedLoad);
+
+    // Make the view visible.
+    [webView addToTestWindow];
+    [webView focus];
+
+    // WebKit should have triggered a reload when the view became visible.
+    TestWebKitAPI::Util::run(&finishedLoad);
 }
 
 TEST(WKNavigation, ProcessCrashDuringCallback)
@@ -281,7 +320,7 @@ TEST(WKNavigation, ProcessCrashDuringCallback)
     [webView _killWebContentProcess];
 
     TestWebKitAPI::Util::run(&calledAllCallbacks);
-    TestWebKitAPI::Util::sleep(0.5);
+    TestWebKitAPI::Util::runFor(0.5_s);
     EXPECT_EQ(6U, callbackCount);
 }
 
@@ -368,11 +407,189 @@ TEST(WKNavigation, WebViewURLInProcessDidTerminate)
     [webView setNavigationDelegate:navigationDelegate.get()];
 
     __block bool done = false;
-    navigationDelegate.get().webContentProcessDidTerminate = ^(WKWebView *view) {
+    navigationDelegate.get().webContentProcessDidTerminate = ^(WKWebView *view, _WKProcessTerminationReason) {
         EXPECT_EQ(view, webView.get());
         EXPECT_WK_STREQ(view.URL.absoluteString, viewURL);
         done = true;
     };
     kill([webView _webProcessIdentifier], 9);
     TestWebKitAPI::Util::run(&done);
+}
+
+TEST(WKNavigation, WebProcessLimit)
+{
+    constexpr unsigned maxProcessCount = 10;
+    [WKProcessPool _setWebProcessCountLimit:maxProcessCount];
+
+    auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    [navigationDelegate setDidFinishNavigation:^(WKWebView *, WKNavigation *) {
+        finishedLoad = true;
+    }];
+    auto createWebView = [&] {
+        auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+        auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get()]);
+        [webView setNavigationDelegate:navigationDelegate.get()];
+        finishedLoad = false;
+        [webView loadTestPageNamed:@"simple"];
+        TestWebKitAPI::Util::run(&finishedLoad);
+        return webView;
+    };
+
+    [navigationDelegate setWebContentProcessDidTerminate:^(WKWebView *, _WKProcessTerminationReason) {
+        didCrash = true;
+    }];
+
+    Vector<RetainPtr<WKWebView>> views;
+    for (unsigned i = 0; i < maxProcessCount; ++i)
+        views.append(createWebView());
+    EXPECT_FALSE(didCrash);
+    for (auto& view : views)
+        EXPECT_NE([view _webProcessIdentifier], 0);
+
+    // We have now reached the WebProcess cap, let's try and launch a new one.
+    __block unsigned crashCount = 0;
+    [navigationDelegate setWebContentProcessDidTerminate:^(WKWebView * view, _WKProcessTerminationReason) {
+        EXPECT_EQ(views[0], view);
+        ++crashCount;
+    }];
+    views.append(createWebView());
+
+    EXPECT_EQ(crashCount, 1U);
+    for (unsigned i = 0; i < views.size(); ++i) {
+        if (!i)
+            EXPECT_EQ([views[i] _webProcessIdentifier], 0);
+        else
+            EXPECT_NE([views[i] _webProcessIdentifier], 0);
+    }
+
+    crashCount = 0;
+    [navigationDelegate setWebContentProcessDidTerminate:^(WKWebView * view, _WKProcessTerminationReason) {
+        EXPECT_EQ(views[1], view);
+        ++crashCount;
+    }];
+    views.append(createWebView());
+
+    EXPECT_EQ(crashCount, 1U);
+    for (unsigned i = 0; i < views.size(); ++i) {
+        if (i < 2)
+            EXPECT_EQ([views[i] _webProcessIdentifier], 0);
+        else
+            EXPECT_NE([views[i] _webProcessIdentifier], 0);
+    }
+
+    [WKProcessPool _setWebProcessCountLimit:400];
+}
+
+TEST(WKNavigation, MultipleProcessCrashesRelatedWebViews)
+{
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto webView1 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get()]);
+
+    __block bool webview1FinishedLoad = false;
+    __block bool webview2FinishedLoad = false;
+    auto navigationDelegate = adoptNS([[TestNavigationDelegate alloc] init]);
+    [webView1 setNavigationDelegate:navigationDelegate.get()];
+    [navigationDelegate setDidFinishNavigation:^(WKWebView *, WKNavigation *) {
+        webview1FinishedLoad = true;
+    }];
+
+    webview1FinishedLoad = false;
+    [webView1 loadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]]];
+    TestWebKitAPI::Util::run(&webview1FinishedLoad);
+
+    configuration.get()._relatedWebView = webView1.get();
+    auto webView2 = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get()]);
+    [webView2 setNavigationDelegate:navigationDelegate.get()];
+
+    [navigationDelegate setDidFinishNavigation:^(WKWebView *view, WKNavigation *) {
+        if (view == webView1)
+            webview1FinishedLoad = true;
+        else
+            webview2FinishedLoad = true;
+    }];
+
+    webview2FinishedLoad = false;
+    [webView2 loadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]]];
+    TestWebKitAPI::Util::run(&webview2FinishedLoad);
+
+    // The 2 WebViews should use the same process since they're related.
+    EXPECT_EQ([webView1 _webProcessIdentifier], [webView2 _webProcessIdentifier]);
+
+    // Navigate webView1 and force a process swap.
+    navigationDelegate.get().decidePolicyForNavigationAction = ^(WKNavigationAction *, void (^decisionHandler)(WKNavigationActionPolicy)) {
+        decisionHandler(_WKNavigationActionPolicyAllowInNewProcess);
+    };
+    webview1FinishedLoad = false;
+    [webView1 loadRequest:[NSURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"simple2" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]]];
+    TestWebKitAPI::Util::run(&webview1FinishedLoad);
+
+    navigationDelegate.get().decidePolicyForNavigationAction = nil;
+    EXPECT_NE([webView1 _webProcessIdentifier], [webView2 _webProcessIdentifier]);
+
+    // Kill both WebContent processes and make sure that both WebView's get notified of a single crash.
+    __block unsigned webView1CrashCount = 0;
+    __block unsigned webView2CrashCount = 0;
+    [navigationDelegate setWebContentProcessDidTerminate:^(WKWebView * view, _WKProcessTerminationReason) {
+        if (view == webView1)
+            ++webView1CrashCount;
+        else
+            ++webView2CrashCount;
+
+        [view reload];
+    }];
+
+    webview1FinishedLoad = false;
+    webview2FinishedLoad = false;
+    kill([webView2 _webProcessIdentifier], 9);
+    kill([webView1 _webProcessIdentifier], 9);
+
+    // The views should get reloaded automatically.
+    TestWebKitAPI::Util::run(&webview1FinishedLoad);
+    TestWebKitAPI::Util::run(&webview2FinishedLoad);
+
+    TestWebKitAPI::Util::spinRunLoop(10);
+
+    EXPECT_EQ(webView1CrashCount, 1U);
+    EXPECT_EQ(webView2CrashCount, 1U);
+
+    EXPECT_NE([webView1 _webProcessIdentifier], 0);
+    EXPECT_NE([webView2 _webProcessIdentifier], 0);
+}
+
+TEST(WKNavigation, CrashRecoveryRightAfterLoadRequest)
+{
+    TestWebKitAPI::HTTPServer server({
+        { "/index.html"_s, { "foo"_s } },
+    });
+
+    auto configuration = adoptNS([[WKWebViewConfiguration alloc] init]);
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 100, 100) configuration:configuration.get() addToWindow:YES]);
+
+    auto navigationDelegate = adoptNS([[BasicNavigationDelegateWithoutCrashHandler alloc] init]);
+    [webView setNavigationDelegate:navigationDelegate.get()];
+
+    // This is to make sure that a WebProcess is launched since we sometimes delay the launch of the
+    // WebProcess until it is actually needed.
+    __block bool done = false;
+    [webView _isJITEnabled:^(BOOL enabled) {
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+
+    auto webProcessPID = [webView _webProcessIdentifier];
+    EXPECT_NE(webProcessPID, 0);
+
+    finishedLoad = false;
+
+    // Issue a kill and then a loadRequest.
+    kill(webProcessPID, 9);
+    auto request = server.request("/index.html"_s);
+    [webView loadRequest:[NSURLRequest requestWithURL:request.URL]];
+
+    // Navigation should complete.
+    TestWebKitAPI::Util::run(&finishedLoad);
+
+    EXPECT_WK_STREQ([webView URL].absoluteString, request.URL.absoluteString);
+    EXPECT_EQ([webView backForwardList].backList.count, 0U);
+    EXPECT_EQ([webView backForwardList].forwardList.count, 0U);
 }

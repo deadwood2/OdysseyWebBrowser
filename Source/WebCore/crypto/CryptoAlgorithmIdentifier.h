@@ -25,11 +25,9 @@
 
 #pragma once
 
-#if ENABLE(WEB_CRYPTO)
-
 namespace WebCore {
 
-enum class CryptoAlgorithmIdentifier {
+enum class CryptoAlgorithmIdentifier : uint8_t {
     RSAES_PKCS1_v1_5 = 1,
     RSASSA_PKCS1_v1_5,
     RSA_PSS,
@@ -48,9 +46,9 @@ enum class CryptoAlgorithmIdentifier {
     SHA_384,
     SHA_512,
     HKDF,
-    PBKDF2
+    PBKDF2,
+    Ed25519,
+    X25519
 };
 
 } // namespace WebCore
-
-#endif // ENABLE(WEB_CRYPTO)

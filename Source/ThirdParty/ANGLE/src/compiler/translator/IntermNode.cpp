@@ -17,6 +17,7 @@
 
 #include "common/mathutil.h"
 #include "common/matrix_utils.h"
+#include "common/utilities.h"
 #include "compiler/translator/Diagnostics.h"
 #include "compiler/translator/ImmutableString.h"
 #include "compiler/translator/IntermNode.h"
@@ -48,13 +49,13 @@ TConstantUnion *Vectorize(const TConstantUnion &constant, size_t size)
 }
 
 void UndefinedConstantFoldingError(const TSourceLoc &loc,
-                                   TOperator op,
+                                   const TFunction *function,
                                    TBasicType basicType,
                                    TDiagnostics *diagnostics,
                                    TConstantUnion *result)
 {
     diagnostics->warning(loc, "operation result is undefined for the values passed in",
-                         GetOperatorString(op));
+                         function->name().data());
 
     switch (basicType)
     {
@@ -154,7 +155,7 @@ bool CanFoldAggregateBuiltInOp(TOperator op)
         case EOpSmoothstep:
         case EOpFma:
         case EOpLdexp:
-        case EOpMulMatrixComponentWise:
+        case EOpMatrixCompMult:
         case EOpOuterProduct:
         case EOpEqualComponentWise:
         case EOpNotEqualComponentWise:
@@ -170,9 +171,25 @@ bool CanFoldAggregateBuiltInOp(TOperator op)
         case EOpRefract:
         case EOpBitfieldExtract:
         case EOpBitfieldInsert:
+        case EOpDFdx:
+        case EOpDFdy:
+        case EOpFwidth:
             return true;
         default:
             return false;
+    }
+}
+
+void PropagatePrecisionIfApplicable(TIntermTyped *node, TPrecision precision)
+{
+    if (precision == EbpUndefined || node->getPrecision() != EbpUndefined)
+    {
+        return;
+    }
+
+    if (IsPrecisionApplicableToType(node->getBasicType()))
+    {
+        node->propagatePrecision(precision);
     }
 }
 
@@ -185,14 +202,6 @@ bool CanFoldAggregateBuiltInOp(TOperator op)
 ////////////////////////////////////////////////////////////////
 
 TIntermExpression::TIntermExpression(const TType &t) : TIntermTyped(), mType(t) {}
-
-void TIntermExpression::setTypePreservePrecision(const TType &t)
-{
-    TPrecision precision = getPrecision();
-    mType                = t;
-    ASSERT(mType.getBasicType() != EbtBool || precision == EbpUndefined);
-    mType.setPrecision(precision);
-}
 
 #define REPLACE_IF_IS(node, type, original, replacement) \
     do                                                   \
@@ -228,7 +237,7 @@ TIntermNode *TIntermConstantUnion::getChildNode(size_t index) const
 
 size_t TIntermLoop::getChildCount() const
 {
-    return (mInit ? 1 : 0) + (mCond ? 1 : 0) + (mExpr ? 1 : 0) + (mBody ? 1 : 0);
+    return (mInit ? 1 : 0) + (mCond ? 1 : 0) + (mExpr ? 1 : 0) + 1;
 }
 
 TIntermNode *TIntermLoop::getChildNode(size_t index) const
@@ -250,11 +259,9 @@ TIntermNode *TIntermLoop::getChildNode(size_t index) const
         children[childIndex] = mExpr;
         ++childIndex;
     }
-    if (mBody)
-    {
-        children[childIndex] = mBody;
-        ++childIndex;
-    }
+    children[childIndex] = mBody;
+    ++childIndex;
+
     ASSERT(index < childIndex);
     return children[index];
 }
@@ -270,7 +277,7 @@ bool TIntermLoop::replaceChildNode(TIntermNode *original, TIntermNode *replaceme
 }
 
 TIntermBranch::TIntermBranch(const TIntermBranch &node)
-    : TIntermBranch(node.mFlowOp, node.mExpression->deepCopy())
+    : TIntermBranch(node.mFlowOp, node.mExpression ? node.mExpression->deepCopy() : nullptr)
 {}
 
 size_t TIntermBranch::getChildCount() const
@@ -346,7 +353,11 @@ TIntermNode *TIntermUnary::getChildNode(size_t index) const
 
 bool TIntermUnary::replaceChildNode(TIntermNode *original, TIntermNode *replacement)
 {
-    ASSERT(original->getAsTyped()->getType() == replacement->getAsTyped()->getType());
+    // gl_ClipDistance and gl_CullDistance arrays may be replaced with an adjusted
+    // array size. Allow mismatching types for the length() operation in this case.
+    ASSERT(original->getAsTyped()->getType() == replacement->getAsTyped()->getType() ||
+           (mOp == EOpArrayLength && (original->getAsTyped()->getQualifier() == EvqClipDistance ||
+                                      original->getAsTyped()->getQualifier() == EvqCullDistance)));
     REPLACE_IF_IS(mOperand, TIntermTyped, original, replacement);
     return false;
 }
@@ -409,10 +420,13 @@ bool TIntermAggregate::replaceChildNode(TIntermNode *original, TIntermNode *repl
 
 TIntermBlock::TIntermBlock(const TIntermBlock &node)
 {
-    for (TIntermNode *node : node.mStatements)
+    for (TIntermNode *intermNode : node.mStatements)
     {
-        mStatements.push_back(node->deepCopy());
+        mStatements.push_back(intermNode->deepCopy());
     }
+
+    ASSERT(!node.mIsTreeRoot);
+    mIsTreeRoot = false;
 }
 
 TIntermBlock::TIntermBlock(std::initializer_list<TIntermNode *> stmts)
@@ -436,6 +450,12 @@ TIntermNode *TIntermBlock::getChildNode(size_t index) const
 bool TIntermBlock::replaceChildNode(TIntermNode *original, TIntermNode *replacement)
 {
     return replaceChildNodeInternal(original, replacement);
+}
+
+void TIntermBlock::replaceAllChildren(const TIntermSequence &newStatements)
+{
+    mStatements.clear();
+    mStatements.insert(mStatements.begin(), newStatements.begin(), newStatements.end());
 }
 
 size_t TIntermFunctionPrototype::getChildCount() const
@@ -470,7 +490,7 @@ TIntermDeclaration::TIntermDeclaration(const TVariable *var, TIntermTyped *initE
 TIntermDeclaration::TIntermDeclaration(std::initializer_list<const TVariable *> declarators)
     : TIntermDeclaration()
 {
-    for (auto *d : declarators)
+    for (const TVariable *d : declarators)
     {
         appendDeclarator(new TIntermSymbol(d));
     }
@@ -479,7 +499,7 @@ TIntermDeclaration::TIntermDeclaration(std::initializer_list<const TVariable *> 
 TIntermDeclaration::TIntermDeclaration(std::initializer_list<TIntermTyped *> declarators)
     : TIntermDeclaration()
 {
-    for (auto *d : declarators)
+    for (TIntermTyped *d : declarators)
     {
         appendDeclarator(d);
     }
@@ -500,12 +520,19 @@ bool TIntermDeclaration::replaceChildNode(TIntermNode *original, TIntermNode *re
     return replaceChildNodeInternal(original, replacement);
 }
 
+TIntermDeclaration::TIntermDeclaration(const TIntermDeclaration &node)
+{
+    for (TIntermNode *intermNode : node.mDeclarators)
+    {
+        mDeclarators.push_back(intermNode->deepCopy());
+    }
+}
+
 bool TIntermAggregateBase::replaceChildNodeInternal(TIntermNode *original, TIntermNode *replacement)
 {
-    auto &seq = *getSequence();
-    for (auto *&node : seq)
+    for (size_t ii = 0; ii < getSequence()->size(); ++ii)
     {
-        REPLACE_IF_IS(node, TIntermNode, original, replacement);
+        REPLACE_IF_IS((*getSequence())[ii], TIntermNode, original, replacement);
     }
     return false;
 }
@@ -513,13 +540,12 @@ bool TIntermAggregateBase::replaceChildNodeInternal(TIntermNode *original, TInte
 bool TIntermAggregateBase::replaceChildNodeWithMultiple(TIntermNode *original,
                                                         const TIntermSequence &replacements)
 {
-    auto &seq = *getSequence();
-    for (auto it = seq.begin(); it < seq.end(); ++it)
+    for (auto it = getSequence()->begin(); it < getSequence()->end(); ++it)
     {
         if (*it == original)
         {
-            it = seq.erase(it);
-            seq.insert(it, replacements.begin(), replacements.end());
+            it = getSequence()->erase(it);
+            getSequence()->insert(it, replacements.begin(), replacements.end());
             return true;
         }
     }
@@ -529,13 +555,12 @@ bool TIntermAggregateBase::replaceChildNodeWithMultiple(TIntermNode *original,
 bool TIntermAggregateBase::insertChildNodes(TIntermSequence::size_type position,
                                             const TIntermSequence &insertions)
 {
-    auto &seq = *getSequence();
-    if (position > seq.size())
+    if (position > getSequence()->size())
     {
         return false;
     }
-    auto it = seq.begin() + position;
-    seq.insert(it, insertions.begin(), insertions.end());
+    auto it = getSequence()->begin() + position;
+    getSequence()->insert(it, insertions.begin(), insertions.end());
     return true;
 }
 
@@ -566,6 +591,16 @@ const TType &TIntermSymbol::getType() const
     return mVariable->getType();
 }
 
+void TIntermSymbol::propagatePrecision(TPrecision precision)
+{
+    // Every declared variable should already have a precision.  Some built-ins don't have a defined
+    // precision.  This is not asserted however:
+    //
+    // - A shader with no precision specified either globally or on a variable will fail with a
+    //   compilation error later on.
+    // - Transformations declaring variables without precision will be caught by AST validation.
+}
+
 TIntermAggregate *TIntermAggregate::CreateFunctionCall(const TFunction &func,
                                                        TIntermSequence *arguments)
 {
@@ -581,7 +616,7 @@ TIntermAggregate *TIntermAggregate::CreateRawFunctionCall(const TFunction &func,
 TIntermAggregate *TIntermAggregate::CreateBuiltInFunctionCall(const TFunction &func,
                                                               TIntermSequence *arguments)
 {
-    // op should be either EOpCallBuiltInFunction or a specific math op.
+    // Every built-in function should have an op.
     ASSERT(func.getBuiltInOp() != EOpNull);
     return new TIntermAggregate(&func, func.getReturnType(), func.getBuiltInOp(), arguments);
 }
@@ -591,14 +626,19 @@ TIntermAggregate *TIntermAggregate::CreateConstructor(const TType &type, TInterm
     return new TIntermAggregate(nullptr, type, EOpConstruct, arguments);
 }
 
+TIntermAggregate *TIntermAggregate::CreateConstructor(
+    const TType &type,
+    const std::initializer_list<TIntermNode *> &arguments)
+{
+    TIntermSequence argSequence(arguments);
+    return CreateConstructor(type, &argSequence);
+}
+
 TIntermAggregate::TIntermAggregate(const TFunction *func,
                                    const TType &type,
                                    TOperator op,
                                    TIntermSequence *arguments)
-    : TIntermOperator(op, type),
-      mUseEmulatedFunction(false),
-      mGotPrecisionFromChildren(false),
-      mFunction(func)
+    : TIntermOperator(op, type), mUseEmulatedFunction(false), mFunction(func)
 {
     if (arguments != nullptr)
     {
@@ -611,35 +651,20 @@ TIntermAggregate::TIntermAggregate(const TFunction *func,
 void TIntermAggregate::setPrecisionAndQualifier()
 {
     mType.setQualifier(EvqTemporary);
-    if (mOp == EOpCallBuiltInFunction)
+    if ((!BuiltInGroup::IsBuiltIn(mOp) && !isFunctionCall()) || BuiltInGroup::IsMath(mOp))
     {
-        setBuiltInFunctionPrecision();
-    }
-    else if (!isFunctionCall())
-    {
-        if (isConstructor())
-        {
-            // Structs should not be precision qualified, the individual members may be.
-            // Built-in types on the other hand should be precision qualified.
-            if (getBasicType() != EbtStruct)
-            {
-                setPrecisionFromChildren();
-            }
-        }
-        else
-        {
-            setPrecisionForBuiltInOp();
-        }
         if (areChildrenConstQualified())
         {
             mType.setQualifier(EvqConst);
         }
     }
+
+    propagatePrecision(derivePrecision());
 }
 
 bool TIntermAggregate::areChildrenConstQualified()
 {
-    for (TIntermNode *&arg : mArguments)
+    for (TIntermNode *arg : mArguments)
     {
         TIntermTyped *typedArg = arg->getAsTyped();
         if (typedArg && typedArg->getQualifier() != EvqConst)
@@ -650,82 +675,119 @@ bool TIntermAggregate::areChildrenConstQualified()
     return true;
 }
 
-void TIntermAggregate::setPrecisionFromChildren()
+// Derive precision from children nodes
+TPrecision TIntermAggregate::derivePrecision() const
 {
-    mGotPrecisionFromChildren = true;
-    if (getBasicType() == EbtBool)
+    if (getBasicType() == EbtBool || getBasicType() == EbtVoid || getBasicType() == EbtStruct)
     {
-        mType.setPrecision(EbpUndefined);
-        return;
+        return EbpUndefined;
     }
 
-    TPrecision precision                = EbpUndefined;
-    TIntermSequence::iterator childIter = mArguments.begin();
-    while (childIter != mArguments.end())
+    // For AST function calls, take the qualifier from the declared one.
+    if (isFunctionCall())
     {
-        TIntermTyped *typed = (*childIter)->getAsTyped();
-        if (typed)
-            precision = GetHigherPrecision(typed->getPrecision(), precision);
-        ++childIter;
+        return mType.getPrecision();
     }
-    mType.setPrecision(precision);
-}
 
-void TIntermAggregate::setPrecisionForBuiltInOp()
-{
-    ASSERT(!isConstructor());
-    ASSERT(!isFunctionCall());
-    if (!setPrecisionForSpecialBuiltInOp())
-    {
-        setPrecisionFromChildren();
-    }
-}
-
-bool TIntermAggregate::setPrecisionForSpecialBuiltInOp()
-{
+    // Some built-ins explicitly specify their precision.
     switch (mOp)
     {
         case EOpBitfieldExtract:
-            mType.setPrecision(mArguments[0]->getAsTyped()->getPrecision());
-            mGotPrecisionFromChildren = true;
-            return true;
+            return mArguments[0]->getAsTyped()->getPrecision();
         case EOpBitfieldInsert:
-            mType.setPrecision(GetHigherPrecision(mArguments[0]->getAsTyped()->getPrecision(),
-                                                  mArguments[1]->getAsTyped()->getPrecision()));
-            mGotPrecisionFromChildren = true;
-            return true;
+            return GetHigherPrecision(mArguments[0]->getAsTyped()->getPrecision(),
+                                      mArguments[1]->getAsTyped()->getPrecision());
+        case EOpTextureSize:
+        case EOpImageSize:
         case EOpUaddCarry:
         case EOpUsubBorrow:
-            mType.setPrecision(EbpHigh);
-            return true;
+        case EOpUmulExtended:
+        case EOpImulExtended:
+        case EOpFrexp:
+        case EOpLdexp:
+            return EbpHigh;
         default:
-            return false;
+            break;
     }
+
+    // The rest of the math operations and constructors get their precision from their arguments.
+    if (BuiltInGroup::IsMath(mOp) || mOp == EOpConstruct)
+    {
+        TPrecision precision = EbpUndefined;
+        for (TIntermNode *argument : mArguments)
+        {
+            precision = GetHigherPrecision(argument->getAsTyped()->getPrecision(), precision);
+        }
+        return precision;
+    }
+
+    // Atomic operations return highp.
+    if (BuiltInGroup::IsImageAtomic(mOp) || BuiltInGroup::IsAtomicCounter(mOp) ||
+        BuiltInGroup::IsAtomicMemory(mOp))
+    {
+        return EbpHigh;
+    }
+
+    // Texture functions return the same precision as that of the sampler (textureSize returns
+    // highp, but that's handled above).  imageLoad similar takes the precision of the image.  The
+    // same is true for dFd*, interpolateAt* and subpassLoad operations.
+    if (BuiltInGroup::IsTexture(mOp) || BuiltInGroup::IsImageLoad(mOp) ||
+        BuiltInGroup::IsDerivativesFS(mOp) || BuiltInGroup::IsInterpolationFS(mOp) ||
+        mOp == EOpSubpassLoad || mOp == EOpInterpolateAtCenter)
+    {
+        return mArguments[0]->getAsTyped()->getPrecision();
+    }
+
+    // Every possibility must be explicitly handled, except for desktop-GLSL-specific built-ins
+    // for which precision does't matter.
+    return EbpUndefined;
 }
 
-void TIntermAggregate::setBuiltInFunctionPrecision()
+// Propagate precision to children nodes that don't already have it defined.
+void TIntermAggregate::propagatePrecision(TPrecision precision)
 {
-    // All built-ins returning bool should be handled as ops, not functions.
-    ASSERT(getBasicType() != EbtBool);
-    ASSERT(mOp == EOpCallBuiltInFunction);
+    mType.setPrecision(precision);
 
-    TPrecision precision = EbpUndefined;
-    for (TIntermNode *arg : mArguments)
+    // For constructors, propagate precision to arguments.
+    if (isConstructor())
     {
-        TIntermTyped *typed = arg->getAsTyped();
-        // ESSL spec section 8: texture functions get their precision from the sampler.
-        if (typed && IsSampler(typed->getBasicType()))
+        for (TIntermNode *arg : mArguments)
         {
-            precision = typed->getPrecision();
-            break;
+            PropagatePrecisionIfApplicable(arg->getAsTyped(), precision);
         }
+        return;
     }
-    // ESSL 3.0 spec section 8: textureSize always gets highp precision.
-    // All other functions that take a sampler are assumed to be texture functions.
-    if (mFunction->name() == "textureSize")
-        mType.setPrecision(EbpHigh);
-    else
-        mType.setPrecision(precision);
+
+    // For function calls, propagate precision of each parameter to its corresponding argument.
+    if (isFunctionCall())
+    {
+        for (size_t paramIndex = 0; paramIndex < mFunction->getParamCount(); ++paramIndex)
+        {
+            const TVariable *paramVariable = mFunction->getParam(paramIndex);
+            PropagatePrecisionIfApplicable(mArguments[paramIndex]->getAsTyped(),
+                                           paramVariable->getType().getPrecision());
+        }
+        return;
+    }
+
+    // Some built-ins explicitly specify the precision of their parameters.
+    switch (mOp)
+    {
+        case EOpUaddCarry:
+        case EOpUsubBorrow:
+        case EOpUmulExtended:
+        case EOpImulExtended:
+            PropagatePrecisionIfApplicable(mArguments[0]->getAsTyped(), EbpHigh);
+            PropagatePrecisionIfApplicable(mArguments[1]->getAsTyped(), EbpHigh);
+            break;
+        case EOpFindMSB:
+        case EOpFrexp:
+        case EOpLdexp:
+            PropagatePrecisionIfApplicable(mArguments[0]->getAsTyped(), EbpHigh);
+            break;
+        default:
+            break;
+    }
 }
 
 const char *TIntermAggregate::functionName() const
@@ -734,10 +796,13 @@ const char *TIntermAggregate::functionName() const
     switch (mOp)
     {
         case EOpCallInternalRawFunction:
-        case EOpCallBuiltInFunction:
         case EOpCallFunctionInAST:
             return mFunction->name().data();
         default:
+            if (BuiltInGroup::IsBuiltIn(mOp))
+            {
+                return mFunction->name().data();
+            }
             return GetOperatorString(mOp);
     }
 }
@@ -751,6 +816,22 @@ bool TIntermAggregate::hasConstantValue() const
     for (TIntermNode *constructorArg : mArguments)
     {
         if (!constructorArg->getAsTyped()->hasConstantValue())
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool TIntermAggregate::isConstantNullValue() const
+{
+    if (!isConstructor())
+    {
+        return false;
+    }
+    for (TIntermNode *constructorArg : mArguments)
+    {
+        if (!constructorArg->getAsTyped()->isConstantNullValue())
         {
             return false;
         }
@@ -804,11 +885,11 @@ const TConstantUnion *TIntermAggregate::getConstantValue() const
         {
             if (isMatrix())
             {
-                int resultCols = getType().getCols();
-                int resultRows = getType().getRows();
-                for (int col = 0; col < resultCols; ++col)
+                const uint8_t resultCols = getType().getCols();
+                const uint8_t resultRows = getType().getRows();
+                for (uint8_t col = 0; col < resultCols; ++col)
                 {
-                    for (int row = 0; row < resultRows; ++row)
+                    for (uint8_t row = 0; row < resultRows; ++row)
                     {
                         if (col == row)
                         {
@@ -836,13 +917,13 @@ const TConstantUnion *TIntermAggregate::getConstantValue() const
         else if (isMatrix() && argumentTyped->isMatrix())
         {
             // The special case of constructing a matrix from a matrix.
-            int argumentCols = argumentTyped->getType().getCols();
-            int argumentRows = argumentTyped->getType().getRows();
-            int resultCols   = getType().getCols();
-            int resultRows   = getType().getRows();
-            for (int col = 0; col < resultCols; ++col)
+            const uint8_t argumentCols = argumentTyped->getType().getCols();
+            const uint8_t argumentRows = argumentTyped->getType().getRows();
+            const uint8_t resultCols   = getType().getCols();
+            const uint8_t resultRows   = getType().getRows();
+            for (uint8_t col = 0; col < resultCols; ++col)
             {
-                for (int row = 0; row < resultRows; ++row)
+                for (uint8_t row = 0; row < resultRows; ++row)
                 {
                     if (col < argumentCols && row < argumentRows)
                     {
@@ -888,21 +969,25 @@ bool TIntermAggregate::hasSideEffects() const
     {
         return false;
     }
-    bool calledFunctionHasNoSideEffects =
-        isFunctionCall() && mFunction != nullptr && mFunction->isKnownToNotHaveSideEffects();
-    if (calledFunctionHasNoSideEffects || isConstructor())
+
+    // If the function itself is known to have a side effect, the expression has a side effect.
+    const bool calledFunctionHasSideEffects =
+        mFunction != nullptr && !mFunction->isKnownToNotHaveSideEffects();
+
+    if (calledFunctionHasSideEffects)
     {
-        for (TIntermNode *arg : mArguments)
-        {
-            if (arg->getAsTyped()->hasSideEffects())
-            {
-                return true;
-            }
-        }
-        return false;
+        return true;
     }
-    // Conservatively assume most aggregate operators have side-effects
-    return true;
+
+    // Otherwise it only has a side effect if one of the arguments does.
+    for (TIntermNode *arg : mArguments)
+    {
+        if (arg->getAsTyped()->hasSideEffects())
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 void TIntermBlock::appendStatement(TIntermNode *statement)
@@ -1030,12 +1115,16 @@ bool TIntermCase::replaceChildNode(TIntermNode *original, TIntermNode *replaceme
     return false;
 }
 
-TIntermTyped::TIntermTyped(const TIntermTyped &node) : TIntermNode()
+TIntermTyped::TIntermTyped() : mIsPrecise(false) {}
+TIntermTyped::TIntermTyped(const TIntermTyped &node) : TIntermTyped()
 {
     // Copy constructor is disallowed for TIntermNode in order to disallow it for subclasses that
     // don't explicitly allow it, so normal TIntermNode constructor is used to construct the copy.
     // We need to manually copy any fields of TIntermNode.
     mLine = node.mLine;
+
+    // Once deteremined, the tree is not expected to transform.
+    ASSERT(!mIsPrecise);
 }
 
 bool TIntermTyped::hasConstantValue() const
@@ -1043,9 +1132,25 @@ bool TIntermTyped::hasConstantValue() const
     return false;
 }
 
+bool TIntermTyped::isConstantNullValue() const
+{
+    return false;
+}
+
 const TConstantUnion *TIntermTyped::getConstantValue() const
 {
     return nullptr;
+}
+
+TPrecision TIntermTyped::derivePrecision() const
+{
+    UNREACHABLE();
+    return EbpUndefined;
+}
+
+void TIntermTyped::propagatePrecision(TPrecision precision)
+{
+    UNREACHABLE();
 }
 
 TIntermConstantUnion::TIntermConstantUnion(const TIntermConstantUnion &node)
@@ -1068,7 +1173,6 @@ const TType &TIntermFunctionPrototype::getType() const
 TIntermAggregate::TIntermAggregate(const TIntermAggregate &node)
     : TIntermOperator(node),
       mUseEmulatedFunction(node.mUseEmulatedFunction),
-      mGotPrecisionFromChildren(node.mGotPrecisionFromChildren),
       mFunction(node.mFunction)
 {
     for (TIntermNode *arg : node.mArguments)
@@ -1082,9 +1186,9 @@ TIntermAggregate::TIntermAggregate(const TIntermAggregate &node)
 
 TIntermAggregate *TIntermAggregate::shallowCopy() const
 {
-    auto &seq                  = *getSequence();
-    TIntermSequence *copySeq   = new TIntermSequence(seq.begin(), seq.end());
-    TIntermAggregate *copyNode = new TIntermAggregate(mFunction, mType, mOp, copySeq);
+    TIntermSequence copySeq;
+    copySeq.insert(copySeq.begin(), getSequence()->begin(), getSequence()->end());
+    TIntermAggregate *copyNode = new TIntermAggregate(mFunction, mType, mOp, &copySeq);
     copyNode->setLine(mLine);
     return copyNode;
 }
@@ -1098,8 +1202,7 @@ TIntermSwizzle::TIntermSwizzle(const TIntermSwizzle &node) : TIntermExpression(n
     mHasFoldedDuplicateOffsets = node.mHasFoldedDuplicateOffsets;
 }
 
-TIntermBinary::TIntermBinary(const TIntermBinary &node)
-    : TIntermOperator(node), mAddIndexClamp(node.mAddIndexClamp)
+TIntermBinary::TIntermBinary(const TIntermBinary &node) : TIntermOperator(node)
 {
     TIntermTyped *leftCopy  = node.mLeft->deepCopy();
     TIntermTyped *rightCopy = node.mRight->deepCopy();
@@ -1160,7 +1263,6 @@ bool TIntermOperator::isFunctionCall() const
     switch (mOp)
     {
         case EOpCallFunctionInAST:
-        case EOpCallBuiltInFunction:
         case EOpCallInternalRawFunction:
             return true;
         default:
@@ -1265,7 +1367,7 @@ void TIntermUnary::promote()
     if (mOp == EOpArrayLength)
     {
         // Special case: the qualifier of .length() doesn't depend on the operand qualifier.
-        setType(TType(EbtInt, EbpUndefined, EvqConst));
+        setType(TType(EbtInt, EbpHigh, EvqConst));
         return;
     }
 
@@ -1273,71 +1375,152 @@ void TIntermUnary::promote()
     if (mOperand->getQualifier() == EvqConst)
         resultQualifier = EvqConst;
 
-    unsigned char operandPrimarySize =
-        static_cast<unsigned char>(mOperand->getType().getNominalSize());
+    TType resultType = mOperand->getType();
+    resultType.setQualifier(resultQualifier);
+
+    // Result is an intermediate value, so make sure it's identified as such.
+    resultType.setInterfaceBlock(nullptr);
+
+    // Override type properties for special built-ins.  Precision is determined later by
+    // |derivePrecision|.
     switch (mOp)
     {
         case EOpFloatBitsToInt:
-            setType(TType(EbtInt, EbpHigh, resultQualifier, operandPrimarySize));
+            resultType.setBasicType(EbtInt);
             break;
         case EOpFloatBitsToUint:
-            setType(TType(EbtUInt, EbpHigh, resultQualifier, operandPrimarySize));
+            resultType.setBasicType(EbtUInt);
             break;
         case EOpIntBitsToFloat:
         case EOpUintBitsToFloat:
-            setType(TType(EbtFloat, EbpHigh, resultQualifier, operandPrimarySize));
+            resultType.setBasicType(EbtFloat);
             break;
         case EOpPackSnorm2x16:
         case EOpPackUnorm2x16:
         case EOpPackHalf2x16:
         case EOpPackUnorm4x8:
         case EOpPackSnorm4x8:
-            setType(TType(EbtUInt, EbpHigh, resultQualifier));
+            resultType.setBasicType(EbtUInt);
+            resultType.setPrimarySize(1);
             break;
         case EOpUnpackSnorm2x16:
         case EOpUnpackUnorm2x16:
-            setType(TType(EbtFloat, EbpHigh, resultQualifier, 2));
-            break;
         case EOpUnpackHalf2x16:
-            setType(TType(EbtFloat, EbpMedium, resultQualifier, 2));
+            resultType.setBasicType(EbtFloat);
+            resultType.setPrimarySize(2);
             break;
         case EOpUnpackUnorm4x8:
         case EOpUnpackSnorm4x8:
-            setType(TType(EbtFloat, EbpMedium, resultQualifier, 4));
+            resultType.setBasicType(EbtFloat);
+            resultType.setPrimarySize(4);
             break;
         case EOpAny:
         case EOpAll:
-            setType(TType(EbtBool, EbpUndefined, resultQualifier));
+            resultType.setBasicType(EbtBool);
+            resultType.setPrimarySize(1);
             break;
         case EOpLength:
         case EOpDeterminant:
-            setType(TType(EbtFloat, mOperand->getType().getPrecision(), resultQualifier));
+            resultType.setBasicType(EbtFloat);
+            resultType.setPrimarySize(1);
+            resultType.setSecondarySize(1);
             break;
         case EOpTranspose:
-            setType(TType(EbtFloat, mOperand->getType().getPrecision(), resultQualifier,
-                          static_cast<unsigned char>(mOperand->getType().getRows()),
-                          static_cast<unsigned char>(mOperand->getType().getCols())));
+            ASSERT(resultType.getBasicType() == EbtFloat);
+            resultType.setPrimarySize(mOperand->getType().getRows());
+            resultType.setSecondarySize(mOperand->getType().getCols());
             break;
         case EOpIsinf:
         case EOpIsnan:
-            setType(TType(EbtBool, EbpUndefined, resultQualifier, operandPrimarySize));
-            break;
-        case EOpBitfieldReverse:
-            setType(TType(mOperand->getBasicType(), EbpHigh, resultQualifier, operandPrimarySize));
+            resultType.setBasicType(EbtBool);
             break;
         case EOpBitCount:
-            setType(TType(EbtInt, EbpLow, resultQualifier, operandPrimarySize));
-            break;
         case EOpFindLSB:
-            setType(TType(EbtInt, EbpLow, resultQualifier, operandPrimarySize));
-            break;
         case EOpFindMSB:
-            setType(TType(EbtInt, EbpLow, resultQualifier, operandPrimarySize));
+            resultType.setBasicType(EbtInt);
             break;
         default:
-            setType(mOperand->getType());
-            mType.setQualifier(resultQualifier);
             break;
+    }
+
+    setType(resultType);
+    propagatePrecision(derivePrecision());
+}
+
+// Derive precision from children nodes
+TPrecision TIntermUnary::derivePrecision() const
+{
+    // Unary operators generally derive their precision from their operand, except for a few
+    // built-ins where this is overriden.
+    switch (mOp)
+    {
+        case EOpArrayLength:
+        case EOpFloatBitsToInt:
+        case EOpFloatBitsToUint:
+        case EOpIntBitsToFloat:
+        case EOpUintBitsToFloat:
+        case EOpPackSnorm2x16:
+        case EOpPackUnorm2x16:
+        case EOpPackHalf2x16:
+        case EOpPackUnorm4x8:
+        case EOpPackSnorm4x8:
+        case EOpUnpackSnorm2x16:
+        case EOpUnpackUnorm2x16:
+        case EOpBitfieldReverse:
+            return EbpHigh;
+        case EOpUnpackHalf2x16:
+        case EOpUnpackUnorm4x8:
+        case EOpUnpackSnorm4x8:
+            return EbpMedium;
+        case EOpBitCount:
+        case EOpFindLSB:
+        case EOpFindMSB:
+            return EbpLow;
+        case EOpAny:
+        case EOpAll:
+        case EOpIsinf:
+        case EOpIsnan:
+            return EbpUndefined;
+        default:
+            return mOperand->getPrecision();
+    }
+}
+
+void TIntermUnary::propagatePrecision(TPrecision precision)
+{
+    mType.setPrecision(precision);
+
+    // Generally precision of the operand and the precision of the result match.  A few built-ins
+    // are exceptional.
+    switch (mOp)
+    {
+        case EOpArrayLength:
+        case EOpPackSnorm2x16:
+        case EOpPackUnorm2x16:
+        case EOpPackUnorm4x8:
+        case EOpPackSnorm4x8:
+        case EOpPackHalf2x16:
+        case EOpBitCount:
+        case EOpFindLSB:
+        case EOpFindMSB:
+        case EOpIsinf:
+        case EOpIsnan:
+            // Precision of result does not affect the operand in any way.
+            break;
+        case EOpFloatBitsToInt:
+        case EOpFloatBitsToUint:
+        case EOpIntBitsToFloat:
+        case EOpUintBitsToFloat:
+        case EOpUnpackSnorm2x16:
+        case EOpUnpackUnorm2x16:
+        case EOpUnpackUnorm4x8:
+        case EOpUnpackSnorm4x8:
+        case EOpUnpackHalf2x16:
+        case EOpBitfieldReverse:
+            PropagatePrecisionIfApplicable(mOperand, EbpHigh);
+            break;
+        default:
+            PropagatePrecisionIfApplicable(mOperand, precision);
     }
 }
 
@@ -1348,6 +1531,7 @@ TIntermSwizzle::TIntermSwizzle(TIntermTyped *operand, const TVector<int> &swizzl
       mHasFoldedDuplicateOffsets(false)
 {
     ASSERT(mOperand);
+    ASSERT(mOperand->getType().isVector());
     ASSERT(mSwizzleOffsets.size() <= 4);
     promote();
 }
@@ -1356,11 +1540,12 @@ TIntermUnary::TIntermUnary(TOperator op, TIntermTyped *operand, const TFunction 
     : TIntermOperator(op), mOperand(operand), mUseEmulatedFunction(false), mFunction(function)
 {
     ASSERT(mOperand);
+    ASSERT(!BuiltInGroup::IsBuiltIn(op) || (function != nullptr && function->getBuiltInOp() == op));
     promote();
 }
 
 TIntermBinary::TIntermBinary(TOperator op, TIntermTyped *left, TIntermTyped *right)
-    : TIntermOperator(op), mLeft(left), mRight(right), mAddIndexClamp(false)
+    : TIntermOperator(op), mLeft(left), mRight(right)
 {
     ASSERT(mLeft);
     ASSERT(mRight);
@@ -1405,6 +1590,8 @@ TIntermTernary::TIntermTernary(TIntermTyped *cond,
     ASSERT(mFalseExpression);
     getTypePointer()->setQualifier(
         TIntermTernary::DetermineQualifier(cond, trueExpression, falseExpression));
+
+    propagatePrecision(derivePrecision());
 }
 
 TIntermLoop::TIntermLoop(TLoopType type,
@@ -1412,7 +1599,7 @@ TIntermLoop::TIntermLoop(TLoopType type,
                          TIntermTyped *cond,
                          TIntermTyped *expr,
                          TIntermBlock *body)
-    : mType(type), mInit(init), mCond(cond), mExpr(expr), mBody(body)
+    : mType(type), mInit(init), mCond(cond), mExpr(expr), mBody(EnsureBody(body))
 {
     // Declaration nodes with no children can appear if all the declarators just added constants to
     // the symbol table instead of generating code. They're no-ops so don't add them to the tree.
@@ -1425,9 +1612,9 @@ TIntermLoop::TIntermLoop(TLoopType type,
 
 TIntermLoop::TIntermLoop(const TIntermLoop &node)
     : TIntermLoop(node.mType,
-                  node.mInit->deepCopy(),
-                  node.mCond->deepCopy(),
-                  node.mExpr->deepCopy(),
+                  node.mInit ? node.mInit->deepCopy() : nullptr,
+                  node.mCond ? node.mCond->deepCopy() : nullptr,
+                  node.mExpr ? node.mExpr->deepCopy() : nullptr,
                   node.mBody->deepCopy())
 {}
 
@@ -1478,6 +1665,20 @@ TQualifier TIntermTernary::DetermineQualifier(TIntermTyped *cond,
     return EvqTemporary;
 }
 
+// Derive precision from children nodes
+TPrecision TIntermTernary::derivePrecision() const
+{
+    return GetHigherPrecision(mTrueExpression->getPrecision(), mFalseExpression->getPrecision());
+}
+
+void TIntermTernary::propagatePrecision(TPrecision precision)
+{
+    mType.setPrecision(precision);
+
+    PropagatePrecisionIfApplicable(mTrueExpression, precision);
+    PropagatePrecisionIfApplicable(mFalseExpression, precision);
+}
+
 TIntermTyped *TIntermTernary::fold(TDiagnostics * /* diagnostics */)
 {
     if (mCondition->getAsConstantUnion())
@@ -1500,9 +1701,23 @@ void TIntermSwizzle::promote()
     if (mOperand->getQualifier() == EvqConst)
         resultQualifier = EvqConst;
 
-    auto numFields = mSwizzleOffsets.size();
-    setType(TType(mOperand->getBasicType(), mOperand->getPrecision(), resultQualifier,
-                  static_cast<unsigned char>(numFields)));
+    size_t numFields = mSwizzleOffsets.size();
+    setType(TType(mOperand->getBasicType(), EbpUndefined, resultQualifier,
+                  static_cast<uint8_t>(numFields)));
+    propagatePrecision(derivePrecision());
+}
+
+// Derive precision from children nodes
+TPrecision TIntermSwizzle::derivePrecision() const
+{
+    return mOperand->getPrecision();
+}
+
+void TIntermSwizzle::propagatePrecision(TPrecision precision)
+{
+    mType.setPrecision(precision);
+
+    PropagatePrecisionIfApplicable(mOperand, precision);
 }
 
 bool TIntermSwizzle::hasDuplicateOffsets() const
@@ -1590,11 +1805,22 @@ void TIntermBinary::promote()
 
     TQualifier resultQualifier = EvqConst;
     // Binary operations results in temporary variables unless both
-    // operands are const.
-    if (mLeft->getQualifier() != EvqConst || mRight->getQualifier() != EvqConst)
+    // operands are const.  If initializing a specialization constant, make the declarator also
+    // EvqSpecConst.
+    const bool isSpecConstInit = mOp == EOpInitialize && mLeft->getQualifier() == EvqSpecConst;
+    const bool isEitherNonConst =
+        mLeft->getQualifier() != EvqConst || mRight->getQualifier() != EvqConst;
+    if (!isSpecConstInit && isEitherNonConst)
     {
         resultQualifier = EvqTemporary;
         getTypePointer()->setQualifier(EvqTemporary);
+    }
+
+    // Result is an intermediate value, so make sure it's identified as such.  That's not true for
+    // interface block arrays being indexed.
+    if (mOp != EOpIndexDirect && mOp != EOpIndexIndirect)
+    {
+        getTypePointer()->setInterfaceBlock(nullptr);
     }
 
     // Handle indexing ops.
@@ -1608,12 +1834,11 @@ void TIntermBinary::promote()
             }
             else if (mLeft->isMatrix())
             {
-                setType(TType(mLeft->getBasicType(), mLeft->getPrecision(), resultQualifier,
-                              static_cast<unsigned char>(mLeft->getRows())));
+                mType.toMatrixColumnType();
             }
             else if (mLeft->isVector())
             {
-                setType(TType(mLeft->getBasicType(), mLeft->getPrecision(), resultQualifier));
+                mType.toComponentType();
             }
             else
             {
@@ -1623,16 +1848,16 @@ void TIntermBinary::promote()
         case EOpIndexDirectStruct:
         {
             const TFieldList &fields = mLeft->getType().getStruct()->fields();
-            const int i              = mRight->getAsConstantUnion()->getIConst(0);
-            setType(*fields[i]->type());
+            const int fieldIndex     = mRight->getAsConstantUnion()->getIConst(0);
+            setType(*fields[fieldIndex]->type());
             getTypePointer()->setQualifier(resultQualifier);
             return;
         }
         case EOpIndexDirectInterfaceBlock:
         {
             const TFieldList &fields = mLeft->getType().getInterfaceBlock()->fields();
-            const int i              = mRight->getAsConstantUnion()->getIConst(0);
-            setType(*fields[i]->type());
+            const int fieldIndex     = mRight->getAsConstantUnion()->getIConst(0);
+            setType(*fields[fieldIndex]->type());
             getTypePointer()->setQualifier(resultQualifier);
             return;
         }
@@ -1642,50 +1867,7 @@ void TIntermBinary::promote()
 
     ASSERT(mLeft->isArray() == mRight->isArray());
 
-    // The result gets promoted to the highest precision.
-    TPrecision higherPrecision = GetHigherPrecision(mLeft->getPrecision(), mRight->getPrecision());
-    getTypePointer()->setPrecision(higherPrecision);
-
-    const int nominalSize = std::max(mLeft->getNominalSize(), mRight->getNominalSize());
-
-    //
-    // All scalars or structs. Code after this test assumes this case is removed!
-    //
-    if (nominalSize == 1)
-    {
-        switch (mOp)
-        {
-            //
-            // Promote to conditional
-            //
-            case EOpEqual:
-            case EOpNotEqual:
-            case EOpLessThan:
-            case EOpGreaterThan:
-            case EOpLessThanEqual:
-            case EOpGreaterThanEqual:
-                setType(TType(EbtBool, EbpUndefined, resultQualifier));
-                break;
-
-            //
-            // And and Or operate on conditionals
-            //
-            case EOpLogicalAnd:
-            case EOpLogicalXor:
-            case EOpLogicalOr:
-                ASSERT(mLeft->getBasicType() == EbtBool && mRight->getBasicType() == EbtBool);
-                setType(TType(EbtBool, EbpUndefined, resultQualifier));
-                break;
-
-            default:
-                break;
-        }
-        return;
-    }
-
-    // If we reach here, at least one of the operands is vector or matrix.
-    // The other operand could be a scalar, vector, or matrix.
-    TBasicType basicType = mLeft->getBasicType();
+    const uint8_t nominalSize = std::max(mLeft->getNominalSize(), mRight->getNominalSize());
 
     switch (mOp)
     {
@@ -1694,27 +1876,24 @@ void TIntermBinary::promote()
         case EOpMatrixTimesScalar:
             if (mRight->isMatrix())
             {
-                setType(TType(basicType, higherPrecision, resultQualifier,
-                              static_cast<unsigned char>(mRight->getCols()),
-                              static_cast<unsigned char>(mRight->getRows())));
+                getTypePointer()->setPrimarySize(mRight->getCols());
+                getTypePointer()->setSecondarySize(mRight->getRows());
             }
             break;
         case EOpMatrixTimesVector:
-            setType(TType(basicType, higherPrecision, resultQualifier,
-                          static_cast<unsigned char>(mLeft->getRows()), 1));
+            getTypePointer()->setPrimarySize(mLeft->getRows());
+            getTypePointer()->setSecondarySize(1);
             break;
         case EOpMatrixTimesMatrix:
-            setType(TType(basicType, higherPrecision, resultQualifier,
-                          static_cast<unsigned char>(mRight->getCols()),
-                          static_cast<unsigned char>(mLeft->getRows())));
+            getTypePointer()->setPrimarySize(mRight->getCols());
+            getTypePointer()->setSecondarySize(mLeft->getRows());
             break;
         case EOpVectorTimesScalar:
-            setType(TType(basicType, higherPrecision, resultQualifier,
-                          static_cast<unsigned char>(nominalSize), 1));
+            getTypePointer()->setPrimarySize(nominalSize);
             break;
         case EOpVectorTimesMatrix:
-            setType(TType(basicType, higherPrecision, resultQualifier,
-                          static_cast<unsigned char>(mRight->getCols()), 1));
+            getTypePointer()->setPrimarySize(mRight->getCols());
+            ASSERT(getType().getSecondarySize() == 1);
             break;
         case EOpMulAssign:
         case EOpVectorTimesScalarAssign:
@@ -1747,12 +1926,11 @@ void TIntermBinary::promote()
         case EOpBitwiseXorAssign:
         case EOpBitwiseOrAssign:
         {
-            const int secondarySize =
-                std::max(mLeft->getSecondarySize(), mRight->getSecondarySize());
-            setType(TType(basicType, higherPrecision, resultQualifier,
-                          static_cast<unsigned char>(nominalSize),
-                          static_cast<unsigned char>(secondarySize)));
             ASSERT(!mLeft->isArray() && !mRight->isArray());
+            const uint8_t secondarySize =
+                std::max(mLeft->getSecondarySize(), mRight->getSecondarySize());
+            getTypePointer()->setPrimarySize(nominalSize);
+            getTypePointer()->setSecondarySize(secondarySize);
             break;
         }
         case EOpEqual:
@@ -1766,6 +1944,15 @@ void TIntermBinary::promote()
             setType(TType(EbtBool, EbpUndefined, resultQualifier));
             break;
 
+        //
+        // And and Or operate on conditionals
+        //
+        case EOpLogicalAnd:
+        case EOpLogicalXor:
+        case EOpLogicalOr:
+            ASSERT(mLeft->getBasicType() == EbtBool && mRight->getBasicType() == EbtBool);
+            break;
+
         case EOpIndexDirect:
         case EOpIndexIndirect:
         case EOpIndexDirectInterfaceBlock:
@@ -1777,10 +1964,110 @@ void TIntermBinary::promote()
             UNREACHABLE();
             break;
     }
+
+    propagatePrecision(derivePrecision());
+}
+
+// Derive precision from children nodes
+TPrecision TIntermBinary::derivePrecision() const
+{
+    // Assignments use the type and precision of the lvalue-expression
+    // GLSL ES spec section 5.8: Assignments
+    // "The assignment operator stores the value of rvalue-expression into the l-value and returns
+    // an r-value with the type and precision of lvalue-expression."
+    if (IsAssignment(mOp))
+    {
+        return mLeft->getPrecision();
+    }
+
+    const TPrecision higherPrecision =
+        GetHigherPrecision(mLeft->getPrecision(), mRight->getPrecision());
+
+    switch (mOp)
+    {
+        case EOpComma:
+            // Comma takes the right node's value.
+            return mRight->getPrecision();
+
+        case EOpIndexDirect:
+        case EOpIndexIndirect:
+        case EOpBitShiftLeft:
+        case EOpBitShiftRight:
+            // When indexing an array, the precision of the array is preserved (which is the left
+            // node).
+            // For shift operations, the precision is derived from the expression being shifted
+            // (which is also the left node).
+            return mLeft->getPrecision();
+
+        case EOpIndexDirectStruct:
+        case EOpIndexDirectInterfaceBlock:
+        {
+            // When selecting the field of a block, the precision is taken from the field's
+            // declaration.
+            const TFieldList &fields = mOp == EOpIndexDirectStruct
+                                           ? mLeft->getType().getStruct()->fields()
+                                           : mLeft->getType().getInterfaceBlock()->fields();
+            const int fieldIndex     = mRight->getAsConstantUnion()->getIConst(0);
+            return fields[fieldIndex]->type()->getPrecision();
+        }
+
+        case EOpEqual:
+        case EOpNotEqual:
+        case EOpLessThan:
+        case EOpGreaterThan:
+        case EOpLessThanEqual:
+        case EOpGreaterThanEqual:
+        case EOpLogicalAnd:
+        case EOpLogicalXor:
+        case EOpLogicalOr:
+            // No precision specified on bool results.
+            return EbpUndefined;
+
+        default:
+            // All other operations are evaluated at the higher of the two operands' precisions.
+            return higherPrecision;
+    }
+}
+
+void TIntermBinary::propagatePrecision(TPrecision precision)
+{
+    getTypePointer()->setPrecision(precision);
+
+    if (mOp != EOpComma)
+    {
+        PropagatePrecisionIfApplicable(mLeft, precision);
+    }
+
+    if (mOp != EOpIndexDirect && mOp != EOpIndexIndirect && mOp != EOpIndexDirectStruct &&
+        mOp != EOpIndexDirectInterfaceBlock)
+    {
+        PropagatePrecisionIfApplicable(mRight, precision);
+    }
+
+    // For indices, always apply highp.  This is purely for the purpose of making sure constant and
+    // constructor nodes are also given a precision, so if they are hoisted to a temp variable,
+    // there would be a precision to apply to that variable.
+    if (mOp == EOpIndexDirect || mOp == EOpIndexIndirect)
+    {
+        PropagatePrecisionIfApplicable(mRight, EbpHigh);
+    }
 }
 
 bool TIntermConstantUnion::hasConstantValue() const
 {
+    return true;
+}
+
+bool TIntermConstantUnion::isConstantNullValue() const
+{
+    const size_t size = mType.getObjectSize();
+    for (size_t index = 0; index < size; ++index)
+    {
+        if (!mUnionArrayPointer[index].isZero())
+        {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1804,7 +2091,7 @@ const TConstantUnion *TIntermConstantUnion::FoldIndexing(const TType &type,
     else if (type.isMatrix())
     {
         ASSERT(index < type.getCols());
-        int size = type.getRows();
+        const uint8_t size = type.getRows();
         return &constArray[size * index];
     }
     else if (type.isVector())
@@ -1892,12 +2179,23 @@ TIntermTyped *TIntermBinary::fold(TDiagnostics *diagnostics)
             if (mLeft->getAsConstantUnion() || getType().canReplaceWithConstantUnion())
             {
                 const TConstantUnion *constantValue = getConstantValue();
-                if (constantValue == nullptr)
+                if (constantValue != nullptr)
                 {
-                    return this;
+                    return CreateFoldedNode(constantValue, this);
                 }
-                return CreateFoldedNode(constantValue, this);
             }
+
+            // If the indexed value is a swizzle, then the swizzle can be adjusted instead.
+            TIntermSwizzle *leftSwizzle = mLeft->getAsSwizzleNode();
+            if (leftSwizzle != nullptr)
+            {
+                const TVector<int> &swizzleOffsets = leftSwizzle->getSwizzleOffsets();
+                ASSERT(index < swizzleOffsets.size());
+
+                int remappedIndex = swizzleOffsets[index];
+                return new TIntermSwizzle(leftSwizzle->getOperand(), {remappedIndex});
+            }
+
             return this;
         }
         case EOpIndexIndirect:
@@ -1995,7 +2293,10 @@ TIntermTyped *TIntermUnary::fold(TDiagnostics *diagnostics)
     if (mOp == EOpArrayLength)
     {
         // The size of runtime-sized arrays may only be determined at runtime.
-        if (mOperand->hasSideEffects() || mOperand->getType().isUnsizedArray())
+        // This operation is folded for clip/cull distance arrays in RemoveArrayLengthMethod.
+        if (mOperand->hasSideEffects() || mOperand->getType().isUnsizedArray() ||
+            mOperand->getQualifier() == EvqClipDistance ||
+            mOperand->getQualifier() == EvqCullDistance)
         {
             return this;
         }
@@ -2031,7 +2332,7 @@ TIntermTyped *TIntermUnary::fold(TDiagnostics *diagnostics)
                 constArray = operandConstant->foldUnaryNonComponentWise(mOp);
                 break;
             default:
-                constArray = operandConstant->foldUnaryComponentWise(mOp, diagnostics);
+                constArray = operandConstant->foldUnaryComponentWise(mOp, mFunction, diagnostics);
                 break;
         }
     }
@@ -2158,20 +2459,20 @@ const TConstantUnion *TIntermConstantUnion::FoldBinary(TOperator op,
             // TODO(jmadll): This code should check for overflows.
             ASSERT(leftType.getBasicType() == EbtFloat && rightType.getBasicType() == EbtFloat);
 
-            const int leftCols   = leftType.getCols();
-            const int leftRows   = leftType.getRows();
-            const int rightCols  = rightType.getCols();
-            const int rightRows  = rightType.getRows();
-            const int resultCols = rightCols;
-            const int resultRows = leftRows;
+            const uint8_t leftCols   = leftType.getCols();
+            const uint8_t leftRows   = leftType.getRows();
+            const uint8_t rightCols  = rightType.getCols();
+            const uint8_t rightRows  = rightType.getRows();
+            const uint8_t resultCols = rightCols;
+            const uint8_t resultRows = leftRows;
 
             resultArray = new TConstantUnion[resultCols * resultRows];
-            for (int row = 0; row < resultRows; row++)
+            for (uint8_t row = 0; row < resultRows; row++)
             {
-                for (int column = 0; column < resultCols; column++)
+                for (uint8_t column = 0; column < resultCols; column++)
                 {
                     resultArray[resultRows * column + row].setFConst(0.0f);
-                    for (int i = 0; i < leftCols; i++)
+                    for (uint8_t i = 0; i < leftCols; i++)
                     {
                         resultArray[resultRows * column + row].setFConst(
                             resultArray[resultRows * column + row].getFConst() +
@@ -2331,15 +2632,15 @@ const TConstantUnion *TIntermConstantUnion::FoldBinary(TOperator op,
             // TODO(jmadll): This code should check for overflows.
             ASSERT(rightType.getBasicType() == EbtFloat);
 
-            const int matrixCols = leftType.getCols();
-            const int matrixRows = leftType.getRows();
+            const uint8_t matrixCols = leftType.getCols();
+            const uint8_t matrixRows = leftType.getRows();
 
             resultArray = new TConstantUnion[matrixRows];
 
-            for (int matrixRow = 0; matrixRow < matrixRows; matrixRow++)
+            for (uint8_t matrixRow = 0; matrixRow < matrixRows; matrixRow++)
             {
                 resultArray[matrixRow].setFConst(0.0f);
-                for (int col = 0; col < matrixCols; col++)
+                for (uint8_t col = 0; col < matrixCols; col++)
                 {
                     resultArray[matrixRow].setFConst(
                         resultArray[matrixRow].getFConst() +
@@ -2355,15 +2656,15 @@ const TConstantUnion *TIntermConstantUnion::FoldBinary(TOperator op,
             // TODO(jmadll): This code should check for overflows.
             ASSERT(leftType.getBasicType() == EbtFloat);
 
-            const int matrixCols = rightType.getCols();
-            const int matrixRows = rightType.getRows();
+            const uint8_t matrixCols = rightType.getCols();
+            const uint8_t matrixRows = rightType.getRows();
 
             resultArray = new TConstantUnion[matrixCols];
 
-            for (int matrixCol = 0; matrixCol < matrixCols; matrixCol++)
+            for (uint8_t matrixCol = 0; matrixCol < matrixCols; matrixCol++)
             {
                 resultArray[matrixCol].setFConst(0.0f);
-                for (int matrixRow = 0; matrixRow < matrixRows; matrixRow++)
+                for (uint8_t matrixRow = 0; matrixRow < matrixRows; matrixRow++)
                 {
                     resultArray[matrixCol].setFConst(
                         resultArray[matrixCol].getFConst() +
@@ -2549,7 +2850,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryNonComponentWise(TOperator op)
         case EOpDeterminant:
         {
             ASSERT(getType().getBasicType() == EbtFloat);
-            unsigned int size = getType().getNominalSize();
+            const uint8_t size = getType().getNominalSize();
             ASSERT(size >= 2 && size <= 4);
             resultArray = new TConstantUnion();
             resultArray->setFConst(GetMatrix(operandArray, size).determinant());
@@ -2559,7 +2860,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryNonComponentWise(TOperator op)
         case EOpInverse:
         {
             ASSERT(getType().getBasicType() == EbtFloat);
-            unsigned int size = getType().getNominalSize();
+            const uint8_t size = getType().getNominalSize();
             ASSERT(size >= 2 && size <= 4);
             resultArray                 = new TConstantUnion[objectSize];
             angle::Matrix<float> result = GetMatrix(operandArray, size).inverse();
@@ -2676,6 +2977,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryNonComponentWise(TOperator op)
 }
 
 TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
+                                                             const TFunction *function,
                                                              TDiagnostics *diagnostics)
 {
     // Do unary operations where each component of the result is computed based on the corresponding
@@ -2802,7 +3104,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
                 // For asin(x), results are undefined if |x| > 1, we are choosing to set result to
                 // 0.
                 if (fabsf(operandArray[i].getFConst()) > 1.0f)
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 else
                     foldFloatTypeUnary(operandArray[i], &asinf, &resultArray[i]);
@@ -2812,7 +3114,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
                 // For acos(x), results are undefined if |x| > 1, we are choosing to set result to
                 // 0.
                 if (fabsf(operandArray[i].getFConst()) > 1.0f)
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 else
                     foldFloatTypeUnary(operandArray[i], &acosf, &resultArray[i]);
@@ -2841,7 +3143,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
             case EOpAcosh:
                 // For acosh(x), results are undefined if x < 1, we are choosing to set result to 0.
                 if (operandArray[i].getFConst() < 1.0f)
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 else
                     foldFloatTypeUnary(operandArray[i], &acoshf, &resultArray[i]);
@@ -2851,7 +3153,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
                 // For atanh(x), results are undefined if |x| >= 1, we are choosing to set result to
                 // 0.
                 if (fabsf(operandArray[i].getFConst()) >= 1.0f)
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 else
                     foldFloatTypeUnary(operandArray[i], &atanhf, &resultArray[i]);
@@ -2943,32 +3245,32 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
 
             case EOpIsnan:
                 ASSERT(getType().getBasicType() == EbtFloat);
-                resultArray[i].setBConst(gl::isNaN(operandArray[0].getFConst()));
+                resultArray[i].setBConst(gl::isNaN(operandArray[i].getFConst()));
                 break;
 
             case EOpIsinf:
                 ASSERT(getType().getBasicType() == EbtFloat);
-                resultArray[i].setBConst(gl::isInf(operandArray[0].getFConst()));
+                resultArray[i].setBConst(gl::isInf(operandArray[i].getFConst()));
                 break;
 
             case EOpFloatBitsToInt:
                 ASSERT(getType().getBasicType() == EbtFloat);
-                resultArray[i].setIConst(gl::bitCast<int32_t>(operandArray[0].getFConst()));
+                resultArray[i].setIConst(gl::bitCast<int32_t>(operandArray[i].getFConst()));
                 break;
 
             case EOpFloatBitsToUint:
                 ASSERT(getType().getBasicType() == EbtFloat);
-                resultArray[i].setUConst(gl::bitCast<uint32_t>(operandArray[0].getFConst()));
+                resultArray[i].setUConst(gl::bitCast<uint32_t>(operandArray[i].getFConst()));
                 break;
 
             case EOpIntBitsToFloat:
                 ASSERT(getType().getBasicType() == EbtInt);
-                resultArray[i].setFConst(gl::bitCast<float>(operandArray[0].getIConst()));
+                resultArray[i].setFConst(gl::bitCast<float>(operandArray[i].getIConst()));
                 break;
 
             case EOpUintBitsToFloat:
                 ASSERT(getType().getBasicType() == EbtUInt);
-                resultArray[i].setFConst(gl::bitCast<float>(operandArray[0].getUConst()));
+                resultArray[i].setFConst(gl::bitCast<float>(operandArray[i].getUConst()));
                 break;
 
             case EOpExp:
@@ -2978,7 +3280,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
             case EOpLog:
                 // For log(x), results are undefined if x <= 0, we are choosing to set result to 0.
                 if (operandArray[i].getFConst() <= 0.0f)
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 else
                     foldFloatTypeUnary(operandArray[i], &logf, &resultArray[i]);
@@ -2993,7 +3295,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
                 // And log2f is not available on some plarforms like old android, so just using
                 // log(x)/log(2) here.
                 if (operandArray[i].getFConst() <= 0.0f)
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 else
                 {
@@ -3005,7 +3307,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
             case EOpSqrt:
                 // For sqrt(x), results are undefined if x < 0, we are choosing to set result to 0.
                 if (operandArray[i].getFConst() < 0.0f)
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 else
                     foldFloatTypeUnary(operandArray[i], &sqrtf, &resultArray[i]);
@@ -3018,7 +3320,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
                 // Also, for inversesqrt(x), results are undefined if x <= 0, we are choosing to set
                 // result to 0.
                 if (operandArray[i].getFConst() <= 0.0f)
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 else
                 {
@@ -3027,7 +3329,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
                 }
                 break;
 
-            case EOpLogicalNotComponentWise:
+            case EOpNotComponentWise:
                 ASSERT(getType().getBasicType() == EbtBool);
                 resultArray[i].setBConst(!operandArray[i].getBConst());
                 break;
@@ -3040,7 +3342,7 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
                 if (length != 0.0f)
                     resultArray[i].setFConst(x / length);
                 else
-                    UndefinedConstantFoldingError(getLine(), op, getType().getBasicType(),
+                    UndefinedConstantFoldingError(getLine(), function, getType().getBasicType(),
                                                   diagnostics, &resultArray[i]);
                 break;
             }
@@ -3120,13 +3422,6 @@ TConstantUnion *TIntermConstantUnion::foldUnaryComponentWise(TOperator op,
                 resultArray[i].setIConst(gl::FindMSB(value));
                 break;
             }
-            case EOpDFdx:
-            case EOpDFdy:
-            case EOpFwidth:
-                ASSERT(getType().getBasicType() == EbtFloat);
-                // Derivatives of constant arguments should be 0.
-                resultArray[i].setFConst(0.0f);
-                break;
 
             default:
                 return nullptr;
@@ -3146,11 +3441,17 @@ void TIntermConstantUnion::foldFloatTypeUnary(const TConstantUnion &parameter,
     result->setFConst(builtinFunc(parameter.getFConst()));
 }
 
+void TIntermConstantUnion::propagatePrecision(TPrecision precision)
+{
+    mType.setPrecision(precision);
+}
+
 // static
 TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *aggregate,
                                                            TDiagnostics *diagnostics)
 {
-    TOperator op               = aggregate->getOp();
+    const TOperator op         = aggregate->getOp();
+    const TFunction *function  = aggregate->getFunction();
     TIntermSequence *arguments = aggregate->getSequence();
     unsigned int argsCount     = static_cast<unsigned int>(arguments->size());
     std::vector<const TConstantUnion *> unionArrays(argsCount);
@@ -3195,7 +3496,8 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                 float x = unionArrays[1][i].getFConst();
                 // Results are undefined if x and y are both 0.
                 if (x == 0.0f && y == 0.0f)
-                    UndefinedConstantFoldingError(loc, op, basicType, diagnostics, &resultArray[i]);
+                    UndefinedConstantFoldingError(loc, function, basicType, diagnostics,
+                                                  &resultArray[i]);
                 else
                     resultArray[i].setFConst(atan2f(y, x));
             }
@@ -3213,9 +3515,11 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                 // Results are undefined if x < 0.
                 // Results are undefined if x = 0 and y <= 0.
                 if (x < 0.0f)
-                    UndefinedConstantFoldingError(loc, op, basicType, diagnostics, &resultArray[i]);
+                    UndefinedConstantFoldingError(loc, function, basicType, diagnostics,
+                                                  &resultArray[i]);
                 else if (x == 0.0f && y <= 0.0f)
-                    UndefinedConstantFoldingError(loc, op, basicType, diagnostics, &resultArray[i]);
+                    UndefinedConstantFoldingError(loc, function, basicType, diagnostics,
+                                                  &resultArray[i]);
                 else
                     resultArray[i].setFConst(powf(x, y));
             }
@@ -3523,14 +3827,14 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
             break;
         }
 
-        case EOpMulMatrixComponentWise:
+        case EOpMatrixCompMult:
         {
             ASSERT(basicType == EbtFloat && (*arguments)[0]->getAsTyped()->isMatrix() &&
                    (*arguments)[1]->getAsTyped()->isMatrix());
             // Perform component-wise matrix multiplication.
             resultArray                 = new TConstantUnion[maxObjectSize];
-            int rows                    = (*arguments)[0]->getAsTyped()->getRows();
-            int cols                    = (*arguments)[0]->getAsTyped()->getCols();
+            const uint8_t rows          = (*arguments)[0]->getAsTyped()->getRows();
+            const uint8_t cols          = (*arguments)[0]->getAsTyped()->getCols();
             angle::Matrix<float> lhs    = GetMatrix(unionArrays[0], rows, cols);
             angle::Matrix<float> rhs    = GetMatrix(unionArrays[1], rows, cols);
             angle::Matrix<float> result = lhs.compMult(rhs);
@@ -3565,7 +3869,7 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                         float max = unionArrays[2][i].getFConst();
                         // Results are undefined if min > max.
                         if (min > max)
-                            UndefinedConstantFoldingError(loc, op, basicType, diagnostics,
+                            UndefinedConstantFoldingError(loc, function, basicType, diagnostics,
                                                           &resultArray[i]);
                         else
                             resultArray[i].setFConst(gl::clamp(x, min, max));
@@ -3579,7 +3883,7 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                         int max = unionArrays[2][i].getIConst();
                         // Results are undefined if min > max.
                         if (min > max)
-                            UndefinedConstantFoldingError(loc, op, basicType, diagnostics,
+                            UndefinedConstantFoldingError(loc, function, basicType, diagnostics,
                                                           &resultArray[i]);
                         else
                             resultArray[i].setIConst(gl::clamp(x, min, max));
@@ -3592,7 +3896,7 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                         unsigned int max = unionArrays[2][i].getUConst();
                         // Results are undefined if min > max.
                         if (min > max)
-                            UndefinedConstantFoldingError(loc, op, basicType, diagnostics,
+                            UndefinedConstantFoldingError(loc, function, basicType, diagnostics,
                                                           &resultArray[i]);
                         else
                             resultArray[i].setUConst(gl::clamp(x, min, max));
@@ -3682,7 +3986,8 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                 // Results are undefined if edge0 >= edge1.
                 if (edge0 >= edge1)
                 {
-                    UndefinedConstantFoldingError(loc, op, basicType, diagnostics, &resultArray[i]);
+                    UndefinedConstantFoldingError(loc, function, basicType, diagnostics,
+                                                  &resultArray[i]);
                 }
                 else
                 {
@@ -3720,7 +4025,8 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                 int exp = unionArrays[1][i].getIConst();
                 if (exp > 128)
                 {
-                    UndefinedConstantFoldingError(loc, op, basicType, diagnostics, &resultArray[i]);
+                    UndefinedConstantFoldingError(loc, function, basicType, diagnostics,
+                                                  &resultArray[i]);
                 }
                 else
                 {
@@ -3795,8 +4101,8 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                 }
                 else if (offset < 0 || bits < 0 || offset >= 32 || bits > 32 || offset + bits > 32)
                 {
-                    UndefinedConstantFoldingError(loc, op, aggregate->getBasicType(), diagnostics,
-                                                  &resultArray[i]);
+                    UndefinedConstantFoldingError(loc, function, aggregate->getBasicType(),
+                                                  diagnostics, &resultArray[i]);
                 }
                 else
                 {
@@ -3849,8 +4155,8 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
                 }
                 else if (offset < 0 || bits < 0 || offset >= 32 || bits > 32 || offset + bits > 32)
                 {
-                    UndefinedConstantFoldingError(loc, op, aggregate->getBasicType(), diagnostics,
-                                                  &resultArray[i]);
+                    UndefinedConstantFoldingError(loc, function, aggregate->getBasicType(),
+                                                  diagnostics, &resultArray[i]);
                 }
                 else
                 {
@@ -3878,6 +4184,17 @@ TConstantUnion *TIntermConstantUnion::FoldAggregateBuiltIn(TIntermAggregate *agg
             }
             break;
         }
+        case EOpDFdx:
+        case EOpDFdy:
+        case EOpFwidth:
+            ASSERT(basicType == EbtFloat);
+            resultArray = new TConstantUnion[maxObjectSize];
+            for (size_t i = 0; i < maxObjectSize; i++)
+            {
+                // Derivatives of constant arguments should be 0.
+                resultArray[i].setFConst(0.0f);
+            }
+            break;
 
         default:
             UNREACHABLE();

@@ -29,7 +29,9 @@
 #if PLATFORM(MAC)
 
 #import "APIHitTestResult.h"
+#import "MessageSenderInlines.h"
 #import "WKNSURLExtras.h"
+#import "WebFrameProxy.h"
 #import "WebPageMessages.h"
 #import "WebPageProxy.h"
 #import "WebPageProxyMessages.h"
@@ -110,7 +112,7 @@
 - (void)_clearImmediateActionState
 {
     if (_page)
-        _page->clearTextIndicator();
+        RefPtr { _page.get() }->clearTextIndicator();
 
     if (_currentActionContext && _hasActivatedActionContext) {
         _hasActivatedActionContext = NO;
@@ -147,7 +149,7 @@
 
 - (void)dismissContentRelativeChildWindows
 {
-    _page->setMaintainsInactiveSelection(false);
+    RefPtr { _page.get() }->setMaintainsInactiveSelection(false);
     [_currentQLPreviewMenuItem close];
 }
 
@@ -163,16 +165,21 @@
     if (immediateActionRecognizer != _immediateActionRecognizer)
         return;
 
-    _viewImpl->prepareForImmediateActionAnimation();
+    {
+        CheckedPtr viewImpl = _viewImpl.get();
+        viewImpl->prepareForImmediateActionAnimation();
+        viewImpl->dismissContentRelativeChildWindowsWithAnimation(true);
+    }
 
-    _viewImpl->dismissContentRelativeChildWindowsWithAnimation(true);
-
-    _page->setMaintainsInactiveSelection(true);
+    RefPtr { _page.get() }->setMaintainsInactiveSelection(true);
 
     _state = WebKit::ImmediateActionState::Pending;
     immediateActionRecognizer.animationController = nil;
 
-    _page->performImmediateActionHitTestAtLocation([immediateActionRecognizer locationInView:immediateActionRecognizer.view]);
+    if (!_page->mainFrame())
+        return;
+
+    RefPtr { _page.get() }->performImmediateActionHitTestAtLocation(_page->mainFrame()->frameID(), [immediateActionRecognizer locationInView:immediateActionRecognizer.view]);
 }
 
 - (void)immediateActionRecognizerWillBeginAnimation:(NSImmediateActionGestureRecognizer *)immediateActionRecognizer
@@ -188,11 +195,10 @@
     // FIXME: We need to be able to cancel this if the gesture recognizer is cancelled.
     // FIXME: Connection can be null if the process is closed; we should clean up better in that case.
     if (_state == WebKit::ImmediateActionState::Pending) {
-        if (auto* connection = _page->process().connection()) {
-            bool receivedReply = connection->waitForAndDispatchImmediately<Messages::WebPageProxy::DidPerformImmediateActionHitTest>(_page->webPageID(), Seconds::fromMilliseconds(500));
-            if (!receivedReply)
-                _state = WebKit::ImmediateActionState::TimedOut;
-        }
+        Ref connection = RefPtr { _page.get() }->legacyMainFrameProcess().connection();
+        bool receivedReply = connection->waitForAndDispatchImmediately<Messages::WebPageProxy::DidPerformImmediateActionHitTest>(RefPtr { _page.get() }->webPageIDInMainFrameProcess(), 500_ms) == IPC::Error::NoError;
+        if (!receivedReply)
+            _state = WebKit::ImmediateActionState::TimedOut;
     }
 
     if (_state != WebKit::ImmediateActionState::Ready) {
@@ -214,11 +220,11 @@
     if (immediateActionRecognizer != _immediateActionRecognizer)
         return;
 
-    _page->immediateActionDidUpdate();
+    RefPtr { _page.get() }->immediateActionDidUpdate();
     if (_contentPreventsDefault)
         return;
 
-    _page->setTextIndicatorAnimationProgress([immediateActionRecognizer animationProgress]);
+    RefPtr { _page.get() }->setTextIndicatorAnimationProgress([immediateActionRecognizer animationProgress]);
 }
 
 - (void)immediateActionRecognizerDidCancelAnimation:(NSImmediateActionGestureRecognizer *)immediateActionRecognizer
@@ -226,13 +232,13 @@
     if (immediateActionRecognizer != _immediateActionRecognizer)
         return;
 
-    _page->immediateActionDidCancel();
+    RefPtr { _page.get() }->immediateActionDidCancel();
 
-    _viewImpl->cancelImmediateActionAnimation();
+    CheckedPtr { _viewImpl.get() }->cancelImmediateActionAnimation();
 
-    _page->setTextIndicatorAnimationProgress(0);
+    RefPtr { _page.get() }->setTextIndicatorAnimationProgress(0);
     [self _clearImmediateActionState];
-    _page->setMaintainsInactiveSelection(false);
+    RefPtr { _page.get() }->setMaintainsInactiveSelection(false);
 }
 
 - (void)immediateActionRecognizerDidCompleteAnimation:(NSImmediateActionGestureRecognizer *)immediateActionRecognizer
@@ -240,20 +246,20 @@
     if (immediateActionRecognizer != _immediateActionRecognizer)
         return;
 
-    _page->immediateActionDidComplete();
+    RefPtr { _page.get() }->immediateActionDidComplete();
 
-    _viewImpl->completeImmediateActionAnimation();
+    CheckedPtr { _viewImpl.get() }->completeImmediateActionAnimation();
 
-    _page->setTextIndicatorAnimationProgress(1);
+    RefPtr { _page.get() }->setTextIndicatorAnimationProgress(1);
 }
 
 - (RefPtr<API::HitTestResult>)_webHitTestResult
 {
     RefPtr<API::HitTestResult> hitTestResult;
     if (_state == WebKit::ImmediateActionState::Ready)
-        hitTestResult = API::HitTestResult::create(_hitTestResultData);
+        hitTestResult = API::HitTestResult::create(_hitTestResultData, _page.get());
     else
-        hitTestResult = _page->lastMouseMoveHitTestResult();
+        hitTestResult = RefPtr { _page.get() }->lastMouseMoveHitTestResult();
 
     return hitTestResult;
 }
@@ -272,17 +278,17 @@
 
     String absoluteLinkURL = hitTestResult->absoluteLinkURL();
     if (!absoluteLinkURL.isEmpty()) {
-        if (WTF::protocolIs(absoluteLinkURL, "file")) {
+        if (WTF::protocolIs(absoluteLinkURL, "file"_s)) {
             _type = kWKImmediateActionNone;
             return nil;
         }
 
-        if (WTF::protocolIs(absoluteLinkURL, "mailto")) {
+        if (WTF::protocolIs(absoluteLinkURL, "mailto"_s)) {
             _type = kWKImmediateActionMailtoLink;
             return [self _animationControllerForDataDetectedLink];
         }
 
-        if (WTF::protocolIs(absoluteLinkURL, "tel")) {
+        if (WTF::protocolIs(absoluteLinkURL, "tel"_s)) {
             _type = kWKImmediateActionTelLink;
             return [self _animationControllerForDataDetectedLink];
         }
@@ -296,7 +302,7 @@
             _currentQLPreviewMenuItem = item;
 
             if (auto textIndicator = _hitTestResultData.linkTextIndicator.get())
-                _page->setTextIndicator(textIndicator->data());
+                RefPtr { _page.get() }->setTextIndicator(textIndicator->data());
 
             return (id<NSImmediateActionAnimationController>)item;
         }
@@ -334,7 +340,7 @@
         return;
     }
 
-    id customClientAnimationController = _page->immediateActionAnimationControllerForHitTestResult(hitTestResult, _type, _userData);
+    id customClientAnimationController = RefPtr { _page.get() }->immediateActionAnimationControllerForHitTestResult(hitTestResult, _type, _userData);
     if (customClientAnimationController == [NSNull null]) {
         [self _cancelImmediateAction];
         return;
@@ -404,7 +410,11 @@
     if (!PAL::isDataDetectorsFrameworkAvailable())
         return nil;
 
-    DDActionContext *actionContext = _hitTestResultData.detectedDataActionContext.get();
+    auto& detectedContext = _hitTestResultData.platformData.detectedDataActionContext;
+    if (!detectedContext)
+        return nil;
+
+    WKDDActionContext *actionContext = detectedContext->context.get();
     if (!actionContext)
         return nil;
 
@@ -414,19 +424,19 @@
         return nil;
 
     RefPtr<WebKit::WebPageProxy> page = _page.get();
-    WebCore::PageOverlay::PageOverlayID overlayID = _hitTestResultData.detectedDataOriginatingPageOverlay;
-    _currentActionContext = [actionContext contextForView:_view altMode:YES interactionStartedHandler:^() {
-        page->send(Messages::WebPage::DataDetectorsDidPresentUI(overlayID));
+    WebCore::PageOverlay::PageOverlayID overlayID = _hitTestResultData.platformData.detectedDataOriginatingPageOverlay;
+    _currentActionContext = (WKDDActionContext *)[actionContext contextForView:_view altMode:YES interactionStartedHandler:^() {
+        page->legacyMainFrameProcess().send(Messages::WebPage::DataDetectorsDidPresentUI(overlayID), page->webPageIDInMainFrameProcess());
     } interactionChangedHandler:^() {
-        if (_hitTestResultData.detectedDataTextIndicator)
-            page->setTextIndicator(_hitTestResultData.detectedDataTextIndicator->data());
-        page->send(Messages::WebPage::DataDetectorsDidChangeUI(overlayID));
+        if (_hitTestResultData.platformData.detectedDataTextIndicator)
+            page->setTextIndicator(_hitTestResultData.platformData.detectedDataTextIndicator->data());
+        page->legacyMainFrameProcess().send(Messages::WebPage::DataDetectorsDidChangeUI(overlayID), page->webPageIDInMainFrameProcess());
     } interactionStoppedHandler:^() {
-        page->send(Messages::WebPage::DataDetectorsDidHideUI(overlayID));
+        page->legacyMainFrameProcess().send(Messages::WebPage::DataDetectorsDidHideUI(overlayID), page->webPageIDInMainFrameProcess());
         [self _clearImmediateActionState];
     }];
 
-    [_currentActionContext setHighlightFrame:[_view.window convertRectToScreen:[_view convertRect:_hitTestResultData.detectedDataBoundingBox toView:nil]]];
+    [_currentActionContext setHighlightFrame:[_view.window convertRectToScreen:[_view convertRect:_hitTestResultData.platformData.detectedDataBoundingBox toView:nil]]];
 
     NSArray *menuItems = [[PAL::getDDActionsManagerClass() sharedManager] menuItemsForResult:[_currentActionContext mainResult] actionContext:_currentActionContext.get()];
 
@@ -441,8 +451,7 @@
     if (!PAL::isDataDetectorsFrameworkAvailable())
         return nil;
 
-    auto actionContext = adoptNS([PAL::allocDDActionContextInstance() init]);
-
+    auto actionContext = adoptNS([PAL::allocWKDDActionContextInstance() init]);
     if (!actionContext)
         return nil;
 
@@ -450,7 +459,7 @@
     [actionContext setImmediate:YES];
 
     RefPtr<WebKit::WebPageProxy> page = _page.get();
-    _currentActionContext = [actionContext contextForView:_view altMode:YES interactionStartedHandler:^() {
+    _currentActionContext = (WKDDActionContext *)[actionContext contextForView:_view altMode:YES interactionStartedHandler:^() {
     } interactionChangedHandler:^() {
         if (_hitTestResultData.linkTextIndicator)
             page->setTextIndicator(_hitTestResultData.linkTextIndicator->data());
@@ -480,15 +489,15 @@
         return nil;
 
     WebCore::DictionaryPopupInfo dictionaryPopupInfo = _hitTestResultData.dictionaryPopupInfo;
-    if (!dictionaryPopupInfo.attributedString)
+    if (!dictionaryPopupInfo.platformData.attributedString.nsAttributedString())
         return nil;
 
-    _viewImpl->prepareForDictionaryLookup();
+    CheckedPtr { _viewImpl.get() }->prepareForDictionaryLookup();
 
     return WebCore::DictionaryLookup::animationControllerForPopup(dictionaryPopupInfo, _view, [self](WebCore::TextIndicator& textIndicator) {
-        _viewImpl->setTextIndicator(textIndicator, WebCore::TextIndicatorLifetime::Permanent);
+        CheckedPtr { _viewImpl.get() }->setTextIndicator(textIndicator, WebCore::TextIndicatorLifetime::Permanent);
     }, nullptr, [self]() {
-        _viewImpl->clearTextIndicatorWithAnimation(WebCore::TextIndicatorDismissalAnimation::None);
+        CheckedPtr { _viewImpl.get() }->clearTextIndicatorWithAnimation(WebCore::TextIndicatorDismissalAnimation::None);
     });
 }
 

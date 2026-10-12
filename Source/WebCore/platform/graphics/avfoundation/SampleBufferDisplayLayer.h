@@ -25,9 +25,10 @@
 
 #pragma once
 
-#include "MediaSample.h"
 #include "PlatformLayer.h"
 #include <wtf/CompletionHandler.h>
+#include <wtf/MachSendRight.h>
+#include <wtf/ThreadSafeWeakPtr.h>
 #include <wtf/WeakPtr.h>
 
 namespace WTF {
@@ -36,23 +37,32 @@ class MediaTime;
 
 namespace WebCore {
 class IntSize;
-class MediaSample;
+class VideoFrame;
 
-class SampleBufferDisplayLayer {
+enum class VideoFrameRotation : uint16_t;
+
+using LayerHostingContextID = uint32_t;
+
+class SampleBufferDisplayLayerClient : public CanMakeWeakPtr<SampleBufferDisplayLayerClient> {
 public:
-    class Client : public CanMakeWeakPtr<Client> {
-    public:
-        virtual ~Client() = default;
-        virtual void sampleBufferDisplayLayerStatusDidFail() = 0;
-    };
+    virtual ~SampleBufferDisplayLayerClient() = default;
+    virtual void sampleBufferDisplayLayerStatusDidFail() = 0;
+    virtual void ref() = 0;
+    virtual void deref() = 0;
+#if PLATFORM(IOS_FAMILY)
+    virtual bool canShowWhileLocked() const = 0;
+#endif
+};
 
-    WEBCORE_EXPORT static std::unique_ptr<SampleBufferDisplayLayer> create(Client&);
-    using LayerCreator = std::unique_ptr<SampleBufferDisplayLayer> (*)(Client&);
+class SampleBufferDisplayLayer : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<SampleBufferDisplayLayer, WTF::DestructionThread::MainRunLoop> {
+public:
+    WEBCORE_EXPORT static RefPtr<SampleBufferDisplayLayer> create(SampleBufferDisplayLayerClient&);
+    using LayerCreator = RefPtr<SampleBufferDisplayLayer> (*)(SampleBufferDisplayLayerClient&);
     WEBCORE_EXPORT static void setCreator(LayerCreator);
 
     virtual ~SampleBufferDisplayLayer() = default;
 
-    virtual void initialize(bool hideRootLayer, IntSize, CompletionHandler<void(bool didSucceed)>&&) = 0;
+    virtual void initialize(bool hideRootLayer, IntSize, bool shouldMaintainAspectRatio, CompletionHandler<void(bool didSucceed)>&&) = 0;
 #if !RELEASE_LOG_DISABLED
     virtual void setLogIdentifier(String&&) = 0;
 #endif
@@ -60,8 +70,7 @@ public:
 
     virtual void updateDisplayMode(bool hideDisplayLayer, bool hideRootLayer) = 0;
 
-    virtual void updateAffineTransform(CGAffineTransform) = 0;
-    virtual void updateBoundsAndPosition(CGRect, MediaSample::VideoRotation) = 0;
+    virtual void updateBoundsAndPosition(CGRect, std::optional<WTF::MachSendRight>&& = std::nullopt) = 0;
 
     virtual void flush() = 0;
     virtual void flushAndRemoveImage() = 0;
@@ -69,26 +78,40 @@ public:
     virtual void play() = 0;
     virtual void pause() = 0;
 
-    virtual void enqueueSample(MediaSample&) = 0;
-    virtual void clearEnqueuedSamples() = 0;
+    virtual void enqueueBlackFrameFrom(const VideoFrame&) { };
+    virtual void enqueueVideoFrame(VideoFrame&) = 0;
+    virtual void clearVideoFrames() = 0;
 
     virtual PlatformLayer* rootLayer() = 0;
+    virtual void setShouldMaintainAspectRatio(bool) = 0;
 
     enum class RenderPolicy { TimingInfo, Immediately };
     virtual void setRenderPolicy(RenderPolicy) { };
 
-protected:
-    explicit SampleBufferDisplayLayer(Client&);
+    virtual LayerHostingContextID hostingContextID() const { return 0; }
 
-    WeakPtr<Client> m_client;
+protected:
+    explicit SampleBufferDisplayLayer(SampleBufferDisplayLayerClient&);
+
+    bool canShowWhileLocked();
+    WeakPtr<SampleBufferDisplayLayerClient> m_client;
 
 private:
     static LayerCreator m_layerCreator;
 };
 
-inline SampleBufferDisplayLayer::SampleBufferDisplayLayer(Client& client)
-    : m_client(makeWeakPtr(client))
+inline SampleBufferDisplayLayer::SampleBufferDisplayLayer(SampleBufferDisplayLayerClient& client)
+    : m_client(client)
 {
+}
+
+inline bool SampleBufferDisplayLayer::canShowWhileLocked()
+{
+#if PLATFORM(IOS_FAMILY)
+    return m_client && m_client->canShowWhileLocked();
+#else
+    return false;
+#endif
 }
 
 }

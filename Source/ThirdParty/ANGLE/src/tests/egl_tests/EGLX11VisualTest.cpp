@@ -11,10 +11,12 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <X11/Xlib.h>
+#include <X11/Xresource.h>
+#include <X11/Xutil.h>
 
 #include "test_utils/ANGLETest.h"
 #include "util/OSWindow.h"
-#include "util/x11/X11Window.h"
+#include "util/linux/x11/X11Window.h"
 
 using namespace angle;
 
@@ -24,7 +26,7 @@ namespace
 const EGLint contextAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
 }
 
-class EGLX11VisualHintTest : public ANGLETest
+class EGLX11VisualHintTest : public ANGLETest<>
 {
   public:
     void testSetUp() override { mDisplay = XOpenDisplay(nullptr); }
@@ -147,6 +149,9 @@ TEST_P(EGLX11VisualHintTest, ValidVisualIDAndClear)
 
         eglDestroyContext(display, context);
         ASSERT_EGL_SUCCESS();
+
+        eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        ASSERT_EGL_SUCCESS();
     }
 
     OSWindow::Delete(&osWindow);
@@ -155,7 +160,7 @@ TEST_P(EGLX11VisualHintTest, ValidVisualIDAndClear)
     eglTerminate(display);
 }
 
-// Test that EGL_BAD_MATCH is generated when trying to create an EGL window from
+// Test that a child window is created when trying to create an EGL window from
 // an X11 window whose visual ID doesn't match the visual ID passed at display creation.
 TEST_P(EGLX11VisualHintTest, InvalidWindowVisualID)
 {
@@ -188,21 +193,31 @@ TEST_P(EGLX11VisualHintTest, InvalidWindowVisualID)
     int otherVisualId = chooseDifferentVisual(visualId);
     ASSERT_NE(visualId, otherVisualId);
 
-    OSWindow *osWindow = new X11Window(otherVisualId);
+    OSWindow *osWindow = CreateX11WindowWithVisualId(otherVisualId);
     osWindow->initialize("EGLX11VisualHintTest", 500, 500);
     setWindowVisible(osWindow, true);
 
     Window xWindow = osWindow->getNativeWindow();
 
-    // Creating the EGL window should fail with EGL_BAD_MATCH
+    // Creating the EGL window should succeed
     int nReturnedConfigs = 0;
     EGLConfig config;
     ASSERT_TRUE(EGL_TRUE == eglGetConfigs(display, &config, 1, &nReturnedConfigs));
     ASSERT_EQ(1, nReturnedConfigs);
 
     EGLSurface window = eglCreateWindowSurface(display, config, xWindow, nullptr);
-    ASSERT_EQ(EGL_NO_SURFACE, window);
-    ASSERT_EGL_ERROR(EGL_BAD_MATCH);
+    ASSERT_TRUE(window);
+    ASSERT_EGL_SUCCESS();
+
+    // When trying to create a window with a visual other than the one specified
+    // with EGL_X11_VISUAL_ID_ANGLE, ANGLE should fallback to using a child window.
+    Window root;
+    Window parent;
+    Window *children;
+    unsigned int nchildren;
+    XQueryTree(mDisplay, xWindow, &root, &parent, &children, &nchildren);
+    EXPECT_EQ(nchildren, 1U);
+    XFree(children);
 
     OSWindow::Delete(&osWindow);
 }

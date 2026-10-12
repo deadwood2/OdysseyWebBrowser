@@ -12,7 +12,7 @@
 
 using namespace angle;
 
-class OcclusionQueriesTest : public ANGLETest
+class OcclusionQueriesTest : public ANGLETest<>
 {
   protected:
     OcclusionQueriesTest() : mProgram(0), mRNG(1)
@@ -57,8 +57,7 @@ TEST_P(OcclusionQueriesTest, IsOccluded)
 
     EXPECT_GL_NO_ERROR();
 
-    GLuint query = 0;
-    glGenQueriesEXT(1, &query);
+    GLQueryEXT query;
     glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
     drawQuad(mProgram, essl1_shaders::PositionAttrib(),
              0.8f);  // this quad should be occluded by first quad
@@ -80,8 +79,6 @@ TEST_P(OcclusionQueriesTest, IsOccluded)
 
     EXPECT_GL_NO_ERROR();
 
-    glDeleteQueriesEXT(1, &query);
-
     EXPECT_GL_FALSE(result);
 }
 
@@ -90,17 +87,12 @@ TEST_P(OcclusionQueriesTest, IsNotOccluded)
     ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
                        !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
 
-    // TODO(syoussefi): Using render pass ops to clear the framebuffer attachment results in
-    // AMD/Windows misbehaving in this test.  http://anglebug.com/3286
-    ANGLE_SKIP_TEST_IF(IsWindows() && IsAMD() && IsVulkan());
-
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     EXPECT_GL_NO_ERROR();
 
-    GLuint query = 0;
-    glGenQueriesEXT(1, &query);
+    GLQueryEXT query;
     glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
     drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.8f);  // this quad should not be occluded
     glEndQueryEXT(GL_ANY_SAMPLES_PASSED_EXT);
@@ -114,8 +106,6 @@ TEST_P(OcclusionQueriesTest, IsNotOccluded)
 
     EXPECT_GL_NO_ERROR();
 
-    glDeleteQueriesEXT(1, &query);
-
     EXPECT_GL_TRUE(result);
 }
 
@@ -125,23 +115,15 @@ TEST_P(OcclusionQueriesTest, ClearNotCounted)
     ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
                        !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
 
-    // TODO(syoussefi): Using render pass ops to clear the framebuffer attachment results in
-    // AMD/Windows misbehaving in this test.  http://anglebug.com/3286
-    ANGLE_SKIP_TEST_IF(IsWindows() && IsAMD() && IsVulkan());
-
-    // http://anglebug.com/4925
+    // http://anglebug.com/42263499
     ANGLE_SKIP_TEST_IF(IsD3D11());
-
-    // http://anglebug.com/5307
-    ANGLE_SKIP_TEST_IF(IsMetal() && IsNVIDIA());
 
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     EXPECT_GL_NO_ERROR();
 
-    GLuint query[2] = {0};
-    glGenQueriesEXT(2, query);
+    GLQueryEXT query[2];
 
     // First query
     glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query[0]);
@@ -192,8 +174,6 @@ TEST_P(OcclusionQueriesTest, ClearNotCounted)
                            &result[1]);  // will block waiting for result
     EXPECT_GL_NO_ERROR();
 
-    glDeleteQueriesEXT(2, query);
-
     EXPECT_GL_FALSE(result[0]);
     EXPECT_GL_TRUE(result[1]);
 }
@@ -204,11 +184,10 @@ TEST_P(OcclusionQueriesTest, MaskedClearNotCounted)
     ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
                        !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
 
-    // http://anglebug.com/4925
+    // http://anglebug.com/42263499
     ANGLE_SKIP_TEST_IF(IsD3D());
 
-    GLuint query = 0;
-    glGenQueriesEXT(1, &query);
+    GLQueryEXT query;
 
     // Masked clear
     glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
@@ -224,8 +203,6 @@ TEST_P(OcclusionQueriesTest, MaskedClearNotCounted)
                            &result);  // will block waiting for result
     EXPECT_GL_NO_ERROR();
 
-    glDeleteQueriesEXT(1, &query);
-
     EXPECT_GL_FALSE(result);
 }
 
@@ -235,14 +212,10 @@ TEST_P(OcclusionQueriesTest, CopyNotCounted)
     ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
                        !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
 
-    // http://anglebug.com/4925
+    // http://anglebug.com/42263499
     ANGLE_SKIP_TEST_IF(IsD3D());
 
-    // http://anglebug.com/5100
-    ANGLE_SKIP_TEST_IF(IsMetal() && IsNVIDIA());
-
-    GLuint query = 0;
-    glGenQueriesEXT(1, &query);
+    GLQueryEXT query;
 
     // Unrelated draw before the query starts.
     drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.8f, 0.5f);
@@ -262,18 +235,16 @@ TEST_P(OcclusionQueriesTest, CopyNotCounted)
                            &result);  // will block waiting for result
     EXPECT_GL_NO_ERROR();
 
-    glDeleteQueriesEXT(1, &query);
-
     EXPECT_GL_FALSE(result);
 }
 
 // Test that blit should not be counted by occlusion query.
 TEST_P(OcclusionQueriesTestES3, BlitNotCounted)
 {
-    // http://anglebug.com/4925
+    // http://anglebug.com/42263499
     ANGLE_SKIP_TEST_IF(IsD3D11());
 
-    // http://anglebug.com/5101
+    // http://anglebug.com/42263669
     ANGLE_SKIP_TEST_IF(IsWindows() && IsAMD() && IsVulkan());
 
     constexpr GLuint kSize = 64;
@@ -294,8 +265,7 @@ TEST_P(OcclusionQueriesTestES3, BlitNotCounted)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, kSize, kSize, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, dstTex, 0);
 
-    GLuint query = 0;
-    glGenQueriesEXT(1, &query);
+    GLQueryEXT query;
 
     // Unrelated draw before the query starts.
     drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.8f, 0.5f);
@@ -313,8 +283,6 @@ TEST_P(OcclusionQueriesTestES3, BlitNotCounted)
                            &result);  // will block waiting for result
     EXPECT_GL_NO_ERROR();
 
-    glDeleteQueriesEXT(1, &query);
-
     EXPECT_GL_FALSE(result);
 }
 
@@ -322,9 +290,6 @@ TEST_P(OcclusionQueriesTestES3, BlitNotCounted)
 TEST_P(OcclusionQueriesTestES3, UnresolveNotCounted)
 {
     ANGLE_SKIP_TEST_IF(!EnsureGLExtensionEnabled("GL_EXT_multisampled_render_to_texture"));
-
-    // http://anglebug.com/5086
-    ANGLE_SKIP_TEST_IF(IsLinux() && IsIntel() && IsVulkan());
 
     constexpr GLuint kSize = 64;
 
@@ -354,8 +319,7 @@ TEST_P(OcclusionQueriesTestES3, UnresolveNotCounted)
     glBindTexture(GL_TEXTURE_2D, texture);
     glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, kSize, kSize, 0);
 
-    GLuint query = 0;
-    glGenQueriesEXT(1, &query);
+    GLQueryEXT query;
 
     // Make a draw call that will fail the depth test, and therefore shouldn't contribute to
     // occlusion query.
@@ -373,9 +337,228 @@ TEST_P(OcclusionQueriesTestES3, UnresolveNotCounted)
                            &result);  // will block waiting for result
     EXPECT_GL_NO_ERROR();
 
-    glDeleteQueriesEXT(1, &query);
+    EXPECT_GL_FALSE(result);
+}
+
+// Test that reusing a query should reset its value to zero if no draw calls are emitted in the
+// second pass.
+TEST_P(OcclusionQueriesTest, RewriteDrawNoDrawToZero)
+{
+    ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
+                       !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
+
+    GLQueryEXT query;
+    glDepthMask(GL_TRUE);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+    // draw a quad at depth 0.3
+    glEnable(GL_DEPTH_TEST);
+    glUseProgram(mProgram);
+    glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
+    drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.3f);
+    glEndQueryEXT(GL_ANY_SAMPLES_PASSED_EXT);
+    glUseProgram(0);
+
+    EXPECT_GL_NO_ERROR();
+
+    glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
+    glEndQueryEXT(GL_ANY_SAMPLES_PASSED_EXT);
+
+    EXPECT_GL_NO_ERROR();
+
+    swapBuffers();
+
+    GLuint ready = GL_FALSE;
+    while (ready == GL_FALSE)
+    {
+        angle::Sleep(0);
+        glGetQueryObjectuivEXT(query, GL_QUERY_RESULT_AVAILABLE_EXT, &ready);
+    }
+
+    GLuint result = GL_TRUE;
+    glGetQueryObjectuivEXT(query, GL_QUERY_RESULT_EXT, &result);
+
+    EXPECT_GL_NO_ERROR();
 
     EXPECT_GL_FALSE(result);
+}
+
+// Test that changing framebuffers work
+TEST_P(OcclusionQueriesTest, FramebufferBindingChange)
+{
+    ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
+                       !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
+
+    constexpr GLsizei kSize = 4;
+
+    // Create two framebuffers, and make sure they are synced.
+    GLFramebuffer fbo[2];
+    GLTexture color[2];
+
+    for (size_t index = 0; index < 2; ++index)
+    {
+        glBindTexture(GL_TEXTURE_2D, color[index]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, kSize, kSize, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                     nullptr);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo[index]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color[index],
+                               0);
+
+        glClearColor(0, index, 1 - index, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        EXPECT_PIXEL_COLOR_EQ(0, 0, index ? GLColor::green : GLColor::blue);
+    }
+    EXPECT_GL_NO_ERROR();
+
+    glViewport(0, 0, kSize, kSize);
+
+    // Start an occlusion query and issue a draw call to each framebuffer.
+    GLQueryEXT query;
+
+    glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
+
+    for (size_t index = 0; index < 2; ++index)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo[index]);
+        drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.5f);
+    }
+
+    glEndQueryEXT(GL_ANY_SAMPLES_PASSED_EXT);
+    EXPECT_GL_NO_ERROR();
+
+    GLuint result = GL_FALSE;
+    glGetQueryObjectuivEXT(query, GL_QUERY_RESULT_EXT, &result);
+    EXPECT_GL_NO_ERROR();
+
+    EXPECT_GL_TRUE(result);
+}
+
+// Test that switching framebuffers without actually drawing, then issuing a masked clear while a
+// query is active works.
+TEST_P(OcclusionQueriesTestES3, SwitchFramebuffersThenMaskedClear)
+{
+    constexpr GLint kSize = 10;
+
+    GLFramebuffer fbo1, fbo2;
+    GLRenderbuffer rbo1, rbo2;
+
+    // Set up two framebuffers
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo1);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8_OES, kSize, kSize);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo1);
+
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo2);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8_OES, kSize, kSize);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo2);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo2);
+
+    // Start render pass on fbo1
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
+    ANGLE_GL_PROGRAM(program, essl1_shaders::vs::Simple(), essl1_shaders::fs::Green());
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0);
+
+    // Begin a query
+    GLQuery query;
+    glBeginQuery(GL_ANY_SAMPLES_PASSED, query);
+
+    // Switch to another render pass and clear.  In the Vulkan backend, this clear is deferred, so
+    // while the framebuffer binding is synced, the previous render pass is not necessarily closed.
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo2);
+    glClear(GL_STENCIL_BUFFER_BIT);
+
+    // Switch back to the original render pass and issue a masked stencil clear.  In the Vulkan
+    // backend, this is done with a draw call.
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo1);
+    glStencilMask(0xAA);
+    glClearStencil(0xF4);
+    glClear(GL_STENCIL_BUFFER_BIT);
+
+    // Verify the clear worked.
+    GLRenderbuffer color;
+    glBindRenderbuffer(GL_RENDERBUFFER, color);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, kSize, kSize);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, color);
+
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, 0xA4, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glStencilMask(0xFF);
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    drawQuad(program, essl1_shaders::PositionAttrib(), 0);
+
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+    ASSERT_GL_NO_ERROR();
+}
+
+// Test that an empty query after a positive query returns false
+TEST_P(OcclusionQueriesTest, EmptyQueryAfterCompletedQuery)
+{
+    ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
+                       !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
+
+    GLQueryEXT query;
+
+    glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
+    drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.5f);
+    glEndQueryEXT(GL_ANY_SAMPLES_PASSED_EXT);
+    ASSERT_GL_NO_ERROR();
+
+    GLuint result = GL_FALSE;
+    glGetQueryObjectuivEXT(query, GL_QUERY_RESULT_EXT, &result);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_TRUE(result);
+
+    glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
+    glEndQueryEXT(GL_ANY_SAMPLES_PASSED_EXT);
+    ASSERT_GL_NO_ERROR();
+
+    result = GL_FALSE;
+    glGetQueryObjectuivEXT(query, GL_QUERY_RESULT_EXT, &result);
+    ASSERT_GL_NO_ERROR();
+    EXPECT_FALSE(result);
+}
+
+// Some Metal drivers do not automatically clear visibility buffer
+// at the beginning of a render pass. This test makes two queries
+// that would use the same internal visibility buffer at the same
+// offset and checks the query results.
+TEST_P(OcclusionQueriesTest, EmptyQueryAfterCompletedQueryInterleaved)
+{
+    ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
+                       !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
+
+    GLQueryEXT query;
+
+    // Make a draw call to start a new render pass
+    drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.0f);
+
+    // Begin a query and make another draw call
+    glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
+    drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.0f);
+    glEndQueryEXT(GL_ANY_SAMPLES_PASSED_EXT);
+
+    // Check the query result to end command encoding
+    GLuint result = GL_FALSE;
+    glGetQueryObjectuivEXT(query, GL_QUERY_RESULT_EXT, &result);
+    EXPECT_TRUE(result);
+    ASSERT_GL_NO_ERROR();
+
+    // Make a draw call to start a new render pass
+    drawQuad(mProgram, essl1_shaders::PositionAttrib(), 0.0f);
+
+    // Begin and immediately resolve a new query; it must return false
+    result = GL_FALSE;
+    glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query);
+    glEndQueryEXT(GL_ANY_SAMPLES_PASSED_EXT);
+    glGetQueryObjectuivEXT(query, GL_QUERY_RESULT_EXT, &result);
+    EXPECT_FALSE(result);
+    ASSERT_GL_NO_ERROR();
 }
 
 // Test multiple occlusion queries.
@@ -384,22 +567,13 @@ TEST_P(OcclusionQueriesTest, MultiQueries)
     ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
                        !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
 
-    // TODO(syoussefi): Using render pass ops to clear the framebuffer attachment results in
-    // AMD/Windows misbehaving in this test.  http://anglebug.com/3286
-    ANGLE_SKIP_TEST_IF(IsWindows() && IsAMD() && IsVulkan());
-
-    // http://anglebug.com/4925
+    // http://anglebug.com/42263499
     ANGLE_SKIP_TEST_IF(IsOpenGL() || IsD3D11());
 
-    // http://anglebug.com/4925
-    ANGLE_SKIP_TEST_IF(IsMetal() && IsNVIDIA());
+    // TODO(anglebug.com/40096747): Failing on ARM-based Apple DTKs.
+    ANGLE_SKIP_TEST_IF(IsMac() && IsARM64() && IsDesktopOpenGL());
 
-    // TODO(crbug.com/1132295): Failing on Apple DTK.
-    ANGLE_SKIP_TEST_IF(IsOSX() && IsARM64() && IsDesktopOpenGL());
-    ANGLE_SKIP_TEST_IF(IsOSX() && IsARM64() && IsMetal());
-
-    GLuint query[5] = {};
-    glGenQueriesEXT(5, query);
+    GLQueryEXT query[5];
 
     // First query
     glBeginQueryEXT(GL_ANY_SAMPLES_PASSED_EXT, query[0]);
@@ -497,8 +671,6 @@ TEST_P(OcclusionQueriesTest, MultiQueries)
                            &result);  // will block waiting for result
     EXPECT_GL_NO_ERROR();
     EXPECT_GL_TRUE(result);
-
-    glDeleteQueriesEXT(5, query);
 }
 
 TEST_P(OcclusionQueriesTest, Errors)
@@ -572,16 +744,13 @@ TEST_P(OcclusionQueriesTest, MultiContext)
     ANGLE_SKIP_TEST_IF(getClientMajorVersion() < 3 &&
                        !IsGLExtensionEnabled("GL_EXT_occlusion_query_boolean"));
 
-    // TODO(cwallez@chromium.org): Suppression for http://anglebug.com/3080
+    // TODO(cwallez@chromium.org): Suppression for http://anglebug.com/42261759
     ANGLE_SKIP_TEST_IF(IsWindows() && IsNVIDIA() && IsVulkan());
 
     // Test skipped because the D3D backends cannot support simultaneous queries on multiple
-    // contexts yet.  Same with the Vulkan backend.
+    // contexts yet.
     ANGLE_SKIP_TEST_IF(GetParam() == ES2_D3D9() || GetParam() == ES2_D3D11() ||
-                       GetParam() == ES3_D3D11() || GetParam() == ES2_VULKAN());
-
-    // http://anglebug.com/4092
-    ANGLE_SKIP_TEST_IF(IsVulkan());
+                       GetParam() == ES3_D3D11());
 
     glDepthMask(GL_TRUE);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -729,7 +898,178 @@ TEST_P(OcclusionQueriesTest, MultiContext)
     }
 }
 
-// Use this to select which configurations (e.g. which renderer, which GLES major version) these
-// tests should be run against.
+class OcclusionQueriesNoSurfaceTestES3 : public ANGLETestBase,
+                                         public ::testing::TestWithParam<angle::PlatformParameters>
+{
+  protected:
+    OcclusionQueriesNoSurfaceTestES3()
+        : ANGLETestBase(GetParam()), mUnusedConfig(0), mUnusedDisplay(nullptr)
+    {
+        setWindowWidth(kWidth);
+        setWindowHeight(kHeight);
+        setConfigRedBits(8);
+        setConfigGreenBits(8);
+        setConfigBlueBits(8);
+        setConfigAlphaBits(8);
+        setDeferContextInit(true);
+    }
+
+    static constexpr int kWidth  = 300;
+    static constexpr int kHeight = 300;
+
+    void SetUp() override { ANGLETestBase::ANGLETestSetUp(); }
+    void TearDown() override { ANGLETestBase::ANGLETestTearDown(); }
+
+    void swapBuffers() override {}
+
+    EGLConfig mUnusedConfig;
+    EGLDisplay mUnusedDisplay;
+};
+
+// This test provked a bug in the Metal backend that only happened
+// when there was no surfaces on the EGLContext and a query had
+// just ended after a draw and then switching to a different
+// context.
+TEST_P(OcclusionQueriesNoSurfaceTestES3, SwitchingContextsWithQuery)
+{
+    EGLWindow *window = getEGLWindow();
+
+    EGLDisplay display = window->getDisplay();
+    EGLConfig config   = window->getConfig();
+
+    EGLint contextAttributes[] = {
+        EGL_CONTEXT_MAJOR_VERSION_KHR,
+        GetParam().majorVersion,
+        EGL_CONTEXT_MINOR_VERSION_KHR,
+        GetParam().minorVersion,
+        EGL_ROBUST_RESOURCE_INITIALIZATION_ANGLE,
+        EGL_TRUE,
+        EGL_NONE,
+    };
+
+    // The following GL objects are implicitly deleted in
+    // ContextInfo's destructor before the EGLContext is manually destroyed
+    struct ContextInfo
+    {
+        EGLContext context;
+        GLBuffer buf;
+        GLProgram program;
+        GLFramebuffer fb;
+        GLTexture tex;
+        GLQuery query;
+    };
+
+    // ContextInfo contains objects that clean themselves on destruction.
+    // We want these objects to stick around until the test ends.
+    std::vector<ContextInfo *> pairs;
+
+    for (size_t i = 0; i < 2; ++i)
+    {
+        ContextInfo *infos[] = {
+            new ContextInfo(),
+            new ContextInfo(),
+        };
+
+        for (ContextInfo *pinfo : infos)
+        {
+            pairs.push_back(pinfo);
+            ContextInfo &info = *pinfo;
+
+            info.context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttributes);
+            ASSERT_NE(info.context, EGL_NO_CONTEXT);
+
+            // Make context current context with no draw and read surface.
+            ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info.context));
+
+            // Create something to draw to.
+            glBindFramebuffer(GL_FRAMEBUFFER, info.fb);
+            glBindTexture(GL_TEXTURE_2D, info.tex);
+            glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 1, 1);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, info.tex,
+                                   0);
+            EXPECT_GL_FRAMEBUFFER_COMPLETE(GL_FRAMEBUFFER);
+
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            EXPECT_GL_NO_ERROR();
+            glFlush();
+        }
+
+        // Setup an shader and quad buffer
+        for (ContextInfo *pinfo : infos)
+        {
+            ContextInfo &info = *pinfo;
+            ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info.context));
+
+            constexpr char kVS[] = R"(
+            attribute vec4 position;
+            void main() {
+              gl_Position = position;
+            }
+          )";
+
+            constexpr char kFS[] = R"(
+          precision mediump float;
+          void main() {
+            gl_FragColor = vec4(1, 0, 0, 1);
+          }
+          )";
+
+            info.program.makeRaster(kVS, kFS);
+            glUseProgram(info.program);
+
+            constexpr float vertices[] = {
+                -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+            };
+            glBindBuffer(GL_ARRAY_BUFFER, info.buf);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+            EXPECT_GL_NO_ERROR();
+        }
+
+        ContextInfo &info1 = *infos[0];
+        ContextInfo &info2 = *infos[1];
+
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info1.context));
+
+        glBeginQuery(GL_ANY_SAMPLES_PASSED_CONSERVATIVE, info1.query);
+        glFlush();
+
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info2.context));
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info1.context));
+
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+        glEndQuery(GL_ANY_SAMPLES_PASSED_CONSERVATIVE);
+        EXPECT_GL_NO_ERROR();
+
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info2.context));
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info1.context));
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info2.context));
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, info1.context));
+    }
+
+    // destroy GL objects on the correct context.
+    for (ContextInfo *pinfo : pairs)
+    {
+        EGLContext context = pinfo->context;
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, nullptr, nullptr, context));
+        EXPECT_GL_NO_ERROR();
+        delete pinfo;
+        ASSERT_EGL_TRUE(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
+        ASSERT_EGL_TRUE(eglDestroyContext(display, context));
+        EXPECT_EGL_SUCCESS();
+    }
+}
+
 ANGLE_INSTANTIATE_TEST_ES2_AND_ES3(OcclusionQueriesTest);
-ANGLE_INSTANTIATE_TEST_ES3(OcclusionQueriesTestES3);
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(OcclusionQueriesTestES3);
+ANGLE_INSTANTIATE_TEST_ES3_AND(
+    OcclusionQueriesTestES3,
+    ES3_VULKAN().enable(Feature::PreferSubmitOnAnySamplesPassedQueryEnd));
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(OcclusionQueriesNoSurfaceTestES3);
+ANGLE_INSTANTIATE_TEST_ES3(OcclusionQueriesNoSurfaceTestES3);

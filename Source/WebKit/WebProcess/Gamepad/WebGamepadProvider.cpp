@@ -30,6 +30,7 @@
 
 #include "GamepadData.h"
 #include "Logging.h"
+#include "MessageSenderInlines.h"
 #include "WebGamepad.h"
 #include "WebProcess.h"
 #include "WebProcessPoolMessages.h"
@@ -38,6 +39,13 @@
 
 namespace WebKit {
 using namespace WebCore;
+
+#define WP_MESSAGE_CHECK(assertion, ...) { \
+    if (UNLIKELY(!(assertion))) { \
+        RELEASE_LOG_FAULT(IPC, "Exiting: %" PUBLIC_LOG_STRING " is false", #assertion); \
+        CRASH_WITH_INFO(__VA_ARGS__); \
+    } \
+}
 
 WebGamepadProvider& WebGamepadProvider::singleton()
 {
@@ -53,17 +61,17 @@ WebGamepadProvider::~WebGamepadProvider()
 {
 }
 
-void WebGamepadProvider::setInitialGamepads(const Vector<GamepadData>& gamepadDatas)
+void WebGamepadProvider::setInitialGamepads(const Vector<std::optional<GamepadData>>& gamepadDatas)
 {
-    ASSERT(m_gamepads.isEmpty());
+    WP_MESSAGE_CHECK((m_gamepads.isEmpty()), m_gamepads.size());
 
     m_gamepads.resize(gamepadDatas.size());
     m_rawGamepads.resize(gamepadDatas.size());
     for (size_t i = 0; i < gamepadDatas.size(); ++i) {
-        if (gamepadDatas[i].isNull())
-            continue;
+        if (!gamepadDatas[i])
+            return;
 
-        m_gamepads[i] = makeUnique<WebGamepad>(gamepadDatas[i]);
+        m_gamepads[i] = makeUnique<WebGamepad>(*gamepadDatas[i]);
         m_rawGamepads[i] = m_gamepads[i].get();
     }
 }
@@ -72,54 +80,54 @@ void WebGamepadProvider::gamepadConnected(const GamepadData& gamepadData, EventM
 {
     LOG(Gamepad, "WebGamepadProvider::gamepadConnected - Gamepad index %u attached (visibility: %i)\n", gamepadData.index(), (int)eventVisibility);
 
+    auto oldGamepadsSize = m_gamepads.size();
     if (m_gamepads.size() <= gamepadData.index()) {
-        m_gamepads.resize(gamepadData.index() + 1);
-        m_rawGamepads.resize(gamepadData.index() + 1);
+        m_gamepads.grow(gamepadData.index() + 1);
+        m_rawGamepads.grow(gamepadData.index() + 1);
     }
-
-    ASSERT(!m_gamepads[gamepadData.index()]);
+    WP_MESSAGE_CHECK((!m_gamepads[gamepadData.index()]), oldGamepadsSize, gamepadData.index(), m_gamepads.size());
 
     m_gamepads[gamepadData.index()] = makeUnique<WebGamepad>(gamepadData);
     m_rawGamepads[gamepadData.index()] = m_gamepads[gamepadData.index()].get();
 
-    for (auto* client : m_clients)
-        client->platformGamepadConnected(*m_gamepads[gamepadData.index()], eventVisibility);
+    for (auto& client : m_clients)
+        client.platformGamepadConnected(*m_gamepads[gamepadData.index()], eventVisibility);
 }
 
 void WebGamepadProvider::gamepadDisconnected(unsigned index)
 {
-    ASSERT(m_gamepads.size() > index);
+    WP_MESSAGE_CHECK((m_gamepads.size() > index), index, m_gamepads.size());
 
     std::unique_ptr<WebGamepad> disconnectedGamepad = WTFMove(m_gamepads[index]);
     m_rawGamepads[index] = nullptr;
 
     LOG(Gamepad, "WebGamepadProvider::gamepadDisconnected - Gamepad index %u detached (m_gamepads size %zu, m_rawGamepads size %zu\n", index, m_gamepads.size(), m_rawGamepads.size());
 
-    for (auto* client : m_clients)
-        client->platformGamepadDisconnected(*disconnectedGamepad);
+    for (auto& client : m_clients)
+        client.platformGamepadDisconnected(*disconnectedGamepad);
 }
 
-void WebGamepadProvider::gamepadActivity(const Vector<GamepadData>& gamepadDatas, EventMakesGamepadsVisible eventVisibility)
+void WebGamepadProvider::gamepadActivity(const Vector<std::optional<GamepadData>>& gamepadDatas, EventMakesGamepadsVisible eventVisibility)
 {
     LOG(Gamepad, "WebGamepadProvider::gamepadActivity - %zu gamepad datas with %zu local web gamepads\n", gamepadDatas.size(), m_gamepads.size());
 
     ASSERT(m_gamepads.size() == gamepadDatas.size());
 
     for (size_t i = 0; i < m_gamepads.size(); ++i) {
-        if (m_gamepads[i])
-            m_gamepads[i]->updateValues(gamepadDatas[i]);
+        if (m_gamepads[i] && gamepadDatas[i])
+            m_gamepads[i]->updateValues(*gamepadDatas[i]);
     }
 
-    for (auto* client : m_clients)
-        client->platformGamepadInputActivity(eventVisibility);
+    for (auto& client : m_clients)
+        client.platformGamepadInputActivity(eventVisibility);
 }
 
 void WebGamepadProvider::startMonitoringGamepads(GamepadProviderClient& client)
 {
-    bool processHadGamepadClients = !m_clients.isEmpty();
+    bool processHadGamepadClients = !m_clients.isEmptyIgnoringNullReferences();
 
-    ASSERT(!m_clients.contains(&client));
-    m_clients.add(&client);
+    ASSERT(!m_clients.contains(client));
+    m_clients.add(client);
 
     if (!processHadGamepadClients)
         WebProcess::singleton().send(Messages::WebProcessPool::StartedUsingGamepads(), 0);
@@ -127,18 +135,30 @@ void WebGamepadProvider::startMonitoringGamepads(GamepadProviderClient& client)
 
 void WebGamepadProvider::stopMonitoringGamepads(GamepadProviderClient& client)
 {
-    bool processHadGamepadClients = !m_clients.isEmpty();
+    ASSERT(m_clients.contains(client));
+    m_clients.remove(client);
+    if (!m_clients.isEmptyIgnoringNullReferences())
+        return;
 
-    ASSERT(m_clients.contains(&client));
-    m_clients.remove(&client);
-
-    if (processHadGamepadClients && m_clients.isEmpty())
-        WebProcess::singleton().send(Messages::WebProcessPool::StoppedUsingGamepads(), 0);
+    WebProcess::singleton().sendWithAsyncReply(Messages::WebProcessPool::StoppedUsingGamepads(), [this] {
+        m_gamepads.clear();
+        m_rawGamepads.clear();
+    });
 }
 
-const Vector<PlatformGamepad*>& WebGamepadProvider::platformGamepads()
+const Vector<WeakPtr<PlatformGamepad>>& WebGamepadProvider::platformGamepads()
 {
     return m_rawGamepads;
+}
+
+void WebGamepadProvider::playEffect(unsigned gamepadIndex, const String& gamepadID, GamepadHapticEffectType type, const GamepadEffectParameters& parameters, CompletionHandler<void(bool)>&& completionHandler)
+{
+    WebProcess::singleton().sendWithAsyncReply(Messages::WebProcessPool::PlayGamepadEffect(gamepadIndex, gamepadID, type, parameters), WTFMove(completionHandler));
+}
+
+void WebGamepadProvider::stopEffects(unsigned gamepadIndex, const String& gamepadID, CompletionHandler<void()>&& completionHandler)
+{
+    WebProcess::singleton().sendWithAsyncReply(Messages::WebProcessPool::StopGamepadEffects(gamepadIndex, gamepadID), WTFMove(completionHandler));
 }
 
 }

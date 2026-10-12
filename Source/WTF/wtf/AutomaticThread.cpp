@@ -38,13 +38,9 @@ Ref<AutomaticThreadCondition> AutomaticThreadCondition::create()
     return adoptRef(*new AutomaticThreadCondition);
 }
 
-AutomaticThreadCondition::AutomaticThreadCondition()
-{
-}
+AutomaticThreadCondition::AutomaticThreadCondition() = default;
 
-AutomaticThreadCondition::~AutomaticThreadCondition()
-{
-}
+AutomaticThreadCondition::~AutomaticThreadCondition() = default;
 
 void AutomaticThreadCondition::notifyOne(const AbstractLocker& locker)
 {
@@ -170,7 +166,7 @@ void AutomaticThread::start(const AbstractLocker&)
     
     Thread::create(
         name(),
-        [=] () {
+        [=, this] () {
             if (verbose)
                 dataLog(RawPointer(this), ": Running automatic thread!\n");
             

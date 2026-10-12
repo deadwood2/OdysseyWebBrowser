@@ -37,7 +37,7 @@ public:
     }
     RenderTreePosition(RenderElement& parent, RenderObject* nextSibling)
         : m_parent(parent)
-        , m_nextSibling(makeWeakPtr(nextSibling))
+        , m_nextSibling(nextSibling)
         , m_hasValidNextSibling(true)
     {
     }
@@ -54,7 +54,7 @@ public:
 
 private:
     RenderElement& m_parent;
-    WeakPtr<RenderObject> m_nextSibling { nullptr };
+    SingleThreadWeakPtr<RenderObject> m_nextSibling;
     bool m_hasValidNextSibling { false };
 #if ASSERT_ENABLED
     unsigned m_assertionLimitCounter { 0 };

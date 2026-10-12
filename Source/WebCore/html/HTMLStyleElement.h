@@ -31,12 +31,13 @@ class HTMLStyleElement;
 class Page;
 class StyleSheet;
 
-template<typename T> class EventSender;
+template<typename T, typename Counter> class EventSender;
 
-using StyleEventSender = EventSender<HTMLStyleElement>;
+using StyleEventSender = EventSender<HTMLStyleElement, WeakPtrImplWithEventTargetData>;
 
 class HTMLStyleElement final : public HTMLElement {
-    WTF_MAKE_ISO_ALLOCATED(HTMLStyleElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(HTMLStyleElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(HTMLStyleElement);
 public:
     static Ref<HTMLStyleElement> create(Document&);
     static Ref<HTMLStyleElement> create(const QualifiedName&, Document&, bool createdByParser);
@@ -47,15 +48,17 @@ public:
     WEBCORE_EXPORT bool disabled() const;
     WEBCORE_EXPORT void setDisabled(bool);
 
-    void dispatchPendingEvent(StyleEventSender*);
+    void dispatchPendingEvent(StyleEventSender*, const AtomString& eventType);
     static void dispatchPendingLoadEvents(Page*);
 
     void finishParsingChildren() final;
 
+    WEBCORE_EXPORT DOMTokenList& blocking();
+
 private:
     HTMLStyleElement(const QualifiedName&, Document&, bool createdByParser);
 
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     InsertedIntoAncestorResult insertedIntoAncestor(InsertionType, ContainerNode&) final;
     void removedFromAncestor(RemovalType, ContainerNode&) final;
     void childrenChanged(const ChildChange&) final;
@@ -68,6 +71,7 @@ private:
     void addSubresourceAttributeURLs(ListHashSet<URL>&) const final;
 
     InlineStyleSheetOwner m_styleSheetOwner;
+    std::unique_ptr<DOMTokenList> m_blockingList;
     bool m_loadedSheet { false };
 };
 

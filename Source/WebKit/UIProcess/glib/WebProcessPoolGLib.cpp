@@ -28,92 +28,150 @@
 #include "config.h"
 #include "WebProcessPool.h"
 
+#include "DRMDevice.h"
 #include "LegacyGlobalSettings.h"
+#include "MemoryPressureMonitor.h"
 #include "WebMemoryPressureHandler.h"
 #include "WebProcessCreationParameters.h"
 #include <WebCore/PlatformDisplay.h>
 #include <wtf/FileSystem.h>
+#include <wtf/NeverDestroyed.h>
+#include <wtf/glib/Application.h>
+#include <wtf/glib/Sandbox.h>
+
+#if ENABLE(REMOTE_INSPECTOR)
+#include <JavaScriptCore/RemoteInspector.h>
+#endif
 
 #if USE(GSTREAMER)
 #include <WebCore/GStreamerCommon.h>
-#endif
-
-#if PLATFORM(WAYLAND)
-#if USE(WPE_RENDERER)
-#include "AcceleratedBackingStoreWayland.h"
-#else
-#include "WaylandCompositor.h"
-#endif
 #endif
 
 #if USE(WPE_RENDERER)
 #include <wpe/wpe.h>
 #endif
 
+#if PLATFORM(GTK) || (PLATFORM(WPE) && ENABLE(WPE_PLATFORM))
+#include "ScreenManager.h"
+#endif
+
+#if PLATFORM(GTK)
+#include "AcceleratedBackingStoreDMABuf.h"
+#include "Display.h"
+#include "GtkSettingsManager.h"
+#endif
+
+#if PLATFORM(WPE) && ENABLE(WPE_PLATFORM)
+#include <wpe/wpe-platform.h>
+#endif
+
+#if !USE(SYSTEM_MALLOC) && OS(LINUX)
+#include <bmalloc/valgrind.h>
+#endif
+
 namespace WebKit {
 
-static bool memoryPressureMonitorDisabled()
+void WebProcessPool::platformInitialize(NeedsGlobalStaticInitialization)
 {
-    static const char* disableMemoryPressureMonitor = getenv("WEBKIT_DISABLE_MEMORY_PRESSURE_MONITOR");
-    return disableMemoryPressureMonitor && !strcmp(disableMemoryPressureMonitor, "1");
-}
-
-void WebProcessPool::platformInitialize()
-{
-#if PLATFORM(GTK)
     m_alwaysUsesComplexTextCodePath = true;
-#endif
+
     if (const char* forceComplexText = getenv("WEBKIT_FORCE_COMPLEX_TEXT"))
         m_alwaysUsesComplexTextCodePath = !strcmp(forceComplexText, "1");
 
-    if (!memoryPressureMonitorDisabled())
+#if !ENABLE(2022_GLIB_API)
+    if (const char* forceSandbox = getenv("WEBKIT_FORCE_SANDBOX")) {
+        if (!strcmp(forceSandbox, "1"))
+            setSandboxEnabled(true);
+        else {
+            static bool once = false;
+            if (!once) {
+                g_warning("WEBKIT_FORCE_SANDBOX no longer allows disabling the sandbox. Use WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 instead.");
+                once = true;
+            }
+        }
+    }
+#endif
+
+#if OS(LINUX)
+    if (!MemoryPressureMonitor::disabled())
         installMemoryPressureHandler();
+#endif
 }
 
 void WebProcessPool::platformInitializeWebProcess(const WebProcessProxy& process, WebProcessCreationParameters& parameters)
 {
-#if PLATFORM(WPE)
-    parameters.isServiceWorkerProcess = process.isRunningServiceWorkers();
+#if PLATFORM(WPE) && ENABLE(WPE_PLATFORM)
+    bool usingWPEPlatformAPI = !!g_type_class_peek(WPE_TYPE_DISPLAY);
+#endif
 
-    if (!parameters.isServiceWorkerProcess) {
-        parameters.hostClientFileDescriptor = wpe_renderer_host_create_client();
-        parameters.implementationLibraryName = FileSystem::fileSystemRepresentation(wpe_loader_get_loaded_implementation_library_name());
+#if USE(GBM)
+    parameters.renderDeviceFile = drmRenderNodeDevice();
+#endif
+
+#if PLATFORM(GTK)
+    parameters.dmaBufRendererBufferMode = AcceleratedBackingStoreDMABuf::rendererBufferMode();
+#elif PLATFORM(WPE) && ENABLE(WPE_PLATFORM)
+    if (usingWPEPlatformAPI) {
+#if USE(GBM)
+        if (!parameters.renderDeviceFile.isEmpty())
+            parameters.dmaBufRendererBufferMode.add(DMABufRendererBufferMode::Hardware);
+#endif
+        parameters.dmaBufRendererBufferMode.add(DMABufRendererBufferMode::SharedMemory);
     }
 #endif
 
-#if PLATFORM(WAYLAND)
-    if (WebCore::PlatformDisplay::sharedDisplay().type() == WebCore::PlatformDisplay::Type::Wayland) {
-#if USE(WPE_RENDERER)
-        wpe_loader_init("libWPEBackend-fdo-1.0.so.1");
-        if (AcceleratedBackingStoreWayland::checkRequirements()) {
-            parameters.hostClientFileDescriptor = wpe_renderer_host_create_client();
-            parameters.implementationLibraryName = FileSystem::fileSystemRepresentation(wpe_loader_get_loaded_implementation_library_name());
-        }
-#elif USE(EGL)
-        parameters.waylandCompositorDisplayName = WaylandCompositor::singleton().displayName();
-#endif
+#if PLATFORM(WPE)
+    parameters.isServiceWorkerProcess = process.isRunningServiceWorkers();
+
+    if (!parameters.isServiceWorkerProcess && parameters.dmaBufRendererBufferMode.isEmpty()) {
+        parameters.hostClientFileDescriptor = UnixFileDescriptor { wpe_renderer_host_create_client(), UnixFileDescriptor::Adopt };
+        parameters.implementationLibraryName = FileSystem::fileSystemRepresentation(String::fromLatin1(wpe_loader_get_loaded_implementation_library_name()));
     }
 #endif
 
     parameters.memoryCacheDisabled = m_memoryCacheDisabled || LegacyGlobalSettings::singleton().cacheModel() == CacheModel::DocumentViewer;
 
-    if (memoryPressureMonitorDisabled())
+#if OS(LINUX)
+    if (MemoryPressureMonitor::disabled())
         parameters.shouldSuppressMemoryPressureHandler = true;
+#endif
 
 #if USE(GSTREAMER)
     parameters.gstreamerOptions = WebCore::extractGStreamerOptionsFromCommandLine();
 #endif
 
-#if PLATFORM(GTK) && !USE(GTK4)
+#if PLATFORM(GTK) && !USE(GTK4) && USE(CAIRO)
     parameters.useSystemAppearanceForScrollbars = m_configuration->useSystemAppearanceForScrollbars();
 #endif
 
     parameters.memoryPressureHandlerConfiguration = m_configuration->memoryPressureHandlerConfiguration();
 
-    GApplication* app = g_application_get_default();
-    if (app)
-        parameters.applicationID = g_application_get_application_id(app);
-    parameters.applicationName = g_get_application_name();
+    parameters.disableFontHintingForTesting = m_configuration->disableFontHintingForTesting();
+
+    parameters.applicationID = String::fromUTF8(WTF::applicationID().span());
+    parameters.applicationName = String::fromLatin1(g_get_application_name());
+
+#if ENABLE(REMOTE_INSPECTOR)
+    parameters.inspectorServerAddress = Inspector::RemoteInspector::inspectorServerAddress();
+#endif
+
+#if USE(ATSPI)
+    static const char* address = getenv("WEBKIT_A11Y_BUS_ADDRESS");
+    if (address)
+        parameters.accessibilityBusAddress = String::fromUTF8(address);
+    else
+        parameters.accessibilityBusAddress = m_sandboxEnabled && shouldUseBubblewrap() ? sandboxedAccessibilityBusAddress() : accessibilityBusAddress();
+#endif
+
+#if PLATFORM(GTK)
+    parameters.gtkSettings = GtkSettingsManager::singleton().settingsState();
+    parameters.screenProperties = ScreenManager::singleton().collectScreenProperties();
+#endif
+
+#if PLATFORM(WPE) && ENABLE(WPE_PLATFORM)
+    if (usingWPEPlatformAPI)
+        parameters.screenProperties = ScreenManager::singleton().collectScreenProperties();
+#endif
 }
 
 void WebProcessPool::platformInvalidateContext()
@@ -123,5 +181,100 @@ void WebProcessPool::platformInvalidateContext()
 void WebProcessPool::platformResolvePathsForSandboxExtensions()
 {
 }
+
+void WebProcessPool::setSandboxEnabled(bool enabled)
+{
+    if (m_sandboxEnabled == enabled)
+        return;
+
+    if (!enabled) {
+#if !ENABLE(2022_GLIB_API)
+        if (const char* forceSandbox = getenv("WEBKIT_FORCE_SANDBOX")) {
+            if (!strcmp(forceSandbox, "1"))
+                return;
+        }
+#endif
+        m_sandboxEnabled = false;
+#if USE(ATSPI)
+        m_sandboxedAccessibilityBusAddress = String();
+#endif
+        return;
+    }
+
+#if !USE(SYSTEM_MALLOC)
+    if (RUNNING_ON_VALGRIND)
+        return;
+#endif
+
+    if (const char* disableSandbox = getenv("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS")) {
+        if (strcmp(disableSandbox, "0"))
+            return;
+    }
+
+    m_sandboxEnabled = true;
+#if USE(ATSPI)
+    if (shouldUseBubblewrap())
+        m_sandboxedAccessibilityBusAddress = makeString("unix:path="_s, FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(sandboxedUserRuntimeDirectory().data()), "at-spi-bus"_s));
+#endif
+}
+
+#if USE(ATSPI)
+static const String& queryAccessibilityBusAddress()
+{
+    static LazyNeverDestroyed<String> address;
+    static std::once_flag onceKey;
+    std::call_once(onceKey, [] {
+        GRefPtr<GDBusConnection> sessionBus = adoptGRef(g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr));
+        if (sessionBus.get()) {
+            GRefPtr<GDBusMessage> message = adoptGRef(g_dbus_message_new_method_call("org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress"));
+            g_dbus_message_set_body(message.get(), g_variant_new("()"));
+            GRefPtr<GDBusMessage> reply = adoptGRef(g_dbus_connection_send_message_with_reply_sync(sessionBus.get(), message.get(),
+                G_DBUS_SEND_MESSAGE_FLAGS_NONE, 30000, nullptr, nullptr, nullptr));
+            if (reply) {
+                GUniqueOutPtr<GError> error;
+                if (g_dbus_message_to_gerror(reply.get(), &error.outPtr())) {
+                    if (!g_error_matches(error.get(), G_DBUS_ERROR, G_DBUS_ERROR_SERVICE_UNKNOWN))
+                        WTFLogAlways("Can't find a11y bus: %s", error->message);
+                } else {
+                    GUniqueOutPtr<char> a11yAddress;
+                    g_variant_get(g_dbus_message_get_body(reply.get()), "(s)", &a11yAddress.outPtr());
+                    address.construct(String::fromUTF8(a11yAddress.get()));
+                    return;
+                }
+            }
+        }
+        address.construct();
+    });
+    return address.get();
+}
+
+const String& WebProcessPool::accessibilityBusAddress() const
+{
+    if (m_accessibilityBusAddress.has_value())
+        return m_accessibilityBusAddress.value();
+
+    const char* addressEnv = getenv("AT_SPI_BUS_ADDRESS");
+    if (addressEnv && *addressEnv) {
+        m_accessibilityBusAddress = String::fromUTF8(addressEnv);
+        return m_accessibilityBusAddress.value();
+    }
+
+#if PLATFORM(GTK)
+    auto address = Display::singleton().accessibilityBusAddress();
+    if (!address.isEmpty()) {
+        m_accessibilityBusAddress = WTFMove(address);
+        return m_accessibilityBusAddress.value();
+    }
+#endif
+
+    m_accessibilityBusAddress = queryAccessibilityBusAddress();
+    return m_accessibilityBusAddress.value();
+}
+
+const String& WebProcessPool::sandboxedAccessibilityBusAddress() const
+{
+    return m_sandboxedAccessibilityBusAddress;
+}
+#endif
 
 } // namespace WebKit

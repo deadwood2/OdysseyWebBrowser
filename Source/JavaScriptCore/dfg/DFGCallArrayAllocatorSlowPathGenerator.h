@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,11 +29,13 @@
 
 #include "DFGSlowPathGenerator.h"
 #include "DFGSpeculativeJIT.h"
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/Vector.h>
 
 namespace JSC { namespace DFG {
 
 class CallArrayAllocatorSlowPathGenerator final : public JumpingSlowPathGenerator<MacroAssembler::JumpList> {
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(CallArrayAllocatorSlowPathGenerator);
 public:
     CallArrayAllocatorSlowPathGenerator(
         MacroAssembler::JumpList from, SpeculativeJIT* jit, P_JITOperation_VmStZB function,
@@ -53,13 +55,8 @@ private:
     void generateInternal(SpeculativeJIT* jit) final
     {
         linkFrom(jit);
-        for (unsigned i = 0; i < m_plans.size(); ++i)
-            jit->silentSpill(m_plans[i]);
-        jit->callOperation(m_function, m_resultGPR, &jit->vm(), m_structure, m_size, m_storageGPR);
-        for (unsigned i = m_plans.size(); i--;)
-            jit->silentFill(m_plans[i]);
-        jit->m_jit.exceptionCheck();
-        jit->m_jit.loadPtr(MacroAssembler::Address(m_resultGPR, JSObject::butterflyOffset()), m_storageGPR);
+        jit->callOperationWithSilentSpill(m_plans.span(), m_function, m_resultGPR, SpeculativeJIT::TrustedImmPtr(&jit->vm()), m_structure, m_size, m_storageGPR);
+        jit->loadPtr(MacroAssembler::Address(m_resultGPR, JSObject::butterflyOffset()), m_storageGPR);
         jumpTo(jit);
     }
 
@@ -72,10 +69,11 @@ private:
 };
 
 class CallArrayAllocatorWithVariableSizeSlowPathGenerator final : public JumpingSlowPathGenerator<MacroAssembler::JumpList> {
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(CallArrayAllocatorWithVariableSizeSlowPathGenerator);
 public:
     CallArrayAllocatorWithVariableSizeSlowPathGenerator(
         MacroAssembler::JumpList from, SpeculativeJIT* jit, P_JITOperation_GStZB function,
-        GPRReg resultGPR, CCallHelpers::TrustedImmPtr globalObject, RegisteredStructure contiguousStructure, RegisteredStructure arrayStorageStructure, GPRReg sizeGPR, GPRReg storageGPR)
+        GPRReg resultGPR, JITCompiler::LinkableConstant globalObject, RegisteredStructure contiguousStructure, RegisteredStructure arrayStorageStructure, GPRReg sizeGPR, GPRReg storageGPR)
         : JumpingSlowPathGenerator<MacroAssembler::JumpList>(from, jit)
         , m_function(function)
         , m_contiguousStructure(contiguousStructure)
@@ -92,22 +90,26 @@ private:
     void generateInternal(SpeculativeJIT* jit) final
     {
         linkFrom(jit);
-        for (unsigned i = 0; i < m_plans.size(); ++i)
-            jit->silentSpill(m_plans[i]);
+        jit->silentSpill(m_plans);
         GPRReg scratchGPR = AssemblyHelpers::selectScratchGPR(m_sizeGPR, m_storageGPR);
         if (m_contiguousStructure.get() != m_arrayStorageOrContiguousStructure.get()) {
-            MacroAssembler::Jump bigLength = jit->m_jit.branch32(MacroAssembler::AboveOrEqual, m_sizeGPR, MacroAssembler::TrustedImm32(MIN_ARRAY_STORAGE_CONSTRUCTION_LENGTH));
-            jit->m_jit.move(SpeculativeJIT::TrustedImmPtr(m_contiguousStructure), scratchGPR);
-            MacroAssembler::Jump done = jit->m_jit.jump();
-            bigLength.link(&jit->m_jit);
-            jit->m_jit.move(SpeculativeJIT::TrustedImmPtr(m_arrayStorageOrContiguousStructure), scratchGPR);
-            done.link(&jit->m_jit);
+            MacroAssembler::Jump bigLength = jit->branch32(MacroAssembler::AboveOrEqual, m_sizeGPR, MacroAssembler::TrustedImm32(MIN_ARRAY_STORAGE_CONSTRUCTION_LENGTH));
+            jit->move(SpeculativeJIT::TrustedImmPtr(m_contiguousStructure), scratchGPR);
+            MacroAssembler::Jump done = jit->jump();
+            bigLength.link(jit);
+            jit->move(SpeculativeJIT::TrustedImmPtr(m_arrayStorageOrContiguousStructure), scratchGPR);
+            done.link(jit);
         } else
-            jit->m_jit.move(SpeculativeJIT::TrustedImmPtr(m_contiguousStructure), scratchGPR);
-        jit->callOperation(m_function, m_resultGPR, m_globalObject, scratchGPR, m_sizeGPR, m_storageGPR);
-        for (unsigned i = m_plans.size(); i--;)
-            jit->silentFill(m_plans[i]);
-        jit->m_jit.exceptionCheck();
+            jit->move(SpeculativeJIT::TrustedImmPtr(m_contiguousStructure), scratchGPR);
+        jit->setupArguments<decltype(m_function)>(m_globalObject, scratchGPR, m_sizeGPR, m_storageGPR);
+        jit->appendCall(m_function);
+        std::optional<GPRReg> exception = jit->tryHandleOrGetExceptionUnderSilentSpill<decltype(m_function)>(m_plans, m_resultGPR);
+        jit->setupResults(m_resultGPR);
+        jit->silentFill(m_plans);
+
+        if (exception)
+            jit->exceptionCheck(*exception);
+
         jumpTo(jit);
     }
 
@@ -115,17 +117,18 @@ private:
     RegisteredStructure m_contiguousStructure;
     RegisteredStructure m_arrayStorageOrContiguousStructure;
     GPRReg m_resultGPR;
-    CCallHelpers::TrustedImmPtr m_globalObject;
+    JITCompiler::LinkableConstant m_globalObject;
     GPRReg m_sizeGPR;
     GPRReg m_storageGPR;
     Vector<SilentRegisterSavePlan, 2> m_plans;
 };
 
 class CallArrayAllocatorWithVariableStructureVariableSizeSlowPathGenerator final : public JumpingSlowPathGenerator<MacroAssembler::JumpList> {
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(CallArrayAllocatorWithVariableStructureVariableSizeSlowPathGenerator);
 public:
     CallArrayAllocatorWithVariableStructureVariableSizeSlowPathGenerator(
         MacroAssembler::JumpList from, SpeculativeJIT* jit, P_JITOperation_GStZB function,
-        GPRReg resultGPR, CCallHelpers::TrustedImmPtr globalObject, GPRReg structureGPR, GPRReg sizeGPR, GPRReg storageGPR)
+        GPRReg resultGPR, JITCompiler::LinkableConstant globalObject, GPRReg structureGPR, GPRReg sizeGPR, GPRReg storageGPR)
         : JumpingSlowPathGenerator<MacroAssembler::JumpList>(from, jit)
         , m_function(function)
         , m_resultGPR(resultGPR)
@@ -141,18 +144,13 @@ private:
     void generateInternal(SpeculativeJIT* jit) final
     {
         linkFrom(jit);
-        for (unsigned i = 0; i < m_plans.size(); ++i)
-            jit->silentSpill(m_plans[i]);
-        jit->callOperation(m_function, m_resultGPR, m_globalObject, m_structureGPR, m_sizeGPR, m_storageGPR);
-        for (unsigned i = m_plans.size(); i--;)
-            jit->silentFill(m_plans[i]);
-        jit->m_jit.exceptionCheck();
+        jit->callOperationWithSilentSpill(m_plans, m_function, m_resultGPR, m_globalObject, m_structureGPR, m_sizeGPR, m_storageGPR);
         jumpTo(jit);
     }
 
     P_JITOperation_GStZB m_function;
     GPRReg m_resultGPR;
-    CCallHelpers::TrustedImmPtr m_globalObject;
+    JITCompiler::LinkableConstant m_globalObject;
     GPRReg m_structureGPR;
     GPRReg m_sizeGPR;
     GPRReg m_storageGPR;

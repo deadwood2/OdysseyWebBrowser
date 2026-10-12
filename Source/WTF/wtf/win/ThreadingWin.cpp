@@ -98,8 +98,6 @@
 
 namespace WTF {
 
-static Lock globalSuspendLock;
-
 Thread::~Thread()
 {
     // It is OK because FLSAlloc's callback will be called even before there are some open handles.
@@ -126,10 +124,6 @@ typedef struct tagTHREADNAME_INFO {
 
 void Thread::initializeCurrentThreadInternal(const char* szThreadName)
 {
-#if COMPILER(MINGW)
-    // FIXME: Implement thread name setting with MingW.
-    UNUSED_PARAM(szThreadName);
-#else
     THREADNAME_INFO info;
     info.dwType = 0x1000;
     info.szName = Thread::normalizeThreadName(szThreadName);
@@ -139,7 +133,7 @@ void Thread::initializeCurrentThreadInternal(const char* szThreadName)
     __try {
         RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(ULONG_PTR), reinterpret_cast<ULONG_PTR*>(&info));
     } __except(EXCEPTION_CONTINUE_EXECUTION) { }
-#endif
+
     initializeCurrentThreadEvenIfNonWTFCreated();
 }
 
@@ -153,7 +147,7 @@ static unsigned __stdcall wtfThreadEntryPoint(void* data)
     return 0;
 }
 
-bool Thread::establishHandle(NewThreadContext* data, std::optional<size_t> stackSize, QOS)
+bool Thread::establishHandle(NewThreadContext* data, std::optional<size_t> stackSize, QOS, SchedulingPolicy)
 {
     unsigned threadIdentifier = 0;
     unsigned initFlag = stackSize ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0;
@@ -211,10 +205,9 @@ void Thread::detach()
         didBecomeDetached();
 }
 
-auto Thread::suspend() -> Expected<void, PlatformSuspendError>
+auto Thread::suspend(const ThreadSuspendLocker&) -> Expected<void, PlatformSuspendError>
 {
     RELEASE_ASSERT_WITH_MESSAGE(this != &Thread::current(), "We do not support suspending the current thread itself.");
-    Locker locker { globalSuspendLock };
     DWORD result = SuspendThread(m_handle);
     if (result != (DWORD)-1)
         return { };
@@ -222,15 +215,13 @@ auto Thread::suspend() -> Expected<void, PlatformSuspendError>
 }
 
 // During resume, suspend or resume should not be executed from the other threads.
-void Thread::resume()
+void Thread::resume(const ThreadSuspendLocker&)
 {
-    Locker locker { globalSuspendLock };
     ResumeThread(m_handle);
 }
 
-size_t Thread::getRegisters(PlatformRegisters& registers)
+size_t Thread::getRegisters(const ThreadSuspendLocker&, PlatformRegisters& registers)
 {
-    Locker locker { globalSuspendLock };
     registers.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
     GetThreadContext(m_handle, &registers);
     return sizeof(CONTEXT);
@@ -275,6 +266,7 @@ struct Thread::ThreadHolder {
         if (isMainThread())
             return;
         if (thread) {
+            thread->m_clientData = nullptr;
             thread->specificStorage().destroySlots();
             thread->didExit();
         }
@@ -333,9 +325,7 @@ void Thread::SpecificStorage::destroySlots()
     }
 }
 
-Mutex::~Mutex()
-{
-}
+Mutex::~Mutex() = default;
 
 void Mutex::lock()
 {
@@ -355,6 +345,12 @@ void Mutex::unlock()
 // Returns an interval in milliseconds suitable for passing to one of the Win32 wait functions (e.g., ::WaitForSingleObject).
 static DWORD absoluteTimeToWaitTimeoutInterval(WallTime absoluteTime)
 {
+    if (absoluteTime.isInfinity()) {
+        if (absoluteTime == -WallTime::infinity())
+            return 0;
+        return INFINITE;
+    }
+
     WallTime currentTime = WallTime::now();
 
     // Time is in the past - return immediately.
@@ -368,9 +364,7 @@ static DWORD absoluteTimeToWaitTimeoutInterval(WallTime absoluteTime)
     return static_cast<DWORD>((absoluteTime - currentTime).milliseconds());
 }
 
-ThreadCondition::~ThreadCondition()
-{
-}
+ThreadCondition::~ThreadCondition() = default;
 
 void ThreadCondition::wait(Mutex& mutex)
 {

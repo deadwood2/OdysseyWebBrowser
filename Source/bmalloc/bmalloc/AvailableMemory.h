@@ -32,7 +32,7 @@ namespace bmalloc {
 
 BEXPORT size_t availableMemory();
 
-#if BPLATFORM(IOS_FAMILY) || BOS(LINUX) || BOS(FREEBSD) || BOS(MORPHOS)
+#if BPLATFORM(IOS_FAMILY) || BOS(LINUX) || BOS(FREEBSD)
 struct MemoryStatus {
     MemoryStatus(size_t memoryFootprint, double percentAvailableMemoryInUse)
         : memoryFootprint(memoryFootprint)
@@ -44,7 +44,7 @@ struct MemoryStatus {
     double percentAvailableMemoryInUse;
 };
 
-MemoryStatus memoryStatus();
+BEXPORT MemoryStatus memoryStatus();
 
 inline size_t memoryFootprint()
 {
@@ -61,7 +61,7 @@ inline double percentAvailableMemoryInUse()
 
 inline bool isUnderMemoryPressure()
 {
-#if BPLATFORM(IOS_FAMILY) || BOS(LINUX) || BOS(FREEBSD) || BOS(MORPHOS)
+#if BPLATFORM(IOS_FAMILY) || BOS(LINUX) || BOS(FREEBSD)
     return percentAvailableMemoryInUse() > memoryPressureThreshold;
 #else
     return false;

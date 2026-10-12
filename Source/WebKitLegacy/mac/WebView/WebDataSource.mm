@@ -49,7 +49,6 @@
 #import "WebResourceLoadDelegate.h"
 #import "WebViewInternal.h"
 #import <JavaScriptCore/InitializeThreading.h>
-#import <WebCore/ApplicationCacheStorage.h>
 #import <WebCore/FrameLoader.h>
 #import <WebCore/LegacyWebArchive.h>
 #import <WebCore/MIMETypeRegistry.h>
@@ -208,7 +207,7 @@ void addTypesFromClass(NSMutableDictionary *allTypes, Class objCClass, NSArray *
 #if PLATFORM(IOS_FAMILY)
 - (void)_setOverrideTextEncodingName:(NSString *)encoding
 {
-    toPrivate(_private)->loader->setOverrideEncoding([encoding UTF8String]);
+    toPrivate(_private)->loader->setOverrideEncoding(encoding);
 }
 #endif
 
@@ -270,7 +269,7 @@ void addTypesFromClass(NSMutableDictionary *allTypes, Class objCClass, NSArray *
 
 + (NSMutableDictionary *)_repTypesAllowImageTypeOmission:(BOOL)allowImageTypeOmission
 {
-    static auto repTypes = makeNeverDestroyed([] {
+    static NeverDestroyed repTypes = [] {
         auto types = adoptNS([[NSMutableDictionary alloc] init]);
         addTypesFromClass(types.get(), [WebHTMLRepresentation class], [WebHTMLRepresentation supportedNonImageMIMETypes]);
         addTypesFromClass(types.get(), [WebHTMLRepresentation class], [WebHTMLRepresentation supportedMediaMIMETypes]);
@@ -287,7 +286,7 @@ void addTypesFromClass(NSMutableDictionary *allTypes, Class objCClass, NSArray *
 #endif
         }
         return types;
-    }());
+    }();
     static BOOL addedImageTypes = NO;
     if (!addedImageTypes && !allowImageTypeOmission) {
         addTypesFromClass(repTypes.get().get(), [WebHTMLRepresentation class], [WebHTMLRepresentation supportedImageMIMETypes]);
@@ -372,11 +371,11 @@ void addTypesFromClass(NSMutableDictionary *allTypes, Class objCClass, NSArray *
 
 - (void)_makeRepresentation
 {
-    Class repClass = [[self class] _representationClassForMIMEType:[self _responseMIMEType] allowingPlugins:[[[self _webView] preferences] arePlugInsEnabled]];
+    Class repClass = [[self class] _representationClassForMIMEType:[self _responseMIMEType] allowingPlugins:NO];
 
 #if PLATFORM(IOS_FAMILY)
     if ([repClass respondsToSelector:@selector(_representationClassForWebFrame:)])
-        repClass = [repClass performSelector:@selector(_representationClassForWebFrame:) withObject:[self webFrame]];
+        repClass = [repClass _representationClassForWebFrame:[self webFrame]];
 #endif
 
     // Check if the data source was already bound?
@@ -460,10 +459,10 @@ void addTypesFromClass(NSMutableDictionary *allTypes, Class objCClass, NSArray *
 
 - (NSData *)data
 {
-    RefPtr<WebCore::SharedBuffer> mainResourceData = toPrivate(_private)->loader->mainResourceData();
+    RefPtr<WebCore::FragmentedSharedBuffer> mainResourceData = toPrivate(_private)->loader->mainResourceData();
     if (!mainResourceData)
         return nil;
-    return mainResourceData->createNSData().autorelease();
+    return mainResourceData->makeContiguous()->createNSData().autorelease();
 }
 
 - (id <WebDocumentRepresentation>)representation
@@ -545,8 +544,8 @@ void addTypesFromClass(NSMutableDictionary *allTypes, Class objCClass, NSArray *
 
 - (NSArray *)subresources
 {
-    return createNSArray(toPrivate(_private)->loader->subresources(), [] (auto& resource) {
-        return adoptNS([[WebResource alloc] _initWithCoreResource:resource.copyRef()]);
+    return createNSArray(toPrivate(_private)->loader->subresources(), [] (auto&& resource) {
+        return adoptNS([[WebResource alloc] _initWithCoreResource:WTFMove(resource)]);
     }).autorelease();
 }
 

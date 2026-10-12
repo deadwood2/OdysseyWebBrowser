@@ -536,9 +536,9 @@ public:
         m_uriChangedSignalID = g_dbus_connection_signal_subscribe(
             g_dbus_proxy_get_connection(m_proxy.get()),
             0,
-            "org.webkit.gtk.WebExtensionTest",
+            "org.webkit.gtk.WebProcessExtensionTest",
             "URIChanged",
-            "/org/webkit/gtk/WebExtensionTest",
+            "/org/webkit/gtk/WebProcessExtensionTest",
             0,
             G_DBUS_SIGNAL_FLAGS_NONE,
             reinterpret_cast<GDBusSignalCallback>(webPageURIChangedCallback),
@@ -680,18 +680,6 @@ static void testURIResponseHTTPHeaders(WebViewTest* test, gconstpointer)
     SoupMessageHeaders* headers = webkit_uri_response_get_http_headers(response);
     g_assert_nonnull(headers);
     g_assert_cmpstr(soup_message_headers_get_one(headers, "Foo"), ==, "bar");
-}
-
-static void testRedirectToDataURI(WebViewTest* test, gconstpointer)
-{
-    test->loadURI(kServer->getURIForPath("/redirect-to-data").data());
-    test->waitUntilLoadFinished();
-
-    static const char* expectedData = "data-uri";
-    size_t mainResourceDataSize = 0;
-    const char* mainResourceData = test->mainResourceData(mainResourceDataSize);
-    g_assert_cmpint(mainResourceDataSize, ==, strlen(expectedData));
-    g_assert_cmpint(strncmp(mainResourceData, expectedData, mainResourceDataSize), ==, 0);
 }
 
 static HashMap<CString, CString> s_userAgentMap;
@@ -840,6 +828,8 @@ void beforeAll()
     kServer = new WebKitTestServer();
     kServer->run(serverCallback);
 
+    Test::shouldInitializeWebProcessExtensions = true;
+
     LoadTrackingTest::add("WebKitWebView", "loading-status", testLoadingStatus);
     LoadTrackingTest::add("WebKitWebView", "loading-error", testLoadingError);
     LoadTrackingTest::add("WebKitWebView", "load-html", testLoadHtml);
@@ -866,7 +856,6 @@ void beforeAll()
     WebViewTest::add("WebKitURIRequest", "http-headers", testURIRequestHTTPHeaders);
     WebViewTest::add("WebKitURIRequest", "http-method", testURIRequestHTTPMethod);
     WebViewTest::add("WebKitURIResponse", "http-headers", testURIResponseHTTPHeaders);
-    WebViewTest::add("WebKitWebPage", "redirect-to-data-uri", testRedirectToDataURI);
     WebViewTest::add("WebKitWebView", "user-agent", testUserAgent);
 }
 

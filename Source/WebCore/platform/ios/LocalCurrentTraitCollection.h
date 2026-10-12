@@ -44,31 +44,11 @@ public:
     WEBCORE_EXPORT LocalCurrentTraitCollection(UITraitCollection *);
     WEBCORE_EXPORT ~LocalCurrentTraitCollection();
 
-    bool usingDarkAppearance() const
-    {
-#if HAVE(OS_DARK_MODE_SUPPORT)
-        return m_usingDarkAppearance;
-#else
-        return false;
-#endif
-    }
-
-    bool usingElevatedUserInterfaceLevel() const
-    {
-#if HAVE(OS_DARK_MODE_SUPPORT)
-        return m_usingElevatedUserInterfaceLevel;
-#else
-        return false;
-#endif
-    }
-
 private:
-#if HAVE(OS_DARK_MODE_SUPPORT)
     RetainPtr<UITraitCollection> m_savedTraitCollection;
-    bool m_usingDarkAppearance { false };
-    bool m_usingElevatedUserInterfaceLevel { false };
-#endif
 };
+
+WEBCORE_EXPORT UITraitCollection *traitCollectionWithAdjustedIdiomForSystemColors(UITraitCollection *);
 
 }
 

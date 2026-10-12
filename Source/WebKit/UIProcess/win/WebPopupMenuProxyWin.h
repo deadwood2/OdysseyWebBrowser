@@ -32,25 +32,27 @@
 #include <OleAcc.h>
 #include <WebCore/ScrollableArea.h>
 #include <WebCore/Scrollbar.h>
-
-#if USE(DIRECT2D)
-interface ID3D11Device1;
-interface ID3D11DeviceContext1;
-interface ID3D11RenderTargetView;
-interface IDXGISwapChain;
-#endif
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
 class WebView;
 
-class WebPopupMenuProxyWin : public WebPopupMenuProxy, private WebCore::ScrollableArea {
+class WebPopupMenuProxyWin final : public CanMakeCheckedPtr<WebPopupMenuProxyWin>, public WebPopupMenuProxy, private WebCore::ScrollableArea {
+    WTF_MAKE_TZONE_ALLOCATED(WebPopupMenuProxyWin);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(WebPopupMenuProxyWin);
 public:
     static Ref<WebPopupMenuProxyWin> create(WebView* webView, WebPopupMenuProxy::Client& client)
     {
         return adoptRef(*new WebPopupMenuProxyWin(webView, client));
     }
     ~WebPopupMenuProxyWin();
+
+    // CheckedPtr interface
+    uint32_t ptrCount() const final { return CanMakeCheckedPtr::ptrCount(); }
+    uint32_t ptrCountWithoutThreadCheck() const final { return CanMakeCheckedPtr::ptrCountWithoutThreadCheck(); }
+    void incrementPtrCount() const final { CanMakeCheckedPtr::incrementPtrCount(); }
+    void decrementPtrCount() const final { CanMakeCheckedPtr::decrementPtrCount(); }
 
     void showPopupMenu(const WebCore::IntRect&, WebCore::TextDirection, double pageScaleFactor, const Vector<WebPopupItem>&, const PlatformPopupMenuData&, int32_t selectedIndex) override;
     void hidePopupMenu() override;
@@ -63,8 +65,6 @@ public:
 
 private:
     WebPopupMenuProxyWin(WebView*, WebPopupMenuProxy::Client&);
-
-    WebCore::Scrollbar* scrollbar() const { return m_scrollbar.get(); }
 
     // ScrollableArea
     WebCore::ScrollPosition scrollPosition() const override;
@@ -80,7 +80,7 @@ private:
     WebCore::IntSize visibleSize() const override;
     WebCore::IntSize contentsSize() const override;
     WebCore::IntRect scrollableAreaBoundingBox(bool* = nullptr) const override;
-    bool shouldPlaceVerticalScrollbarOnLeft() const override { return false; }
+    bool shouldPlaceVerticalScrollbarOnLeft() const override;
     bool forceUpdateScrollbarsOnMainThreadForPerformanceTesting() const override { return false; }
     bool isScrollableOrRubberbandable() override { return true; }
     bool hasScrollableOrRubberbandableAncestor() override { return true; }
@@ -131,29 +131,19 @@ private:
     void incrementWheelDelta(int delta);
     void reduceWheelDelta(int delta);
 
-#if USE(DIRECT2D)
-    void setupSwapChain(const WebCore::IntSize&);
-    void configureBackingStore(const WebCore::IntSize&);
-#endif
-
     WebView* m_webView;
     Vector<WebPopupItem> m_items;
     PlatformPopupMenuData m_data;
     int m_newSelectedIndex { 0 };
 
     RefPtr<WebCore::Scrollbar> m_scrollbar;
-#if USE(DIRECT2D)
-    COMPtr<ID3D11Device1> m_d3dDevice;
-    COMPtr<ID3D11DeviceContext1> m_immediateContext;
-    COMPtr<ID3D11RenderTargetView> m_renderTargetView; 
-    COMPtr<IDXGISwapChain> m_swapChain;
-#endif
     GDIObject<HDC> m_DC;
     GDIObject<HBITMAP> m_bmp;
     HWND m_popup { nullptr };
     WebCore::IntRect m_windowRect;
+    WebCore::IntSize m_clientSize;
 
-    int m_itemHeight { 0 };
+    float m_itemHeight { 0 };
     int m_scrollOffset { 0 };
     int m_wheelDelta { 0 };
     int m_focusedIndex { 0 };

@@ -28,8 +28,9 @@
 #include "Color.h"
 #include "FilterOperation.h"
 #include "FloatPoint3D.h"
+#include "GraphicsLayerClient.h"
+#include "PlatformCAFilters.h"
 #include "TransformationMatrix.h"
-#include <wtf/EnumTraits.h>
 #include <wtf/Forward.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/RefCounted.h>
@@ -40,11 +41,40 @@ namespace WebCore {
 class FloatRect;
 class TimingFunction;
 
+enum class PlatformCAAnimationType : uint8_t {
+    Basic,
+    Group,
+    Keyframe,
+    Spring
+};
+
+enum class PlatformCAAnimationFillModeType : uint8_t {
+    NoFillMode,
+    Forwards,
+    Backwards,
+    Both
+};
+
+enum class PlatformCAAnimationValueFunctionType : uint8_t {
+    NoValueFunction,
+    RotateX,
+    RotateY,
+    RotateZ,
+    ScaleX,
+    ScaleY,
+    ScaleZ,
+    Scale,
+    TranslateX,
+    TranslateY,
+    TranslateZ,
+    Translate
+};
+
 class PlatformCAAnimation : public RefCounted<PlatformCAAnimation> {
 public:
-    enum AnimationType { Basic, Group, Keyframe, Spring };
-    enum FillModeType { NoFillMode, Forwards, Backwards, Both };
-    enum ValueFunctionType { NoValueFunction, RotateX, RotateY, RotateZ, ScaleX, ScaleY, ScaleZ, Scale, TranslateX, TranslateY, TranslateZ, Translate };
+    using AnimationType = PlatformCAAnimationType;
+    using FillModeType = PlatformCAAnimationFillModeType;
+    using ValueFunctionType = PlatformCAAnimationValueFunctionType;
 
     virtual ~PlatformCAAnimation() = default;
 
@@ -95,14 +125,14 @@ public:
     virtual void setFromValue(const WebCore::TransformationMatrix&) = 0;
     virtual void setFromValue(const FloatPoint3D&) = 0;
     virtual void setFromValue(const WebCore::Color&) = 0;
-    virtual void setFromValue(const FilterOperation*, int internalFilterPropertyIndex) = 0;
+    virtual void setFromValue(const FilterOperation&) = 0;
     virtual void copyFromValueFrom(const PlatformCAAnimation&) = 0;
 
     virtual void setToValue(float) = 0;
     virtual void setToValue(const WebCore::TransformationMatrix&) = 0;
     virtual void setToValue(const FloatPoint3D&) = 0;
     virtual void setToValue(const WebCore::Color&) = 0;
-    virtual void setToValue(const FilterOperation*, int internalFilterPropertyIndex) = 0;
+    virtual void setToValue(const FilterOperation&) = 0;
     virtual void copyToValueFrom(const PlatformCAAnimation&) = 0;
 
     // Keyframe-animation properties.
@@ -110,13 +140,13 @@ public:
     virtual void setValues(const Vector<WebCore::TransformationMatrix>&) = 0;
     virtual void setValues(const Vector<FloatPoint3D>&) = 0;
     virtual void setValues(const Vector<WebCore::Color>&) = 0;
-    virtual void setValues(const Vector<RefPtr<FilterOperation>>&, int internalFilterPropertyIndex) = 0;
+    virtual void setValues(const Vector<Ref<FilterOperation>>&) = 0;
     virtual void copyValuesFrom(const PlatformCAAnimation&) = 0;
 
     virtual void setKeyTimes(const Vector<float>&) = 0;
     virtual void copyKeyTimesFrom(const PlatformCAAnimation&) = 0;
 
-    virtual void setTimingFunctions(const Vector<const TimingFunction*>&, bool reverse = false) = 0;
+    virtual void setTimingFunctions(const Vector<Ref<const TimingFunction>>&, bool reverse) = 0;
     virtual void copyTimingFunctionsFrom(const PlatformCAAnimation&) = 0;
 
     // Animation group properties.
@@ -131,8 +161,12 @@ public:
 
     bool isBasicAnimation() const;
 
+    WEBCORE_EXPORT static String makeGroupKeyPath();
+    WEBCORE_EXPORT static String makeKeyPath(AnimatedProperty, FilterOperation::Type = FilterOperation::Type::None, int = 0);
+    WEBCORE_EXPORT static bool isValidKeyPath(const String&, AnimationType = AnimationType::Basic);
+
 protected:
-    PlatformCAAnimation(AnimationType type = Basic)
+    PlatformCAAnimation(AnimationType type = AnimationType::Basic)
         : m_type(type)
     {
     }
@@ -153,45 +187,3 @@ WEBCORE_EXPORT WTF::TextStream& operator<<(WTF::TextStream&, PlatformCAAnimation
 SPECIALIZE_TYPE_TRAITS_BEGIN(ToValueTypeName) \
     static bool isType(const WebCore::PlatformCAAnimation& animation) { return animation.predicate; } \
 SPECIALIZE_TYPE_TRAITS_END()
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::PlatformCAAnimation::AnimationType> {
-    using values = EnumValues<
-        WebCore::PlatformCAAnimation::AnimationType,
-        WebCore::PlatformCAAnimation::AnimationType::Basic,
-        WebCore::PlatformCAAnimation::AnimationType::Group,
-        WebCore::PlatformCAAnimation::AnimationType::Keyframe,
-        WebCore::PlatformCAAnimation::AnimationType::Spring
-    >;
-};
-
-template<> struct EnumTraits<WebCore::PlatformCAAnimation::FillModeType> {
-    using values = EnumValues<
-        WebCore::PlatformCAAnimation::FillModeType,
-        WebCore::PlatformCAAnimation::FillModeType::NoFillMode,
-        WebCore::PlatformCAAnimation::FillModeType::Forwards,
-        WebCore::PlatformCAAnimation::FillModeType::Backwards,
-        WebCore::PlatformCAAnimation::FillModeType::Both
-    >;
-};
-
-template<> struct EnumTraits<WebCore::PlatformCAAnimation::ValueFunctionType> {
-    using values = EnumValues<
-        WebCore::PlatformCAAnimation::ValueFunctionType,
-        WebCore::PlatformCAAnimation::ValueFunctionType::NoValueFunction,
-        WebCore::PlatformCAAnimation::ValueFunctionType::RotateX,
-        WebCore::PlatformCAAnimation::ValueFunctionType::RotateY,
-        WebCore::PlatformCAAnimation::ValueFunctionType::RotateZ,
-        WebCore::PlatformCAAnimation::ValueFunctionType::ScaleX,
-        WebCore::PlatformCAAnimation::ValueFunctionType::ScaleY,
-        WebCore::PlatformCAAnimation::ValueFunctionType::ScaleZ,
-        WebCore::PlatformCAAnimation::ValueFunctionType::Scale,
-        WebCore::PlatformCAAnimation::ValueFunctionType::TranslateX,
-        WebCore::PlatformCAAnimation::ValueFunctionType::TranslateY,
-        WebCore::PlatformCAAnimation::ValueFunctionType::TranslateZ,
-        WebCore::PlatformCAAnimation::ValueFunctionType::Translate
-    >;
-};
-
-} // namespace WTF

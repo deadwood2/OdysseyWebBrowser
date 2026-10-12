@@ -1,241 +1,1170 @@
-diff --git a/.gitignore b/.gitignore
-index 6d9040a..c8c9b6c 100644
---- a/.gitignore
-+++ b/.gitignore
-@@ -58,7 +58,6 @@
- /third_party/vulkan-tools/src
- /third_party/vulkan-validation-layers/src
- /third_party/vulkan_memory_allocator
--/third_party/zlib
- /tools/clang
- /tools/flex-bison/linux/bison
- /tools/flex-bison/linux/flex
-diff --git a/src/common/gl/cgl/FunctionsCGL.cpp b/src/common/gl/cgl/FunctionsCGL.cpp
-index b57f42b..3e5a37a 100644
---- a/src/common/gl/cgl/FunctionsCGL.cpp
-+++ b/src/common/gl/cgl/FunctionsCGL.cpp
-@@ -35,6 +35,7 @@ SOFT_LINK_FUNCTION_SOURCE(OpenGL, CGLDestroyContext, CGLError, (CGLContextObj ct
- SOFT_LINK_FUNCTION_SOURCE(OpenGL, CGLDestroyPixelFormat, CGLError, (CGLPixelFormatObj pix), (pix))
- SOFT_LINK_FUNCTION_SOURCE(OpenGL, CGLErrorString, const char *, (CGLError error), (error))
- SOFT_LINK_FUNCTION_SOURCE(OpenGL, CGLReleaseContext, void, (CGLContextObj ctx), (ctx))
-+SOFT_LINK_FUNCTION_SOURCE(OpenGL, CGLGetCurrentContext, CGLContextObj, (void), ())
- SOFT_LINK_FUNCTION_SOURCE(OpenGL, CGLSetCurrentContext, CGLError, (CGLContextObj ctx), (ctx))
- SOFT_LINK_FUNCTION_SOURCE(OpenGL,
-                           CGLSetVirtualScreen,
-diff --git a/src/common/gl/cgl/FunctionsCGL.h b/src/common/gl/cgl/FunctionsCGL.h
-index 9112659..39df6fe 100644
---- a/src/common/gl/cgl/FunctionsCGL.h
-+++ b/src/common/gl/cgl/FunctionsCGL.h
-@@ -57,6 +57,7 @@ SOFT_LINK_FUNCTION_HEADER(OpenGL,
-                           (GLuint display_mask, CGLRendererInfoObj *rend, GLint *nrend),
-                           (display_mask, rend, nrend))
- SOFT_LINK_FUNCTION_HEADER(OpenGL, CGLReleaseContext, void, (CGLContextObj ctx), (ctx))
-+SOFT_LINK_FUNCTION_HEADER(OpenGL, CGLGetCurrentContext, CGLContextObj, (void), ())
- SOFT_LINK_FUNCTION_HEADER(OpenGL, CGLSetCurrentContext, CGLError, (CGLContextObj ctx), (ctx))
- SOFT_LINK_FUNCTION_HEADER(OpenGL,
-                           CGLSetVirtualScreen,
+diff --git a/doc/ExtensionSupport.md b/doc/ExtensionSupport.md
+index bb7e1359c7a48a1cd1001515eb046e5c33e922d7..dff8988c34fa21b0ebf378392ff3297e4cbf8467 100644
+--- a/doc/ExtensionSupport.md
++++ b/doc/ExtensionSupport.md
+@@ -221,6 +221,7 @@ using data from registry_xml.py and gl.xml.
+ | [GL_CHROMIUM_copy_compressed_texture](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/CHROMIUM_copy_compressed_texture.txt) | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+ | [GL_CHROMIUM_copy_texture](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/CHROMIUM_copy_texture.txt) | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+ | [GL_ANGLE_copy_texture_3d](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_copy_texture_3d.txt) | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
++| [GL_WEBKIT_explicit_resolve_target](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/WEBKIT_explicit_resolve_target.txt) |  |  |  |  |  |  |  |
+ | [GL_CHROMIUM_framebuffer_mixed_samples](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/CHROMIUM_framebuffer_mixed_samples.txt) |  |  |  |  |  |  |  |
+ | [GL_ANGLE_framebuffer_multisample](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_framebuffer_multisample.txt) | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+ | [GL_ANGLE_get_image](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_get_image.txt) | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+@@ -258,6 +259,7 @@ using data from registry_xml.py and gl.xml.
+ | [GL_ANGLE_texture_external_update](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_texture_external_update.txt) |  |  |  |  |  |  |  |
+ | [GL_ANGLE_texture_multisample](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_texture_multisample.txt) | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+ | [GL_ANGLE_texture_rectangle](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_texture_rectangle.txt) |  |  |  |  |  |  |  |
++| [GL_ANGLE_variable_rasterization_rate_metal](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_variable_rasterization_rate_metal.txt) |  |  |  |  |  |  |  |
+ | [GL_ANGLE_vulkan_image](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_vulkan_image.txt) | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+ | [GL_ANGLE_webgl_compatibility](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_webgl_compatibility.txt) |  |  |  |  |  |  |  |
+ | [GL_ANGLE_yuv_internal_format](https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/ANGLE_yuv_internal_format.txt) | &#x2714; |  | &#x2714; | &#x2714; | &#x2714; | &#x2714; | &#x2714; |
+diff --git a/include/GLES2/gl2ext_angle.h b/include/GLES2/gl2ext_angle.h
+index 7952b50a5b8637eaf53d7d9611225a12c80cdcdd..24f072e9eddcb3c7ce480a4f83558d4a24e1740d 100644
+--- a/include/GLES2/gl2ext_angle.h
++++ b/include/GLES2/gl2ext_angle.h
+@@ -736,4 +736,23 @@ GL_APICALL void GL_APIENTRY glLogicOpANGLE (GLenum);
+ #define GL_PROGRAM_BINARY_READY_ANGLE    0x96BE
+ #endif /* GL_ANGLE_program_binary_readiness_query */
+ 
++#ifndef GL_WEBKIT_explicit_resolve_target
++typedef void (GL_APIENTRYP PFNGLFRAMEBUFFERRESOLVERENDERBUFFERWEBKITPROC) (GLenum, GLenum, GLenum, GLuint);
++#ifdef GL_GLEXT_PROTOTYPES
++GL_APICALL void GL_APIENTRY glFramebufferResolveRenderbufferWEBKIT(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
++#endif
++#endif /* GL_WEBKIT_explicit_resolve_target */
++
++#ifndef GL_ANGLE_variable_rasterization_rate_metal
++#define GL_ANGLE_variable_rasterization_rate_metal 1
++
++#define GL_VARIABLE_RASTERIZATION_RATE_ANGLE            0x96BC
++#define GL_METAL_RASTERIZATION_RATE_MAP_BINDING_ANGLE   0x96BD
++typedef void *GLMTLRasterizationRateMapANGLE;
++typedef void (GL_APIENTRYP PFNGLBINDMETALRASTERIZATIONRATEMAPANGLEPROC) (GLuint, GLMTLRasterizationRateMapANGLE);
++#ifdef GL_GLEXT_PROTOTYPES
++GL_APICALL void GL_APIENTRY glBindMetalRasterizationRateMapANGLE(GLuint framebuffer, GLMTLRasterizationRateMapANGLE map);
++#endif
++#endif /* GL_ANGLE_variable_rasterization_rate_metal */
++
+ #endif  // INCLUDE_GLES2_GL2EXT_ANGLE_H_
+diff --git a/include/platform/autogen/FeaturesMtl_autogen.h b/include/platform/autogen/FeaturesMtl_autogen.h
+index 0ad7a6b901fac51d4d91d09a83247cda2fa0b932..d79889bcfa9ad58b608ae07cb85845ca885c136f 100644
+--- a/include/platform/autogen/FeaturesMtl_autogen.h
++++ b/include/platform/autogen/FeaturesMtl_autogen.h
+@@ -83,6 +83,13 @@ struct FeaturesMtl : FeatureSetBase
+         &members,
+     };
+ 
++    FeatureInfo hasVariableRasterizationRate = {
++        "hasVariableRasterizationRate",
++        FeatureCategory::MetalFeatures,
++        "The renderer supports variable rasterization rate",
++        &members,
++    };
++
+     FeatureInfo allowInlineConstVertexData = {
+         "allowInlineConstVertexData",
+         FeatureCategory::MetalFeatures,
+diff --git a/include/platform/mtl_features.json b/include/platform/mtl_features.json
+index 4b78291c54fb916dd9cd7f7b0cf396c93b8522ad..2c33cbabf896877cb301acae5889e405f751dd27 100644
+--- a/include/platform/mtl_features.json
++++ b/include/platform/mtl_features.json
+@@ -70,6 +70,13 @@
+                 "The renderer supports MTL(Shared)Event"
+             ]
+         },
++        {
++            "name": "has_variable_rasterization_rate",
++            "category": "Features",
++            "description": [
++                "The renderer supports variable rasterization rate"
++            ]
++        },
+         {
+             "name": "allow_inline_const_vertex_data",
+             "category": "Features",
+diff --git a/scripts/code_generation_hashes/Metal_format_table.json b/scripts/code_generation_hashes/Metal_format_table.json
+index 64e0142942418f2379418169ea4562c02858b325..3ca95db4ccbb52c88673de803f7202b1282fe27e 100644
+--- a/scripts/code_generation_hashes/Metal_format_table.json
++++ b/scripts/code_generation_hashes/Metal_format_table.json
+@@ -4,9 +4,9 @@
+   "src/libANGLE/renderer/angle_format_map.json":
+     "eab6744df71f7bf6bfe9e8bb39949b79",
+   "src/libANGLE/renderer/metal/gen_mtl_format_table.py":
+-    "3416880a331afddfc5c4501b1c86ba2b",
++    "28f3065f5d1bc65803b1218b706430ae",
+   "src/libANGLE/renderer/metal/mtl_format_map.json":
+-    "07506d99e0599e7ec31894a65047fcd4",
++    "9e7c865511a1af00a0bae54d9feb6a4f",
+   "src/libANGLE/renderer/metal/mtl_format_table_autogen.mm":
+-    "2503fdbbc2cfd795ddefdcb8cc48f17a"
++    "f2772d80ebe9287365e4ecb12c2b8afe"
+ }
+diff --git a/scripts/entry_point_packed_gl_enums.json b/scripts/entry_point_packed_gl_enums.json
+index b258660ba4367032e592ab8d6397ee5edca0a661..fe961d3125259b015d3d005a6d45443ede3131bc 100644
+--- a/scripts/entry_point_packed_gl_enums.json
++++ b/scripts/entry_point_packed_gl_enums.json
+@@ -440,6 +440,9 @@
+     "glFramebufferFoveationParameters": {
+         "framebuffer": "FramebufferID"
+     },
++    "glFramebufferResolveRenderbufferWEBKIT": {
++        "renderbuffer": "RenderbufferID"
++    },
+     "glFramebufferRenderbuffer": {
+         "renderbuffer": "RenderbufferID"
+     },
+diff --git a/scripts/generate_entry_points.py b/scripts/generate_entry_points.py
+index a4dd512e5e4b864018737215e13d622deda4bbd8..79853e9acef6f523356a226432f77065467f4982 100755
+--- a/scripts/generate_entry_points.py
++++ b/scripts/generate_entry_points.py
+@@ -1010,6 +1010,7 @@ FORMAT_DICT = {
+     "GLfloat": "%f",
+     "GLint": "%d",
+     "GLintptr": UNSIGNED_LONG_LONG_FORMAT,
++    "GLMTLRasterizationRateMapANGLE": POINTER_FORMAT,
+     "GLshort": "%d",
+     "GLsizei": "%d",
+     "GLsizeiptr": UNSIGNED_LONG_LONG_FORMAT,
+diff --git a/scripts/gl_angle_ext.xml b/scripts/gl_angle_ext.xml
+index 466387f2a92f2bda5884e6cde7910678690fe58d..6bd47c33dee536bdefad6aa8ca602ec41577089b 100644
+--- a/scripts/gl_angle_ext.xml
++++ b/scripts/gl_angle_ext.xml
+@@ -9,6 +9,11 @@
+         Includes data used to auto-generate ANGLE classes.
+     </comment>
+ 
++    <!-- SECTION: GL type definitions. -->
++    <types>
++        <type>typedef void *<name>GLMTLRasterizationRateMapANGLE</name>;</type>
++    </types>
++
+     <!-- SECTION: GL parameter class type definitions. -->
+     <groups>
+         <group name="CreateFlagMask">
+@@ -1048,6 +1053,18 @@
+             <param group="LogicOp"><ptype>GLenum</ptype> <name>opcode</name></param>
+             <alias name="glLogicOp"/>
+         </command>
++        <command>
++            <proto>void <name>glBindMetalRasterizationRateMapANGLE</name></proto>
++            <param><ptype>GLuint</ptype> <name>framebuffer</name></param>
++            <param><ptype>GLMTLRasterizationRateMapANGLE</ptype> <name>map</name></param>
++        </command>
++        <command>
++            <proto>void <name>glFramebufferResolveRenderbufferWEBKIT</name></proto>
++            <param><ptype>GLenum</ptype> <name>target</name></param>
++            <param><ptype>GLenum</ptype> <name>attachment</name></param>
++            <param><ptype>GLenum</ptype> <name>renderbuffertarget</name></param>
++            <param><ptype>GLuint</ptype> <name>renderbuffer</name></param>
++        </command>
+     </commands>
+ 
+     <!-- SECTION: ANGLE extension interface definitions -->
+@@ -1449,6 +1466,16 @@
+         <extension name="GL_ANGLE_shader_binary" supported='gles2'>
+             <require>
+                 <enum name="GL_SHADER_BINARY_ANGLE"/>
++        <extension name="GL_ANGLE_variable_rasterization_rate_metal" supported="gles2">
++            <require>
++                <enum name="GL_VARIABLE_RASTERIZATION_RATE_ANGLE"/>
++                <enum name="GL_METAL_RASTERIZATION_RATE_MAP_BINDING_ANGLE"/>
++                <command name="glBindMetalRasterizationRateMapANGLE"/>
++            </require>
++        </extension>
++        <extension name="GL_WEBKIT_explicit_resolve_target" supported='gles2'>
++            <require>
++                <command name="glFramebufferResolveRenderbufferWEBKIT"/>
+             </require>
+         </extension>
+     </extensions>
+@@ -1630,4 +1657,9 @@
+     <enums namespace="GL" start="0x0BF2" end="0x0BF2" vendor="ANGLE">
+         <enum value="0x0BF2" name="GL_COLOR_LOGIC_OP_ANGLE"/>
+     </enums>
++
++    <enums namespace="GL" start="0x96BC" end="0x96BD" vendor="ANGLE">
++        <enum value="0x96BC" name="GL_VARIABLE_RASTERIZATION_RATE_ANGLE"/>
++        <enum value="0x96BD" name="GL_METAL_RASTERIZATION_RATE_MAP_BINDING_ANGLE"/>
++    </enums>
+ </registry>
+diff --git a/scripts/registry_xml.py b/scripts/registry_xml.py
+index 4e428eac9e30e27598fcd2c3bf9d1b0a3a7fc6d0..438bf3b75cd41f83920f2227338443c2cdc2aba2 100644
+--- a/scripts/registry_xml.py
++++ b/scripts/registry_xml.py
+@@ -73,12 +73,14 @@ angle_requestable_extensions = [
+     "GL_ANGLE_texture_compression_dxt5",
+     "GL_ANGLE_texture_external_update",
+     "GL_ANGLE_texture_multisample",
++    "GL_ANGLE_variable_rasterization_rate_metal",
+     "GL_ANGLE_vulkan_image",
+     "GL_ANGLE_yuv_internal_format",
+     "GL_CHROMIUM_color_buffer_float_rgb",
+     "GL_CHROMIUM_color_buffer_float_rgba",
+     "GL_CHROMIUM_lose_context",
+     "GL_CHROMIUM_sync_query",
++    "GL_WEBKIT_explicit_resolve_target",
+ ]
+ 
+ gles_requestable_extensions = [
+diff --git a/src/common/entry_points_enum_autogen.cpp b/src/common/entry_points_enum_autogen.cpp
+index 8266c3561d4af4f06a2dab192500026802ab5e9c..7e3f74ef36e2faa66caaf55a32ef936019a1e689 100644
+--- a/src/common/entry_points_enum_autogen.cpp
++++ b/src/common/entry_points_enum_autogen.cpp
+@@ -540,6 +540,8 @@ const char *GetEntryPointName(EntryPoint ep)
+             return "glBindImageTexture";
+         case EntryPoint::GLBindImageTextures:
+             return "glBindImageTextures";
++        case EntryPoint::GLBindMetalRasterizationRateMapANGLE:
++            return "glBindMetalRasterizationRateMapANGLE";
+         case EntryPoint::GLBindProgramPipeline:
+             return "glBindProgramPipeline";
+         case EntryPoint::GLBindProgramPipelineEXT:
+@@ -1216,6 +1218,8 @@ const char *GetEntryPointName(EntryPoint ep)
+             return "glFramebufferRenderbuffer";
+         case EntryPoint::GLFramebufferRenderbufferOES:
+             return "glFramebufferRenderbufferOES";
++        case EntryPoint::GLFramebufferResolveRenderbufferWEBKIT:
++            return "glFramebufferResolveRenderbufferWEBKIT";
+         case EntryPoint::GLFramebufferTexture:
+             return "glFramebufferTexture";
+         case EntryPoint::GLFramebufferTexture1D:
+diff --git a/src/common/entry_points_enum_autogen.h b/src/common/entry_points_enum_autogen.h
+index e45604ba4ee4eb8ebffbd506dc34c71f635f3618..b7dc04efab8abb5bcd354aada4229d4487b21c88 100644
+--- a/src/common/entry_points_enum_autogen.h
++++ b/src/common/entry_points_enum_autogen.h
+@@ -276,6 +276,7 @@ enum class EntryPoint
+     GLBindFramebufferOES,
+     GLBindImageTexture,
+     GLBindImageTextures,
++    GLBindMetalRasterizationRateMapANGLE,
+     GLBindProgramPipeline,
+     GLBindProgramPipelineEXT,
+     GLBindRenderbuffer,
+@@ -614,6 +615,7 @@ enum class EntryPoint
+     GLFramebufferPixelLocalStorageRestoreANGLE,
+     GLFramebufferRenderbuffer,
+     GLFramebufferRenderbufferOES,
++    GLFramebufferResolveRenderbufferWEBKIT,
+     GLFramebufferTexture,
+     GLFramebufferTexture1D,
+     GLFramebufferTexture2D,
+diff --git a/src/common/frame_capture_utils_autogen.cpp b/src/common/frame_capture_utils_autogen.cpp
+index f356982285bc9bed6469571d6c2f0ef9ea7cc940..9f601fc824eae7e78da8e8f9b3fe6576b0d7e76c 100644
+--- a/src/common/frame_capture_utils_autogen.cpp
++++ b/src/common/frame_capture_utils_autogen.cpp
+@@ -222,6 +222,10 @@ void WriteParamCaptureReplay(std::ostream &os, const CallCapture &call, const Pa
+             WriteParamValueReplay<ParamType::TGLDEBUGPROCKHR>(os, call,
+                                                               param.value.GLDEBUGPROCKHRVal);
+             break;
++        case ParamType::TGLMTLRasterizationRateMapANGLE:
++            WriteParamValueReplay<ParamType::TGLMTLRasterizationRateMapANGLE>(
++                os, call, param.value.GLMTLRasterizationRateMapANGLEVal);
++            break;
+         case ParamType::TGLbitfield:
+             WriteParamValueReplay<ParamType::TGLbitfield>(os, call, param.value.GLbitfieldVal);
+             break;
+@@ -768,6 +772,8 @@ const char *ParamTypeToString(ParamType paramType)
+             return "GLDEBUGPROC";
+         case ParamType::TGLDEBUGPROCKHR:
+             return "GLDEBUGPROCKHR";
++        case ParamType::TGLMTLRasterizationRateMapANGLE:
++            return "GLMTLRasterizationRateMapANGLE";
+         case ParamType::TGLbitfield:
+             return "GLbitfield";
+         case ParamType::TGLboolean:
+diff --git a/src/common/frame_capture_utils_autogen.h b/src/common/frame_capture_utils_autogen.h
+index e68affb0e0773ce2c83439ca9c188066cc225d34..88a18830e8037a5cf2c23d60b94f2910c6edf136 100644
+--- a/src/common/frame_capture_utils_autogen.h
++++ b/src/common/frame_capture_utils_autogen.h
+@@ -74,6 +74,7 @@ enum class ParamType
+     TFramebufferIDPointer,
+     TGLDEBUGPROC,
+     TGLDEBUGPROCKHR,
++    TGLMTLRasterizationRateMapANGLE,
+     TGLbitfield,
+     TGLboolean,
+     TGLbooleanConstPointer,
+@@ -191,7 +192,7 @@ enum class ParamType
+     TvoidPointerPointer,
+ };
+ 
+-constexpr uint32_t kParamTypeCount = 172;
++constexpr uint32_t kParamTypeCount = 173;
+ 
+ union ParamValue
+ {
+@@ -252,6 +253,7 @@ union ParamValue
+     gl::FramebufferID *FramebufferIDPointerVal;
+     GLDEBUGPROC GLDEBUGPROCVal;
+     GLDEBUGPROCKHR GLDEBUGPROCKHRVal;
++    GLMTLRasterizationRateMapANGLE GLMTLRasterizationRateMapANGLEVal;
+     GLbitfield GLbitfieldVal;
+     GLboolean GLbooleanVal;
+     const GLboolean *GLbooleanConstPointerVal;
+@@ -745,6 +747,14 @@ inline GLDEBUGPROCKHR GetParamVal<ParamType::TGLDEBUGPROCKHR, GLDEBUGPROCKHR>(
+     return value.GLDEBUGPROCKHRVal;
+ }
+ 
++template <>
++inline GLMTLRasterizationRateMapANGLE
++GetParamVal<ParamType::TGLMTLRasterizationRateMapANGLE, GLMTLRasterizationRateMapANGLE>(
++    const ParamValue &value)
++{
++    return value.GLMTLRasterizationRateMapANGLEVal;
++}
++
+ template <>
+ inline GLbitfield GetParamVal<ParamType::TGLbitfield, GLbitfield>(const ParamValue &value)
+ {
+@@ -1629,6 +1639,8 @@ T AccessParamValue(ParamType paramType, const ParamValue &value)
+             return GetParamVal<ParamType::TGLDEBUGPROC, T>(value);
+         case ParamType::TGLDEBUGPROCKHR:
+             return GetParamVal<ParamType::TGLDEBUGPROCKHR, T>(value);
++        case ParamType::TGLMTLRasterizationRateMapANGLE:
++            return GetParamVal<ParamType::TGLMTLRasterizationRateMapANGLE, T>(value);
+         case ParamType::TGLbitfield:
+             return GetParamVal<ParamType::TGLbitfield, T>(value);
+         case ParamType::TGLboolean:
+@@ -2227,6 +2239,14 @@ inline void SetParamVal<ParamType::TGLDEBUGPROCKHR>(GLDEBUGPROCKHR valueIn, Para
+     valueOut->GLDEBUGPROCKHRVal = valueIn;
+ }
+ 
++template <>
++inline void SetParamVal<ParamType::TGLMTLRasterizationRateMapANGLE>(
++    GLMTLRasterizationRateMapANGLE valueIn,
++    ParamValue *valueOut)
++{
++    valueOut->GLMTLRasterizationRateMapANGLEVal = valueIn;
++}
++
+ template <>
+ inline void SetParamVal<ParamType::TGLbitfield>(GLbitfield valueIn, ParamValue *valueOut)
+ {
+@@ -3149,6 +3169,9 @@ void InitParamValue(ParamType paramType, T valueIn, ParamValue *valueOut)
+         case ParamType::TGLDEBUGPROCKHR:
+             SetParamVal<ParamType::TGLDEBUGPROCKHR>(valueIn, valueOut);
+             break;
++        case ParamType::TGLMTLRasterizationRateMapANGLE:
++            SetParamVal<ParamType::TGLMTLRasterizationRateMapANGLE>(valueIn, valueOut);
++            break;
+         case ParamType::TGLbitfield:
+             SetParamVal<ParamType::TGLbitfield>(valueIn, valueOut);
+             break;
+diff --git a/src/common/gl_enum_utils_autogen.cpp b/src/common/gl_enum_utils_autogen.cpp
+index 40f19699fbf375c7531b7da2e020dde7003f7ace..af39593acdc3dcbd39043ad1bfcbcbceb0e487b6 100644
+--- a/src/common/gl_enum_utils_autogen.cpp
++++ b/src/common/gl_enum_utils_autogen.cpp
+@@ -2814,6 +2814,10 @@ const char *GLenumToString(GLESEnum enumGroup, unsigned int value)
+                     return "GL_RGBX8_ANGLE";
+                 case 0x96BB:
+                     return "GL_SHADER_BINARY_ANGLE";
++                case 0x96BC:
++                    return "GL_VARIABLE_RASTERIZATION_RATE_ANGLE";
++                case 0x96BD:
++                    return "GL_METAL_RASTERIZATION_RATE_MAP_BINDING_ANGLE";
+                 case 0x96BE:
+                     return "GL_PROGRAM_BINARY_READY_ANGLE";
+                 case 0x96E0:
+@@ -22190,6 +22194,7 @@ static StringEnumEntry g_stringEnumTable[] = {
+     {"GL_MESH_SUBROUTINE_UNIFORM_NV", 0x957E},
+     {"GL_MESH_VERTICES_OUT_NV", 0x9579},
+     {"GL_MESH_WORK_GROUP_SIZE_NV", 0x953E},
++    {"GL_METAL_RASTERIZATION_RATE_MAP_BINDING_ANGLE", 0x96BD},
+     {"GL_MIN", 0x8007},
+     {"GL_MINMAX", 0x802E},
+     {"GL_MINMAX_EXT", 0x802E},
+@@ -24841,6 +24846,7 @@ static StringEnumEntry g_stringEnumTable[] = {
+     {"GL_VARIABLE_E_NV", 0x8527},
+     {"GL_VARIABLE_F_NV", 0x8528},
+     {"GL_VARIABLE_G_NV", 0x8529},
++    {"GL_VARIABLE_RASTERIZATION_RATE_ANGLE", 0x96BC},
+     {"GL_VARIANT_ARRAY_EXT", 0x87E8},
+     {"GL_VARIANT_ARRAY_POINTER_EXT", 0x87E9},
+     {"GL_VARIANT_ARRAY_STRIDE_EXT", 0x87E6},
 diff --git a/src/common/utilities.cpp b/src/common/utilities.cpp
-index c953ff9..63b3a59 100644
+index 34826b47554d0d89e8b9619d46828177b2c1b873..2e03a110de26a7cb888d8e9a5997deaf3745c12c 100644
 --- a/src/common/utilities.cpp
 +++ b/src/common/utilities.cpp
-@@ -6,6 +6,11 @@
+@@ -6,6 +6,12 @@
  
  // utilities.cpp: Conversion functions and other utility routines.
  
 +// Older clang versions have a false positive on this warning here.
++// TODO(dino): Is this still necessary?
 +#if defined(__clang__)
-+#pragma clang diagnostic ignored "-Wglobal-constructors"
++#    pragma clang diagnostic ignored "-Wglobal-constructors"
 +#endif
 +
  #include "common/utilities.h"
  #include "GLES3/gl3.h"
  #include "common/mathutil.h"
+diff --git a/src/compiler/fuzz/translator_fuzzer.cpp b/src/compiler/fuzz/translator_fuzzer.cpp
+index 5b4b726798eb3ed29415dd103366c6206981517a..b258a88908e4893ef0a5a108c724220fb5ba4841 100644
+--- a/src/compiler/fuzz/translator_fuzzer.cpp
++++ b/src/compiler/fuzz/translator_fuzzer.cpp
+@@ -140,6 +140,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+         static_cast<uint32_t>(ShFragmentSynchronizationType::InvalidEnum));
+ 
+     std::vector<uint32_t> validOutputs;
++#ifndef ANGLE_TRANSLATOR_FUZZER_METAL_ONLY
+     validOutputs.push_back(SH_ESSL_OUTPUT);
+     validOutputs.push_back(SH_GLSL_COMPATIBILITY_OUTPUT);
+     validOutputs.push_back(SH_GLSL_130_OUTPUT);
+@@ -156,6 +157,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+     validOutputs.push_back(SH_HLSL_3_0_OUTPUT);
+     validOutputs.push_back(SH_HLSL_4_1_OUTPUT);
+     validOutputs.push_back(SH_HLSL_4_0_FL9_3_OUTPUT);
++#endif
++#ifdef ANGLE_ENABLE_METAL
++    validOutputs.push_back(SH_MSL_METAL_OUTPUT);
++#endif
+     bool found = false;
+     for (auto valid : validOutputs)
+     {
+@@ -187,6 +192,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+ 
+         if (translator == nullptr)
+         {
++            sh::Finalize();
+             return 0;
+         }
+ 
+@@ -220,6 +226,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+ 
+         if (!translator->Init(resources))
+         {
++            sh::Finalize();
+             return 0;
+         }
+ 
+@@ -232,5 +239,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+     const char *shaderStrings[]       = {reinterpret_cast<const char *>(data)};
+     translator->compile(shaderStrings, 1, options);
+ 
++    sh::Finalize();
+     return 0;
+ }
 diff --git a/src/compiler/preprocessor/preprocessor_tab_autogen.cpp b/src/compiler/preprocessor/preprocessor_tab_autogen.cpp
-index 4711774..cf25e48 100644
+index a7607c9e529ce7a57bdc6c3c82134b144eb67130..c9ec1adec020589bd4fcfe226721042a8f2c6cf5 100644
 --- a/src/compiler/preprocessor/preprocessor_tab_autogen.cpp
 +++ b/src/compiler/preprocessor/preprocessor_tab_autogen.cpp
-@@ -1,5 +1,7 @@
- /* A Bison parser, made by GNU Bison 3.3.2.  */
+@@ -1,5 +1,8 @@
+ /* A Bison parser, made by GNU Bison 3.8.2.  */
  
-+/* Apple Note: For the avoidance of doubt, Apple elects to distribute this file under the terms of the BSD license. */
++/* Apple Note: For the avoidance of doubt, Apple elects to distribute this file under the terms of
++ * the BSD license. */
 +
  /* Bison implementation for Yacc-like parsers in C
  
-    Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2019 Free Software Foundation,
+    Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
 diff --git a/src/compiler/translator/glslang_tab_autogen.cpp b/src/compiler/translator/glslang_tab_autogen.cpp
-index 130b98a..33b83db 100644
+index 8fdf47f2df99d27c74009feaca91a7366c2ffa7e..876840f7c6be65fda7260182c3dc9ca38b79ac88 100644
 --- a/src/compiler/translator/glslang_tab_autogen.cpp
 +++ b/src/compiler/translator/glslang_tab_autogen.cpp
-@@ -1,5 +1,7 @@
- /* A Bison parser, made by GNU Bison 3.3.2.  */
+@@ -1,5 +1,8 @@
+ /* A Bison parser, made by GNU Bison 3.8.2.  */
  
-+/* Apple Note: For the avoidance of doubt, Apple elects to distribute this file under the terms of the BSD license. */
++/* Apple Note: For the avoidance of doubt, Apple elects to distribute this file under the terms of
++ * the BSD license. */
 +
  /* Bison implementation for Yacc-like parsers in C
  
-    Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2019 Free Software Foundation,
+    Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
 diff --git a/src/compiler/translator/glslang_tab_autogen.h b/src/compiler/translator/glslang_tab_autogen.h
-index 5306032..0250300 100644
+index d5a48edd40f382359db76acf1a1ce75b6a6dc6d5..907c62e0bb659292b3912707904981863429478a 100644
 --- a/src/compiler/translator/glslang_tab_autogen.h
 +++ b/src/compiler/translator/glslang_tab_autogen.h
-@@ -1,5 +1,7 @@
- /* A Bison parser, made by GNU Bison 3.3.2.  */
+@@ -1,5 +1,8 @@
+ /* A Bison parser, made by GNU Bison 3.8.2.  */
  
-+/* Apple Note: For the avoidance of doubt, Apple elects to distribute this file under the terms of the BSD license. */
++/* Apple Note: For the avoidance of doubt, Apple elects to distribute this file under the terms of
++ * the BSD license. */
 +
  /* Bison interface for Yacc-like parsers in C
  
-    Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2019 Free Software Foundation,
-diff --git a/src/gpu_info_util/SystemInfo.cpp b/src/gpu_info_util/SystemInfo.cpp
-index f748949..54c3db5 100644
---- a/src/gpu_info_util/SystemInfo.cpp
-+++ b/src/gpu_info_util/SystemInfo.cpp
-@@ -47,6 +47,8 @@ std::string VendorName(VendorID vendor)
-             return "Vivante";
-         case kVendorID_VMWare:
-             return "VMWare";
-+        case kVendorID_Apple:
-+            return "Apple";
-         default:
-             return "Unknown (" + std::to_string(vendor) + ")";
-     }
-@@ -160,6 +162,11 @@ bool IsVivante(VendorID vendorId)
-     return vendorId == kVendorID_Vivante;
- }
+    Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
+diff --git a/src/gpu_info_util/SystemInfo_internal.h b/src/gpu_info_util/SystemInfo_internal.h
+index 231a4dcef279444e260217ee5a44ecbc2a182498..1a10a6396993260f8b09531487a78c8bf67019d9 100644
+--- a/src/gpu_info_util/SystemInfo_internal.h
++++ b/src/gpu_info_util/SystemInfo_internal.h
+@@ -36,13 +36,18 @@ bool GetSystemInfo_ios(SystemInfo *info);
+ // Helper to get the active GPU ID from a given Core Graphics display ID.
+ uint64_t GetGpuIDFromDisplayID(uint32_t displayID);
  
-+bool IsApple(VendorID vendorId)
-+{
-+    return vendorId == kVendorID_Apple;
-+}
++#if ANGLE_ENABLE_CGL
+ // Helper to get the active GPU ID from an OpenGL display mask.
+ uint64_t GetGpuIDFromOpenGLDisplayMask(uint32_t displayMask);
++#endif
+ 
++#if ANGLE_ENABLE_METAL
+ // Get VendorID from metal device's registry ID
+ VendorID GetVendorIDFromMetalDeviceRegistryID(uint64_t registryID);
+ #endif
+ 
++#endif
 +
- bool ParseAMDBrahmaDriverVersion(const std::string &content, std::string *version)
- {
-     const size_t begin = content.find_first_of("0123456789");
-diff --git a/src/gpu_info_util/SystemInfo.h b/src/gpu_info_util/SystemInfo.h
-index ad17698..509a1e9 100644
---- a/src/gpu_info_util/SystemInfo.h
-+++ b/src/gpu_info_util/SystemInfo.h
-@@ -67,9 +67,8 @@ struct SystemInfo
-     bool isAMDSwitchable = false;
-     // Only true on dual-GPU Mac laptops.
-     bool isMacSwitchable = false;
--    // Only true on Apple Silicon Macs when running iOS binaries.
--    // See https://developer.apple.com/documentation/foundation/nsprocessinfo/3608556-iosapponmac
--    bool isiOSAppOnMac = false;
-+    // Only true on Apple Silicon Macs when running in macCatalyst.
-+    bool needsEAGLOnMac   = false;
+ }  // namespace angle
  
-     // Only available on Android
-     std::string machineManufacturer;
-@@ -99,6 +98,7 @@ constexpr VendorID kVendorID_Intel    = 0x8086;
- constexpr VendorID kVendorID_NVIDIA   = 0x10DE;
- constexpr VendorID kVendorID_Qualcomm = 0x5143;
- constexpr VendorID kVendorID_VMWare   = 0x15ad;
-+constexpr VendorID kVendorID_Apple    = 0x106B;
- 
- // Known non-PCI (i.e. Khronos-registered) vendor IDs
- constexpr VendorID kVendorID_Vivante     = 0x10001;
-@@ -124,6 +124,7 @@ bool IsSwiftshader(VendorID vendorId);
- bool IsVeriSilicon(VendorID vendorId);
- bool IsVMWare(VendorID vendorId);
- bool IsVivante(VendorID vendorId);
-+bool IsApple(VendorID vendorId);
- 
- // Use a heuristic to attempt to find the GPU used for 3D graphics. Sets activeGPUIndex,
- // isOptimus, and isAMDSwitchable.
-diff --git a/src/gpu_info_util/SystemInfo_apple.mm b/src/gpu_info_util/SystemInfo_apple.mm
-index c7756f6..a49dc52 100644
---- a/src/gpu_info_util/SystemInfo_apple.mm
-+++ b/src/gpu_info_util/SystemInfo_apple.mm
-@@ -19,25 +19,7 @@ namespace angle
- 
- bool GetSystemInfo(SystemInfo *info)
- {
--#    if defined(ANGLE_PLATFORM_MACCATALYST) && defined(ANGLE_CPU_ARM64)
--    static bool isiOSAppOnMac = false;
--    static dispatch_once_t once;
--    dispatch_once(&once, ^{
--      isiOSAppOnMac = [[NSProcessInfo processInfo] isiOSAppOnMac];
--    });
--
--    if (isiOSAppOnMac)
--    {
--        GetSystemInfo_ios(info);
--        if (info)
--        {
--            info->isiOSAppOnMac = true;
--        }
--        return info;
--    }
--
--    return GetSystemInfo_mac(info);
--#    elif defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)
-+#if defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)
-     return GetSystemInfo_mac(info);
- #    else
-     return GetSystemInfo_ios(info);
-diff --git a/src/gpu_info_util/SystemInfo_ios.cpp b/src/gpu_info_util/SystemInfo_ios.cpp
-index 323af2c..e52ecb3 100644
---- a/src/gpu_info_util/SystemInfo_ios.cpp
-+++ b/src/gpu_info_util/SystemInfo_ios.cpp
-@@ -18,8 +18,9 @@ namespace angle
- bool GetSystemInfo_ios(SystemInfo *info)
- {
-     {
--        // TODO(anglebug.com/4275): Get the actual system version.
-+        // TODO(anglebug.com/4275): Get the actual system version and GPU info.
-         info->machineModelVersion = "0.0";
-+        info->gpus.emplace_back().vendorId = kVendorID_Apple;
-     }
- 
-     return true;
+ #endif  // GPU_INFO_UTIL_SYSTEM_INFO_INTERNAL_H_
 diff --git a/src/gpu_info_util/SystemInfo_macos.mm b/src/gpu_info_util/SystemInfo_macos.mm
-index b1cd055..c5e039e 100644
+index 553c675683fa054c7577cb5199771d10114a07a6..4362f8973679123ea9859120d20981c370dfc4a5 100644
 --- a/src/gpu_info_util/SystemInfo_macos.mm
 +++ b/src/gpu_info_util/SystemInfo_macos.mm
-@@ -322,6 +322,10 @@ bool GetSystemInfo_mac(SystemInfo *info)
-         info->isMacSwitchable = true;
-     }
-     
-+#if defined(ANGLE_PLATFORM_MACCATALYST) && defined(ANGLE_CPU_ARM64)
-+    info->needsEAGLOnMac = true;
-+#endif
+@@ -13,7 +13,10 @@
+ #import <Metal/Metal.h>
+ 
+ #include "common/apple_platform_utils.h"
 +
-     return true;
++#if ANGLE_ENABLE_CGL
+ #include "common/gl/cgl/FunctionsCGL.h"
++#endif
+ 
+ #if !defined(__MAC_OS_X_VERSION_MIN_REQUIRED) || __MAC_OS_X_VERSION_MIN_REQUIRED >= 120000
+ #    define HAVE_MAIN_PORT_DEFAULT 1
+@@ -27,9 +30,6 @@ namespace angle
+ namespace
+ {
+ 
+-constexpr CGLRendererProperty kCGLRPRegistryIDLow  = static_cast<CGLRendererProperty>(140);
+-constexpr CGLRendererProperty kCGLRPRegistryIDHigh = static_cast<CGLRendererProperty>(141);
+-
+ // Extracts one integer property from a registry entry.
+ bool GetEntryProperty(io_registry_entry_t entry, CFStringRef name, uint32_t *value)
+ {
+@@ -226,10 +226,14 @@ uint64_t GetGpuIDFromDisplayID(uint32_t displayID)
+             return registryId;
+         }
+     }
+-
++#if ANGLE_ENABLE_CGL
+     return GetGpuIDFromOpenGLDisplayMask(CGDisplayIDToOpenGLDisplayMask(displayID));
++#else
++    return 0;
++#endif
  }
  
-diff --git a/src/libANGLE/Caps.cpp b/src/libANGLE/Caps.cpp
-index f906783..1dddd4d 100644
---- a/src/libANGLE/Caps.cpp
-+++ b/src/libANGLE/Caps.cpp
-@@ -630,7 +630,12 @@ static bool DetermineDepthTextureANGLESupport(const TextureCapsMap &textureCaps)
++#if ANGLE_ENABLE_CGL
+ // Code from WebKit to query the GPU ID given an OpenGL display mask.
+ // https://trac.webkit.org/browser/webkit/trunk/Source/WebCore/platform/mac/PlatformScreenMac.mm
+ // Used with permission.
+@@ -237,6 +241,9 @@ uint64_t GetGpuIDFromOpenGLDisplayMask(uint32_t displayMask)
  {
-     constexpr GLenum requiredFormats[] = {
-         GL_DEPTH_COMPONENT16,
-+#if !defined(ANGLE_PLATFORM_IOS) && (!defined(ANGLE_PLATFORM_MACCATALYST) || !defined(ANGLE_CPU_ARM64))
-+        // TODO(dino): Temporarily Removing the need for GL_DEPTH_COMPONENT32_OES
-+        // because it is not supported on iOS.
-+        // TODO(dino): I think this needs to be a runtime check when running an iOS app on Mac.
-         GL_DEPTH_COMPONENT32_OES,
-+#endif
-         GL_DEPTH24_STENCIL8_OES,
-     };
+     if (@available(macOS 10.13, *))
+     {
++        constexpr CGLRendererProperty kCGLRPRegistryIDLow  = static_cast<CGLRendererProperty>(140);
++        constexpr CGLRendererProperty kCGLRPRegistryIDHigh = static_cast<CGLRendererProperty>(141);
++
+         GLint numRenderers              = 0;
+         CGLRendererInfoObj rendererInfo = nullptr;
+         CGLError error = CGLQueryRendererInfo(displayMask, &rendererInfo, &numRenderers);
+@@ -276,6 +283,7 @@ uint64_t GetGpuIDFromOpenGLDisplayMask(uint32_t displayMask)
  
-@@ -642,7 +647,12 @@ static bool DetermineDepthTextureOESSupport(const TextureCapsMap &textureCaps)
+     return 0;
+ }
++#endif
+ 
+ // Get VendorID from metal device's registry ID
+ VendorID GetVendorIDFromMetalDeviceRegistryID(uint64_t registryID)
+diff --git a/src/libANGLE/Context.cpp b/src/libANGLE/Context.cpp
+index 78d8378b79d16fb24183f40f408fe48e2db53f4a..5c9e73344200101c5faa39c8f12f5403af8417a3 100644
+--- a/src/libANGLE/Context.cpp
++++ b/src/libANGLE/Context.cpp
+@@ -9981,6 +9981,33 @@ void Context::textureFoveationParameters(TextureID texturePacked,
+     texture->setFocalPoint(layer, focalPoint, focalX, focalY, gainX, gainY, foveaArea);
+ }
+ 
++void Context::framebufferResolveRenderbufferWEBKIT(GLenum target,
++                                                   GLenum attachment,
++                                                   GLenum renderbuffertarget,
++                                                   RenderbufferID renderbuffer)
++{
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    Framebuffer *framebuffer = mState.getTargetFramebuffer(target);
++    ASSERT(framebuffer);
++
++    if (renderbuffer.value != 0)
++    {
++        Renderbuffer *renderbufferObject = getRenderbuffer(renderbuffer);
++
++        framebuffer->setAttachmentResolve(this, GL_RENDERBUFFER, attachment, gl::ImageIndex(),
++                                          renderbufferObject);
++    }
++    else
++    {
++        framebuffer->resetAttachmentResolve(this, attachment);
++    }
++
++    mState.setObjectDirty(target);
++#else
++    UNIMPLEMENTED();
++#endif
++}
++
+ void Context::endTiling(GLbitfield preserveMask)
  {
-     constexpr GLenum requiredFormats[] = {
-         GL_DEPTH_COMPONENT16,
-+#if !defined(ANGLE_PLATFORM_IOS) && (!defined(ANGLE_PLATFORM_MACCATALYST) || !defined(ANGLE_CPU_ARM64))
-+        // TODO(dino): Temporarily Removing the need for GL_DEPTH_COMPONENT32_OES
-+        // because it is not supported on iOS.
-+        // TODO(dino): I think this needs to be a runtime check when running an iOS app on Mac.
-         GL_DEPTH_COMPONENT32_OES,
-+#endif
-     };
+     ANGLE_CONTEXT_TRY(mImplementation->endTiling(this, preserveMask));
+@@ -10041,6 +10068,14 @@ void Context::clearTexSubImage(TextureID texturePacked,
+                                              static_cast<const uint8_t *>(data)));
+ }
  
-     return GetFormatSupport(textureCaps, requiredFormats, true, true, true, true, false);
++void Context::bindMetalRasterizationRateMap(GLuint renderbufferHandle, GLMTLRasterizationRateMapANGLE map)
++{
++    Renderbuffer *renderbuffer = getRenderbuffer({renderbufferHandle});
++    rx::RenderbufferImpl *renderbufferImpl = renderbuffer ? renderbuffer->getImplementation() : nullptr;
++    ANGLE_CONTEXT_TRY(mImplementation->bindMetalRasterizationRateMap(this, renderbufferImpl, map));
++    getMutablePrivateState()->setVariableRasterizationRateMap(map);
++}
++
+ // ErrorSet implementation.
+ ErrorSet::ErrorSet(Debug *debug,
+                    const angle::FrontendFeatures &frontendFeatures,
+diff --git a/src/libANGLE/Context_gles_ext_autogen.h b/src/libANGLE/Context_gles_ext_autogen.h
+index 364ea21366fc5a76de2b3e596b7039370e911bde..05d8ca360ef3df12b82fcdf07d2d53e2ed58f7c1 100644
+--- a/src/libANGLE/Context_gles_ext_autogen.h
++++ b/src/libANGLE/Context_gles_ext_autogen.h
+@@ -631,6 +631,8 @@
+     void invalidateTexture(TextureType targetPacked);                                              \
+     /* GL_ANGLE_texture_multisample */                                                             \
+     /* GL_ANGLE_texture_rectangle */                                                               \
++    /* GL_ANGLE_variable_rasterization_rate_metal */                                               \
++    void bindMetalRasterizationRateMap(GLuint renderbuffer, GLMTLRasterizationRateMapANGLE map);   \
+     /* GL_ANGLE_vulkan_image */                                                                    \
+     void acquireTextures(GLuint numTextures, const TextureID *texturesPacked,                      \
+                          const GLenum *layouts);                                                   \
+@@ -658,6 +660,10 @@
+     /* GL_CHROMIUM_framebuffer_mixed_samples */                                                    \
+     /* GL_CHROMIUM_lose_context */                                                                 \
+     void loseContext(GraphicsResetStatus currentPacked, GraphicsResetStatus otherPacked);          \
+-    /* GL_CHROMIUM_sync_query */
++    /* GL_CHROMIUM_sync_query */                                                                   \
++    /* GL_WEBKIT_explicit_resolve_target */                                                        \
++    void framebufferResolveRenderbufferWEBKIT(GLenum target, GLenum attachment,                    \
++                                              GLenum renderbuffertarget,                           \
++                                              RenderbufferID renderbufferPacked);
+ 
+ #endif  // ANGLE_CONTEXT_API_EXT_AUTOGEN_H_
+diff --git a/src/libANGLE/Framebuffer.cpp b/src/libANGLE/Framebuffer.cpp
+index a7a1cc00168789858d23f9799317c293bda6b077..a276a6c5f5244cb72fbc3c750dd2dcd439039d53 100644
+--- a/src/libANGLE/Framebuffer.cpp
++++ b/src/libANGLE/Framebuffer.cpp
+@@ -164,6 +164,47 @@ FramebufferStatus CheckAttachmentCompleteness(const Context *context,
+     return FramebufferStatus::Complete();
+ }
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++// Check the |checkAttachment| in reference to |firstAttachment| for the sake of explicit resolve
++// target framebuffer completeness.
++FramebufferStatus CheckResolveTargetMatchesForCompleteness(
++    const Context *context,
++    const FramebufferAttachment &firstAttachment,
++    const FramebufferAttachment &checkAttachment)
++{
++    ASSERT(firstAttachment.isAttached() && checkAttachment.isAttached());
++
++    FramebufferStatus attachmentCompleteness =
++        CheckAttachmentCompleteness(context, checkAttachment);
++    if (!attachmentCompleteness.isComplete())
++    {
++        return attachmentCompleteness;
++    }
++
++    if (checkAttachment.getSamples() != 0)
++    {
++        return FramebufferStatus::Incomplete(GL_FRAMEBUFFER_UNSUPPORTED,
++            "Framebuffer is incomplete: Resolve attachments have multiple samples.");
++    }
++
++    if (firstAttachment.getSize() != checkAttachment.getSize())
++    {
++        return gl::FramebufferStatus::Incomplete(
++            GL_FRAMEBUFFER_UNSUPPORTED,
++            gl::err::kFramebufferIncompleteUnsupportedMissmatchedDimensions);
++    }
++
++    if (!Format::EquivalentForBlit(firstAttachment.getFormat(), checkAttachment.getFormat()))
++    {
++        return gl::FramebufferStatus::Incomplete(GL_FRAMEBUFFER_UNSUPPORTED,
++                                                 "Framebuffer is incomplete: Attempting to resolve "
++                                                 "to target with non-equivalent format for blit");
++    }
++
++    return FramebufferStatus::Complete();
++}
++#endif
++
+ FramebufferStatus CheckAttachmentSampleCounts(const Context *context,
+                                               GLsizei currAttachmentSamples,
+                                               GLsizei samples,
+@@ -369,6 +410,9 @@ FramebufferState::FramebufferState(rx::UniqueSerial serial)
+       mFramebufferSerial(serial),
+       mLabel(),
+       mColorAttachments(1),
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++      mColorResolveAttachments(1),
++#endif
+       mColorAttachmentsMask(0),
+       mDrawBufferStates(1, GL_BACK),
+       mReadBufferState(GL_BACK),
+@@ -392,6 +436,9 @@ FramebufferState::FramebufferState(const Caps &caps, FramebufferID id, rx::Uniqu
+       mFramebufferSerial(serial),
+       mLabel(),
+       mColorAttachments(caps.maxColorAttachments),
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++      mColorResolveAttachments(caps.maxColorAttachments),
++#endif
+       mColorAttachmentsMask(0),
+       mDrawBufferStates(caps.maxDrawBuffers, GL_NONE),
+       mReadBufferState(GL_COLOR_ATTACHMENT0_EXT),
+@@ -598,6 +645,27 @@ const FramebufferAttachment *FramebufferState::getDepthStencilAttachment() const
+     return nullptr;
+ }
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++const FramebufferAttachment *FramebufferState::getColorResolveAttachment(
++    size_t colorAttachment) const
++{
++    ASSERT(colorAttachment < mColorResolveAttachments.size());
++    return mColorResolveAttachments[colorAttachment].isAttached()
++               ? &mColorResolveAttachments[colorAttachment]
++               : nullptr;
++}
++
++const FramebufferAttachment *FramebufferState::getDepthResolveAttachment() const
++{
++    return mDepthResolveAttachment.isAttached() ? &mDepthResolveAttachment : nullptr;
++}
++
++const FramebufferAttachment *FramebufferState::getStencilResolveAttachment() const
++{
++    return mStencilResolveAttachment.isAttached() ? &mStencilResolveAttachment : nullptr;
++}
++#endif
++
+ const Extents FramebufferState::getAttachmentExtentsIntersection() const
+ {
+     int32_t width  = std::numeric_limits<int32_t>::max();
+@@ -828,6 +896,10 @@ Framebuffer::Framebuffer(const Context *context, rx::GLImplFactory *factory, Fra
+     ASSERT(mImpl != nullptr);
+     ASSERT(mState.mColorAttachments.size() ==
+            static_cast<size_t>(context->getCaps().maxColorAttachments));
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    ASSERT(mState.mColorResolveAttachments.size() ==
++           static_cast<size_t>(context->getCaps().maxColorAttachments));
++#endif
+ 
+     for (uint32_t colorIndex = 0;
+          colorIndex < static_cast<uint32_t>(mState.mColorAttachments.size()); ++colorIndex)
+@@ -862,6 +934,15 @@ void Framebuffer::onDestroy(const Context *context)
+     mState.mWebGLStencilAttachment.detach(context, mState.mFramebufferSerial);
+     mState.mWebGLDepthStencilAttachment.detach(context, mState.mFramebufferSerial);
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    for (auto &attachment : mState.mColorResolveAttachments)
++    {
++        attachment.detach(context, mState.mFramebufferSerial);
++    }
++    mState.mDepthResolveAttachment.detach(context, mState.mFramebufferSerial);
++    mState.mStencilResolveAttachment.detach(context, mState.mFramebufferSerial);
++#endif
++
+     if (mPixelLocalStorage)
+     {
+         mPixelLocalStorage->onFramebufferDestroyed(context);
+@@ -1151,6 +1232,23 @@ size_t Framebuffer::getDrawbufferStateCount() const
+     return mState.mDrawBufferStates.size();
+ }
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++const FramebufferAttachment *Framebuffer::getColorResolveAttachment(size_t colorAttachment) const
++{
++    return mState.getColorResolveAttachment(colorAttachment);
++}
++
++const FramebufferAttachment *Framebuffer::getDepthResolveAttachment() const
++{
++    return mState.getDepthResolveAttachment();
++}
++
++const FramebufferAttachment *Framebuffer::getStencilResolveAttachment() const
++{
++    return mState.getStencilResolveAttachment();
++}
++#endif
++
+ GLenum Framebuffer::getDrawBufferState(size_t drawBuffer) const
+ {
+     ASSERT(drawBuffer < mState.mDrawBufferStates.size());
+@@ -1445,6 +1543,25 @@ FramebufferStatus Framebuffer::checkStatusWithGLFrontEnd(const Context *context)
+         }
+     }
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    for (size_t index = 0; index < mState.mColorAttachments.size(); ++index)
++    {
++        const FramebufferAttachment &colorAttachment = mState.mColorAttachments[index];
++        const FramebufferAttachment &colorResolveAttachment =
++            mState.mColorResolveAttachments[index];
++        if (colorResolveAttachment.isAttached() && colorAttachment.isAttached())
++        {
++            FramebufferStatus resolveAttachmentCompleteness =
++                CheckResolveTargetMatchesForCompleteness(context, colorAttachment,
++                                                         colorResolveAttachment);
++            if (!resolveAttachmentCompleteness.isComplete())
++            {
++                return resolveAttachmentCompleteness;
++            }
++        }
++    }
++#endif
++
+     const FramebufferAttachment &depthAttachment = mState.mDepthAttachment;
+     if (depthAttachment.isAttached())
+     {
+@@ -1498,6 +1615,20 @@ FramebufferStatus Framebuffer::checkStatusWithGLFrontEnd(const Context *context)
+                     err::kFramebufferIncompleteMismatchedLayeredAttachments);
+             }
+         }
++
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++        const FramebufferAttachment &depthResolveAttachment = mState.mDepthResolveAttachment;
++        if (depthResolveAttachment.isAttached())
++        {
++            FramebufferStatus resolveAttachmentCompleteness =
++                CheckResolveTargetMatchesForCompleteness(context, depthAttachment,
++                                                         depthResolveAttachment);
++            if (!resolveAttachmentCompleteness.isComplete())
++            {
++                return resolveAttachmentCompleteness;
++            }
++        }
++#endif
+     }
+ 
+     const FramebufferAttachment &stencilAttachment = mState.mStencilAttachment;
+@@ -1553,6 +1684,20 @@ FramebufferStatus Framebuffer::checkStatusWithGLFrontEnd(const Context *context)
+                     err::kFramebufferIncompleteMismatchedLayeredAttachments);
+             }
+         }
++
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++        const FramebufferAttachment &stencilResolveAttachment = mState.mStencilResolveAttachment;
++        if (stencilResolveAttachment.isAttached())
++        {
++            FramebufferStatus resolveAttachmentCompleteness =
++                CheckResolveTargetMatchesForCompleteness(context, stencilAttachment,
++                                                         stencilResolveAttachment);
++            if (!resolveAttachmentCompleteness.isComplete())
++            {
++                return resolveAttachmentCompleteness;
++            }
++        }
++#endif
+     }
+ 
+     // Starting from ES 3.0 stencil and depth, if present, should be the same image
+@@ -1680,6 +1825,8 @@ angle::Result Framebuffer::discard(const Context *context, size_t count, const G
+     // Back-ends might make the contents of the FBO undefined. In WebGL 2.0, invalidate operations
+     // can be no-ops, so we should probably do that to ensure consistency.
+     // TODO(jmadill): WebGL behaviour, and robust resource init behaviour without WebGL.
++    if (context->isRobustResourceInitEnabled())
++        markDrawAttachmentsNeedInit(count, attachments);
+ 
+     return mImpl->discard(context, count, attachments);
+ }
+@@ -1691,6 +1838,8 @@ angle::Result Framebuffer::invalidate(const Context *context,
+     // Back-ends might make the contents of the FBO undefined. In WebGL 2.0, invalidate operations
+     // can be no-ops, so we should probably do that to ensure consistency.
+     // TODO(jmadill): WebGL behaviour, and robust resource init behaviour without WebGL.
++    if (context->isRobustResourceInitEnabled())
++        markDrawAttachmentsNeedInit(count, attachments);
+ 
+     return mImpl->invalidate(context, count, attachments);
+ }
+@@ -1726,9 +1875,20 @@ bool Framebuffer::partialClearNeedsInit(const Context *context,
+         return true;
+     }
+ 
++    const Framebuffer *drawFramebuffer = glState.getDrawFramebuffer();
++    const FramebufferAttachment *stencilAttachment =
++        drawFramebuffer ? drawFramebuffer->getStencilOrDepthStencilAttachment() : nullptr;
++    const GLuint stencilBits    = stencilAttachment ? stencilAttachment->getStencilSize() : 0;
++    const GLuint maxStencilMask = (1 << stencilBits) - 1;
++
++    // The least significant |stencilBits| of stencil mask state specify a
++    // mask. Compare the masks for differences only in those bits, ignoring any
++    // difference in the high bits.
+     const auto &depthStencil       = glState.getDepthStencilState();
+-    if (stencil && (depthStencil.stencilMask != depthStencil.stencilWritemask ||
+-                    depthStencil.stencilBackMask != depthStencil.stencilBackWritemask))
++    const GLuint differentFwdMasks = depthStencil.stencilMask ^ depthStencil.stencilWritemask;
++    const GLuint differentBackMasks =
++        depthStencil.stencilBackMask ^ depthStencil.stencilBackWritemask;
++    if (stencil && ((differentFwdMasks | differentBackMasks) & maxStencilMask) != 0)
+     {
+         return true;
+     }
+@@ -2012,6 +2172,66 @@ void Framebuffer::setAttachmentMultiview(const Context *context,
+                   FramebufferAttachment::kDefaultRenderToTextureSamples);
+ }
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++void Framebuffer::setAttachmentResolve(const Context *context,
++                                       GLenum type,
++                                       GLenum binding,
++                                       const ImageIndex &textureIndex,
++                                       FramebufferAttachmentObject *resource)
++{
++    switch (binding)
++    {
++        case GL_DEPTH_STENCIL:
++        case GL_DEPTH_STENCIL_ATTACHMENT:
++            updateAttachmentResolve(context, &mState.mDepthResolveAttachment,
++                                    DIRTY_BIT_DEPTH_ATTACHMENT, &mDirtyDepthAttachmentBinding, type,
++                                    binding, textureIndex, resource);
++            updateAttachmentResolve(context, &mState.mStencilResolveAttachment,
++                                    DIRTY_BIT_STENCIL_ATTACHMENT, &mDirtyStencilAttachmentBinding,
++                                    type, binding, textureIndex, resource);
++            break;
++        case GL_DEPTH:
++        case GL_DEPTH_ATTACHMENT:
++            updateAttachmentResolve(context, &mState.mDepthResolveAttachment,
++                                    DIRTY_BIT_DEPTH_ATTACHMENT, &mDirtyDepthAttachmentBinding, type,
++                                    binding, textureIndex, resource);
++            if (context->isWebGL1())
++            {
++                updateAttachmentResolve(context, &mState.mStencilResolveAttachment,
++                                        DIRTY_BIT_STENCIL_ATTACHMENT,
++                                        &mDirtyStencilAttachmentBinding, GL_NONE,
++                                        GL_STENCIL_ATTACHMENT, ImageIndex(), nullptr);
++            }
++            break;
++
++        case GL_STENCIL:
++        case GL_STENCIL_ATTACHMENT:
++            updateAttachmentResolve(context, &mState.mStencilResolveAttachment,
++                                    DIRTY_BIT_STENCIL_ATTACHMENT, &mDirtyStencilAttachmentBinding,
++                                    type, binding, textureIndex, resource);
++            if (context->isWebGL1())
++            {
++                updateAttachmentResolve(context, &mState.mDepthResolveAttachment,
++                                        DIRTY_BIT_DEPTH_ATTACHMENT, &mDirtyDepthAttachmentBinding,
++                                        GL_NONE, GL_DEPTH_ATTACHMENT, ImageIndex(), nullptr);
++            }
++            break;
++
++        default:
++        {
++            const size_t colorIndex = binding - GL_COLOR_ATTACHMENT0;
++            ASSERT(colorIndex < mState.mColorResolveAttachments.size());
++
++            const size_t dirtyBit = DIRTY_BIT_COLOR_ATTACHMENT_0 + colorIndex;
++            updateAttachmentResolve(context, &mState.mColorResolveAttachments[colorIndex], dirtyBit,
++                                    &mDirtyColorAttachmentBindings[colorIndex], type, binding,
++                                    textureIndex, resource);
++        }
++        break;
++    }
++}
++#endif
++
+ void Framebuffer::commitWebGL1DepthStencilIfConsistent(const Context *context,
+                                                        GLsizei numViews,
+                                                        GLuint baseViewIndex,
+@@ -2189,11 +2409,40 @@ void Framebuffer::updateAttachment(const Context *context,
+     invalidateCompletenessCache();
+ }
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++void Framebuffer::updateAttachmentResolve(const Context *context,
++                                          FramebufferAttachment *attachment,
++                                          size_t dirtyBit,
++                                          angle::ObserverBinding *onDirtyBinding,
++                                          GLenum type,
++                                          GLenum binding,
++                                          const ImageIndex &textureIndex,
++                                          FramebufferAttachmentObject *resource)
++{
++    attachment->attach(
++        context, type, binding, textureIndex, resource, FramebufferAttachment::kDefaultNumViews,
++        FramebufferAttachment::kDefaultBaseViewIndex, false,
++        FramebufferAttachment::kDefaultRenderToTextureSamples, mState.mFramebufferSerial);
++    mDirtyBits.set(dirtyBit);
++    onDirtyBinding->bind(resource);
++    mAttachmentChangedAfterEnablingFoveation = isFoveationEnabled();
++
++    invalidateCompletenessCache();
++}
++#endif
++
+ void Framebuffer::resetAttachment(const Context *context, GLenum binding)
+ {
+     setAttachment(context, GL_NONE, binding, ImageIndex(), nullptr);
+ }
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++void Framebuffer::resetAttachmentResolve(const Context *context, GLenum binding)
++{
++    setAttachmentResolve(context, GL_NONE, binding, ImageIndex(), nullptr);
++}
++#endif
++
+ void Framebuffer::setWriteControlMode(SrgbWriteControlMode srgbWriteControlMode)
+ {
+     if (srgbWriteControlMode != mState.getWriteControlMode())
+@@ -2839,4 +3088,56 @@ angle::Result Framebuffer::syncAttachmentState(const Context *context,
+ 
+     return angle::Result::Continue;
+ }
++
++void Framebuffer::markDrawAttachmentsNeedInit(size_t count, const GLenum *attachments)
++{
++    bool stateChanged = false;
++    for (size_t attachmentIdx = 0; attachmentIdx < count; attachmentIdx++)
++    {
++        GLenum attachmentBindPoint = attachments[attachmentIdx];
++        switch (attachmentBindPoint)
++        {
++            case GL_DEPTH_ATTACHMENT:
++            case GL_DEPTH_EXT:
++                if (mState.mDepthAttachment.isAttached())
++                {
++                    mDirtyBits.set(DIRTY_BIT_DEPTH_ATTACHMENT);
++                    mState.mResourceNeedsInit.set(DIRTY_BIT_DEPTH_ATTACHMENT);
++                    mState.mDepthAttachment.setInitState(InitState::MayNeedInit);
++                    stateChanged = true;
++                }
++                break;
++            case GL_STENCIL_ATTACHMENT:
++            case GL_STENCIL_EXT:
++                if (mState.mStencilAttachment.isAttached())
++                {
++                    mDirtyBits.set(DIRTY_BIT_STENCIL_ATTACHMENT);
++                    mState.mResourceNeedsInit.set(DIRTY_BIT_STENCIL_ATTACHMENT);
++                    mState.mStencilAttachment.setInitState(InitState::MayNeedInit);
++                    stateChanged = true;
++                }
++                break;
++            default:
++                if (attachmentBindPoint == GL_COLOR_EXT)
++                {
++                    attachmentBindPoint = GL_COLOR_ATTACHMENT0;
++                }
++                int colorDirtyBit = attachmentBindPoint - GL_COLOR_ATTACHMENT0;
++                if (colorDirtyBit >= 0 && colorDirtyBit < IMPLEMENTATION_MAX_DRAW_BUFFERS &&
++                    mState.mColorAttachments[colorDirtyBit].isAttached())
++                {
++                    mDirtyBits.set(colorDirtyBit);
++                    mState.mResourceNeedsInit.set(colorDirtyBit);
++                    mState.mColorAttachments[colorDirtyBit].setInitState(InitState::MayNeedInit);
++                    stateChanged = true;
++                }
++                break;
++        }
++    }
++
++    if (stateChanged)
++    {
++        onStateChange(angle::SubjectMessage::DirtyBitsFlagged);
++    }
++}
+ }  // namespace gl
+diff --git a/src/libANGLE/Framebuffer.h b/src/libANGLE/Framebuffer.h
+index f690cf4932b165ff099b1ea1c80002023f559dd5..4d633b3d7722e72d14aa645cba2498d465b88212 100644
+--- a/src/libANGLE/Framebuffer.h
++++ b/src/libANGLE/Framebuffer.h
+@@ -82,6 +82,13 @@ class FramebufferState final : angle::NonCopyable
+     const FramebufferAttachment *getDepthStencilAttachment() const;
+     const FramebufferAttachment *getReadPixelsAttachment(GLenum readFormat) const;
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    // GL_WEBKIT_explicit_resolve_target
++    const FramebufferAttachment *getColorResolveAttachment(size_t colorAttachment) const;
++    const FramebufferAttachment *getDepthResolveAttachment() const;
++    const FramebufferAttachment *getStencilResolveAttachment() const;
++#endif
++
+     const DrawBuffersVector<GLenum> &getDrawBufferStates() const { return mDrawBufferStates; }
+     DrawBufferMask getEnabledDrawBuffers() const { return mEnabledDrawBuffers; }
+     GLenum getReadBufferState() const { return mReadBufferState; }
+@@ -162,6 +169,13 @@ class FramebufferState final : angle::NonCopyable
+     FramebufferAttachment mDepthAttachment;
+     FramebufferAttachment mStencilAttachment;
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    // GL_WEBKIT_explicit_resolve_target;
++    DrawBuffersVector<FramebufferAttachment> mColorResolveAttachments;
++    FramebufferAttachment mDepthResolveAttachment;
++    FramebufferAttachment mStencilResolveAttachment;
++#endif
++
+     // Tracks all the color buffers attached to this FramebufferDesc
+     DrawBufferMask mColorAttachmentsMask;
+ 
+@@ -244,6 +258,16 @@ class Framebuffer final : public angle::ObserverInterface,
+                                 GLint baseViewIndex);
+     void resetAttachment(const Context *context, GLenum binding);
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    // GL_WEBKIT_explicit_resolve_target
++    void setAttachmentResolve(const Context *context,
++                              GLenum type,
++                              GLenum binding,
++                              const ImageIndex &textureIndex,
++                              FramebufferAttachmentObject *resource);
++    void resetAttachmentResolve(const Context *context, GLenum binding);
++#endif
++
+     bool detachTexture(Context *context, TextureID texture);
+     bool detachRenderbuffer(Context *context, RenderbufferID renderbuffer);
+ 
+@@ -258,9 +282,16 @@ class Framebuffer final : public angle::ObserverInterface,
+     const FramebufferAttachment *getFirstColorAttachment() const;
+     const FramebufferAttachment *getFirstNonNullAttachment() const;
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    // GL_WEBKIT_explicit_resolve_target
++    const FramebufferAttachment *getColorResolveAttachment(size_t colorAttachment) const;
++    const FramebufferAttachment *getDepthResolveAttachment() const;
++    const FramebufferAttachment *getStencilResolveAttachment() const;
++#endif
++
+     const DrawBuffersVector<FramebufferAttachment> &getColorAttachments() const
+     {
+-        return mState.mColorAttachments;
++        return mState.getColorAttachments();
+     }
+ 
+     const FramebufferState &getState() const { return mState; }
+@@ -521,6 +552,18 @@ class Framebuffer final : public angle::ObserverInterface,
+                           bool isMultiview,
+                           GLsizei samples);
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    // GL_WEBKIT_explicit_resolve_target
++    void updateAttachmentResolve(const Context *context,
++                                 FramebufferAttachment *attachment,
++                                 size_t dirtyBit,
++                                 angle::ObserverBinding *onDirtyBinding,
++                                 GLenum type,
++                                 GLenum binding,
++                                 const ImageIndex &textureIndex,
++                                 FramebufferAttachmentObject *resource);
++#endif
++
+     void markAttachmentsInitialized(const DrawBufferMask &color, bool depth, bool stencil);
+ 
+     // Checks that we have a partially masked clear:
+@@ -545,6 +588,8 @@ class Framebuffer final : public angle::ObserverInterface,
+                                       Command command,
+                                       const FramebufferAttachment *attachment) const;
+ 
++    void markDrawAttachmentsNeedInit(size_t count, const GLenum *attachments);
++
+     FramebufferState mState;
+     rx::FramebufferImpl *mImpl;
+ 
 diff --git a/src/libANGLE/State.cpp b/src/libANGLE/State.cpp
-index 7b08d8d..a804486 100644
+index b2414c9170ab655adcd2da1436ef972db413c5c8..a7eb19b2801888946438a00332a6cfc57ea95564 100644
 --- a/src/libANGLE/State.cpp
 +++ b/src/libANGLE/State.cpp
 @@ -6,6 +6,9 @@
@@ -248,114 +1177,2587 @@ index 7b08d8d..a804486 100644
  #include "libANGLE/State.h"
  
  #include <string.h>
-diff --git a/src/libANGLE/formatutils.cpp b/src/libANGLE/formatutils.cpp
-index 3f9f37d..5e628f2 100644
---- a/src/libANGLE/formatutils.cpp
-+++ b/src/libANGLE/formatutils.cpp
-@@ -1034,7 +1034,7 @@ static InternalFormatInfoMap BuildInternalFormatInfoMap()
-     angle::SystemInfo info;
-     if (angle::GetSystemInfo(&info))
-     {
--        if (info.isiOSAppOnMac)
-+        if (info.needsEAGLOnMac)
-         {
-             // Using OpenGLES.framework.
-             AddRGBAFormat(&map, GL_BGRA_EXT,       false,  8,  8,  8,  8, 0, GL_BGRA_EXT,       GL_UNSIGNED_BYTE,               GL_UNSIGNED_NORMALIZED, false, RequireES<2, 0>,                                  AlwaysSupported, RequireES<2, 0>,                                NeverSupported, NeverSupported);
-diff --git a/src/libANGLE/renderer/gl/apple/DisplayApple_api.cpp b/src/libANGLE/renderer/gl/apple/DisplayApple_api.cpp
-index de216fb..e63a8b6 100644
---- a/src/libANGLE/renderer/gl/apple/DisplayApple_api.cpp
-+++ b/src/libANGLE/renderer/gl/apple/DisplayApple_api.cpp
-@@ -37,7 +37,7 @@ DisplayImpl *CreateDisplayCGLOrEAGL(const egl::DisplayState &state)
-         break;
+@@ -371,6 +374,8 @@ PrivateState::PrivateState(const EGLenum clientType,
+       mLogicOp(LogicalOperation::Copy),
+       mPatchVertices(3),
+       mPixelLocalStorageActivePlanes(0),
++      mVariableRasterizationRateEnabled(false),
++      mVariableRasterizationRateMap(nullptr),
+       mNoSimultaneousConstantColorAndAlphaBlendFunc(false),
+       mSetBlendIndexedInvoked(false),
+       mSetBlendFactorsIndexedInvoked(false),
+@@ -1249,6 +1254,26 @@ void PrivateState::setLogicOp(LogicalOperation opcode)
      }
- 
--    if (info.isiOSAppOnMac)
-+    if (info.needsEAGLOnMac)
-     {
-         return new rx::DisplayEAGL(state);
-     }
-diff --git a/src/libANGLE/renderer/gl/cgl/ContextCGL.cpp b/src/libANGLE/renderer/gl/cgl/ContextCGL.cpp
-index bdf5597..be99b85 100644
---- a/src/libANGLE/renderer/gl/cgl/ContextCGL.cpp
-+++ b/src/libANGLE/renderer/gl/cgl/ContextCGL.cpp
-@@ -13,6 +13,8 @@
- #include "libANGLE/Display.h"
- #include "libANGLE/renderer/gl/cgl/DisplayCGL.h"
- 
-+#if defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)
-+
- namespace rx
- {
- 
-@@ -63,3 +65,5 @@ void ContextCGL::onDestroy(const gl::Context *context)
  }
  
- }  // namespace rx
++void PrivateState::setVariableRasterizationRateEnabled(bool enabled)
++{
++    if (mVariableRasterizationRateEnabled != enabled)
++    {
++        mVariableRasterizationRateEnabled = enabled;
++        mDirtyBits.set(state::DIRTY_BIT_EXTENDED);
++        mExtendedDirtyBits.set(state::EXTENDED_DIRTY_BIT_VARIABLE_RASTERIZATION_RATE);
++    }
++}
 +
-+#endif  // defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)
-\ No newline at end of file
-diff --git a/src/libANGLE/renderer/gl/eagl/FunctionsEAGL.h b/src/libANGLE/renderer/gl/eagl/FunctionsEAGL.h
-index ece235a..ae0207b 100644
---- a/src/libANGLE/renderer/gl/eagl/FunctionsEAGL.h
-+++ b/src/libANGLE/renderer/gl/eagl/FunctionsEAGL.h
-@@ -17,7 +17,7 @@
- #    import <OpenGLES/EAGLDrawable.h>
- #    import <OpenGLES/EAGLIOSurface.h>
- 
--#    include "libANGLE/renderer/gl/apple/SoftLinking.h"
-+#    include "common/apple/SoftLinking.h"
- 
- SOFT_LINK_FRAMEWORK_HEADER(OpenGLES)
- 
-diff --git a/src/libANGLE/renderer/gl/eagl/FunctionsEAGL.mm b/src/libANGLE/renderer/gl/eagl/FunctionsEAGL.mm
-index 7779792..076d072 100644
---- a/src/libANGLE/renderer/gl/eagl/FunctionsEAGL.mm
-+++ b/src/libANGLE/renderer/gl/eagl/FunctionsEAGL.mm
-@@ -14,7 +14,7 @@
- #    import <OpenGLES/EAGLDrawable.h>
- #    import <OpenGLES/EAGLIOSurface.h>
- 
--#    include "libANGLE/renderer/gl/apple/SoftLinking.h"
-+#    include "common/apple/SoftLinking.h"
- 
- SOFT_LINK_FRAMEWORK_SOURCE(OpenGLES)
- 
-diff --git a/src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm b/src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm
-index f16c3e7..45e6d0f 100644
---- a/src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm
-+++ b/src/libANGLE/renderer/gl/eagl/IOSurfaceSurfaceEAGL.mm
-@@ -206,7 +206,9 @@ egl::Error IOSurfaceSurfaceEAGL::bindTexImage(const gl::Context *context,
-         // TODO(kbr): possibly more state to be set here, including setting any
-         // pixel unpack buffer to 0 when using ES 3.0 contexts.
-         gl::PixelUnpackState defaultUnpackState;
--        stateManager->setPixelUnpackState(defaultUnpackState);
-+        if (IsError(stateManager->setPixelUnpackState(context, defaultUnpackState))) {
-+            return egl::EglBadState() << "Failed to set pixel unpack state.";
-+        }
-         textureData = IOSurfaceGetBaseAddress(mIOSurface);
++void PrivateState::setVariableRasterizationRateMap(GLMTLRasterizationRateMapANGLE map)
++{
++    if (mVariableRasterizationRateMap != map)
++    {
++        mVariableRasterizationRateMap = map;
++        mDirtyBits.set(state::DIRTY_BIT_EXTENDED);
++        mExtendedDirtyBits.set(state::EXTENDED_DIRTY_BIT_VARIABLE_RASTERIZATION_RATE);
++    }
++}
++
+ void PrivateState::setVertexAttribf(GLuint index, const GLfloat values[4])
+ {
+     ASSERT(static_cast<size_t>(index) < mVertexAttribCurrentValues.size());
+@@ -1381,6 +1406,9 @@ void PrivateState::setEnableFeature(GLenum feature, bool enabled)
+         case GL_FETCH_PER_SAMPLE_ARM:
+             mFetchPerSample = enabled;
+             return;
++        case GL_VARIABLE_RASTERIZATION_RATE_ANGLE:
++            setVariableRasterizationRateEnabled(enabled);
++            return;
+         default:
+             break;
+     }
+@@ -1547,6 +1575,8 @@ bool PrivateState::getEnableFeature(GLenum feature) const
+             return mShadingRatePreserveAspectRatio;
+         case GL_FETCH_PER_SAMPLE_ARM:
+             return mFetchPerSample;
++        case GL_VARIABLE_RASTERIZATION_RATE_ANGLE:
++            return mVariableRasterizationRateEnabled;
      }
  
-@@ -238,7 +240,9 @@ egl::Error IOSurfaceSurfaceEAGL::releaseTexImage(const gl::Context *context, EGL
-         gl::PixelPackState state;
-         state.rowLength = mRowStrideInPixels;
-         state.alignment = 1;
--        stateManager->setPixelPackState(state);
-+        if (IsError(stateManager->setPixelPackState(context, state))) {
-+            return egl::EglBadState() << "Failed to set pixel unpack state.";
-+        }
-         // TODO(kbr): possibly more state to be set here, including setting any
-         // pixel pack buffer to 0 when using ES 3.0 contexts.
-         const auto &format = kIOSurfaceFormats[mFormatIndex];
-diff --git a/src/libANGLE/renderer/gl/renderergl_utils.cpp b/src/libANGLE/renderer/gl/renderergl_utils.cpp
-index 99772c4..11f47e6 100644
---- a/src/libANGLE/renderer/gl/renderergl_utils.cpp
-+++ b/src/libANGLE/renderer/gl/renderergl_utils.cpp
-@@ -1358,7 +1358,7 @@ void GenerateCaps(const FunctionsGL *functions,
+     ASSERT(mClientVersion.major == 1);
+@@ -3430,6 +3460,9 @@ void State::getPointerv(const Context *context, GLenum pname, void **params) con
+                                           context->vertexArrayIndex(ParamToVertexArrayType(pname))),
+                                       GL_VERTEX_ATTRIB_ARRAY_POINTER, params);
+             return;
++        case GL_METAL_RASTERIZATION_RATE_MAP_BINDING_ANGLE:
++            *params = privateState().getVariableRasterizationRateMap();
++            break;
+         default:
+             UNREACHABLE();
+             break;
+diff --git a/src/libANGLE/State.h b/src/libANGLE/State.h
+index 7d9a6046395623b9e89b124b62ed153e67d41cd9..bc26383db77b5b008c9ff07b0e2c452302b71246 100644
+--- a/src/libANGLE/State.h
++++ b/src/libANGLE/State.h
+@@ -180,6 +180,7 @@ enum ExtendedDirtyBitType
+     EXTENDED_DIRTY_BIT_LOGIC_OP_ENABLED,              // ANGLE_logic_op
+     EXTENDED_DIRTY_BIT_LOGIC_OP,                      // ANGLE_logic_op
+     EXTENDED_DIRTY_BIT_BLEND_ADVANCED_COHERENT,       // KHR_blend_operation_advanced_coherent
++    EXTENDED_DIRTY_BIT_VARIABLE_RASTERIZATION_RATE,   // ANGLE_variable_rasterization_rate_metal
  
- #if defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)
-     angle::SystemInfo info;
--    if (angle::GetSystemInfo(&info) && !info.isiOSAppOnMac)
-+    if (angle::GetSystemInfo(&info) && !info.needsEAGLOnMac)
+     EXTENDED_DIRTY_BIT_INVALID,
+     EXTENDED_DIRTY_BIT_MAX = EXTENDED_DIRTY_BIT_INVALID,
+@@ -478,6 +479,15 @@ class PrivateState : angle::NonCopyable
+     void setPixelLocalStorageActivePlanes(GLsizei n);
+     GLsizei getPixelLocalStorageActivePlanes() const { return mPixelLocalStorageActivePlanes; }
+ 
++    // GL_ANGLE_variable_rasterization_rate_metal
++    void setVariableRasterizationRateEnabled(bool enabled);
++    bool isVariableRasterizationRateEnabled() const { return mVariableRasterizationRateEnabled; }
++    void setVariableRasterizationRateMap(GLMTLRasterizationRateMapANGLE map);
++    GLMTLRasterizationRateMapANGLE getVariableRasterizationRateMap() const
++    {
++        return mVariableRasterizationRateMap;
++    }
++
+     // Line width state setter
+     void setLineWidth(GLfloat width);
+     float getLineWidth() const { return mLineWidth; }
+@@ -706,6 +716,10 @@ class PrivateState : angle::NonCopyable
+     // GL_ANGLE_shader_pixel_local_storage
+     GLsizei mPixelLocalStorageActivePlanes;
+ 
++    // GL_ANGLE_variable_rasterization_rate_metal
++    bool mVariableRasterizationRateEnabled;
++    GLMTLRasterizationRateMapANGLE mVariableRasterizationRateMap;
++
+     // GLES1 emulation: state specific to GLES1
+     GLES1State mGLES1State;
+ 
+diff --git a/src/libANGLE/capture/capture_gles_ext_autogen.cpp b/src/libANGLE/capture/capture_gles_ext_autogen.cpp
+index 8fd39cbd8e1e15cd8b7142bf31b64719d0079c7e..54fed047c7d7c01b96592cc535cfad4f1e6ab3c7 100644
+--- a/src/libANGLE/capture/capture_gles_ext_autogen.cpp
++++ b/src/libANGLE/capture/capture_gles_ext_autogen.cpp
+@@ -5164,6 +5164,18 @@ CallCapture CaptureGetTranslatedShaderSourceANGLE(const State &glState,
+     return CallCapture(angle::EntryPoint::GLGetTranslatedShaderSourceANGLE, std::move(paramBuffer));
+ }
+ 
++CallCapture CaptureBindMetalRasterizationRateMapANGLE(const State &glState,
++                                                      bool isCallValid,
++                                                      GLMTLRasterizationRateMapANGLE map)
++{
++    ParamBuffer paramBuffer;
++
++    paramBuffer.addValueParam("map", ParamType::TGLMTLRasterizationRateMapANGLE, map);
++
++    return CallCapture(angle::EntryPoint::GLBindMetalRasterizationRateMapANGLE,
++                       std::move(paramBuffer));
++}
++
+ CallCapture CaptureAcquireTexturesANGLE(const State &glState,
+                                         bool isCallValid,
+                                         GLuint numTextures,
+@@ -12236,4 +12248,23 @@ CallCapture CaptureStartTilingQCOM(const State &glState,
+     return CallCapture(angle::EntryPoint::GLStartTilingQCOM, std::move(paramBuffer));
+ }
+ 
++CallCapture CaptureFramebufferResolveRenderbufferWEBKIT(const State &glState,
++                                                        bool isCallValid,
++                                                        GLenum target,
++                                                        GLenum attachment,
++                                                        GLenum renderbuffertarget,
++                                                        RenderbufferID renderbufferPacked)
++{
++    ParamBuffer paramBuffer;
++
++    paramBuffer.addEnumParam("target", GLESEnum::AllEnums, ParamType::TGLenum, target);
++    paramBuffer.addEnumParam("attachment", GLESEnum::AllEnums, ParamType::TGLenum, attachment);
++    paramBuffer.addEnumParam("renderbuffertarget", GLESEnum::AllEnums, ParamType::TGLenum,
++                             renderbuffertarget);
++    paramBuffer.addValueParam("renderbufferPacked", ParamType::TRenderbufferID, renderbufferPacked);
++
++    return CallCapture(angle::EntryPoint::GLFramebufferResolveRenderbufferWEBKIT,
++                       std::move(paramBuffer));
++}
++
+ }  // namespace gl
+diff --git a/src/libANGLE/capture/capture_gles_ext_autogen.h b/src/libANGLE/capture/capture_gles_ext_autogen.h
+index e06b394709e2e712312c3596cd51f1465f705c07..382a460d8cef36920770b9f79c945d4674de0806 100644
+--- a/src/libANGLE/capture/capture_gles_ext_autogen.h
++++ b/src/libANGLE/capture/capture_gles_ext_autogen.h
+@@ -993,6 +993,11 @@ angle::CallCapture CaptureGetTranslatedShaderSourceANGLE(const State &glState,
+                                                          GLsizei *length,
+                                                          GLchar *source);
+ 
++// GL_ANGLE_variable_rasterization_rate_metal
++angle::CallCapture CaptureBindMetalRasterizationRateMapANGLE(const State &glState,
++                                                             bool isCallValid,
++                                                             GLMTLRasterizationRateMapANGLE map);
++
+ // GL_ANGLE_vulkan_image
+ angle::CallCapture CaptureAcquireTexturesANGLE(const State &glState,
+                                                bool isCallValid,
+@@ -2881,6 +2886,14 @@ angle::CallCapture CaptureStartTilingQCOM(const State &glState,
+                                           GLuint height,
+                                           GLbitfield preserveMask);
+ 
++// GL_WEBKIT_explicit_resolve_target
++angle::CallCapture CaptureFramebufferResolveRenderbufferWEBKIT(const State &glState,
++                                                               bool isCallValid,
++                                                               GLenum target,
++                                                               GLenum attachment,
++                                                               GLenum renderbuffertarget,
++                                                               RenderbufferID renderbufferPacked);
++
+ // Parameter Captures
+ 
+ void CaptureDeletePerfMonitorsAMD_monitors(const State &glState,
+diff --git a/src/libANGLE/features.h b/src/libANGLE/features.h
+index a6fe076c72d043dba3fc347bf020ebf8ec895f51..add46e99c91d19bbd790d2de0d8768b8953d633e 100644
+--- a/src/libANGLE/features.h
++++ b/src/libANGLE/features.h
+@@ -44,4 +44,11 @@
+ #    define ANGLE_PROGRAM_LINK_VALIDATE_UNIFORM_PRECISION 1
+ #endif
+ 
++// Lose context on Metal command queue error
++// ENABLED check Metal command buffer status on completion for error and lose context on error.
++// DISABLED Metal backed contexts are never lost.
++#if !defined(ANGLE_METAL_LOSE_CONTEXT_ON_ERROR)
++#    define ANGLE_METAL_LOSE_CONTEXT_ON_ERROR ANGLE_ENABLED
++#endif
++
+ #endif  // LIBANGLE_FEATURES_H_
+diff --git a/src/libANGLE/formatutils.cpp b/src/libANGLE/formatutils.cpp
+index 8068c7dd1fbc62d2177b771b583f24a3d81084b3..9de76b5ee42b6026cec4662daff6e35445477735 100644
+--- a/src/libANGLE/formatutils.cpp
++++ b/src/libANGLE/formatutils.cpp
+@@ -592,7 +592,8 @@ static GLenum EquivalentBlitInternalFormat(GLenum internalformat)
+     // sized, even if there is a swizzle (for example, blitting from a
+     // multisampled RGBA8 renderbuffer to a BGRA8 texture). This could
+     // be expanded and/or autogenerated if that is found necessary.
+-    if (internalformat == GL_BGRA8_EXT || internalformat == GL_BGRA8_SRGB_ANGLEX)
++    if (internalformat == GL_SRGB8_ALPHA8_EXT || internalformat == GL_BGRA8_EXT ||
++        internalformat == GL_BGRA8_SRGB_ANGLEX)
      {
-         VendorID vendor = GetVendorID(functions);
-         if ((IsAMD(vendor) || IsIntel(vendor)) && *maxSupportedESVersion >= gl::Version(3, 0))
+         return GL_RGBA8;
+     }
+diff --git a/src/libANGLE/gles_extensions_autogen.cpp b/src/libANGLE/gles_extensions_autogen.cpp
+index 08d6416ee0ff64ae1db4bd0b61df3fe48856df20..1d61477b65de7fe8f04759c42c6f95a862ee7c0d 100644
+--- a/src/libANGLE/gles_extensions_autogen.cpp
++++ b/src/libANGLE/gles_extensions_autogen.cpp
+@@ -233,6 +233,7 @@ const ExtensionInfoMap &GetExtensionInfoMap()
+         map["GL_CHROMIUM_copy_compressed_texture"] = esOnlyExtension(&Extensions::copyCompressedTextureCHROMIUM);
+         map["GL_CHROMIUM_copy_texture"] = esOnlyExtension(&Extensions::copyTextureCHROMIUM);
+         map["GL_ANGLE_copy_texture_3d"] = enableableExtension(&Extensions::copyTexture3dANGLE);
++        map["GL_WEBKIT_explicit_resolve_target"] = enableableExtension(&Extensions::explicitResolveTargetWEBKIT);
+         map["GL_CHROMIUM_framebuffer_mixed_samples"] = esOnlyExtension(&Extensions::framebufferMixedSamplesCHROMIUM);
+         map["GL_ANGLE_framebuffer_multisample"] = enableableExtension(&Extensions::framebufferMultisampleANGLE);
+         map["GL_ANGLE_get_image"] = enableableExtension(&Extensions::getImageANGLE);
+@@ -270,6 +271,7 @@ const ExtensionInfoMap &GetExtensionInfoMap()
+         map["GL_ANGLE_texture_external_update"] = enableableExtension(&Extensions::textureExternalUpdateANGLE);
+         map["GL_ANGLE_texture_multisample"] = enableableExtension(&Extensions::textureMultisampleANGLE);
+         map["GL_ANGLE_texture_rectangle"] = enableableDisablableExtension(&Extensions::textureRectangleANGLE);
++        map["GL_ANGLE_variable_rasterization_rate_metal"] = enableableExtension(&Extensions::variableRasterizationRateMetalANGLE);
+         map["GL_ANGLE_vulkan_image"] = enableableExtension(&Extensions::vulkanImageANGLE);
+         map["GL_ANGLE_webgl_compatibility"] = esOnlyExtension(&Extensions::webglCompatibilityANGLE);
+         map["GL_ANGLE_yuv_internal_format"] = enableableExtension(&Extensions::yuvInternalFormatANGLE);
+diff --git a/src/libANGLE/gles_extensions_autogen.h b/src/libANGLE/gles_extensions_autogen.h
+index d3f6ae8aefceec8ff7db974ad0dbdb817bb8d8ed..6603729516e7caaaac3f851ab020d68d0b2203cf 100644
+--- a/src/libANGLE/gles_extensions_autogen.h
++++ b/src/libANGLE/gles_extensions_autogen.h
+@@ -659,6 +659,9 @@ struct Extensions
+     // GL_ANGLE_copy_texture_3d
+     bool copyTexture3dANGLE = false;
+ 
++    // GL_WEBKIT_explicit_resolve_target
++    bool explicitResolveTargetWEBKIT = false;
++
+     // GL_CHROMIUM_framebuffer_mixed_samples
+     bool framebufferMixedSamplesCHROMIUM = false;
+ 
+@@ -770,6 +773,9 @@ struct Extensions
+     // GL_ANGLE_texture_rectangle
+     bool textureRectangleANGLE = false;
+ 
++    // GL_ANGLE_variable_rasterization_rate_metal
++    bool variableRasterizationRateMetalANGLE = false;
++
+     // GL_ANGLE_vulkan_image
+     bool vulkanImageANGLE = false;
+ 
+diff --git a/src/libANGLE/renderer/ContextImpl.cpp b/src/libANGLE/renderer/ContextImpl.cpp
+index dea6f2f500ee89410847e205d2b86eae4a5a2f1f..23d5d18b7c00186a7bf5a6a657c87f3494f3038a 100644
+--- a/src/libANGLE/renderer/ContextImpl.cpp
++++ b/src/libANGLE/renderer/ContextImpl.cpp
+@@ -124,4 +124,13 @@ angle::Result ContextImpl::drawPixelLocalStorageEXTDisable(gl::Context *,
+     UNREACHABLE();
+     return angle::Result::Stop;
+ }
++
++angle::Result ContextImpl::bindMetalRasterizationRateMap(gl::Context *,
++                                                         RenderbufferImpl *renderbuffer,
++                                                         GLMTLRasterizationRateMapANGLE map)
++{
++    UNREACHABLE();
++    return angle::Result::Stop;
++}
++
+ }  // namespace rx
+diff --git a/src/libANGLE/renderer/ContextImpl.h b/src/libANGLE/renderer/ContextImpl.h
+index ec84d044755d61e14353fb32735a7d13a60d19dd..c3f918bb49ca3d10bcd767079e8c6f7e77dbc042 100644
+--- a/src/libANGLE/renderer/ContextImpl.h
++++ b/src/libANGLE/renderer/ContextImpl.h
+@@ -298,6 +298,11 @@ class ContextImpl : public GLImplFactory
+                                                           const gl::PixelLocalStoragePlane[],
+                                                           const GLenum storeops[]);
+ 
++    // GL_ANGLE_variable_rasterization_rate_metal
++    virtual angle::Result bindMetalRasterizationRateMap(gl::Context *,
++                                                        RenderbufferImpl *renderbuffer,
++                                                        GLMTLRasterizationRateMapANGLE map);
++
+   protected:
+     const gl::State &mState;
+     gl::MemoryProgramCache *mMemoryProgramCache;
+diff --git a/src/libANGLE/renderer/gl/FunctionsGL.cpp b/src/libANGLE/renderer/gl/FunctionsGL.cpp
+index 9d8c7a4f4be3f1afd54163e2aacb12b9a832664e..9c3661be5fb3f51c15404bad23a1942a9eb2a6a4 100644
+--- a/src/libANGLE/renderer/gl/FunctionsGL.cpp
++++ b/src/libANGLE/renderer/gl/FunctionsGL.cpp
+@@ -53,7 +53,8 @@ static std::vector<std::string> GetIndexedExtensions(PFNGLGETINTEGERVPROC getInt
+ 
+     for (GLint i = 0; i < numExtensions; i++)
+     {
+-        result.push_back(reinterpret_cast<const char *>(getStringIFunction(GL_EXTENSIONS, i)));
++        if (const char* extensionString = reinterpret_cast<const char *>(getStringIFunction(GL_EXTENSIONS, i)))
++            result.push_back(extensionString);
+     }
+ 
+     return result;
+diff --git a/src/libANGLE/renderer/gl/StateManagerGL.cpp b/src/libANGLE/renderer/gl/StateManagerGL.cpp
+index 867960ffd15196bb1fb62c9fea7cd127f686fa76..385bc2f0e7d263220a4ebe7bf510c46d44d82062 100644
+--- a/src/libANGLE/renderer/gl/StateManagerGL.cpp
++++ b/src/libANGLE/renderer/gl/StateManagerGL.cpp
+@@ -2513,6 +2513,8 @@ angle::Result StateManagerGL::syncState(const gl::Context *context,
+                             break;
+                         case gl::state::EXTENDED_DIRTY_BIT_BLEND_ADVANCED_COHERENT:
+                             setBlendAdvancedCoherent(state.isBlendAdvancedCoherentEnabled());
++                        case gl::state::EXTENDED_DIRTY_BIT_VARIABLE_RASTERIZATION_RATE:
++                            // Unimplemented extensions.
+                             break;
+                         default:
+                             UNREACHABLE();
+diff --git a/src/libANGLE/renderer/metal/BUILD.gn b/src/libANGLE/renderer/metal/BUILD.gn
+index 96e9ee8420810f6a3ca9a0c290d4a654200eb7b9..8725219587ee8afc25e803bfd84f0fb117176372 100644
+--- a/src/libANGLE/renderer/metal/BUILD.gn
++++ b/src/libANGLE/renderer/metal/BUILD.gn
+@@ -15,7 +15,10 @@ assert(is_mac || is_ios)
+ assert(angle_enable_metal)
+ 
+ config("angle_metal_backend_config") {
+-  defines = [ "ANGLE_ENABLE_METAL" ]
++  defines = [
++    "ANGLE_ENABLE_METAL",
++    "ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED=1",
++  ]
+   ldflags = [
+     "-weak_framework",
+     "Metal",
+diff --git a/src/libANGLE/renderer/metal/BufferMtl.mm b/src/libANGLE/renderer/metal/BufferMtl.mm
+index 398e6d3e3809da8b0d7ed81458a8f5b752433b16..4689f7484593f8654680d2650d8903324771ecb3 100644
+--- a/src/libANGLE/renderer/metal/BufferMtl.mm
++++ b/src/libANGLE/renderer/metal/BufferMtl.mm
+@@ -390,7 +390,7 @@ ConversionBufferMtl *BufferMtl::getUniformConversionBuffer(ContextMtl *context,
+         {
+             if (buffer.offset.second <= offset.second &&
+                 (offset.second - buffer.offset.second) % buffer.uniformBufferBlockSize == 0)
+-                return &buffer;
++                return static_cast<ConversionBufferMtl *>(&buffer);
+         }
+     }
+ 
+diff --git a/src/libANGLE/renderer/metal/ContextMtl.h b/src/libANGLE/renderer/metal/ContextMtl.h
+index acdd008c5424d3ab67df0ffe384bb459143348a1..7283095e00b5c260f276c497de5d53d1de27d2b9 100644
+--- a/src/libANGLE/renderer/metal/ContextMtl.h
++++ b/src/libANGLE/renderer/metal/ContextMtl.h
+@@ -272,6 +272,10 @@ class ContextMtl : public ContextImpl, public mtl::Context
+     angle::Result memoryBarrier(const gl::Context *context, GLbitfield barriers) override;
+     angle::Result memoryBarrierByRegion(const gl::Context *context, GLbitfield barriers) override;
+ 
++    angle::Result bindMetalRasterizationRateMap(gl::Context *context,
++                                                RenderbufferImpl *renderbuffer,
++                                                GLMTLRasterizationRateMapANGLE map) override;
++
+     // override mtl::ErrorHandler
+     void handleError(GLenum error,
+                      const char *message,
+@@ -555,6 +559,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
+         DIRTY_BIT_RENDER_PIPELINE,
+         DIRTY_BIT_UNIFORM_BUFFERS_BINDING,
+         DIRTY_BIT_RASTERIZER_DISCARD,
++        DIRTY_BIT_VARIABLE_RASTERIZATION_RATE,
+ 
+         DIRTY_BIT_INVALID,
+         DIRTY_BIT_MAX = DIRTY_BIT_INVALID,
+@@ -649,6 +654,9 @@ class ContextMtl : public ContextImpl, public mtl::Context
+     IncompleteTextureSet mIncompleteTextures;
+     ProvokingVertexHelper mProvokingVertexHelper;
+ 
++    mtl::RasterizationRateMapRef mRasterizationRateMap;
++    id<MTLTexture> mRasterizationRateMapTexture;
++
+     mtl::ContextDevice mContextDevice;
+ };
+ 
+diff --git a/src/libANGLE/renderer/metal/ContextMtl.mm b/src/libANGLE/renderer/metal/ContextMtl.mm
+index 2575266dce1a914509864397ffda9c277a9ca429..65721594d04c8bffad5088fc53ced3da36dc70c0 100644
+--- a/src/libANGLE/renderer/metal/ContextMtl.mm
++++ b/src/libANGLE/renderer/metal/ContextMtl.mm
+@@ -263,6 +263,8 @@ void ContextMtl::onDestroy(const gl::Context *context)
+     mIncompleteTextures.onDestroy(context);
+     mProvokingVertexHelper.onDestroy(this);
+     mDummyXFBRenderTexture = nullptr;
++    mRasterizationRateMap.reset();
++    mRasterizationRateMapTexture = nil;
+ 
+     mContextDevice.reset();
+ }
+@@ -1084,6 +1086,13 @@ angle::Result ContextMtl::multiDrawElementsInstancedBaseVertexBaseInstance(
+ // Device loss
+ gl::GraphicsResetStatus ContextMtl::getResetStatus()
+ {
++#if ANGLE_METAL_LOSE_CONTEXT_ON_ERROR == ANGLE_ENABLED
++    if (cmdQueue().isDeviceLost())
++    {
++        return gl::GraphicsResetStatus::UnknownContextReset;
++    }
++#endif
++
+     return gl::GraphicsResetStatus::NoError;
+ }
+ 
+@@ -1425,6 +1434,9 @@ void ContextMtl::updateExtendedState(const gl::State &glState,
+             case gl::state::EXTENDED_DIRTY_BIT_POLYGON_OFFSET_LINE_ENABLED:
+                 mDirtyBits.set(DIRTY_BIT_DEPTH_BIAS);
+                 break;
++            case gl::state::EXTENDED_DIRTY_BIT_VARIABLE_RASTERIZATION_RATE:
++                mDirtyBits.set(DIRTY_BIT_VARIABLE_RASTERIZATION_RATE);
++                break;
+             default:
+                 break;
+         }
+@@ -1675,6 +1687,36 @@ angle::Result ContextMtl::memoryBarrierByRegion(const gl::Context *context, GLbi
+     return angle::Result::Stop;
+ }
+ 
++angle::Result ContextMtl::bindMetalRasterizationRateMap(gl::Context *context,
++                                                        RenderbufferImpl *renderbuffer,
++                                                        GLMTLRasterizationRateMapANGLE map)
++{
++    id<MTLRasterizationRateMap> rateMap = (__bridge id<MTLRasterizationRateMap>)(map);
++    if (rateMap && rateMap.device != mContextDevice.get())
++    {
++        return angle::Result::Stop;
++    }
++
++    if (auto *metalRenderbuffer = static_cast<RenderbufferMtl*>(renderbuffer))
++    {
++        FramebufferAttachmentRenderTarget *rtOut = nullptr;
++        gl::ImageIndex index;
++        GLenum binding = 0;
++        if (angle::Result::Continue == metalRenderbuffer->getAttachmentRenderTarget(context, binding, index, 1, &rtOut))
++        {
++            if (auto *renderTargetMetal = static_cast<RenderTargetMtl*>(rtOut))
++            {
++                mtl::RenderPassAttachmentDesc desc;
++                renderTargetMetal->toRenderPassAttachmentDesc(&desc);
++                mRasterizationRateMapTexture = desc.texture.get()->get();
++            }
++        }
++    }
++
++    mRasterizationRateMap = std::move(rateMap);
++    return angle::Result::Continue;
++}
++
+ // override mtl::ErrorHandler
+ void ContextMtl::handleError(GLenum glErrorCode,
+                              const char *message,
+@@ -2531,8 +2573,22 @@ angle::Result ContextMtl::setupDraw(const gl::Context *context,
+             return angle::Result::Continue;
+         }
+         // Setup with flushed state should either produce a working encoder or fail with an error
+-        // result.
+-        ASSERT(mRenderEncoder.valid());
++        // result. if that's not the case, something's gone seriously wrong. Try to
++        // recover from the error by bailing out of the draw call, and finishing the command buffer.
++        // This will result in an unfinished / corrupted draw, but will avoid a browser/GPU process
++        // crash.
++        if (ANGLE_UNLIKELY(!mRenderEncoder.valid() || !mRenderEncoder.hasPipelineState()))
++        {
++            // Completely flush the command buffer, waiting synchronously.
++            flushCommandBuffer(mtl::WaitUntilFinished);
++            // Invalidate all state
++            invalidateState(context);
++            // Return fail, and drop the draw call. This is
++            // a worst case scenario. If in a debug roots situation,
++            // we should try to catch the call stack.
++            ERR() << "Draw call is unusable - please report a bug on bugs.webkit.org";
++            return angle::Result::Stop;
++        }
+     }
+     return angle::Result::Continue;
+ }
+@@ -2641,10 +2697,10 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
+                     mState.getBlendColor().blue, mState.getBlendColor().alpha);
+                 break;
+             case DIRTY_BIT_VIEWPORT:
+-                mRenderEncoder.setViewport(mViewport);
++                mRenderEncoder.setViewport(mViewport, mRenderEncoder.rasterizationRateMapForPass(mRasterizationRateMap, mRasterizationRateMapTexture));
+                 break;
+             case DIRTY_BIT_SCISSOR:
+-                mRenderEncoder.setScissorRect(mScissorRect);
++                mRenderEncoder.setScissorRect(mScissorRect, mRenderEncoder.rasterizationRateMapForPass(mRasterizationRateMap, mRasterizationRateMapTexture));
+                 break;
+             case DIRTY_BIT_DRAW_FRAMEBUFFER:
+                 // Already handled.
+@@ -2669,6 +2725,12 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
+             case DIRTY_BIT_RASTERIZER_DISCARD:
+                 // Already handled.
+                 break;
++            case DIRTY_BIT_VARIABLE_RASTERIZATION_RATE:
++                if (getState().privateState().isVariableRasterizationRateEnabled() && mRasterizationRateMap)
++                {
++                    mRenderEncoder.setRasterizationRateMap(mRenderEncoder.rasterizationRateMapForPass(mRasterizationRateMap, mRasterizationRateMapTexture));
++                }
++                break;
+             default:
+                 UNREACHABLE();
+                 break;
+diff --git a/src/libANGLE/renderer/metal/DisplayMtl.h b/src/libANGLE/renderer/metal/DisplayMtl.h
+index caf8d03814632d125af67315cc08846e99159c10..8e632756bf2ad4b6478579baf3aa00bede009058 100644
+--- a/src/libANGLE/renderer/metal/DisplayMtl.h
++++ b/src/libANGLE/renderer/metal/DisplayMtl.h
+@@ -143,6 +143,7 @@ class DisplayMtl : public DisplayImpl
+     bool supportsDepth24Stencil8PixelFormat() const;
+     bool supports32BitFloatFiltering() const;
+     bool supportsBCTextureCompression() const;
++    bool supportsVariableRasterizationRate() const;
+     bool isAMD() const;
+     bool isAMDBronzeDriver() const;
+     bool isAMDFireProDevice() const;
+diff --git a/src/libANGLE/renderer/metal/DisplayMtl.mm b/src/libANGLE/renderer/metal/DisplayMtl.mm
+index e48b24ffbda3fef0ec470aafb3338f93c0c18f46..2a717fa7096472ae898993aedcf8b3c1295aa575 100644
+--- a/src/libANGLE/renderer/metal/DisplayMtl.mm
++++ b/src/libANGLE/renderer/metal/DisplayMtl.mm
+@@ -184,12 +184,22 @@ void DisplayMtl::terminate()
+ 
+ bool DisplayMtl::testDeviceLost()
+ {
++#if ANGLE_METAL_LOSE_CONTEXT_ON_ERROR == ANGLE_ENABLED
++    return mCmdQueue.isDeviceLost();
++#else
+      return false;
++#endif
+ }
+ 
+ egl::Error DisplayMtl::restoreLostDevice(const egl::Display *display)
+ {
++#if ANGLE_METAL_LOSE_CONTEXT_ON_ERROR == ANGLE_ENABLED
++    // A Metal device cannot be restored, the entire context would have to be
++    // re-created along with any other EGL objects that reference it.
++    return egl::EglBadDisplay();
++#else
+     return egl::NoError();
++#endif
+ }
+ 
+ std::string DisplayMtl::getRendererDescription()
+@@ -1165,6 +1175,14 @@ void DisplayMtl::initializeExtensions() const
+             mNativeCaps.maxImageUnits = gl::IMPLEMENTATION_MAX_PIXEL_LOCAL_STORAGE_PLANES;
+         }
+     }
++
++    // GL_ANGLE_variable_rasterization_rate_metal
++    mNativeExtensions.variableRasterizationRateMetalANGLE = mFeatures.hasVariableRasterizationRate.enabled;
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    // GL_WEBKIT_explicit_resolve_target
++    mNativeExtensions.explicitResolveTargetWEBKIT = true;
++#endif
++
+     // "The GPUs in Apple3 through Apple8 families only support memory barriers for compute command
+     // encoders, and for vertex-to-vertex and vertex-to-fragment stages of render command encoders."
+     mHasFragmentMemoryBarriers = !supportsAppleGPUFamily(3);
+@@ -1237,6 +1255,8 @@ void DisplayMtl::initializeFeatures()
+                             supportsMetal2_1() && (isOSX || isCatalyst) && !isARM);
+     ANGLE_FEATURE_CONDITION((&mFeatures), hasDepthAutoResolve, supportsEitherGPUFamily(3, 2));
+     ANGLE_FEATURE_CONDITION((&mFeatures), hasStencilAutoResolve, supportsEitherGPUFamily(5, 2));
++    ANGLE_FEATURE_CONDITION((&mFeatures), hasVariableRasterizationRate,
++                            supportsVariableRasterizationRate());
+     ANGLE_FEATURE_CONDITION((&mFeatures), allowMultisampleStoreAndResolve,
+                             supportsEitherGPUFamily(3, 1));
+ 
+@@ -1459,6 +1479,17 @@ bool DisplayMtl::supportsDepth24Stencil8PixelFormat() const
+     return false;
+ #endif
+ }
++
++bool DisplayMtl::supportsVariableRasterizationRate() const
++{
++    if (@available(ios 13.0, macOS 10.15.4, macCatalyst 13.4, tvOS 16.0, *))
++    {
++        return [mMetalDevice supportsRasterizationRateMapWithLayerCount:1];
++    }
++
++    return false;
++}
++
+ bool DisplayMtl::isAMD() const
+ {
+     return angle::IsAMD(mMetalDeviceVendorId);
+diff --git a/src/libANGLE/renderer/metal/FrameBufferMtl.h b/src/libANGLE/renderer/metal/FrameBufferMtl.h
+index f8a15d589405149d2d85f15174ea29989c2bb06d..ca845ad3e93985a6459773242ec0c83d9f3940e7 100644
+--- a/src/libANGLE/renderer/metal/FrameBufferMtl.h
++++ b/src/libANGLE/renderer/metal/FrameBufferMtl.h
+@@ -212,6 +212,14 @@ class FramebufferMtl : public FramebufferImpl
+     angle::FixedVector<RenderTargetMtl *, mtl::kMaxRenderTargets> mColorRenderTargets;
+     RenderTargetMtl *mDepthRenderTarget   = nullptr;
+     RenderTargetMtl *mStencilRenderTarget = nullptr;
++
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    // GL_WEBKIT_explicit_resolve_target
++    angle::FixedVector<RenderTargetMtl *, mtl::kMaxRenderTargets> mColorResolveRenderTargets;
++    RenderTargetMtl *mDepthResolveRenderTarget   = nullptr;
++    RenderTargetMtl *mStencilResolveRenderTarget = nullptr;
++#endif
++
+     mtl::RenderPassDesc mRenderPassDesc;
+ 
+     const mtl::Format *mRenderPassFirstColorAttachmentFormat = nullptr;
+diff --git a/src/libANGLE/renderer/metal/FrameBufferMtl.mm b/src/libANGLE/renderer/metal/FrameBufferMtl.mm
+index 8cab198f0ce832cae8b564356066d2a457ad18fa..f4e01a06c2bf3d8faf279be5b9097862eb66062e 100644
+--- a/src/libANGLE/renderer/metal/FrameBufferMtl.mm
++++ b/src/libANGLE/renderer/metal/FrameBufferMtl.mm
+@@ -121,6 +121,9 @@ angle::Result Copy2DTextureSlice0Level0ToTempTexture(const gl::Context *context,
+ FramebufferMtl::FramebufferMtl(const gl::FramebufferState &state, ContextMtl *context, bool flipY)
+     : FramebufferImpl(state),
+       mColorRenderTargets(context->getNativeCaps().maxColorAttachments, nullptr),
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++      mColorResolveRenderTargets(context->getNativeCaps().maxColorAttachments, nullptr),
++#endif
+       mBackbuffer(nullptr),
+       mFlipY(flipY)
+ {
+@@ -137,6 +140,14 @@ void FramebufferMtl::reset()
+     }
+     mDepthRenderTarget = mStencilRenderTarget = nullptr;
+ 
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    for (auto &rt : mColorResolveRenderTargets)
++    {
++        rt = nullptr;
++    }
++    mDepthResolveRenderTarget = mStencilResolveRenderTarget = nullptr;
++#endif
++
+     mRenderPassFirstColorAttachmentFormat = nullptr;
+ 
+     mReadPixelBuffer = nullptr;
+@@ -968,7 +979,7 @@ void FramebufferMtl::setLoadStoreActionOnRenderPassFirstStart(
+         attachment.loadAction = MTLLoadActionLoad;
+     }
+ 
+-    if (attachment.hasImplicitMSTexture())
++    if (attachment.hasResolveTexture())
+     {
+         attachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
+     }
+@@ -1035,22 +1046,47 @@ angle::Result FramebufferMtl::updateColorRenderTarget(const gl::Context *context
+     ASSERT(colorIndexGL < mColorRenderTargets.size());
+     // Reset load store action
+     mRenderPassDesc.colorAttachments[colorIndexGL].reset();
+-    return updateCachedRenderTarget(context, mState.getColorAttachment(colorIndexGL),
+-                                    &mColorRenderTargets[colorIndexGL]);
++    ANGLE_TRY(updateCachedRenderTarget(context, mState.getColorAttachment(colorIndexGL),
++                                       &mColorRenderTargets[colorIndexGL]));
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    if (mState.getColorResolveAttachment(colorIndexGL))
++    {
++        ANGLE_TRY(updateCachedRenderTarget(context, mState.getColorResolveAttachment(colorIndexGL),
++                                           &mColorResolveRenderTargets[colorIndexGL]));
++    }
++#endif
++    return angle::Result::Continue;
+ }
+ 
+ angle::Result FramebufferMtl::updateDepthRenderTarget(const gl::Context *context)
+ {
+     // Reset load store action
+     mRenderPassDesc.depthAttachment.reset();
+-    return updateCachedRenderTarget(context, mState.getDepthAttachment(), &mDepthRenderTarget);
++    ANGLE_TRY(updateCachedRenderTarget(context, mState.getDepthAttachment(), &mDepthRenderTarget));
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    if (mState.getDepthResolveAttachment())
++    {
++        ANGLE_TRY(updateCachedRenderTarget(context, mState.getDepthResolveAttachment(),
++                                           &mDepthResolveRenderTarget));
++    }
++#endif
++    return angle::Result::Continue;
+ }
+ 
+ angle::Result FramebufferMtl::updateStencilRenderTarget(const gl::Context *context)
+ {
+     // Reset load store action
+     mRenderPassDesc.stencilAttachment.reset();
+-    return updateCachedRenderTarget(context, mState.getStencilAttachment(), &mStencilRenderTarget);
++    ANGLE_TRY(
++        updateCachedRenderTarget(context, mState.getStencilAttachment(), &mStencilRenderTarget));
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    if (mState.getStencilResolveAttachment())
++    {
++        ANGLE_TRY(updateCachedRenderTarget(context, mState.getStencilResolveAttachment(),
++                                           &mStencilResolveRenderTarget));
++    }
++#endif
++    return angle::Result::Continue;
+ }
+ 
+ angle::Result FramebufferMtl::updateCachedRenderTarget(const gl::Context *context,
+@@ -1092,6 +1128,9 @@ angle::Result FramebufferMtl::prepareRenderPass(const gl::Context *context,
+ 
+         mtl::RenderPassColorAttachmentDesc &colorAttachment = desc.colorAttachments[colorIndexGL];
+         const RenderTargetMtl *colorRenderTarget            = mColorRenderTargets[colorIndexGL];
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++        const RenderTargetMtl *colorResolveRenderTarget = mColorResolveRenderTargets[colorIndexGL];
++#endif
+ 
+         // GL allows data types of fragment shader color outputs to be incompatible with disabled
+         // color attachments. To prevent various Metal validation issues, assign textures only to
+@@ -1099,6 +1138,12 @@ angle::Result FramebufferMtl::prepareRenderPass(const gl::Context *context,
+         if (colorRenderTarget && enabledDrawBuffers.test(colorIndexGL))
+         {
+             colorRenderTarget->toRenderPassAttachmentDesc(&colorAttachment);
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++            if (colorResolveRenderTarget)
++            {
++                colorResolveRenderTarget->toRenderPassResolveAttachmentDesc(&colorAttachment);
++            }
++#endif
+ 
+             desc.numColorAttachments = std::max(desc.numColorAttachments, colorIndexGL + 1);
+             desc.sampleCount = std::max(desc.sampleCount, colorRenderTarget->getRenderSamples());
+@@ -1127,6 +1172,12 @@ angle::Result FramebufferMtl::prepareRenderPass(const gl::Context *context,
+     if (mDepthRenderTarget)
+     {
+         mDepthRenderTarget->toRenderPassAttachmentDesc(&desc.depthAttachment);
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++        if (mDepthResolveRenderTarget)
++        {
++            mDepthResolveRenderTarget->toRenderPassResolveAttachmentDesc(&desc.depthAttachment);
++        }
++#endif
+         desc.sampleCount = std::max(desc.sampleCount, mDepthRenderTarget->getRenderSamples());
+     }
+     else
+@@ -1137,6 +1188,12 @@ angle::Result FramebufferMtl::prepareRenderPass(const gl::Context *context,
+     if (mStencilRenderTarget)
+     {
+         mStencilRenderTarget->toRenderPassAttachmentDesc(&desc.stencilAttachment);
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++        if (mStencilResolveRenderTarget)
++        {
++            mStencilResolveRenderTarget->toRenderPassResolveAttachmentDesc(&desc.stencilAttachment);
++        }
++#endif
+         desc.sampleCount = std::max(desc.sampleCount, mStencilRenderTarget->getRenderSamples());
+     }
+     else
+@@ -1210,7 +1267,7 @@ angle::Result FramebufferMtl::clearWithLoadOpRenderPassNotStarted(
+             colorAttachment.loadAction = MTLLoadActionLoad;
+         }
+ 
+-        if (colorAttachment.hasImplicitMSTexture())
++        if (colorAttachment.hasResolveTexture())
+         {
+             colorAttachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
+         }
+@@ -1230,7 +1287,7 @@ angle::Result FramebufferMtl::clearWithLoadOpRenderPassNotStarted(
+         tempDesc.depthAttachment.loadAction = MTLLoadActionLoad;
+     }
+ 
+-    if (tempDesc.depthAttachment.hasImplicitMSTexture())
++    if (tempDesc.depthAttachment.hasResolveTexture())
+     {
+         tempDesc.depthAttachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
+     }
+@@ -1249,7 +1306,7 @@ angle::Result FramebufferMtl::clearWithLoadOpRenderPassNotStarted(
+         tempDesc.stencilAttachment.loadAction = MTLLoadActionLoad;
+     }
+ 
+-    if (tempDesc.stencilAttachment.hasImplicitMSTexture())
++    if (tempDesc.stencilAttachment.hasResolveTexture())
+     {
+         tempDesc.stencilAttachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
+     }
+@@ -1487,31 +1544,54 @@ angle::Result FramebufferMtl::invalidateImpl(const gl::Context *context,
+                 }
+             }
+ 
+-            mtl::RenderPassColorAttachmentDesc &colorAttachment =
+-                mRenderPassDesc.colorAttachments[i];
++            // If the invalidated color buffer has an associated resolve target
++            // then resolve the MSAA samples, otherwise discard the data.
++            auto &colorAttachment = mRenderPassDesc.colorAttachments[i];
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++            auto *resolveRenderTarget = mColorResolveRenderTargets[i];
++            colorAttachment.storeAction =
++                resolveRenderTarget ? MTLStoreActionMultisampleResolve : MTLStoreActionDontCare;
++#else
+             colorAttachment.storeAction = MTLStoreActionDontCare;
++#endif
+             if (renderPassStarted)
+             {
+-                encoder->setColorStoreAction(MTLStoreActionDontCare, i);
++                encoder->setColorStoreAction(colorAttachment.storeAction, i);
+             }
+         }
+     }
+ 
+     if (invalidateDepthBuffer && mDepthRenderTarget)
+     {
+-        mRenderPassDesc.depthAttachment.storeAction = MTLStoreActionDontCare;
++        // If the invalidated depth buffer has an associated resolve target then
++        // resolve the MSAA samples, otherwise discard the data.
++        auto &depthAttachment = mRenderPassDesc.depthAttachment;
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++        depthAttachment.storeAction =
++            mDepthResolveRenderTarget ? MTLStoreActionMultisampleResolve : MTLStoreActionDontCare;
++#else
++        depthAttachment.storeAction = MTLStoreActionDontCare;
++#endif
+         if (renderPassStarted)
+         {
+-            encoder->setDepthStoreAction(MTLStoreActionDontCare);
++            encoder->setDepthStoreAction(depthAttachment.storeAction);
+         }
+     }
+ 
+     if (invalidateStencilBuffer && mStencilRenderTarget)
+     {
+-        mRenderPassDesc.stencilAttachment.storeAction = MTLStoreActionDontCare;
++        // If the invalidated stencil buffer has an associated resolve target
++        // then resolve the MSAA samples, otherwise discard the data.
++        auto &stencilAttachment = mRenderPassDesc.stencilAttachment;
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++        stencilAttachment.storeAction =
++            mStencilResolveRenderTarget ? MTLStoreActionMultisampleResolve : MTLStoreActionDontCare;
++#else
++        stencilAttachment.storeAction = MTLStoreActionDontCare;
++#endif
+         if (renderPassStarted)
+         {
+-            encoder->setStencilStoreAction(MTLStoreActionDontCare);
++            encoder->setStencilStoreAction(stencilAttachment.storeAction);
+         }
+     }
+ 
+@@ -1695,8 +1775,13 @@ angle::Result FramebufferMtl::readPixelsToPBO(const gl::Context *context,
+ 
+     ContextMtl *contextMtl = mtl::GetImpl(context);
+ 
+-    ANGLE_MTL_CHECK(contextMtl, packPixelsParams.offset <= std::numeric_limits<uint32_t>::max(),
++    if constexpr (sizeof(packPixelsParams.offset) > sizeof(uint32_t))
++    {
++        ANGLE_MTL_CHECK(contextMtl,
++                        static_cast<std::make_unsigned_t<decltype(packPixelsParams.offset)>>(
++                            packPixelsParams.offset) <= std::numeric_limits<uint32_t>::max(),
+                         GL_INVALID_OPERATION);
++    }
+     uint32_t offset = static_cast<uint32_t>(packPixelsParams.offset);
+ 
+     BufferMtl *packBufferMtl = mtl::GetImpl(packPixelsParams.packBuffer);
+@@ -1845,8 +1930,8 @@ angle::Result FramebufferMtl::unresolveIfNeeded(const gl::Context *context,
+             renderPassDesc.colorAttachments[colorIndexGL];
+ 
+         if (colorAttachment.loadAction != MTLLoadActionLoad ||
+-            !colorAttachment.hasImplicitMSTexture() ||
+-            !colorAttachment.implicitMSTexture->shouldNotLoadStore())
++            !colorAttachment.texture ||
++            !colorAttachment.texture->shouldNotLoadStore())
+         {
+             continue;
+         }
+@@ -1854,9 +1939,9 @@ angle::Result FramebufferMtl::unresolveIfNeeded(const gl::Context *context,
+         const angle::Format &angleFormat = colorRenderTarget->getFormat().actualAngleFormat();
+ 
+         // Blit the resolve texture to the MS texture.
+-        colorBlitParams.src      = colorAttachment.texture;
+-        colorBlitParams.srcLevel = colorAttachment.level;
+-        colorBlitParams.srcLayer = colorAttachment.sliceOrDepth;
++        colorBlitParams.src      = colorAttachment.resolveTexture;
++        colorBlitParams.srcLevel = colorAttachment.resolveLevel;
++        colorBlitParams.srcLayer = colorAttachment.resolveSliceOrDepth;
+ 
+         colorBlitParams.enabledBuffers.reset();
+         colorBlitParams.enabledBuffers.set(colorIndexGL);
+@@ -1871,19 +1956,18 @@ angle::Result FramebufferMtl::unresolveIfNeeded(const gl::Context *context,
+     mtl::DepthStencilBlitParams dsBlitParams;
+     dsBlitParams.BlitParams::operator=(baseParams);
+     const mtl::RenderPassDepthAttachmentDesc &depthAttachment = renderPassDesc.depthAttachment;
+-    if (depthAttachment.loadAction == MTLLoadActionLoad && depthAttachment.hasImplicitMSTexture() &&
+-        depthAttachment.implicitMSTexture->shouldNotLoadStore())
++    if (depthAttachment.loadAction == MTLLoadActionLoad && depthAttachment.texture &&
++        depthAttachment.texture->shouldNotLoadStore())
+     {
+-        dsBlitParams.src      = depthAttachment.texture;
+-        dsBlitParams.srcLevel = depthAttachment.level;
+-        dsBlitParams.srcLayer = depthAttachment.sliceOrDepth;
++        dsBlitParams.src      = depthAttachment.resolveTexture;
++        dsBlitParams.srcLevel = depthAttachment.resolveLevel;
++        dsBlitParams.srcLayer = depthAttachment.resolveSliceOrDepth;
+     }
+ 
+     const mtl::RenderPassStencilAttachmentDesc &stencilAttachment =
+         renderPassDesc.stencilAttachment;
+-    if (stencilAttachment.loadAction == MTLLoadActionLoad &&
+-        stencilAttachment.hasImplicitMSTexture() &&
+-        stencilAttachment.implicitMSTexture->shouldNotLoadStore())
++    if (stencilAttachment.loadAction == MTLLoadActionLoad && stencilAttachment.texture &&
++        stencilAttachment.texture->shouldNotLoadStore())
+     {
+         if (mState.hasSeparateDepthAndStencilAttachments())
+         {
+@@ -1893,9 +1977,9 @@ angle::Result FramebufferMtl::unresolveIfNeeded(const gl::Context *context,
+             dsBlitParams.src = nullptr;
+         }
+ 
+-        dsBlitParams.srcStencil = stencilAttachment.texture->getStencilView();
+-        dsBlitParams.srcLevel   = stencilAttachment.level;
+-        dsBlitParams.srcLayer   = stencilAttachment.sliceOrDepth;
++        dsBlitParams.srcStencil = stencilAttachment.resolveTexture->getStencilView();
++        dsBlitParams.srcLevel   = stencilAttachment.resolveLevel;
++        dsBlitParams.srcLayer   = stencilAttachment.resolveSliceOrDepth;
+     }
+ 
+     if (dsBlitParams.src || dsBlitParams.srcStencil)
+diff --git a/src/libANGLE/renderer/metal/ImageMtl.mm b/src/libANGLE/renderer/metal/ImageMtl.mm
+index a4a809fabe7572c1d212ff8fb4da35b1f67b6a01..eb2bd204b9edda65ba372b8fcb24f8092b9f4f65 100644
+--- a/src/libANGLE/renderer/metal/ImageMtl.mm
++++ b/src/libANGLE/renderer/metal/ImageMtl.mm
+@@ -86,7 +86,9 @@ egl::Error TextureImageSiblingMtl::ValidateClientBuffer(const DisplayMtl *displa
+         return egl::EglBadAttribute() << "Unrecognized format";
+     }
+ 
+-    if (format.metalFormat != texture.pixelFormat)
++    angle::FormatID srcAngleFormatId = mtl::Format::MetalToAngleFormatID(texture.pixelFormat);
++    const mtl::Format &srcFormat = display->getPixelFormat(srcAngleFormatId);
++    if (!format.isViewCompatible(srcFormat))
+     {
+         return egl::EglBadAttribute() << "Incompatible format";
+     }
+@@ -120,18 +122,21 @@ angle::Result TextureImageSiblingMtl::initImpl(DisplayMtl *displayMtl)
+ {
+     mNativeTexture = mtl::Texture::MakeFromMetal((__bridge id<MTLTexture>)(mBuffer));
+ 
+-    if (mNativeTexture->textureType() == MTLTextureType2DArray)
++    angle::FormatID angleFormatId = intendedFormatForMTLTexture(mNativeTexture->get(), mAttribs);
++    mFormat                       = displayMtl->getPixelFormat(angleFormatId);
++
++    if (mNativeTexture->textureType() == MTLTextureType2DArray ||
++        mNativeTexture->pixelFormat() != mFormat.metalFormat)
+     {
+         mtl::TextureRef baseTexture = std::move(mNativeTexture);
+         unsigned textureArraySlice =
+             static_cast<unsigned>(mAttribs.getAsInt(EGL_METAL_TEXTURE_ARRAY_SLICE_ANGLE, 0));
+         mNativeTexture =
+-            baseTexture->createSliceMipView(textureArraySlice, mtl::kZeroNativeMipLevel);
++        baseTexture->createSliceMipViewWithCompatibleFormat(textureArraySlice,
++                                                            mtl::kZeroNativeMipLevel,
++                                                            mFormat.metalFormat);
+     }
+ 
+-    angle::FormatID angleFormatId = intendedFormatForMTLTexture(mNativeTexture->get(), mAttribs);
+-    mFormat                       = displayMtl->getPixelFormat(angleFormatId);
+-
+     if (mNativeTexture)
+     {
+         size_t resourceSize = EstimateTextureSizeInBytes(
+diff --git a/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm b/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm
+index 2b12574f70492d26ca793c57b1c21569d50ef468..45446b2b041fad4f756e1587eecd4d0995c0a8bd 100644
+--- a/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm
++++ b/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm
+@@ -889,7 +889,7 @@ angle::Result ProgramExecutableMtl::setupDraw(const gl::Context *glContext,
+ {
+     ContextMtl *context = mtl::GetImpl(glContext);
+ 
+-    if (pipelineDescChanged)
++    if (pipelineDescChanged || !cmdEncoder->hasPipelineState())
+     {
+         id<MTLFunction> vertexShader = nil;
+         ANGLE_TRY(
+diff --git a/src/libANGLE/renderer/metal/RenderTargetMtl.h b/src/libANGLE/renderer/metal/RenderTargetMtl.h
+index 281085bbc46eb7d96dabf73b9c75ee0a61125bab..a07218bc78473252b0b2b9e561ec74799959177e 100644
+--- a/src/libANGLE/renderer/metal/RenderTargetMtl.h
++++ b/src/libANGLE/renderer/metal/RenderTargetMtl.h
+@@ -51,6 +51,9 @@ class RenderTargetMtl final : public FramebufferAttachmentRenderTarget
+     const mtl::Format &getFormat() const { return mFormat; }
+ 
+     void toRenderPassAttachmentDesc(mtl::RenderPassAttachmentDesc *rpaDescOut) const;
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    void toRenderPassResolveAttachmentDesc(mtl::RenderPassAttachmentDesc *rpaDescOut) const;
++#endif
+ 
+   private:
+     mtl::TextureWeakRef mTexture;
+diff --git a/src/libANGLE/renderer/metal/RenderTargetMtl.mm b/src/libANGLE/renderer/metal/RenderTargetMtl.mm
+index 18e62da867b2916085794ba3b68ee4a3812d3929..6cbf2a58812184edb425d11689bdbce5574917f0 100644
+--- a/src/libANGLE/renderer/metal/RenderTargetMtl.mm
++++ b/src/libANGLE/renderer/metal/RenderTargetMtl.mm
+@@ -73,10 +73,33 @@ uint32_t RenderTargetMtl::getRenderSamples() const
+ 
+ void RenderTargetMtl::toRenderPassAttachmentDesc(mtl::RenderPassAttachmentDesc *rpaDescOut) const
+ {
+-    rpaDescOut->texture           = mTexture.lock();
+-    rpaDescOut->implicitMSTexture = mImplicitMSTexture.lock();
++    mtl::TextureRef implicitMSTex = getImplicitMSTexture();
++    mtl::TextureRef tex           = getTexture();
++    if (implicitMSTex)
++    {
++        rpaDescOut->texture             = implicitMSTex;
++        rpaDescOut->resolveTexture      = tex;
++        rpaDescOut->resolveLevel        = mLevelIndex;
++        rpaDescOut->resolveSliceOrDepth = mLayerIndex;
++    }
++    else
++    {
++        rpaDescOut->texture      = tex;
+         rpaDescOut->level        = mLevelIndex;
+         rpaDescOut->sliceOrDepth = mLayerIndex;
++    }
+     rpaDescOut->blendable = mFormat.getCaps().blendable;
+ }
++
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++void RenderTargetMtl::toRenderPassResolveAttachmentDesc(
++    mtl::RenderPassAttachmentDesc *rpaDescOut) const
++{
++    ASSERT(!getImplicitMSTexture());
++    ASSERT(getRenderSamples() == 1);
++    rpaDescOut->resolveTexture      = getTexture();
++    rpaDescOut->resolveLevel        = mLevelIndex;
++    rpaDescOut->resolveSliceOrDepth = mLayerIndex;
++}
++#endif
+ }  // namespace rx
+diff --git a/src/libANGLE/renderer/metal/SurfaceMtl.mm b/src/libANGLE/renderer/metal/SurfaceMtl.mm
+index 1089fb59517f0c50d055275a66992dda7f380e5f..1c1e2b823d9a4c1340fabb9dff87e8b60993e015 100644
+--- a/src/libANGLE/renderer/metal/SurfaceMtl.mm
++++ b/src/libANGLE/renderer/metal/SurfaceMtl.mm
+@@ -686,8 +686,7 @@ angle::Result WindowSurfaceMtl::obtainNextDrawable(const gl::Context *context)
+             mColorTexture->set(mCurrentDrawable.get().texture);
+         }
+ 
+-        ANGLE_MTL_LOG("Current metal drawable size=%d,%d", mColorTexture->width(),
+-                      mColorTexture->height());
++        ANGLE_MTL_LOG("Current metal drawable size=%d,%d", mColorTexture->width(mtl::MipmapNativeLevel(0)),  mColorTexture->height(mtl::MipmapNativeLevel(0)));
+ 
+         // Now we have to resize depth stencil buffers if required.
+         ANGLE_TRY(ensureCompanionTexturesSizeCorrect(context));
+diff --git a/src/libANGLE/renderer/metal/VertexArrayMtl.mm b/src/libANGLE/renderer/metal/VertexArrayMtl.mm
+index d93f10afc07d12b88cd234e569fa658a1fbf6ad2..24fc07ff9b0e8294d972e7623173b9d47ff49679 100644
+--- a/src/libANGLE/renderer/metal/VertexArrayMtl.mm
++++ b/src/libANGLE/renderer/metal/VertexArrayMtl.mm
+@@ -1084,16 +1084,23 @@ angle::Result VertexArrayMtl::convertVertexBufferGPU(const gl::Context *glContex
+     ANGLE_TRY(conversion->data.allocate(contextMtl, numVertices * targetStride, nullptr, &newBuffer,
+                                         &newBufferOffset));
+ 
+-    ANGLE_CHECK_GL_MATH(contextMtl, binding.getOffset() <= std::numeric_limits<uint32_t>::max());
++    GLintptr bindingOffset = binding.getOffset();
++
++    if constexpr (sizeof(bindingOffset) > sizeof(uint32_t))
++        ANGLE_CHECK_GL_MATH(contextMtl, static_cast<std::make_unsigned_t<decltype(bindingOffset)>>(
++                                            bindingOffset) <= std::numeric_limits<uint32_t>::max());
+     ANGLE_CHECK_GL_MATH(contextMtl, newBufferOffset <= std::numeric_limits<uint32_t>::max());
+     ANGLE_CHECK_GL_MATH(contextMtl, numVertices <= std::numeric_limits<uint32_t>::max());
+ 
+     mtl::VertexFormatConvertParams params;
+     VertexConversionBufferMtl *vertexConversion =
+         static_cast<VertexConversionBufferMtl *>(conversion);
++    if constexpr (sizeof(vertexConversion->offset) > sizeof(uint32_t))
++        ANGLE_CHECK_GL_MATH(contextMtl,
++                            vertexConversion->offset <= std::numeric_limits<uint32_t>::max());
+     params.srcBuffer            = srcBuffer->getCurrentBuffer();
+-    params.srcBufferStartOffset = static_cast<uint32_t>(
+-        MIN(static_cast<GLintptr>(vertexConversion->offset), binding.getOffset()));
++    params.srcBufferStartOffset = std::min(static_cast<uint32_t>(vertexConversion->offset),
++                                           static_cast<uint32_t>(bindingOffset));
+     params.srcStride            = binding.getStride();
+     params.srcDefaultAlphaData  = convertedFormat.defaultAlpha;
+ 
+diff --git a/src/libANGLE/renderer/metal/mtl_command_buffer.h b/src/libANGLE/renderer/metal/mtl_command_buffer.h
+index 74f085009e4af0e0e7407c658ceddfffda4b2b78..7c36e0840135f5ad703db46c14160420d6b513af 100644
+--- a/src/libANGLE/renderer/metal/mtl_command_buffer.h
++++ b/src/libANGLE/renderer/metal/mtl_command_buffer.h
+@@ -104,6 +104,8 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
+     bool isTimeElapsedEntryComplete(uint64_t id);
+     double getTimeElapsedEntryInSeconds(uint64_t id);
+ 
++    bool isDeviceLost() const { return mIsDeviceLost; }
++
+   private:
+     void onCommandBufferCompleted(id<MTLCommandBuffer> buf,
+                                   uint64_t serial,
+@@ -146,6 +148,8 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
+     void recordCommandBufferTimeElapsed(std::lock_guard<std::mutex> &lg,
+                                         uint64_t id,
+                                         double seconds);
++
++    std::atomic_bool mIsDeviceLost = false;
+ };
+ 
+ class CommandBuffer final : public WrappedObject<id<MTLCommandBuffer>>, angle::NonCopyable
+@@ -426,8 +430,10 @@ class RenderCommandEncoder final : public CommandEncoder
+     RenderCommandEncoder &setStencilRefVals(uint32_t frontRef, uint32_t backRef);
+     RenderCommandEncoder &setStencilRefVal(uint32_t ref);
+ 
+-    RenderCommandEncoder &setViewport(const MTLViewport &viewport);
+-    RenderCommandEncoder &setScissorRect(const MTLScissorRect &rect);
++    RenderCommandEncoder &setViewport(const MTLViewport &viewport,
++                                      id<MTLRasterizationRateMap> map);
++    RenderCommandEncoder &setScissorRect(const MTLScissorRect &rect,
++                                         id<MTLRasterizationRateMap> map);
+ 
+     RenderCommandEncoder &setBlendColor(float r, float g, float b, float a);
+ 
+@@ -576,6 +582,8 @@ class RenderCommandEncoder final : public CommandEncoder
+     RenderCommandEncoder &setDepthLoadAction(MTLLoadAction action, double clearValue);
+     RenderCommandEncoder &setStencilLoadAction(MTLLoadAction action, uint32_t clearValue);
+ 
++    RenderCommandEncoder &setRasterizationRateMap(id<MTLRasterizationRateMap> map);
++
+     void setLabel(NSString *label);
+ 
+     void pushDebugGroup(NSString *label) override;
+@@ -583,8 +591,11 @@ class RenderCommandEncoder final : public CommandEncoder
+ 
+     const RenderPassDesc &renderPassDesc() const { return mRenderPassDesc; }
+     bool hasDrawCalls() const { return mHasDrawCalls; }
++    bool hasPipelineState() const { return mPipelineStateSet; }
+ 
+     uint64_t getSerial() const { return mSerial; }
++    id<MTLRasterizationRateMap> rasterizationRateMapForPass(id<MTLRasterizationRateMap> map,
++                                                            id<MTLTexture> colorTexture) const;
+ 
+   private:
+     // Override CommandEncoder
+diff --git a/src/libANGLE/renderer/metal/mtl_command_buffer.mm b/src/libANGLE/renderer/metal/mtl_command_buffer.mm
+index f1633a6d393c4c4b5fbbf7f34b62772ab9325626..00566ecb231a78a6e96a92148ec3819d880ebf18 100644
+--- a/src/libANGLE/renderer/metal/mtl_command_buffer.mm
++++ b/src/libANGLE/renderer/metal/mtl_command_buffer.mm
+@@ -374,12 +374,20 @@ inline void SetVisibilityResultModeCmd(id<MTLRenderCommandEncoder> encoder,
+     [encoder setVisibilityResultMode:mode offset:offset];
+ }
+ 
++#if (defined(__MAC_13_0) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_13_0) || \
++    (defined(__IPHONE_16_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_16_0)
++#    define ANGLE_MTL_USE_RESOURCE_USAGE_DEPRECATED 1
++#endif
++
+ inline void UseResourceCmd(id<MTLRenderCommandEncoder> encoder, IntermediateCommandStream *stream)
+ {
+     id<MTLResource> resource = stream->fetch<id<MTLResource>>();
+     MTLResourceUsage usage   = stream->fetch<MTLResourceUsage>();
+     mtl::RenderStages stages = stream->fetch<mtl::RenderStages>();
+     ANGLE_UNUSED_VARIABLE(stages);
++#if ANGLE_MTL_USE_RESOURCE_USAGE_DEPRECATED
++    [encoder useResource:resource usage:usage stages:stages];
++#else
+ #if defined(__IPHONE_13_0) || defined(__MAC_10_15)
+     if (ANGLE_APPLE_AVAILABLE_XCI(10.15, 13.1, 13.0))
+     {
+@@ -392,6 +400,7 @@ inline void UseResourceCmd(id<MTLRenderCommandEncoder> encoder, IntermediateComm
+         [encoder useResource:resource usage:usage];
+         ANGLE_APPLE_ALLOW_DEPRECATED_END
+     }
++#endif
+     [resource ANGLE_MTL_RELEASE];
+ }
+ 
+@@ -645,6 +654,20 @@ void CommandQueue::onCommandBufferCompleted(id<MTLCommandBuffer> buf,
+ 
+     ANGLE_MTL_LOG("Completed MTLCommandBuffer %llu:%p", serial, buf);
+ 
++    MTLCommandBufferStatus status = buf.status;
++    if (status != MTLCommandBufferStatusCompleted)
++    {
++        NSError *error = buf.error;
++        // MTLCommandBufferErrorNotPermitted is non-fatal, all other errors
++        // result in device lost.
++        // TODO(djg): Should this also check error.domain for MTLCommandBufferErrorDomain?
++        mIsDeviceLost  = !error || error.code != MTLCommandBufferErrorNotPermitted;
++        if (mIsDeviceLost)
++        {
++            return;
++        }
++    }
++
+     if (timeElapsedEntry != 0)
+     {
+         // Record this command buffer's elapsed time.
+@@ -1361,6 +1384,7 @@ void RenderCommandEncoder::reset()
+     CommandEncoder::reset();
+     mRecording        = false;
+     mPipelineStateSet = false;
++    setRasterizationRateMap(nil);
+     mCommands.clear();
+ }
+ 
+@@ -1396,9 +1420,8 @@ bool RenderCommandEncoder::finalizeLoadStoreAction(
+     }
+ 
+     // Check if we need to disable MTLLoadActionLoad & MTLStoreActionStore
+-    mtl::TextureRef mainTextureRef = cppRenderPassAttachment.getImplicitMSTextureIfAvailOrTexture();
+-    ASSERT(mainTextureRef->get() == objCRenderPassAttachment.texture);
+-    if (mainTextureRef->shouldNotLoadStore())
++    ASSERT(cppRenderPassAttachment.texture->get() == objCRenderPassAttachment.texture);
++    if (cppRenderPassAttachment.texture->shouldNotLoadStore())
+     {
+         // Disable Load.
+         if (objCRenderPassAttachment.loadAction == MTLLoadActionLoad)
+@@ -1531,13 +1554,13 @@ void RenderCommandEncoder::endEncodingImpl(bool considerDiscardSimulation)
+ inline void RenderCommandEncoder::initAttachmentWriteDependencyAndScissorRect(
+     const RenderPassAttachmentDesc &attachment)
+ {
+-    TextureRef texture = attachment.texture;
++    auto texture = attachment.hasResolveTexture() ? attachment.resolveTexture : attachment.texture;
++    auto &mipLevel = attachment.hasResolveTexture() ? attachment.resolveLevel : attachment.level;
++
+     if (texture)
+     {
+         cmdBuffer().setWriteDependency(texture, /*isRenderCommand=*/true);
+ 
+-        const MipmapNativeLevel &mipLevel = attachment.level;
+-
+         mRenderPassMaxScissorRect.width =
+             std::min<NSUInteger>(mRenderPassMaxScissorRect.width, texture->width(mipLevel));
+         mRenderPassMaxScissorRect.height =
+@@ -1815,7 +1838,8 @@ RenderCommandEncoder &RenderCommandEncoder::setStencilRefVal(uint32_t ref)
+     return setStencilRefVals(ref, ref);
+ }
+ 
+-RenderCommandEncoder &RenderCommandEncoder::setViewport(const MTLViewport &viewport)
++RenderCommandEncoder &RenderCommandEncoder::setViewport(const MTLViewport &viewport,
++                                                        id<MTLRasterizationRateMap> map)
+ {
+     if (mStateCache.viewport.valid() && mStateCache.viewport.value() == viewport)
+     {
+@@ -1828,12 +1852,22 @@ RenderCommandEncoder &RenderCommandEncoder::setViewport(const MTLViewport &viewp
+     return *this;
+ }
+ 
+-RenderCommandEncoder &RenderCommandEncoder::setScissorRect(const MTLScissorRect &rect)
++RenderCommandEncoder &RenderCommandEncoder::setScissorRect(const MTLScissorRect &rect, id<MTLRasterizationRateMap> map)
+ {
++    auto maxScissorRect =
++        MTLCoordinate2DMake(mRenderPassMaxScissorRect.width, mRenderPassMaxScissorRect.height);
++
++    if (map)
++    {
++        maxScissorRect = [map mapPhysicalToScreenCoordinates:maxScissorRect forLayer:0];
++        if (!(rect.width * rect.height))
++            return *this;
++    }
++
+     NSUInteger clampedWidth =
+-        rect.x > mRenderPassMaxScissorRect.width ? 0 : mRenderPassMaxScissorRect.width - rect.x;
++        rect.x > maxScissorRect.x ? 0 : (NSUInteger)ceilf(maxScissorRect.x) - rect.x;
+     NSUInteger clampedHeight =
+-        rect.y > mRenderPassMaxScissorRect.height ? 0 : mRenderPassMaxScissorRect.height - rect.y;
++        rect.y > maxScissorRect.y ? 0 : (NSUInteger)ceilf(maxScissorRect.y) - rect.y;
+ 
+     MTLScissorRect clampedRect = {rect.x, rect.y, std::min(rect.width, clampedWidth),
+                                   std::min(rect.height, clampedHeight)};
+@@ -1845,6 +1879,23 @@ RenderCommandEncoder &RenderCommandEncoder::setScissorRect(const MTLScissorRect
+ 
+     mStateCache.scissorRect = clampedRect;
+ 
++    if (map)
++    {
++        auto adjustedOrigin =
++            [map mapPhysicalToScreenCoordinates:MTLCoordinate2DMake(clampedRect.x, clampedRect.y)
++                                       forLayer:0];
++        auto adjustedSize =
++            [map mapPhysicalToScreenCoordinates:MTLCoordinate2DMake(clampedRect.width,
++                                                                    clampedRect.height)
++                                       forLayer:0];
++
++        clampedRect.x      = (NSUInteger)roundf(adjustedOrigin.x);
++        clampedRect.y      = (NSUInteger)roundf(adjustedOrigin.y);
++        MTLSize screenSize = [map screenSize];
++        clampedRect.width  = std::min<NSUInteger>(screenSize.width, roundf(adjustedSize.x));
++        clampedRect.height = std::min<NSUInteger>(screenSize.height, roundf(adjustedSize.y));
++    }
++
+     mCommands.push(CmdType::SetScissorRect).push(clampedRect);
+ 
+     return *this;
+@@ -2250,6 +2301,17 @@ void RenderCommandEncoder::popDebugGroup()
+     mCommands.push(CmdType::PopDebugGroup);
+ }
+ 
++id<MTLRasterizationRateMap> RenderCommandEncoder::rasterizationRateMapForPass(id<MTLRasterizationRateMap> map,
++                                                                              id<MTLTexture> texture) const
++{
++    if (!mCachedRenderPassDescObjC.get())
++        return nil;
++
++    MTLSize size = [map physicalSizeForLayer:0];
++    id<MTLTexture> t = mCachedRenderPassDescObjC.get().colorAttachments[0].texture;
++    return t.width == size.width && t.height == size.height ? map : nil;
++}
++
+ RenderCommandEncoder &RenderCommandEncoder::setColorStoreAction(MTLStoreAction action,
+                                                                 uint32_t colorAttachmentIndex)
+ {
+@@ -2345,6 +2407,16 @@ RenderCommandEncoder &RenderCommandEncoder::setStencilLoadAction(MTLLoadAction a
+     return *this;
+ }
+ 
++RenderCommandEncoder &RenderCommandEncoder::setRasterizationRateMap(id<MTLRasterizationRateMap> map)
++{
++    if (map != mCachedRenderPassDescObjC.get().rasterizationRateMap)
++    {
++        mCachedRenderPassDescObjC.get().rasterizationRateMap = map;
++    }
++
++    return *this;
++}
++
+ void RenderCommandEncoder::setLabel(NSString *label)
+ {
+     mLabel.retainAssign(label);
+diff --git a/src/libANGLE/renderer/metal/mtl_common.h b/src/libANGLE/renderer/metal/mtl_common.h
+index b430aa0263545ce6d35ae410e62b035cd41b6c23..96438f09f8b4f576ee2280206b3bdbf461c7618e 100644
+--- a/src/libANGLE/renderer/metal/mtl_common.h
++++ b/src/libANGLE/renderer/metal/mtl_common.h
+@@ -407,6 +407,8 @@ inline AutoObjCObj<U> adoptObjCObj(U *NS_RELEASES_ARGUMENT src)
+ #    define ANGLE_MTL_EVENT_AVAILABLE 0
+ #endif
+ 
++using RasterizationRateMapRef = AutoObjCPtr<id<MTLRasterizationRateMap>>;
++
+ // The native image index used by Metal back-end,  the image index uses native mipmap level instead
+ // of "virtual" level modified by OpenGL's base level.
+ using MipmapNativeLevel = gl::LevelIndexWrapper<uint32_t>;
+diff --git a/src/libANGLE/renderer/metal/mtl_format_utils.h b/src/libANGLE/renderer/metal/mtl_format_utils.h
+index db95298598177500cebd0eb81cfcb845656031b2..8cbd1014b7dd9c2886272df3ae0923ccec49b512 100644
+--- a/src/libANGLE/renderer/metal/mtl_format_utils.h
++++ b/src/libANGLE/renderer/metal/mtl_format_utils.h
+@@ -89,6 +89,10 @@ struct Format : public FormatBase
+     // Need conversion between source format and this format?
+     bool needConversion(angle::FormatID srcFormatId) const;
+ 
++    // Are the formats view compatible without requiring
++    // MTLTextureUsagePixelFormatView?
++    bool isViewCompatible(const Format &srcFormat) const;
++
+     MTLPixelFormat metalFormat = MTLPixelFormatInvalid;
+ 
+     LoadFunctionMap textureLoadFunctions       = nullptr;
+diff --git a/src/libANGLE/renderer/metal/mtl_format_utils.mm b/src/libANGLE/renderer/metal/mtl_format_utils.mm
+index 42ea015fdd35d71234acd7b64db032ba2831fb9b..047c119251175ca9a3b5bbafb84d6f686b0b22dd 100644
+--- a/src/libANGLE/renderer/metal/mtl_format_utils.mm
++++ b/src/libANGLE/renderer/metal/mtl_format_utils.mm
+@@ -161,6 +161,26 @@ bool Format::needConversion(angle::FormatID srcFormatId) const
+     return srcFormatId != actualFormatId;
+ }
+ 
++bool Format::isViewCompatible(const Format &srcFormat) const
++{
++    if (srcFormat.metalFormat == metalFormat)
++        return true;
++
++    // The pixel layout is considered different if the number of components differs,
++    if (srcFormat.caps.channels != caps.channels)
++        return false;
++
++    // ... or if their size or order is different from the components in the original pixel format.
++    if (srcFormat.caps.pixelBytes != caps.pixelBytes)
++        return false;
++
++    // This is overly conservative but reject compressed formats
++    if (srcFormat.caps.compressed || caps.compressed)
++        return false;
++
++    return true;
++}
++
+ bool Format::isPVRTC() const
+ {
+     switch (metalFormat)
+diff --git a/src/libANGLE/renderer/metal/mtl_render_utils.mm b/src/libANGLE/renderer/metal/mtl_render_utils.mm
+index 9e5487d393a0a2bd64106fc70e7b3f73626e2490..956808f2cd03665bd09d95cf4af90e2eeacdd0ef 100644
+--- a/src/libANGLE/renderer/metal/mtl_render_utils.mm
++++ b/src/libANGLE/renderer/metal/mtl_render_utils.mm
+@@ -607,7 +607,8 @@ void DispatchCompute(ContextMtl *contextMtl,
+                      id<MTLComputePipelineState> pipelineState,
+                      size_t numThreads)
+ {
+-    NSUInteger w = std::min<NSUInteger>(pipelineState.threadExecutionWidth, numThreads);
++    ASSERT(numThreads != 0);
++    NSUInteger w = std::clamp<NSUInteger>(numThreads, 1u, pipelineState.threadExecutionWidth);
+     MTLSize threadsPerThreadgroup = MTLSizeMake(w, 1, 1);
+ 
+     if (contextMtl->getDisplay()->getFeatures().hasNonUniformDispatch.enabled)
+@@ -687,8 +688,9 @@ void SetupCommonBlitWithDrawStates(const gl::Context *context,
+         GetViewport(params.dstRect, params.dstTextureSize.height, params.dstFlipY);
+     MTLScissorRect scissorRectMtl =
+         GetScissorRect(params.dstScissorRect, params.dstTextureSize.height, params.dstFlipY);
+-    cmdEncoder->setViewport(viewportMtl);
+-    cmdEncoder->setScissorRect(scissorRectMtl);
++
++    cmdEncoder->setViewport(viewportMtl, nil);
++    cmdEncoder->setScissorRect(scissorRectMtl, nil);
+ 
+     if (params.src)
+     {
+@@ -1222,8 +1224,8 @@ angle::Result ClearUtils::setupClearWithDraw(const gl::Context *context,
+ 
+     scissorRect = GetScissorRect(params.clearArea, params.dstTextureSize.height, params.flipY);
+ 
+-    cmdEncoder->setViewport(viewport);
+-    cmdEncoder->setScissorRect(scissorRect);
++    cmdEncoder->setViewport(viewport, nil);
++    cmdEncoder->setScissorRect(scissorRect, nil);
+ 
+     // uniform
+     ClearParamsUniform uniformParams;
+diff --git a/src/libANGLE/renderer/metal/mtl_resource_spi.h b/src/libANGLE/renderer/metal/mtl_resource_spi.h
+index 3eaa9a64e79af26faa786102ece3f0bdea84d090..7ecb6db9d993df8985fcb6f701dfe7ca75857cae 100644
+--- a/src/libANGLE/renderer/metal/mtl_resource_spi.h
++++ b/src/libANGLE/renderer/metal/mtl_resource_spi.h
+@@ -1,9 +1,63 @@
+-//
+-// Copyright 2021 The ANGLE Project Authors. All rights reserved.
+-// Use of this source code is governed by a BSD-style license that can be
+-// found in the LICENSE file.
++/*
++ * Copyright (C) 2021 Apple Inc. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
+ //
+ // mtl_resource_spi.h:
+-//    Used to set Metal resource ownership identity with SPI.
+-//    Purposefully empty header file. Actual implementation will be hosted in WebKit.
++//    Used to set Metal resource ownership identity with SPI
+ //
++
++#ifndef LIBANGLE_RENDERER_METAL_RESOURCE_SPI_H_
++#define LIBANGLE_RENDERER_METAL_RESOURCE_SPI_H_
++
++#import "common/apple/apple_platform.h"
++
++#if ANGLE_USE_METAL_OWNERSHIP_IDENTITY
++
++#    import <Metal/MTLResource_Private.h>
++#    import <Metal/Metal.h>
++#    import <mach/mach_types.h>
++
++namespace rx
++{
++namespace mtl
++{
++inline void setOwnerWithIdentity(id<MTLResource> resource, task_id_token_t identityToken)
++{
++    if (identityToken != TASK_ID_TOKEN_NULL)
++    {
++        kern_return_t kr = [(id<MTLResourceSPI>)resource setOwnerWithIdentity:identityToken];
++        if (ANGLE_UNLIKELY(kr != KERN_SUCCESS))
++        {
++            ERR() << "setOwnerWithIdentity failed with: %s (%x)" << mach_error_string(kr) << kr;
++            ASSERT(false);
++        }
++    }
++    return;
++}
++}  // namespace mtl
++}  // namespace rx
++#endif
++
++#endif /* LIBANGLE_RENDERER_METAL_RESOURCE_SPI_H_ */
+diff --git a/src/libANGLE/renderer/metal/mtl_resources.h b/src/libANGLE/renderer/metal/mtl_resources.h
+index b226d57cd41322b1de603b12cbef0a20856ac10f..f5d5e77c26ba609528c95ed48483e04a7a766675 100644
+--- a/src/libANGLE/renderer/metal/mtl_resources.h
++++ b/src/libANGLE/renderer/metal/mtl_resources.h
+@@ -228,6 +228,11 @@ class Texture final : public Resource,
+     TextureRef createCubeFaceView(uint32_t face);
+     // Create a view of one slice at a level.
+     TextureRef createSliceMipView(uint32_t slice, const MipmapNativeLevel &level);
++    // Same as createSliceMipView but the target format must be compatible, for example sRGB to linear. In this
++    // case texture doesn't need format view usage flag.
++    TextureRef createSliceMipViewWithCompatibleFormat(uint32_t slice,
++                                                      const MipmapNativeLevel &level,
++                                                      MTLPixelFormat format);
+     // Create a levels range view
+     TextureRef createMipsView(const MipmapNativeLevel &baseLevel, uint32_t levels);
+     // Create a view of a level.
+diff --git a/src/libANGLE/renderer/metal/mtl_resources.mm b/src/libANGLE/renderer/metal/mtl_resources.mm
+index 1b20954c46bf4346e77a96a19511a263b9e59946..e0c4c7789813160815a4bf5341175f8b1f634634 100644
+--- a/src/libANGLE/renderer/metal/mtl_resources.mm
++++ b/src/libANGLE/renderer/metal/mtl_resources.mm
+@@ -78,12 +78,10 @@ MTLResourceOptions resourceOptionsForStorageMode(MTLStorageMode storageMode)
+             return MTLResourceStorageModePrivate;
+         case MTLStorageModeMemoryless:
+             return MTLResourceStorageModeMemoryless;
+-#if TARGET_OS_SIMULATOR
+         default:
+             // TODO(http://anglebug.com/42266474): Remove me once hacked SDKs are fixed.
+             UNREACHABLE();
+             return MTLResourceStorageModeShared;
+-#endif
+     }
+ }
+ 
+@@ -724,7 +722,9 @@ TextureRef Texture::createCubeFaceView(uint32_t face)
+     }
+ }
+ 
+-TextureRef Texture::createSliceMipView(uint32_t slice, const MipmapNativeLevel &level)
++TextureRef Texture::createSliceMipViewWithCompatibleFormat(uint32_t slice,
++                                                           const MipmapNativeLevel &level,
++                                                           MTLPixelFormat format)
+ {
+     ANGLE_MTL_OBJC_SCOPE
+     {
+@@ -733,7 +733,7 @@ TextureRef Texture::createSliceMipView(uint32_t slice, const MipmapNativeLevel &
+             case MTLTextureTypeCube:
+             case MTLTextureType2D:
+             case MTLTextureType2DArray:
+-                return TextureRef(new Texture(this, pixelFormat(), MTLTextureType2D,
++                return TextureRef(new Texture(this, format, MTLTextureType2D,
+                                               NSMakeRange(level.get(), 1), NSMakeRange(slice, 1)));
+             default:
+                 UNREACHABLE();
+@@ -742,6 +742,11 @@ TextureRef Texture::createSliceMipView(uint32_t slice, const MipmapNativeLevel &
+     }
+ }
+ 
++TextureRef Texture::createSliceMipView(uint32_t slice, const MipmapNativeLevel &level)
++{
++    return createSliceMipViewWithCompatibleFormat(slice, level, pixelFormat());
++}
++
+ TextureRef Texture::createMipView(const MipmapNativeLevel &level)
+ {
+     ANGLE_MTL_OBJC_SCOPE
+diff --git a/src/libANGLE/renderer/metal/mtl_state_cache.h b/src/libANGLE/renderer/metal/mtl_state_cache.h
+index 9eb4054c173b0cbc7a2fed6380402b0576c6891f..5aa69c7b4e7b7dd2fa7318d4bbf027073ba776ba 100644
+--- a/src/libANGLE/renderer/metal/mtl_state_cache.h
++++ b/src/libANGLE/renderer/metal/mtl_state_cache.h
+@@ -319,20 +319,21 @@ struct RenderPassAttachmentDesc
+     bool equalIgnoreLoadStoreOptions(const RenderPassAttachmentDesc &other) const;
+     bool operator==(const RenderPassAttachmentDesc &other) const;
+ 
+-    ANGLE_INLINE bool hasImplicitMSTexture() const { return implicitMSTexture.get(); }
+-
+-    const TextureRef &getImplicitMSTextureIfAvailOrTexture() const
+-    {
+-        return hasImplicitMSTexture() ? implicitMSTexture : texture;
+-    }
++    ANGLE_INLINE bool hasResolveTexture() const { return resolveTexture.get(); }
+  
++    // When rendering with implicit multisample, |texture| is the texture that
++    // will be rendered into and discarded at the end of a render pass. Its
++    // result will be automatically resolved into |resolveTexture|.
+     TextureRef texture;
+     // Implicit multisample texture that will be rendered into and discarded at the end of
+     // a render pass. Its result will be resolved into normal texture above.
+-    TextureRef implicitMSTexture;
++    TextureRef resolveTexture;
+     MipmapNativeLevel level;
+     uint32_t sliceOrDepth;
+ 
++    MipmapNativeLevel resolveLevel;
++    uint32_t resolveSliceOrDepth;
++
+     // This attachment is blendable or not.
+     bool blendable;
+     MTLLoadAction loadAction;
+diff --git a/src/libANGLE/renderer/metal/mtl_state_cache.mm b/src/libANGLE/renderer/metal/mtl_state_cache.mm
+index 8534c5c32fbc218da6c00ed95804026ccab508ef..ef3cb4944f9f588f4ddbf92529c5b999f0cc5f26 100644
+--- a/src/libANGLE/renderer/metal/mtl_state_cache.mm
++++ b/src/libANGLE/renderer/metal/mtl_state_cache.mm
+@@ -142,44 +142,29 @@ id<MTLTexture> ToObjC(const TextureRef &texture)
+ void BaseRenderPassAttachmentDescToObjC(const RenderPassAttachmentDesc &src,
+                                         MTLRenderPassAttachmentDescriptor *dst)
+ {
+-    const TextureRef &implicitMsTexture = src.implicitMSTexture;
+-
+-    if (implicitMsTexture)
+-    {
+-        dst.texture        = ToObjC(implicitMsTexture);
+-        dst.level          = 0;
+-        dst.slice          = 0;
+-        dst.depthPlane     = 0;
+-        dst.resolveTexture = ToObjC(src.texture);
+-        dst.resolveLevel   = src.level.get();
+-        if (dst.resolveTexture.textureType == MTLTextureType3D)
+-        {
+-            dst.resolveDepthPlane = src.sliceOrDepth;
+-            dst.resolveSlice      = 0;
+-        }
+-        else
+-        {
+-            dst.resolveSlice      = src.sliceOrDepth;
+-            dst.resolveDepthPlane = 0;
+-        }
+-    }
+-    else
+-    {
+     dst.texture = ToObjC(src.texture);
+     dst.level   = src.level.get();
+     if (dst.texture.textureType == MTLTextureType3D)
+     {
+-            dst.depthPlane = src.sliceOrDepth;
+         dst.slice      = 0;
++        dst.depthPlane = src.sliceOrDepth;
+     }
+     else
+     {
+         dst.slice      = src.sliceOrDepth;
+         dst.depthPlane = 0;
+     }
+-        dst.resolveTexture    = nil;
+-        dst.resolveLevel      = 0;
++
++    dst.resolveTexture = ToObjC(src.resolveTexture);
++    dst.resolveLevel   = src.resolveLevel.get();
++    if (dst.resolveTexture.textureType == MTLTextureType3D)
++    {
+         dst.resolveSlice      = 0;
++        dst.resolveDepthPlane = src.resolveSliceOrDepth;
++    }
++    else
++    {
++        dst.resolveSlice      = src.resolveSliceOrDepth;
+         dst.resolveDepthPlane = 0;
+     }
+ 
+@@ -692,9 +677,11 @@ RenderPassAttachmentDesc::RenderPassAttachmentDesc()
+ void RenderPassAttachmentDesc::reset()
+ {
+     texture.reset();
+-    implicitMSTexture.reset();
++    resolveTexture.reset();
+     level               = mtl::kZeroNativeMipLevel;
+     sliceOrDepth        = 0;
++    resolveLevel        = mtl::kZeroNativeMipLevel;
++    resolveSliceOrDepth = 0;
+     blendable           = false;
+     loadAction          = MTLLoadActionLoad;
+     storeAction         = MTLStoreActionStore;
+@@ -704,7 +691,7 @@ void RenderPassAttachmentDesc::reset()
+ bool RenderPassAttachmentDesc::equalIgnoreLoadStoreOptions(
+     const RenderPassAttachmentDesc &other) const
+ {
+-    return texture == other.texture && implicitMSTexture == other.implicitMSTexture &&
++    return texture == other.texture && resolveTexture == other.resolveTexture &&
+            level == other.level && sliceOrDepth == other.sliceOrDepth &&
+            blendable == other.blendable;
+ }
+diff --git a/src/libANGLE/renderer/metal/mtl_utils.mm b/src/libANGLE/renderer/metal/mtl_utils.mm
+index 81197f9d1a65a8a18f112bc057d69d19b27bd5b7..13446940c9c0c06dcac73e4f6e72531abebc5334 100644
+--- a/src/libANGLE/renderer/metal/mtl_utils.mm
++++ b/src/libANGLE/renderer/metal/mtl_utils.mm
+@@ -1629,6 +1629,24 @@ bool SupportsAppleGPUFamily(id<MTLDevice> device, uint8_t appleFamily)
+     return false;
+ }
+ 
++#if (defined(__MAC_13_0) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_13_0) ||        \
++    (defined(__IPHONE_16_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_16_0) || \
++    (defined(__TVOS_16_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_16_0)
++#    define ANGLE_MTL_FEATURE_SET_DEPRECATED 1
++#    define ANGLE_MTL_GPU_FAMILY_MAC1_DEPRECATED 1
++#endif
++
++#if ANGLE_MTL_GPU_FAMILY_MAC1_DEPRECATED
++#    define ANGLE_MTL_GPU_FAMILY_MAC1 MTLGPUFamilyMac2
++#    define ANGLE_MTL_GPU_FAMILY_MAC2 MTLGPUFamilyMac2
++#elif TARGET_OS_MACCATALYST
++#    define ANGLE_MTL_GPU_FAMILY_MAC1 MTLGPUFamilyMacCatalyst1
++#    define ANGLE_MTL_GPU_FAMILY_MAC2 MTLGPUFamilyMacCatalyst2
++#else  // !ANGLE_MTL_GPU_FAMILY_MAC1_DEPRECATED && !TARGET_OS_MACCATALYST
++#    define ANGLE_MTL_GPU_FAMILY_MAC1 MTLGPUFamilyMac1
++#    define ANGLE_MTL_GPU_FAMILY_MAC2 MTLGPUFamilyMac2
++#endif
++
+ bool SupportsMacGPUFamily(id<MTLDevice> device, uint8_t macFamily)
+ {
+ #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+@@ -1643,10 +1661,10 @@ bool SupportsMacGPUFamily(id<MTLDevice> device, uint8_t macFamily)
+ #        if TARGET_OS_MACCATALYST
+             ANGLE_APPLE_ALLOW_DEPRECATED_BEGIN
+             case 1:
+-                family = MTLGPUFamilyMacCatalyst1;
++                family = ANGLE_MTL_GPU_FAMILY_MAC1;
+                 break;
+             case 2:
+-                family = MTLGPUFamilyMacCatalyst2;
++                family = ANGLE_MTL_GPU_FAMILY_MAC2;
+                 break;
+                 ANGLE_APPLE_ALLOW_DEPRECATED_END
+ #        else   // TARGET_OS_MACCATALYST
+@@ -1669,7 +1687,7 @@ bool SupportsMacGPUFamily(id<MTLDevice> device, uint8_t macFamily)
+ 
+     // If device doesn't support [MTLDevice supportsFamily:], then use
+     // [MTLDevice supportsFeatureSet:].
+-#    if TARGET_OS_MACCATALYST
++#    if TARGET_OS_MACCATALYST || ANGLE_MTL_FEATURE_SET_DEPRECATED
+     UNREACHABLE();
+     return false;
+ #    else
+@@ -1718,8 +1736,7 @@ static NSUInteger getNextLocationForAttachment(const mtl::RenderPassAttachmentDe
+                                                const Context *context,
+                                                NSUInteger currentRenderTargetSize)
+ {
+-    mtl::TextureRef texture =
+-        attachment.implicitMSTexture ? attachment.implicitMSTexture : attachment.texture;
++    mtl::TextureRef texture = attachment.texture;
+ 
+     if (texture)
+     {
+diff --git a/src/libANGLE/renderer/metal/shaders/create_mtl_internal_shaders.py b/src/libANGLE/renderer/metal/shaders/create_mtl_internal_shaders.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..23e8295bcc16412d3aef3fc8e85748fa4ad77a70
+--- /dev/null
++++ b/src/libANGLE/renderer/metal/shaders/create_mtl_internal_shaders.py
+@@ -0,0 +1,65 @@
++#!/usr/bin/python3
++# Copyright 2021 The ANGLE Project Authors. All rights reserved.
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++#
++# create_mtl_internal_shaders.py:
++#   Script to compile a metalLib into NSData, for including the compilded
++#       library in the ANGLE dylib.
++
++import os
++import sys
++import json
++from datetime import datetime
++
++sys.path.append('../..')
++
++template_header_boilerplate = """// GENERATED FILE - DO NOT EDIT.
++// Generated by {script_name}
++//
++// Copyright {copyright_year} The ANGLE Project Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++//
++"""
++
++
++# Convert content of a file to byte array and store in a header file.
++# variable_name: name of C++ variable that will hold the file content as byte array.
++# filename: the file whose content will be converted to C++ byte array.
++# dest_src_file: destination header file that will contain the byte array.
++def append_file_as_byte_array_string(variable_name, filename, dest_src_file):
++    string = '// Generated from {0}:\n'.format(filename)
++    string += 'constexpr uint8_t {0}[]={{\n'.format(variable_name)
++    bytes_ = open(filename, "rb").read()
++    for byte in bytes_:
++        string += '0x{:02x}'.format(byte) + ", "
++    string += "\n};\n"
++    with open(dest_src_file, "a") as out_file:
++        out_file.write(string)
++
++
++def main():
++    input_file = sys.argv[1]
++    output_file = sys.argv[2]
++    os.chdir(sys.path[0])
++
++    boilerplate_code = template_header_boilerplate.format(
++        script_name=os.path.basename(sys.argv[0]), copyright_year=datetime.today().year)
++
++    # -------- Compile shaders -----------
++    # boiler plate code
++    os.system("echo \"{0}\" > \"{1}\"".format(boilerplate_code, output_file))
++    os.system(
++        'echo "// Compiled binary for Metal default shaders.\n\n" >>  \"{0}\"'.format(output_file))
++    os.system('echo "#include <TargetConditionals.h>\n\n" >>  \"{0}\"'.format(output_file))
++
++    os.system('echo "// clang-format off" >> \"{0}\"'.format(output_file))
++
++    append_file_as_byte_array_string('gDefaultMetallib', input_file, output_file)
++
++    os.system('echo "// clang-format on" >> \"{0}\"'.format(output_file))
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/src/libANGLE/renderer/vulkan/CLProgramVk.cpp b/src/libANGLE/renderer/vulkan/CLProgramVk.cpp
+index 68f53b5327bb89578b3291b60eaed8992e2e895f..155e852f4fc50dfc0fdfd23f68aff48174108e8e 100644
+--- a/src/libANGLE/renderer/vulkan/CLProgramVk.cpp
++++ b/src/libANGLE/renderer/vulkan/CLProgramVk.cpp
+@@ -784,6 +784,11 @@ bool CLProgramVk::buildInternal(const cl::DevicePtrs &devices,
+             device->getInfo(cl::DeviceInfo::AddressBits, sizeof(cl_uint), &addressBits, nullptr));
+         processedOptions += addressBits == 64 ? " -arch=spir64" : " -arch=spir";
+ 
++        cl_uint addressBits;
++        ANGLE_CL_IMPL_TRY(
++            device->getInfo(cl::DeviceInfo::AddressBits, sizeof(cl_uint), &addressBits, nullptr));
++        processedOptions += addressBits == 64 ? " -arch=spir64" : " -arch=spir";
++
+         if (buildType != BuildType::BINARY)
+         {
+             // Invoke clspv
+diff --git a/src/libANGLE/renderer/vulkan/ContextVk.cpp b/src/libANGLE/renderer/vulkan/ContextVk.cpp
+index 857c30d7178ec3dc6ad82b378b374bd01e031a2c..40d05a4b474b55bc972a826b09f9887c1833a502 100644
+--- a/src/libANGLE/renderer/vulkan/ContextVk.cpp
++++ b/src/libANGLE/renderer/vulkan/ContextVk.cpp
+@@ -5924,6 +5924,10 @@ angle::Result ContextVk::syncState(const gl::Context *context,
+                             break;
+                         case gl::state::EXTENDED_DIRTY_BIT_BLEND_ADVANCED_COHERENT:
+                             break;
++                        case gl::state::EXTENDED_DIRTY_BIT_VARIABLE_RASTERIZATION_RATE:
++                            // Noop until addition of backend support for
++                            // ANGLE_variable_rasterization_rate_metal extension
++                            break;
+                         default:
+                             UNREACHABLE();
+                     }
+diff --git a/src/libANGLE/validationES2.cpp b/src/libANGLE/validationES2.cpp
+index eee496a8bb604930b3336b35126c400e52704d5f..a68767be82a7e7a337169782c98c5baae485f89f 100644
+--- a/src/libANGLE/validationES2.cpp
++++ b/src/libANGLE/validationES2.cpp
+@@ -691,6 +691,9 @@ bool ValidCap(const PrivateState &state, ErrorSet *errors, GLenum cap, bool quer
+             return state.getClientVersion() >= Version(2, 0) &&
+                    state.getExtensions().blendEquationAdvancedCoherentKHR;
+ 
++        case GL_VARIABLE_RASTERIZATION_RATE_ANGLE:
++            return state.getExtensions().variableRasterizationRateMetalANGLE;
++
+         default:
+             break;
+     }
+@@ -6344,6 +6347,18 @@ bool ValidateMaxShaderCompilerThreadsKHR(const Context *context,
+     return true;
+ }
+ 
++bool ValidateBindMetalRasterizationRateMapANGLE(const Context *context,
++                                                angle::EntryPoint entryPoint,
++                                                GLMTLRasterizationRateMapANGLE map)
++{
++    if (!context->getExtensions().variableRasterizationRateMetalANGLE)
++    {
++        ANGLE_VALIDATION_ERROR(GL_INVALID_OPERATION, kExtensionNotEnabled);
++        return false;
++    }
++    return true;
++}
++
+ bool ValidateMultiDrawArraysANGLE(const Context *context,
+                                   angle::EntryPoint entryPoint,
+                                   PrimitiveMode mode,
+diff --git a/src/libANGLE/validationES32.cpp b/src/libANGLE/validationES32.cpp
+index f170fc4d8bac3b766bd80083641622fe3571dd6e..4a9c9053385b54ec158d6934e4349d60cd84646e 100644
+--- a/src/libANGLE/validationES32.cpp
++++ b/src/libANGLE/validationES32.cpp
+@@ -469,6 +469,9 @@ bool ValidateGetPointerv(const Context *context,
+             case GL_DEBUG_CALLBACK_FUNCTION:
+             case GL_DEBUG_CALLBACK_USER_PARAM:
+                 return true;
++            // GL_ANGLE_variable_rasterization_rate_metal
++            case GL_METAL_RASTERIZATION_RATE_MAP_BINDING_ANGLE:
++                return context->getExtensions().variableRasterizationRateMetalANGLE;
+             default:
+                 ANGLE_VALIDATION_ERROR(GL_INVALID_ENUM, kInvalidPointerQuery);
+                 return false;
+@@ -476,9 +479,16 @@ bool ValidateGetPointerv(const Context *context,
+     }
+     else
+     {
++        switch (pname)
++        {
++            // GL_ANGLE_variable_rasterization_rate_metal
++            case GL_METAL_RASTERIZATION_RATE_MAP_BINDING_ANGLE:
++                return context->getExtensions().variableRasterizationRateMetalANGLE;
++            default:
+                 ANGLE_VALIDATION_ERROR(GL_INVALID_OPERATION, kES1or32Required);
+                 return false;
+         }
++    }
+ }
+ 
+ bool ValidateGetSamplerParameterIiv(const Context *context,
+diff --git a/src/libANGLE/validationESEXT.cpp b/src/libANGLE/validationESEXT.cpp
+index 34a61837a6999cf0cef25f64d8bd6cc75f18a8a6..427aa4e44ec90feefe684ed210292186a36fb488 100644
+--- a/src/libANGLE/validationESEXT.cpp
++++ b/src/libANGLE/validationESEXT.cpp
+@@ -4461,6 +4461,29 @@ bool ValidateLogicOpANGLE(const PrivateState &state,
+     return ValidateLogicOpCommon(state, errors, entryPoint, opcodePacked);
+ }
+ 
++// GL_WEBKIT_explicit_resolve_target
++bool ValidateFramebufferResolveRenderbufferWEBKIT(const Context *context,
++                                                  angle::EntryPoint entryPoint,
++                                                  GLenum target,
++                                                  GLenum attachment,
++                                                  GLenum renderbuffertarget,
++                                                  RenderbufferID renderbuffer)
++{
++#if ANGLE_WEBKIT_EXPLICIT_RESOLVE_TARGET_ENABLED
++    if (!context->getExtensions().explicitResolveTargetWEBKIT)
++    {
++        ANGLE_VALIDATION_ERROR(GL_INVALID_OPERATION, kExtensionNotEnabled);
++        return false;
++    }
++
++    return ValidateFramebufferRenderbufferBase(context, entryPoint, target, attachment,
++                                               renderbuffertarget, renderbuffer);
++#else
++    UNIMPLEMENTED();
++    return false;
++#endif
++}
++
+ bool ValidateFramebufferFoveationConfigQCOM(const Context *context,
+                                             angle::EntryPoint entryPoint,
+                                             FramebufferID framebufferPacked,
+diff --git a/src/libANGLE/validationESEXT_autogen.h b/src/libANGLE/validationESEXT_autogen.h
+index de36b7a9d310208e2a600c895b253003c0a11484..852d2761a5d4c2e970d0c0c43753e768a269a129 100644
+--- a/src/libANGLE/validationESEXT_autogen.h
++++ b/src/libANGLE/validationESEXT_autogen.h
+@@ -995,6 +995,11 @@ bool ValidateGetTranslatedShaderSourceANGLE(const Context *context,
+                                             const GLsizei *length,
+                                             const GLchar *source);
+ 
++// GL_ANGLE_variable_rasterization_rate_metal
++bool ValidateBindMetalRasterizationRateMapANGLE(const Context *context,
++                                                angle::EntryPoint entryPoint,
++                                                GLMTLRasterizationRateMapANGLE map);
++
+ // GL_ANGLE_vulkan_image
+ bool ValidateAcquireTexturesANGLE(const Context *context,
+                                   angle::EntryPoint entryPoint,
+@@ -2884,6 +2889,14 @@ bool ValidateStartTilingQCOM(const Context *context,
+                              GLuint width,
+                              GLuint height,
+                              GLbitfield preserveMask);
++
++// GL_WEBKIT_explicit_resolve_target
++bool ValidateFramebufferResolveRenderbufferWEBKIT(const Context *context,
++                                                  angle::EntryPoint entryPoint,
++                                                  GLenum target,
++                                                  GLenum attachment,
++                                                  GLenum renderbuffertarget,
++                                                  RenderbufferID renderbufferPacked);
+ }  // namespace gl
+ 
+ #endif  // LIBANGLE_VALIDATION_ESEXT_AUTOGEN_H_
+diff --git a/src/libGLESv2/entry_points_gles_ext_autogen.cpp b/src/libGLESv2/entry_points_gles_ext_autogen.cpp
+index cb14151bfad4eade0972bec0dc9c1bb51b27f3e4..df04e91921ae76f265bf5bc3de19cc981a9912d3 100644
+--- a/src/libGLESv2/entry_points_gles_ext_autogen.cpp
++++ b/src/libGLESv2/entry_points_gles_ext_autogen.cpp
+@@ -4638,6 +4638,36 @@ void GL_APIENTRY GL_GetTranslatedShaderSourceANGLE(GLuint shader,
+     ASSERT(!egl::Display::GetCurrentThreadUnlockedTailCall()->any());
+ }
+ 
++// GL_ANGLE_variable_rasterization_rate_metal
++void GL_APIENTRY GL_BindMetalRasterizationRateMapANGLE(GLuint renderbuffer, GLMTLRasterizationRateMapANGLE map)
++{
++    Context *context = GetValidGlobalContext();
++    EVENT(context, GLBindMetalRasterizationRateMapANGLE, "context = %d, map = 0x%016" PRIxPTR "",
++          CID(context), (uintptr_t)map);
++
++    if (context)
++    {
++        SCOPED_SHARE_CONTEXT_LOCK(context);
++        bool isCallValid =
++            (context->skipValidation() ||
++             (ValidatePixelLocalStorageInactive(
++                  context->getPrivateState(), context->getMutableErrorSetForValidation(),
++                  angle::EntryPoint::GLBindMetalRasterizationRateMapANGLE) &&
++              ValidateBindMetalRasterizationRateMapANGLE(
++                  context, angle::EntryPoint::GLBindMetalRasterizationRateMapANGLE, map)));
++        if (isCallValid)
++        {
++            context->bindMetalRasterizationRateMap(renderbuffer, map);
++        }
++        ANGLE_CAPTURE_GL(BindMetalRasterizationRateMapANGLE, isCallValid, context, map);
++    }
++    else
++    {
++        GenerateContextLostErrorOnCurrentGlobalContext();
++    }
++    ASSERT(!egl::Display::GetCurrentThreadUnlockedTailCall()->any());
++}
++
+ // GL_ANGLE_vulkan_image
+ void GL_APIENTRY GL_AcquireTexturesANGLE(GLuint numTextures,
+                                          const GLuint *textures,
+@@ -13859,4 +13889,44 @@ GL_StartTilingQCOM(GLuint x, GLuint y, GLuint width, GLuint height, GLbitfield p
+     ASSERT(!egl::Display::GetCurrentThreadUnlockedTailCall()->any());
+ }
+ 
++// GL_WEBKIT_explicit_resolve_target
++void GL_APIENTRY GL_FramebufferResolveRenderbufferWEBKIT(GLenum target,
++                                                         GLenum attachment,
++                                                         GLenum renderbuffertarget,
++                                                         GLuint renderbuffer)
++{
++    Context *context = GetValidGlobalContext();
++    EVENT(context, GLFramebufferResolveRenderbufferWEBKIT,
++          "context = %d, target = %s, attachment = %s, renderbuffertarget = %s, renderbuffer = %u",
++          CID(context), GLenumToString(GLESEnum::AllEnums, target),
++          GLenumToString(GLESEnum::AllEnums, attachment),
++          GLenumToString(GLESEnum::AllEnums, renderbuffertarget), renderbuffer);
++
++    if (context)
++    {
++        RenderbufferID renderbufferPacked = PackParam<RenderbufferID>(renderbuffer);
++        SCOPED_SHARE_CONTEXT_LOCK(context);
++        bool isCallValid =
++            (context->skipValidation() ||
++             (ValidatePixelLocalStorageInactive(
++                  context->getPrivateState(), context->getMutableErrorSetForValidation(),
++                  angle::EntryPoint::GLFramebufferResolveRenderbufferWEBKIT) &&
++              ValidateFramebufferResolveRenderbufferWEBKIT(
++                  context, angle::EntryPoint::GLFramebufferResolveRenderbufferWEBKIT, target,
++                  attachment, renderbuffertarget, renderbufferPacked)));
++        if (isCallValid)
++        {
++            context->framebufferResolveRenderbufferWEBKIT(target, attachment, renderbuffertarget,
++                                                          renderbufferPacked);
++        }
++        ANGLE_CAPTURE_GL(FramebufferResolveRenderbufferWEBKIT, isCallValid, context, target,
++                         attachment, renderbuffertarget, renderbufferPacked);
++    }
++    else
++    {
++        GenerateContextLostErrorOnCurrentGlobalContext();
++    }
++    ASSERT(!egl::Display::GetCurrentThreadUnlockedTailCall()->any());
++}
++
+ }  // extern "C"
+diff --git a/src/libGLESv2/entry_points_gles_ext_autogen.h b/src/libGLESv2/entry_points_gles_ext_autogen.h
+index e389d4728c4f16da54842c71e13e6857ed81daa2..8725696ee977c8bc8e041b3a4792e6b8a48ff5a0 100644
+--- a/src/libGLESv2/entry_points_gles_ext_autogen.h
++++ b/src/libGLESv2/entry_points_gles_ext_autogen.h
+@@ -738,6 +738,10 @@ ANGLE_EXPORT void GL_APIENTRY GL_GetTranslatedShaderSourceANGLE(GLuint shader,
+                                                                 GLsizei *length,
+                                                                 GLchar *source);
+ 
++// GL_ANGLE_variable_rasterization_rate_metal
++ANGLE_EXPORT void GL_APIENTRY
++GL_BindMetalRasterizationRateMapANGLE(GLuint framebuffer, GLMTLRasterizationRateMapANGLE map);
++
+ // GL_ANGLE_vulkan_image
+ ANGLE_EXPORT void GL_APIENTRY GL_AcquireTexturesANGLE(GLuint numTextures,
+                                                       const GLuint *textures,
+@@ -1935,6 +1939,12 @@ ANGLE_EXPORT void GL_APIENTRY GL_TextureFoveationParametersQCOM(GLuint texture,
+ ANGLE_EXPORT void GL_APIENTRY GL_EndTilingQCOM(GLbitfield preserveMask);
+ ANGLE_EXPORT void GL_APIENTRY
+ GL_StartTilingQCOM(GLuint x, GLuint y, GLuint width, GLuint height, GLbitfield preserveMask);
++
++// GL_WEBKIT_explicit_resolve_target
++ANGLE_EXPORT void GL_APIENTRY GL_FramebufferResolveRenderbufferWEBKIT(GLenum target,
++                                                                      GLenum attachment,
++                                                                      GLenum renderbuffertarget,
++                                                                      GLuint renderbuffer);
+ }  // extern "C"
+ 
+ #endif  // LIBGLESV2_ENTRY_POINTS_GLES_EXT_AUTOGEN_H_
+diff --git a/src/libGLESv2/libGLESv2_autogen.cpp b/src/libGLESv2/libGLESv2_autogen.cpp
+index 5cc6a38217e8074633a63afd66c8ac7519c75f43..8210a3e6a6cb521018cc4f9db47c5e9cc22d8e6e 100644
+--- a/src/libGLESv2/libGLESv2_autogen.cpp
++++ b/src/libGLESv2/libGLESv2_autogen.cpp
+@@ -3942,6 +3942,12 @@ void GL_APIENTRY glGetTranslatedShaderSourceANGLE(GLuint shader,
+     return GL_GetTranslatedShaderSourceANGLE(shader, bufSize, length, source);
+ }
+ 
++// GL_ANGLE_variable_rasterization_rate_metal
++void GL_APIENTRY glBindMetalRasterizationRateMapANGLE(GLuint renderbuffer, GLMTLRasterizationRateMapANGLE map)
++{
++    return GL_BindMetalRasterizationRateMapANGLE(renderbuffer, map);
++}
++
+ // GL_ANGLE_vulkan_image
+ void GL_APIENTRY glAcquireTexturesANGLE(GLuint numTextures,
+                                         const GLuint *textures,
+@@ -6067,6 +6073,16 @@ glStartTilingQCOM(GLuint x, GLuint y, GLuint width, GLuint height, GLbitfield pr
+     return GL_StartTilingQCOM(x, y, width, height, preserveMask);
+ }
+ 
++// GL_WEBKIT_explicit_resolve_target
++void GL_APIENTRY glFramebufferResolveRenderbufferWEBKIT(GLenum target,
++                                                        GLenum attachment,
++                                                        GLenum renderbuffertarget,
++                                                        GLuint renderbuffer)
++{
++    return GL_FramebufferResolveRenderbufferWEBKIT(target, attachment, renderbuffertarget,
++                                                   renderbuffer);
++}
++
+ #if defined(ANGLE_ENABLE_GL_DESKTOP_FRONTEND)
+ 
+ // GL 1.0
+diff --git a/src/libGLESv2/libGLESv2_autogen.def b/src/libGLESv2/libGLESv2_autogen.def
+index 8117e28d0ec91924ece75f22a64c87e6573f70a4..4897c4154c22d07fec87b9d15e45d7179987b5ec 100644
+--- a/src/libGLESv2/libGLESv2_autogen.def
++++ b/src/libGLESv2/libGLESv2_autogen.def
+@@ -668,6 +668,9 @@ EXPORTS
+     ; GL_ANGLE_translated_shader_source
+     glGetTranslatedShaderSourceANGLE
+ 
++    ; GL_ANGLE_variable_rasterization_rate_metal
++    glBindMetalRasterizationRateMapANGLE
++
+     ; GL_ANGLE_vulkan_image
+     glAcquireTexturesANGLE
+     glReleaseTexturesANGLE
+@@ -1265,6 +1268,9 @@ EXPORTS
+     glEndTilingQCOM
+     glStartTilingQCOM
+ 
++    ; GL_WEBKIT_explicit_resolve_target
++    glFramebufferResolveRenderbufferWEBKIT
++
+     ; EGL 1.0
+     EGL_ChooseConfig
+     EGL_CopyBuffers
+diff --git a/src/libGLESv2/libGLESv2_no_capture_autogen.def b/src/libGLESv2/libGLESv2_no_capture_autogen.def
+index 57875834664dc72e867fd161b0f0b27d683affd4..0a189c1b388d82cbbfff55e6cd73e00d94019a53 100644
+--- a/src/libGLESv2/libGLESv2_no_capture_autogen.def
++++ b/src/libGLESv2/libGLESv2_no_capture_autogen.def
+@@ -668,6 +668,9 @@ EXPORTS
+     ; GL_ANGLE_translated_shader_source
+     glGetTranslatedShaderSourceANGLE
+ 
++    ; GL_ANGLE_variable_rasterization_rate_metal
++    glBindMetalRasterizationRateMapANGLE
++
+     ; GL_ANGLE_vulkan_image
+     glAcquireTexturesANGLE
+     glReleaseTexturesANGLE
+@@ -1265,6 +1268,9 @@ EXPORTS
+     glEndTilingQCOM
+     glStartTilingQCOM
+ 
++    ; GL_WEBKIT_explicit_resolve_target
++    glFramebufferResolveRenderbufferWEBKIT
++
+     ; EGL 1.0
+     EGL_ChooseConfig
+     EGL_CopyBuffers
+diff --git a/src/libGLESv2/libGLESv2_vulkan_secondaries_autogen.def b/src/libGLESv2/libGLESv2_vulkan_secondaries_autogen.def
+index ba0237ae105122f6e8f6349a2f0f294b5de30375..feb75b2bec659049e6afb4ecbfcd5a56d52f241e 100644
+--- a/src/libGLESv2/libGLESv2_vulkan_secondaries_autogen.def
++++ b/src/libGLESv2/libGLESv2_vulkan_secondaries_autogen.def
+@@ -668,6 +668,9 @@ EXPORTS
+     ; GL_ANGLE_translated_shader_source
+     glGetTranslatedShaderSourceANGLE
+ 
++    ; GL_ANGLE_variable_rasterization_rate_metal
++    glBindMetalRasterizationRateMapANGLE
++
+     ; GL_ANGLE_vulkan_image
+     glAcquireTexturesANGLE
+     glReleaseTexturesANGLE
+@@ -1265,6 +1268,9 @@ EXPORTS
+     glEndTilingQCOM
+     glStartTilingQCOM
+ 
++    ; GL_WEBKIT_explicit_resolve_target
++    glFramebufferResolveRenderbufferWEBKIT
++
+     ; EGL 1.0
+     EGL_ChooseConfig
+     EGL_CopyBuffers
+diff --git a/src/libGLESv2/libGLESv2_with_capture_autogen.def b/src/libGLESv2/libGLESv2_with_capture_autogen.def
+index a242e6df2f07d273730e8fead7b1a7e5086a08a8..5d2e6d06ad85fceffae7350679b824ea22dad31a 100644
+--- a/src/libGLESv2/libGLESv2_with_capture_autogen.def
++++ b/src/libGLESv2/libGLESv2_with_capture_autogen.def
+@@ -668,6 +668,9 @@ EXPORTS
+     ; GL_ANGLE_translated_shader_source
+     glGetTranslatedShaderSourceANGLE
+ 
++    ; GL_ANGLE_variable_rasterization_rate_metal
++    glBindMetalRasterizationRateMapANGLE
++
+     ; GL_ANGLE_vulkan_image
+     glAcquireTexturesANGLE
+     glReleaseTexturesANGLE
+@@ -1265,6 +1268,9 @@ EXPORTS
+     glEndTilingQCOM
+     glStartTilingQCOM
+ 
++    ; GL_WEBKIT_explicit_resolve_target
++    glFramebufferResolveRenderbufferWEBKIT
++
+     ; EGL 1.0
+     EGL_ChooseConfig
+     EGL_CopyBuffers
+diff --git a/src/libGLESv2/opengl32_autogen.def b/src/libGLESv2/opengl32_autogen.def
+index 782e627b9e2270d8cbb335fee5f191e15cbd98c7..dfd2ad5a5579cb229c74e40ebaaa6588301cd405 100644
+--- a/src/libGLESv2/opengl32_autogen.def
++++ b/src/libGLESv2/opengl32_autogen.def
+@@ -668,6 +668,9 @@ EXPORTS
+     ; GL_ANGLE_translated_shader_source
+     glGetTranslatedShaderSourceANGLE
+ 
++    ; GL_ANGLE_variable_rasterization_rate_metal
++    glBindMetalRasterizationRateMapANGLE
++
+     ; GL_ANGLE_vulkan_image
+     glAcquireTexturesANGLE
+     glReleaseTexturesANGLE
+@@ -1265,6 +1268,9 @@ EXPORTS
+     glEndTilingQCOM
+     glStartTilingQCOM
+ 
++    ; GL_WEBKIT_explicit_resolve_target
++    glFramebufferResolveRenderbufferWEBKIT
++
+     ; GL 1.0
+     glAccum
+     glAlphaFunc
+diff --git a/src/libGLESv2/opengl32_with_wgl_autogen.def b/src/libGLESv2/opengl32_with_wgl_autogen.def
+index 30763ef3b30b4184d92008adea49e0eb3d6d1f9c..9395c6b7da198127b2f54951d213941657e449d8 100644
+--- a/src/libGLESv2/opengl32_with_wgl_autogen.def
++++ b/src/libGLESv2/opengl32_with_wgl_autogen.def
+@@ -668,6 +668,9 @@ EXPORTS
+     ; GL_ANGLE_translated_shader_source
+     glGetTranslatedShaderSourceANGLE
+ 
++    ; GL_ANGLE_variable_rasterization_rate_metal
++    glBindMetalRasterizationRateMapANGLE
++
+     ; GL_ANGLE_vulkan_image
+     glAcquireTexturesANGLE
+     glReleaseTexturesANGLE
+@@ -1265,6 +1268,9 @@ EXPORTS
+     glEndTilingQCOM
+     glStartTilingQCOM
+ 
++    ; GL_WEBKIT_explicit_resolve_target
++    glFramebufferResolveRenderbufferWEBKIT
++
+     ; GL 1.0
+     glAccum
+     glAlphaFunc
+diff --git a/src/libGLESv2/proc_table_egl_autogen.cpp b/src/libGLESv2/proc_table_egl_autogen.cpp
+index 4669eb7255e7c5d2f38415717e41f9a52978c446..3d2bb967c5f8876e7f218557e2939265abdcf033 100644
+--- a/src/libGLESv2/proc_table_egl_autogen.cpp
++++ b/src/libGLESv2/proc_table_egl_autogen.cpp
+@@ -190,6 +190,7 @@ const ProcEntry g_procTable[] = {
+     {"glBindFramebufferOES", P(GL_BindFramebufferOES)},
+     {"glBindImageTexture", P(GL_BindImageTexture)},
+     DESKTOP_ONLY("glBindImageTextures", GL_BindImageTextures)
++    {"glBindMetalRasterizationRateMapANGLE", P(GL_BindMetalRasterizationRateMapANGLE)},
+     {"glBindProgramPipeline", P(GL_BindProgramPipeline)},
+     {"glBindProgramPipelineEXT", P(GL_BindProgramPipelineEXT)},
+     {"glBindRenderbuffer", P(GL_BindRenderbuffer)},
+@@ -528,6 +529,7 @@ const ProcEntry g_procTable[] = {
+     {"glFramebufferPixelLocalStorageRestoreANGLE", P(GL_FramebufferPixelLocalStorageRestoreANGLE)},
+     {"glFramebufferRenderbuffer", P(GL_FramebufferRenderbuffer)},
+     {"glFramebufferRenderbufferOES", P(GL_FramebufferRenderbufferOES)},
++    {"glFramebufferResolveRenderbufferWEBKIT", P(GL_FramebufferResolveRenderbufferWEBKIT)},
+     {"glFramebufferTexture", P(GL_FramebufferTexture)},
+     DESKTOP_ONLY("glFramebufferTexture1D", GL_FramebufferTexture1D)
+     {"glFramebufferTexture2D", P(GL_FramebufferTexture2D)},
+diff --git a/src/libGLESv2/proc_table_glx_autogen.cpp b/src/libGLESv2/proc_table_glx_autogen.cpp
+index 413a54610cfc5a2404c5b703e638e003041e3668..7bae292cdf41ebc30ec59f1c87423818f5ccb32b 100644
+--- a/src/libGLESv2/proc_table_glx_autogen.cpp
++++ b/src/libGLESv2/proc_table_glx_autogen.cpp
+@@ -67,6 +67,7 @@ const ProcEntry g_procTable[] = {
+     {"glBindFramebufferOES", P(GL_BindFramebufferOES)},
+     {"glBindImageTexture", P(GL_BindImageTexture)},
+     {"glBindImageTextures", P(GL_BindImageTextures)},
++    {"glBindMetalRasterizationRateMapANGLE", P(GL_BindMetalRasterizationRateMapANGLE)},
+     {"glBindProgramPipeline", P(GL_BindProgramPipeline)},
+     {"glBindProgramPipelineEXT", P(GL_BindProgramPipelineEXT)},
+     {"glBindRenderbuffer", P(GL_BindRenderbuffer)},
+@@ -405,6 +406,7 @@ const ProcEntry g_procTable[] = {
+     {"glFramebufferPixelLocalStorageRestoreANGLE", P(GL_FramebufferPixelLocalStorageRestoreANGLE)},
+     {"glFramebufferRenderbuffer", P(GL_FramebufferRenderbuffer)},
+     {"glFramebufferRenderbufferOES", P(GL_FramebufferRenderbufferOES)},
++    {"glFramebufferResolveRenderbufferWEBKIT", P(GL_FramebufferResolveRenderbufferWEBKIT)},
+     {"glFramebufferTexture", P(GL_FramebufferTexture)},
+     {"glFramebufferTexture1D", P(GL_FramebufferTexture1D)},
+     {"glFramebufferTexture2D", P(GL_FramebufferTexture2D)},
+diff --git a/src/libGLESv2/proc_table_wgl_autogen.cpp b/src/libGLESv2/proc_table_wgl_autogen.cpp
+index 4cfd778a60259c742692602a6a0d9f10bdab5806..f939f35fe62e450710c8f73f6ed3f773146e6d18 100644
+--- a/src/libGLESv2/proc_table_wgl_autogen.cpp
++++ b/src/libGLESv2/proc_table_wgl_autogen.cpp
+@@ -67,6 +67,7 @@ const ProcEntry g_procTable[] = {
+     {"glBindFramebufferOES", P(GL_BindFramebufferOES)},
+     {"glBindImageTexture", P(GL_BindImageTexture)},
+     {"glBindImageTextures", P(GL_BindImageTextures)},
++    {"glBindMetalRasterizationRateMapANGLE", P(GL_BindMetalRasterizationRateMapANGLE)},
+     {"glBindProgramPipeline", P(GL_BindProgramPipeline)},
+     {"glBindProgramPipelineEXT", P(GL_BindProgramPipelineEXT)},
+     {"glBindRenderbuffer", P(GL_BindRenderbuffer)},
+@@ -405,6 +406,7 @@ const ProcEntry g_procTable[] = {
+     {"glFramebufferPixelLocalStorageRestoreANGLE", P(GL_FramebufferPixelLocalStorageRestoreANGLE)},
+     {"glFramebufferRenderbuffer", P(GL_FramebufferRenderbuffer)},
+     {"glFramebufferRenderbufferOES", P(GL_FramebufferRenderbufferOES)},
++    {"glFramebufferResolveRenderbufferWEBKIT", P(GL_FramebufferResolveRenderbufferWEBKIT)},
+     {"glFramebufferTexture", P(GL_FramebufferTexture)},
+     {"glFramebufferTexture1D", P(GL_FramebufferTexture1D)},
+     {"glFramebufferTexture2D", P(GL_FramebufferTexture2D)},
+diff --git a/src/tests/angle_end2end_tests.gni b/src/tests/angle_end2end_tests.gni
+index 879a6de5c94c64e6a676fe177df432a1cdc7f680..b46227c7c52fe621c00e3b124995729ba0e68ebd 100644
+--- a/src/tests/angle_end2end_tests.gni
++++ b/src/tests/angle_end2end_tests.gni
+@@ -86,6 +86,7 @@ angle_end2end_tests_sources = [
+   "gl_tests/FramebufferMixedSamplesTest.cpp",
+   "gl_tests/FramebufferMultiviewTest.cpp",
+   "gl_tests/FramebufferRenderMipmapTest.cpp",
++  "gl_tests/FramebufferResolveTest.cpp",
+   "gl_tests/FramebufferTest.cpp",
+   "gl_tests/GLSLTest.cpp",
+   "gl_tests/GeometryShaderTest.cpp",
+@@ -226,6 +227,7 @@ angle_end2end_tests_mac_sources = [
+   "egl_tests/EGLSyncTestMetalSharedEvent.mm",
+   "egl_tests/EGLWaitUntilWorkScheduledTest.cpp",
+   "gl_tests/ImageTestMetal.mm",
++  "gl_tests/VariableRasterizationRateTestMetal.mm",
+ ]
+ angle_end2end_tests_win_sources = [
+   "egl_tests/EGLDeviceTest.cpp",
+diff --git a/src/tests/gl_tests/PbufferTest.cpp b/src/tests/gl_tests/PbufferTest.cpp
+index 969cd2f96d302d74dd3515ac842b93eb51387cd2..730d0ffa536caf536ec750e2bac82c8187cda8ce 100644
+--- a/src/tests/gl_tests/PbufferTest.cpp
++++ b/src/tests/gl_tests/PbufferTest.cpp
+@@ -302,7 +302,6 @@ TEST_P(PbufferTest, BindTexImageOverwrite)
+     // Test skipped because Pbuffers are not supported or Pbuffer does not support binding to RGBA
+     // textures.
+     ANGLE_SKIP_TEST_IF(!mSupportsPbuffers || !mSupportsBindTexImage);
+-
+     EGLWindow *window = getEGLWindow();
+     window->makeCurrent();
+ 
+@@ -532,7 +531,6 @@ TEST_P(PbufferTest, BindTexImageOverwriteReleasesOrphanedPbuffer)
+     // Test skipped because Pbuffers are not supported or Pbuffer does not support binding to RGBA
+     // textures.
+     ANGLE_SKIP_TEST_IF(!mSupportsPbuffers || !mSupportsBindTexImage);
+-
+     EGLWindow *window = getEGLWindow();
+     window->makeCurrent();
+ 
+diff --git a/util/autogen/angle_features_autogen.cpp b/util/autogen/angle_features_autogen.cpp
+index c22a77b4530740565872b6bf301b5d100bf569a2..ffdfe6d6a2b05b8b4b802af50c0410739cbe3aee 100644
+--- a/util/autogen/angle_features_autogen.cpp
++++ b/util/autogen/angle_features_autogen.cpp
+@@ -205,6 +205,7 @@ constexpr PackedEnumMap<Feature, const char *> kFeatureNames = {{
+     {Feature::HasShaderStencilOutput, "hasShaderStencilOutput"},
+     {Feature::HasStencilAutoResolve, "hasStencilAutoResolve"},
+     {Feature::HasTextureSwizzle, "hasTextureSwizzle"},
++    {Feature::HasVariableRasterizationRate, "hasVariableRasterizationRate"},
+     {Feature::InitFragmentOutputVariables, "initFragmentOutputVariables"},
+     {Feature::InitializeCurrentVertexAttributes, "initializeCurrentVertexAttributes"},
+     {Feature::InjectAsmStatementIntoLoopBodies, "injectAsmStatementIntoLoopBodies"},
+diff --git a/util/autogen/angle_features_autogen.h b/util/autogen/angle_features_autogen.h
+index e6420ad0579a2173a51aade8524a4529b3351c37..4069e5be49f58147a3b342023b1393648b259441 100644
+--- a/util/autogen/angle_features_autogen.h
++++ b/util/autogen/angle_features_autogen.h
+@@ -205,6 +205,7 @@ enum class Feature
+     HasShaderStencilOutput,
+     HasStencilAutoResolve,
+     HasTextureSwizzle,
++    HasVariableRasterizationRate,
+     InitFragmentOutputVariables,
+     InitializeCurrentVertexAttributes,
+     InjectAsmStatementIntoLoopBodies,
+diff --git a/util/capture/frame_capture_replay_autogen.cpp b/util/capture/frame_capture_replay_autogen.cpp
+index 0356ae084c4e6394c3de340273b2426f9d8c2497..51cf85872ae18efa21c6d94d56e969e41508a659 100644
+--- a/util/capture/frame_capture_replay_autogen.cpp
++++ b/util/capture/frame_capture_replay_autogen.cpp
+@@ -105,6 +105,10 @@ void ReplayTraceFunctionCall(const CallCapture &call, const TraceFunctionMap &cu
+                                captures[3].value.GLbooleanVal, captures[4].value.GLintVal,
+                                captures[5].value.GLenumVal, captures[6].value.GLenumVal);
+             break;
++        case angle::EntryPoint::GLBindMetalRasterizationRateMapANGLE:
++            glBindMetalRasterizationRateMapANGLE(
++                captures[0].value.GLMTLRasterizationRateMapANGLEVal);
++            break;
+         case angle::EntryPoint::GLBindProgramPipeline:
+             glBindProgramPipeline(gProgramPipelineMap[captures[0].value.GLuintVal]);
+             break;
+@@ -1053,6 +1057,11 @@ void ReplayTraceFunctionCall(const CallCapture &call, const TraceFunctionMap &cu
+                                          captures[2].value.GLenumVal,
+                                          gRenderbufferMap[captures[3].value.GLuintVal]);
+             break;
++        case angle::EntryPoint::GLFramebufferResolveRenderbufferWEBKIT:
++            glFramebufferResolveRenderbufferWEBKIT(
++                captures[0].value.GLenumVal, captures[1].value.GLenumVal,
++                captures[2].value.GLenumVal, gRenderbufferMap[captures[3].value.GLuintVal]);
++            break;
+         case angle::EntryPoint::GLFramebufferTexture:
+             glFramebufferTexture(captures[0].value.GLenumVal, captures[1].value.GLenumVal,
+                                  gTextureMap[captures[2].value.GLuintVal],
+diff --git a/util/capture/trace_gles_loader_autogen.cpp b/util/capture/trace_gles_loader_autogen.cpp
+index 2a2450169abf46c88371eb7cfc3c4f5755db5a84..f746dabe8e8de21fe69bd99d7d9a8e75fa11723f 100644
+--- a/util/capture/trace_gles_loader_autogen.cpp
++++ b/util/capture/trace_gles_loader_autogen.cpp
+@@ -630,6 +630,8 @@ ANGLE_TRACE_LOADER_EXPORT PFNGLSAMPLEMASKIANGLEPROC t_glSampleMaskiANGLE;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLTEXSTORAGE2DMULTISAMPLEANGLEPROC t_glTexStorage2DMultisampleANGLE;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLGETTRANSLATEDSHADERSOURCEANGLEPROC
+     t_glGetTranslatedShaderSourceANGLE;
++ANGLE_TRACE_LOADER_EXPORT PFNGLBINDMETALRASTERIZATIONRATEMAPANGLEPROC
++    t_glBindMetalRasterizationRateMapANGLE;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLACQUIRETEXTURESANGLEPROC t_glAcquireTexturesANGLE;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLRELEASETEXTURESANGLEPROC t_glReleaseTexturesANGLE;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLBINDUNIFORMLOCATIONCHROMIUMPROC t_glBindUniformLocationCHROMIUM;
+@@ -879,6 +881,8 @@ ANGLE_TRACE_LOADER_EXPORT PFNGLTEXTUREFOVEATIONPARAMETERSQCOMPROC
+     t_glTextureFoveationParametersQCOM;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLENDTILINGQCOMPROC t_glEndTilingQCOM;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLSTARTTILINGQCOMPROC t_glStartTilingQCOM;
++ANGLE_TRACE_LOADER_EXPORT PFNGLFRAMEBUFFERRESOLVERENDERBUFFERWEBKITPROC
++    t_glFramebufferResolveRenderbufferWEBKIT;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLDRAWTEXFOESPROC t_glDrawTexfOES;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLDRAWTEXFVOESPROC t_glDrawTexfvOES;
+ ANGLE_TRACE_LOADER_EXPORT PFNGLDRAWTEXIOESPROC t_glDrawTexiOES;
+@@ -1845,6 +1849,9 @@ void LoadTraceGLES(LoadProc loadProc)
+         loadProc("glTexStorage2DMultisampleANGLE"));
+     t_glGetTranslatedShaderSourceANGLE = reinterpret_cast<PFNGLGETTRANSLATEDSHADERSOURCEANGLEPROC>(
+         loadProc("glGetTranslatedShaderSourceANGLE"));
++    t_glBindMetalRasterizationRateMapANGLE =
++        reinterpret_cast<PFNGLBINDMETALRASTERIZATIONRATEMAPANGLEPROC>(
++            loadProc("glBindMetalRasterizationRateMapANGLE"));
+     t_glAcquireTexturesANGLE =
+         reinterpret_cast<PFNGLACQUIRETEXTURESANGLEPROC>(loadProc("glAcquireTexturesANGLE"));
+     t_glReleaseTexturesANGLE =
+@@ -2274,6 +2281,9 @@ void LoadTraceGLES(LoadProc loadProc)
+         loadProc("glTextureFoveationParametersQCOM"));
+     t_glEndTilingQCOM   = reinterpret_cast<PFNGLENDTILINGQCOMPROC>(loadProc("glEndTilingQCOM"));
+     t_glStartTilingQCOM = reinterpret_cast<PFNGLSTARTTILINGQCOMPROC>(loadProc("glStartTilingQCOM"));
++    t_glFramebufferResolveRenderbufferWEBKIT =
++        reinterpret_cast<PFNGLFRAMEBUFFERRESOLVERENDERBUFFERWEBKITPROC>(
++            loadProc("glFramebufferResolveRenderbufferWEBKIT"));
+     t_glDrawTexfOES  = reinterpret_cast<PFNGLDRAWTEXFOESPROC>(loadProc("glDrawTexfOES"));
+     t_glDrawTexfvOES = reinterpret_cast<PFNGLDRAWTEXFVOESPROC>(loadProc("glDrawTexfvOES"));
+     t_glDrawTexiOES  = reinterpret_cast<PFNGLDRAWTEXIOESPROC>(loadProc("glDrawTexiOES"));
+diff --git a/util/capture/trace_gles_loader_autogen.h b/util/capture/trace_gles_loader_autogen.h
+index c1e82cb5725914d533051df5e521b01e2fb872ff..64a5dee4e3114de59ff638e098a3f4f56e4f853e 100644
+--- a/util/capture/trace_gles_loader_autogen.h
++++ b/util/capture/trace_gles_loader_autogen.h
+@@ -595,6 +595,7 @@
+ #define glSampleMaskiANGLE t_glSampleMaskiANGLE
+ #define glTexStorage2DMultisampleANGLE t_glTexStorage2DMultisampleANGLE
+ #define glGetTranslatedShaderSourceANGLE t_glGetTranslatedShaderSourceANGLE
++#define glBindMetalRasterizationRateMapANGLE t_glBindMetalRasterizationRateMapANGLE
+ #define glAcquireTexturesANGLE t_glAcquireTexturesANGLE
+ #define glReleaseTexturesANGLE t_glReleaseTexturesANGLE
+ #define glBindUniformLocationCHROMIUM t_glBindUniformLocationCHROMIUM
+@@ -827,6 +828,7 @@
+ #define glTextureFoveationParametersQCOM t_glTextureFoveationParametersQCOM
+ #define glEndTilingQCOM t_glEndTilingQCOM
+ #define glStartTilingQCOM t_glStartTilingQCOM
++#define glFramebufferResolveRenderbufferWEBKIT t_glFramebufferResolveRenderbufferWEBKIT
+ #define glDrawTexfOES t_glDrawTexfOES
+ #define glDrawTexfvOES t_glDrawTexfvOES
+ #define glDrawTexiOES t_glDrawTexiOES
+@@ -1515,6 +1517,8 @@ ANGLE_TRACE_LOADER_EXPORT extern PFNGLTEXSTORAGE2DMULTISAMPLEANGLEPROC
+     t_glTexStorage2DMultisampleANGLE;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLGETTRANSLATEDSHADERSOURCEANGLEPROC
+     t_glGetTranslatedShaderSourceANGLE;
++ANGLE_TRACE_LOADER_EXPORT extern PFNGLBINDMETALRASTERIZATIONRATEMAPANGLEPROC
++    t_glBindMetalRasterizationRateMapANGLE;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLACQUIRETEXTURESANGLEPROC t_glAcquireTexturesANGLE;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLRELEASETEXTURESANGLEPROC t_glReleaseTexturesANGLE;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLBINDUNIFORMLOCATIONCHROMIUMPROC
+@@ -1782,6 +1786,8 @@ ANGLE_TRACE_LOADER_EXPORT extern PFNGLTEXTUREFOVEATIONPARAMETERSQCOMPROC
+     t_glTextureFoveationParametersQCOM;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLENDTILINGQCOMPROC t_glEndTilingQCOM;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLSTARTTILINGQCOMPROC t_glStartTilingQCOM;
++ANGLE_TRACE_LOADER_EXPORT extern PFNGLFRAMEBUFFERRESOLVERENDERBUFFERWEBKITPROC
++    t_glFramebufferResolveRenderbufferWEBKIT;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLDRAWTEXFOESPROC t_glDrawTexfOES;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLDRAWTEXFVOESPROC t_glDrawTexfvOES;
+ ANGLE_TRACE_LOADER_EXPORT extern PFNGLDRAWTEXIOESPROC t_glDrawTexiOES;
+diff --git a/util/capture/trace_interpreter_autogen.cpp b/util/capture/trace_interpreter_autogen.cpp
+index 7e73814693678a881dd1f461afa8b8d0c4e33606..dbafb580bcc61702fedfd189c7c42e71d556d4e4 100644
+--- a/util/capture/trace_interpreter_autogen.cpp
++++ b/util/capture/trace_interpreter_autogen.cpp
+@@ -896,6 +896,13 @@ CallCapture ParseCallCapture(const Token &nameToken,
+             paramTokens, strings);
+         return CallCapture(EntryPoint::GLBindImageTexture, std::move(params));
+     }
++    if (strcmp(nameToken, "glBindMetalRasterizationRateMapANGLE") == 0)
++    {
++        ParamBuffer params =
++            ParseParameters<std::remove_pointer<PFNGLBINDMETALRASTERIZATIONRATEMAPANGLEPROC>::type>(
++                paramTokens, strings);
++        return CallCapture(EntryPoint::GLBindMetalRasterizationRateMapANGLE, std::move(params));
++    }
+     if (strcmp(nameToken, "glBindProgramPipeline") == 0)
+     {
+         ParamBuffer params =
+@@ -2290,6 +2297,13 @@ CallCapture ParseCallCapture(const Token &nameToken,
+                 paramTokens, strings);
+         return CallCapture(EntryPoint::GLFramebufferRenderbufferOES, std::move(params));
+     }
++    if (strcmp(nameToken, "glFramebufferResolveRenderbufferWEBKIT") == 0)
++    {
++        ParamBuffer params = ParseParameters<
++            std::remove_pointer<PFNGLFRAMEBUFFERRESOLVERENDERBUFFERWEBKITPROC>::type>(paramTokens,
++                                                                                      strings);
++        return CallCapture(EntryPoint::GLFramebufferResolveRenderbufferWEBKIT, std::move(params));
++    }
+     if (strcmp(nameToken, "glFramebufferTexture") == 0)
+     {
+         ParamBuffer params =
+diff --git a/util/gles_loader_autogen.cpp b/util/gles_loader_autogen.cpp
+index 65c2f5ab70c3a73d292c4225b83d2ce9403eeef0..46d6b09779d604793cf8c6895aa64663e4385c28 100644
+--- a/util/gles_loader_autogen.cpp
++++ b/util/gles_loader_autogen.cpp
+@@ -607,6 +607,8 @@ ANGLE_UTIL_EXPORT PFNGLGETMULTISAMPLEFVANGLEPROC l_glGetMultisamplefvANGLE;
+ ANGLE_UTIL_EXPORT PFNGLSAMPLEMASKIANGLEPROC l_glSampleMaskiANGLE;
+ ANGLE_UTIL_EXPORT PFNGLTEXSTORAGE2DMULTISAMPLEANGLEPROC l_glTexStorage2DMultisampleANGLE;
+ ANGLE_UTIL_EXPORT PFNGLGETTRANSLATEDSHADERSOURCEANGLEPROC l_glGetTranslatedShaderSourceANGLE;
++ANGLE_UTIL_EXPORT PFNGLBINDMETALRASTERIZATIONRATEMAPANGLEPROC
++    l_glBindMetalRasterizationRateMapANGLE;
+ ANGLE_UTIL_EXPORT PFNGLACQUIRETEXTURESANGLEPROC l_glAcquireTexturesANGLE;
+ ANGLE_UTIL_EXPORT PFNGLRELEASETEXTURESANGLEPROC l_glReleaseTexturesANGLE;
+ ANGLE_UTIL_EXPORT PFNGLBINDUNIFORMLOCATIONCHROMIUMPROC l_glBindUniformLocationCHROMIUM;
+@@ -847,6 +849,8 @@ ANGLE_UTIL_EXPORT PFNGLSHADINGRATEQCOMPROC l_glShadingRateQCOM;
+ ANGLE_UTIL_EXPORT PFNGLTEXTUREFOVEATIONPARAMETERSQCOMPROC l_glTextureFoveationParametersQCOM;
+ ANGLE_UTIL_EXPORT PFNGLENDTILINGQCOMPROC l_glEndTilingQCOM;
+ ANGLE_UTIL_EXPORT PFNGLSTARTTILINGQCOMPROC l_glStartTilingQCOM;
++ANGLE_UTIL_EXPORT PFNGLFRAMEBUFFERRESOLVERENDERBUFFERWEBKITPROC
++    l_glFramebufferResolveRenderbufferWEBKIT;
+ ANGLE_UTIL_EXPORT PFNGLDRAWTEXFOESPROC l_glDrawTexfOES;
+ ANGLE_UTIL_EXPORT PFNGLDRAWTEXFVOESPROC l_glDrawTexfvOES;
+ ANGLE_UTIL_EXPORT PFNGLDRAWTEXIOESPROC l_glDrawTexiOES;
+@@ -1812,6 +1816,9 @@ void LoadUtilGLES(LoadProc loadProc)
+         loadProc("glTexStorage2DMultisampleANGLE"));
+     l_glGetTranslatedShaderSourceANGLE = reinterpret_cast<PFNGLGETTRANSLATEDSHADERSOURCEANGLEPROC>(
+         loadProc("glGetTranslatedShaderSourceANGLE"));
++    l_glBindMetalRasterizationRateMapANGLE =
++        reinterpret_cast<PFNGLBINDMETALRASTERIZATIONRATEMAPANGLEPROC>(
++            loadProc("glBindMetalRasterizationRateMapANGLE"));
+     l_glAcquireTexturesANGLE =
+         reinterpret_cast<PFNGLACQUIRETEXTURESANGLEPROC>(loadProc("glAcquireTexturesANGLE"));
+     l_glReleaseTexturesANGLE =
+@@ -2241,6 +2248,9 @@ void LoadUtilGLES(LoadProc loadProc)
+         loadProc("glTextureFoveationParametersQCOM"));
+     l_glEndTilingQCOM   = reinterpret_cast<PFNGLENDTILINGQCOMPROC>(loadProc("glEndTilingQCOM"));
+     l_glStartTilingQCOM = reinterpret_cast<PFNGLSTARTTILINGQCOMPROC>(loadProc("glStartTilingQCOM"));
++    l_glFramebufferResolveRenderbufferWEBKIT =
++        reinterpret_cast<PFNGLFRAMEBUFFERRESOLVERENDERBUFFERWEBKITPROC>(
++            loadProc("glFramebufferResolveRenderbufferWEBKIT"));
+     l_glDrawTexfOES  = reinterpret_cast<PFNGLDRAWTEXFOESPROC>(loadProc("glDrawTexfOES"));
+     l_glDrawTexfvOES = reinterpret_cast<PFNGLDRAWTEXFVOESPROC>(loadProc("glDrawTexfvOES"));
+     l_glDrawTexiOES  = reinterpret_cast<PFNGLDRAWTEXIOESPROC>(loadProc("glDrawTexiOES"));
+diff --git a/util/gles_loader_autogen.h b/util/gles_loader_autogen.h
+index 2ffeb4c8deebff80248ffc9c07230322c1a5e956..0ecc4a1a2586396e87bb1946c12657b9d84292f1 100644
+--- a/util/gles_loader_autogen.h
++++ b/util/gles_loader_autogen.h
+@@ -595,6 +595,7 @@
+ #define glSampleMaskiANGLE l_glSampleMaskiANGLE
+ #define glTexStorage2DMultisampleANGLE l_glTexStorage2DMultisampleANGLE
+ #define glGetTranslatedShaderSourceANGLE l_glGetTranslatedShaderSourceANGLE
++#define glBindMetalRasterizationRateMapANGLE l_glBindMetalRasterizationRateMapANGLE
+ #define glAcquireTexturesANGLE l_glAcquireTexturesANGLE
+ #define glReleaseTexturesANGLE l_glReleaseTexturesANGLE
+ #define glBindUniformLocationCHROMIUM l_glBindUniformLocationCHROMIUM
+@@ -827,6 +828,7 @@
+ #define glTextureFoveationParametersQCOM l_glTextureFoveationParametersQCOM
+ #define glEndTilingQCOM l_glEndTilingQCOM
+ #define glStartTilingQCOM l_glStartTilingQCOM
++#define glFramebufferResolveRenderbufferWEBKIT l_glFramebufferResolveRenderbufferWEBKIT
+ #define glDrawTexfOES l_glDrawTexfOES
+ #define glDrawTexfvOES l_glDrawTexfvOES
+ #define glDrawTexiOES l_glDrawTexiOES
+@@ -1480,6 +1482,8 @@ ANGLE_UTIL_EXPORT extern PFNGLGETMULTISAMPLEFVANGLEPROC l_glGetMultisamplefvANGL
+ ANGLE_UTIL_EXPORT extern PFNGLSAMPLEMASKIANGLEPROC l_glSampleMaskiANGLE;
+ ANGLE_UTIL_EXPORT extern PFNGLTEXSTORAGE2DMULTISAMPLEANGLEPROC l_glTexStorage2DMultisampleANGLE;
+ ANGLE_UTIL_EXPORT extern PFNGLGETTRANSLATEDSHADERSOURCEANGLEPROC l_glGetTranslatedShaderSourceANGLE;
++ANGLE_UTIL_EXPORT extern PFNGLBINDMETALRASTERIZATIONRATEMAPANGLEPROC
++    l_glBindMetalRasterizationRateMapANGLE;
+ ANGLE_UTIL_EXPORT extern PFNGLACQUIRETEXTURESANGLEPROC l_glAcquireTexturesANGLE;
+ ANGLE_UTIL_EXPORT extern PFNGLRELEASETEXTURESANGLEPROC l_glReleaseTexturesANGLE;
+ ANGLE_UTIL_EXPORT extern PFNGLBINDUNIFORMLOCATIONCHROMIUMPROC l_glBindUniformLocationCHROMIUM;
+@@ -1722,6 +1726,8 @@ ANGLE_UTIL_EXPORT extern PFNGLSHADINGRATEQCOMPROC l_glShadingRateQCOM;
+ ANGLE_UTIL_EXPORT extern PFNGLTEXTUREFOVEATIONPARAMETERSQCOMPROC l_glTextureFoveationParametersQCOM;
+ ANGLE_UTIL_EXPORT extern PFNGLENDTILINGQCOMPROC l_glEndTilingQCOM;
+ ANGLE_UTIL_EXPORT extern PFNGLSTARTTILINGQCOMPROC l_glStartTilingQCOM;
++ANGLE_UTIL_EXPORT extern PFNGLFRAMEBUFFERRESOLVERENDERBUFFERWEBKITPROC
++    l_glFramebufferResolveRenderbufferWEBKIT;
+ ANGLE_UTIL_EXPORT extern PFNGLDRAWTEXFOESPROC l_glDrawTexfOES;
+ ANGLE_UTIL_EXPORT extern PFNGLDRAWTEXFVOESPROC l_glDrawTexfvOES;
+ ANGLE_UTIL_EXPORT extern PFNGLDRAWTEXIOESPROC l_glDrawTexiOES;

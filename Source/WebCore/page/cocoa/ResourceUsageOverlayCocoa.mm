@@ -41,7 +41,8 @@
 #import <wtf/MathExtras.h>
 #import <wtf/MemoryFootprint.h>
 #import <wtf/NeverDestroyed.h>
-#import <wtf/text/StringConcatenateNumbers.h>
+#import <wtf/text/MakeString.h>
+#import <wtf/text/StringBuilder.h>
 
 using WebCore::ResourceUsageOverlay;
 
@@ -146,6 +147,7 @@ struct HistoricMemoryCategoryInfo {
 };
 
 struct HistoricResourceUsageData {
+    WTF_MAKE_STRUCT_FAST_ALLOCATED;
     HistoricResourceUsageData();
 
     RingBuffer<float> cpu;
@@ -160,18 +162,18 @@ struct HistoricResourceUsageData {
 HistoricResourceUsageData::HistoricResourceUsageData()
 {
     // VM tag categories.
-    categories[MemoryCategory::JSJIT] = HistoricMemoryCategoryInfo(MemoryCategory::JSJIT, { 255, 96, 255 }, "JS JIT");
-    categories[MemoryCategory::Gigacage] = HistoricMemoryCategoryInfo(MemoryCategory::Gigacage, { 101, 79, 240 }, "Gigacage");
-    categories[MemoryCategory::Images] = HistoricMemoryCategoryInfo(MemoryCategory::Images, Color::yellow, "Images");
-    categories[MemoryCategory::Layers] = HistoricMemoryCategoryInfo(MemoryCategory::Layers, Color::cyan, "Layers");
-    categories[MemoryCategory::LibcMalloc] = HistoricMemoryCategoryInfo(MemoryCategory::LibcMalloc, Color::green, "libc malloc");
-    categories[MemoryCategory::bmalloc] = HistoricMemoryCategoryInfo(MemoryCategory::bmalloc, { 255, 96, 96 }, "bmalloc");
-    categories[MemoryCategory::IsoHeap] = HistoricMemoryCategoryInfo(MemoryCategory::IsoHeap, { 128, 159, 64 }, "IsoHeap");
-    categories[MemoryCategory::Other] = HistoricMemoryCategoryInfo(MemoryCategory::Other, { 192, 255, 0 }, "Other");
+    categories[MemoryCategory::JSJIT] = HistoricMemoryCategoryInfo(MemoryCategory::JSJIT, { 255, 96, 255 }, "JS JIT"_s);
+    categories[MemoryCategory::Gigacage] = HistoricMemoryCategoryInfo(MemoryCategory::Gigacage, { 101, 79, 240 }, "Gigacage"_s);
+    categories[MemoryCategory::Images] = HistoricMemoryCategoryInfo(MemoryCategory::Images, Color::yellow, "Images"_s);
+    categories[MemoryCategory::Layers] = HistoricMemoryCategoryInfo(MemoryCategory::Layers, Color::cyan, "Layers"_s);
+    categories[MemoryCategory::LibcMalloc] = HistoricMemoryCategoryInfo(MemoryCategory::LibcMalloc, Color::green, "libc malloc"_s);
+    categories[MemoryCategory::bmalloc] = HistoricMemoryCategoryInfo(MemoryCategory::bmalloc, { 255, 96, 96 }, "bmalloc"_s);
+    categories[MemoryCategory::IsoHeap] = HistoricMemoryCategoryInfo(MemoryCategory::IsoHeap, { 128, 159, 64 }, "IsoHeap"_s);
+    categories[MemoryCategory::Other] = HistoricMemoryCategoryInfo(MemoryCategory::Other, { 192, 255, 0 }, "Other"_s);
 
     // Sub categories (e.g breakdown of bmalloc tag.)
-    categories[MemoryCategory::GCHeap] = HistoricMemoryCategoryInfo(MemoryCategory::GCHeap, { 160, 160, 255 }, "GC heap", true);
-    categories[MemoryCategory::GCOwned] = HistoricMemoryCategoryInfo(MemoryCategory::GCOwned, { 255, 192, 96 }, "GC owned", true);
+    categories[MemoryCategory::GCHeap] = HistoricMemoryCategoryInfo(MemoryCategory::GCHeap, { 160, 160, 255 }, "GC heap"_s, true);
+    categories[MemoryCategory::GCOwned] = HistoricMemoryCategoryInfo(MemoryCategory::GCOwned, { 255, 192, 96 }, "GC owned"_s, true);
 
 #ifndef NDEBUG
     // Ensure this aligns with ResourceUsageData's category order.
@@ -184,8 +186,12 @@ HistoricResourceUsageData::HistoricResourceUsageData()
 
 static HistoricResourceUsageData& historicUsageData()
 {
-    static NeverDestroyed<HistoricResourceUsageData> data;
-    return data;
+    static HistoricResourceUsageData* data { nullptr };
+    static std::once_flag onceKey;
+    std::call_once(onceKey, [&] {
+        data = new HistoricResourceUsageData;
+    });
+    return *data;
 }
 
 static void appendDataToHistory(const ResourceUsageData& data)
@@ -217,15 +223,15 @@ void ResourceUsageOverlay::platformInitialize()
     m_layer = adoptNS([[WebResourceUsageOverlayLayer alloc] initWithResourceUsageOverlay:this]);
 
     m_containerLayer = adoptNS([[CALayer alloc] init]);
-    [m_containerLayer.get() addSublayer:m_layer.get()];
+    [m_containerLayer addSublayer:m_layer.get()];
 
-    [m_containerLayer.get() setAnchorPoint:CGPointZero];
-    [m_containerLayer.get() setBounds:CGRectMake(0, 0, normalWidth, normalHeight)];
+    [m_containerLayer setAnchorPoint:CGPointZero];
+    [m_containerLayer setBounds:CGRectMake(0, 0, normalWidth, normalHeight)];
 
-    [m_layer.get() setAnchorPoint:CGPointZero];
-    [m_layer.get() setContentsScale:2.0];
-    [m_layer.get() setBackgroundColor:createColor(0, 0, 0, 0.8).get()];
-    [m_layer.get() setBounds:CGRectMake(0, 0, normalWidth, normalHeight)];
+    [m_layer setAnchorPoint:CGPointZero];
+    [m_layer setContentsScale:2.0];
+    [m_layer setBackgroundColor:createColor(0, 0, 0, 0.8).get()];
+    [m_layer setBounds:CGRectMake(0, 0, normalWidth, normalHeight)];
 
     overlay().layer().setContentsToPlatformLayer(m_layer.get(), GraphicsLayer::ContentsLayerPurpose::None);
 
@@ -267,9 +273,10 @@ static void showText(CGContextRef context, float x, float y, CGColorRef color, c
     auto font = adoptCF(CTFontCreateWithName(fontName, fontSize, &matrix));
     CFTypeRef keys[] = { kCTFontAttributeName, kCTForegroundColorFromContextAttributeName };
     CFTypeRef values[] = { font.get(), kCFBooleanTrue };
-    auto attributes = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, keys, values, WTF_ARRAY_LENGTH(keys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
+    auto attributes = adoptCF(CFDictionaryCreate(kCFAllocatorDefault, keys, values, std::size(keys), &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
     CString cstr = text.ascii();
-    auto string = adoptCF(CFStringCreateWithBytesNoCopy(kCFAllocatorDefault, cstr.dataAsUInt8Ptr(), cstr.length(), kCFStringEncodingASCII, false, kCFAllocatorNull));
+    auto cstrSpan = cstr.span();
+    auto string = adoptCF(CFStringCreateWithBytesNoCopy(kCFAllocatorDefault, cstrSpan.data(), cstrSpan.size(), kCFStringEncodingASCII, false, kCFAllocatorNull));
     auto attributedString = adoptCF(CFAttributedStringCreate(kCFAllocatorDefault, string.get(), attributes.get()));
     auto line = adoptCF(CTLineCreateWithAttributedString(attributedString.get()));
     CGContextSetTextPosition(context, x, y);
@@ -306,7 +313,7 @@ static void drawCpuHistory(CGContextRef context, float x1, float y1, float y2, R
         i++;
     });
 
-    drawGraphLabel(context, x1, y2, "CPU");
+    drawGraphLabel(context, x1, y2, "CPU"_s);
 }
 
 static void drawGCHistory(CGContextRef context, float x1, float y1, float y2, RingBuffer<size_t>& sizeHistory, RingBuffer<size_t>& capacityHistory)
@@ -349,7 +356,7 @@ static void drawGCHistory(CGContextRef context, float x1, float y1, float y2, Ri
         i++;
     });
 
-    drawGraphLabel(context, x1, y2, "GC");
+    drawGraphLabel(context, x1, y2, "GC"_s);
 }
 
 static void drawMemHistory(CGContextRef context, float x1, float y1, float y2, HistoricResourceUsageData& data)
@@ -395,7 +402,7 @@ static void drawMemHistory(CGContextRef context, float x1, float y1, float y2, H
         ++i;
     }
 
-    drawGraphLabel(context, x1, y2, "Mem");
+    drawGraphLabel(context, x1, y2, "Mem"_s);
 }
 
 static const float fullCircleInRadians = piFloat * 2;
@@ -426,17 +433,17 @@ static void drawMemoryPie(CGContextRef context, FloatRect& rect, HistoricResourc
 static String formatByteNumber(size_t number)
 {
     if (number >= 1024 * 1048576)
-        return makeString(FormattedNumber::fixedWidth(number / (1024. * 1048576), 3), " GB");
+        return makeString(FormattedNumber::fixedWidth(number / (1024. * 1048576), 3), " GB"_s);
     if (number >= 1048576)
-        return makeString(FormattedNumber::fixedWidth(number / 1048576., 2), " MB");
+        return makeString(FormattedNumber::fixedWidth(number / 1048576., 2), " MB"_s);
     if (number >= 1024)
-        return makeString(FormattedNumber::fixedWidth(number / 1024, 1), " kB");
+        return makeString(FormattedNumber::fixedWidth(number / 1024, 1), " kB"_s);
     return String::number(number);
 }
 
 static String gcTimerString(MonotonicTime timerFireDate, MonotonicTime now)
 {
-    if (std::isnan(timerFireDate))
+    if (timerFireDate.isNaN())
         return "[not scheduled]"_s;
     return String::numberToStringFixedPrecision((timerFireDate - now).seconds());
 }
@@ -445,7 +452,7 @@ void ResourceUsageOverlay::platformDraw(CGContextRef context)
 {
     auto& data = historicUsageData();
 
-    if (![m_layer.get() contentsAreFlipped]) {
+    if (![m_layer contentsAreFlipped]) {
         CGContextScaleCTM(context, 1, -1);
         CGContextTranslateCTM(context, 0, -normalHeight);
     }
@@ -457,31 +464,32 @@ void ResourceUsageOverlay::platformDraw(CGContextRef context)
     CGContextClearRect(context, viewBounds);
 
     static NeverDestroyed<RetainPtr<CGColorRef>> colorForLabels = createColor(0.9, 0.9, 0.9, 1);
-    showText(context, 10, 20, colorForLabels.get().get(), makeString("        CPU: ", FormattedNumber::fixedPrecision(data.cpu.last(), 6, KeepTrailingZeros)));
-    showText(context, 10, 30, colorForLabels.get().get(), "  Footprint: " + formatByteNumber(memoryFootprint()));
-    showText(context, 10, 40, colorForLabels.get().get(), "   External: " + formatByteNumber(data.totalExternalSize.last()));
+    showText(context, 10, 20, colorForLabels.get().get(), makeString("        CPU: "_s, FormattedNumber::fixedPrecision(data.cpu.last(), 6, TrailingZerosPolicy::Keep)));
+    showText(context, 10, 30, colorForLabels.get().get(), makeString("  Footprint: "_s, formatByteNumber(memoryFootprint())));
+    showText(context, 10, 40, colorForLabels.get().get(), makeString("   External: "_s, formatByteNumber(data.totalExternalSize.last())));
 
     float y = 55;
     for (auto& category : data.categories) {
         size_t dirty = category.dirtySize.last();
         size_t reclaimable = category.reclaimableSize.last();
         size_t external = category.externalSize.last();
-        
-        auto label = makeString(pad(' ', 11, category.name), ": ", formatByteNumber(dirty));
+
+        StringBuilder labelBuilder;
+        labelBuilder.append(pad(' ', 11, category.name), ": "_s, formatByteNumber(dirty));
         if (external)
-            label = label + makeString(" + ", formatByteNumber(external));
+            labelBuilder.append(" + "_s, formatByteNumber(external));
         if (reclaimable)
-            label = label + makeString(" [", formatByteNumber(reclaimable), ']');
+            labelBuilder.append(" ["_s, formatByteNumber(reclaimable), ']');
 
         // FIXME: Show size/capacity of GC heap.
-        showText(context, 10, y, category.color.get(), label);
+        showText(context, 10, y, category.color.get(), labelBuilder.toString());
         y += 10;
     }
     y -= 5;
 
     MonotonicTime now = MonotonicTime::now();
-    showText(context, 10, y + 10, colorForLabels.get().get(), "    Eden GC: " + gcTimerString(data.timeOfNextEdenCollection, now));
-    showText(context, 10, y + 20, colorForLabels.get().get(), "    Full GC: " + gcTimerString(data.timeOfNextFullCollection, now));
+    showText(context, 10, y + 10, colorForLabels.get().get(), makeString("    Eden GC: "_s, gcTimerString(data.timeOfNextEdenCollection, now)));
+    showText(context, 10, y + 20, colorForLabels.get().get(), makeString("    Full GC: "_s, gcTimerString(data.timeOfNextFullCollection, now)));
 
     drawCpuHistory(context, viewBounds.size.width - 70, 0, viewBounds.size.height, data.cpu);
     drawGCHistory(context, viewBounds.size.width - 140, 0, viewBounds.size.height, data.gcHeapSize, data.categories[MemoryCategory::GCHeap].dirtySize);

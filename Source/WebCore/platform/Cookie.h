@@ -43,9 +43,6 @@ namespace WebCore {
 struct Cookie {
     Cookie() = default;
 
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<Cookie> decode(Decoder&);
-
     WEBCORE_EXPORT bool operator==(const Cookie&) const;
     WEBCORE_EXPORT unsigned hash() const;
 
@@ -93,8 +90,33 @@ struct Cookie {
     URL commentURL;
     Vector<uint16_t> ports;
 
-    enum class SameSitePolicy { None, Lax, Strict };
+    enum class SameSitePolicy : uint8_t { 
+        None, 
+        Lax, 
+        Strict 
+    };
+
     SameSitePolicy sameSite { SameSitePolicy::None };
+
+    Cookie(String&& name, String&& value, String&& domain, String&& path, double created, std::optional<double> expires, bool httpOnly, bool secure, bool session, String&& comment, URL&& commentURL, Vector<uint16_t> ports, SameSitePolicy sameSite)
+        : name(WTFMove(name))
+        , value(WTFMove(value))
+        , domain(WTFMove(domain))
+        , path(WTFMove(path))
+        , created(created)
+        , expires(expires)
+        , httpOnly(httpOnly)
+        , secure(secure)
+        , session(session)
+        , comment(WTFMove(comment))
+        , commentURL(WTFMove(commentURL))
+        , ports(WTFMove(ports))
+        , sameSite(sameSite)
+    {
+    }
+
+    Cookie isolatedCopy() const & { return { name.isolatedCopy(), value.isolatedCopy(), domain.isolatedCopy(), path.isolatedCopy(), created, expires, httpOnly, secure, session, comment.isolatedCopy(), commentURL.isolatedCopy(), ports, sameSite }; }
+    Cookie isolatedCopy() && { return { WTFMove(name).isolatedCopy(), WTFMove(value).isolatedCopy(), WTFMove(domain).isolatedCopy(), WTFMove(path).isolatedCopy(), created, expires, httpOnly, secure, session, WTFMove(comment).isolatedCopy(), WTFMove(commentURL).isolatedCopy(), WTFMove(ports), sameSite }; }
 };
 
 struct CookieHash {
@@ -110,57 +132,6 @@ struct CookieHash {
     static const bool safeToCompareToEmptyOrDeleted = false;
 };
 
-template<class Encoder>
-void Cookie::encode(Encoder& encoder) const
-{
-    encoder << name;
-    encoder << value;
-    encoder << domain;
-    encoder << path;
-    encoder << created;
-    encoder << expires;
-    encoder << httpOnly;
-    encoder << secure;
-    encoder << session;
-    encoder << comment;
-    encoder << commentURL;
-    encoder << ports;
-    encoder << sameSite;
-}
-
-template<class Decoder>
-std::optional<Cookie> Cookie::decode(Decoder& decoder)
-{
-    Cookie cookie;
-    if (!decoder.decode(cookie.name))
-        return std::nullopt;
-    if (!decoder.decode(cookie.value))
-        return std::nullopt;
-    if (!decoder.decode(cookie.domain))
-        return std::nullopt;
-    if (!decoder.decode(cookie.path))
-        return std::nullopt;
-    if (!decoder.decode(cookie.created))
-        return std::nullopt;
-    if (!decoder.decode(cookie.expires))
-        return std::nullopt;
-    if (!decoder.decode(cookie.httpOnly))
-        return std::nullopt;
-    if (!decoder.decode(cookie.secure))
-        return std::nullopt;
-    if (!decoder.decode(cookie.session))
-        return std::nullopt;
-    if (!decoder.decode(cookie.comment))
-        return std::nullopt;
-    if (!decoder.decode(cookie.commentURL))
-        return std::nullopt;
-    if (!decoder.decode(cookie.ports))
-        return std::nullopt;
-    if (!decoder.decode(cookie.sameSite))
-        return std::nullopt;
-    return cookie;
-}
-
 }
 
 namespace WTF {
@@ -174,12 +145,4 @@ namespace WTF {
         static const bool hasIsEmptyValueFunction = true;
         static bool isEmptyValue(const WebCore::Cookie& slot) { return slot.isNull(); }
     };
-    template<> struct EnumTraits<WebCore::Cookie::SameSitePolicy> {
-    using values = EnumValues<
-        WebCore::Cookie::SameSitePolicy,
-        WebCore::Cookie::SameSitePolicy::None,
-        WebCore::Cookie::SameSitePolicy::Lax,
-        WebCore::Cookie::SameSitePolicy::Strict
-    >;
-};
 }

@@ -34,29 +34,29 @@
 namespace WebKit {
 
 RTCDataChannelRemoteManagerProxy::RTCDataChannelRemoteManagerProxy()
-    : m_queue(WorkQueue::create("RTCDataChannelRemoteManagerProxy"))
+    : m_queue(WorkQueue::create("RTCDataChannelRemoteManagerProxy"_s))
 {
 }
 
 void RTCDataChannelRemoteManagerProxy::registerConnectionToWebProcess(NetworkConnectionToWebProcess& connectionToWebProcess)
 {
-    m_queue->dispatch([this, protectedThis = makeRef(*this), identifier = connectionToWebProcess.webProcessIdentifier(), connectionID = connectionToWebProcess.connection().uniqueID()]() mutable {
+    m_queue->dispatch([this, protectedThis = Ref { *this }, identifier = connectionToWebProcess.webProcessIdentifier(), connectionID = connectionToWebProcess.connection().uniqueID()]() mutable {
         ASSERT(!m_webProcessConnections.contains(identifier));
         m_webProcessConnections.add(identifier, connectionID);
     });
-    connectionToWebProcess.connection().addWorkQueueMessageReceiver(Messages::RTCDataChannelRemoteManagerProxy::messageReceiverName(), m_queue, this);
+    connectionToWebProcess.connection().addWorkQueueMessageReceiver(Messages::RTCDataChannelRemoteManagerProxy::messageReceiverName(), m_queue, *this);
 }
 
 void RTCDataChannelRemoteManagerProxy::unregisterConnectionToWebProcess(NetworkConnectionToWebProcess& connectionToWebProcess)
 {
-    m_queue->dispatch([this, protectedThis = makeRef(*this), identifier = connectionToWebProcess.webProcessIdentifier()] {
+    m_queue->dispatch([this, protectedThis = Ref { *this }, identifier = connectionToWebProcess.webProcessIdentifier()] {
         ASSERT(m_webProcessConnections.contains(identifier));
         m_webProcessConnections.remove(identifier);
     });
     connectionToWebProcess.connection().removeWorkQueueMessageReceiver(Messages::RTCDataChannelRemoteManagerProxy::messageReceiverName());
 }
 
-void RTCDataChannelRemoteManagerProxy::sendData(WebCore::RTCDataChannelIdentifier identifier, bool isRaw, const IPC::DataReference& data)
+void RTCDataChannelRemoteManagerProxy::sendData(WebCore::RTCDataChannelIdentifier identifier, bool isRaw, std::span<const uint8_t> data)
 {
     if (auto connectionID = m_webProcessConnections.get(identifier.processIdentifier))
         IPC::Connection::send(connectionID, Messages::RTCDataChannelRemoteManager::SendData { identifier, isRaw, data }, 0);
@@ -74,16 +74,16 @@ void RTCDataChannelRemoteManagerProxy::changeReadyState(WebCore::RTCDataChannelI
         IPC::Connection::send(connectionID, Messages::RTCDataChannelRemoteManager::ChangeReadyState { identifier, state }, 0);
 }
 
-void RTCDataChannelRemoteManagerProxy::receiveData(WebCore::RTCDataChannelIdentifier identifier, bool isRaw, const IPC::DataReference& data)
+void RTCDataChannelRemoteManagerProxy::receiveData(WebCore::RTCDataChannelIdentifier identifier, bool isRaw, std::span<const uint8_t> data)
 {
     if (auto connectionID = m_webProcessConnections.get(identifier.processIdentifier))
         IPC::Connection::send(connectionID, Messages::RTCDataChannelRemoteManager::ReceiveData { identifier, isRaw, data }, 0);
 }
 
-void RTCDataChannelRemoteManagerProxy::detectError(WebCore::RTCDataChannelIdentifier identifier)
+void RTCDataChannelRemoteManagerProxy::detectError(WebCore::RTCDataChannelIdentifier identifier, WebCore::RTCErrorDetailType detail, const String& message)
 {
     if (auto connectionID = m_webProcessConnections.get(identifier.processIdentifier))
-        IPC::Connection::send(connectionID, Messages::RTCDataChannelRemoteManager::DetectError { identifier }, 0);
+        IPC::Connection::send(connectionID, Messages::RTCDataChannelRemoteManager::DetectError { identifier, detail, message }, 0);
 }
 
 void RTCDataChannelRemoteManagerProxy::bufferedAmountIsDecreasing(WebCore::RTCDataChannelIdentifier identifier, size_t amount)

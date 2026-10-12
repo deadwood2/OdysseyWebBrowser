@@ -36,9 +36,16 @@ namespace WebCore {
 
 class ImageBitmap;
 class ImageBuffer;
+class OffscreenCanvas;
+
+#if ENABLE(OFFSCREEN_CANVAS)
+using ImageBitmapCanvas = std::variant<RefPtr<HTMLCanvasElement>, RefPtr<OffscreenCanvas>>;
+#else
+using ImageBitmapCanvas = std::variant<RefPtr<HTMLCanvasElement>>;
+#endif
 
 class ImageBitmapRenderingContext final : public CanvasRenderingContext {
-    WTF_MAKE_ISO_ALLOCATED(ImageBitmapRenderingContext);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(ImageBitmapRenderingContext);
 public:
     static std::unique_ptr<ImageBitmapRenderingContext> create(CanvasBase&, ImageBitmapRenderingContextSettings&&);
 
@@ -49,7 +56,7 @@ public:
 
     ~ImageBitmapRenderingContext();
 
-    HTMLCanvasElement* canvas() const;
+    ImageBitmapCanvas canvas();
 
     ExceptionOr<void> transferFromImageBitmap(RefPtr<ImageBitmap>);
 
@@ -60,9 +67,10 @@ private:
     ImageBitmapRenderingContext(CanvasBase&, ImageBitmapRenderingContextSettings&&);
 
     bool isBitmapRenderer() const final { return true; }
-    bool isAccelerated() const override;
+    RefPtr<ImageBuffer> transferToImageBuffer() final;
 
     void setOutputBitmap(RefPtr<ImageBitmap>);
+    void setBlank();
 
     BitmapMode m_bitmapMode { BitmapMode::Blank };
     ImageBitmapRenderingContextSettings m_settings;

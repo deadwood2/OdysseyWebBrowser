@@ -21,6 +21,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+originalTestList="$1"
+
 numProcs=`sysctl -n hw.activecpu 2>/dev/null`
 if [ $? -gt 0 ]
 then
@@ -35,14 +37,30 @@ indexFile=".index"
 testList=".all_tests.txt"
 tempFile=".temp.txt"
 lockDir=".lock_dir"
+pauseFile=".pause"
 
 trap "kill -9 0" INT HUP TERM
 
 echo 0 > ${indexFile}
-find . -maxdepth 1 -name 'test_script_*' | sort -t '_' -k3nr > ${testList}
+if [ -z "$originalTestList" ]
+then
+    find . -maxdepth 1 -name 'test_script_*' | sort -t '_' -k3nr > ${testList}
+else
+    cp "$originalTestList" "$testList"
+fi
 
 lock_test_list() {
-    until mkdir ${lockDir} 2> /dev/null; do sleep 0; done
+    
+    until mkdir ${lockDir} 2> /dev/null
+    do
+        if [ -e ${pauseFile} ]
+        then
+            echo 'Running paused...'
+            sleep 600
+        else
+            sleep 0
+        fi
+    done
 }
 
 unlock_test_list() {
@@ -60,6 +78,12 @@ do
         lock_test_list
         while [ -s ${testList} ]
         do
+            if [ -e ${pauseFile} ]
+            then
+                echo 'Running paused...'
+                sleep 600
+                continue
+            fi
             index=`cat ${indexFile}`
             index=$((index + 1))
             echo "${index}" > ${indexFile}

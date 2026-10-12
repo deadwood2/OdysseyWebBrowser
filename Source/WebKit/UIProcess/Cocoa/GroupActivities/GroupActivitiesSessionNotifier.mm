@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2021-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,8 +28,11 @@
 
 #if ENABLE(MEDIA_SESSION_COORDINATOR) && HAVE(GROUP_ACTIVITIES)
 
+#import "GroupActivitiesCoordinator.h"
 #import "WKGroupSession.h"
+#import "WebFrameProxy.h"
 #import "WebPageProxy.h"
+#import <wtf/TZoneMallocInlines.h>
 
 #import "WebKitSwiftSoftLink.h"
 
@@ -37,6 +40,8 @@ namespace WebKit {
 
 using namespace PAL;
 using namespace WebCore;
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(GroupActivitiesSessionNotifier);
 
 GroupActivitiesSessionNotifier& GroupActivitiesSessionNotifier::sharedNotifier()
 {
@@ -48,7 +53,7 @@ GroupActivitiesSessionNotifier::GroupActivitiesSessionNotifier()
     : m_sessionObserver(adoptNS([allocWKGroupSessionObserverInstance() init]))
     , m_stateChangeObserver([this] (auto& session, auto state) { sessionStateChanged(session, state); })
 {
-    m_sessionObserver.get().newSessionCallback = [this, weakThis = makeWeakPtr(this)] (WKGroupSession *groupSession) {
+    m_sessionObserver.get().newSessionCallback = [this, weakThis = WeakPtr { *this }] (WKGroupSession *groupSession) {
         if (!weakThis)
             return;
 
@@ -81,7 +86,7 @@ void GroupActivitiesSessionNotifier::addWebPage(WebPageProxy& webPage)
     ASSERT(!m_webPages.contains(webPage));
     m_webPages.add(webPage);
 
-    auto frame = webPage.mainFrame();
+    RefPtr frame = webPage.mainFrame();
     if (!frame)
         return;
 

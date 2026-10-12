@@ -31,10 +31,10 @@
 #import "Cursor.h"
 #import "Document.h"
 #import "FontCascade.h"
-#import "Frame.h"
-#import "FrameView.h"
 #import "GraphicsContext.h"
 #import "HostWindow.h"
+#import "LocalFrame.h"
+#import "LocalFrameView.h"
 #import "PlatformMouseEvent.h"
 #import "ScrollView.h"
 #import "WAKScrollView.h"
@@ -72,14 +72,6 @@ Widget::~Widget()
 void Widget::setFocus(bool focused)
 {
     UNUSED_PARAM(focused);
-}
-
-void Widget::setCursor(const Cursor& cursor)
-{
-    FrameView* view = root();
-    if (!view)
-        return;
-    view->hostWindow()->setCursor(cursor);
 }
 
 void Widget::show()
@@ -146,7 +138,7 @@ NSView* Widget::getOuterView() const
     return view;
 }
 
-void Widget::paint(GraphicsContext& p, const IntRect& r, SecurityOriginPaintPolicy, EventRegionContext*)
+void Widget::paint(GraphicsContext& p, const IntRect& r, SecurityOriginPaintPolicy, RegionContext*)
 {
     if (p.paintingDisabled())
         return;

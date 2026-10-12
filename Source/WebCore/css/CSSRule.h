@@ -1,7 +1,7 @@
 /*
  * (C) 1999-2003 Lars Knoll (knoll@kde.org)
  * (C) 2002-2003 Dirk Mueller (mueller@kde.org)
- * Copyright (C) 2002-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2002-2021 Apple Inc. All rights reserved.
  * Copyright (C) 2011 Andreas Kling (kling@webkit.org)
  *
  * This library is free software; you can redistribute it and/or
@@ -23,12 +23,15 @@
 #pragma once
 
 #include "ExceptionOr.h"
+#include "StyleRuleType.h"
 #include <wtf/TypeCasts.h>
 
 namespace WebCore {
 
 class CSSStyleSheet;
 class StyleRuleBase;
+class StyleRule;
+class StyleRuleWithNesting;
 
 struct CSSParserContext;
 
@@ -36,36 +39,21 @@ class CSSRule : public RefCounted<CSSRule> {
 public:
     virtual ~CSSRule() = default;
 
-    // WebIDL enum
-    enum Type {
-        UNKNOWN_RULE,
-        STYLE_RULE,
-        CHARSET_RULE,
-        IMPORT_RULE,
-        MEDIA_RULE,
-        FONT_FACE_RULE,
-        PAGE_RULE,
-        KEYFRAMES_RULE,
-        KEYFRAME_RULE,
-        MARGIN_RULE,
-        NAMESPACE_RULE,
-        COUNTER_STYLE_RULE,
-        SUPPORTS_RULE
-    };
+    WEBCORE_EXPORT unsigned short typeForCSSOM() const;
 
-    enum DeprecatedType {
-        WEBKIT_KEYFRAMES_RULE = KEYFRAMES_RULE,
-        WEBKIT_KEYFRAME_RULE = KEYFRAME_RULE
-    };
-
-    virtual Type type() const = 0;
+    virtual StyleRuleType styleRuleType() const = 0;
+    virtual bool isGroupingRule() const { return false; }
     virtual String cssText() const = 0;
+    virtual String cssTextWithReplacementURLs(const HashMap<String, String>&, const HashMap<RefPtr<CSSStyleSheet>, String>&) const { return cssText(); }
     virtual void reattach(StyleRuleBase&) = 0;
 
     void setParentStyleSheet(CSSStyleSheet*);
     void setParentRule(CSSRule*);
     CSSStyleSheet* parentStyleSheet() const;
     CSSRule* parentRule() const { return m_parentIsRule ? m_parentRule : nullptr; }
+    bool hasStyleRuleAncestor() const;
+    virtual RefPtr<StyleRuleWithNesting> prepareChildStyleRuleForNesting(StyleRule&);
+    virtual void getChildStyleSheets(HashSet<RefPtr<CSSStyleSheet>>&) { }
 
     WEBCORE_EXPORT ExceptionOr<void> setCssText(const String&);
 
@@ -116,5 +104,5 @@ inline CSSStyleSheet* CSSRule::parentStyleSheet() const
 
 #define SPECIALIZE_TYPE_TRAITS_CSS_RULE(ToValueTypeName, predicate) \
 SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::ToValueTypeName) \
-    static bool isType(const WebCore::CSSRule& rule) { return rule.type() == WebCore::predicate; } \
+    static bool isType(const WebCore::CSSRule& rule) { return rule.styleRuleType() == WebCore::predicate; } \
 SPECIALIZE_TYPE_TRAITS_END()

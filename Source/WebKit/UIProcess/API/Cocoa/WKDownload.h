@@ -34,6 +34,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 WK_CLASS_AVAILABLE(macos(11.3), ios(14.5))
+WK_SWIFT_UI_ACTOR
 @interface WKDownload : NSObject<NSProgressReporting>
 
 /* @abstract The request used to initiate this download.
@@ -48,12 +49,18 @@ WK_CLASS_AVAILABLE(macos(11.3), ios(14.5))
 /* @abstract The delegate that receives progress updates for this download. */
 @property (nonatomic, weak) id <WKDownloadDelegate> delegate;
 
+/* @abstract A boolean value indicating whether this download was initiated by the user. */
+@property (nonatomic, readonly, getter=isUserInitiated) BOOL userInitiated WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA));
+
+/* @abstract The frame that originated this download. */
+@property (nonatomic, readonly) WKFrameInfo *originatingFrame WK_API_AVAILABLE(macos(WK_MAC_TBA), ios(WK_IOS_TBA));
+
 /* @abstract Cancel the download.
  @param completionHandler A block to invoke when cancellation is finished.
  @discussion To attempt to resume the download, call WKWebView resumeDownloadFromResumeData: with the data given to the completionHandler.
  If no resume attempt is possible with this server, completionHandler will be called with nil.
  */
-- (void)cancel:(void(^ _Nullable)(NSData * _Nullable resumeData))completionHandler;
+- (void)cancel:(WK_SWIFT_UI_ACTOR void(^ _Nullable)(NSData * _Nullable resumeData))completionHandler;
 
 @end
 

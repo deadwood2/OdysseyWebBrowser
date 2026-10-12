@@ -28,14 +28,14 @@
 
 #if PLATFORM(MAC)
 
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
 #import "TestNavigationDelegate.h"
+#import "TestWKWebView.h"
 #import <WebKit/WKWebViewPrivate.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/WeakObjCPtr.h>
-
-static bool isDone;
 
 TEST(WKWebView, PrepareForMoveToWindow)
 {
@@ -56,6 +56,36 @@ TEST(WKWebView, PrepareForMoveToWindow)
     TestWebKitAPI::Util::run(&isDone);
 }
 
+TEST(WKWebView, PrepareToUnparentView)
+{
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [webView synchronouslyLoadTestPageNamed:@"simple"];
+
+    __block bool done = false;
+    [webView _prepareForMoveToWindow:nil completionHandler:^{
+        [webView removeFromSuperview];
+        done = true;
+    }];
+
+    TestWebKitAPI::Util::run(&done);
+}
+
+TEST(WKWebView, PrepareForMoveToWindowShouldNotCrashWhenRemovingWindowObservers)
+{
+    auto window = adoptNS([NSWindow new]);
+    auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [webView synchronouslyLoadTestPageNamed:@"simple"];
+
+    [[window contentView] addSubview:webView.get()];
+    [webView _prepareForMoveToWindow:nil completionHandler:^{ }];
+    [webView _prepareForMoveToWindow:window.get() completionHandler:^{ }];
+
+    __block bool done = false;
+    [webView _prepareForMoveToWindow:nil completionHandler:^{
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+}
 
 TEST(WKWebView, PrepareForMoveToWindowThenClose)
 {

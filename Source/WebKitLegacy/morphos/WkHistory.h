@@ -8,8 +8,6 @@
 - (OBURL *)URL;
 // Initial request that created this item
 - (OBURL *)initialURL;
-// Title of the webpage
-- (OBString *)title;
 
 @end
 

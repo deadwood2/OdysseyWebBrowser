@@ -37,6 +37,7 @@
 #include <WebCore/TextureMapperFPSCounter.h>
 #include <WebCore/Timer.h>
 #include <wtf/Forward.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 class GraphicsLayer;
@@ -52,7 +53,7 @@ namespace WebKit {
 class WebPage;
 
 class LayerTreeHost : public WebCore::GraphicsLayerClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(LayerTreeHost);
 public:
     explicit LayerTreeHost(WebPage&);
     ~LayerTreeHost();
@@ -76,16 +77,17 @@ public:
     void didChangeViewportAttributes(WebCore::ViewportAttributes&&);
     void setIsDiscardable(bool);
     void deviceOrPageScaleFactorChanged();
+    void backgroundColorDidChange();
     RefPtr<WebCore::DisplayRefreshMonitor> createDisplayRefreshMonitor(WebCore::PlatformDisplayID);
     WebCore::PlatformDisplayID displayID() const { return m_displayID; }
 
 private:
     // GraphicsLayerClient
-    void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, const WebCore::FloatRect& rectToPaint, WebCore::GraphicsLayerPaintBehavior) override;
+    void paintContents(const WebCore::GraphicsLayer*, WebCore::GraphicsContext&, const WebCore::FloatRect& rectToPaint, OptionSet<WebCore::GraphicsLayerPaintBehavior>) override;
     float deviceScaleFactor() const override;
 
     void initialize();
-    HWND window();
+    GLNativeWindowType window();
     bool enabled();
     void compositeLayersToContext();
     void flushAndRenderLayers();
@@ -105,7 +107,7 @@ private:
     std::unique_ptr<WebCore::TextureMapper> m_textureMapper;
     WebCore::TextureMapperFPSCounter m_fpsCounter;
     WebCore::Timer m_layerFlushTimer;
-    bool m_notifyAfterScheduledLayerFlush { false };
+    bool m_isSuspended { false };
 };
 
 } // namespace WebKit

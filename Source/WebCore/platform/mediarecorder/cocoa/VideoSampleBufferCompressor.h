@@ -24,7 +24,7 @@
 
 #pragma once
 
-#if ENABLE(MEDIA_STREAM) && USE(AVFOUNDATION)
+#if ENABLE(MEDIA_RECORDER) && USE(AVFOUNDATION)
 
 #include <CoreMedia/CoreMedia.h>
 #include <VideoToolbox/VTErrors.h>
@@ -42,7 +42,8 @@ public:
     ~VideoSampleBufferCompressor();
 
     void setBitsPerSecond(unsigned);
-    void finish();
+    void finish() { flushInternal(true); }
+    void flush() { flushInternal(false); }
     void addSampleBuffer(CMSampleBufferRef);
     CMSampleBufferRef getOutputSampleBuffer();
     RetainPtr<CMSampleBufferRef> takeOutputSampleBuffer();
@@ -50,7 +51,7 @@ public:
     unsigned bitRate() const;
 
 private:
-    enum class Profile { Baseline, Main, High };
+    enum class Profile : uint8_t { Baseline, Main, High };
     VideoSampleBufferCompressor(CMVideoCodecType, Profile);
 
     bool initialize(CMBufferQueueTriggerCallback, void* callbackObject);
@@ -58,6 +59,7 @@ private:
     void processSampleBuffer(CMSampleBufferRef);
     bool initCompressionSession(CMVideoFormatDescriptionRef);
     CFStringRef vtProfileLevel() const;
+    void flushInternal(bool isFinished);
 
     static void videoCompressionCallback(void *refCon, void*, OSStatus, VTEncodeInfoFlags, CMSampleBufferRef);
 
@@ -66,6 +68,7 @@ private:
 
     RetainPtr<CMBufferQueueRef> m_outputBufferQueue;
     RetainPtr<VTCompressionSessionRef> m_vtSession;
+    CMBufferQueueTriggerToken m_triggerToken;
 
     bool m_isEncoding { false };
     float m_maxKeyFrameIntervalDuration { 2.0 };

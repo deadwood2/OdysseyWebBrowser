@@ -48,6 +48,7 @@
 - (IBAction)openLocation:(id)sender;
 
 - (IBAction)saveAsPDF:(id)sender;
+- (IBAction)saveAsImage:(id)sender;
 - (IBAction)saveAsWebArchive:(id)sender;
 
 - (IBAction)fetch:(id)sender;
@@ -80,6 +81,12 @@
 
 - (IBAction)showHideWebInspector:(id)sender;
 
+- (IBAction)toggleMainThreadStalls:(id)sender;
+- (BOOL)mainThreadStallsEnabled;
+
+- (IBAction)togglePictureInPicture:(id)sender;
+- (IBAction)toggleInWindowFullscreen:(id)sender;
+
 - (void)didChangeSettings;
 - (BOOL)webViewFillsWindow;
 - (void)setWebViewFillsWindow:(BOOL)fillWindow;
@@ -87,7 +94,11 @@
 - (NSURL *)currentURL;
 - (NSView *)mainContentView;
 
+- (NSImage *)windowSnapshotInRect:(CGRect)rect;
+
 - (CGFloat)pageScaleForMenuItemTag:(NSInteger)tag;
+
+- (void)updateTitleForBadgeChange;
 
 @property (nonatomic, assign, getter=isEditable) BOOL editable;
 - (IBAction)toggleEditable:(id)sender;

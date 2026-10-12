@@ -25,8 +25,12 @@
 
 #import "config.h"
 
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
+#import "TestNavigationDelegate.h"
+#import "TestUIDelegate.h"
 #import "TestWKWebView.h"
+#import <WebKit/WKNavigationActionPrivate.h>
 #import <WebKit/WKPreferences.h>
 #import <WebKit/WKUIDelegatePrivate.h>
 #import <WebKit/WKWebViewConfiguration.h>
@@ -38,7 +42,6 @@
 @class OpenAndCloseWindowUIDelegateAsync;
 @class CheckWindowFeaturesUIDelegate;
 
-static bool isDone;
 static RetainPtr<WKWebView> openedWebView;
 static RetainPtr<WKWindowFeatures> openWindowFeatures;
 static RetainPtr<OpenAndCloseWindowUIDelegate> sharedUIDelegate;
@@ -209,9 +212,9 @@ TEST(WebKit, OpenAsyncWithNil)
 
 @interface CheckWindowFeaturesUIDelegate : NSObject <WKUIDelegate>
 
-@property (nullable, nonatomic, readonly) NSNumber *menuBarVisibility;
-@property (nullable, nonatomic, readonly) NSNumber *statusBarVisibility;
-@property (nullable, nonatomic, readonly) NSNumber *toolbarsVisibility;
+@property (nonatomic, readonly) NSNumber *menuBarVisibility;
+@property (nonatomic, readonly) NSNumber *statusBarVisibility;
+@property (nonatomic, readonly) NSNumber *toolbarsVisibility;
 
 @end
 
@@ -236,51 +239,149 @@ TEST(WebKit, OpenWindowFeatures)
     sharedCheckWindowFeaturesUIDelegate = adoptNS([[CheckWindowFeaturesUIDelegate alloc] init]);
     [webView setUIDelegate:sharedCheckWindowFeaturesUIDelegate.get()];
     [webView configuration].preferences.javaScriptCanOpenWindowsAutomatically = YES;
-    NSString *windowOpenFormatString = @"window.open(\"about:blank\", \"_blank\", \"%@\")";
+    constexpr NSString *windowOpenFormatString = @"window.open(\"about:blank\", \"_blank\", \"%@\")";
 
     [webView evaluateJavaScript:@"window.open(\"about:blank\")" completionHandler:nil];
     TestWebKitAPI::Util::run(&isDone);
     isDone = false;
 
-//  https://bugs.webkit.org/show_bug.cgi?id=174271 - WebCore currently doesn't distinguish between unspecified (nil) and false
-//  for the following window features.
-//  EXPECT_TRUE([openWindowFeatures menuBarVisibility] == nil);
-//  EXPECT_TRUE([openWindowFeatures statusBarVisibility] == nil);
-//  EXPECT_TRUE([openWindowFeatures toolbarsVisibility] == nil);
-//  EXPECT_TRUE([openWindowFeatures allowsResizing] == nil);
-//  EXPECT_TRUE([openWindowFeatures _locationBarVisibility] == nil);
-//  EXPECT_TRUE([openWindowFeatures _scrollbarsVisibility] == nil);
-//  EXPECT_TRUE([openWindowFeatures _fullscreenDisplay] == nil);
-//  EXPECT_TRUE([openWindowFeatures _dialogDisplay] == nil);
+    EXPECT_FALSE([openWindowFeatures _wantsPopup]);
+    EXPECT_FALSE([openWindowFeatures _hasAdditionalFeatures]);
+    EXPECT_TRUE([openWindowFeatures menuBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures statusBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures toolbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures allowsResizing] == nil);
+    EXPECT_TRUE([openWindowFeatures _popup] == nil);
+    EXPECT_TRUE([openWindowFeatures _locationBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _scrollbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _fullscreenDisplay] == nil);
+    EXPECT_TRUE([openWindowFeatures _dialogDisplay] == nil);
     openWindowFeatures = nullptr;
 
-    NSString *featuresStringAllSpecifiedAndTrue = @"menubar=yes,status=yes,toolbar=yes,resizable=yes,location=yes,scrollbars=yes,fullscreen=yes";
+    NSString *featuresStringOnlyNonPopupSpecifiedAndTrue = @"noopener=true,noreferrer=true";
+    [webView evaluateJavaScript:[NSString stringWithFormat:windowOpenFormatString, featuresStringOnlyNonPopupSpecifiedAndTrue] completionHandler:nil];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+
+    EXPECT_FALSE([openWindowFeatures _wantsPopup]);
+    EXPECT_FALSE([openWindowFeatures _hasAdditionalFeatures]);
+    EXPECT_TRUE([openWindowFeatures menuBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures statusBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures toolbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures allowsResizing] == nil);
+    EXPECT_TRUE([openWindowFeatures _popup] == nil);
+    EXPECT_TRUE([openWindowFeatures _locationBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _scrollbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _fullscreenDisplay] == nil);
+    EXPECT_TRUE([openWindowFeatures _dialogDisplay] == nil);
+    openWindowFeatures = nullptr;
+
+    NSString *featuresStringOnlyNonPopupSpecifiedAndFalse = @"noopener=false,noreferrer=false";
+    [webView evaluateJavaScript:[NSString stringWithFormat:windowOpenFormatString, featuresStringOnlyNonPopupSpecifiedAndFalse] completionHandler:nil];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+
+    EXPECT_FALSE([openWindowFeatures _wantsPopup]);
+    EXPECT_FALSE([openWindowFeatures _hasAdditionalFeatures]);
+    EXPECT_TRUE([openWindowFeatures menuBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures statusBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures toolbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures allowsResizing] == nil);
+    EXPECT_TRUE([openWindowFeatures _popup] == nil);
+    EXPECT_TRUE([openWindowFeatures _locationBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _scrollbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _fullscreenDisplay] == nil);
+    EXPECT_TRUE([openWindowFeatures _dialogDisplay] == nil);
+    openWindowFeatures = nullptr;
+
+    NSString *featuresStringAllSpecifiedAndTrue = @"popup=yes,menubar=yes,status=yes,toolbar=yes,resizable=yes,location=yes,scrollbars=yes,fullscreen=yes";
     [webView evaluateJavaScript:[NSString stringWithFormat:windowOpenFormatString, featuresStringAllSpecifiedAndTrue] completionHandler:nil];
     TestWebKitAPI::Util::run(&isDone);
     isDone = false;
 
+    EXPECT_TRUE([openWindowFeatures _wantsPopup]);
+    EXPECT_FALSE([openWindowFeatures _hasAdditionalFeatures]);
     EXPECT_TRUE([openWindowFeatures menuBarVisibility].boolValue);
     EXPECT_TRUE([openWindowFeatures statusBarVisibility].boolValue);
     EXPECT_TRUE([openWindowFeatures toolbarsVisibility].boolValue);
     EXPECT_TRUE([openWindowFeatures allowsResizing].boolValue);
+    EXPECT_TRUE([openWindowFeatures _popup].boolValue);
     EXPECT_TRUE([openWindowFeatures _locationBarVisibility].boolValue);
     EXPECT_TRUE([openWindowFeatures _scrollbarsVisibility].boolValue);
     EXPECT_TRUE([openWindowFeatures _fullscreenDisplay].boolValue);
+    EXPECT_TRUE([openWindowFeatures _dialogDisplay] == nil);
     openWindowFeatures = nullptr;
 
-    NSString *featuresStringAllSpecifiedAndFalse = @"menubar=no,status=no,toolbar=no,resizable=no,location=no,scrollbars=no,fullscreen=no";
+    NSString *featuresStringAllSpecifiedAndFalse = @"popup=no,menubar=no,status=no,toolbar=no,resizable=no,location=no,scrollbars=no,fullscreen=no";
     [webView evaluateJavaScript:[NSString stringWithFormat:windowOpenFormatString, featuresStringAllSpecifiedAndFalse] completionHandler:nil];
     TestWebKitAPI::Util::run(&isDone);
     isDone = false;
 
+    EXPECT_FALSE([openWindowFeatures _wantsPopup]);
+    EXPECT_FALSE([openWindowFeatures _hasAdditionalFeatures]);
     EXPECT_FALSE([openWindowFeatures menuBarVisibility].boolValue);
     EXPECT_FALSE([openWindowFeatures statusBarVisibility ].boolValue);
     EXPECT_FALSE([openWindowFeatures toolbarsVisibility].boolValue);
-//  https://bugs.webkit.org/show_bug.cgi?id=174388 - This property doesn't accurately reflect the parameters passed by the webpage.
-//  EXPECT_FALSE([openWindowFeatures allowsResizing].boolValue);
+    EXPECT_FALSE([openWindowFeatures allowsResizing].boolValue);
+    EXPECT_FALSE([openWindowFeatures _popup].boolValue);
     EXPECT_FALSE([openWindowFeatures _locationBarVisibility].boolValue);
     EXPECT_FALSE([openWindowFeatures _scrollbarsVisibility].boolValue);
     EXPECT_FALSE([openWindowFeatures _fullscreenDisplay].boolValue);
+    EXPECT_FALSE([openWindowFeatures _dialogDisplay].boolValue);
+    openWindowFeatures = nullptr;
+
+    NSString *featuresStringAllSpecifiedWithoutValues = @"popup,menubar,status,toolbar,resizable,location,scrollbars,fullscreen";
+    [webView evaluateJavaScript:[NSString stringWithFormat:windowOpenFormatString, featuresStringAllSpecifiedWithoutValues] completionHandler:nil];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+
+    EXPECT_TRUE([openWindowFeatures _wantsPopup]);
+    EXPECT_FALSE([openWindowFeatures _hasAdditionalFeatures]);
+    EXPECT_TRUE([openWindowFeatures menuBarVisibility].boolValue);
+    EXPECT_TRUE([openWindowFeatures statusBarVisibility ].boolValue);
+    EXPECT_TRUE([openWindowFeatures toolbarsVisibility].boolValue);
+    EXPECT_TRUE([openWindowFeatures allowsResizing].boolValue);
+    EXPECT_TRUE([openWindowFeatures _popup].boolValue);
+    EXPECT_TRUE([openWindowFeatures _locationBarVisibility].boolValue);
+    EXPECT_TRUE([openWindowFeatures _scrollbarsVisibility].boolValue);
+    EXPECT_TRUE([openWindowFeatures _fullscreenDisplay].boolValue);
+    EXPECT_TRUE([openWindowFeatures _dialogDisplay] == nil);
+    openWindowFeatures = nullptr;
+
+    NSString *featuresStringWithUnknownFeatures = @"foo=bar";
+    [webView evaluateJavaScript:[NSString stringWithFormat:windowOpenFormatString, featuresStringWithUnknownFeatures] completionHandler:nil];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+
+    EXPECT_TRUE([openWindowFeatures _wantsPopup]);
+    EXPECT_TRUE([openWindowFeatures _hasAdditionalFeatures]);
+    EXPECT_TRUE([openWindowFeatures menuBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures statusBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures toolbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures allowsResizing] == nil);
+    EXPECT_TRUE([openWindowFeatures _popup] == nil);
+    EXPECT_TRUE([openWindowFeatures _locationBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _scrollbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _fullscreenDisplay] == nil);
+    EXPECT_TRUE([openWindowFeatures _dialogDisplay] == nil);
+    openWindowFeatures = nullptr;
+
+    NSString *featuresStringGarbage = @",,   =   ,   ";
+    [webView evaluateJavaScript:[NSString stringWithFormat:windowOpenFormatString, featuresStringGarbage] completionHandler:nil];
+    TestWebKitAPI::Util::run(&isDone);
+    isDone = false;
+
+    EXPECT_FALSE([openWindowFeatures _wantsPopup]);
+    EXPECT_FALSE([openWindowFeatures _hasAdditionalFeatures]);
+    EXPECT_TRUE([openWindowFeatures menuBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures statusBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures toolbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures allowsResizing] == nil);
+    EXPECT_TRUE([openWindowFeatures _popup] == nil);
+    EXPECT_TRUE([openWindowFeatures _locationBarVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _scrollbarsVisibility] == nil);
+    EXPECT_TRUE([openWindowFeatures _fullscreenDisplay] == nil);
+    EXPECT_TRUE([openWindowFeatures _dialogDisplay] == nil);
     openWindowFeatures = nullptr;
 }
 
@@ -312,11 +413,11 @@ TEST(WebKit, OpenWindowThenDocumentOpen)
     [webView loadRequest:request];
 
     while (!openedWebView)
-        TestWebKitAPI::Util::sleep(0.1);
+        TestWebKitAPI::Util::runFor(0.1_s);
 
     // Both WebViews should have the same URL because of document.open().
     while (![[[openedWebView URL] absoluteString] isEqualToString:[[webView URL] absoluteString]])
-        TestWebKitAPI::Util::sleep(0.1);
+        TestWebKitAPI::Util::runFor(0.1_s);
 
     EXPECT_TRUE([[[openedWebView _mainFrameURL] absoluteString] isEqualToString:[[webView URL] absoluteString]]);
 }
@@ -348,4 +449,56 @@ TEST(WebKit, TryClose)
     EXPECT_TRUE([webView _tryClose]);
     [webView synchronouslyLoadHTMLString:@"<body onunload='runScriptThatDoesNotNeedToExist()'/>"];
     EXPECT_FALSE([webView _tryClose]);
+}
+
+TEST(WEBKIT, NavigationActionHasOpener)
+{
+    auto runHasOpenerTest = [](NSString *js, bool expectsOpener) {
+        auto webView = adoptNS([TestWKWebView new]);
+        auto uiDelegate = adoptNS([TestUIDelegate new]);
+        [webView setUIDelegate:uiDelegate.get()];
+
+        __block RetainPtr<TestWKWebView> openedWebView;
+        __block bool decidedPolicyInPopup = false;
+        __block bool popupHasOpenerInCreateWebView = false;
+        __block bool popupHasOpenerInDecidePolicyForNavigationAction = false;
+
+        __block auto popupNavigationDelegate = adoptNS([TestNavigationDelegate new]);
+        popupNavigationDelegate.get().decidePolicyForNavigationAction = ^(WKNavigationAction *action, void (^decisionHandler)(WKNavigationActionPolicy)) {
+            popupHasOpenerInDecidePolicyForNavigationAction = action._hasOpener;
+            decisionHandler(WKNavigationActionPolicyCancel);
+            decidedPolicyInPopup = true;
+        };
+        uiDelegate.get().createWebViewWithConfiguration = ^(WKWebViewConfiguration *configuration, WKNavigationAction *action, WKWindowFeatures *windowFeatures) {
+            popupHasOpenerInCreateWebView = action._hasOpener;
+            openedWebView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600) configuration:configuration]);
+            [openedWebView setNavigationDelegate:popupNavigationDelegate.get()];
+            return openedWebView.get();
+        };
+
+        openedWebView = nullptr;
+        popupHasOpenerInCreateWebView = false;
+        popupHasOpenerInDecidePolicyForNavigationAction = false;
+        decidedPolicyInPopup = false;
+        [webView synchronouslyLoadHTMLString:js];
+        [webView evaluateJavaScript:@"runTest()" completionHandler:^(id result, NSError *error) { }];
+        TestWebKitAPI::Util::run(&decidedPolicyInPopup);
+        EXPECT_EQ(popupHasOpenerInCreateWebView, expectsOpener);
+        EXPECT_EQ(popupHasOpenerInDecidePolicyForNavigationAction, expectsOpener);
+    };
+    runHasOpenerTest(@"<a id='testLink' href='https://www.apple.com' target='foo'>Link</a><script>function runTest() { document.getElementById('testLink').click(); }</script>", true);
+    runHasOpenerTest(@"<a id='testLink' href='https://www.apple.com' target='foo' rel='noopener'>Link</a><script>function runTest() { document.getElementById('testLink').click(); }</script>", false);
+    runHasOpenerTest(@"<a id='testLink' href='https://www.apple.com' target='foo' rel='noreferrer'>Link</a><script>function runTest() { document.getElementById('testLink').click(); }</script>", false);
+    runHasOpenerTest(@"<a id='testLink' href='https://www.apple.com' target='_blank'>Link</a><script>function runTest() { document.getElementById('testLink').click(); }</script>", false);
+    runHasOpenerTest(@"<a id='testLink' href='https://www.apple.com' target='_blank' rel='opener'>Link</a><script>function runTest() { document.getElementById('testLink').click(); }</script>", true);
+    runHasOpenerTest(@"<script>function runTest() { open('https://www.apple.com'); }</script>", true);
+    runHasOpenerTest(@"<script>function runTest() { open('https://www.apple.com', 'foo'); }</script>", true);
+    runHasOpenerTest(@"<script>function runTest() { open('https://www.apple.com', 'foo', 'noopener'); }</script>", false);
+    runHasOpenerTest(@"<script>function runTest() { open('https://www.apple.com', 'foo', 'noreferrer'); }</script>", false);
+    runHasOpenerTest(@"<script>function runTest() { open('https://www.apple.com', '_blank'); }</script>", true);
+    runHasOpenerTest(@"<form action='https://www.apple.com' target='foo'><input id='testButton' type='submit'></form><script>function runTest() { document.getElementById('testButton').click(); }</script>", true);
+    runHasOpenerTest(@"<form action='https://www.apple.com' target='foo' rel='noopener'><input id='testButton' type='submit'></form><script>function runTest() { document.getElementById('testButton').click(); }</script>", false);
+    runHasOpenerTest(@"<form action='https://www.apple.com' target='foo' rel='noreferrer'><input id='testButton' type='submit'></form><script>function runTest() { document.getElementById('testButton').click(); }</script>", false);
+    runHasOpenerTest(@"<form action='https://www.apple.com' target='_blank'><input id='testButton' type='submit'></form><script>function runTest() { document.getElementById('testButton').click(); }</script>", false);
+    runHasOpenerTest(@"<form action='https://www.apple.com' target='_blank' rel='opener'><input id='testButton' type='submit'></form><script>function runTest() { document.getElementById('testButton').click(); }</script>", true);
 }

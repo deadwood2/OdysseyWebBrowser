@@ -29,18 +29,15 @@
 #include "WorkerInspectorProxy.h"
 #include <JavaScriptCore/InspectorBackendDispatchers.h>
 #include <JavaScriptCore/InspectorFrontendDispatchers.h>
-#include <wtf/HashMap.h>
+#include <wtf/RobinHoodHashMap.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
-class Page;
-
-class InspectorWorkerAgent final : public InspectorAgentBase, public Inspector::WorkerBackendDispatcherHandler, public WorkerInspectorProxy::PageChannel {
+class InspectorWorkerAgent : public InspectorAgentBase, public Inspector::WorkerBackendDispatcherHandler, public WorkerInspectorProxy::PageChannel {
     WTF_MAKE_NONCOPYABLE(InspectorWorkerAgent);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    InspectorWorkerAgent(PageAgentContext&);
     ~InspectorWorkerAgent();
 
     // InspectorAgentBase
@@ -54,24 +51,28 @@ public:
     Inspector::Protocol::ErrorStringOr<void> sendMessageToWorker(const String& workerId, const String& message);
 
     // WorkerInspectorProxy::PageChannel
-    void sendMessageFromWorkerToFrontend(WorkerInspectorProxy&, const String& message);
+    void sendMessageFromWorkerToFrontend(WorkerInspectorProxy&, String&& message);
 
     // InspectorInstrumentation
     bool shouldWaitForDebuggerOnStart() const;
     void workerStarted(WorkerInspectorProxy&);
     void workerTerminated(WorkerInspectorProxy&);
 
-private:
-    void connectToAllWorkerInspectorProxiesForPage();
-    void disconnectFromAllWorkerInspectorProxies();
+protected:
+    InspectorWorkerAgent(WebAgentContext&);
+
+    virtual void connectToAllWorkerInspectorProxies() = 0;
+
     void connectToWorkerInspectorProxy(WorkerInspectorProxy&);
+
+private:
+    void disconnectFromAllWorkerInspectorProxies();
     void disconnectFromWorkerInspectorProxy(WorkerInspectorProxy&);
 
     std::unique_ptr<Inspector::WorkerFrontendDispatcher> m_frontendDispatcher;
     RefPtr<Inspector::WorkerBackendDispatcher> m_backendDispatcher;
 
-    Page& m_page;
-    HashMap<String, WeakPtr<WorkerInspectorProxy>> m_connectedProxies;
+    MemoryCompactRobinHoodHashMap<String, WeakPtr<WorkerInspectorProxy>> m_connectedProxies;
     bool m_enabled { false };
 };
 

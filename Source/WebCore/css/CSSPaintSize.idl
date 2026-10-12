@@ -24,10 +24,8 @@
 */
 
 [
-    EnabledAtRuntime=CSSPaintingAPI,
-    Conditional=CSS_PAINTING_API,
+    EnabledBySetting=CSSPaintingAPIEnabled,
     Exposed=PaintWorklet,
-    ImplementationLacksVTable,
 ] interface CSSPaintSize {
     readonly attribute double width;
     readonly attribute double height;

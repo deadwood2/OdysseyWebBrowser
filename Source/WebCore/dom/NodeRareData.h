@@ -22,12 +22,16 @@
 #pragma once
 
 #include "ChildNodeList.h"
+#include "CommonAtomStrings.h"
 #include "HTMLCollection.h"
+#include "HTMLSlotElement.h"
 #include "MutationObserverRegistration.h"
 #include "QualifiedName.h"
 #include "TagCollection.h"
+#include <new>
 #include <wtf/HashSet.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/WeakHashSet.h>
 
 namespace WebCore {
 
@@ -56,7 +60,7 @@ public:
         ASSERT(!m_emptyChildNodeList);
         if (m_childNodeList)
             return *m_childNodeList;
-        auto list = ChildNodeList::create(node);
+        Ref list = ChildNodeList::create(node);
         m_childNodeList = list.ptr();
         return list;
     }
@@ -64,7 +68,8 @@ public:
     void removeChildNodeList(ChildNodeList* list)
     {
         ASSERT(m_childNodeList == list);
-        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(list->ownerNode()))
+        Ref ownerNode = list->ownerNode();
+        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(ownerNode))
             return;
         m_childNodeList = nullptr;
     }
@@ -74,7 +79,7 @@ public:
         ASSERT(!m_childNodeList);
         if (m_emptyChildNodeList)
             return *m_emptyChildNodeList;
-        auto list = EmptyNodeList::create(node);
+        Ref list = EmptyNodeList::create(node);
         m_emptyChildNodeList = list.ptr();
         return list;
     }
@@ -82,7 +87,8 @@ public:
     void removeEmptyChildNodeList(EmptyNodeList* list)
     {
         ASSERT(m_emptyChildNodeList == list);
-        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(list->ownerNode()))
+        Ref ownerNode = list->ownerNode();
+        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(ownerNode))
             return;
         m_emptyChildNodeList = nullptr;
     }
@@ -97,7 +103,7 @@ public:
     };
 
     using NodeListCacheMap = HashMap<std::pair<unsigned char, AtomString>, LiveNodeList*, NodeListCacheMapEntryHash>;
-    using CollectionCacheMap = HashMap<std::pair<unsigned char, AtomString>, HTMLCollection*, NodeListCacheMapEntryHash>;
+    using CollectionCacheMap = HashMap<std::pair<std::underlying_type_t<CollectionType>, AtomString>, HTMLCollection*, NodeListCacheMapEntryHash>;
     using TagCollectionNSCache = HashMap<QualifiedName, TagCollectionNS*>;
 
     template<typename T, typename ContainerType>
@@ -107,8 +113,8 @@ public:
         if (!result.isNewEntry)
             return static_cast<T&>(*result.iterator->value);
 
-        auto list = T::create(container, name);
-        result.iterator->value = &list.get();
+        Ref list = T::create(container, name);
+        result.iterator->value = list.ptr();
         return list;
     }
 
@@ -118,7 +124,7 @@ public:
         if (!result.isNewEntry)
             return *result.iterator->value;
 
-        auto list = TagCollectionNS::create(node, namespaceURI, localName);
+        Ref list = TagCollectionNS::create(node, namespaceURI, localName);
         result.iterator->value = list.ptr();
         return list;
     }
@@ -130,8 +136,8 @@ public:
         if (!result.isNewEntry)
             return static_cast<T&>(*result.iterator->value);
 
-        auto list = T::create(container, collectionType, name);
-        result.iterator->value = &list.get();
+        Ref list = T::create(container, collectionType, name);
+        result.iterator->value = list.ptr();
         return list;
     }
 
@@ -142,8 +148,8 @@ public:
         if (!result.isNewEntry)
             return static_cast<T&>(*result.iterator->value);
 
-        auto list = T::create(container, collectionType);
-        result.iterator->value = &list.get();
+        Ref list = T::create(container, collectionType);
+        result.iterator->value = list.ptr();
         return list;
     }
 
@@ -157,7 +163,7 @@ public:
     void removeCacheWithAtomName(NodeListType& list, const AtomString& name)
     {
         ASSERT(&list == m_atomNameCaches.get(namedNodeListKey<NodeListType>(name)));
-        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(list.ownerNode()))
+        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(list.protectedOwnerNode()))
             return;
         m_atomNameCaches.remove(namedNodeListKey<NodeListType>(name));
     }
@@ -166,18 +172,12 @@ public:
     {
         QualifiedName name(nullAtom(), localName, namespaceURI);
         ASSERT(&collection == m_tagCollectionNSCache.get(name));
-        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(collection.ownerNode()))
+        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(collection.protectedOwnerNode()))
             return;
         m_tagCollectionNSCache.remove(name);
     }
 
-    void removeCachedCollection(HTMLCollection* collection, const AtomString& name = starAtom())
-    {
-        ASSERT(collection == m_cachedCollections.get(namedCollectionKey(collection->type(), name)));
-        if (deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(collection->ownerNode()))
-            return;
-        m_cachedCollections.remove(namedCollectionKey(collection->type(), name));
-    }
+    inline void removeCachedCollection(HTMLCollection*, const AtomString& = starAtom());
 
     void invalidateCaches();
     void invalidateCachesForAttribute(const QualifiedName& attrName);
@@ -187,29 +187,12 @@ public:
         invalidateCaches();
     }
 
-    void adoptDocument(Document& oldDocument, Document& newDocument)
-    {
-        if (&oldDocument == &newDocument) {
-            invalidateCaches();
-            return;
-        }
-
-        for (auto& cache : m_atomNameCaches.values())
-            cache->invalidateCacheForDocument(oldDocument);
-
-        for (auto& list : m_tagCollectionNSCache.values()) {
-            ASSERT(!list->isRootedAtDocument());
-            list->invalidateCacheForDocument(oldDocument);
-        }
-
-        for (auto& collection : m_cachedCollections.values())
-            collection->invalidateCacheForDocument(oldDocument);
-    }
+    inline void adoptDocument(Document& oldDocument, Document& newDocument);
 
 private:
-    std::pair<unsigned char, AtomString> namedCollectionKey(CollectionType type, const AtomString& name)
+    std::pair<std::underlying_type_t<CollectionType>, AtomString> namedCollectionKey(CollectionType type, const AtomString& name)
     {
-        return std::pair<unsigned char, AtomString>(type, name);
+        return std::pair<std::underlying_type_t<CollectionType>, AtomString>(static_cast<std::underlying_type_t<CollectionType>>(type), name);
     }
 
     template<typename NodeListType>
@@ -221,8 +204,8 @@ private:
     bool deleteThisAndUpdateNodeRareDataIfAboutToRemoveLastList(Node&);
 
     // These two are currently mutually exclusive and could be unioned. Not very important as this class is large anyway.
-    ChildNodeList* m_childNodeList { nullptr };
-    EmptyNodeList* m_emptyChildNodeList { nullptr };
+    SingleThreadWeakPtr<ChildNodeList> m_childNodeList;
+    SingleThreadWeakPtr<EmptyNodeList> m_emptyChildNodeList;
 
     NodeListCacheMap m_atomNameCaches;
     TagCollectionNSCache m_tagCollectionNSCache;
@@ -233,36 +216,46 @@ class NodeMutationObserverData {
     WTF_MAKE_NONCOPYABLE(NodeMutationObserverData); WTF_MAKE_FAST_ALLOCATED;
 public:
     Vector<std::unique_ptr<MutationObserverRegistration>> registry;
-    HashSet<MutationObserverRegistration*> transientRegistry;
+    WeakHashSet<MutationObserverRegistration> transientRegistry;
 
-    NodeMutationObserverData() { }
+    NodeMutationObserverData() = default;
 };
 
-DECLARE_ALLOCATOR_WITH_HEAP_IDENTIFIER(NodeRareData);
+DECLARE_COMPACT_ALLOCATOR_WITH_HEAP_IDENTIFIER(NodeRareData);
 class NodeRareData {
     WTF_MAKE_NONCOPYABLE(NodeRareData);
-    WTF_MAKE_STRUCT_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(NodeRareData);
+    WTF_MAKE_STRUCT_FAST_COMPACT_ALLOCATED_WITH_HEAP_IDENTIFIER(NodeRareData);
 public:
 #if defined(DUMP_NODE_STATISTICS) && DUMP_NODE_STATISTICS
     enum class UseType : uint32_t {
-        NodeList = 1 << 0,
-        MutationObserver = 1 << 1,
-        TabIndex = 1 << 2,
-        MinimumSize = 1 << 3,
-        ScrollingPosition = 1 << 4,
-        ComputedStyle = 1 << 5,
-        Dataset = 1 << 6,
-        ClassList = 1 << 7,
-        ShadowRoot = 1 << 8,
-        CustomElementQueue = 1 << 9,
-        AttributeMap = 1 << 10,
-        InteractionObserver = 1 << 11,
-        ResizeObserver = 1 << 12,
-        Animations = 1 << 13,
-        PseudoElements = 1 << 14,
-        StyleMap = 1 << 15,
-        PartList = 1 << 16,
-        PartNames = 1 << 17,
+        TabIndex = 1 << 0,
+        ChildIndex = 1 << 1,
+        NodeList = 1 << 2,
+        MutationObserver = 1 << 3,
+        ManuallyAssignedSlot = 1 << 4,
+        ScrollingPosition = 1 << 5,
+        ComputedStyle = 1 << 6,
+        EffectiveLang = 1 << 7,
+        Dataset = 1 << 8,
+        ClassList = 1 << 9,
+        ShadowRoot = 1 << 10,
+        CustomElementReactionQueue = 1 << 11,
+        CustomElementDefaultARIA = 1 << 12,
+        FormAssociatedCustomElement = 1 << 13,
+        AttributeMap = 1 << 14,
+        InteractionObserver = 1 << 15,
+        ResizeObserver = 1 << 16,
+        Animations = 1 << 17,
+        PseudoElements = 1 << 18,
+        AttributeStyleMap = 1 << 19,
+        ComputedStyleMap = 1 << 20,
+        PartList = 1 << 21,
+        PartNames = 1 << 22,
+        Nonce = 1 << 23,
+        ExplicitlySetAttrElementsMap = 1 << 24,
+        Popover = 1 << 25,
+        DisplayContentsOrNoneStyle = 1 << 26,
+        CustomStateSet = 1 << 27,
     };
 #endif
 
@@ -273,7 +266,7 @@ public:
     {
     }
 
-    bool isElementRareData() { return m_isElementRareData; }
+    bool isElementRareData() const { return m_isElementRareData; }
 
     void clearNodeLists() { m_nodeLists = nullptr; }
     NodeListsNodeData* nodeLists() const { return m_nodeLists.get(); }
@@ -284,13 +277,20 @@ public:
         return *m_nodeLists;
     }
 
-    NodeMutationObserverData* mutationObserverData() { return m_mutationObserverData.get(); }
-    NodeMutationObserverData& ensureMutationObserverData()
+    NodeMutationObserverData* mutationObserverDataIfExists() { return m_mutationObserverData.get(); }
+    NodeMutationObserverData& mutationObserverData()
     {
         if (!m_mutationObserverData)
             m_mutationObserverData = makeUnique<NodeMutationObserverData>();
         return *m_mutationObserverData;
     }
+
+    // https://html.spec.whatwg.org/multipage/scripting.html#manually-assigned-nodes
+    HTMLSlotElement* manuallyAssignedSlot() { return m_manuallyAssignedSlot.get(); }
+    void setManuallyAssignedSlot(HTMLSlotElement* slot) { m_manuallyAssignedSlot = slot; }
+
+    bool hasEverPaintedImages() const { return m_hasEverPaintedImages; }
+    void setHasEverPaintedImages(bool hasEverPaintedImages) { m_hasEverPaintedImages = hasEverPaintedImages; }
 
 #if DUMP_NODE_STATISTICS
     OptionSet<UseType> useTypes() const
@@ -300,20 +300,20 @@ public:
             result.add(UseType::NodeList);
         if (m_mutationObserverData)
             result.add(UseType::MutationObserver);
+        if (m_manuallyAssignedSlot)
+            result.add(UseType::ManuallyAssignedSlot);
         return result;
     }
 #endif
 
-protected:
-    // Used by ElementRareData. Defined here for better packing in 64-bit.
-    int m_unusualTabIndex { 0 };
-    unsigned short m_childIndex { 0 };
+    void operator delete(NodeRareData*, std::destroying_delete_t);
 
 private:
-    bool m_isElementRareData;
-
     std::unique_ptr<NodeListsNodeData> m_nodeLists;
     std::unique_ptr<NodeMutationObserverData> m_mutationObserverData;
+    WeakPtr<HTMLSlotElement, WeakPtrImplWithEventTargetData> m_manuallyAssignedSlot;
+    bool m_isElementRareData;
+    bool m_hasEverPaintedImages { false }; // Keep last for better bit packing with ElementRareData.
 };
 
 template<> struct NodeListTypeIdentifier<NameNodeList> {

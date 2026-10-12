@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Copyright (C) 2009, 2015 Apple Inc.  All rights reserved.
 #
@@ -59,7 +59,7 @@ def compress_spindumps(layoutTestResultsDir):
                     gzip_file(root, name)
 
 def archive_test_results(configuration, platform, layoutTestResultsDir):
-    assert platform in ('mac', 'win', 'gtk', 'wincairo', 'ios', 'wpe')
+    assert platform in ('mac', 'win', 'gtk', 'wincairo', 'ios', 'watchos', 'wpe', 'visionos')
 
     try:
         os.unlink(archiveFile)
@@ -76,14 +76,14 @@ def archive_test_results(configuration, platform, layoutTestResultsDir):
 
     open(os.path.join(layoutTestResultsDir, '.placeholder'), 'w').close()
 
-    if platform in ('mac', 'ios'):
+    if platform in ('mac', 'ios', 'watchos', 'visionos'):
         compress_spindumps(layoutTestResultsDir)
         if subprocess.call(["ditto", "-c", "-k", "--sequesterRsrc", "--zlibCompressionLevel", "2", layoutTestResultsDir, archiveFile]):
             return 1
-    elif platform in ('win', 'gtk', 'wpe'):
+    elif platform in ('gtk', 'wpe'):
         if subprocess.call(["zip", "-r", "-2", archiveFile, "."], cwd=layoutTestResultsDir):
             return 1
-    elif platform == 'wincairo':
+    elif platform in ('win', 'wincairo'):
         with zipfile.ZipFile(archiveFile, 'w', zipfile.ZIP_DEFLATED) as archiveZip:
             for path, dirNames, fileNames in os.walk(layoutTestResultsDir):
                 relativePath = os.path.relpath(path, layoutTestResultsDir)

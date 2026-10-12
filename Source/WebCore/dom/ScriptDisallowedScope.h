@@ -61,7 +61,7 @@ public:
         return *this;
     }
 
-    static bool isEventAllowedInMainThread()
+    static bool isScriptAllowedInMainThread()
     {
         return !isInWebProcess() || !isMainThread() || !s_count;
     }
@@ -86,7 +86,7 @@ public:
         static bool isEventDispatchAllowedInSubtree(Node& node)
         {
 #if ASSERT_ENABLED || ENABLE(SECURITY_ASSERTIONS)
-            return !isInWebProcess() || isScriptAllowed() || EventAllowedScope::isAllowedNode(node);
+            return isScriptAllowed() || EventAllowedScope::isAllowedNode(node);
 #else
             UNUSED_PARAM(node);
             return true;
@@ -103,13 +103,37 @@ public:
         {
             ASSERT(isMainThread());
 #if PLATFORM(IOS_FAMILY)
-            return !s_count || webThreadDelegateMessageScopeCount;
+            return !s_count || !isInWebProcess() || webThreadDelegateMessageScopeCount;
 #else
-            return !s_count;
+            return !s_count || !isInWebProcess();
 #endif
         }
     };
-    
+
+    class InMainThreadOfWebProcess {
+    public:
+        InMainThreadOfWebProcess()
+            : m_isInWebProcess(isInWebProcess())
+        {
+            ASSERT(isMainThread());
+            if (!m_isInWebProcess)
+                return;
+            ++s_count;
+        }
+
+        ~InMainThreadOfWebProcess()
+        {
+            ASSERT(isMainThread());
+            if (!m_isInWebProcess)
+                return;
+            ASSERT(s_count);
+            --s_count;
+        }
+
+    private:
+        bool m_isInWebProcess;
+    };
+
 #if ASSERT_ENABLED
     class EventAllowedScope {
     public:

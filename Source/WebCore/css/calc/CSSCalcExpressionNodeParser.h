@@ -25,39 +25,39 @@
 
 #pragma once
 
+#include "CSSCalcSymbolsAllowed.h"
 #include "CSSValueKeywords.h"
 #include "CalcOperator.h"
 #include "CalculationCategory.h"
+#include <wtf/WeakRef.h>
 
 namespace WebCore {
 
 class CSSCalcExpressionNode;
-class CSSCalcSymbolTable;
 class CSSParserToken;
 class CSSParserTokenRange;
 
 class CSSCalcExpressionNodeParser {
 public:
-    explicit CSSCalcExpressionNodeParser(CalculationCategory destinationCategory, const CSSCalcSymbolTable& symbolTable)
+    explicit CSSCalcExpressionNodeParser(CalculationCategory destinationCategory, CSSCalcSymbolsAllowed symbolsAllowed)
         : m_destinationCategory(destinationCategory)
-        , m_symbolTable(symbolTable)
+        , m_symbolsAllowed(WTFMove(symbolsAllowed))
     {
     }
 
-    RefPtr<CSSCalcExpressionNode> parseCalc(CSSParserTokenRange, CSSValueID function);
+    RefPtr<CSSCalcExpressionNode> parseCalc(CSSParserTokenRange, CSSValueID function, bool allowsNegativePercentage);
     
 private:
     char operatorValue(const CSSParserToken&);
 
-    bool parseValue(CSSParserTokenRange&, RefPtr<CSSCalcExpressionNode>&);
-    bool parseValueTerm(CSSParserTokenRange&, int depth, RefPtr<CSSCalcExpressionNode>&);
+    bool parseValue(CSSParserTokenRange&, CSSValueID, RefPtr<CSSCalcExpressionNode>&);
     bool parseCalcFunction(CSSParserTokenRange&, CSSValueID, int depth, RefPtr<CSSCalcExpressionNode>&);
-    bool parseCalcSum(CSSParserTokenRange&, int depth, RefPtr<CSSCalcExpressionNode>&);
-    bool parseCalcProduct(CSSParserTokenRange&, int depth, RefPtr<CSSCalcExpressionNode>&);
-    bool parseCalcValue(CSSParserTokenRange&, int depth, RefPtr<CSSCalcExpressionNode>&);
+    bool parseCalcSum(CSSParserTokenRange&, CSSValueID, int depth, RefPtr<CSSCalcExpressionNode>&);
+    bool parseCalcProduct(CSSParserTokenRange&, CSSValueID, int depth, RefPtr<CSSCalcExpressionNode>&);
+    bool parseCalcValue(CSSParserTokenRange&, CSSValueID, int depth, RefPtr<CSSCalcExpressionNode>&);
 
     CalculationCategory m_destinationCategory;
-    const CSSCalcSymbolTable& m_symbolTable;
+    CSSCalcSymbolsAllowed m_symbolsAllowed;
 };
 
 }

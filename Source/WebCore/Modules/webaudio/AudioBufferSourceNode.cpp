@@ -36,11 +36,12 @@
 #include "AudioUtilities.h"
 #include "FloatConversion.h"
 #include "ScriptExecutionContext.h"
-#include <wtf/IsoMallocInlines.h>
+#include <JavaScriptCore/JSGenericTypedArrayViewInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(AudioBufferSourceNode);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(AudioBufferSourceNode);
 
 constexpr double DefaultGrainDuration = 0.020; // 20ms
 
@@ -65,6 +66,7 @@ static float computeSampleUsingLinearInterpolation(const float* source, unsigned
 ExceptionOr<Ref<AudioBufferSourceNode>> AudioBufferSourceNode::create(BaseAudioContext& context, AudioBufferSourceOptions&& options)
 {
     auto node = adoptRef(*new AudioBufferSourceNode(context));
+    node->suspendIfNeeded();
 
     node->setBufferForBindings(WTFMove(options.buffer));
     node->detune().setValue(options.detune);
@@ -297,6 +299,10 @@ bool AudioBufferSourceNode::renderFromBuffer(AudioBus* bus, unsigned destination
     } else if (pitchRate == -1 && !needsInterpolation) {
         int readIndex = static_cast<int>(virtualReadIndex);
         int deltaFrames = static_cast<int>(virtualDeltaFrames);
+        int maxFrame = static_cast<int>(virtualMaxFrame);
+        if (readIndex > maxFrame)
+            readIndex = maxFrame;
+
         int minFrame = static_cast<int>(virtualMinFrame) - 1;
         while (framesToProcess > 0) {
             int framesToEnd = readIndex - minFrame;
@@ -326,9 +332,16 @@ bool AudioBufferSourceNode::renderFromBuffer(AudioBus* bus, unsigned destination
         virtualReadIndex = readIndex;
     } else if (!pitchRate) {
         unsigned readIndex = static_cast<unsigned>(virtualReadIndex);
+        int deltaFrames = static_cast<int>(virtualDeltaFrames);
+        maxFrame = static_cast<unsigned>(virtualMaxFrame);
+
+        if (readIndex >= maxFrame)
+            readIndex -= deltaFrames;
 
         for (unsigned i = 0; i < numberOfChannels; ++i)
             std::fill_n(destinationChannels[i] + writeIndex, framesToProcess, sourceChannels[i][readIndex]);
+
+        virtualReadIndex = readIndex;
     } else if (reverse) {
         unsigned maxFrame = static_cast<unsigned>(virtualMaxFrame);
         unsigned minFrame = static_cast<unsigned>(floorf(virtualMinFrame));
@@ -340,6 +353,12 @@ bool AudioBufferSourceNode::renderFromBuffer(AudioBus* bus, unsigned destination
             unsigned readIndex2 = readIndex + 1;
             if (readIndex2 >= maxFrame)
                 readIndex2 = m_isLooping ? minFrame : readIndex;
+
+            // Final sanity check on buffer access.
+            // FIXME: as an optimization, try to get rid of this inner-loop check and
+            // put assertions and guards before the loop.
+            if (readIndex >= bufferLength || readIndex2 >= bufferLength)
+                break;
 
             // Linear interpolation.
             for (unsigned i = 0; i < numberOfChannels; ++i) {
@@ -407,19 +426,30 @@ bool AudioBufferSourceNode::renderFromBuffer(AudioBus* bus, unsigned destination
     return true;
 }
 
+void AudioBufferSourceNode::acquireBufferContent()
+{
+    ASSERT(isMainThread());
+
+    // FIXME: We should implement https://www.w3.org/TR/webaudio/#acquire-the-content.
+    if (m_buffer)
+        m_buffer->markBuffersAsNonDetachable();
+}
+
 ExceptionOr<void> AudioBufferSourceNode::setBufferForBindings(RefPtr<AudioBuffer>&& buffer)
 {
     ASSERT(isMainThread());
     DEBUG_LOG(LOGIDENTIFIER);
 
-    // The context must be locked since changing the buffer can re-configure the number of channels that are output.
-    Locker contextLocker { context().graphLock() };
-    
-    // This synchronizes with process().
+    // This synchronizes with process(), it is important to acquire the processLock before the
+    // graphLock to avoid a deadlock given that this is the order process() acquires the locks
+    // in.
     Locker locker { m_processLock };
 
+    // The context must be locked since changing the buffer can re-configure the number of channels that are output.
+    Locker contextLocker { context().graphLock() };
+
     if (buffer && m_wasBufferSet)
-        return Exception { InvalidStateError, "The buffer was already set"_s };
+        return Exception { ExceptionCode::InvalidStateError, "The buffer was already set"_s };
     
     if (buffer) {
         m_wasBufferSet = true;
@@ -443,6 +473,9 @@ ExceptionOr<void> AudioBufferSourceNode::setBufferForBindings(RefPtr<AudioBuffer
     // In case the buffer gets set after playback has started, we need to clamp the grain parameters now.
     if (m_isGrain)
         adjustGrainParameters();
+
+    if (isPlayingOrScheduled())
+        acquireBufferContent();
 
     return { };
 }
@@ -484,16 +517,16 @@ ExceptionOr<void> AudioBufferSourceNode::startPlaying(double when, double grainO
     ALWAYS_LOG(LOGIDENTIFIER, "when = ", when, ", offset = ", grainOffset, ", duration = ", grainDuration.value_or(0));
 
     if (m_playbackState != UNSCHEDULED_STATE)
-        return Exception { InvalidStateError, "Cannot call start more than once."_s };
+        return Exception { ExceptionCode::InvalidStateError, "Cannot call start more than once."_s };
 
     if (!std::isfinite(when) || (when < 0))
-        return Exception { RangeError, "when value should be positive"_s };
+        return Exception { ExceptionCode::RangeError, "when value should be positive"_s };
 
     if (!std::isfinite(grainOffset) || (grainOffset < 0))
-        return Exception { RangeError, "offset value should be positive"_s };
+        return Exception { ExceptionCode::RangeError, "offset value should be positive"_s };
 
     if (grainDuration && (!std::isfinite(*grainDuration) || (*grainDuration < 0)))
-        return Exception { RangeError, "duration value should be positive"_s };
+        return Exception { ExceptionCode::RangeError, "duration value should be positive"_s };
 
     context().sourceNodeWillBeginPlayback(*this);
 
@@ -504,10 +537,14 @@ ExceptionOr<void> AudioBufferSourceNode::startPlaying(double when, double grainO
     m_grainOffset = grainOffset;
     m_grainDuration = grainDuration.value_or(0);
     m_wasGrainDurationGiven = !!grainDuration;
-    m_startTime = when;
+
+    // If 0 is passed in for |when| or if the value is less than currentTime, then the sound will start playing immediately.
+    // https://webaudio.github.io/web-audio-api/#dom-audiobuffersourcenode-start-when-offset-duration-when
+    m_startTime = std::max(when, context().currentTime());
 
     adjustGrainParameters();
 
+    acquireBufferContent();
     m_playbackState = SCHEDULED_STATE;
 
     return { };
@@ -583,6 +620,22 @@ bool AudioBufferSourceNode::propagatesSilence() const
     }
     Locker locker { AdoptLock, m_processLock };
     return !m_buffer;
+}
+
+float AudioBufferSourceNode::noiseInjectionMultiplier() const
+{
+    Locker locker { m_processLock };
+
+    if (!m_buffer)
+        return 0;
+
+    auto multiplier = m_buffer->noiseInjectionMultiplier();
+    if (m_isLooping && m_loopStart < m_loopEnd) {
+        static constexpr auto noiseMultiplierPerLoop = 0.005;
+        auto loopCount = m_buffer->duration() / (m_loopEnd - m_loopStart);
+        multiplier *= std::max(1.0, noiseMultiplierPerLoop * loopCount);
+    }
+    return multiplier;
 }
 
 } // namespace WebCore

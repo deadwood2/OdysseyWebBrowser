@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc.  All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,40 +27,38 @@
 
 #if USE(CG)
 
+#include "ImageBuffer.h"
 #include "ImageBufferCGBackend.h"
-#include <wtf/IsoMalloc.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 
-class ImageBufferCGBitmapBackend : public ImageBufferCGBackend {
-    WTF_MAKE_ISO_ALLOCATED(ImageBufferCGBitmapBackend);
+class ImageBufferCGBitmapBackend final : public ImageBufferCGBackend {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(ImageBufferCGBitmapBackend);
     WTF_MAKE_NONCOPYABLE(ImageBufferCGBitmapBackend);
 public:
-    WEBCORE_EXPORT static IntSize calculateSafeBackendSize(const Parameters&);
-    WEBCORE_EXPORT static size_t calculateMemoryCost(const Parameters&);
+    ~ImageBufferCGBitmapBackend();
 
-    WEBCORE_EXPORT static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const HostWindow*);
+    static IntSize calculateSafeBackendSize(const Parameters&);
+    static size_t calculateMemoryCost(const Parameters&);
 
-    // FIXME: Rename to createUsingColorSpaceOfGraphicsContext() (or something like that).
-    WEBCORE_EXPORT static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const GraphicsContext&);
-
-    GraphicsContext& context() const override;
-
-    IntSize backendSize() const override;
-
-    RefPtr<NativeImage> copyNativeImage(BackingStoreCopy = CopyBackingStore) const override;
-
-    std::optional<PixelBuffer> getPixelBuffer(const PixelBufferFormat& outputFormat, const IntRect&) const override;
-    void putPixelBuffer(const PixelBuffer&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) override;
+    static std::unique_ptr<ImageBufferCGBitmapBackend> create(const Parameters&, const ImageBufferCreationContext&);
+    bool canMapBackingStore() const final;
+    GraphicsContext& context() final;
 
 private:
-    ImageBufferCGBitmapBackend(const Parameters&, void* data, RetainPtr<CGDataProviderRef>&&, std::unique_ptr<GraphicsContext>&&);
+    ImageBufferCGBitmapBackend(const Parameters&, uint8_t* data, RetainPtr<CGDataProviderRef>&&, std::unique_ptr<GraphicsContextCG>&&);
 
-    unsigned bytesPerRow() const override;
+    unsigned bytesPerRow() const final;
 
-    void* m_data;
+    RefPtr<NativeImage> copyNativeImage() final;
+    RefPtr<NativeImage> createNativeImageReference() final;
+
+    void getPixelBuffer(const IntRect&, PixelBuffer&) final;
+    void putPixelBuffer(const PixelBuffer&, const IntRect& srcRect, const IntPoint& destPoint, AlphaPremultiplication destFormat) final;
+
+    uint8_t* m_data;
     RetainPtr<CGDataProviderRef> m_dataProvider;
-    std::unique_ptr<GraphicsContext> m_context;
 };
 
 } // namespace WebCore

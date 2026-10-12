@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,44 +25,66 @@
 
 #pragma once
 
+#include "FrameInfoData.h"
+#include "WebHitTestResultData.h"
 #include "WebMouseEvent.h"
+#include "WebPageProxyIdentifier.h"
+#include <WebCore/AdvancedPrivacyProtections.h>
 #include <WebCore/BackForwardItemIdentifier.h>
 #include <WebCore/FloatPoint.h>
 #include <WebCore/FrameLoaderTypes.h>
+#include <WebCore/NavigationIdentifier.h>
+#include <WebCore/OwnerPermissionsPolicyData.h>
 #include <WebCore/PrivateClickMeasurement.h>
+#include <WebCore/ResourceRequest.h>
+#include <WebCore/ResourceResponse.h>
 #include <WebCore/SecurityOriginData.h>
+#include <WebCore/UserGestureTokenIdentifier.h>
 
-namespace IPC {
-class Decoder;
-class Encoder;
+namespace WebCore {
+using SandboxFlags = int;
 }
 
 namespace WebKit {
 
 struct NavigationActionData {
-    void encode(IPC::Encoder&) const;
-    static std::optional<NavigationActionData> decode(IPC::Decoder&);
-
     WebCore::NavigationType navigationType { WebCore::NavigationType::Other };
-    OptionSet<WebEvent::Modifier> modifiers;
-    WebMouseEvent::Button mouseButton { WebMouseEvent::NoButton };
-    WebMouseEvent::SyntheticClickType syntheticClickType { WebMouseEvent::NoTap };
-    uint64_t userGestureTokenIdentifier { 0 };
+    OptionSet<WebEventModifier> modifiers;
+    WebMouseEventButton mouseButton { WebMouseEventButton::None };
+    WebMouseEventSyntheticClickType syntheticClickType { WebMouseEventSyntheticClickType::NoTap };
+    std::optional<WebCore::UserGestureTokenIdentifier> userGestureTokenIdentifier;
+    std::optional<WTF::UUID> userGestureAuthorizationToken;
     bool canHandleRequest { false };
     WebCore::ShouldOpenExternalURLsPolicy shouldOpenExternalURLsPolicy { WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow };
     WTF::String downloadAttribute;
     WebCore::FloatPoint clickLocationInRootViewCoordinates;
-    bool isRedirect { false };
+    WebCore::ResourceResponse redirectResponse;
+    bool isRequestFromClientOrUserInput { false };
     bool treatAsSameOriginNavigation { false };
     bool hasOpenedFrames { false };
     bool openedByDOMWithOpener { false };
+    bool hasOpener { false };
     WebCore::SecurityOriginData requesterOrigin;
+    WebCore::SecurityOriginData requesterTopOrigin;
     std::optional<WebCore::BackForwardItemIdentifier> targetBackForwardItemIdentifier;
     std::optional<WebCore::BackForwardItemIdentifier> sourceBackForwardItemIdentifier;
     WebCore::LockHistory lockHistory { WebCore::LockHistory::No };
     WebCore::LockBackForwardList lockBackForwardList { WebCore::LockBackForwardList::No };
     WTF::String clientRedirectSourceForHistory;
+    WebCore::SandboxFlags effectiveSandboxFlags { 0 };
+    std::optional<WebCore::OwnerPermissionsPolicyData> ownerPermissionsPolicy;
     std::optional<WebCore::PrivateClickMeasurement> privateClickMeasurement;
+    OptionSet<WebCore::AdvancedPrivacyProtections> advancedPrivacyProtections;
+    std::optional<OptionSet<WebCore::AdvancedPrivacyProtections>> originatorAdvancedPrivacyProtections;
+#if PLATFORM(MAC) || HAVE(UIKIT_WITH_MOUSE_SUPPORT)
+    std::optional<WebKit::WebHitTestResultData> webHitTestResultData;
+#endif
+    FrameInfoData originatingFrameInfoData;
+    std::optional<WebPageProxyIdentifier> originatingPageID;
+    FrameInfoData frameInfo;
+    std::optional<WebCore::NavigationIdentifier> navigationID;
+    WebCore::ResourceRequest originalRequest;
+    WebCore::ResourceRequest request;
 };
 
 }

@@ -25,11 +25,9 @@
 
 #pragma once
 
-#if ENABLE(LAYOUT_FORMATTING_CONTEXT)
-
 #include "FormattingState.h"
 #include "TableGrid.h"
-#include <wtf/IsoMalloc.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/UniqueRef.h>
 
 namespace WebCore {
@@ -37,9 +35,9 @@ namespace Layout {
 
 // TableFormattingState holds the state for a particular table formatting context tree.
 class TableFormattingState : public FormattingState {
-    WTF_MAKE_ISO_ALLOCATED(TableFormattingState);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(TableFormattingState);
 public:
-    TableFormattingState(Ref<FloatingState>&&, LayoutState&, const ContainerBox& tableBox);
+    TableFormattingState(LayoutState&, const ElementBox& tableBox);
     ~TableFormattingState();
 
     TableGrid& tableGrid() { return m_tableGrid; }
@@ -54,4 +52,3 @@ private:
 
 SPECIALIZE_TYPE_TRAITS_LAYOUT_FORMATTING_STATE(TableFormattingState, isTableFormattingState())
 
-#endif

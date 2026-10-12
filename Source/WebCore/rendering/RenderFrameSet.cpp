@@ -28,21 +28,23 @@
 #include "Document.h"
 #include "EventHandler.h"
 #include "EventNames.h"
-#include "Frame.h"
-#include "FrameView.h"
 #include "GraphicsContext.h"
 #include "HTMLFrameSetElement.h"
 #include "HitTestRequest.h"
 #include "HitTestResult.h"
+#include "LocalFrame.h"
+#include "LocalFrameView.h"
 #include "MouseEvent.h"
 #include "PaintInfo.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
 #include "RenderFrame.h"
 #include "RenderIterator.h"
 #include "RenderLayer.h"
 #include "RenderView.h"
 #include "Settings.h"
-#include <wtf/IsoMallocInlines.h>
 #include <wtf/StackStats.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
@@ -50,13 +52,13 @@ static constexpr auto borderStartEdgeColor = SRGBA<uint8_t> { 170, 170, 170 };
 static constexpr auto borderEndEdgeColor = Color::black;
 static constexpr auto borderFillColor = SRGBA<uint8_t> { 208, 208, 208 };
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(RenderFrameSet);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RenderFrameSet);
 
 RenderFrameSet::RenderFrameSet(HTMLFrameSetElement& frameSet, RenderStyle&& style)
-    : RenderBox(frameSet, WTFMove(style), 0)
+    : RenderBox(Type::FrameSet, frameSet, WTFMove(style))
     , m_isResizing(false)
-    , m_isChildResizing(false)
 {
+    ASSERT(isRenderFrameSet());
     setInline(false);
 }
 
@@ -397,8 +399,8 @@ void RenderFrameSet::computeEdgeInfo()
     for (size_t r = 0; r < rows; ++r) {
         for (size_t c = 0; c < cols; ++c) {
             FrameEdgeInfo edgeInfo;
-            if (is<RenderFrameSet>(*child))
-                edgeInfo = downcast<RenderFrameSet>(*child).edgeInfo();
+            if (auto* frameSet = dynamicDowncast<RenderFrameSet>(*child))
+                edgeInfo = frameSet->edgeInfo();
             else
                 edgeInfo = downcast<RenderFrame>(*child).edgeInfo();
             fillFromEdgeInfo(edgeInfo, r, c);
@@ -436,13 +438,13 @@ void RenderFrameSet::layout()
 
     bool doFullRepaint = selfNeedsLayout() && checkForRepaintDuringLayout();
     LayoutRect oldBounds;
-    RenderLayerModelObject* repaintContainer = 0;
+    CheckedPtr<const RenderLayerModelObject> repaintContainer;
     if (doFullRepaint) {
-        repaintContainer = containerForRepaint();
-        oldBounds = clippedOverflowRectForRepaint(repaintContainer);
+        repaintContainer = containerForRepaint().renderer;
+        oldBounds = clippedOverflowRectForRepaint(repaintContainer.get());
     }
 
-    if (!parent()->isFrameSet() && !document().printing()) {
+    if (!parent()->isRenderFrameSet() && !document().printing()) {
         setWidth(view().viewWidth());
         setHeight(view().viewHeight());
     }
@@ -459,10 +461,7 @@ void RenderFrameSet::layout()
     layOutAxis(m_rows, frameSetElement().rowLengths(), height() - (rows - 1) * borderThickness);
     layOutAxis(m_cols, frameSetElement().colLengths(), width() - (cols - 1) * borderThickness);
 
-    if (flattenFrameSet())
-        positionFramesWithFlattening();
-    else
-        positionFrames();
+    positionFrames();
 
     RenderBox::layout();
 
@@ -471,10 +470,10 @@ void RenderFrameSet::layout()
     updateLayerTransform();
 
     if (doFullRepaint) {
-        repaintUsingContainer(repaintContainer, snappedIntRect(oldBounds));
-        LayoutRect newBounds = clippedOverflowRectForRepaint(repaintContainer);
+        repaintUsingContainer(repaintContainer.get(), snappedIntRect(oldBounds));
+        LayoutRect newBounds = clippedOverflowRectForRepaint(repaintContainer.get());
         if (newBounds != oldBounds)
-            repaintUsingContainer(repaintContainer, snappedIntRect(newBounds));
+            repaintUsingContainer(repaintContainer.get(), snappedIntRect(newBounds));
     }
 
     clearNeedsLayout();
@@ -533,114 +532,6 @@ void RenderFrameSet::positionFrames()
     resetFrameRendererAndDescendants(child, *this);
 }
 
-void RenderFrameSet::positionFramesWithFlattening()
-{
-    RenderBox* child = firstChildBox();
-    if (!child)
-        return;
-
-    int rows = frameSetElement().totalRows();
-    int cols = frameSetElement().totalCols();
-
-    int borderThickness = frameSetElement().border();
-    bool repaintNeeded = false;
-
-    // calculate frameset height based on actual content height to eliminate scrolling
-    bool out = false;
-    for (int r = 0; r < rows && !out; ++r) {
-        int extra = 0;
-        int height = m_rows.m_sizes[r];
-
-        for (int c = 0; c < cols; ++c) {
-            IntRect oldFrameRect = snappedIntRect(child->frameRect());
-
-            int width = m_cols.m_sizes[c];
-
-            bool fixedWidth = frameSetElement().colLengths() && frameSetElement().colLengths()[c].isFixed();
-            bool fixedHeight = frameSetElement().rowLengths() && frameSetElement().rowLengths()[r].isFixed();
-
-            // has to be resized and itself resize its contents
-            if (!fixedWidth)
-                child->setWidth(width ? width + extra / (cols - c) : 0);
-            else
-                child->setWidth(width);
-            child->setHeight(height);
-
-            child->setNeedsLayout();
-
-            if (is<RenderFrameSet>(*child))
-                downcast<RenderFrameSet>(*child).layout();
-            else
-                downcast<RenderFrame>(*child).layoutWithFlattening(fixedWidth, fixedHeight);
-
-            if (child->height() > m_rows.m_sizes[r])
-                m_rows.m_sizes[r] = child->height();
-            if (child->width() > m_cols.m_sizes[c])
-                m_cols.m_sizes[c] = child->width();
-
-            if (child->frameRect() != oldFrameRect)
-                repaintNeeded = true;
-
-            // difference between calculated frame width and the width it actually decides to have
-            extra += width - m_cols.m_sizes[c];
-
-            child = child->nextSiblingBox();
-            if (!child) {
-                out = true;
-                break;
-            }
-        }
-    }
-
-    int xPos = 0;
-    int yPos = 0;
-    out = false;
-    child = firstChildBox();
-    for (int r = 0; r < rows && !out; ++r) {
-        xPos = 0;
-        for (int c = 0; c < cols; ++c) {
-            // ensure the rows and columns are filled
-            IntRect oldRect = snappedIntRect(child->frameRect());
-
-            child->setLocation(IntPoint(xPos, yPos));
-            child->setHeight(m_rows.m_sizes[r]);
-            child->setWidth(m_cols.m_sizes[c]);
-
-            if (child->frameRect() != oldRect) {
-                repaintNeeded = true;
-
-                // update to final size
-                child->setNeedsLayout();
-                if (is<RenderFrameSet>(*child))
-                    downcast<RenderFrameSet>(*child).layout();
-                else
-                    downcast<RenderFrame>(*child).layoutWithFlattening(true, true);
-            }
-
-            xPos += m_cols.m_sizes[c] + borderThickness;
-            child = child->nextSiblingBox();
-            if (!child) {
-                out = true;
-                break;
-            }
-        }
-        yPos += m_rows.m_sizes[r] + borderThickness;
-    }
-
-    setWidth(xPos - borderThickness);
-    setHeight(yPos - borderThickness);
-
-    if (repaintNeeded)
-        repaint();
-
-    resetFrameRendererAndDescendants(child, *this);
-}
-
-bool RenderFrameSet::flattenFrameSet() const
-{
-    return view().frameView().effectiveFrameFlattening() != FrameFlattening::Disabled;
-}
-
 void RenderFrameSet::startResizing(GridAxis& axis, int position)
 {
     int split = hitTestSplit(axis, position);
@@ -669,13 +560,10 @@ void RenderFrameSet::continueResizing(GridAxis& axis, int position)
 
 bool RenderFrameSet::userResize(MouseEvent& event)
 {
-    if (flattenFrameSet())
-        return false;
-
     if (!m_isResizing) {
         if (needsLayout())
             return false;
-        if (event.type() == eventNames().mousedownEvent && event.button() == LeftButton) {
+        if (event.type() == eventNames().mousedownEvent && event.button() == MouseButton::Left) {
             FloatPoint localPos = absoluteToLocal(event.absoluteLocation(), UseTransforms);
             startResizing(m_cols, localPos.x());
             startResizing(m_rows, localPos.y());
@@ -685,11 +573,11 @@ bool RenderFrameSet::userResize(MouseEvent& event)
             }
         }
     } else {
-        if (event.type() == eventNames().mousemoveEvent || (event.type() == eventNames().mouseupEvent && event.button() == LeftButton)) {
+        if (event.type() == eventNames().mousemoveEvent || (event.type() == eventNames().mouseupEvent && event.button() == MouseButton::Left)) {
             FloatPoint localPos = absoluteToLocal(event.absoluteLocation(), UseTransforms);
             continueResizing(m_cols, localPos.x());
             continueResizing(m_rows, localPos.y());
-            if (event.type() == eventNames().mouseupEvent && event.button() == LeftButton) {
+            if (event.type() == eventNames().mouseupEvent && event.button() == MouseButton::Left) {
                 setIsResizing(false);
                 return true;
             }
@@ -702,19 +590,7 @@ bool RenderFrameSet::userResize(MouseEvent& event)
 void RenderFrameSet::setIsResizing(bool isResizing)
 {
     m_isResizing = isResizing;
-    for (auto& ancestor : ancestorsOfType<RenderFrameSet>(*this))
-        ancestor.m_isChildResizing = isResizing;
     frame().eventHandler().setResizingFrameSet(isResizing ? &frameSetElement() : nullptr);
-}
-
-bool RenderFrameSet::isResizingRow() const
-{
-    return m_isResizing && m_rows.m_splitBeingResized != noSplit;
-}
-
-bool RenderFrameSet::isResizingColumn() const
-{
-    return m_isResizing && m_cols.m_splitBeingResized != noSplit;
 }
 
 bool RenderFrameSet::canResizeRow(const IntPoint& p) const
@@ -770,7 +646,7 @@ int RenderFrameSet::hitTestSplit(const GridAxis& axis, int position) const
 
 bool RenderFrameSet::isChildAllowed(const RenderObject& child, const RenderStyle&) const
 {
-    return child.isFrame() || child.isFrameSet();
+    return child.isRenderFrame() || child.isRenderFrameSet();
 }
 
 CursorDirective RenderFrameSet::getCursor(const LayoutPoint& point, Cursor& cursor) const

@@ -76,6 +76,9 @@ protected:
         case MoveDouble:
             width = Width64;
             break;
+        case MoveVector:
+            width = Width128;
+            break;
         default:
             return false;
         }
@@ -90,7 +93,7 @@ protected:
             StackSlot* slot = arg.stackSlot();
             if (slot->kind() != StackSlotKind::Spill)
                 return false;
-            if (slot->byteSize() != bytes(width))
+            if (slot->byteSize() != bytesForWidth(width))
                 return false;
         }
 
@@ -313,17 +316,7 @@ private:
         {
         }
 
-        bool operator==(const CoalescableMove& other) const
-        {
-            return src == other.src
-                && dst == other.dst
-                && frequency == other.frequency;
-        }
-
-        bool operator!=(const CoalescableMove& other) const
-        {
-            return !(*this == other);
-        }
+        friend bool operator==(const CoalescableMove&, const CoalescableMove&) = default;
 
         explicit operator bool() const
         {
@@ -372,7 +365,7 @@ bool tryTrivialStackAllocation(Code& code)
 
 void allocateStackByGraphColoring(Code& code)
 {
-    PhaseScope phaseScope(code, "allocateStackByGraphColoring");
+    PhaseScope phaseScope(code, "allocateStackByGraphColoring"_s);
 
     handleCalleeSaves(code);
 

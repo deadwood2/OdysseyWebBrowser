@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,8 +29,8 @@
 #if PLATFORM(IOS_FAMILY)
 
 #import "APIUIClient.h"
-#import "TCCSoftLink.h"
-#import "UIKitSPI.h"
+#import "CompactContextMenuPresenter.h"
+#import "ImageAnalysisUtilities.h"
 #import "WKActionSheet.h"
 #import "WKContentViewInteraction.h"
 #import "WKNSURLExtras.h"
@@ -42,6 +42,8 @@
 #import <WebCore/FloatRect.h>
 #import <WebCore/LocalizedStrings.h>
 #import <WebCore/PathUtilities.h>
+#import <WebCore/UIViewControllerUtilities.h>
+#import <pal/spi/ios/DataDetectorsUISoftLink.h>
 #import <wtf/CompletionHandler.h>
 #import <wtf/SoftLinking.h>
 #import <wtf/Vector.h>
@@ -57,17 +59,19 @@
 #endif
 
 #if HAVE(SAFARI_SERVICES_FRAMEWORK)
-#import <SafariServices/SSReadingList.h>
+#import "SafariServicesSPI.h"
 SOFT_LINK_FRAMEWORK(SafariServices)
 SOFT_LINK_CLASS(SafariServices, SSReadingList)
 #endif
+
+#import "TCCSoftLink.h"
 
 OBJC_CLASS DDAction;
 
 #if HAVE(APP_LINKS)
 static bool applicationHasAppLinkEntitlements()
 {
-    static bool hasEntitlement = WTF::processHasEntitlement("com.apple.private.canGetAppLinkInfo") && WTF::processHasEntitlement("com.apple.private.canModifyAppLinkPermissions");
+    static bool hasEntitlement = WTF::processHasEntitlement("com.apple.private.canGetAppLinkInfo"_s) && WTF::processHasEntitlement("com.apple.private.canModifyAppLinkPermissions"_s);
     return hasEntitlement;
 }
 
@@ -97,10 +101,10 @@ static LSAppLink *appLinkForURL(NSURL *url)
     std::optional<WebKit::InteractionInformationAtPosition> _positionInformation;
 #if USE(UICONTEXTMENU)
 #if ENABLE(DATA_DETECTION)
-    RetainPtr<UIContextMenuInteraction> _dataDetectorContextMenuInteraction;
+    std::unique_ptr<WebKit::CompactContextMenuPresenter> _dataDetectorContextMenuPresenter;
 #endif // ENABLE(DATA_DETECTION)
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
-    RetainPtr<UIContextMenuInteraction> _mediaControlsContextMenuInteraction;
+    std::unique_ptr<WebKit::CompactContextMenuPresenter> _mediaControlsContextMenuPresenter;
     RetainPtr<UIMenu> _mediaControlsContextMenu;
     WebCore::FloatRect _mediaControlsContextMenuTargetFrame;
     CompletionHandler<void(WebCore::MediaControlsContextMenuItem::ID)> _mediaControlsContextMenuCallback;
@@ -133,10 +137,10 @@ static LSAppLink *appLinkForURL(NSURL *url)
     [self cleanupSheet];
 #if USE(UICONTEXTMENU)
 #if ENABLE(DATA_DETECTION)
-    [self _removeDataDetectorContextMenuInteraction];
+    [self _resetDataDetectorContextMenuPresenter];
 #endif // ENABLE(DATA_DETECTION)
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
-    [self _removeMediaControlsContextMenuInteraction];
+    [self _resetMediaControlsContextMenuPresenter];
 #endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
 #endif // USE(UICONTEXTMENU)
     [super dealloc];
@@ -165,7 +169,7 @@ static LSAppLink *appLinkForURL(NSURL *url)
     UIViewController *controller = nil;
     UIView *currentView = view;
     while (currentView) {
-        UIViewController *aController = [UIViewController viewControllerForView:currentView];
+        auto aController = WebCore::viewController(currentView);
         if (aController)
             controller = aController;
 
@@ -205,12 +209,11 @@ static const CGFloat presentationElementRectPadding = 15;
 
     WebCore::FloatPoint touchLocation = _positionInformation->request.point;
     WebCore::FloatPoint linkElementLocation = indicator.textBoundingRectInRootViewCoordinates.location();
-    Vector<WebCore::FloatRect> indicatedRects;
-    for (auto rect : indicator.textRectsInBoundingRectCoordinates) {
+    auto indicatedRects = indicator.textRectsInBoundingRectCoordinates.map([&](auto rect) {
         rect.inflate(2);
         rect.moveBy(linkElementLocation);
-        indicatedRects.append(rect);
-    }
+        return rect;
+    });
 
     for (const auto& path : WebCore::PathUtilities::pathsWithShrinkWrappedRects(indicatedRects, 0)) {
         auto boundingRect = path.fastBoundingRect();
@@ -272,13 +275,13 @@ static const CGFloat presentationElementRectPadding = 15;
 {
     // Calculate the presentation rect just before showing.
     CGRect presentationRect = CGRectZero;
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     if (UI_USER_INTERFACE_IDIOM() != UIUserInterfaceIdiomPhone) {
         presentationRect = [self initialPresentationRectInHostViewForSheet];
         if (CGRectIsEmpty(presentationRect))
             return NO;
     }
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 
     return [_interactionSheet presentSheetFromRect:presentationRect];
 }
@@ -306,7 +309,7 @@ static const CGFloat presentationElementRectPadding = 15;
     if (!targetURL)
         return;
 
-    auto *controller = [getDDDetectionControllerClass() sharedController];
+    auto *controller = [PAL::getDDDetectionControllerClass() sharedController];
     if ([controller respondsToSelector:@selector(interactionDidStartForURL:)])
         [controller interactionDidStartForURL:targetURL];
 #endif
@@ -340,14 +343,11 @@ static bool isJavaScriptURL(NSURL *url)
     _interactionSheet.get().preferredStyle = UIAlertControllerStyleActionSheet;
 
     NSString *titleString = nil;
-    BOOL titleIsURL = NO;
     if (showLinkTitle && [[targetURL absoluteString] length]) {
         if (isJavaScriptURL(targetURL))
             titleString = WEB_UI_STRING_KEY("JavaScript", "JavaScript Action Sheet Title", "Title for action sheet for JavaScript link");
-        else {
+        else
             titleString = WTF::userVisibleString(targetURL);
-            titleIsURL = YES;
-        }
     } else if (defaultTitle)
         titleString = defaultTitle;
     else
@@ -396,8 +396,7 @@ static bool isJavaScriptURL(NSURL *url)
         NSURL *imageURL = _positionInformation->imageURL;
         if (!targetURL)
             targetURL = alternateURL;
-        auto elementBounds = _positionInformation->bounds;
-        auto elementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithType:_WKActivatedElementTypeImage URL:targetURL imageURL:imageURL location:_positionInformation->request.point title:_positionInformation->title ID:_positionInformation->idAttribute rect:elementBounds image:_positionInformation->image.get() userInfo:userInfo]);
+        auto elementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithType:_WKActivatedElementTypeImage URL:targetURL imageURL:imageURL userInfo:userInfo information:*_positionInformation]);
         if ([delegate respondsToSelector:@selector(actionSheetAssistant:showCustomSheetForElement:)] && [delegate actionSheetAssistant:self showCustomSheetForElement:elementInfo.get()])
             return;
         auto defaultActions = [self defaultActionsForImageSheet:elementInfo.get()];
@@ -408,9 +407,9 @@ static bool isJavaScriptURL(NSURL *url)
             return;
 
         if (!alternateURL && userInfo) {
-ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-            [UIApp _cancelAllTouches];
-ALLOW_DEPRECATED_DECLARATIONS_END
+            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+            [UIApplication.sharedApplication _cancelAllTouches];
+            ALLOW_DEPRECATED_DECLARATIONS_END
             return;
         }
 
@@ -502,7 +501,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (!externalApplicationName)
         return YES;
 
-    NSString *openInExternalApplicationTitle = [NSString stringWithFormat:WEB_UI_STRING("Open in “%@”", "Title for Open in External Application Link action button"), externalApplicationName];
+    NSString *openInExternalApplicationTitle = [NSString stringWithFormat:WEB_UI_NSSTRING(@"Open in “%@”", "Title for Open in External Application Link action button"), externalApplicationName];
     _WKElementAction *openInExternalApplicationAction = [_WKElementAction _elementActionWithType:_WKElementActionTypeOpenInExternalApplication title:openInExternalApplicationTitle actionHandler:^(_WKActivatedElementInfo *) {
 #if HAVE(APP_LINKS_WITH_ISENABLED)
         appLink.enabled = YES;
@@ -524,7 +523,31 @@ ALLOW_DEPRECATED_DECLARATIONS_END
         return;
 #endif
 
-    [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeOpen assistant:self]];
+    [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeOpen info:elementInfo assistant:self]];
+}
+
+- (void)_appendAnimationAction:(NSMutableArray *)actions elementInfo:(_WKActivatedElementInfo *)elementInfo
+{
+#if ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
+    BOOL hasAnimation = elementInfo.isAnimatedImage || !elementInfo._animationsUnderElement.isEmpty();
+    if (!hasAnimation || !elementInfo.canShowAnimationControls)
+        return;
+
+    if (![_delegate respondsToSelector:@selector(_allowAnimationControls)] || ![_delegate _allowAnimationControls])
+        return;
+
+    BOOL isAnimating = elementInfo.isAnimating;
+    if (!elementInfo.isAnimatedImage) {
+        // If the activated element is not an animated image, but it has animations underneath it, take the "is animating" state from these animations.
+        for (const auto& elementAnimationContext : elementInfo._animationsUnderElement) {
+            if (elementAnimationContext.isAnimating) {
+                isAnimating = YES;
+                break;
+            }
+        }
+    }
+    [actions addObject:[_WKElementAction _elementActionWithType:isAnimating ? _WKElementActionPauseAnimation : _WKElementActionPlayAnimation info:elementInfo assistant:self]];
+#endif // ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
 }
 
 - (RetainPtr<NSArray<_WKElementAction *>>)defaultActionsForLinkSheet:(_WKActivatedElementInfo *)elementInfo
@@ -538,27 +561,32 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 #if HAVE(SAFARI_SERVICES_FRAMEWORK)
     if ([getSSReadingListClass() supportsURL:targetURL])
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeAddToReadingList assistant:self]];
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeAddToReadingList info:elementInfo assistant:self]];
 #endif
 
     if ([elementInfo imageURL]) {
         if (TCCAccessPreflight(WebKit::get_TCC_kTCCServicePhotos(), NULL) != kTCCAccessPreflightDenied)
-            [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeSaveImage assistant:self]];
+            [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeSaveImage info:elementInfo assistant:self]];
     }
 
     if (!isJavaScriptURL(targetURL)) {
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeCopy assistant:self]];
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeShare assistant:self]];
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeCopy info:elementInfo assistant:self]];
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeShare info:elementInfo assistant:self]];
     }
 
-#if ENABLE(IMAGE_ANALYSIS)
-    if (elementInfo.type == _WKActivatedElementTypeImage || [elementInfo image]) {
-        if ([_delegate respondsToSelector:@selector(actionSheetAssistant:shouldIncludeShowTextActionForElement:)] && [_delegate actionSheetAssistant:self shouldIncludeShowTextActionForElement:elementInfo])
-            [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeImageExtraction assistant:self]];
-        if ([_delegate respondsToSelector:@selector(actionSheetAssistant:shouldIncludeLookUpImageActionForElement:)] && [_delegate actionSheetAssistant:self shouldIncludeLookUpImageActionForElement:elementInfo])
-            [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeRevealImage assistant:self]];
-    }
+    if (elementInfo.type == _WKActivatedElementTypeImage || elementInfo._isImage) {
+#if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
+        if ([_delegate respondsToSelector:@selector(actionSheetAssistantShouldIncludeCopySubjectAction:)] && [_delegate actionSheetAssistantShouldIncludeCopySubjectAction:self])
+            [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeCopyCroppedImage info:elementInfo assistant:self]];
 #endif
+#if ENABLE(IMAGE_ANALYSIS)
+        if ([_delegate respondsToSelector:@selector(actionSheetAssistant:shouldIncludeShowTextActionForElement:)] && [_delegate actionSheetAssistant:self shouldIncludeShowTextActionForElement:elementInfo])
+            [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeImageExtraction info:elementInfo assistant:self]];
+        if ([_delegate respondsToSelector:@selector(actionSheetAssistant:shouldIncludeLookUpImageActionForElement:)] && [_delegate actionSheetAssistant:self shouldIncludeLookUpImageActionForElement:elementInfo])
+            [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeRevealImage info:elementInfo assistant:self]];
+#endif
+    }
+    [self _appendAnimationAction:defaultActions.get() elementInfo:elementInfo];
 
     return defaultActions;
 }
@@ -570,25 +598,37 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     auto defaultActions = adoptNS([[NSMutableArray alloc] init]);
     if (targetURL) {
         [self _appendOpenActionsForURL:targetURL actions:defaultActions.get() elementInfo:elementInfo];
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeShare assistant:self]];
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeShare info:elementInfo assistant:self]];
     } else if ([elementInfo imageURL])
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeShare assistant:self]];
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeShare info:elementInfo assistant:self]];
 
 #if HAVE(SAFARI_SERVICES_FRAMEWORK)
     if ([getSSReadingListClass() supportsURL:targetURL])
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeAddToReadingList assistant:self]];
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeAddToReadingList info:elementInfo assistant:self]];
 #endif
     if (TCCAccessPreflight(WebKit::get_TCC_kTCCServicePhotos(), NULL) != kTCCAccessPreflightDenied)
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeSaveImage assistant:self]];
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeSaveImage info:elementInfo assistant:self]];
 
-    [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeCopy assistant:self]];
+    [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeCopy info:elementInfo assistant:self]];
+
+#if ENABLE(SPATIAL_IMAGE_DETECTION)
+    if ([elementInfo isSpatialImage])
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeViewSpatial info:elementInfo assistant:self]];
+#endif
+
+#if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
+    BOOL enableCopySubjectItem = [_delegate respondsToSelector:@selector(actionSheetAssistantShouldIncludeCopySubjectAction:)] && [_delegate actionSheetAssistantShouldIncludeCopySubjectAction:self];
+    [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeCopyCroppedImage info:elementInfo assistant:self disabled:!enableCopySubjectItem]];
+#endif
 
 #if ENABLE(IMAGE_ANALYSIS)
     if ([_delegate respondsToSelector:@selector(actionSheetAssistant:shouldIncludeShowTextActionForElement:)] && [_delegate actionSheetAssistant:self shouldIncludeShowTextActionForElement:elementInfo])
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeImageExtraction assistant:self]];
-    if ([_delegate respondsToSelector:@selector(actionSheetAssistant:shouldIncludeLookUpImageActionForElement:)] && [_delegate actionSheetAssistant:self shouldIncludeLookUpImageActionForElement:elementInfo])
-        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeRevealImage assistant:self]];
+        [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeImageExtraction info:elementInfo assistant:self]];
+
+    BOOL enableLookUpItem = [_delegate respondsToSelector:@selector(actionSheetAssistant:shouldIncludeLookUpImageActionForElement:)] && [_delegate actionSheetAssistant:self shouldIncludeLookUpImageActionForElement:elementInfo];
+    [defaultActions addObject:[_WKElementAction _elementActionWithType:_WKElementActionTypeRevealImage info:elementInfo assistant:self disabled:!enableLookUpItem]];
 #endif
+    [self _appendAnimationAction:defaultActions.get() elementInfo:elementInfo];
 
     return defaultActions;
 }
@@ -614,7 +654,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
         return;
     }
 
-    auto elementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithType:_WKActivatedElementTypeLink URL:targetURL imageURL:(NSURL*)_positionInformation->imageURL location:_positionInformation->request.point title:_positionInformation->title ID:_positionInformation->idAttribute rect:_positionInformation->bounds image:_positionInformation->image.get()]);
+    auto elementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithType:_WKActivatedElementTypeLink URL:targetURL information:*_positionInformation]);
     if ([_delegate respondsToSelector:@selector(actionSheetAssistant:showCustomSheetForElement:)] && [_delegate actionSheetAssistant:self showCustomSheetForElement:elementInfo.get()]) {
         _needsLinkIndicator = NO;
         return;
@@ -645,23 +685,19 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 #if ENABLE(DATA_DETECTION)
 
-- (UIContextMenuInteraction *)_ensureDataDetectorContextMenuInteraction
+- (WebKit::CompactContextMenuPresenter&)_dataDetectorContextMenuPresenter
 {
-    if (!_dataDetectorContextMenuInteraction) {
-        _dataDetectorContextMenuInteraction = adoptNS([[UIContextMenuInteraction alloc] initWithDelegate:self]);
-        [_view addInteraction:_dataDetectorContextMenuInteraction.get()];
-    }
-    return _dataDetectorContextMenuInteraction.get();
+    if (!_dataDetectorContextMenuPresenter)
+        _dataDetectorContextMenuPresenter = makeUnique<WebKit::CompactContextMenuPresenter>(_view.get().get(), self);
+    return *_dataDetectorContextMenuPresenter;
 }
 
-
-- (void)_removeDataDetectorContextMenuInteraction
+- (void)_resetDataDetectorContextMenuPresenter
 {
-    if (!_dataDetectorContextMenuInteraction)
+    if (!_dataDetectorContextMenuPresenter)
         return;
 
-    [_view removeInteraction:_dataDetectorContextMenuInteraction.get()];
-    _dataDetectorContextMenuInteraction = nil;
+    _dataDetectorContextMenuPresenter = nullptr;
 
     if ([_delegate respondsToSelector:@selector(removeContextMenuViewIfPossibleForActionSheetAssistant:)])
         [_delegate removeContextMenuViewIfPossibleForActionSheetAssistant:self];
@@ -671,24 +707,19 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
 
-- (UIContextMenuInteraction *)_ensureMediaControlsContextMenuInteraction
+- (WebKit::CompactContextMenuPresenter&)_mediaControlsContextMenuPresenter
 {
-    if (!_mediaControlsContextMenuInteraction) {
-        _mediaControlsContextMenuInteraction = adoptNS([[UIContextMenuInteraction alloc] initWithDelegate:self]);
-        [_view addInteraction:_mediaControlsContextMenuInteraction.get()];
-    }
-    return _mediaControlsContextMenuInteraction.get();
+    if (!_mediaControlsContextMenuPresenter)
+        _mediaControlsContextMenuPresenter = makeUnique<WebKit::CompactContextMenuPresenter>(_view.get().get(), self);
+    return *_mediaControlsContextMenuPresenter;
 }
 
-
-- (void)_removeMediaControlsContextMenuInteraction
+- (void)_resetMediaControlsContextMenuPresenter
 {
-    if (!_mediaControlsContextMenuInteraction)
+    if (!_mediaControlsContextMenuPresenter)
         return;
 
-    [_view removeInteraction:_mediaControlsContextMenuInteraction.get()];
-    _mediaControlsContextMenuInteraction = nil;
-
+    _mediaControlsContextMenuPresenter = nullptr;
     _mediaControlsContextMenu = nil;
     _mediaControlsContextMenuTargetFrame = { };
     if (auto mediaControlsContextMenuCallback = std::exchange(_mediaControlsContextMenuCallback, { }))
@@ -703,12 +734,12 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 - (BOOL)hasContextMenuInteraction
 {
 #if ENABLE(DATA_DETECTION)
-    if (_dataDetectorContextMenuInteraction)
+    if (_dataDetectorContextMenuPresenter)
         return YES;
 #endif // ENABLE(DATA_DETECTION)
 
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
-    if (_mediaControlsContextMenuInteraction)
+    if (_mediaControlsContextMenuPresenter)
         return YES;
 #endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
 
@@ -724,7 +755,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     auto retainedSelf = retainPtr(self);
     _WKElementAction *elementAction = [_WKElementAction elementActionWithTitle:action.localizedName actionHandler:^(_WKActivatedElementInfo *actionInfo) {
         retainedSelf->_isPresentingDDUserInterface = action.hasUserInterface;
-        [[getDDDetectionControllerClass() sharedController] performAction:action fromAlertController:retainedSelf->_interactionSheet.get() interactionDelegate:retainedSelf.get()];
+        [[PAL::getDDDetectionControllerClass() sharedController] performAction:action fromAlertController:retainedSelf->_interactionSheet.get() interactionDelegate:retainedSelf.get()];
     }];
     elementAction.dismissalHandler = ^BOOL {
         return !action.hasUserInterface;
@@ -749,7 +780,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (!targetURL)
         return;
 
-    DDDetectionController *controller = [getDDDetectionControllerClass() sharedController];
+    DDDetectionController *controller = [PAL::getDDDetectionControllerClass() sharedController];
     NSDictionary *context = nil;
     NSString *textAtSelection = nil;
 
@@ -771,7 +802,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     
 #if USE(UICONTEXTMENU) && HAVE(UICONTEXTMENU_LOCATION)
     if ([_view window])
-        [self._ensureDataDetectorContextMenuInteraction _presentMenuAtLocation:_positionInformation->request.point];
+        self._dataDetectorContextMenuPresenter.present(_positionInformation->request.point);
 #else
     NSMutableArray *elementActions = [NSMutableArray array];
     for (NSUInteger actionNumber = 0; actionNumber < [dataDetectorsActions count]; actionNumber++) {
@@ -798,9 +829,12 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
 
-- (NSArray<UIMenuElement *> *)_uiMenuElementsForMediaControlContextMenuItems:(Vector<WebCore::MediaControlsContextMenuItem>&&) items
+- (NSArray<UIMenuElement *> *)_uiMenuElementsForMediaControlContextMenuItems:(Vector<WebCore::MediaControlsContextMenuItem>&&)items
 {
     return createNSArray(items, [&] (WebCore::MediaControlsContextMenuItem& item) -> UIMenuElement * {
+        if (item.id == WebCore::MediaControlsContextMenuItem::invalidID && item.title.isEmpty() && item.icon.isEmpty() && item.children.isEmpty())
+            return [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[]];
+
         UIImage *image = !item.icon.isEmpty() ? [UIImage systemImageNamed:WTFMove(item.icon)] : nil;
 
         if (!item.children.isEmpty())
@@ -822,31 +856,40 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (void)showMediaControlsContextMenu:(WebCore::FloatRect&&)targetFrame items:(Vector<WebCore::MediaControlsContextMenuItem>&&)items completionHandler:(CompletionHandler<void(WebCore::MediaControlsContextMenuItem::ID)>&&)completionHandler
 {
-    ASSERT(!_mediaControlsContextMenuInteraction);
+    ASSERT(!_mediaControlsContextMenuPresenter);
     ASSERT(!_mediaControlsContextMenu);
     ASSERT(!_mediaControlsContextMenuCallback);
 
     String menuTitle;
+    Vector<WebCore::MediaControlsContextMenuItem> itemsToPresent;
     if (items.size() == 1) {
         menuTitle = WTFMove(items[0].title);
-        items = WTFMove(items[0].children);
-    }
+        itemsToPresent = WTFMove(items[0].children);
+    } else
+        itemsToPresent = WTFMove(items);
 
-    if (![_view window] || items.isEmpty()) {
+    NSArray<UIMenuElement *> *additionalItems = nil;
+    if ([_delegate respondsToSelector:@selector(additionalMediaControlsContextMenuItemsForActionSheetAssistant:)])
+        additionalItems = [_delegate additionalMediaControlsContextMenuItemsForActionSheetAssistant:self];
+
+    if (![_view window] || (itemsToPresent.isEmpty() && !additionalItems.count)) {
         completionHandler(WebCore::MediaControlsContextMenuItem::invalidID);
         return;
     }
 
-    _mediaControlsContextMenu = [UIMenu menuWithTitle:WTFMove(menuTitle) children:[self _uiMenuElementsForMediaControlContextMenuItems:WTFMove(items)]];
+    NSArray<UIMenuElement *> *menuItems = [self _uiMenuElementsForMediaControlContextMenuItems:WTFMove(itemsToPresent)];
+    menuItems = [menuItems arrayByAddingObjectsFromArray:additionalItems];
+
+    _mediaControlsContextMenu = [UIMenu menuWithTitle:WTFMove(menuTitle) children:menuItems];
     _mediaControlsContextMenuTargetFrame = WTFMove(targetFrame);
     _mediaControlsContextMenuCallback = WTFMove(completionHandler);
 
-    [self._ensureMediaControlsContextMenuInteraction _presentMenuAtLocation:_mediaControlsContextMenuTargetFrame.center()];
+    self._mediaControlsContextMenuPresenter.present(_mediaControlsContextMenuTargetFrame);
 }
 
 #endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
 
-static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArray> defaultElementActions, RetainPtr<_WKActivatedElementInfo> elementInfo)
+static NSMutableArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArray> defaultElementActions, RetainPtr<_WKActivatedElementInfo> elementInfo)
 {
     if (![defaultElementActions count])
         return nil;
@@ -858,9 +901,9 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
     return actions;
 }
 
-- (NSArray<UIMenuElement *> *)suggestedActionsForContextMenuWithPositionInformation:(const WebKit::InteractionInformationAtPosition&)positionInformation
+- (NSMutableArray<UIMenuElement *> *)suggestedActionsForContextMenuWithPositionInformation:(const WebKit::InteractionInformationAtPosition&)positionInformation
 {
-    auto elementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithInteractionInformationAtPosition:positionInformation userInfo:nil]);
+    auto elementInfo = adoptNS([[_WKActivatedElementInfo alloc] _initWithInteractionInformationAtPosition:positionInformation isUsingAlternateURLForImage:NO userInfo:nil]);
     RetainPtr<NSArray<_WKElementAction *>> defaultActionsFromAssistant = positionInformation.isLink ? [self defaultActionsForLinkSheet:elementInfo.get()] : [self defaultActionsForImageSheet:elementInfo.get()];
     return menuElementsFromDefaultActions(defaultActionsFromAssistant, elementInfo);
 }
@@ -869,8 +912,8 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
 - (UIContextMenuConfiguration *)contextMenuInteraction:(UIContextMenuInteraction *)interaction configurationForMenuAtLocation:(CGPoint)location
 {
 #if ENABLE(DATA_DETECTION)
-    if (interaction == _dataDetectorContextMenuInteraction) {
-        DDDetectionController *controller = [getDDDetectionControllerClass() sharedController];
+    if (_dataDetectorContextMenuPresenter && interaction == _dataDetectorContextMenuPresenter->interaction()) {
+        DDDetectionController *controller = [PAL::getDDDetectionControllerClass() sharedController];
         NSDictionary *context = nil;
         NSString *textAtSelection = nil;
 
@@ -888,7 +931,7 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
         else
             sourceRect = _positionInformation->bounds;
 
-        auto ddContextMenuActionClass = getDDContextMenuActionClass();
+        auto ddContextMenuActionClass = PAL::getDDContextMenuActionClass();
         auto finalContext = [ddContextMenuActionClass updateContext:newContext withSourceRect:sourceRect];
 
         if (ddResult)
@@ -898,7 +941,7 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
 #endif // ENABLE(DATA_DETECTION)
 
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
-    if (interaction == _mediaControlsContextMenuInteraction) {
+    if (_mediaControlsContextMenuPresenter && interaction == _mediaControlsContextMenuPresenter->interaction()) {
         return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:[weakSelf = WeakObjCPtr<WKActionSheetAssistant>(self)] (NSArray<UIMenuElement *> *suggestedActions) -> UIMenu * {
             auto strongSelf = weakSelf.get();
             if (!strongSelf)
@@ -912,10 +955,10 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
     return nil;
 }
 
-- (UITargetedPreview *)contextMenuInteraction:(UIContextMenuInteraction *)interaction previewForHighlightingMenuWithConfiguration:(UIContextMenuConfiguration *)configuration
+- (UITargetedPreview *)contextMenuInteraction:(UIContextMenuInteraction *)interaction configuration:(UIContextMenuConfiguration *)configuration highlightPreviewForItemWithIdentifier:(id<NSCopying>)identifier
 {
 #if ENABLE(DATA_DETECTION)
-    if (interaction == _dataDetectorContextMenuInteraction) {
+    if (_dataDetectorContextMenuPresenter && interaction == _dataDetectorContextMenuPresenter->interaction()) {
         auto delegate = _delegate.get();
         CGPoint center = _positionInformation->request.point;
 
@@ -930,7 +973,7 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
 #endif // ENABLE(DATA_DETECTION)
 
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
-    if (interaction == _mediaControlsContextMenuInteraction) {
+    if (_mediaControlsContextMenuPresenter && interaction == _mediaControlsContextMenuPresenter->interaction()) {
         auto emptyView = adoptNS([[UIView alloc] initWithFrame:_mediaControlsContextMenuTargetFrame]);
         auto previewParameters = adoptNS([[UIPreviewParameters alloc] init]);
         auto previewTarget = adoptNS([[UIPreviewTarget alloc] initWithContainer:_view.getAutoreleased() center:_mediaControlsContextMenuTargetFrame.center()]);
@@ -940,13 +983,6 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
 #endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
 
     return nil;
-}
-
-- (_UIContextMenuStyle *)_contextMenuInteraction:(UIContextMenuInteraction *)interaction styleForMenuWithConfiguration:(UIContextMenuConfiguration *)configuration
-{
-    _UIContextMenuStyle *style = [_UIContextMenuStyle defaultStyle];
-    style.preferredLayout = _UIContextMenuLayoutCompactMenu;
-    return style;
 }
 
 - (void)contextMenuInteraction:(UIContextMenuInteraction *)interaction willDisplayMenuForConfiguration:(UIContextMenuConfiguration *)configuration animator:(id <UIContextMenuInteractionAnimating>)animator
@@ -964,13 +1000,13 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
 - (void)contextMenuInteraction:(UIContextMenuInteraction *)interaction willEndForConfiguration:(UIContextMenuConfiguration *)configuration animator:(id<UIContextMenuInteractionAnimating>)animator
 {
 #if ENABLE(DATA_DETECTION)
-    if (interaction == _dataDetectorContextMenuInteraction)
-        [self _removeDataDetectorContextMenuInteraction];
+    if (_dataDetectorContextMenuPresenter && interaction == _dataDetectorContextMenuPresenter->interaction())
+        [self _resetDataDetectorContextMenuPresenter];
 #endif // ENABLE(DATA_DETECTION)
 
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
-    if (interaction == _mediaControlsContextMenuInteraction)
-        [self _removeMediaControlsContextMenuInteraction];
+    if (_mediaControlsContextMenuPresenter && interaction == _mediaControlsContextMenuPresenter->interaction())
+        [self _resetMediaControlsContextMenuPresenter];
 #endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS)
 
     [animator addCompletion:[weakSelf = WeakObjCPtr<WKActionSheetAssistant>(self)] {
@@ -986,7 +1022,7 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
 - (NSArray<UIMenuElement *> *)_contextMenuInteraction:(UIContextMenuInteraction *)interaction overrideSuggestedActionsForConfiguration:(UIContextMenuConfiguration *)configuration
 {
 #if ENABLE(DATA_DETECTION)
-    if (interaction == _dataDetectorContextMenuInteraction) {
+    if (_dataDetectorContextMenuPresenter && interaction == _dataDetectorContextMenuPresenter->interaction()) {
         if (!_positionInformation)
             return nil;
         return [self suggestedActionsForContextMenuWithPositionInformation:*_positionInformation];
@@ -1010,11 +1046,19 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
         [delegate actionSheetAssistant:self performAction:WebKit::SheetAction::Copy];
         break;
     case _WKElementActionTypeOpen:
-        [delegate actionSheetAssistant:self openElementAtLocation:element._interactionLocation];
+        if (element._isUsingAlternateURLForImage)
+            [[UIApplication sharedApplication] openURL:element.URL options:@{ } completionHandler:nil];
+        else
+            [delegate actionSheetAssistant:self openElementAtLocation:element._interactionLocation];
         break;
     case _WKElementActionTypeSaveImage:
         [delegate actionSheetAssistant:self performAction:WebKit::SheetAction::SaveImage];
         break;
+#if ENABLE(SPATIAL_IMAGE_DETECTION)
+    case _WKElementActionTypeViewSpatial:
+        [delegate actionSheetAssistant:self performAction:WebKit::SheetAction::ViewSpatial];
+        break;
+#endif
     case _WKElementActionTypeShare:
         if (URL(element.imageURL).protocolIsData() && element.image && [delegate respondsToSelector:@selector(actionSheetAssistant:shareElementWithImage:rect:)])
             [delegate actionSheetAssistant:self shareElementWithImage:element.image rect:element.boundingRect];
@@ -1033,6 +1077,27 @@ static NSArray<UIMenuElement *> *menuElementsFromDefaultActions(RetainPtr<NSArra
         [delegate actionSheetAssistant:self lookUpImage:element.image imageURL:element.imageURL title:element.title imageBounds:element.boundingRect];
 #endif
         break;
+    case _WKElementActionTypeCopyCroppedImage:
+#if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
+        [delegate actionSheetAssistant:self copySubject:element.image sourceMIMEType:element.imageMIMEType];
+#endif
+        break;
+    case _WKElementActionPauseAnimation:
+    case _WKElementActionPlayAnimation: {
+#if ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
+        auto sheetAction = type == _WKElementActionPauseAnimation ? WebKit::SheetAction::PauseAnimation : WebKit::SheetAction::PlayAnimation;
+        [delegate actionSheetAssistant:self performAction:sheetAction];
+
+        if (!element._animationsUnderElement.isEmpty() && [delegate respondsToSelector:@selector(_actionSheetAssistant:performAction:onElements:)]) {
+            auto elementContexts = element._animationsUnderElement.map([] (const auto& elementAnimationContext) {
+                return elementAnimationContext.element;
+            });
+
+            [delegate _actionSheetAssistant:self performAction:sheetAction onElements:WTFMove(elementContexts)];
+        }
+#endif // ENABLE(ACCESSIBILITY_ANIMATION_CONTROL)
+        break;
+    }
     default:
         ASSERT_NOT_REACHED();
         break;

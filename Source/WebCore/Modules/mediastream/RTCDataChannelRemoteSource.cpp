@@ -27,7 +27,9 @@
 
 #if ENABLE(WEB_RTC)
 
+#include "ProcessQualified.h"
 #include "RTCDataChannelHandler.h"
+#include "ScriptExecutionContextIdentifier.h"
 
 namespace WebCore {
 
@@ -40,9 +42,7 @@ RTCDataChannelRemoteSource::RTCDataChannelRemoteSource(RTCDataChannelIdentifier 
     m_handler->setClient(*this, { });
 }
 
-RTCDataChannelRemoteSource::~RTCDataChannelRemoteSource()
-{
-}
+RTCDataChannelRemoteSource::~RTCDataChannelRemoteSource() = default;
 
 } // namespace WebCore
 

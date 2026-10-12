@@ -11,20 +11,24 @@
 
 #include "common/platform.h"
 
-#if defined(ANGLE_USE_ABSEIL)
-#    include "absl/container/flat_hash_map.h"
-#endif  // defined(ANGLE_USE_ABSEIL)
+#if defined(ANGLE_WITH_LSAN)
+#    include <sanitizer/lsan_interface.h>
+#endif  // defined(ANGLE_WITH_LSAN)
+
+#if defined(ANGLE_WITH_MSAN)
+#    include <sanitizer/msan_interface.h>
+#endif  // defined(ANGLE_WITH_MSAN)
 
 #include <climits>
 #include <cstdarg>
 #include <cstddef>
+#include <mutex>
 #include <set>
 #include <sstream>
 #include <string>
-#include <unordered_map>
+#include <thread>
 #include <vector>
 
-// A helper class to disallow copy and assignment operators
 namespace angle
 {
 
@@ -32,14 +36,14 @@ namespace angle
 using Microsoft::WRL::ComPtr;
 #endif  // defined(ANGLE_ENABLE_D3D9) || defined(ANGLE_ENABLE_D3D11)
 
-#if defined(ANGLE_USE_ABSEIL)
-template <typename Key, typename T>
-using HashMap = absl::flat_hash_map<Key, T>;
+// Forward declaration. Implementation in system_utils.h
+#if defined(ANGLE_PLATFORM_LINUX) || defined(ANGLE_PLATFORM_WINDOWS)
+using ThreadId = uint64_t;
 #else
-template <typename Key, typename T>
-using HashMap = std::unordered_map<Key, T>;
-#endif  // defined(ANGLE_USE_ABSEIL)
+using ThreadId = std::thread::id;
+#endif
 
+// A helper class to disallow copy and assignment operators
 class NonCopyable
 {
   protected:
@@ -47,11 +51,125 @@ class NonCopyable
     ~NonCopyable()          = default;
 
   private:
-    NonCopyable(const NonCopyable &) = delete;
+    NonCopyable(const NonCopyable &)    = delete;
     void operator=(const NonCopyable &) = delete;
 };
 
 extern const uintptr_t DirtyPointer;
+
+// AMD_performance_monitor helpers.
+constexpr char kPerfMonitorExtensionName[] = "GL_AMD_performance_monitor";
+
+struct PerfMonitorCounter
+{
+    PerfMonitorCounter();
+    ~PerfMonitorCounter();
+
+    std::string name;
+    uint64_t value;
+};
+using PerfMonitorCounters = std::vector<PerfMonitorCounter>;
+
+struct PerfMonitorCounterGroup
+{
+    PerfMonitorCounterGroup();
+    ~PerfMonitorCounterGroup();
+
+    std::string name;
+    PerfMonitorCounters counters;
+};
+using PerfMonitorCounterGroups = std::vector<PerfMonitorCounterGroup>;
+
+uint32_t GetPerfMonitorCounterIndex(const PerfMonitorCounters &counters, const std::string &name);
+const PerfMonitorCounter &GetPerfMonitorCounter(const PerfMonitorCounters &counters,
+                                                const std::string &name);
+PerfMonitorCounter &GetPerfMonitorCounter(PerfMonitorCounters &counters, const std::string &name);
+uint32_t GetPerfMonitorCounterGroupIndex(const PerfMonitorCounterGroups &groups,
+                                         const std::string &name);
+const PerfMonitorCounterGroup &GetPerfMonitorCounterGroup(const PerfMonitorCounterGroups &groups,
+                                                          const std::string &name);
+PerfMonitorCounterGroup &GetPerfMonitorCounterGroup(PerfMonitorCounterGroups &groups,
+                                                    const std::string &name);
+
+struct PerfMonitorTriplet
+{
+    uint32_t group;
+    uint32_t counter;
+    uint64_t value;
+};
+
+#define ANGLE_VK_PERF_COUNTERS_X(FN)               \
+    FN(commandQueueSubmitCallsTotal)               \
+    FN(commandQueueSubmitCallsPerFrame)            \
+    FN(vkQueueSubmitCallsTotal)                    \
+    FN(vkQueueSubmitCallsPerFrame)                 \
+    FN(commandQueueWaitSemaphoresTotal)            \
+    FN(renderPasses)                               \
+    FN(writeDescriptorSets)                        \
+    FN(flushedOutsideRenderPassCommandBuffers)     \
+    FN(swapchainResolveInSubpass)                  \
+    FN(swapchainResolveOutsideSubpass)             \
+    FN(resolveImageCommands)                       \
+    FN(colorLoadOpClears)                          \
+    FN(colorLoadOpLoads)                           \
+    FN(colorLoadOpNones)                           \
+    FN(colorStoreOpStores)                         \
+    FN(colorStoreOpNones)                          \
+    FN(colorClearAttachments)                      \
+    FN(depthLoadOpClears)                          \
+    FN(depthLoadOpLoads)                           \
+    FN(depthLoadOpNones)                           \
+    FN(depthStoreOpStores)                         \
+    FN(depthStoreOpNones)                          \
+    FN(depthClearAttachments)                      \
+    FN(stencilLoadOpClears)                        \
+    FN(stencilLoadOpLoads)                         \
+    FN(stencilLoadOpNones)                         \
+    FN(stencilStoreOpStores)                       \
+    FN(stencilStoreOpNones)                        \
+    FN(stencilClearAttachments)                    \
+    FN(colorAttachmentUnresolves)                  \
+    FN(depthAttachmentUnresolves)                  \
+    FN(stencilAttachmentUnresolves)                \
+    FN(colorAttachmentResolves)                    \
+    FN(depthAttachmentResolves)                    \
+    FN(stencilAttachmentResolves)                  \
+    FN(readOnlyDepthStencilRenderPasses)           \
+    FN(pipelineCreationCacheHits)                  \
+    FN(pipelineCreationCacheMisses)                \
+    FN(pipelineCreationTotalCacheHitsDurationNs)   \
+    FN(pipelineCreationTotalCacheMissesDurationNs) \
+    FN(monolithicPipelineCreation)                 \
+    FN(descriptorSetAllocations)                   \
+    FN(descriptorSetCacheTotalSize)                \
+    FN(descriptorSetCacheKeySizeBytes)             \
+    FN(uniformsAndXfbDescriptorSetCacheHits)       \
+    FN(uniformsAndXfbDescriptorSetCacheMisses)     \
+    FN(uniformsAndXfbDescriptorSetCacheTotalSize)  \
+    FN(textureDescriptorSetCacheHits)              \
+    FN(textureDescriptorSetCacheMisses)            \
+    FN(textureDescriptorSetCacheTotalSize)         \
+    FN(shaderResourcesDescriptorSetCacheHits)      \
+    FN(deviceMemoryImageAllocationFallbacks)       \
+    FN(mutableTexturesUploaded)                    \
+    FN(shaderResourcesDescriptorSetCacheMisses)    \
+    FN(shaderResourcesDescriptorSetCacheTotalSize) \
+    FN(buffersGhosted)                             \
+    FN(vertexArraySyncStateCalls)                  \
+    FN(allocateNewBufferBlockCalls)                \
+    FN(bufferSuballocationCalls)                   \
+    FN(dynamicBufferAllocations)                   \
+    FN(framebufferCacheSize)                       \
+    FN(pendingSubmissionGarbageObjects)
+
+#define ANGLE_DECLARE_PERF_COUNTER(COUNTER) uint64_t COUNTER;
+
+struct VulkanPerfCounters
+{
+    ANGLE_VK_PERF_COUNTERS_X(ANGLE_DECLARE_PERF_COUNTER)
+};
+
+#undef ANGLE_DECLARE_PERF_COUNTER
 
 }  // namespace angle
 
@@ -186,8 +304,6 @@ inline std::string Str(int i)
     return strstr.str();
 }
 
-size_t FormatStringIntoVector(const char *fmt, va_list vararg, std::vector<char> &buffer);
-
 template <typename T>
 std::string ToString(const T &value)
 {
@@ -203,6 +319,15 @@ inline bool IsLittleEndian()
     return isLittleEndian;
 }
 
+// Helper macro that casts to a bitfield type then verifies no bits were dropped.
+#define SetBitField(lhs, rhs)                                                         \
+    do                                                                                \
+    {                                                                                 \
+        auto ANGLE_LOCAL_VAR = rhs;                                                   \
+        lhs = static_cast<typename std::decay<decltype(lhs)>::type>(ANGLE_LOCAL_VAR); \
+        ASSERT(static_cast<decltype(ANGLE_LOCAL_VAR)>(lhs) == ANGLE_LOCAL_VAR);       \
+    } while (0)
+
 // snprintf is not defined with MSVC prior to to msvc14
 #if defined(_MSC_VER) && _MSC_VER < 1900
 #    define snprintf _snprintf
@@ -217,6 +342,9 @@ inline bool IsLittleEndian()
 #define GL_UINT_64_ANGLEX 0x6ABF
 #define GL_BGRA8_SRGB_ANGLEX 0x6AC0
 #define GL_BGR10_A2_ANGLEX 0x6AF9
+#define GL_BGRX8_SRGB_ANGLEX 0x6AFC
+// fake format for GL_ANGLE_rgbx_internal_format
+#define GL_RGBX8_SRGB_ANGLEX 0x6AFA
 
 // These are fake formats used to fit typeless D3D textures that can be bound to EGL pbuffers into
 // the format system (for extension EGL_ANGLE_d3d_texture_client_buffer):
@@ -296,6 +424,48 @@ inline bool IsLittleEndian()
     UNREACHABLE();                    \
     ANGLE_CHECK(context, false, "Unreachable Code.", GL_INVALID_OPERATION)
 
+#if defined(ANGLE_WITH_LSAN)
+#    define ANGLE_SCOPED_DISABLE_LSAN() __lsan::ScopedDisabler lsanDisabler
+#else
+#    define ANGLE_SCOPED_DISABLE_LSAN()
+#endif
+
+#if defined(ANGLE_WITH_MSAN)
+class MsanScopedDisableInterceptorChecks final : angle::NonCopyable
+{
+  public:
+    MsanScopedDisableInterceptorChecks() { __msan_scoped_disable_interceptor_checks(); }
+    ~MsanScopedDisableInterceptorChecks() { __msan_scoped_enable_interceptor_checks(); }
+};
+#    define ANGLE_SCOPED_DISABLE_MSAN() \
+        MsanScopedDisableInterceptorChecks msanScopedDisableInterceptorChecks
+#else
+#    define ANGLE_SCOPED_DISABLE_MSAN()
+#endif
+
+// The ANGLE_NO_SANITIZE_MEMORY macro suppresses MemorySanitizer checks for
+// use-of-uninitialized-data. It can be used to decorate functions with known
+// false positives.
+#ifdef __clang__
+#    define ANGLE_NO_SANITIZE_MEMORY __attribute__((no_sanitize_memory))
+#else
+#    define ANGLE_NO_SANITIZE_MEMORY
+#endif
+
+// Similar to the above, but for thread sanitization.
+#ifdef __clang__
+#    define ANGLE_NO_SANITIZE_THREAD __attribute__((no_sanitize_thread))
+#else
+#    define ANGLE_NO_SANITIZE_THREAD
+#endif
+
+// Similar to the above, but for cfi-icall.
+#ifdef __clang__
+#    define ANGLE_NO_SANITIZE_CFI_ICALL __attribute__((no_sanitize("cfi-icall")))
+#else
+#    define ANGLE_NO_SANITIZE_CFI_ICALL
+#endif
+
 // The below inlining code lifted from V8.
 #if defined(__clang__) || (defined(__GNUC__) && defined(__has_attribute))
 #    define ANGLE_HAS_ATTRIBUTE_ALWAYS_INLINE (__has_attribute(always_inline))
@@ -338,6 +508,25 @@ inline bool IsLittleEndian()
 #    define ANGLE_FORMAT_PRINTF(fmt, args)
 #endif
 
+#if defined(__clang__) || (defined(__GNUC__) && defined(__has_attribute))
+#    define ANGLE_HAS_ATTRIBUTE_CONSTRUCTOR (__has_attribute(constructor))
+#    define ANGLE_HAS_ATTRIBUTE_DESTRUCTOR (__has_attribute(destructor))
+#else
+#    define ANGLE_HAS_ATTRIBUTE_CONSTRUCTOR 0
+#    define ANGLE_HAS_ATTRIBUTE_DESTRUCTOR 0
+#endif
+
+#if ANGLE_HAS_ATTRIBUTE_CONSTRUCTOR
+#    define ANGLE_CONSTRUCTOR __attribute__((constructor))
+#endif
+
+#if ANGLE_HAS_ATTRIBUTE_DESTRUCTOR
+#    define ANGLE_DESTRUCTOR __attribute__((destructor))
+#endif
+
+ANGLE_FORMAT_PRINTF(1, 0)
+size_t FormatStringIntoVector(const char *fmt, va_list vararg, std::vector<char> &buffer);
+
 // Format messes up the # inside the macro.
 // clang-format off
 #ifndef ANGLE_STRINGIFY
@@ -349,27 +538,55 @@ inline bool IsLittleEndian()
 #    define ANGLE_MACRO_STRINGIFY(x) ANGLE_STRINGIFY(x)
 #endif
 
-// Detect support for C++17 [[nodiscard]]
-#if !defined(__has_cpp_attribute)
-#    define __has_cpp_attribute(name) 0
-#endif  // !defined(__has_cpp_attribute)
-
-#if __has_cpp_attribute(nodiscard)
-#    define ANGLE_NO_DISCARD [[nodiscard]]
+// The ANGLE_MAYBE_UNUSED_PRIVATE_FIELD can be used to hint 'unused private field'
+// instead of 'maybe_unused' attribute for the compatibility with GCC because
+// GCC doesn't have '-Wno-unused-private-field' whereas Clang has.
+#if defined(__clang__) || defined(_MSC_VER)
+#    define ANGLE_MAYBE_UNUSED_PRIVATE_FIELD [[maybe_unused]]
 #else
-#    define ANGLE_NO_DISCARD
-#endif  // __has_cpp_attribute(nodiscard)
+#    define ANGLE_MAYBE_UNUSED_PRIVATE_FIELD
+#endif
 
-#if __has_cpp_attribute(maybe_unused)
-#    define ANGLE_MAYBE_UNUSED [[maybe_unused]]
-#else
-#    define ANGLE_MAYBE_UNUSED
-#endif  // __has_cpp_attribute(maybe_unused)
-
-#if __has_cpp_attribute(require_constant_initialization)
-#    define ANGLE_REQUIRE_CONSTANT_INIT [[require_constant_initialization]]
+#if __has_cpp_attribute(clang::require_constant_initialization)
+#    define ANGLE_REQUIRE_CONSTANT_INIT [[clang::require_constant_initialization]]
 #else
 #    define ANGLE_REQUIRE_CONSTANT_INIT
 #endif  // __has_cpp_attribute(require_constant_initialization)
 
+// Compiler configs.
+inline bool IsASan()
+{
+#if defined(ANGLE_WITH_ASAN)
+    return true;
+#else
+    return false;
+#endif  // defined(ANGLE_WITH_ASAN)
+}
+
+inline bool IsMSan()
+{
+#if defined(ANGLE_WITH_MSAN)
+    return true;
+#else
+    return false;
+#endif  // defined(ANGLE_WITH_MSAN)
+}
+
+inline bool IsTSan()
+{
+#if defined(ANGLE_WITH_TSAN)
+    return true;
+#else
+    return false;
+#endif  // defined(ANGLE_WITH_TSAN)
+}
+
+inline bool IsUBSan()
+{
+#if defined(ANGLE_WITH_UBSAN)
+    return true;
+#else
+    return false;
+#endif  // defined(ANGLE_WITH_UBSAN)
+}
 #endif  // COMMON_ANGLEUTILS_H_

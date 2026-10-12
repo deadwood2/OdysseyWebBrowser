@@ -41,64 +41,23 @@ void WebsiteDataStore::platformDestroy()
     notImplemented();
 }
 
-void WebsiteDataStore::platformRemoveRecentSearches(WallTime)
+String WebsiteDataStore::cacheDirectoryFileSystemRepresentation(const String& directoryName, const String& baseCacheDirectory, ShouldCreateDirectory)
 {
-    notImplemented();
-}
-
-String WebsiteDataStore::defaultApplicationCacheDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "ApplicationCache");
-}
-
-String WebsiteDataStore::defaultCacheStorageDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "CacheStorage");
-}
-
-String WebsiteDataStore::defaultNetworkCacheDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "NetworkCache");
-}
-
-String WebsiteDataStore::defaultIndexedDBDatabaseDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "IndexedDB");
-}
-
-String WebsiteDataStore::defaultServiceWorkerRegistrationDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "ServiceWorkers");
-}
-
-String WebsiteDataStore::defaultLocalStorageDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "LocalStorage");
-}
-
-String WebsiteDataStore::defaultMediaKeysStorageDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "MediaKeyStorage");
-}
-
-String WebsiteDataStore::defaultWebSQLDatabaseDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "WebSQL");
-}
-
-String WebsiteDataStore::defaultResourceLoadStatisticsDirectory()
-{
-    return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), "ResourceLoadStatistics");
-}
-
-String WebsiteDataStore::cacheDirectoryFileSystemRepresentation(const String& directoryName, ShouldCreateDirectory)
-{
+    if (!baseCacheDirectory.isNull())
+        return FileSystem::pathByAppendingComponent(baseCacheDirectory, directoryName);
     return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), directoryName);
 }
 
-String WebsiteDataStore::websiteDataDirectoryFileSystemRepresentation(const String& directoryName)
+String WebsiteDataStore::websiteDataDirectoryFileSystemRepresentation(const String& directoryName, const String& baseDataDirectory, ShouldCreateDirectory)
 {
+    if (!baseDataDirectory.isNull())
+        return FileSystem::pathByAppendingComponent(baseDataDirectory, directoryName);
     return FileSystem::pathByAppendingComponent(FileSystem::localUserSpecificStorageDirectory(), directoryName);
+}
+
+UnifiedOriginStorageLevel WebsiteDataStore::defaultUnifiedOriginStorageLevel()
+{
+    return UnifiedOriginStorageLevel::None;
 }
 
 } // namespace WebKit

@@ -49,8 +49,12 @@ static Vector<WebKitTestRunnerWindow *> allWindows;
 - (instancetype)initWithContentRect:(NSRect)contentRect styleMask:(NSUInteger)windowStyle backing:(NSBackingStoreType)bufferingType defer:(BOOL)deferCreation
 {
     ASSERT(isMainThread());
+    self = [super initWithContentRect:contentRect styleMask:windowStyle backing:bufferingType defer:deferCreation];
+    if (!self)
+        return nil;
+
     allWindows.append(self);
-    return [super initWithContentRect:contentRect styleMask:windowStyle backing:bufferingType defer:deferCreation];
+    return self;
 }
 
 - (void)close
@@ -97,6 +101,12 @@ static Vector<WebKitTestRunnerWindow *> allWindows;
 {
     NSRect currentFrame = [self frame];
     return NSMakeRect(_fakeOrigin.x, _fakeOrigin.y, currentFrame.size.width, currentFrame.size.height);
+}
+
+- (void)_adjustWindowResolution
+{
+    // Do not call super, so that AppKit can't update the resolution from the screen,
+    // except when we do so explicitly via `_setWindowResolution`.
 }
 
 @end

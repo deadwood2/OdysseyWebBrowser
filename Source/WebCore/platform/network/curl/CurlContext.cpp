@@ -39,6 +39,9 @@
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/StringConcatenateNumbers.h>
+#include <wtf/StringPrintStream.h>
+#include <wtf/text/MakeString.h>
 
 #if OS(WINDOWS)
 #include "WebCoreBundleWin.h"
@@ -54,6 +57,7 @@ extern "C" {
 void dprintf(const char *fmt, ... );
 };
 #define CURL_TRACES 0
+#define CURL_DUMPDATA 0
 #endif
 
 namespace WebCore {
@@ -92,6 +96,7 @@ constexpr const char* EnvironmentVariableReader::sscanTemplate<unsigned>() { ret
 static const ASCIILiteral httpVersion10 { "http/1.0"_s };
 static const ASCIILiteral httpVersion11 { "http/1.1"_s };
 static const ASCIILiteral httpVersion2 { "h2"_s };
+static const ASCIILiteral httpVersion3 { "h3"_s };
 
 // CurlContext -------------------------------------------------------------------
 
@@ -135,11 +140,6 @@ CurlContext::CurlContext()
     if (logFile)
         m_logFile = fopen(logFile, "a");
 #endif
-
-#if ENABLE(TLS_DEBUG)
-    if (auto filePath = envVar.read("SSLKEYLOGFILE"))
-        m_tlsKeyLogFilePath = filePath;
-#endif
 }
 
 CurlContext::~CurlContext()
@@ -175,8 +175,12 @@ CurlStreamScheduler& CurlContext::streamScheduler()
     return sharedInstance;
 }
 
-bool CurlContext::isHttp2Enabled() const
+bool CurlContext::isHttp2Enabled(bool forPost) const
 {
+    if (!m_http2Enabled)
+        return false;
+    if (forPost && !m_http2POSTEnabled)
+        return false;
     curl_version_info_data* data = curl_version_info(CURLVERSION_NOW);
     return data->features & CURL_VERSION_HTTP2;
 }
@@ -188,6 +192,7 @@ CurlShareHandle::CurlShareHandle()
     m_shareHandle = curl_share_init();
     curl_share_setopt(m_shareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
     curl_share_setopt(m_shareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
+    curl_share_setopt(m_shareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
     curl_share_setopt(m_shareHandle, CURLSHOPT_LOCKFUNC, lockCallback);
     curl_share_setopt(m_shareHandle, CURLSHOPT_UNLOCKFUNC, unlockCallback);
 }
@@ -215,6 +220,7 @@ Lock* CurlShareHandle::mutexFor(curl_lock_data data)
     static Lock cookieMutex;
     static Lock dnsMutex;
     static Lock shareMutex;
+    static Lock sslSessionMutex;
 
     switch (data) {
     case CURL_LOCK_DATA_COOKIE:
@@ -223,6 +229,8 @@ Lock* CurlShareHandle::mutexFor(curl_lock_data data)
         return &dnsMutex;
     case CURL_LOCK_DATA_SHARE:
         return &shareMutex;
+    case CURL_LOCK_DATA_SSL_SESSION:
+        return &sslSessionMutex;
     default:
         ASSERT_NOT_REACHED();
         return nullptr;
@@ -234,9 +242,6 @@ Lock* CurlShareHandle::mutexFor(curl_lock_data data)
 CurlMultiHandle::CurlMultiHandle()
 {
     m_multiHandle = curl_multi_init();
-
-    if (CurlContext::singleton().isHttp2Enabled())
-        curl_multi_setopt(m_multiHandle, CURLMOPT_PIPELINING, CURLPIPE_MULTIPLEX);
 }
 
 CurlMultiHandle::~CurlMultiHandle()
@@ -316,7 +321,7 @@ static void dump(const char *text, unsigned char *ptr, size_t size)
 {
   size_t i;
   size_t c;
-  unsigned int width=0x10;
+  unsigned int width=0x20;
 	
   dprintf("%s, %10.10ld bytes (0x%8.8lx)\n",
           text, (long)size, (long)size);
@@ -358,25 +363,38 @@ static int my_trace(CURL *handle, curl_infotype type,
  
   case CURLINFO_HEADER_OUT:
     text = "=> Send header";
+    dump(text, (unsigned char *)data, size);
     break;
   case CURLINFO_DATA_OUT:
     text = "=> Send data";
+#if CURL_DUMPDATA
+    dump(text, (unsigned char *)data, size);
+#endif
     break;
   case CURLINFO_SSL_DATA_OUT:
     text = "=> Send SSL data";
+#if CURL_DUMPDATA
+    dump(text, (unsigned char *)data, size);
+#endif
     break;
   case CURLINFO_HEADER_IN:
     text = "<= Recv header";
+    dump(text, (unsigned char *)data, size);
     break;
   case CURLINFO_DATA_IN:
     text = "<= Recv data";
+#if CURL_DUMPDATA
+    dump(text, (unsigned char *)data, size);
+#endif
     break;
   case CURLINFO_SSL_DATA_IN:
     text = "<= Recv SSL data";
+#if CURL_DUMPDATA
+    dump(text, (unsigned char *)data, size);
+#endif
     break;
   }
-	
-  dump(text, (unsigned char *)data, size);
+
   return 0;
 }
 #endif
@@ -386,6 +404,7 @@ CurlHandle::CurlHandle()
     m_handle = curl_easy_init();
     curl_easy_setopt(m_handle, CURLOPT_ERRORBUFFER, m_errorBuffer);
     curl_easy_setopt(m_handle, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(m_handle, CURLOPT_COOKIEFILE, nullptr);
 
     enableShareHandle();
     enableAllowedProtocols();
@@ -419,7 +438,7 @@ CurlHandle::~CurlHandle()
 
 const String CurlHandle::errorDescription(CURLcode errorCode)
 {
-    return String(curl_easy_strerror(errorCode));
+    return String::fromLatin1(curl_easy_strerror(errorCode));
 }
 
 void CurlHandle::enableSSLForHost(const String& host)
@@ -447,9 +466,11 @@ void CurlHandle::enableSSLForHost(const String& host)
         setSslVerifyHost(CurlHandle::VerifyHost::StrictNameCheck);
     }
 
-    const auto& cipherList = sslHandle.getCipherList();
-    if (!cipherList.isEmpty())
-        setSslCipherList(cipherList.utf8().data());
+    setSslCipherList(sslHandle.cipherList().data());
+    setSslCipherListTLS1_3(sslHandle.cipherListTLS1_3().data());
+
+    if (const auto& ecCurves = sslHandle.ecCurves(); !ecCurves.isNull())
+        setSslECCurves(ecCurves.data());
 
     setSslCtxCallbackFunction(willSetupSslCtxCallback, this);
 
@@ -458,14 +479,16 @@ void CurlHandle::enableSSLForHost(const String& host)
 		setSslVerifyHost(CurlHandle::VerifyHost::LooseNameCheck);
 	else
 	{
-		if (auto* path = WTF::get_if<String>(sslHandle.getCACertInfo()))
+		if (auto* path = std::get_if<String>(&sslHandle.getCACertInfo()))
 			setCACertPath(path->utf8().data());
 	}
 #elif OS(WINDOWS)
     curl_easy_setopt(m_handle, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
 #else
-    if (auto* path = WTF::get_if<String>(sslHandle.getCACertInfo()))
+    if (auto* path = std::get_if<String>(&sslHandle.getCACertInfo()))
         setCACertPath(path->utf8().data());
+    else if (auto data = std::get_if<CertificateInfo::Certificate>(&sslHandle.getCACertInfo()))
+        setCACertBlob(const_cast<uint8_t*>(data->data()), data->size());
 #endif
 }
 
@@ -489,11 +512,6 @@ CURLcode CurlHandle::willSetupSslCtx(void* sslCtx)
 CURLcode CurlHandle::willSetupSslCtxCallback(CURL*, void* sslCtx, void* userData)
 {
     return static_cast<CurlHandle*>(userData)->willSetupSslCtx(sslCtx);
-}
-
-int CurlHandle::sslErrors() const
-{
-    return m_sslVerifier ? m_sslVerifier->sslErrors() : 0;
 }
 
 CURLcode CurlHandle::perform()
@@ -521,7 +539,7 @@ void CurlHandle::setUrl(const URL& url)
     curlUrl.removeFragmentIdentifier();
 
     // Remove any query part sent to a local file.
-    if (curlUrl.isLocalFile()) {
+    if (curlUrl.protocolIsFile()) {
         // By setting the query to a null string it'll be removed.
         if (!curlUrl.query().isEmpty())
             curlUrl.setQuery(String());
@@ -530,7 +548,7 @@ void CurlHandle::setUrl(const URL& url)
     // url is in ASCII so latin1() will only convert it to char* without character translation.
     curl_easy_setopt(m_handle, CURLOPT_URL, curlUrl.string().latin1().data());
 
-    if (url.protocolIs("https"))
+    if (url.protocolIs("https"_s))
         enableSSLForHost(m_url.host().toString());
 #if OS(MORPHOS)
     else
@@ -548,26 +566,23 @@ void CurlHandle::appendRequestHeaders(const HTTPHeaderMap& headers)
 
 void CurlHandle::appendRequestHeader(const String& name, const String& value)
 {
-    String header(name);
+    String header;
 
     if (value.isEmpty()) {
         // Insert the ; to tell curl that this header has an empty value.
-        header.append(";");
+        header = makeString(name, ';');
     } else {
-        header.append(": ");
-        header.append(value);
+        header = makeString(name, ": "_s, value);
     }
 
-    appendRequestHeader(header);
+    appendRequestHeader(WTFMove(header));
 }
 
 void CurlHandle::removeRequestHeader(const String& name)
 {
     // Add a header with no content, the internally used header will get disabled. 
-    String header(name);
-    header.append(":");
-
-    appendRequestHeader(header);
+    auto header = makeString(name, ':');
+    appendRequestHeader(WTFMove(header));
 }
 
 void CurlHandle::appendRequestHeader(const String& header)
@@ -589,20 +604,20 @@ void CurlHandle::enableRequestHeaders()
     curl_easy_setopt(m_handle, CURLOPT_HTTPHEADER, headers);
 }
 
-void CurlHandle::disableAcceptEncoding()
+void CurlHandle::enableHttp(bool post)
 {
-    curl_easy_setopt(m_handle, CURLOPT_ENCODING, NULL);
-}
-
-void CurlHandle::enableHttp()
-{
-    if (m_url.protocolIs("https") && CurlContext::singleton().isHttp2Enabled()) {
+    if (m_url.protocolIs("https"_s) && CurlContext::singleton().isHttp2Enabled(post)) {
         curl_easy_setopt(m_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
         curl_easy_setopt(m_handle, CURLOPT_PIPEWAIT, 1L);
         curl_easy_setopt(m_handle, CURLOPT_SSL_ENABLE_ALPN, 1L);
         curl_easy_setopt(m_handle, CURLOPT_SSL_ENABLE_NPN, 0L);
     } else
         curl_easy_setopt(m_handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+}
+
+void CurlHandle::disableAcceptEncoding()
+{
+    curl_easy_setopt(m_handle, CURLOPT_ENCODING, NULL);
 }
 
 void CurlHandle::enableHttpGetRequest()
@@ -619,7 +634,7 @@ void CurlHandle::enableHttpHeadRequest()
 
 void CurlHandle::enableHttpPostRequest()
 {
-    enableHttp();
+    enableHttp(true);
     curl_easy_setopt(m_handle, CURLOPT_POST, 1L);
     curl_easy_setopt(m_handle, CURLOPT_POSTFIELDSIZE, 0L);
 }
@@ -664,6 +679,13 @@ void CurlHandle::setResumeOffset(long long offset)
 	curl_easy_setopt(m_handle, CURLOPT_RESUME_FROM_LARGE, curl_off_t(offset));
 }
 
+void CurlHandle::setRange(long long start, long long end)
+{
+    StringPrintStream out;
+    out.printf("%llu-%llu", start, end);
+    curl_easy_setopt(m_handle, CURLOPT_RANGE, out.toCString().data());
+}
+
 void CurlHandle::enableAcceptEncoding()
 {
     // enable all supported built-in compressions (gzip and deflate) through Accept-Encoding:
@@ -694,6 +716,19 @@ void CurlHandle::setCACertPath(const char* path)
         curl_easy_setopt(m_handle, CURLOPT_CAINFO, path);
 }
 
+void CurlHandle::setCACertBlob(void* data, size_t length)
+{
+    if (!data || !length)
+        return;
+
+    curl_blob blob;
+    blob.data = data;
+    blob.len = length;
+    blob.flags = CURL_BLOB_NOCOPY;
+
+    curl_easy_setopt(m_handle, CURLOPT_CAINFO_BLOB, &blob);
+}
+
 void CurlHandle::setSslVerifyPeer(VerifyPeer verifyPeer)
 {
     curl_easy_setopt(m_handle, CURLOPT_SSL_VERIFYPEER, static_cast<long>(verifyPeer));
@@ -722,6 +757,16 @@ void CurlHandle::setSslKeyPassword(const char* password)
 void CurlHandle::setSslCipherList(const char* cipherList)
 {
     curl_easy_setopt(m_handle, CURLOPT_SSL_CIPHER_LIST, cipherList);
+}
+
+void CurlHandle::setSslCipherListTLS1_3(const char* cipherList)
+{
+    curl_easy_setopt(m_handle, CURLOPT_TLS13_CIPHERS, cipherList);
+}
+
+void CurlHandle::setSslECCurves(const char* ecCurves)
+{
+    curl_easy_setopt(m_handle, CURLOPT_SSL_EC_CURVES, ecCurves);
 }
 
 void CurlHandle::enableProxyIfExists()
@@ -854,13 +899,12 @@ std::optional<long long> CurlHandle::getContentLength()
     if (!m_handle)
         return std::nullopt;
 
-    double contentLength;
-
-    CURLcode errorCode = curl_easy_getinfo(m_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &contentLength);
+    curl_off_t contentLength;
+    CURLcode errorCode = curl_easy_getinfo(m_handle, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &contentLength);
     if (errorCode != CURLE_OK)
         return std::nullopt;
 
-    return static_cast<long long>(contentLength);
+    return contentLength;
 }
 
 std::optional<long> CurlHandle::getHttpAuthAvail()
@@ -902,6 +946,33 @@ std::optional<long> CurlHandle::getHttpVersion()
     return version;
 }
 
+std::optional<long> CurlHandle::getSSLVerifyResult() const
+{
+    if (!m_handle)
+        return std::nullopt;
+
+    long verifyResult;
+    auto errorCode = curl_easy_getinfo(m_handle, CURLINFO_SSL_VERIFYRESULT, &verifyResult);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    return verifyResult;
+}
+
+std::optional<SSL*> CurlHandle::sslConnection() const
+{
+    curl_tlssessioninfo* info = nullptr;
+
+    auto errorCode = curl_easy_getinfo(m_handle, CURLINFO_TLS_SSL_PTR, &info);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    if (!info || info->backend != CURLSSLBACKEND_OPENSSL || !info->internals)
+        return std::nullopt;
+
+    return static_cast<SSL*>(info->internals);
+}
+
 std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(MonotonicTime startTime)
 {
     double nameLookup = 0.0;
@@ -909,6 +980,7 @@ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(MonotonicTim
     double appConnect = 0.0;
     double startTransfer = 0.0;
     long version = 0;
+    curl_off_t responseBodySize = 0;
 
     if (!m_handle)
         return std::nullopt;
@@ -930,6 +1002,10 @@ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(MonotonicTim
         return std::nullopt;
 
     errorCode = curl_easy_getinfo(m_handle, CURLINFO_HTTP_VERSION, &version);
+    if (errorCode != CURLE_OK)
+        return std::nullopt;
+
+    errorCode = curl_easy_getinfo(m_handle, CURLINFO_SIZE_DOWNLOAD_T, &responseBodySize);
     if (errorCode != CURLE_OK)
         return std::nullopt;
 
@@ -955,6 +1031,10 @@ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(MonotonicTim
         networkLoadMetrics.protocol = httpVersion11;
     else if (version == CURL_HTTP_VERSION_2)
         networkLoadMetrics.protocol = httpVersion2;
+    else if (version == CURL_HTTP_VERSION_3)
+        networkLoadMetrics.protocol = httpVersion3;
+
+    networkLoadMetrics.responseBodyBytesReceived = responseBodySize;
 
     return networkLoadMetrics;
 }
@@ -964,7 +1044,6 @@ void CurlHandle::addExtraNetworkLoadMetrics(NetworkLoadMetrics& networkLoadMetri
     long requestHeaderSize = 0;
     curl_off_t requestBodySize = 0;
     long responseHeaderSize = 0;
-    curl_off_t responseBodySize = 0;
     char* ip = nullptr;
     long port = 0;
 
@@ -981,10 +1060,6 @@ void CurlHandle::addExtraNetworkLoadMetrics(NetworkLoadMetrics& networkLoadMetri
     if (errorCode != CURLE_OK)
         return;
 
-    errorCode = curl_easy_getinfo(m_handle, CURLINFO_SIZE_DOWNLOAD_T, &responseBodySize);
-    if (errorCode != CURLE_OK)
-        return;
-
     errorCode = curl_easy_getinfo(m_handle, CURLINFO_PRIMARY_IP, &ip);
     if (errorCode != CURLE_OK)
         return;
@@ -993,24 +1068,51 @@ void CurlHandle::addExtraNetworkLoadMetrics(NetworkLoadMetrics& networkLoadMetri
     if (errorCode != CURLE_OK)
         return;
 
-    networkLoadMetrics.requestHeaderBytesSent = requestHeaderSize;
-    networkLoadMetrics.requestBodyBytesSent = requestBodySize;
-    networkLoadMetrics.responseHeaderBytesReceived = responseHeaderSize;
-    networkLoadMetrics.responseBodyBytesReceived = responseBodySize;
-
-    if (ip) {
-        networkLoadMetrics.remoteAddress = String(ip);
-        if (port)
-            networkLoadMetrics.remoteAddress.append(":" + String::number(port));
+    auto additionalMetrics = AdditionalNetworkLoadMetricsForWebInspector::create();
+    if (!m_tlsConnectionInfo) {
+        if (auto ssl = sslConnection()) {
+            m_tlsConnectionInfo = makeUnique<TLSConnectionInfo>();
+            m_tlsConnectionInfo->protocol = OpenSSL::tlsVersion(*ssl);
+            m_tlsConnectionInfo->cipher = OpenSSL::tlsCipherName(*ssl);
+        }
     }
+
+    additionalMetrics->requestHeaderBytesSent = requestHeaderSize;
+    additionalMetrics->requestBodyBytesSent = requestBodySize;
+    additionalMetrics->responseHeaderBytesReceived = responseHeaderSize;
+
+    if (ip)
+        additionalMetrics->remoteAddress = port ? makeString(span(ip), ':', port) : String::fromLatin1(ip);
+
+    if (m_tlsConnectionInfo) {
+        additionalMetrics->tlsProtocol = m_tlsConnectionInfo->protocol;
+        additionalMetrics->tlsCipher = m_tlsConnectionInfo->cipher;
+    }
+
+    networkLoadMetrics.additionalNetworkLoadMetricsForWebInspector = WTFMove(additionalMetrics);
 }
 
 std::optional<CertificateInfo> CurlHandle::certificateInfo() const
 {
-    if (!m_sslVerifier)
-        return std::nullopt;
+    if (m_certificateInfo)
+        return *m_certificateInfo;
 
-    return m_sslVerifier->certificateInfo();
+    if (m_sslVerifier) {
+        if (auto certificateInfo = m_sslVerifier->createCertificateInfo(getSSLVerifyResult())) {
+            m_certificateInfo = WTFMove(certificateInfo);
+            return *m_certificateInfo;
+        }
+    }
+
+    // If you use an existing HTTP/2 connection, SSLVerifier does not exist.
+    if (auto ssl = sslConnection()) {
+        if (auto certificateInfo = OpenSSL::createCertificateInfo(getSSLVerifyResult(), *ssl)) {
+            m_certificateInfo = WTFMove(certificateInfo);
+            return *m_certificateInfo;
+        }
+    }
+
+    return std::nullopt;
 }
 
 long long CurlHandle::maxCurlOffT()

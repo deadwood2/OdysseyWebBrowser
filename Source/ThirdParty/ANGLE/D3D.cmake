@@ -6,20 +6,16 @@
 # found in the LICENSE file.
 #
 # This file houses the build configuration for the ANGLE D3D back-ends.
+# Copyright 2022 The ANGLE Project Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
 
-
-
-
-
-
-set(_d3d_shared_sources
+set(d3d_shared_sources
     "src/libANGLE/renderer/d3d/BufferD3D.cpp"
     "src/libANGLE/renderer/d3d/BufferD3D.h"
     "src/libANGLE/renderer/d3d/CompilerD3D.cpp"
     "src/libANGLE/renderer/d3d/CompilerD3D.h"
     "src/libANGLE/renderer/d3d/ContextD3D.h"
-    "src/libANGLE/renderer/d3d/DeviceD3D.cpp"
-    "src/libANGLE/renderer/d3d/DeviceD3D.h"
     "src/libANGLE/renderer/d3d/DisplayD3D.cpp"
     "src/libANGLE/renderer/d3d/DisplayD3D.h"
     "src/libANGLE/renderer/d3d/DynamicHLSL.cpp"
@@ -42,6 +38,8 @@ set(_d3d_shared_sources
     "src/libANGLE/renderer/d3d/NativeWindowD3D.h"
     "src/libANGLE/renderer/d3d/ProgramD3D.cpp"
     "src/libANGLE/renderer/d3d/ProgramD3D.h"
+    "src/libANGLE/renderer/d3d/ProgramExecutableD3D.cpp"
+    "src/libANGLE/renderer/d3d/ProgramExecutableD3D.h"
     "src/libANGLE/renderer/d3d/RenderTargetD3D.cpp"
     "src/libANGLE/renderer/d3d/RenderTargetD3D.h"
     "src/libANGLE/renderer/d3d/RenderbufferD3D.cpp"
@@ -64,20 +62,13 @@ set(_d3d_shared_sources
     "src/libANGLE/renderer/d3d/VertexBuffer.h"
     "src/libANGLE/renderer/d3d/VertexDataManager.cpp"
     "src/libANGLE/renderer/d3d/VertexDataManager.h"
+    "src/libANGLE/renderer/d3d/driver_utils_d3d.cpp"
+    "src/libANGLE/renderer/d3d/driver_utils_d3d.h"
     "src/libANGLE/renderer/d3d/formatutilsD3D.h"
 )
 
-
-if( NOT angle_is_winuwp)
-    list(APPEND _d3d_shared_sources
-        "src/libANGLE/renderer/d3d/../../../third_party/systeminfo/SystemInfo.cpp"
-        "src/libANGLE/renderer/d3d/../../../third_party/systeminfo/SystemInfo.h"
-    )
-endif()
-
-
 if(angle_enable_d3d9)
-    set(_d3d9_backend_sources
+    set(d3d9_backend_sources
         "src/libANGLE/renderer/d3d/d3d9/Blit9.cpp"
         "src/libANGLE/renderer/d3d/d3d9/Blit9.h"
         "src/libANGLE/renderer/d3d/d3d9/Buffer9.cpp"
@@ -86,6 +77,8 @@ if(angle_enable_d3d9)
         "src/libANGLE/renderer/d3d/d3d9/Context9.h"
         "src/libANGLE/renderer/d3d/d3d9/DebugAnnotator9.cpp"
         "src/libANGLE/renderer/d3d/d3d9/DebugAnnotator9.h"
+        "src/libANGLE/renderer/d3d/d3d9/Device9.cpp"
+        "src/libANGLE/renderer/d3d/d3d9/Device9.h"
         "src/libANGLE/renderer/d3d/d3d9/Fence9.cpp"
         "src/libANGLE/renderer/d3d/d3d9/Fence9.h"
         "src/libANGLE/renderer/d3d/d3d9/Framebuffer9.cpp"
@@ -132,9 +125,8 @@ if(angle_enable_d3d9)
     )
 endif()
 
-
 if(angle_enable_d3d11)
-    set(_d3d11_backend_sources
+    set(d3d11_backend_sources
         "src/libANGLE/renderer/d3d/d3d11/Blit11.cpp"
         "src/libANGLE/renderer/d3d/d3d11/Blit11.h"
         "src/libANGLE/renderer/d3d/d3d11/Blit11Helper_autogen.inc"
@@ -146,6 +138,8 @@ if(angle_enable_d3d11)
         "src/libANGLE/renderer/d3d/d3d11/Context11.h"
         "src/libANGLE/renderer/d3d/d3d11/DebugAnnotator11.cpp"
         "src/libANGLE/renderer/d3d/d3d11/DebugAnnotator11.h"
+        "src/libANGLE/renderer/d3d/d3d11/Device11.cpp"
+        "src/libANGLE/renderer/d3d/d3d11/Device11.h"
         "src/libANGLE/renderer/d3d/d3d11/ExternalImageSiblingImpl11.cpp"
         "src/libANGLE/renderer/d3d/d3d11/ExternalImageSiblingImpl11.h"
         "src/libANGLE/renderer/d3d/d3d11/Fence11.cpp"
@@ -259,9 +253,8 @@ if(angle_enable_d3d11)
         "src/libANGLE/renderer/d3d/d3d11/texture_format_table_utils.h"
     )
 
-  
-  if(angle_is_winuwp)
-        list(APPEND _d3d11_backend_sources
+    if(angle_is_winuwp)
+        list(APPEND d3d11_backend_sources
             "src/libANGLE/renderer/d3d/d3d11/winrt/CoreWindowNativeWindow.cpp"
             "src/libANGLE/renderer/d3d/d3d11/winrt/CoreWindowNativeWindow.h"
             "src/libANGLE/renderer/d3d/d3d11/winrt/InspectableNativeWindow.cpp"
@@ -272,14 +265,155 @@ if(angle_enable_d3d11)
             "src/libANGLE/renderer/d3d/d3d11/winrt/SwapChainPanelNativeWindow.h"
         )
     else()
-        list(APPEND _d3d11_backend_sources
-            "src/libANGLE/renderer/d3d/d3d11/converged/CompositorNativeWindow11.cpp"
-            "src/libANGLE/renderer/d3d/d3d11/converged/CompositorNativeWindow11.h"
+        list(APPEND d3d11_backend_sources
             "src/libANGLE/renderer/d3d/d3d11/win32/NativeWindow11Win32.cpp"
             "src/libANGLE/renderer/d3d/d3d11/win32/NativeWindow11Win32.h"
         )
     endif()
 
-   set(_d3d11_backend_sources, "${_d3d11_backend_sources};${libangle_d3d11_blit_shaders}")
-endif()
+    if(angle_enable_d3d11_compositor_native_window)
+        list(APPEND d3d11_backend_sources
+            "src/libANGLE/renderer/d3d/d3d11/converged/CompositorNativeWindow11.cpp"
+            "src/libANGLE/renderer/d3d/d3d11/converged/CompositorNativeWindow11.h"
+        )
+    endif()
+# GENERATED FILE - DO NOT EDIT.
+# Generated by gen_blit11helper.py.
+#
+# Copyright 2018 The ANGLE Project Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# d3d11_blit_shaders_autogen.gni:
+#   List of generated blit shaders for inclusion in ANGLE's build process.
+    set(libangle_d3d11_blit_shaders
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb2d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg2d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr2d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthrougha2d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughlum2d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughlumalpha2d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2dui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2di11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb2dui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb2di11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg2dui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg2di11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr2dui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr2di11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgb_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgb_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pt_rgba_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pm_rgba_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_um_rgba_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pt_rgb_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pm_rgb_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_um_rgb_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_luma_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_luma_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_lumaalpha_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_lumaalpha_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2d_4444_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_4444_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_4444_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb2d_565_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgb_565_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgb_565_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2d_5551_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_5551_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_5551_2d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba3d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb3d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg3d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr3d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughlum3d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughlumalpha3d11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba3dui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba3di11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb3dui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb3di11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg3dui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg3di11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr3dui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr3di11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgb_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgb_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pt_rgba_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pm_rgba_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_um_rgba_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pt_rgb_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pm_rgb_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_um_rgb_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_pt_rgba_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_pm_rgba_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_um_rgba_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_pt_rgb_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_pm_rgb_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_um_rgb_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_luma_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_luma_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_lumaalpha_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_lumaalpha_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba3d_4444_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_4444_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_4444_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb3d_565_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgb_565_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgb_565_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba3d_5551_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_5551_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_5551_3d_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2darray11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb2darray11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg2darray11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr2darray11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughlum2darray11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughlumalpha2darray11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2darrayui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2darrayi11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb2darrayui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb2darrayi11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg2darrayui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrg2darrayi11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr2darrayui11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughr2darrayi11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgb_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgb_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pt_rgba_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pm_rgba_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_um_rgba_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pt_rgb_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_pm_rgb_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftou_um_rgb_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_pt_rgba_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_pm_rgba_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_um_rgba_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_pt_rgb_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_pm_rgb_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftoi_um_rgb_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_luma_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_luma_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_lumaalpha_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_lumaalpha_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2darray_4444_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_4444_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_4444_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgb2darray_565_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgb_565_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgb_565_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/passthroughrgba2darray_5551_11ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_pm_rgba_5551_2darray_ps.h"
+        "src/libANGLE/renderer/d3d/d3d11/shaders/compiled/multiplyalpha_ftof_um_rgba_5551_2darray_ps.h"
+    )
 
+    foreach(item IN LISTS libangle_d3d11_blit_shaders)
+        list(APPEND d3d11_backend_sources ${item})
+    endforeach()
+endif()

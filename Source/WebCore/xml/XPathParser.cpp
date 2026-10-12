@@ -1,6 +1,7 @@
 /*
  * Copyright 2005 Maksim Orlovich <maksim@kde.org>
- * Copyright (C) 2006, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2006-2024 Apple Inc. All rights reserved.
+ * Copyright (C) 2019 Google Inc. All rights reserved.
  * Copyright (C) 2007 Alexey Proskuryakov <ap@webkit.org>
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,9 +36,8 @@
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RobinHoodHashMap.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringHash.h>
-
-using namespace WebCore::XPath;
 
 extern int xpathyyparse(WebCore::XPath::Parser&);
 
@@ -48,16 +48,22 @@ namespace XPath {
 
 struct Parser::Token {
     int type;
-    String string;
-    Step::Axis axis;
-    NumericOp::Opcode numericOpcode;
-    EqTestOp::Opcode equalityTestOpcode;
+    using TokenValue = std::variant<String, Step::Axis, NumericOp::Opcode, EqTestOp::Opcode>;
+    TokenValue value;
 
-    Token(int type) : type(type) { }
-    Token(int type, const String& string) : type(type), string(string) { }
-    Token(int type, Step::Axis axis) : type(type), axis(axis) { }
-    Token(int type, NumericOp::Opcode opcode) : type(type), numericOpcode(opcode) { }
-    Token(int type, EqTestOp::Opcode opcode) : type(type), equalityTestOpcode(opcode) { }
+    Token() = delete;
+
+    Token(int type)
+        : type(type)
+    { }
+    Token(int type, TokenValue&& value)
+        : type(type), value(WTFMove(value))
+    { }
+
+    String& string() { return std::get<String>(value); }
+    Step::Axis axis() const { return std::get<Step::Axis>(value); }
+    NumericOp::Opcode numericOpcode() const { return std::get<NumericOp::Opcode>(value); }
+    EqTestOp::Opcode equalityTestOpcode() const { return std::get<EqTestOp::Opcode>(value); }
 };
 
 enum XMLCat { NameStart, NameCont, NotPartOfName };
@@ -106,7 +112,7 @@ static MemoryCompactLookupOnlyRobinHoodHashMap<String, Step::Axis> createAxisNam
 
 static bool parseAxisName(const String& name, Step::Axis& type)
 {
-    static const auto axisNames = makeNeverDestroyed(createAxisNamesMap());
+    static NeverDestroyed axisNames = createAxisNamesMap();
     auto it = axisNames.get().find(name);
     if (it == axisNames.get().end())
         return false;
@@ -132,9 +138,10 @@ bool Parser::isBinaryOperatorContext() const
     }
 }
 
+// See https://www.w3.org/TR/1999/REC-xpath-19991116/#NT-ExprWhitespace .
 void Parser::skipWS()
 {
-    while (m_nextPos < m_data.length() && isSpaceOrNewline(m_data[m_nextPos]))
+    while (m_nextPos < m_data.length() && isASCIIWhitespaceWithoutFF(m_data[m_nextPos]))
         ++m_nextPos;
 }
 
@@ -254,7 +261,7 @@ bool Parser::lexQName(String& name)
     if (!lexNCName(n2))
         return false;
 
-    name = n1 + ":" + n2;
+    name = makeString(n1, ':', n2);
     return true;
 }
 
@@ -310,7 +317,7 @@ inline Parser::Token Parser::nextTokenInternal()
         if (isBinaryOperatorContext())
             return makeTokenAndAdvance(MULOP, NumericOp::OP_Mul);
         ++m_nextPos;
-        return Token(NAMETEST, "*");
+        return Token(NAMETEST, "*"_s);
     case '$': { // $ QName
         m_nextPos++;
         String name;
@@ -327,13 +334,13 @@ inline Parser::Token Parser::nextTokenInternal()
     skipWS();
     // If we're in an operator context, check for any operator names
     if (isBinaryOperatorContext()) {
-        if (name == "and") //### hash?
+        if (name == "and"_s) // ### hash?
             return Token(AND);
-        if (name == "or")
+        if (name == "or"_s)
             return Token(OR);
-        if (name == "mod")
+        if (name == "mod"_s)
             return Token(MULOP, NumericOp::OP_Mod);
-        if (name == "div")
+        if (name == "div"_s)
             return Token(MULOP, NumericOp::OP_Div);
     }
 
@@ -356,7 +363,7 @@ inline Parser::Token Parser::nextTokenInternal()
         skipWS();
         if (peekCurHelper() == '*') {
             m_nextPos++;
-            return Token(NAMETEST, name + ":*");
+            return Token(NAMETEST, makeString(name, ":*"_s));
         }
         
         // Make a full qname.
@@ -364,7 +371,7 @@ inline Parser::Token Parser::nextTokenInternal()
         if (!lexNCName(n2))
             return Token(XPATH_ERROR);
         
-        name = name + ":" + n2;
+        name = makeString(name, ':', n2);
     }
 
     skipWS();
@@ -374,13 +381,13 @@ inline Parser::Token Parser::nextTokenInternal()
 
         // Either node type oor function name.
 
-        if (name == "processing-instruction")
+        if (name == "processing-instruction"_s)
             return Token(PI);
-        if (name == "node")
+        if (name == "node"_s)
             return Token(NODE);
-        if (name == "text")
+        if (name == "text"_s)
             return Token(TEXT_);
-        if (name == "comment")
+        if (name == "comment"_s)
             return Token(COMMENT);
 
         return Token(FUNCTIONNAME, name);
@@ -409,14 +416,14 @@ int Parser::lex(YYSTYPE& yylval)
 
     switch (token.type) {
     case AXISNAME:
-        yylval.axis = token.axis;
+        yylval.axis = token.axis();
         break;
     case MULOP:
-        yylval.numericOpcode = token.numericOpcode;
+        yylval.numericOpcode = token.numericOpcode();
         break;
     case RELOP:
     case EQOP:
-        yylval.equalityTestOpcode = token.equalityTestOpcode;
+        yylval.equalityTestOpcode = token.equalityTestOpcode();
         break;
     case NODETYPE:
     case FUNCTIONNAME:
@@ -424,14 +431,14 @@ int Parser::lex(YYSTYPE& yylval)
     case VARIABLEREFERENCE:
     case NUMBER:
     case NAMETEST:
-        yylval.string = token.string.releaseImpl().leakRef();
+        yylval.string = token.string().releaseImpl().leakRef();
         break;
     }
 
     return token.type;
 }
 
-bool Parser::expandQualifiedName(const String& qualifiedName, String& localName, String& namespaceURI)
+bool Parser::expandQualifiedName(const String& qualifiedName, AtomString& localName, AtomString& namespaceURI)
 {
     size_t colon = qualifiedName.find(':');
     if (colon != notFound) {
@@ -439,14 +446,14 @@ bool Parser::expandQualifiedName(const String& qualifiedName, String& localName,
             m_sawNamespaceError = true;
             return false;
         }
-        namespaceURI = m_resolver->lookupNamespaceURI(qualifiedName.left(colon));
+        namespaceURI = m_resolver->lookupNamespaceURI(StringView(qualifiedName).left(colon).toAtomString());
         if (namespaceURI.isNull()) {
             m_sawNamespaceError = true;
             return false;
         }
-        localName = qualifiedName.substring(colon + 1);
+        localName = StringView(qualifiedName).substring(colon + 1).toAtomString();
     } else
-        localName = qualifiedName;
+        localName = AtomString { qualifiedName };
     return true;
 }
 
@@ -457,12 +464,13 @@ ExceptionOr<std::unique_ptr<Expression>> Parser::parseStatement(const String& st
     int parseError = xpathyyparse(parser);
 
     if (parser.m_sawNamespaceError)
-        return Exception { NamespaceError };
+        return Exception { ExceptionCode::NamespaceError };
 
     if (parseError)
-        return Exception { SyntaxError };
+        return Exception { ExceptionCode::SyntaxError };
 
     return WTFMove(parser.m_result);
 }
 
-} }
+} // namespace XPath
+} // namespace WebCore

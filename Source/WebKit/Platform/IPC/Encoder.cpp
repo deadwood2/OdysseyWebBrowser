@@ -27,10 +27,10 @@
 #include "Encoder.h"
 
 #include "ArgumentCoders.h"
-#include "DataReference.h"
 #include "MessageFlags.h"
 #include <algorithm>
 #include <wtf/OptionSet.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/UniqueRef.h>
 
 #if OS(DARWIN)
@@ -63,25 +63,13 @@ static inline void freeBuffer(void* addr, size_t size)
 #endif
 }
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(Encoder);
+
 Encoder::Encoder(MessageName messageName, uint64_t destinationID)
     : m_messageName(messageName)
     , m_destinationID(destinationID)
-    , m_buffer(m_inlineBuffer)
-    , m_bufferPointer(m_inlineBuffer)
-    , m_bufferSize(0)
-    , m_bufferCapacity(sizeof(m_inlineBuffer))
 {
     encodeHeader();
-}
-
-Encoder::Encoder(ConstructWithoutHeaderTag)
-    : m_messageName()
-    , m_destinationID(0)
-    , m_buffer(m_inlineBuffer)
-    , m_bufferPointer(m_inlineBuffer)
-    , m_bufferSize(0)
-    , m_bufferCapacity(sizeof(m_inlineBuffer))
-{
 }
 
 Encoder::~Encoder()
@@ -89,15 +77,6 @@ Encoder::~Encoder()
     if (m_buffer != m_inlineBuffer)
         freeBuffer(m_buffer, m_bufferCapacity);
     // FIXME: We need to dispose of the attachments in cases of failure.
-}
-
-ShouldDispatchWhenWaitingForSyncReply Encoder::shouldDispatchMessageWhenWaitingForSyncReply() const
-{
-    if (messageFlags().contains(MessageFlags::DispatchMessageWhenWaitingForSyncReply))
-        return ShouldDispatchWhenWaitingForSyncReply::Yes;
-    if (messageFlags().contains(MessageFlags::DispatchMessageWhenWaitingForUnboundedSyncReply))
-        return ShouldDispatchWhenWaitingForSyncReply::YesDuringUnboundedIPC;
-    return ShouldDispatchWhenWaitingForSyncReply::No;
 }
 
 void Encoder::setShouldDispatchMessageWhenWaitingForSyncReply(ShouldDispatchWhenWaitingForSyncReply shouldDispatchWhenWaitingForSyncReply)
@@ -118,10 +97,22 @@ void Encoder::setShouldDispatchMessageWhenWaitingForSyncReply(ShouldDispatchWhen
     }
 }
 
+bool Encoder::isFullySynchronousModeForTesting() const
+{
+    return messageFlags().contains(MessageFlags::UseFullySynchronousModeForTesting);
+}
+
 void Encoder::setFullySynchronousModeForTesting()
 {
     messageFlags().add(MessageFlags::UseFullySynchronousModeForTesting);
 }
+
+#if ENABLE(IPC_TESTING_API)
+void Encoder::setSyncMessageDeserializationFailure()
+{
+    messageFlags().add(MessageFlags::SyncMessageDeserializationFailure);
+}
+#endif
 
 void Encoder::setShouldMaintainOrderingWithAsyncMessages()
 {
@@ -135,7 +126,7 @@ void Encoder::wrapForTesting(UniqueRef<Encoder>&& original)
 
     original->setShouldDispatchMessageWhenWaitingForSyncReply(ShouldDispatchWhenWaitingForSyncReply::Yes);
 
-    *this << DataReference(original->buffer(), original->bufferSize());
+    *this << original->span();
 
     Vector<Attachment> attachments = original->releaseAttachments();
     reserve(attachments.size());
@@ -181,12 +172,12 @@ OptionSet<MessageFlags>& Encoder::messageFlags()
 {
     // FIXME: We should probably pass an OptionSet<MessageFlags> into the Encoder constructor instead of encoding defaultMessageFlags then using this to change it later.
     static_assert(sizeof(OptionSet<MessageFlags>::StorageType) == 1, "Encoder uses the first byte of the buffer for message flags.");
-    return *reinterpret_cast<OptionSet<MessageFlags>*>(buffer());
+    return *reinterpret_cast<OptionSet<MessageFlags>*>(m_buffer);
 }
 
 const OptionSet<MessageFlags>& Encoder::messageFlags() const
 {
-    return *reinterpret_cast<OptionSet<MessageFlags>*>(buffer());
+    return *reinterpret_cast<OptionSet<MessageFlags>*>(m_buffer);
 }
 
 uint8_t* Encoder::grow(size_t alignment, size_t size)
@@ -200,14 +191,6 @@ uint8_t* Encoder::grow(size_t alignment, size_t size)
     m_bufferPointer = m_buffer + alignedSize + size;
 
     return m_buffer + alignedSize;
-}
-
-void Encoder::encodeFixedLengthData(const uint8_t* data, size_t size, size_t alignment)
-{
-    ASSERT(!(reinterpret_cast<uintptr_t>(data) % alignment));
-
-    uint8_t* buffer = grow(alignment, size);
-    memcpy(buffer, data, size);
 }
 
 void Encoder::addAttachment(Attachment&& attachment)

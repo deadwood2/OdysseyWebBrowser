@@ -24,14 +24,34 @@
 #include "QualifiedName.h"
 #include "SVGStringList.h"
 #include <wtf/RobinHoodHashSet.h>
+#include <wtf/WeakRef.h>
 
 namespace WebCore {
 
+class QualifiedName;
 class SVGElement;
 class SVGStringList;
+class WeakPtrImplWithEventTargetData;
 
 template<typename OwnerType, typename... BaseTypes>
 class SVGPropertyOwnerRegistry;
+
+class SVGTests;
+
+class SVGConditionalProcessingAttributes {
+    WTF_MAKE_NONCOPYABLE(SVGConditionalProcessingAttributes); WTF_MAKE_FAST_ALLOCATED;
+public:
+    SVGConditionalProcessingAttributes(SVGElement& contextElement);
+
+    SVGStringList& requiredFeatures() { return m_requiredFeatures; }
+    SVGStringList& requiredExtensions() { return m_requiredExtensions; }
+    SVGStringList& systemLanguage() { return m_systemLanguage; }
+
+private:
+    Ref<SVGStringList> m_requiredFeatures;
+    Ref<SVGStringList> m_requiredExtensions;
+    Ref<SVGStringList> m_systemLanguage;
+};
 
 class SVGTests {
     WTF_MAKE_NONCOPYABLE(SVGTests);
@@ -48,19 +68,24 @@ public:
 
     WEBCORE_EXPORT static bool hasFeatureForLegacyBindings(const String& feature, const String& version);
 
+    SVGConditionalProcessingAttributes& conditionalProcessingAttributes();
+    SVGConditionalProcessingAttributes* conditionalProcessingAttributesIfExists() const;
+
     // These methods are called from DOM through the super classes.
-    SVGStringList& requiredFeatures() { return m_requiredFeatures; }
-    SVGStringList& requiredExtensions() { return m_requiredExtensions; }
-    SVGStringList& systemLanguage() { return m_systemLanguage; }
+    SVGStringList& requiredFeatures() { return conditionalProcessingAttributes().requiredFeatures(); }
+    Ref<SVGStringList> protectedRequiredFeatures();
+    SVGStringList& requiredExtensions() { return conditionalProcessingAttributes().requiredExtensions(); }
+    Ref<SVGStringList> protectedRequiredExtensions();
+    SVGStringList& systemLanguage() { return conditionalProcessingAttributes().systemLanguage(); }
+    Ref<SVGStringList> protectedSystemLanguage();
 
 protected:
     SVGTests(SVGElement* contextElement);
 
 private:
-    SVGElement& m_contextElement;
-    Ref<SVGStringList> m_requiredFeatures;
-    Ref<SVGStringList> m_requiredExtensions;
-    Ref<SVGStringList> m_systemLanguage;
+    Ref<SVGElement> protectedContextElement() const;
+
+    WeakRef<SVGElement, WeakPtrImplWithEventTargetData> m_contextElement;
 };
 
 } // namespace WebCore

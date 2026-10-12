@@ -199,7 +199,7 @@ class MiscTests(Base):
     def test_parse_warnings_are_logged_if_not_in_lint_mode(self):
         with OutputCapture() as captured:
             self.parse_exp('-- this should be a syntax error', is_lint_mode=False)
-        self.assertNotEquals(captured.root.log.getvalue(), '')
+        self.assertNotEqual(captured.root.log.getvalue(), '')
 
     def test_error_on_different_platform(self):
         # parse_exp uses a Windows port. Assert errors on Mac show up in lint mode.
@@ -290,7 +290,7 @@ class SkippedTests(Base):
         if overrides:
             expectations_dict['overrides'] = overrides
         port.expectations_dict = lambda **kwargs: expectations_dict
-        port.skipped_layout_tests = lambda tests, **kwargs: set(skips)
+        port.skipped_layout_tests = lambda **kwargs: set(skips)
         expectations_to_lint = expectations_dict if lint else None
         exp = TestExpectations(port, ['failures/expected/text.html'], expectations_to_lint=expectations_to_lint)
         exp.parse_all_expectations()
@@ -327,7 +327,7 @@ class SkippedTests(Base):
         expectations_dict = OrderedDict()
         expectations_dict['expectations'] = ''
         port.expectations_dict = lambda **kwargs: expectations_dict
-        port.skipped_layout_tests = lambda tests, **kwargs: {'foo/bar/baz.html'}
+        port.skipped_layout_tests = lambda **kwargs: {'foo/bar/baz.html'}
         with OutputCapture() as captured:
             exp = TestExpectations(port)
             exp.parse_all_expectations()
@@ -508,47 +508,6 @@ Bug(y) failures/expected/text.html [ Failure ]
     def test_macro_overrides(self):
         self.assert_bad_expectations("Bug(test) [ Win ] passes/text.html [ Pass ]\n"
                                      "Bug(test) [ XP ] passes/text.html [ Failure ]\n")
-
-
-class RemoveConfigurationsTest(Base):
-    def test_remove(self):
-        host = MockHost()
-        test_port = host.port_factory.get('test-win-xp', None)
-        test_port.test_exists = lambda test: True
-        test_port.test_isfile = lambda test: True
-
-        test_config = test_port.test_configuration()
-        test_port.expectations_dict = lambda **kwargs: {"expectations": """Bug(x) [ Linux Win Release ] failures/expected/foo.html [ Failure ]
-Bug(y) [ Win Mac Debug ] failures/expected/foo.html [ Crash ]
-"""}
-        expectations = TestExpectations(test_port, self.get_basic_tests())
-        expectations.parse_all_expectations()
-
-        actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', test_config)
-
-        self.assertEqual("""Bug(x) [ 7SP0 Linux Vista Release ] failures/expected/foo.html [ Failure ]
-Bug(y) [ Win Mac Debug ] failures/expected/foo.html [ Crash ]
-""", actual_expectations)
-
-    def test_remove_line(self):
-        host = MockHost()
-        test_port = host.port_factory.get('test-win-xp', None)
-        test_port.test_exists = lambda test: True
-        test_port.test_isfile = lambda test: True
-
-        test_config = test_port.test_configuration()
-        test_port.expectations_dict = lambda **kwargs: {'expectations': """Bug(x) [ Win Release ] failures/expected/foo.html [ Failure ]
-Bug(y) [ Win Debug ] failures/expected/foo.html [ Crash ]
-"""}
-        expectations = TestExpectations(test_port)
-        expectations.parse_all_expectations()
-
-        actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', test_config)
-        actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', host.port_factory.get('test-win-vista', None).test_configuration())
-        actual_expectations = expectations.remove_configuration_from_test('failures/expected/foo.html', host.port_factory.get('test-win-7sp0', None).test_configuration())
-
-        self.assertEqual("""Bug(y) [ Win Debug ] failures/expected/foo.html [ Crash ]
-""", actual_expectations)
 
 
 class RebaseliningTest(Base):

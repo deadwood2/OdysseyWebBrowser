@@ -32,15 +32,18 @@
 #import "IOSurface.h"
 #import "LengthFunctions.h"
 #import "LocalCurrentGraphicsContext.h"
+#import "MediaPlayerEnumsCocoa.h"
 #import "Model.h"
+#import "PathCG.h"
 #import "PlatformCAAnimationCocoa.h"
 #import "PlatformCAFilters.h"
+#import "PlatformCALayerContentsDelayedReleaser.h"
+#import "PlatformCALayerDelegatedContents.h"
 #import "ScrollbarThemeMac.h"
 #import "TileController.h"
 #import "TiledBacking.h"
 #import "WebActionDisablingCALayerDelegate.h"
 #import "WebCoreCALayerExtras.h"
-#import "WebGLLayer.h"
 #import "WebVideoContainerLayer.h"
 #import <pal/spi/cocoa/QuartzCoreSPI.h>
 #import <wtf/SoftLinking.h>
@@ -54,6 +57,7 @@
 #import <wtf/BlockObjCExceptions.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/Lock.h>
+#import <wtf/MachSendRight.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
@@ -62,8 +66,6 @@
 #import "WAKWindow.h"
 #import "WKGraphics.h"
 #import "WebCoreThread.h"
-#else
-#import "ThemeMac.h"
 #endif
 
 #import <pal/cocoa/AVFoundationSoftLink.h>
@@ -195,9 +197,9 @@ void PlatformCALayerCocoa::setOwner(PlatformCALayerClient* owner)
 static NSString *toCAFilterType(PlatformCALayer::FilterType type)
 {
     switch (type) {
-    case PlatformCALayer::Linear: return kCAFilterLinear;
-    case PlatformCALayer::Nearest: return kCAFilterNearest;
-    case PlatformCALayer::Trilinear: return kCAFilterTrilinear;
+    case PlatformCALayer::FilterType::Linear: return kCAFilterLinear;
+    case PlatformCALayer::FilterType::Nearest: return kCAFilterNearest;
+    case PlatformCALayer::FilterType::Trilinear: return kCAFilterTrilinear;
     default: return 0;
     }
 }
@@ -205,16 +207,13 @@ static NSString *toCAFilterType(PlatformCALayer::FilterType type)
 PlatformCALayer::LayerType PlatformCALayerCocoa::layerTypeForPlatformLayer(PlatformLayer* layer)
 {
     if (PAL::isAVFoundationFrameworkAvailable() && [layer isKindOfClass:PAL::getAVPlayerLayerClass()])
-        return LayerTypeAVPlayerLayer;
+        return LayerType::LayerTypeAVPlayerLayer;
 
     if ([layer isKindOfClass:WebVideoContainerLayer.class]
         && [(WebVideoContainerLayer*)layer playerLayer])
-        return LayerTypeAVPlayerLayer;
+        return LayerType::LayerTypeAVPlayerLayer;
 
-    if ([layer isKindOfClass:[WebGLLayer class]])
-        return LayerTypeContentsProvidedLayer;
-
-    return LayerTypeCustom;
+    return LayerType::LayerTypeCustom;
 }
 
 PlatformCALayerCocoa::PlatformCALayerCocoa(LayerType layerType, PlatformCALayerClient* owner)
@@ -222,71 +221,56 @@ PlatformCALayerCocoa::PlatformCALayerCocoa(LayerType layerType, PlatformCALayerC
 {
     Class layerClass = Nil;
     switch (layerType) {
-    case LayerTypeLayer:
-    case LayerTypeRootLayer:
+    case LayerType::LayerTypeLayer:
+    case LayerType::LayerTypeRootLayer:
         layerClass = [CALayer class];
         break;
-    case LayerTypeScrollContainerLayer:
+    case LayerType::LayerTypeScrollContainerLayer:
         // Scroll container layers only have special behavior with PlatformCALayerRemote.
         // fallthrough
-    case LayerTypeWebLayer:
+    case LayerType::LayerTypeWebLayer:
         layerClass = [WebLayer class];
         break;
-    case LayerTypeSimpleLayer:
-    case LayerTypeTiledBackingTileLayer:
+    case LayerType::LayerTypeSimpleLayer:
+    case LayerType::LayerTypeTiledBackingTileLayer:
+    case LayerType::LayerTypeContentsProvidedLayer:
         layerClass = [WebSimpleLayer class];
         break;
-    case LayerTypeTransformLayer:
+    case LayerType::LayerTypeTransformLayer:
         layerClass = [CATransformLayer class];
         break;
-#if ENABLE(FILTERS_LEVEL_2)
-    case LayerTypeBackdropLayer:
+    case LayerType::LayerTypeBackdropLayer:
         layerClass = [CABackdropLayer class];
         break;
-    case LayerTypeLightSystemBackdropLayer:
-        layerClass = [WebLightSystemBackdropLayer class];
-        break;
-    case LayerTypeDarkSystemBackdropLayer:
-        layerClass = [WebDarkSystemBackdropLayer class];
-        break;
-#else
-    case LayerTypeBackdropLayer:
-    case LayerTypeLightSystemBackdropLayer:
-    case LayerTypeDarkSystemBackdropLayer:
-        ASSERT_NOT_REACHED();
-        layerClass = [CALayer class];
-        break;
-#endif
-    case LayerTypeTiledBackingLayer:
-    case LayerTypePageTiledBackingLayer:
+    case LayerType::LayerTypeTiledBackingLayer:
+    case LayerType::LayerTypePageTiledBackingLayer:
         layerClass = [WebTiledBackingLayer class];
         break;
-    case LayerTypeAVPlayerLayer:
+    case LayerType::LayerTypeAVPlayerLayer:
         if (PAL::isAVFoundationFrameworkAvailable())
             layerClass = PAL::getAVPlayerLayerClass();
         break;
-    case LayerTypeContentsProvidedLayer:
-        // We don't create PlatformCALayerCocoas wrapped around WebGLLayers.
-        ASSERT_NOT_REACHED();
-        break;
 #if ENABLE(MODEL_ELEMENT)
-    case LayerTypeModelLayer:
+    case LayerType::LayerTypeModelLayer:
         layerClass = [CALayer class];
         break;
 #endif
-    case LayerTypeShapeLayer:
+    case LayerType::LayerTypeHost:
+        layerClass = CALayer.class;
+        break;
+    case LayerType::LayerTypeShapeLayer:
         layerClass = [CAShapeLayer class];
         // fillColor defaults to opaque black.
         break;
-    case LayerTypeCustom:
+    case LayerType::LayerTypeCustom:
         break;
     }
 
     if (layerClass)
         m_layer = adoptNS([(CALayer *)[layerClass alloc] init]);
 
-#if ENABLE(FILTERS_LEVEL_2) && PLATFORM(MAC)
-    if (layerType == LayerTypeBackdropLayer)
+#if PLATFORM(MAC)
+    if (layerType == LayerType::LayerTypeBackdropLayer)
         [(CABackdropLayer*)m_layer.get() setWindowServerAware:NO];
 #endif
 
@@ -310,13 +294,13 @@ void PlatformCALayerCocoa::commonInit()
     }
     
     // Clear all the implicit animations on the CALayer
-    if (m_layerType == LayerTypeAVPlayerLayer || m_layerType == LayerTypeContentsProvidedLayer || m_layerType == LayerTypeScrollContainerLayer || m_layerType == LayerTypeCustom)
+    if (m_layerType == PlatformCALayer::LayerType::LayerTypeAVPlayerLayer || m_layerType == PlatformCALayer::LayerType::LayerTypeScrollContainerLayer || m_layerType == PlatformCALayer::LayerType::LayerTypeCustom)
         [m_layer web_disableAllActions];
     else
         [m_layer setDelegate:[WebActionDisablingCALayerDelegate shared]];
 
     // So that the scrolling thread's performance logging code can find all the tiles, mark this as being a tile.
-    if (m_layerType == LayerTypeTiledBackingTileLayer)
+    if (m_layerType == PlatformCALayer::LayerType::LayerTypeTiledBackingTileLayer)
         [m_layer setValue:@YES forKey:@"isTile"];
 
     if (usesTiledBackingLayer()) {
@@ -326,6 +310,14 @@ void PlatformCALayerCocoa::commonInit()
         m_customSublayers = makeUnique<PlatformCALayerList>(tileController->containerLayers());
     }
 
+    if ([m_layer respondsToSelector:@selector(setUsesWebKitBehavior:)]) {
+        [m_layer setUsesWebKitBehavior:YES];
+        if (m_layerType == PlatformCALayer::LayerType::LayerTypeTransformLayer) {
+            [m_layer setSortsSublayers:YES];
+        } else
+            [m_layer setSortsSublayers:NO];
+    }
+
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
@@ -333,21 +325,21 @@ Ref<PlatformCALayer> PlatformCALayerCocoa::clone(PlatformCALayerClient* owner) c
 {
     LayerType type;
     switch (layerType()) {
-    case LayerTypeTransformLayer:
-        type = LayerTypeTransformLayer;
+    case PlatformCALayer::LayerType::LayerTypeTransformLayer:
+        type = PlatformCALayer::LayerType::LayerTypeTransformLayer;
         break;
-    case LayerTypeAVPlayerLayer:
-        type = LayerTypeAVPlayerLayer;
+    case PlatformCALayer::LayerType::LayerTypeAVPlayerLayer:
+        type = PlatformCALayer::LayerType::LayerTypeAVPlayerLayer;
         break;
-    case LayerTypeShapeLayer:
-        type = LayerTypeShapeLayer;
+    case PlatformCALayer::LayerType::LayerTypeShapeLayer:
+        type = PlatformCALayer::LayerType::LayerTypeShapeLayer;
         break;
-    case LayerTypeBackdropLayer:
-        type = LayerTypeBackdropLayer;
+    case PlatformCALayer::LayerType::LayerTypeBackdropLayer:
+        type = PlatformCALayer::LayerType::LayerTypeBackdropLayer;
         break;
-    case LayerTypeLayer:
+    case PlatformCALayer::LayerType::LayerTypeLayer:
     default:
-        type = LayerTypeLayer;
+        type = PlatformCALayer::LayerType::LayerTypeLayer;
         break;
     };
     auto newLayer = PlatformCALayerCocoa::create(type, owner);
@@ -364,10 +356,11 @@ Ref<PlatformCALayer> PlatformCALayerCocoa::clone(PlatformCALayerClient* owner) c
     newLayer->setBackgroundColor(backgroundColor());
     newLayer->setContentsScale(contentsScale());
     newLayer->setCornerRadius(cornerRadius());
+    newLayer->setBackdropRootIsOpaque(backdropRootIsOpaque());
     newLayer->copyFiltersFrom(*this);
     newLayer->updateCustomAppearance(customAppearance());
 
-    if (type == LayerTypeAVPlayerLayer) {
+    if (type == PlatformCALayer::LayerType::LayerTypeAVPlayerLayer) {
         ASSERT(PAL::isAVFoundationFrameworkAvailable() && [newLayer->platformLayer() isKindOfClass:PAL::getAVPlayerLayerClass()]);
 
         AVPlayerLayer *destinationPlayerLayer = newLayer->avPlayerLayer();
@@ -379,7 +372,7 @@ Ref<PlatformCALayer> PlatformCALayerCocoa::clone(PlatformCALayerClient* owner) c
         });
     }
     
-    if (type == LayerTypeShapeLayer)
+    if (type == PlatformCALayer::LayerType::LayerTypeShapeLayer)
         newLayer->setShapeRoundedRect(shapeRoundedRect());
 
     return newLayer;
@@ -429,6 +422,14 @@ void PlatformCALayerCocoa::setNeedsDisplayInRect(const FloatRect& dirtyRect)
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_layer setNeedsDisplayInRect:dirtyRect];
     END_BLOCK_OBJC_EXCEPTIONS
+}
+
+bool PlatformCALayerCocoa::needsDisplay() const
+{
+    if (!m_backingStoreAttached)
+        return false;
+
+    return [m_layer needsDisplay];
 }
 
 void PlatformCALayerCocoa::copyContentsFromLayer(PlatformCALayer* layer)
@@ -555,10 +556,13 @@ RefPtr<PlatformCAAnimation> PlatformCALayerCocoa::animationForKey(const String& 
     return PlatformCAAnimationCocoa::create(propertyAnimation);
 }
 
-void PlatformCALayerCocoa::setMask(PlatformCALayer* layer)
+void PlatformCALayerCocoa::setMaskLayer(RefPtr<WebCore::PlatformCALayer>&& layer)
 {
+    auto* caLayer = layer ? layer->platformLayer() : nil;
+    PlatformCALayer::setMaskLayer(WTFMove(layer));
+
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    [m_layer setMask:layer ? layer->platformLayer() : nil];
+    [m_layer setMask:caLayer];
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
@@ -644,6 +648,23 @@ void PlatformCALayerCocoa::setSublayerTransform(const TransformationMatrix& valu
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
+void PlatformCALayerCocoa::setIsBackdropRoot(bool isBackdropRoot)
+{
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
+    [m_layer setShouldRasterize:isBackdropRoot];
+    END_BLOCK_OBJC_EXCEPTIONS
+}
+
+bool PlatformCALayerCocoa::backdropRootIsOpaque() const
+{
+    return m_backdropRootIsOpaque;
+}
+
+void PlatformCALayerCocoa::setBackdropRootIsOpaque(bool backdropRootIsOpaque)
+{
+    m_backdropRootIsOpaque = backdropRootIsOpaque;
+}
+
 bool PlatformCALayerCocoa::isHidden() const
 {
     return [m_layer isHidden];
@@ -684,13 +705,19 @@ void PlatformCALayerCocoa::setBackingStoreAttached(bool attached)
     if (attached)
         setNeedsDisplay();
     else
-        setContents(nullptr);
+        clearContents();
 }
 
 bool PlatformCALayerCocoa::backingStoreAttached() const
 {
     return m_backingStoreAttached;
 }
+
+#if ENABLE(INTERACTION_REGIONS_IN_EVENT_REGION)
+void PlatformCALayerCocoa::setVisibleRect(const FloatRect&)
+{
+}
+#endif
 
 bool PlatformCALayerCocoa::geometryFlipped() const
 {
@@ -760,26 +787,6 @@ void PlatformCALayerCocoa::setWantsDeepColorBackingStore(bool wantsDeepColorBack
     updateContentsFormat();
 }
 
-bool PlatformCALayerCocoa::supportsSubpixelAntialiasedText() const
-{
-    return m_supportsSubpixelAntialiasedText;
-}
-
-void PlatformCALayerCocoa::setSupportsSubpixelAntialiasedText(bool supportsSubpixelAntialiasedText)
-{
-    if (supportsSubpixelAntialiasedText == m_supportsSubpixelAntialiasedText)
-        return;
-    
-    m_supportsSubpixelAntialiasedText = supportsSubpixelAntialiasedText;
-
-    if (usesTiledBackingLayer()) {
-        [static_cast<WebTiledBackingLayer *>(m_layer.get()) setSupportsSubpixelAntialiasedText:m_supportsSubpixelAntialiasedText];
-        return;
-    }
-
-    updateContentsFormat();
-}
-
 bool PlatformCALayerCocoa::hasContents() const
 {
     return [m_layer contents];
@@ -790,11 +797,26 @@ CFTypeRef PlatformCALayerCocoa::contents() const
     return (__bridge CFTypeRef)[m_layer contents];
 }
 
+void PlatformCALayerCocoa::clearContents()
+{
+#if PLATFORM(MAC)
+    PlatformCALayerContentsDelayedReleaser::singleton().takeLayerContents(*this);
+#else
+    setContents(nullptr);
+#endif
+}
+
 void PlatformCALayerCocoa::setContents(CFTypeRef value)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_layer setContents:(__bridge id)value];
     END_BLOCK_OBJC_EXCEPTIONS
+}
+
+void PlatformCALayerCocoa::setDelegatedContents(const PlatformCALayerInProcessDelegatedContents& contents)
+{
+    if (!contents.finishedFence || contents.finishedFence->waitFor(delegatedContentsFinishedTimeout))
+        setContents(contents.surface.asLayerContents());
 }
 
 void PlatformCALayerCocoa::setContentsRect(const FloatRect& value)
@@ -826,7 +848,7 @@ Color PlatformCALayerCocoa::backgroundColor() const
 void PlatformCALayerCocoa::setBackgroundColor(const Color& value)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    [m_layer setBackgroundColor:cachedCGColor(value)];
+    [m_layer setBackgroundColor:cachedCGColor(value).get()];
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
@@ -841,7 +863,7 @@ void PlatformCALayerCocoa::setBorderColor(const Color& value)
 {
     if (value.isValid()) {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
-        [m_layer setBorderColor:cachedCGColor(value)];
+        [m_layer setBorderColor:cachedCGColor(value).get()];
         END_BLOCK_OBJC_EXCEPTIONS
     } else {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
@@ -864,7 +886,7 @@ void PlatformCALayerCocoa::setOpacity(float value)
 
 void PlatformCALayerCocoa::setFilters(const FilterOperations& filters)
 {
-    PlatformCAFilters::setFiltersOnLayer(platformLayer(), filters);
+    PlatformCAFilters::setFiltersOnLayer(platformLayer(), filters, m_backdropRootIsOpaque);
 }
 
 void PlatformCALayerCocoa::copyFiltersFrom(const PlatformCALayer& sourceLayer)
@@ -883,9 +905,9 @@ bool PlatformCALayerCocoa::filtersCanBeComposited(const FilterOperations& filter
     for (unsigned i = 0; i < filters.size(); ++i) {
         const FilterOperation* filterOperation = filters.at(i);
         switch (filterOperation->type()) {
-        case FilterOperation::REFERENCE:
+        case FilterOperation::Type::Reference:
             return false;
-        case FilterOperation::DROP_SHADOW:
+        case FilterOperation::Type::DropShadow:
             // FIXME: For now we can only handle drop-shadow is if it's last in the list
             if (i < (filters.size() - 1))
                 return false;
@@ -898,12 +920,10 @@ bool PlatformCALayerCocoa::filtersCanBeComposited(const FilterOperations& filter
     return true;
 }
 
-#if ENABLE(CSS_COMPOSITING)
 void PlatformCALayerCocoa::setBlendMode(BlendMode blendMode)
 {
     PlatformCAFilters::setBlendingFiltersOnLayer(platformLayer(), blendMode);
 }
-#endif
 
 void PlatformCALayerCocoa::setName(const String& value)
 {
@@ -933,6 +953,9 @@ float PlatformCALayerCocoa::contentsScale() const
 
 void PlatformCALayerCocoa::setContentsScale(float value)
 {
+    if (m_layerType == PlatformCALayer::LayerType::LayerTypeTransformLayer)
+        return;
+
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_layer setContentsScale:value];
     [m_layer setRasterizationScale:value];
@@ -948,19 +971,38 @@ void PlatformCALayerCocoa::setCornerRadius(float value)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [m_layer setCornerRadius:value];
+    if (value)
+        [m_layer setCornerCurve:kCACornerCurveCircular];
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
-void PlatformCALayerCocoa::setEdgeAntialiasingMask(unsigned mask)
+void PlatformCALayerCocoa::setAntialiasesEdges(bool antialiases)
 {
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    [m_layer setEdgeAntialiasingMask:mask];
+    [m_layer setEdgeAntialiasingMask:antialiases ? (kCALayerLeftEdge | kCALayerRightEdge | kCALayerBottomEdge | kCALayerTopEdge) : 0];
+    END_BLOCK_OBJC_EXCEPTIONS
+}
+
+MediaPlayerVideoGravity PlatformCALayerCocoa::videoGravity() const
+{
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
+    if ([m_layer respondsToSelector:@selector(videoGravity)])
+        return convertAVLayerToMediaPlayerVideoGravity([(AVPlayerLayer *)m_layer videoGravity]);
+    END_BLOCK_OBJC_EXCEPTIONS
+    return MediaPlayerVideoGravity::ResizeAspect;
+}
+
+void PlatformCALayerCocoa::setVideoGravity(MediaPlayerVideoGravity gravity)
+{
+    BEGIN_BLOCK_OBJC_EXCEPTIONS
+    if ([m_layer respondsToSelector:@selector(setVideoGravity:)])
+        [(AVPlayerLayer *)m_layer setVideoGravity:convertMediaPlayerToAVLayerVideoGravity(gravity)];
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
 FloatRoundedRect PlatformCALayerCocoa::shapeRoundedRect() const
 {
-    ASSERT(m_layerType == LayerTypeShapeLayer);
+    ASSERT(m_layerType == PlatformCALayer::LayerType::LayerTypeShapeLayer);
     if (m_shapeRoundedRect)
         return *m_shapeRoundedRect;
 
@@ -969,7 +1011,7 @@ FloatRoundedRect PlatformCALayerCocoa::shapeRoundedRect() const
 
 void PlatformCALayerCocoa::setShapeRoundedRect(const FloatRoundedRect& roundedRect)
 {
-    ASSERT(m_layerType == LayerTypeShapeLayer);
+    ASSERT(m_layerType == PlatformCALayer::LayerType::LayerTypeShapeLayer);
     m_shapeRoundedRect = makeUnique<FloatRoundedRect>(roundedRect);
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS
@@ -981,7 +1023,7 @@ void PlatformCALayerCocoa::setShapeRoundedRect(const FloatRoundedRect& roundedRe
 
 WindRule PlatformCALayerCocoa::shapeWindRule() const
 {
-    ASSERT(m_layerType == LayerTypeShapeLayer);
+    ASSERT(m_layerType == PlatformCALayer::LayerType::LayerTypeShapeLayer);
 
     NSString *fillRule = [(CAShapeLayer *)m_layer fillRule];
     if ([fillRule isEqualToString:kCAFillRuleEvenOdd])
@@ -992,7 +1034,7 @@ WindRule PlatformCALayerCocoa::shapeWindRule() const
 
 void PlatformCALayerCocoa::setShapeWindRule(WindRule windRule)
 {
-    ASSERT(m_layerType == LayerTypeShapeLayer);
+    ASSERT(m_layerType == PlatformCALayer::LayerType::LayerTypeShapeLayer);
 
     switch (windRule) {
     case WindRule::NonZero:
@@ -1006,16 +1048,16 @@ void PlatformCALayerCocoa::setShapeWindRule(WindRule windRule)
 
 Path PlatformCALayerCocoa::shapePath() const
 {
-    ASSERT(m_layerType == LayerTypeShapeLayer);
+    ASSERT(m_layerType == PlatformCALayer::LayerType::LayerTypeShapeLayer);
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS
-    return { adoptCF(CGPathCreateMutableCopy([(CAShapeLayer *)m_layer path])) };
+    return { PathCG::create(adoptCF(CGPathCreateMutableCopy([(CAShapeLayer *)m_layer path]))) };
     END_BLOCK_OBJC_EXCEPTIONS
 }
 
 void PlatformCALayerCocoa::setShapePath(const Path& path)
 {
-    ASSERT(m_layerType == LayerTypeShapeLayer);
+    ASSERT(m_layerType == PlatformCALayer::LayerType::LayerTypeShapeLayer);
 
     BEGIN_BLOCK_OBJC_EXCEPTIONS
     [(CAShapeLayer *)m_layer setPath:path.platformPath()];
@@ -1034,16 +1076,10 @@ void PlatformCALayerCocoa::updateCustomAppearance(GraphicsLayer::CustomAppearanc
 
     m_customAppearance = appearance;
 
-#if ENABLE(RUBBER_BANDING)
+#if HAVE(RUBBER_BANDING)
     switch (appearance) {
     case GraphicsLayer::CustomAppearance::None:
-    case GraphicsLayer::CustomAppearance::LightBackdrop:
-    case GraphicsLayer::CustomAppearance::DarkBackdrop:
-        ScrollbarThemeMac::removeOverhangAreaBackground(platformLayer());
         ScrollbarThemeMac::removeOverhangAreaShadow(platformLayer());
-        break;
-    case GraphicsLayer::CustomAppearance::ScrollingOverhang:
-        ScrollbarThemeMac::setUpOverhangAreaBackground(platformLayer());
         break;
     case GraphicsLayer::CustomAppearance::ScrollingShadow:
         ScrollbarThemeMac::setUpOverhangAreaShadow(platformLayer());
@@ -1095,7 +1131,7 @@ void PlatformCALayerCocoa::setIsDescendentOfSeparatedPortal(bool)
 #endif
 #endif
 
-static NSString *layerContentsFormat(bool acceleratesDrawing, bool wantsDeepColor, bool supportsSubpixelAntialiasedFonts)
+static NSString *layerContentsFormat(bool wantsDeepColor)
 {
 #if HAVE(IOSURFACE_RGB10)
     if (wantsDeepColor)
@@ -1104,24 +1140,14 @@ static NSString *layerContentsFormat(bool acceleratesDrawing, bool wantsDeepColo
     UNUSED_PARAM(wantsDeepColor);
 #endif
 
-#if PLATFORM(MAC)
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-    if (supportsSubpixelAntialiasedFonts && acceleratesDrawing)
-        return kCAContentsFormatRGBA8ColorRGBA8LinearGlyphMask;
-    ALLOW_DEPRECATED_DECLARATIONS_END
-#else
-    UNUSED_PARAM(supportsSubpixelAntialiasedFonts);
-    UNUSED_PARAM(acceleratesDrawing);
-#endif
-
     return nil;
 }
 
 void PlatformCALayerCocoa::updateContentsFormat()
 {
-    if (m_layerType == LayerTypeWebLayer || m_layerType == LayerTypeTiledBackingTileLayer) {
+    if (m_layerType == PlatformCALayer::LayerType::LayerTypeWebLayer || m_layerType == PlatformCALayer::LayerType::LayerTypeTiledBackingTileLayer) {
         BEGIN_BLOCK_OBJC_EXCEPTIONS
-        if (NSString *formatString = layerContentsFormat(acceleratesDrawing(), wantsDeepColorBackingStore(), supportsSubpixelAntialiasedText()))
+        if (NSString *formatString = layerContentsFormat(wantsDeepColorBackingStore()))
             [m_layer setContentsFormat:formatString];
         END_BLOCK_OBJC_EXCEPTIONS
     }
@@ -1200,14 +1226,16 @@ PlatformCALayer::RepaintRectList PlatformCALayer::collectRectsToPaint(GraphicsCo
     return dirtyRects;
 }
 
-void PlatformCALayer::drawLayerContents(GraphicsContext& graphicsContext, WebCore::PlatformCALayer* platformCALayer, RepaintRectList& dirtyRects, GraphicsLayerPaintBehavior layerPaintBehavior)
+void PlatformCALayer::drawLayerContents(GraphicsContext& graphicsContext, WebCore::PlatformCALayer* platformCALayer, RepaintRectList& dirtyRects, OptionSet<GraphicsLayerPaintBehavior> layerPaintBehavior)
 {
     WebCore::PlatformCALayerClient* layerContents = platformCALayer->owner();
     if (!layerContents)
         return;
 
-    if (!layerContents->platformCALayerRepaintCount(platformCALayer))
-        layerPaintBehavior |= GraphicsLayerPaintFirstTilePaint;
+    if (!layerPaintBehavior.contains(GraphicsLayerPaintBehavior::ForceSynchronousImageDecode)) {
+        if (!layerContents->platformCALayerRepaintCount(platformCALayer))
+            layerPaintBehavior.add(GraphicsLayerPaintBehavior::DefaultAsynchronousImageDecode);
+    }
 
     {
         GraphicsContextStateSaver saver(graphicsContext);
@@ -1215,7 +1243,6 @@ void PlatformCALayer::drawLayerContents(GraphicsContext& graphicsContext, WebCor
 #if PLATFORM(IOS_FAMILY)
         std::optional<FontAntialiasingStateSaver> fontAntialiasingState;
 #endif
-
         // We never use CompositingCoordinatesOrientation::BottomUp on Mac.
         ASSERT(layerContents->platformCALayerContentsOrientation() == GraphicsLayer::CompositingCoordinatesOrientation::TopDown);
 
@@ -1227,32 +1254,18 @@ void PlatformCALayer::drawLayerContents(GraphicsContext& graphicsContext, WebCor
             fontAntialiasingState.emplace(context, !![platformCALayer->platformLayer() isOpaque]);
             fontAntialiasingState->setup([WAKWindow hasLandscapeOrientation]);
 #endif
-            graphicsContext.setIsCALayerContext(true);
-            graphicsContext.setIsAcceleratedContext(platformCALayer->acceleratesDrawing());
         }
 
         {
-            if (!layerContents->platformCALayerContentsOpaque() && !platformCALayer->supportsSubpixelAntialiasedText() && FontCascade::isSubpixelAntialiasingAvailable()) {
-                // Turn off font smoothing to improve the appearance of text rendered onto a transparent background.
-                graphicsContext.setShouldSmoothFonts(false);
+            if (dirtyRects.size() == 1)
+                layerContents->platformCALayerPaintContents(platformCALayer, graphicsContext, dirtyRects[0], layerPaintBehavior);
+            else {
+                for (const auto& rect : dirtyRects) {
+                    GraphicsContextStateSaver stateSaver(graphicsContext);
+                    graphicsContext.clip(rect);
+                    layerContents->platformCALayerPaintContents(platformCALayer, graphicsContext, rect, layerPaintBehavior);
+                }
             }
-
-#if PLATFORM(MAC)
-            // It's important to get the clip from the context, because it may be significantly
-            // smaller than the layer bounds (e.g. tiled layers)
-            ThemeMac::setFocusRingClipRect(graphicsContext.clipBounds());
-#endif
-
-            for (const auto& rect : dirtyRects) {
-                GraphicsContextStateSaver stateSaver(graphicsContext);
-                graphicsContext.clip(rect);
-
-                layerContents->platformCALayerPaintContents(platformCALayer, graphicsContext, rect, layerPaintBehavior);
-            }
-
-#if PLATFORM(MAC)
-            ThemeMac::setFocusRingClipRect(FloatRect());
-#endif
         }
     }
 
@@ -1307,10 +1320,6 @@ unsigned PlatformCALayerCocoa::backingStoreBytesPerPixel() const
         return isOpaque() ? 4 : 5;
 #endif
 
-#if PLATFORM(MAC)
-    if (!isOpaque() && supportsSubpixelAntialiasedText())
-        return 8;
-#endif
     return 4;
 }
 
@@ -1319,7 +1328,7 @@ AVPlayerLayer *PlatformCALayerCocoa::avPlayerLayer() const
     if (!PAL::isAVFoundationFrameworkAvailable())
         return nil;
 
-    if (layerType() != LayerTypeAVPlayerLayer)
+    if (layerType() != PlatformCALayer::LayerType::LayerTypeAVPlayerLayer)
         return nil;
 
     if ([platformLayer() isKindOfClass:PAL::getAVPlayerLayerClass()])

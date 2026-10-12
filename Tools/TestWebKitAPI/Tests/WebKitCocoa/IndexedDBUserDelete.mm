@@ -25,9 +25,9 @@
 
 #import "config.h"
 
+#import "DeprecatedGlobalValues.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
-
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKUserContentControllerPrivate.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
@@ -37,10 +37,6 @@
 #import <WebKit/_WKUserStyleSheet.h>
 #import <WebKit/_WKWebsiteDataStoreConfiguration.h>
 #import <wtf/RetainPtr.h>
-
-static bool readyToContinue;
-static bool receivedScriptMessage;
-static RetainPtr<WKScriptMessage> lastScriptMessage;
 
 @interface IndexedDBUserDeleteMessageHandler : NSObject <WKScriptMessageHandler>
 @end
@@ -81,7 +77,7 @@ TEST(IndexedDB, IndexedDBUserDelete)
 
 TEST(IndexedDB, IndexedDBUserDeleteBeforeLoading)
 {
-    NSURL *idbURL = [[WKWebsiteDataStore defaultDataStore] _indexedDBDatabaseDirectory];
+    NSURL *idbURL = [[[WKWebsiteDataStore defaultDataStore] _configuration] _indexedDBDatabaseDirectory];
     NSURL *fileIDBURL = [[idbURL URLByAppendingPathComponent:@"file__0"] URLByAppendingPathComponent:@"IndexedDBUserDeleteBeforeLoading"];
     NSURL *fileURL = [[NSBundle mainBundle] URLForResource:@"IndexedDB" withExtension:@"sqlite3" subdirectory:@"TestWebKitAPI.resources"];
     [[NSFileManager defaultManager] createDirectoryAtURL:fileIDBURL withIntermediateDirectories:YES attributes:nil error:nil];

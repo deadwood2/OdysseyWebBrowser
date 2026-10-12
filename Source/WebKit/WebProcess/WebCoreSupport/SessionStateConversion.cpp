@@ -44,16 +44,17 @@ static HTTPBody toHTTPBody(const FormData& formData)
 
         switchOn(formDataElement.data,
             [&] (const Vector<uint8_t>& bytes) {
-                element.type = HTTPBody::Element::Type::Data;
                 element.data = bytes;
             }, [&] (const FormDataElement::EncodedFileData& fileData) {
-                element.filePath = fileData.filename;
-                element.fileStart = fileData.fileStart;
+                HTTPBody::Element::FileData data;
+                data.filePath = fileData.filename;
+                data.fileStart = fileData.fileStart;
                 if (fileData.fileLength != BlobDataItem::toEndOfFile)
-                    element.fileLength = fileData.fileLength;
-                element.expectedFileModificationTime = fileData.expectedFileModificationTime;
+                    data.fileLength = fileData.fileLength;
+                data.expectedFileModificationTime = fileData.expectedFileModificationTime;
+                element.data = WTFMove(data);
             }, [&] (const FormDataElement::EncodedBlobData& blobData) {
-                element.blobURLString = blobData.url.string();
+                element.data = blobData.url.string();
             }
         );
 
@@ -71,10 +72,11 @@ static FrameState toFrameState(const HistoryItem& historyItem)
     frameState.originalURLString = historyItem.originalURLString();
     frameState.referrer = historyItem.referrer();
     frameState.target = historyItem.target();
+    frameState.frameID = historyItem.frameID();
 
     frameState.setDocumentState(historyItem.documentState());
     if (RefPtr<SerializedScriptValue> stateObject = historyItem.stateObject())
-        frameState.stateObjectData = stateObject->data();
+        frameState.stateObjectData = stateObject->wireBytes();
 
     frameState.documentSequenceNumber = historyItem.documentSequenceNumber();
     frameState.itemSequenceNumber = historyItem.itemSequenceNumber();
@@ -99,22 +101,24 @@ static FrameState toFrameState(const HistoryItem& historyItem)
     frameState.obscuredInsets = historyItem.obscuredInsets();
 #endif
 
-    for (auto& childHistoryItem : historyItem.children()) {
-        FrameState childFrameState = toFrameState(childHistoryItem);
-        frameState.children.append(WTFMove(childFrameState));
-    }
+    frameState.children = historyItem.children().map([](auto& childHistoryItem) {
+        return toFrameState(childHistoryItem);
+    });
 
     return frameState;
 }
 
 BackForwardListItemState toBackForwardListItemState(const WebCore::HistoryItem& historyItem)
 {
+    static constexpr unsigned maxTitleLength = 1000; // Closest power of 10 above the W3C recommendation for Title length.
+
     BackForwardListItemState state;
     state.identifier = historyItem.identifier();
-    state.pageState.title = historyItem.title();
+    state.pageState.title = historyItem.title().left(maxTitleLength);
     state.pageState.mainFrameState = toFrameState(historyItem);
     state.pageState.shouldOpenExternalURLsPolicy = historyItem.shouldOpenExternalURLsPolicy();
     state.pageState.sessionStateObject = historyItem.stateObject();
+    state.pageState.wasCreatedByJSWithoutUserInteraction = historyItem.wasCreatedByJSWithoutUserInteraction();
     state.hasCachedPage = historyItem.isInBackForwardCache();
     return state;
 }
@@ -124,35 +128,30 @@ static Ref<FormData> toFormData(const HTTPBody& httpBody)
     auto formData = FormData::create();
 
     for (const auto& element : httpBody.elements) {
-        switch (element.type) {
-        case HTTPBody::Element::Type::Data:
-            formData->appendData(element.data.data(), element.data.size());
-            break;
-
-        case HTTPBody::Element::Type::File:
-            formData->appendFileRange(element.filePath, element.fileStart, element.fileLength.value_or(BlobDataItem::toEndOfFile), element.expectedFileModificationTime);
-            break;
-
-        case HTTPBody::Element::Type::Blob:
-            formData->appendBlob(URL(URL(), element.blobURLString));
-            break;
-        }
+        switchOn(element.data, [&] (const Vector<uint8_t>& data) {
+            formData->appendData(data.span());
+        }, [&] (const HTTPBody::Element::FileData& data) {
+            formData->appendFileRange(data.filePath, data.fileStart, data.fileLength.value_or(BlobDataItem::toEndOfFile), data.expectedFileModificationTime);
+        }, [&] (const String& blobURLString) {
+            formData->appendBlob(URL { blobURLString });
+        });
     }
 
     return formData;
 }
 
-static void applyFrameState(HistoryItem& historyItem, const FrameState& frameState)
+static void applyFrameState(WebCore::HistoryItemClient& client, HistoryItem& historyItem, const FrameState& frameState)
 {
     historyItem.setOriginalURLString(frameState.originalURLString);
     historyItem.setReferrer(frameState.referrer);
     historyItem.setTarget(frameState.target);
+    historyItem.setFrameID(frameState.frameID);
 
     historyItem.setDocumentState(frameState.documentState());
 
     if (frameState.stateObjectData) {
         Vector<uint8_t> stateObjectData = frameState.stateObjectData.value();
-        historyItem.setStateObject(SerializedScriptValue::adopt(WTFMove(stateObjectData)));
+        historyItem.setStateObject(SerializedScriptValue::createFromWireBytes(WTFMove(stateObjectData)));
     }
 
     historyItem.setDocumentSequenceNumber(frameState.documentSequenceNumber);
@@ -179,19 +178,19 @@ static void applyFrameState(HistoryItem& historyItem, const FrameState& frameSta
 #endif
 
     for (const auto& childFrameState : frameState.children) {
-        Ref<HistoryItem> childHistoryItem = HistoryItem::create(childFrameState.urlString, { }, { });
-        applyFrameState(childHistoryItem, childFrameState);
+        Ref<HistoryItem> childHistoryItem = HistoryItem::create(client, childFrameState.urlString, { }, { });
+        applyFrameState(client, childHistoryItem, childFrameState);
 
         historyItem.addChildItem(WTFMove(childHistoryItem));
     }
 }
 
-Ref<HistoryItem> toHistoryItem(const BackForwardListItemState& itemState)
+Ref<HistoryItem> toHistoryItem(WebCore::HistoryItemClient& client, const BackForwardListItemState& itemState)
 {
-    Ref<HistoryItem> historyItem = HistoryItem::create(itemState.pageState.mainFrameState.urlString, itemState.pageState.title, { }, itemState.identifier);
+    Ref<HistoryItem> historyItem = HistoryItem::create(client, itemState.pageState.mainFrameState.urlString, itemState.pageState.title, { }, itemState.identifier);
     historyItem->setShouldOpenExternalURLsPolicy(itemState.pageState.shouldOpenExternalURLsPolicy);
     historyItem->setStateObject(itemState.pageState.sessionStateObject.get());
-    applyFrameState(historyItem, itemState.pageState.mainFrameState);
+    applyFrameState(client, historyItem, itemState.pageState.mainFrameState);
 
     return historyItem;
 }

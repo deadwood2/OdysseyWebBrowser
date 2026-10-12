@@ -24,9 +24,9 @@
  */
 
 #import "config.h"
-#import "PlatformUtilities.h"
-#import "WTFStringUtilities.h"
 
+#import "PlatformUtilities.h"
+#import "Test.h"
 #import <wtf/RetainPtr.h>
 
 static bool testFinished;
@@ -64,7 +64,7 @@ static NSURL *testURL()
 
 -(void)webView:(WebView *)webView runJavaScriptAlertPanelWithMessage:(NSString *)message initiatedByFrame:(WebFrame *)frame
 {
-    EXPECT_EQ(String("PASS"), String(message));
+    EXPECT_EQ(String(message), "PASS"_s);
     testFinished = true;
 }
 

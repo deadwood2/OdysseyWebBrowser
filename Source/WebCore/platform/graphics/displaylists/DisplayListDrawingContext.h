@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,33 +26,31 @@
 #pragma once
 
 #include "DisplayList.h"
-#include "DisplayListRecorder.h"
+#include "DisplayListRecorderImpl.h"
 #include "GraphicsContext.h"
 
 namespace WebCore {
 namespace DisplayList {
 
-class InMemoryDisplayList;
-
 class DrawingContext {
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    WEBCORE_EXPORT DrawingContext(const FloatSize& logicalSize, const AffineTransform& initialCTM = { }, Recorder::Delegate* = nullptr);
+    WEBCORE_EXPORT DrawingContext(const FloatSize& logicalSize, const AffineTransform& initialCTM = { }, const DestinationColorSpace& = DestinationColorSpace::SRGB());
+    WEBCORE_EXPORT ~DrawingContext();
 
     GraphicsContext& context() const { return const_cast<DrawingContext&>(*this).m_context; }
-    Recorder& recorder() { return m_context; };
-    DisplayList takeDisplayList() { return std::exchange(m_displayList, { }); }
+    RecorderImpl& recorder() { return m_context; };
     DisplayList& displayList() { return m_displayList; }
     const DisplayList& displayList() const { return m_displayList; }
-    const InMemoryDisplayList* replayedDisplayList() const { return m_replayedDisplayList.get(); }
+    const DisplayList* replayedDisplayList() const { return m_replayedDisplayList.get(); }
 
     WEBCORE_EXPORT void setTracksDisplayListReplay(bool);
     WEBCORE_EXPORT void replayDisplayList(GraphicsContext&);
 
 protected:
-    Recorder m_context;
+    RecorderImpl m_context;
     DisplayList m_displayList;
-    std::unique_ptr<InMemoryDisplayList> m_replayedDisplayList;
+    std::unique_ptr<DisplayList> m_replayedDisplayList;
     bool m_tracksDisplayListReplay { false };
 };
 

@@ -29,13 +29,17 @@
 #import "AXObjectCache.h"
 #import "Chrome.h"
 #import "ChromeClient.h"
-#import "Frame.h"
+#import "DocumentInlines.h"
+#import "LocalFrame.h"
 #import "RenderView.h"
 
 namespace WebCore {
 
 void FrameSelection::notifyAccessibilityForSelectionChange(const AXTextStateChangeIntent& intent)
 {
+    if (!AXObjectCache::accessibilityEnabled())
+        return;
+
     if (m_selection.start().isNotNull() && m_selection.end().isNotNull()) {
         if (AXObjectCache* cache = m_document->existingAXObjectCache())
             cache->postTextStateChangeNotification(m_selection.start(), intent, m_selection);
@@ -46,10 +50,10 @@ void FrameSelection::notifyAccessibilityForSelectionChange(const AXTextStateChan
     if (!m_selection.isCaret())
         return;
 
-    RenderView* renderView = m_document->renderView();
+    auto* renderView = m_document->renderView();
     if (!renderView)
         return;
-    FrameView* frameView = m_document->view();
+    auto* frameView = m_document->view();
     if (!frameView)
         return;
 

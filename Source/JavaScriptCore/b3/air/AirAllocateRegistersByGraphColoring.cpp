@@ -40,6 +40,7 @@
 #include <wtf/HashSet.h>
 #include <wtf/HashTraits.h>
 #include <wtf/InterferenceGraph.h>
+#include <wtf/ListDump.h>
 #include <wtf/SmallSet.h>
 #include <wtf/Vector.h>
 
@@ -60,15 +61,22 @@ public:
     AbstractColoringAllocator(Code& code, const Vector<Reg>& regsInPriorityOrder, IndexType lastPrecoloredRegisterIndex, unsigned tmpArraySize, const BitVector& unspillableTmps, const UseCounts& useCounts)
         : m_regsInPriorityOrder(regsInPriorityOrder)
         , m_lastPrecoloredRegisterIndex(lastPrecoloredRegisterIndex)
+        , m_coalescedTmps(tmpArraySize, 0)
         , m_unspillableTmps(unspillableTmps)
         , m_useCounts(useCounts)
         , m_code(code)
     {
         initializeDegrees(tmpArraySize);
-        
-        m_adjacencyList.resize(tmpArraySize);
-        m_moveList.resize(tmpArraySize);
-        m_coalescedTmps.fill(0, tmpArraySize);
+
+        if (traceDebug) {
+            dataLog("Unspillable tmps: [");
+            for (size_t i = 0; i < unspillableTmps.size(); ++i)
+                dataLogIf(unspillableTmps.quickGet(i), TmpMapper::tmpFromAbsoluteIndex(i), ", ");
+            dataLogLn("]");
+        }
+
+        m_adjacencyList.grow(tmpArraySize);
+        m_moveList.grow(tmpArraySize);
         m_isOnSelectStack.ensureSize(tmpArraySize);
         m_spillWorklist.ensureSize(tmpArraySize);
     }
@@ -201,10 +209,15 @@ protected:
         ASSERT(!isPrecolored(u));
         ASSERT(!isPrecolored(v));
 
+        if (m_unspillableTmps.get(u) != m_unspillableTmps.get(v))
+            return false;
+
         const auto& adjacentsOfU = m_adjacencyList[u];
         const auto& adjacentsOfV = m_adjacencyList[v];
 
-        Vector<IndexType, MacroAssembler::numGPRs + MacroAssembler::numFPRs> highOrderAdjacents;
+        std::array<IndexType, MacroAssembler::numGPRs + MacroAssembler::numFPRs> highOrderAdjacents;
+        size_t highOrderAdjacentsSize = 0;
+
         RELEASE_ASSERT(registerCount() <= MacroAssembler::numGPRs + MacroAssembler::numFPRs);
         unsigned numCandidates = adjacentsOfU.size() + adjacentsOfV.size();
         if (numCandidates < registerCount()) {
@@ -217,16 +230,16 @@ protected:
             ASSERT(adjacentTmpIndex != u);
             numCandidates--;
             if (!hasBeenSimplified(adjacentTmpIndex) && m_degrees[adjacentTmpIndex] >= registerCount()) {
-                ASSERT(std::find(highOrderAdjacents.begin(), highOrderAdjacents.end(), adjacentTmpIndex) == highOrderAdjacents.end());
-                highOrderAdjacents.uncheckedAppend(adjacentTmpIndex);
-                if (highOrderAdjacents.size() >= registerCount())
+                ASSERT(std::find(highOrderAdjacents.begin(), highOrderAdjacents.begin() + highOrderAdjacentsSize, adjacentTmpIndex) == highOrderAdjacents.begin() + highOrderAdjacentsSize);
+                highOrderAdjacents[highOrderAdjacentsSize++] = adjacentTmpIndex;
+                if (highOrderAdjacentsSize >= registerCount())
                     return false;
-            } else if (highOrderAdjacents.size() + numCandidates < registerCount())
+            } else if (highOrderAdjacentsSize + numCandidates < registerCount())
                 return true;
         }
         ASSERT(numCandidates == adjacentsOfV.size());
 
-        auto iteratorEndHighOrderAdjacentsOfU = highOrderAdjacents.end();
+        auto iteratorEndHighOrderAdjacentsOfU = highOrderAdjacents.begin() + highOrderAdjacentsSize;
         for (IndexType adjacentTmpIndex : adjacentsOfV) {
             ASSERT(adjacentTmpIndex != u);
             ASSERT(adjacentTmpIndex != v);
@@ -234,16 +247,16 @@ protected:
             if (!hasBeenSimplified(adjacentTmpIndex)
                 && m_degrees[adjacentTmpIndex] >= registerCount()
                 && std::find(highOrderAdjacents.begin(), iteratorEndHighOrderAdjacentsOfU, adjacentTmpIndex) == iteratorEndHighOrderAdjacentsOfU) {
-                ASSERT(std::find(iteratorEndHighOrderAdjacentsOfU, highOrderAdjacents.end(), adjacentTmpIndex) == highOrderAdjacents.end());
-                highOrderAdjacents.uncheckedAppend(adjacentTmpIndex);
-                if (highOrderAdjacents.size() >= registerCount())
+                ASSERT(std::find(iteratorEndHighOrderAdjacentsOfU, highOrderAdjacents.begin() + highOrderAdjacentsSize, adjacentTmpIndex) == highOrderAdjacents.begin() + highOrderAdjacentsSize);
+                highOrderAdjacents[highOrderAdjacentsSize++] = adjacentTmpIndex;
+                if (highOrderAdjacentsSize >= registerCount())
                     return false;
-            } else if (highOrderAdjacents.size() + numCandidates < registerCount())
+            } else if (highOrderAdjacentsSize + numCandidates < registerCount())
                 return true;
         }
 
         ASSERT(!numCandidates);
-        ASSERT(highOrderAdjacents.size() < registerCount());
+        ASSERT(highOrderAdjacentsSize < registerCount());
         return true;
     }
 
@@ -330,7 +343,7 @@ protected:
         ASSERT(!m_unspillableTmps.get(victimIndex));
         ASSERT(!isPrecolored(victimIndex));
         if (traceDebug)
-            dataLogLn("Selecting spill ", victimIndex);
+            dataLogLn("Selecting spill ", victimIndex, "(", TmpMapper::tmpFromAbsoluteIndex(victimIndex), ")");
         return victimIndex;
     }
 
@@ -384,7 +397,7 @@ protected:
                 ASSERT(!isPrecolored(aliasTmpIndex) || (isPrecolored(aliasTmpIndex) && reg));
 
                 if (reg)
-                    coloredRegisters.set(reg);
+                    coloredRegisters.add(reg, IgnoreVectors);
             }
 
             bool colorAssigned = false;
@@ -392,7 +405,7 @@ protected:
             if (iter != m_biases.end()) {
                 for (IndexType desiredBias : iter->value) {
                     if (Reg desiredColor = m_coloredTmp[getAlias(desiredBias)]) {
-                        if (!coloredRegisters.get(desiredColor)) {
+                        if (!coloredRegisters.contains(desiredColor, IgnoreVectors)) {
                             m_coloredTmp[tmpIndex] = desiredColor;
                             colorAssigned = true;
                             break;
@@ -402,7 +415,7 @@ protected:
             }
             if (!colorAssigned) {
                 for (Reg reg : m_regsInPriorityOrder) {
-                    if (!coloredRegisters.get(reg)) {
+                    if (!coloredRegisters.contains(reg, IgnoreVectors)) {
                         m_coloredTmp[tmpIndex] = reg;
                         colorAssigned = true;
                         break;
@@ -457,7 +470,7 @@ protected:
         }
 
         m_interferenceEdges.forEach([&out] (std::pair<IndexType, IndexType> edge) {
-            out.print("    ", edge.first, " -- ", edge.second, ";\n");
+            out.print("    ", TmpMapper::tmpFromAbsoluteIndex(edge.first), " -- ", TmpMapper::tmpFromAbsoluteIndex(edge.second), ";\n");
         });
         out.print("}\n");
     }
@@ -634,8 +647,10 @@ public:
             ASSERT(!m_simplifyWorklist.size());
             ASSERT(m_spillWorklist.isEmpty());
             IndexType firstNonRegIndex = m_lastPrecoloredRegisterIndex + 1;
-            for (IndexType i = firstNonRegIndex; i < m_degrees.size(); ++i)
+            for (IndexType i = firstNonRegIndex; i < m_degrees.size(); ++i) {
+                dataLogLnIf(!hasBeenSimplified(i), "Tmp ", TmpMapper::tmpFromAbsoluteIndex(i), " was not simplified. Maybe the graph is not colorable?");
                 ASSERT(hasBeenSimplified(i));
+            }
         }
 
         assignColors();
@@ -738,11 +753,11 @@ protected:
             unsigned degree = m_degrees[i];
             if (degree < registerCount) {
                 if (traceDebug)
-                    dataLogLn("Adding ", TmpMapper::tmpFromAbsoluteIndex(i), " to simplify worklist");
+                    dataLogLn("Adding ", i, "(", TmpMapper::tmpFromAbsoluteIndex(i), ") with degree ", degree, " to simplify worklist");
                 m_simplifyWorklist.append(i);
             } else {
                 if (traceDebug)
-                    dataLogLn("Adding ", TmpMapper::tmpFromAbsoluteIndex(i), " to spill worklist");
+                    dataLogLn("Adding ", i, "(", TmpMapper::tmpFromAbsoluteIndex(i), ") with degree ", degree, " to spill worklist");
                 addToSpill(i);
             }
         }
@@ -763,7 +778,7 @@ protected:
         m_isOnSelectStack.quickSet(lastIndex);
 
         if (traceDebug)
-            dataLogLn("Simplifying ", lastIndex, " by adding it to select stack");
+            dataLogLn("Simplifying ", lastIndex, "(", TmpMapper::tmpFromAbsoluteIndex(lastIndex), ") by adding it to select stack");
 
         forEachAdjacent(lastIndex, [this](IndexType adjacentTmpIndex) {
             decrementDegreeInSimplification(adjacentTmpIndex);
@@ -912,6 +927,7 @@ protected:
 public:
     IRC(Code& code, const Vector<Reg>& regsInPriorityOrder, IndexType lastPrecoloredRegisterIndex, unsigned tmpArraySize, const BitVector& unspillableTmps, const UseCounts& useCounts)
         : Base(code, regsInPriorityOrder, lastPrecoloredRegisterIndex, tmpArraySize, unspillableTmps, useCounts)
+        , m_movesToEnable(tmpArraySize)
     {
     }
 
@@ -941,6 +957,8 @@ public:
 
             if (!m_simplifyWorklist.isEmpty())
                 simplify();
+            else if (!m_movesToEnable.isEmpty())
+                enableMoves();
             else if (!m_worklistMoves.isEmpty())
                 coalesce();
             else if (!m_freezeWorklist.isEmpty())
@@ -1103,7 +1121,7 @@ protected:
 
         unsigned oldDegree = m_degrees[tmpIndex]--;
         if (oldDegree == registerCount()) {
-            enableMovesOnValueAndAdjacents(tmpIndex);
+            lazyEnableMovesOnValueAndAdjacents(tmpIndex);
             m_spillWorklist.quickClear(tmpIndex);
             if (isMoveRelated(tmpIndex))
                 m_freezeWorklist.add(tmpIndex);
@@ -1146,6 +1164,14 @@ protected:
         }
     }
 
+    void lazyEnableMovesOnValueAndAdjacents(IndexType tmpIndex)
+    {
+        m_movesToEnable.quickSet(tmpIndex);
+        forEachAdjacent(tmpIndex, [this] (IndexType adjacentTmpIndex) {
+            m_movesToEnable.quickSet(adjacentTmpIndex);
+        });
+    }
+
     void enableMovesOnValue(IndexType tmpIndex)
     {
         for (unsigned moveIndex : m_moveList[tmpIndex]) {
@@ -1154,13 +1180,11 @@ protected:
         }
     }
 
-    void enableMovesOnValueAndAdjacents(IndexType tmpIndex)
+    void enableMoves()
     {
-        enableMovesOnValue(tmpIndex);
-
-        forEachAdjacent(tmpIndex, [this] (IndexType adjacentTmpIndex) {
-            enableMovesOnValue(adjacentTmpIndex);
-        });
+        for (IndexType tmpIndex : m_movesToEnable)
+            enableMovesOnValue(tmpIndex);
+        m_movesToEnable.clearAll();
     }
 
     struct OrderedMoveSet {
@@ -1309,6 +1333,8 @@ protected:
     OrderedMoveSet m_worklistMoves;
     // Set of "move" not yet ready for coalescing.
     BitVector m_activeMoves;
+    // Set of Tmps whose moves are now ready for possible coalescing.
+    BitVector m_movesToEnable;
 };
 
 // This perform all the tasks that are specific to certain register type.
@@ -1349,12 +1375,16 @@ public:
         : Base(code, code.regsInPriorityOrder(bank), TmpMapper::lastMachineRegisterIndex(), tmpArraySize(code), unspillableTmp, useCounts)
         , m_tmpWidth(tmpWidth)
     {
-        for (Reg reg : code.pinnedRegisters()) {
+        for (Reg reg : code.pinnedRegisters().toRegisterSet()) {
             if ((bank == GP && reg.isGPR()) || (bank == FP && reg.isFPR())) {
                 m_pinnedRegs.append(Tmp(reg));
                 ASSERT(!m_regsInPriorityOrder.contains(reg));
                 m_regsInPriorityOrder.append(reg);
             }
+        }
+        if (traceDebug) {
+            dataLogLn("Registers in priority order: ", listDump(m_regsInPriorityOrder));
+            dataLogLn("Pinned regs: ", listDump(m_pinnedRegs));
         }
 
         m_interferenceEdges.setMaxIndex(AbsoluteTmpMapper<bank>::absoluteIndex(m_code.numTmps(bank)));
@@ -1416,15 +1446,7 @@ public:
         Tmp operator*() const { return TmpMapper::tmpFromAbsoluteIndex(*m_indexIterator); }
         IndexToTmpIteratorAdaptor& operator++() { ++m_indexIterator; return *this; }
 
-        bool operator==(const IndexToTmpIteratorAdaptor& other) const
-        {
-            return m_indexIterator == other.m_indexIterator;
-        }
-
-        bool operator!=(const IndexToTmpIteratorAdaptor& other) const
-        {
-            return !(*this == other);
-        }
+        friend bool operator==(const IndexToTmpIteratorAdaptor&, const IndexToTmpIteratorAdaptor&) = default;
 
     private:
         IndexIterator m_indexIterator;
@@ -1552,12 +1574,17 @@ protected:
 
     void build(Inst* prevInst, Inst* nextInst, const typename TmpLiveness<bank>::LocalCalc& localCalc)
     {
-        if (traceDebug)
+        if (traceDebug) {
             dataLog("Building between ", pointerDump(prevInst), " and ", pointerDump(nextInst), ":\n");
+            dataLog("Live values: [");
+            for (Tmp liveTmp : localCalc.live())
+                dataLog(liveTmp, ":", m_tmpWidth.useWidth(liveTmp), ", ");
+            dataLogLn("]");
+        }
 
         Inst::forEachDefWithExtraClobberedRegs<Tmp>(
             prevInst, nextInst,
-            [&] (const Tmp& arg, Arg::Role, Bank argBank, Width) {
+            [&] (const Tmp& arg, Arg::Role, Bank argBank, Width, PreservedWidth argPreservedWidth) {
                 if (argBank != bank)
                     return;
                 
@@ -1566,10 +1593,15 @@ protected:
                 // do not need interference edges in our implementation.
                 Inst::forEachDef<Tmp>(
                     prevInst, nextInst,
-                    [&] (Tmp& otherArg, Arg::Role, Bank argBank, Width) {
+                    [&] (Tmp& otherArg, Arg::Role, Bank argBank, Width defWidth) {
                         if (argBank != bank)
                             return;
-                        
+
+                        if (defWidth <= Width64 && argPreservedWidth >= Preserves64) {
+                            dataLogLnIf(traceDebug, "Skipping def-def edge: ", arg, ", ", otherArg, " since ", arg, " preserves enough lower bits.");
+                            return;
+                        }
+
                         if (traceDebug)
                             dataLog("    Adding def-def edge: ", arg, ", ", otherArg, "\n");
                         this->addEdge(arg, otherArg);
@@ -1656,15 +1688,19 @@ protected:
         // All the Def()s interfere with everthing live.
         Inst::forEachDefWithExtraClobberedRegs<Tmp>(
             prevInst, nextInst,
-            [&] (const Tmp& arg, Arg::Role, Bank argBank, Width) {
+            [&] (const Tmp& arg, Arg::Role, Bank argBank, Width, PreservedWidth preservedArgWidth) {
                 if (argBank != bank)
                     return;
                 
-                for (Tmp liveTmp : liveTmps) {
+                for (auto liveTmp : liveTmps) {
                     ASSERT(liveTmp.isGP() == (bank == GP));
+                    Width liveTmpWidth = m_tmpWidth.useWidth(liveTmp);
 
+                    if (liveTmpWidth <= Width64 && preservedArgWidth >= Preserves64) {
+                        dataLogLnIf(traceDebug, "    Skipping def-live edge: ", arg, ", ", liveTmp, " since def preserves enough lower bits");
+                        continue;
+                    }
                     dataLogLnIf(traceDebug, "    Adding def-live edge: ", arg, ", ", liveTmp);
-                    
                     addEdge(arg, liveTmp);
                 }
                 for (const Tmp& pinnedRegTmp : m_pinnedRegs) {
@@ -1699,6 +1735,7 @@ protected:
             switch (inst.kind.opcode) {
             case MoveFloat:
             case MoveDouble:
+            case MoveVector:
                 break;
             default:
                 return false;
@@ -1723,12 +1760,11 @@ protected:
         // Note that the input property requires an analysis over ZDef's, so it's only valid so long
         // as the input gets a register. We don't know if the input gets a register, but we do know
         // that if it doesn't get a register then we will still emit this Move32.
-        if (inst.kind.opcode == Move32) {
+        if (inst.kind.opcode == Move32 && !is32Bit()) {
             if (!tmpWidth)
                 return false;
 
-            if (tmpWidth->defWidth(inst.args[0].tmp()) > Width32
-                && tmpWidth->useWidth(inst.args[1].tmp()) > Width32)
+            if (tmpWidth->defWidth(inst.args[0].tmp()) > Width32)
                 return false;
         }
         
@@ -1804,6 +1840,16 @@ private:
                 return false;
             };
 
+            auto useIRC = [&] {
+                if (Options::airForceBriggsAllocator())
+                    return false;
+                if (m_code.forceIRCRegisterAllocation() || Options::airForceIRCAllocator())
+                    return true;
+                if (isARM64())
+                    return false;
+                return true;
+            };
+
             if (m_code.numTmps(bank) < WTF::maxSizeForSmallInterferenceGraph) {
                 if (useIRC()) {
                     ColoringAllocator<uint16_t, bank, IRC, SmallInterferenceGraph> allocator(m_code, m_tmpWidth, m_useCounts, unspillableTmps);
@@ -1847,8 +1893,7 @@ private:
         unsigned numTmps = m_code.numTmps(bank);
         unsigned arraySize = AbsoluteTmpMapper<bank>::absoluteIndex(numTmps);
 
-        Vector<Range, 0, UnsafeVectorOverflow> ranges;
-        ranges.fill(Range(), arraySize);
+        Vector<Range, 0, UnsafeVectorOverflow> ranges(arraySize, Range());
 
         unsigned globalIndex = 0;
         for (BasicBlock* block : m_code) {
@@ -1894,13 +1939,17 @@ private:
         unspillableTmps.ensureSize(arraySize);
         for (unsigned i = AbsoluteTmpMapper<bank>::lastMachineRegisterIndex() + 1; i < ranges.size(); ++i) {
             Range& range = ranges[i];
-            if (range.last - range.first <= 1 && range.count > range.admitStackCount)
+            if (range.last - range.first <= 1 && range.count > range.admitStackCount) {
+                dataLogLnIf(traceDebug, "Add unspillable tmp due to range: ", AbsoluteTmpMapper<bank>::tmpFromAbsoluteIndex(i));
                 unspillableTmps.quickSet(i);
+            }
         }
 
         m_code.forEachFastTmp([&](Tmp tmp) {
-            if (tmp.bank() == bank)
+            if (tmp.bank() == bank) {
+                dataLogLnIf(traceDebug, "Add unspillable tmp since it is FastTmp: ", tmp);
                 unspillableTmps.quickSet(AbsoluteTmpMapper<bank>::absoluteIndex(tmp));
+            }
         });
 
         return unspillableTmps;
@@ -1918,15 +1967,23 @@ private:
                 // complete register allocation. So, we record this before starting.
                 bool mayBeCoalescable = allocator.mayBeCoalescable(inst);
 
-                // Move32 is cheaper if we know that it's equivalent to a Move. It's
-                // equivalent if the destination's high bits are not observable or if the source's high
-                // bits are all zero. Note that we don't have the opposite optimization for other
-                // architectures, which may prefer Move over Move32, because Move is canonical already.
-                if (bank == GP && inst.kind.opcode == Move
-                    && inst.args[0].isTmp() && inst.args[1].isTmp()) {
-                    if (m_tmpWidth.useWidth(inst.args[1].tmp()) <= Width32
-                        || m_tmpWidth.defWidth(inst.args[0].tmp()) <= Width32)
-                        inst.kind.opcode = Move32;
+                if constexpr (isX86_64()) {
+                    // Move32 is cheaper if we know that it's equivalent to a Move in x86_64. It's
+                    // equivalent if the destination's high bits are not observable or if the source's high
+                    // bits are all zero.
+                    if (bank == GP && inst.kind.opcode == Move && inst.args[0].isTmp() && inst.args[1].isTmp()) {
+                        if (m_tmpWidth.useWidth(inst.args[1].tmp()) <= Width32 || m_tmpWidth.defWidth(inst.args[0].tmp()) <= Width32)
+                            inst.kind.opcode = Move32;
+                    }
+                }
+                if constexpr (isARM64()) {
+                    // On the other hand, on ARM64, Move is cheaper than Move32. We would like to use Move instead of Move32.
+                    // Move32 on ARM64 is explicitly selected in B3LowerToAir for ZExt32 for example. But using ZDef information
+                    // here can optimize it from Move32 to Move.
+                    if (bank == GP && inst.kind.opcode == Move32 && inst.args[0].isTmp() && inst.args[1].isTmp()) {
+                        if (m_tmpWidth.defWidth(inst.args[0].tmp()) <= Width32)
+                            inst.kind.opcode = Move;
+                    }
                 }
 
                 inst.forEachTmpFast([&] (Tmp& tmp) {
@@ -1960,7 +2017,12 @@ private:
 
     static unsigned stackSlotMinimumWidth(Width width)
     {
-        return width <= Width32 ? 4 : 8;
+        if (width <= Width32)
+            return 4;
+        if (width <= Width64)
+            return 8;
+        ASSERT(width == Width128);
+        return 16;
     }
 
     template<Bank bank, typename AllocatorType>
@@ -1969,6 +2031,7 @@ private:
         HashMap<Tmp, StackSlot*> stackSlots;
         for (Tmp tmp : allocator.spilledTmps()) {
             // All the spilled values become unspillable.
+            dataLogLnIf(traceDebug, "Add unspillable tmp due to spill: ", tmp);
             unspillableTmps.set(AbsoluteTmpMapper<bank>::absoluteIndex(tmp));
 
             // Allocate stack slot for each spilled value.
@@ -2066,7 +2129,7 @@ private:
                             canUseMove32IfDidSpill = false;
                         
                         stackSlotEntry->value->ensureSize(
-                            canUseMove32IfDidSpill ? 4 : bytes(width));
+                            canUseMove32IfDidSpill ? 4 : bytesForWidth(width));
                         arg = Arg::stack(stackSlotEntry->value);
                         didSpill = true;
                         if (needScratchIfSpilledInPlace)
@@ -2096,6 +2159,7 @@ private:
                     RELEASE_ASSERT(instBank == bank);
                     
                     Tmp tmp = m_code.newTmp(bank);
+                    dataLogLnIf(traceDebug, "Add unspillable tmp (scratch) since we introduce it during spill: ", tmp);
                     unspillableTmps.set(AbsoluteTmpMapper<bank>::absoluteIndex(tmp));
                     inst.args.append(tmp);
                     RELEASE_ASSERT(inst.args.size() == 3);
@@ -2135,22 +2199,52 @@ private:
                     case 8:
                         move = bank == GP ? Move : MoveDouble;
                         break;
+                    case 16:
+                        ASSERT(bank == FP);
+                        move = MoveVector;
+                        break;
                     default:
                         RELEASE_ASSERT_NOT_REACHED();
                         break;
                     }
 
-                    tmp = m_code.newTmp(bank);
+                    auto oldTmp = tmp;
+                    auto newTmp = m_code.newTmp(bank);
+                    dataLogLnIf(traceDebug, "Add unspillable tmp since we introduce it during spill (2): ", tmp, " -> ", newTmp);
+                    tmp = newTmp;
                     unspillableTmps.set(AbsoluteTmpMapper<bank>::absoluteIndex(tmp));
                     
                     if (role == Arg::Scratch)
                         return;
 
                     Arg arg = Arg::stack(stackSlotEntry->value);
-                    if (Arg::isAnyUse(role))
-                        insertionSet.insert(instIndex, move, inst.origin, arg, tmp);
-                    if (Arg::isAnyDef(role))
+                    if (Arg::isAnyUse(role)) {
+                        auto tryRematerialize = [&]() {
+                            if constexpr (bank == GP) {
+                                auto oldIndex = AbsoluteTmpMapper<bank>::absoluteIndex(oldTmp);
+                                if (m_useCounts.isConstDef<bank>(oldIndex)) {
+                                    int64_t value = m_useCounts.constant<bank>(oldIndex);
+                                    if (Arg::isValidImmForm(value) && isValidForm(Move, Arg::Imm, Arg::Tmp)) {
+                                        insertionSet.insert(instIndex, Move, inst.origin, Arg::imm(value), tmp);
+                                        return true;
+                                    }
+                                    if (isValidForm(Move, Arg::BigImm, Arg::Tmp)) {
+                                        insertionSet.insert(instIndex, Move, inst.origin, Arg::bigImm(value), tmp);
+                                        return true;
+                                    }
+                                }
+                            }
+                            return false;
+                        };
+
+                        if (!tryRematerialize())
+                            insertionSet.insert(instIndex, move, inst.origin, arg, tmp);
+                    }
+
+                    if (Arg::isAnyDef(role)) {
+                        // FIXME: When nobody is using admitsStack's spill result, we can also skip def.
                         insertionSet.insert(instIndex + 1, move, inst.origin, tmp, arg);
+                    }
                 });
             }
             insertionSet.execute(block);
@@ -2172,8 +2266,8 @@ private:
 
 void allocateRegistersByGraphColoring(Code& code)
 {
-    PhaseScope phaseScope(code, "allocateRegistersByGraphColoring");
-    
+    PhaseScope phaseScope(code, "allocateRegistersByGraphColoring"_s);
+
     if (traceDebug)
         dataLog("Code before graph coloring:\n", code);
 

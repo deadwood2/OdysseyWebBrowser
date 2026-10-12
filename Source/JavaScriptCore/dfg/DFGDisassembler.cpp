@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,8 +33,11 @@
 #include "Disassembler.h"
 #include "JSCJSValueInlines.h"
 #include "LinkBuffer.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC { namespace DFG {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(Disassembler);
 
 Disassembler::Disassembler(Graph& graph)
     : m_graph(graph)
@@ -162,11 +165,14 @@ void Disassembler::dumpDisassembly(PrintStream& out, const char* prefix, LinkBuf
         prefixBuffer[i + prefixLength] = ' ';
     prefixBuffer[prefixLength + amountOfNodeWhiteSpace] = 0;
     
+    void* codeStart = linkBuffer.entrypoint<DisassemblyPtrTag>().untaggedPtr();
+    void* codeEnd = bitwise_cast<uint8_t*>(codeStart) +  linkBuffer.size();
+
     CodeLocationLabel<DisassemblyPtrTag> start = linkBuffer.locationOf<DisassemblyPtrTag>(previousLabel);
     CodeLocationLabel<DisassemblyPtrTag> end = linkBuffer.locationOf<DisassemblyPtrTag>(currentLabel);
     previousLabel = currentLabel;
     ASSERT(end.dataLocation<uintptr_t>() >= start.dataLocation<uintptr_t>());
-    disassemble(start, end.dataLocation<uintptr_t>() - start.dataLocation<uintptr_t>(), prefixBuffer.data(), out);
+    disassemble(start, end.dataLocation<uintptr_t>() - start.dataLocation<uintptr_t>(), codeStart, codeEnd, prefixBuffer.data(), out);
 }
 
 } } // namespace JSC::DFG

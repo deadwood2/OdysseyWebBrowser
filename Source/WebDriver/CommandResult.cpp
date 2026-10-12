@@ -53,11 +53,11 @@ CommandResult::CommandResult(RefPtr<JSON::Value>&& result, std::optional<ErrorCo
     if (!errorObject)
         return;
 
-    auto error = errorObject->getInteger("code");
+    auto error = errorObject->getInteger("code"_s);
     if (!error)
         return;
 
-    auto errorMessage = errorObject->getString("message");
+    auto errorMessage = errorObject->getString("message"_s);
     if (!errorMessage)
         return;
 
@@ -74,44 +74,44 @@ CommandResult::CommandResult(RefPtr<JSON::Value>&& result, std::optional<ErrorCo
         String errorName;
         auto position = errorMessage.find(';');
         if (position != notFound) {
-            errorName = errorMessage.substring(0, position);
+            errorName = errorMessage.left(position);
             m_errorMessage = errorMessage.substring(position + 1);
         } else
             errorName = errorMessage;
 
-        if (errorName == "WindowNotFound")
+        if (errorName == "WindowNotFound"_s)
             m_errorCode = ErrorCode::NoSuchWindow;
-        else if (errorName == "FrameNotFound")
+        else if (errorName == "FrameNotFound"_s)
             m_errorCode = ErrorCode::NoSuchFrame;
-        else if (errorName == "NotImplemented")
+        else if (errorName == "NotImplemented"_s)
             m_errorCode = ErrorCode::UnsupportedOperation;
-        else if (errorName == "ElementNotInteractable")
+        else if (errorName == "ElementNotInteractable"_s)
             m_errorCode = ErrorCode::ElementNotInteractable;
-        else if (errorName == "JavaScriptError")
+        else if (errorName == "JavaScriptError"_s)
             m_errorCode = ErrorCode::JavascriptError;
-        else if (errorName == "JavaScriptTimeout")
+        else if (errorName == "JavaScriptTimeout"_s)
             m_errorCode = ErrorCode::ScriptTimeout;
-        else if (errorName == "NodeNotFound")
+        else if (errorName == "NodeNotFound"_s)
             m_errorCode = ErrorCode::StaleElementReference;
-        else if (errorName == "InvalidNodeIdentifier")
+        else if (errorName == "InvalidNodeIdentifier"_s)
             m_errorCode = ErrorCode::NoSuchElement;
-        else if (errorName == "MissingParameter" || errorName == "InvalidParameter")
+        else if (errorName == "MissingParameter"_s || errorName == "InvalidParameter"_s)
             m_errorCode = ErrorCode::InvalidArgument;
-        else if (errorName == "InvalidElementState")
+        else if (errorName == "InvalidElementState"_s)
             m_errorCode = ErrorCode::InvalidElementState;
-        else if (errorName == "InvalidSelector")
+        else if (errorName == "InvalidSelector"_s)
             m_errorCode = ErrorCode::InvalidSelector;
-        else if (errorName == "Timeout")
+        else if (errorName == "Timeout"_s)
             m_errorCode = ErrorCode::Timeout;
-        else if (errorName == "NoJavaScriptDialog")
+        else if (errorName == "NoJavaScriptDialog"_s)
             m_errorCode = ErrorCode::NoSuchAlert;
-        else if (errorName == "ElementNotSelectable")
+        else if (errorName == "ElementNotSelectable"_s)
             m_errorCode = ErrorCode::ElementNotSelectable;
-        else if (errorName == "ScreenshotError")
+        else if (errorName == "ScreenshotError"_s)
             m_errorCode = ErrorCode::UnableToCaptureScreen;
-        else if (errorName == "UnexpectedAlertOpen")
+        else if (errorName == "UnexpectedAlertOpen"_s)
             m_errorCode = ErrorCode::UnexpectedAlertOpen;
-        else if (errorName == "TargetOutOfBounds")
+        else if (errorName == "TargetOutOfBounds"_s)
             m_errorCode = ErrorCode::MoveTargetOutOfBounds;
 
         break;
@@ -145,7 +145,9 @@ unsigned CommandResult::httpStatusCode() const
     case ErrorCode::NoSuchElement:
     case ErrorCode::NoSuchFrame:
     case ErrorCode::NoSuchWindow:
+    case ErrorCode::NoSuchShadowRoot:
     case ErrorCode::StaleElementReference:
+    case ErrorCode::DetachedShadowRoot:
     case ErrorCode::InvalidSessionID:
     case ErrorCode::UnknownCommand:
         return 404;
@@ -176,6 +178,8 @@ String CommandResult::errorString() const
         return "element not selectable"_s;
     case ErrorCode::ElementNotInteractable:
         return "element not interactable"_s;
+    case ErrorCode::DetachedShadowRoot:
+        return "detached shadow root"_s;
     case ErrorCode::InvalidArgument:
         return "invalid argument"_s;
     case ErrorCode::InvalidElementState:
@@ -194,6 +198,8 @@ String CommandResult::errorString() const
         return "no such element"_s;
     case ErrorCode::NoSuchFrame:
         return "no such frame"_s;
+    case ErrorCode::NoSuchShadowRoot:
+        return "no such shadow root"_s;
     case ErrorCode::NoSuchWindow:
         return "no such window"_s;
     case ErrorCode::ScriptTimeout:

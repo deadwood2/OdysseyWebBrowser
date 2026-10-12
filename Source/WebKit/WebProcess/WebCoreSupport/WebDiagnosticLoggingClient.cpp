@@ -26,13 +26,18 @@
 #include "config.h"
 #include "WebDiagnosticLoggingClient.h"
 
+#include "MessageSenderInlines.h"
 #include "WebCoreArgumentCoders.h"
 #include "WebPage.h"
 #include "WebPageProxyMessages.h"
+#include <WebCore/Page.h>
 #include <WebCore/Settings.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 using namespace WebCore;
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebDiagnosticLoggingClient);
 
 WebDiagnosticLoggingClient::WebDiagnosticLoggingClient(WebPage& page)
     : m_page(page)

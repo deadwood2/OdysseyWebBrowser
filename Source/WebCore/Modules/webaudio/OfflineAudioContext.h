@@ -26,7 +26,7 @@
 #pragma once
 
 #include "BaseAudioContext.h"
-#include "JSDOMPromiseDeferred.h"
+#include "JSDOMPromiseDeferredForward.h"
 #include "OfflineAudioDestinationNode.h"
 #include <wtf/HashMap.h>
 #include <wtf/Lock.h>
@@ -37,7 +37,7 @@ namespace WebCore {
 struct OfflineAudioContextOptions;
 
 class OfflineAudioContext final : public BaseAudioContext {
-    WTF_MAKE_ISO_ALLOCATED(OfflineAudioContext);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(OfflineAudioContext);
 public:
     static ExceptionOr<Ref<OfflineAudioContext>> create(ScriptExecutionContext&, const OfflineAudioContextOptions&);
     static ExceptionOr<Ref<OfflineAudioContext>> create(ScriptExecutionContext&, unsigned numberOfChannels, unsigned length, float sampleRate);
@@ -56,10 +56,12 @@ public:
 private:
     OfflineAudioContext(Document&, const OfflineAudioContextOptions&);
 
+    void lazyInitialize() final;
+    void increaseNoiseMultiplierIfNeeded();
+
     AudioBuffer* renderTarget() const { return destination().renderTarget(); }
 
     // ActiveDOMObject
-    const char* activeDOMObjectName() const final;
     bool virtualHasPendingActivity() const final;
 
     void settleRenderingPromise(ExceptionOr<Ref<AudioBuffer>>&&);
@@ -68,7 +70,7 @@ private:
 
     UniqueRef<OfflineAudioDestinationNode> m_destinationNode;
     RefPtr<DeferredPromise> m_pendingRenderingPromise;
-    HashMap<unsigned /* frame */, RefPtr<DeferredPromise>, WTF::IntHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> m_suspendRequests;
+    HashMap<unsigned /* frame */, RefPtr<DeferredPromise>, IntHash<unsigned>, WTF::UnsignedWithZeroKeyHashTraits<unsigned>> m_suspendRequests;
     unsigned m_length;
     bool m_didStartRendering { false };
 };

@@ -38,16 +38,18 @@
 #include "Document.h"
 #include "EventNames.h"
 #include <JavaScriptCore/Float32Array.h>
-#include <wtf/IsoMallocInlines.h>
 #include <wtf/MainThread.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(ScriptProcessorNode);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(ScriptProcessorNode);
 
 Ref<ScriptProcessorNode> ScriptProcessorNode::create(BaseAudioContext& context, size_t bufferSize, unsigned numberOfInputChannels, unsigned numberOfOutputChannels)
 {
-    return adoptRef(*new ScriptProcessorNode(context, bufferSize, numberOfInputChannels, numberOfOutputChannels));
+    auto node = adoptRef(*new ScriptProcessorNode(context, bufferSize, numberOfInputChannels, numberOfOutputChannels));
+    node->suspendIfNeeded();
+    return node;
 }
 
 ScriptProcessorNode::ScriptProcessorNode(BaseAudioContext& context, size_t bufferSize, unsigned numberOfInputChannels, unsigned numberOfOutputChannels)
@@ -69,7 +71,6 @@ ScriptProcessorNode::ScriptProcessorNode(BaseAudioContext& context, size_t buffe
     addOutput(numberOfOutputChannels);
 
     initialize();
-    suspendIfNeeded();
 }
 
 ScriptProcessorNode::~ScriptProcessorNode()
@@ -89,8 +90,8 @@ void ScriptProcessorNode::initialize()
     // These AudioBuffers will be directly accessed in the main thread by JavaScript.
     for (unsigned i = 0; i < bufferCount; ++i) {
         // We prevent detaching the AudioBuffers here since we pass those to JS and reuse them.
-        m_inputBuffers[i] = m_numberOfInputChannels ? AudioBuffer::create(m_numberOfInputChannels, bufferSize(), sampleRate, AudioBuffer::LegacyPreventDetaching::Yes) : 0;
-        m_outputBuffers[i] = m_numberOfOutputChannels ? AudioBuffer::create(m_numberOfOutputChannels, bufferSize(), sampleRate, AudioBuffer::LegacyPreventDetaching::Yes) : 0;
+        m_inputBuffers[i] = m_numberOfInputChannels ? AudioBuffer::create(m_numberOfInputChannels, bufferSize(), sampleRate, AudioBuffer::LegacyPreventDetaching::Yes) : nullptr;
+        m_outputBuffers[i] = m_numberOfOutputChannels ? AudioBuffer::create(m_numberOfOutputChannels, bufferSize(), sampleRate, AudioBuffer::LegacyPreventDetaching::Yes) : nullptr;
     }
 
     AudioNode::initialize();
@@ -209,11 +210,11 @@ void ScriptProcessorNode::process(size_t framesToProcess)
         // Reference ourself so we don't accidentally get deleted before fireProcessEvent() gets called.
         // We only wait for script code execution when the context is an offline one for performance reasons.
         if (context().isOfflineContext()) {
-            callOnMainThreadAndWait([this, bufferIndex, protector = makeRef(*this)] {
+            callOnMainThreadAndWait([this, bufferIndex, protector = Ref { *this }] {
                 fireProcessEvent(bufferIndex);
             });
         } else {
-            callOnMainThread([this, bufferIndex, protector = makeRef(*this)] {
+            callOnMainThread([this, bufferIndex, protector = Ref { *this }] {
                 Locker locker { m_bufferLocks[bufferIndex] };
                 fireProcessEvent(bufferIndex);
             });
@@ -256,7 +257,7 @@ ExceptionOr<void> ScriptProcessorNode::setChannelCount(unsigned channelCount)
     ASSERT(isMainThread());
 
     if (channelCount != this->channelCount())
-        return Exception { IndexSizeError, "ScriptProcessorNode's channelCount cannot be changed"_s };
+        return Exception { ExceptionCode::IndexSizeError, "ScriptProcessorNode's channelCount cannot be changed"_s };
     return { };
 }
 
@@ -265,7 +266,7 @@ ExceptionOr<void> ScriptProcessorNode::setChannelCountMode(ChannelCountMode mode
     ASSERT(isMainThread());
 
     if (mode != this->channelCountMode())
-        return Exception { NotSupportedError, "ScriptProcessorNode's channelCountMode cannot be changed from 'explicit'"_s };
+        return Exception { ExceptionCode::NotSupportedError, "ScriptProcessorNode's channelCountMode cannot be changed from 'explicit'"_s };
 
     return { };
 }

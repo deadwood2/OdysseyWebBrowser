@@ -28,145 +28,14 @@
 
 #include "ArgumentCoders.h"
 #include "WebProcess.h"
-#include <WebCore/Frame.h>
+#include <WebCore/FrameDestructionObserverInlines.h>
+#include <WebCore/LocalFrame.h>
 #include <WebCore/Page.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 
-void WebsitePoliciesData::encode(IPC::Encoder& encoder) const
-{
-    encoder << contentBlockersEnabled;
-    encoder << autoplayPolicy;
-#if ENABLE(DEVICE_ORIENTATION)
-    encoder << deviceOrientationAndMotionAccessState;
-#endif
-    encoder << allowedAutoplayQuirks;
-    encoder << customHeaderFields;
-    encoder << popUpPolicy;
-    encoder << customUserAgent;
-    encoder << customUserAgentAsSiteSpecificQuirks;
-    encoder << customNavigatorPlatform;
-    encoder << metaViewportPolicy;
-    encoder << mediaSourcePolicy;
-    encoder << simulatedMouseEventsDispatchPolicy;
-    encoder << legacyOverflowScrollingTouchPolicy;
-    encoder << allowContentChangeObserverQuirk;
-    encoder << allowsContentJavaScript;
-    encoder << mouseEventPolicy;
-    encoder << idempotentModeAutosizingOnlyHonorsPercentages;
-}
-
-std::optional<WebsitePoliciesData> WebsitePoliciesData::decode(IPC::Decoder& decoder)
-{
-    std::optional<bool> contentBlockersEnabled;
-    decoder >> contentBlockersEnabled;
-    if (!contentBlockersEnabled)
-        return std::nullopt;
-    
-    std::optional<WebsiteAutoplayPolicy> autoplayPolicy;
-    decoder >> autoplayPolicy;
-    if (!autoplayPolicy)
-        return std::nullopt;
-
-#if ENABLE(DEVICE_ORIENTATION)
-    std::optional<WebCore::DeviceOrientationOrMotionPermissionState> deviceOrientationAndMotionAccessState;
-    decoder >> deviceOrientationAndMotionAccessState;
-    if (!deviceOrientationAndMotionAccessState)
-        return std::nullopt;
-#endif
-    
-    std::optional<OptionSet<WebsiteAutoplayQuirk>> allowedAutoplayQuirks;
-    decoder >> allowedAutoplayQuirks;
-    if (!allowedAutoplayQuirks)
-        return std::nullopt;
-    
-    std::optional<Vector<WebCore::CustomHeaderFields>> customHeaderFields;
-    decoder >> customHeaderFields;
-    if (!customHeaderFields)
-        return std::nullopt;
-
-    std::optional<WebsitePopUpPolicy> popUpPolicy;
-    decoder >> popUpPolicy;
-    if (!popUpPolicy)
-        return std::nullopt;
-
-    std::optional<String> customUserAgent;
-    decoder >> customUserAgent;
-    if (!customUserAgent)
-        return std::nullopt;
-
-    std::optional<String> customUserAgentAsSiteSpecificQuirks;
-    decoder >> customUserAgentAsSiteSpecificQuirks;
-    if (!customUserAgentAsSiteSpecificQuirks)
-        return std::nullopt;
-
-    std::optional<String> customNavigatorPlatform;
-    decoder >> customNavigatorPlatform;
-    if (!customNavigatorPlatform)
-        return std::nullopt;
-
-    std::optional<WebsiteMetaViewportPolicy> metaViewportPolicy;
-    decoder >> metaViewportPolicy;
-    if (!metaViewportPolicy)
-        return std::nullopt;
-
-    std::optional<WebsiteMediaSourcePolicy> mediaSourcePolicy;
-    decoder >> mediaSourcePolicy;
-    if (!mediaSourcePolicy)
-        return std::nullopt;
-    
-    std::optional<WebsiteSimulatedMouseEventsDispatchPolicy> simulatedMouseEventsDispatchPolicy;
-    decoder >> simulatedMouseEventsDispatchPolicy;
-    if (!simulatedMouseEventsDispatchPolicy)
-        return std::nullopt;
-
-    std::optional<WebsiteLegacyOverflowScrollingTouchPolicy> legacyOverflowScrollingTouchPolicy;
-    decoder >> legacyOverflowScrollingTouchPolicy;
-    if (!legacyOverflowScrollingTouchPolicy)
-        return std::nullopt;
-
-    std::optional<bool> allowContentChangeObserverQuirk;
-    decoder >> allowContentChangeObserverQuirk;
-    if (!allowContentChangeObserverQuirk)
-        return std::nullopt;
-
-    std::optional<WebCore::AllowsContentJavaScript> allowsContentJavaScript;
-    decoder >> allowsContentJavaScript;
-    if (!allowsContentJavaScript)
-        return std::nullopt;
-
-    std::optional<WebCore::MouseEventPolicy> mouseEventPolicy;
-    decoder >> mouseEventPolicy;
-    if (!mouseEventPolicy)
-        return std::nullopt;
-
-    std::optional<bool> idempotentModeAutosizingOnlyHonorsPercentages;
-    decoder >> idempotentModeAutosizingOnlyHonorsPercentages;
-    if (!idempotentModeAutosizingOnlyHonorsPercentages)
-        return std::nullopt;
-
-    return { {
-        WTFMove(*contentBlockersEnabled),
-        WTFMove(*allowedAutoplayQuirks),
-        WTFMove(*autoplayPolicy),
-#if ENABLE(DEVICE_ORIENTATION)
-        WTFMove(*deviceOrientationAndMotionAccessState),
-#endif
-        WTFMove(*customHeaderFields),
-        WTFMove(*popUpPolicy),
-        WTFMove(*customUserAgent),
-        WTFMove(*customUserAgentAsSiteSpecificQuirks),
-        WTFMove(*customNavigatorPlatform),
-        WTFMove(*metaViewportPolicy),
-        WTFMove(*mediaSourcePolicy),
-        WTFMove(*simulatedMouseEventsDispatchPolicy),
-        WTFMove(*legacyOverflowScrollingTouchPolicy),
-        WTFMove(*allowContentChangeObserverQuirk),
-        WTFMove(*allowsContentJavaScript),
-        WTFMove(*mouseEventPolicy),
-        WTFMove(*idempotentModeAutosizingOnlyHonorsPercentages),
-    } };
-}
+WTF_MAKE_TZONE_ALLOCATED_IMPL(WebsitePoliciesData);
 
 void WebsitePoliciesData::applyToDocumentLoader(WebsitePoliciesData&& websitePolicies, WebCore::DocumentLoader& documentLoader)
 {
@@ -174,14 +43,19 @@ void WebsitePoliciesData::applyToDocumentLoader(WebsitePoliciesData&& websitePol
     documentLoader.setCustomUserAgent(websitePolicies.customUserAgent);
     documentLoader.setCustomUserAgentAsSiteSpecificQuirks(websitePolicies.customUserAgentAsSiteSpecificQuirks);
     documentLoader.setCustomNavigatorPlatform(websitePolicies.customNavigatorPlatform);
+    documentLoader.setAllowPrivacyProxy(websitePolicies.allowPrivacyProxy);
 
 #if ENABLE(DEVICE_ORIENTATION)
     documentLoader.setDeviceOrientationAndMotionAccessState(websitePolicies.deviceOrientationAndMotionAccessState);
 #endif
 
-    // Only setUserContentExtensionsEnabled if it hasn't already been disabled by reloading without content blockers.
-    if (documentLoader.userContentExtensionsEnabled())
-        documentLoader.setUserContentExtensionsEnabled(websitePolicies.contentBlockersEnabled);
+    // Only disable content blockers if it hasn't already been disabled by reloading without content blockers.
+    auto& [defaultEnablement, exceptions] = documentLoader.contentExtensionEnablement();
+    if (defaultEnablement == WebCore::ContentExtensionDefaultEnablement::Enabled && exceptions.isEmpty())
+        documentLoader.setContentExtensionEnablement(WTFMove(websitePolicies.contentExtensionEnablement));
+
+    documentLoader.setActiveContentRuleListActionPatterns(websitePolicies.activeContentRuleListActionPatterns);
+    documentLoader.setVisibilityAdjustmentSelectors(WTFMove(websitePolicies.visibilityAdjustmentSelectors));
 
     OptionSet<WebCore::AutoplayQuirk> quirks;
     const auto& allowedQuirks = websitePolicies.allowedAutoplayQuirks;
@@ -286,11 +160,15 @@ void WebsitePoliciesData::applyToDocumentLoader(WebsitePoliciesData&& websitePol
 #endif
     }
 
-    documentLoader.setAllowContentChangeObserverQuirk(websitePolicies.allowContentChangeObserverQuirk);
+    documentLoader.setModalContainerObservationPolicy(websitePolicies.modalContainerObservationPolicy);
+    documentLoader.setColorSchemePreference(websitePolicies.colorSchemePreference);
+    documentLoader.setAdvancedPrivacyProtections(websitePolicies.advancedPrivacyProtections);
+    if (!documentLoader.originatorAdvancedPrivacyProtections())
+        documentLoader.setOriginatorAdvancedPrivacyProtections(websitePolicies.advancedPrivacyProtections);
     documentLoader.setIdempotentModeAutosizingOnlyHonorsPercentages(websitePolicies.idempotentModeAutosizingOnlyHonorsPercentages);
+    documentLoader.setHTTPSByDefaultMode(websitePolicies.httpsByDefaultMode);
 
-    auto* frame = documentLoader.frame();
-    if (!frame)
+    if (!documentLoader.frame())
         return;
 
     documentLoader.applyPoliciesToSettings();

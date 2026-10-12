@@ -25,16 +25,132 @@
 
 #pragma once
 
+#import "Color.h"
+#import "TextAttachmentForSerialization.h"
+#import <wtf/ObjectIdentifier.h>
 #import <wtf/RetainPtr.h>
+#import <wtf/URL.h>
+#import <wtf/Vector.h>
+
+#if PLATFORM(MAC)
+#define PlatformColor                   NSColor
+#define PlatformColorClass              NSColor.class
+#define PlatformFont                    NSFont
+#define PlatformFontClass               NSFont.class
+#define PlatformImageClass              NSImage
+#define PlatformNSColorClass            NSColor
+#define PlatformNSParagraphStyle        NSParagraphStyle.class
+#define PlatformNSPresentationIntent    NSPresentationIntent.class
+#define PlatformNSShadow                NSShadow.class
+#define PlatformNSTextAttachment        NSTextAttachment.class
+#define PlatformNSTextList              NSTextList
+#define PlatformNSTextTab               NSTextTab
+#define PlatformNSTextTable             NSTextTable
+#define PlatformNSTextTableBlock        NSTextTableBlock.class
+#else
+#define PlatformColor                   UIColor
+#define PlatformColorClass              PAL::getUIColorClass()
+#define PlatformFont                    UIFont
+#define PlatformFontClass               PAL::getUIFontClass()
+#define PlatformImageClass              PAL::getUIImageClass()
+#define PlatformNSColorClass            getNSColorClass()
+#define PlatformNSParagraphStyle        PAL::getNSParagraphStyleClass()
+#define PlatformNSPresentationIntent    PAL::getNSPresentationIntentClass()
+#define PlatformNSShadow                PAL::getNSShadowClass()
+#define PlatformNSTextAttachment        getNSTextAttachmentClass()
+#define PlatformNSTextList              getNSTextListClass()
+#define PlatformNSTextTab               getNSTextTabClass()
+#define PlatformNSTextTable             getNSTextTableClass()
+#define PlatformNSTextTableBlock        getNSTextTableBlockClass()
+#endif
 
 OBJC_CLASS NSAttributedString;
+OBJC_CLASS NSDate;
 OBJC_CLASS NSDictionary;
+OBJC_CLASS NSParagraphStyle;
+OBJC_CLASS NSPresentationIntent;
+OBJC_CLASS NSShadow;
+OBJC_CLASS NSTextAttachment;
+OBJC_CLASS PlatformColor;
 
 namespace WebCore {
 
-struct AttributedString {
-    RetainPtr<NSAttributedString> string;
-    RetainPtr<NSDictionary> documentAttributes;
+class Font;
+
+struct AttributedStringTextTableIDType;
+using AttributedStringTextTableID = LegacyNullableObjectIdentifier<AttributedStringTextTableIDType>;
+
+struct AttributedStringTextTableBlockIDType;
+using AttributedStringTextTableBlockID = LegacyNullableObjectIdentifier<AttributedStringTextTableBlockIDType>;
+
+struct AttributedStringTextListIDType;
+using AttributedStringTextListID = LegacyNullableObjectIdentifier<AttributedStringTextListIDType>;
+
+struct WEBCORE_EXPORT AttributedString {
+    struct Range {
+        size_t location { 0 };
+        size_t length { 0 };
+    };
+
+    using TextTableID = AttributedStringTextTableID;
+    using TextTableBlockID = AttributedStringTextTableBlockID;
+    using TextListID = AttributedStringTextListID;
+    using TableBlockAndTableIDPair = std::pair<TextTableBlockID, TextTableID>;
+
+    struct ParagraphStyleWithTableAndListIDs {
+        RetainPtr<NSParagraphStyle> style;
+        Vector<std::optional<TableBlockAndTableIDPair>> tableBlockAndTableIDs; // Same length as `-textBlocks`.
+        Vector<TextListID> listIDs; // Same length as `-textLists`.
+    };
+
+    struct ColorFromCGColor {
+        Color color;
+    };
+
+    struct ColorFromPlatformColor {
+        Color color;
+    };
+
+    struct AttributeValue {
+        std::variant<
+            double,
+            String,
+            URL,
+            Ref<Font>,
+            Vector<String>,
+            Vector<double>,
+            ParagraphStyleWithTableAndListIDs,
+            RetainPtr<NSPresentationIntent>,
+            RetainPtr<NSShadow>,
+            RetainPtr<NSDate>,
+            ColorFromCGColor,
+            ColorFromPlatformColor,
+#if ENABLE(MULTI_REPRESENTATION_HEIC)
+            MultiRepresentationHEICAttachmentData,
+#endif
+            TextAttachmentFileWrapper,
+            TextAttachmentMissingImage
+        > value;
+    };
+
+    String string;
+    Vector<std::pair<Range, HashMap<String, AttributeValue>>> attributes;
+    std::optional<HashMap<String, AttributeValue>> documentAttributes;
+
+    AttributedString();
+    AttributedString(String&&, Vector<std::pair<Range, HashMap<String, AttributeValue>>>&&, std::optional<HashMap<String, AttributeValue>>&&);
+    AttributedString(AttributedString&&);
+    AttributedString(const AttributedString&);
+    AttributedString& operator=(AttributedString&&);
+    AttributedString& operator=(const AttributedString&);
+    ~AttributedString();
+
+    static AttributedString fromNSAttributedStringAndDocumentAttributes(RetainPtr<NSAttributedString>&&, RetainPtr<NSDictionary>&& documentAttributes);
+    static AttributedString fromNSAttributedString(RetainPtr<NSAttributedString>&&);
+    static bool rangesAreSafe(const String&, const Vector<std::pair<Range, HashMap<String, AttributeValue>>>&);
+    RetainPtr<NSDictionary> documentAttributesAsNSDictionary() const;
+    RetainPtr<NSAttributedString> nsAttributedString() const;
+    bool isNull() const;
 };
 
 } // namespace WebCore

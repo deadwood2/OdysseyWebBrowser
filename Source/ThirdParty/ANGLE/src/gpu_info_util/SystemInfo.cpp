@@ -12,13 +12,18 @@
 #include <iostream>
 #include <sstream>
 
+#include "anglebase/no_destructor.h"
 #include "common/debug.h"
 #include "common/string_utils.h"
+#include "common/system_utils.h"
 
 namespace angle
 {
 namespace
 {
+constexpr char kANGLEPreferredDeviceEnv[] = "ANGLE_PREFERRED_DEVICE";
+}
+
 std::string VendorName(VendorID vendor)
 {
     switch (vendor)
@@ -47,13 +52,17 @@ std::string VendorName(VendorID vendor)
             return "Vivante";
         case kVendorID_VMWare:
             return "VMWare";
+        case kVendorID_VirtIO:
+            return "VirtIO";
         case kVendorID_Apple:
             return "Apple";
+        case kVendorID_Microsoft:
+            return "Microsoft";
         default:
             return "Unknown (" + std::to_string(vendor) + ")";
     }
 }
-}  // anonymous namespace
+
 GPUDeviceInfo::GPUDeviceInfo() = default;
 
 GPUDeviceInfo::~GPUDeviceInfo() = default;
@@ -100,6 +109,22 @@ bool SystemInfo::hasAMDGPU() const
         }
     }
     return false;
+}
+
+std::optional<size_t> SystemInfo::getPreferredGPUIndex() const
+{
+    std::string device = GetPreferredDeviceString();
+    if (!device.empty())
+    {
+        for (size_t i = 0; i < gpus.size(); ++i)
+        {
+            std::string vendor = VendorName(gpus[i].vendorId);
+            ToLower(&vendor);
+            if (vendor == device)
+                return i;
+        }
+    }
+    return std::nullopt;
 }
 
 bool IsAMD(VendorID vendorId)
@@ -157,14 +182,24 @@ bool IsVMWare(VendorID vendorId)
     return vendorId == kVendorID_VMWare;
 }
 
+bool IsVirtIO(VendorID vendorId)
+{
+    return vendorId == kVendorID_VirtIO;
+}
+
 bool IsVivante(VendorID vendorId)
 {
     return vendorId == kVendorID_Vivante;
 }
 
-bool IsApple(VendorID vendorId)
+bool IsAppleGPU(VendorID vendorId)
 {
     return vendorId == kVendorID_Apple;
+}
+
+bool IsMicrosoft(VendorID vendorId)
+{
+    return vendorId == kVendorID_Microsoft;
 }
 
 bool ParseAMDBrahmaDriverVersion(const std::string &content, std::string *version)
@@ -208,46 +243,6 @@ bool ParseAMDCatalystDriverVersion(const std::string &content, std::string *vers
     return false;
 }
 
-bool ParseMacMachineModel(const std::string &identifier,
-                          std::string *type,
-                          int32_t *major,
-                          int32_t *minor)
-{
-    size_t numberLoc = identifier.find_first_of("0123456789");
-    if (numberLoc == std::string::npos)
-    {
-        return false;
-    }
-
-    size_t commaLoc = identifier.find(',', numberLoc);
-    if (commaLoc == std::string::npos || commaLoc >= identifier.size())
-    {
-        return false;
-    }
-
-    const char *numberPtr = &identifier[numberLoc];
-    const char *commaPtr  = &identifier[commaLoc + 1];
-    char *endPtr          = nullptr;
-
-    int32_t majorTmp = static_cast<int32_t>(std::strtol(numberPtr, &endPtr, 10));
-    if (endPtr == numberPtr)
-    {
-        return false;
-    }
-
-    int32_t minorTmp = static_cast<int32_t>(std::strtol(commaPtr, &endPtr, 10));
-    if (endPtr == commaPtr)
-    {
-        return false;
-    }
-
-    *major = majorTmp;
-    *minor = minorTmp;
-    *type  = identifier.substr(0, numberLoc);
-
-    return true;
-}
-
 bool CMDeviceIDToDeviceAndVendorID(const std::string &id, uint32_t *vendorId, uint32_t *deviceId)
 {
     unsigned int vendor = 0;
@@ -266,6 +261,11 @@ void GetDualGPUInfo(SystemInfo *info)
     ASSERT(!info->gpus.empty());
 
     // On dual-GPU systems we assume the non-Intel GPU is the graphics one.
+    // TODO: this is incorrect and problematic.  activeGPUIndex must be removed if it cannot be
+    // determined correctly.  A potential solution is to create an OpenGL context and parse
+    // GL_VENDOR.  Currently, our test infrastructure is relying on this information and incorrectly
+    // applies test expectations on dual-GPU systems when the Intel GPU is active.
+    // http://anglebug.com/40644803.
     int active    = 0;
     bool hasIntel = false;
     for (size_t i = 0; i < info->gpus.size(); ++i)
@@ -295,7 +295,9 @@ void PrintSystemInfo(const SystemInfo &info)
         const auto &gpu = info.gpus[i];
 
         std::cout << "  " << i << " - " << VendorName(gpu.vendorId) << " device id: 0x" << std::hex
-                  << std::uppercase << gpu.deviceId << std::dec << "\n";
+                  << std::uppercase << gpu.deviceId << std::dec << ", revision id: 0x" << std::hex
+                  << std::uppercase << gpu.revisionId << std::dec << ", system device id: 0x"
+                  << std::hex << std::uppercase << gpu.systemDeviceId << std::dec << "\n";
         if (!gpu.driverVendor.empty())
         {
             std::cout << "       Driver Vendor: " << gpu.driverVendor << "\n";
@@ -308,6 +310,15 @@ void PrintSystemInfo(const SystemInfo &info)
         {
             std::cout << "       Driver Date: " << gpu.driverDate << "\n";
         }
+        if (gpu.detailedDriverVersion.major != 0 || gpu.detailedDriverVersion.minor != 0 ||
+            gpu.detailedDriverVersion.subMinor != 0 || gpu.detailedDriverVersion.patch != 0)
+        {
+            std::cout << "       Detailed Driver Version:\n"
+                      << "           major: " << gpu.detailedDriverVersion.major
+                      << "           minor: " << gpu.detailedDriverVersion.minor
+                      << "           subMinor: " << gpu.detailedDriverVersion.subMinor
+                      << "           patch: " << gpu.detailedDriverVersion.patch << "\n";
+        }
     }
 
     std::cout << "\n";
@@ -316,11 +327,16 @@ void PrintSystemInfo(const SystemInfo &info)
     std::cout << "\n";
     std::cout << "Optimus: " << (info.isOptimus ? "true" : "false") << "\n";
     std::cout << "AMD Switchable: " << (info.isAMDSwitchable ? "true" : "false") << "\n";
+    std::cout << "Mac Switchable: " << (info.isMacSwitchable ? "true" : "false") << "\n";
 
     std::cout << "\n";
     if (!info.machineManufacturer.empty())
     {
         std::cout << "Machine Manufacturer: " << info.machineManufacturer << "\n";
+    }
+    if (info.androidSdkLevel != 0)
+    {
+        std::cout << "Android SDK Level: " << info.androidSdkLevel << "\n";
     }
     if (!info.machineModelName.empty())
     {
@@ -342,4 +358,38 @@ VersionInfo ParseNvidiaDriverVersion(uint32_t version)
         version & 0x3f         // patch
     };
 }
+
+VersionInfo ParseMesaDriverVersion(uint32_t version)
+{
+    // Mesa uses VK_MAKE_VERSION
+    return {
+        version >> 22 & 0x7F,
+        version >> 12 & 0x3FF,
+        version & 0xFFF,
+        0,
+    };
+}
+
+uint64_t GetSystemDeviceIdFromParts(uint32_t highPart, uint32_t lowPart)
+{
+    return (static_cast<uint64_t>(highPart) << 32) | lowPart;
+}
+
+uint32_t GetSystemDeviceIdHighPart(uint64_t systemDeviceId)
+{
+    return (systemDeviceId >> 32) & 0xffffffff;
+}
+
+uint32_t GetSystemDeviceIdLowPart(uint64_t systemDeviceId)
+{
+    return systemDeviceId & 0xffffffff;
+}
+
+std::string GetPreferredDeviceString()
+{
+    std::string device = angle::GetEnvironmentVar(kANGLEPreferredDeviceEnv);
+    ToLower(&device);
+    return device;
+}
+
 }  // namespace angle

@@ -35,9 +35,7 @@
 
 namespace JSC { namespace B3 { namespace Air {
 
-TmpWidth::TmpWidth()
-{
-}
+TmpWidth::TmpWidth() = default;
 
 TmpWidth::TmpWidth(Code& code)
 {
@@ -45,9 +43,7 @@ TmpWidth::TmpWidth(Code& code)
     recompute<FP>(code);
 }
 
-TmpWidth::~TmpWidth()
-{
-}
+TmpWidth::~TmpWidth() = default;
 
 template <Bank bank>
 void TmpWidth::recompute(Code& code)
@@ -68,13 +64,13 @@ void TmpWidth::recompute(Code& code)
     
     auto assumeTheWorst = [&] (Tmp tmp) {
         if (bank == Arg(tmp).bank()) {
-            Width conservative = conservativeWidth(bank);
+            Width conservative = code.usesSIMD() ? conservativeWidth(bank) : conservativeWidthWithoutVectors(bank);
             addWidths(tmp, { conservative, conservative });
         }
     };
     
     // Assume the worst for registers.
-    RegisterSet::allRegisters().forEach(
+    RegisterSetBuilder::allRegisters().forEach(
         [&] (Reg reg) {
             assumeTheWorst(Tmp(reg));
         });
@@ -129,7 +125,7 @@ void TmpWidth::recompute(Code& code)
                     if (Arg::isZDef(role))
                         tmpWidths.def = std::max(tmpWidths.def, width);
                     else if (Arg::isAnyDef(role))
-                        tmpWidths.def = conservativeWidth(tmpBank);
+                        tmpWidths.def = code.usesSIMD() ? conservativeWidth(tmpBank) : conservativeWidthWithoutVectors(tmpBank);
                 });
         }
     }
@@ -171,7 +167,7 @@ void TmpWidth::recompute(Code& code)
     if (verbose) {
         dataLogLn("bank: ", bank, ", widthsVector: ");
         for (unsigned i = 0; i < bankWidthsVector.size(); ++i)
-            dataLogLn("\t", i, " : ", bankWidthsVector[i]);
+            dataLogLn("\t", AbsoluteTmpMapper<bank>::tmpFromAbsoluteIndex(i), " : ", bankWidthsVector[i]);
     }
 }
 

@@ -30,7 +30,7 @@
 #include "AccessibilityScrollbar.h"
 
 #include "AXObjectCache.h"
-#include "FrameView.h"
+#include "LocalFrameView.h"
 #include "ScrollView.h"
 #include "Scrollbar.h"
 
@@ -69,9 +69,9 @@ AccessibilityOrientation AccessibilityScrollbar::orientation() const
     if (!m_scrollbar)
         return AccessibilityOrientation::Vertical;
 
-    if (m_scrollbar->orientation() == HorizontalScrollbar)
+    if (m_scrollbar->orientation() == ScrollbarOrientation::Horizontal)
         return AccessibilityOrientation::Horizontal;
-    if (m_scrollbar->orientation() == VerticalScrollbar)
+    if (m_scrollbar->orientation() == ScrollbarOrientation::Vertical)
         return AccessibilityOrientation::Vertical;
 
     return AccessibilityOrientation::Vertical;

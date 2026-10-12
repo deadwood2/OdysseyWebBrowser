@@ -27,7 +27,10 @@
 
 #if USE(MEDIATOOLBOX)
 
+#include <MediaToolbox/MediaToolbox.h>
+
 #include <pal/spi/cf/CoreMediaSPI.h>
+#include <wtf/spi/darwin/XPCSPI.h>
 
 #if HAVE(MT_PLUGIN_FORMAT_READER)
 
@@ -42,8 +45,10 @@
 enum {
     kMTPluginFormatReaderError_AllocationFailure = -16501,
     kMTPluginFormatReaderError_ParsingFailure = -16503,
+    kMTPluginFormatReaderError_InternalFailure = -16504,
     kMTPluginSampleCursorError_NoSamples = -16507,
     kMTPluginSampleCursorError_LocationNotAvailable = -16508,
+    kMTPluginByteSourceError_EndOfStream = -16511,
 };
 
 enum {
@@ -203,6 +208,11 @@ typedef struct {
 #endif // !USE(APPLE_INTERNAL_SDK)
 
 #endif // HAVE(MT_PLUGIN_FORMAT_READER)
+
+WTF_EXTERN_C_BEGIN
+typedef struct OpaqueFigVideoTarget *FigVideoTargetRef;
+OSStatus FigVideoTargetCreateWithVideoReceiverEndpointID(CFAllocatorRef, xpc_object_t videoReceiverXPCEndpointID, CFDictionaryRef creationOptions, FigVideoTargetRef* videoTargetOut);
+WTF_EXTERN_C_END
 
 // FIXME (68673547): Use actual <MediaToolbox/FigPhoto.h> and FigPhotoContainerFormat enum when we weak-link instead of soft-link MediaToolbox and CoreMedia.
 #define kPALFigPhotoContainerFormat_HEIF 0

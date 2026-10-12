@@ -30,6 +30,7 @@
 
 #import "Font.h"
 #import "FontCache.h"
+#import "FontCacheCoreText.h"
 #import "FontDescription.h"
 
 namespace WebCore {
@@ -43,12 +44,14 @@ const String& FontChanges::platformFontFamilyNameForCSS() const
     // This logic was originally from WebHTMLView, and is now in WebCore so that it can
     // be shared between WebKitLegacy and WebKit.
     auto cfFontName = m_fontName.createCFString();
+    if (fontNameIsSystemFont(cfFontName.get()))
+        return m_fontFamily;
     RetainPtr<CFStringRef> fontNameFromDescription;
 
     FontDescription description;
     description.setIsItalic(m_italic.value_or(false));
     description.setWeight(FontSelectionValue { m_bold.value_or(false) ? 900 : 500 });
-    if (auto font = FontCache::singleton().fontForFamily(description, m_fontFamily))
+    if (auto font = FontCache::forCurrentThread().fontForFamily(description, m_fontFamily))
         fontNameFromDescription = adoptCF(CTFontCopyPostScriptName(font->getCTFont()));
 
     if (fontNameFromDescription && CFStringCompare(cfFontName.get(), fontNameFromDescription.get(), 0) == kCFCompareEqualTo)

@@ -37,6 +37,8 @@ public:
 
 class BrowserWindow : public RefCounted<BrowserWindow> {
 public:
+    enum class FeatureType { Experimental, InternalDebug };
+
     virtual ~BrowserWindow() { };
 
     virtual HRESULT init() = 0;
@@ -48,6 +50,8 @@ public:
     virtual void navigateToHistory(UINT menuID) = 0;
     virtual void setPreference(UINT menuID, bool enable) = 0;
     virtual bool usesLayeredWebView() const { return false; }
+
+    virtual void resetFeatureMenu(FeatureType, HMENU, bool resetsSettingsToDefaults = false) = 0;
 
     virtual void print() = 0;
     virtual void launchInspector() = 0;
@@ -63,4 +67,9 @@ public:
     virtual void resetZoom() = 0;
     virtual void zoomIn() = 0;
     virtual void zoomOut() = 0;
+
+    virtual void clearCookies() = 0;
+    virtual void clearWebsiteData() = 0;
+
+    virtual void adjustScaleFactors() = 0;
 };

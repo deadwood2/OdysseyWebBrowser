@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,10 +30,13 @@
 #import "InstanceMethodSwizzler.h"
 #import "PlatformUtilities.h"
 #import "Test.h"
+#import "TestInputDelegate.h"
 #import "TestNavigationDelegate.h"
+#import "TestUIMenuBuilder.h"
 #import "TestWKWebView.h"
-#import "UIKitSPI.h"
+#import "UIKitSPIForTesting.h"
 #import "WKWebViewConfigurationExtras.h"
+#import <WebCore/LocalizedStrings.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WebKit.h>
 #import <wtf/RetainPtr.h>
@@ -70,8 +73,27 @@ TEST(WebKit, InvokeShareWithoutSelection)
 {
     auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 568)]);
     [webView synchronouslyLoadTestPageNamed:@"simple"];
-    [[webView textInputContentView] _share:nil];
+    [webView shareSelection];
     [webView waitForNextPresentationUpdate];
+}
+
+TEST(WebKit, CopyInAutoFilledAndViewablePasswordField)
+{
+    RetainPtr configuration = [WKWebViewConfiguration _test_configurationWithTestPlugInClassName:@"WebProcessPlugInWithInternals" configureJSCForTesting:YES];
+
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:CGRectMake(0, 0, 320, 568) configuration:configuration.get()]);
+    auto *contentView = [webView textInputContentView];
+    [webView synchronouslyLoadHTMLString:@"<input type='password' value='hunter2' autofocus /><input type='password' value='hunter2' id='autofill' />"];
+    [webView selectAll:nil];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_FALSE([contentView canPerformAction:@selector(copy:) withSender:nil]);
+
+    [webView objectByEvaluatingJavaScript:@(R"script(
+        let field = document.getElementById('autofill');
+        internals.setAutoFilledAndViewable(field, true);
+        field.select())script")];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_TRUE([contentView canPerformAction:@selector(copy:) withSender:nil]);
 }
 
 #if ENABLE(IMAGE_ANALYSIS)
@@ -88,18 +110,19 @@ TEST(WebKit, AppHighlightsInImageOverlays)
     [webView stringByEvaluatingJavaScript:@"selectImageOverlay()"];
     [webView waitForNextPresentationUpdate];
 
-    auto createHighlightForCurrentQuickNoteWithRangeSelector = NSSelectorFromString(@"createHighlightForCurrentQuickNoteWithRange:");
-    auto createHighlightForNewQuickNoteWithRangeSelector = NSSelectorFromString(@"createHighlightForNewQuickNoteWithRange:");
-
-    auto contentView = [webView textInputContentView];
-    EXPECT_NULL([contentView targetForAction:createHighlightForCurrentQuickNoteWithRangeSelector withSender:nil]);
-    EXPECT_NULL([contentView targetForAction:createHighlightForNewQuickNoteWithRangeSelector withSender:nil]);
+    auto menuBuilder = adoptNS([[TestUIMenuBuilder alloc] init]);
+    [webView buildMenuWithBuilder:menuBuilder.get()];
+    EXPECT_NULL([menuBuilder actionWithTitle:WebCore::contextMenuItemTagAddHighlightToNewQuickNote()]);
+    EXPECT_NULL([menuBuilder actionWithTitle:WebCore::contextMenuItemTagAddHighlightToCurrentQuickNote()]);
 
     [webView synchronouslyLoadTestPageNamed:@"simple"];
     [webView selectAll:nil];
     [webView waitForNextPresentationUpdate];
-    EXPECT_EQ([contentView targetForAction:createHighlightForCurrentQuickNoteWithRangeSelector withSender:nil], contentView);
-    EXPECT_EQ([contentView targetForAction:createHighlightForNewQuickNoteWithRangeSelector withSender:nil], contentView);
+
+    [menuBuilder reset];
+    [webView buildMenuWithBuilder:menuBuilder.get()];
+    EXPECT_NOT_NULL([menuBuilder actionWithTitle:WebCore::contextMenuItemTagAddHighlightToNewQuickNote()]);
+    EXPECT_NULL([menuBuilder actionWithTitle:WebCore::contextMenuItemTagAddHighlightToCurrentQuickNote()]);
 }
 
 #endif // ENABLE(APP_HIGHLIGHTS)
@@ -115,17 +138,25 @@ TEST(WebKit, CaptureTextFromCamera)
     gCanPerformActionWithSenderResult = YES;
     InstanceMethodSwizzler swizzler { UIResponder.class, @selector(canPerformAction:withSender:), reinterpret_cast<IMP>(canPerformActionWithSender) };
 
-    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
-    auto contentView = [webView textInputContentView];
+    auto inputDelegate = adoptNS([[TestInputDelegate alloc] init]);
+    [inputDelegate setFocusStartsInputSessionPolicyHandler:[] (WKWebView *, id <_WKFocusedElementInfo>) {
+        return _WKFocusStartsInputSessionPolicyAllow;
+    }];
 
-    [webView synchronouslyLoadHTMLString:@"<input value='foo' autofocus>"];
+    auto webView = adoptNS([[TestWKWebView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)]);
+    [webView _setInputDelegate:inputDelegate.get()];
+
+    [webView synchronouslyLoadHTMLString:@"<input style='display: block; font-size: 100px;' value='foo' autofocus><input value='bar' readonly>"];
     [webView waitForNextPresentationUpdate];
-    EXPECT_EQ([webView targetForAction:@selector(captureTextFromCamera:) withSender:nil], contentView);
+    EXPECT_EQ([webView targetForAction:@selector(captureTextFromCamera:) withSender:nil], [webView textInputContentView]);
     EXPECT_TRUE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
 
     [webView selectAll:nil];
     [webView waitForNextPresentationUpdate];
-    EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+    EXPECT_TRUE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+
+    RetainPtr command = [UIKeyCommand keyCommandWithInput:@"a" modifierFlags:UIKeyModifierCommand action:@selector(captureTextFromCamera:)];
+    EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:command.get()]);
 
     [webView collapseToEnd];
     [webView waitForNextPresentationUpdate];
@@ -133,6 +164,21 @@ TEST(WebKit, CaptureTextFromCamera)
 
     gCanPerformActionWithSenderResult = NO;
     EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+
+    gCanPerformActionWithSenderResult = YES;
+    [webView objectByEvaluatingJavaScript:@"document.querySelector('input[readonly]').focus()"];
+    [webView waitForNextPresentationUpdate];
+    EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+
+#if HAVE(UI_EDIT_MENU_INTERACTION)
+    __block bool done = false;
+    [webView selectTextForContextMenuWithLocationInView:CGPointMake(20, 20) completion:^(BOOL shouldPresentMenu) {
+        EXPECT_TRUE(shouldPresentMenu);
+        EXPECT_FALSE([webView canPerformAction:@selector(captureTextFromCamera:) withSender:nil]);
+        done = true;
+    }];
+    TestWebKitAPI::Util::run(&done);
+#endif
 }
 
 #endif // ENABLE(IMAGE_ANALYSIS)

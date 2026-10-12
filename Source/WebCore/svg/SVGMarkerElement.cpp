@@ -3,6 +3,7 @@
  * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
  * Copyright (C) Research In Motion Limited 2009-2010. All rights reserved.
  * Copyright (C) 2018-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2024 Igalia S.L.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -23,16 +24,18 @@
 #include "config.h"
 #include "SVGMarkerElement.h"
 
+#include "LegacyRenderSVGResourceMarker.h"
+#include "NodeName.h"
 #include "RenderSVGResourceMarker.h"
 #include "SVGNames.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(SVGMarkerElement);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(SVGMarkerElement);
 
 inline SVGMarkerElement::SVGMarkerElement(const QualifiedName& tagName, Document& document)
-    : SVGElement(tagName, document)
+    : SVGElement(tagName, document, makeUniqueRef<PropertyRegistry>(*this))
     , SVGFitToViewBox(this)
 {
     // Spec: If the markerWidth/markerHeight attribute is not specified, the effect is as if a value of "3" were specified.
@@ -59,37 +62,54 @@ AffineTransform SVGMarkerElement::viewBoxToViewTransform(float viewWidth, float 
     return SVGFitToViewBox::viewBoxToViewTransform(viewBox(), preserveAspectRatio(), viewWidth, viewHeight);
 }
 
-void SVGMarkerElement::parseAttribute(const QualifiedName& name, const AtomString& value)
+void SVGMarkerElement::attributeChanged(const QualifiedName& name, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason attributeModificationReason)
 {
-    if (name == SVGNames::markerUnitsAttr) {
-        auto propertyValue = SVGPropertyTraits<SVGMarkerUnitsType>::fromString(value);
-        if (propertyValue > 0)
-            m_markerUnits->setBaseValInternal<SVGMarkerUnitsType>(propertyValue);
-        return;
-    }
-
-    if (name == SVGNames::orientAttr) {
-        auto pair = SVGPropertyTraits<std::pair<SVGAngleValue, SVGMarkerOrientType>>::fromString(value);
-        m_orientAngle->setBaseValInternal(pair.first);
-        m_orientType->setBaseValInternal(pair.second);
-        return;
-    }
-
     SVGParsingError parseError = NoError;
+    switch (name.nodeName()) {
+    case AttributeNames::markerUnitsAttr: {
+        auto propertyValue = SVGPropertyTraits<SVGMarkerUnitsType>::fromString(newValue);
+        if (propertyValue > 0)
+            Ref { m_markerUnits }->setBaseValInternal<SVGMarkerUnitsType>(propertyValue);
+        return;
+    }
+    case AttributeNames::orientAttr: {
+        auto pair = SVGPropertyTraits<std::pair<SVGAngleValue, SVGMarkerOrientType>>::fromString(newValue);
+        Ref { m_orientAngle }->setBaseValInternal(pair.first);
+        Ref { m_orientType }->setBaseValInternal(pair.second);
+        return;
+    }
+    case AttributeNames::refXAttr:
+        Ref { m_refX }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        break;
+    case AttributeNames::refYAttr:
+        Ref { m_refY }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        break;
+    case AttributeNames::markerWidthAttr:
+        Ref { m_markerWidth }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, newValue, parseError));
+        break;
+    case AttributeNames::markerHeightAttr:
+        Ref { m_markerHeight }->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, newValue, parseError));
+        break;
+    default:
+        break;
+    }
+    reportAttributeParsingError(parseError, name, newValue);
 
-    if (name == SVGNames::refXAttr)
-        m_refX->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError));
-    else if (name == SVGNames::refYAttr)
-        m_refY->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError));
-    else if (name == SVGNames::markerWidthAttr)
-        m_markerWidth->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Width, value, parseError));
-    else if (name == SVGNames::markerHeightAttr)
-        m_markerHeight->setBaseValInternal(SVGLengthValue::construct(SVGLengthMode::Height, value, parseError));
+    SVGFitToViewBox::parseAttribute(name, newValue);
+    SVGElement::attributeChanged(name, oldValue, newValue, attributeModificationReason);
+}
 
-    reportAttributeParsingError(parseError, name, value);
+void SVGMarkerElement::invalidateMarkerResource()
+{
+#if ENABLE(LAYER_BASED_SVG_ENGINE)
+    if (document().settings().layerBasedSVGEngineEnabled()) {
+        if (CheckedPtr markerRenderer = dynamicDowncast<RenderSVGResourceMarker>(renderer()))
+            markerRenderer->invalidateMarker();
+        return;
+    }
+#endif
 
-    SVGElement::parseAttribute(name, value);
-    SVGFitToViewBox::parseAttribute(name, value);
+    updateSVGRendererForElementChange();
 }
 
 void SVGMarkerElement::svgAttributeChanged(const QualifiedName& attrName)
@@ -98,14 +118,16 @@ void SVGMarkerElement::svgAttributeChanged(const QualifiedName& attrName)
         InstanceInvalidationGuard guard(*this);
         if (PropertyRegistry::isAnimatedLengthAttribute(attrName))
             updateRelativeLengthsInformation();
-        if (RenderObject* object = renderer())
-            object->setNeedsLayout();
+        // These properties affect the layout of the RenderSVGResourceMarker itself (due to viewBox + overflowClipRect handling).
+        if (attrName == SVGNames::markerWidthAttr || attrName == SVGNames::markerHeightAttr)
+            updateSVGRendererForElementChange();
+        else
+            invalidateMarkerResource();
         return;
     }
     
     if (SVGFitToViewBox::isKnownAttribute(attrName)) {
-        if (RenderObject* object = renderer())
-            object->setNeedsLayout();
+        updateSVGRendererForElementChange();
         return;
     }
 
@@ -119,33 +141,38 @@ void SVGMarkerElement::childrenChanged(const ChildChange& change)
     if (change.source == ChildChange::Source::Parser)
         return;
 
-    if (RenderObject* object = renderer())
-        object->setNeedsLayout();
+    invalidateMarkerResource();
 }
 
-String SVGMarkerElement::orient() const
+AtomString SVGMarkerElement::orient() const
 {
     return getAttribute(SVGNames::orientAttr);
 }
 
-void SVGMarkerElement::setOrient(const String& orient)
+void SVGMarkerElement::setOrient(const AtomString& orient)
 {
     setAttribute(SVGNames::orientAttr, orient);
 }
 
 void SVGMarkerElement::setOrientToAuto()
 {
-    m_orientType->setBaseVal(SVGMarkerOrientAuto);
+    Ref { m_orientType }->setBaseVal(SVGMarkerOrientAuto);
+    invalidateMarkerResource();
 }
 
 void SVGMarkerElement::setOrientToAngle(const SVGAngle& angle)
 {
-    m_orientAngle->baseVal()->newValueSpecifiedUnits(angle.unitType(), angle.valueInSpecifiedUnits());
+    Ref { m_orientAngle }->baseVal()->newValueSpecifiedUnits(angle.unitType(), angle.valueInSpecifiedUnits());
+    invalidateMarkerResource();
 }
 
 RenderPtr<RenderElement> SVGMarkerElement::createElementRenderer(RenderStyle&& style, const RenderTreePosition&)
 {
-    return createRenderer<RenderSVGResourceMarker>(*this, WTFMove(style));
+#if ENABLE(LAYER_BASED_SVG_ENGINE)
+    if (document().settings().layerBasedSVGEngineEnabled())
+        return createRenderer<RenderSVGResourceMarker>(*this, WTFMove(style));
+#endif
+    return createRenderer<LegacyRenderSVGResourceMarker>(*this, WTFMove(style));
 }
 
 bool SVGMarkerElement::selfHasRelativeLengths() const

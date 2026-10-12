@@ -32,11 +32,12 @@
 
 #include "DOMMatrixReadOnly.h"
 #include "DOMPoint.h"
-#include <wtf/IsoMallocInlines.h>
+#include "WebCoreOpaqueRoot.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(DOMPointReadOnly);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(DOMPointReadOnly);
     
 ExceptionOr<Ref<DOMPoint>> DOMPointReadOnly::matrixTransform(DOMMatrixInit&& matrixInit) const
 {
@@ -53,6 +54,11 @@ ExceptionOr<Ref<DOMPoint>> DOMPointReadOnly::matrixTransform(DOMMatrixInit&& mat
     matrix->transformationMatrix().map4ComponentPoint(x, y, z, w);
     
     return { DOMPoint::create(x, y, z, w) };
+}
+
+WebCoreOpaqueRoot root(DOMPointReadOnly* point)
+{
+    return WebCoreOpaqueRoot { point };
 }
 
 } // namespace WebCore

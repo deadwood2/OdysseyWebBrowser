@@ -32,30 +32,31 @@
 namespace WebCore {
 
 class AccessibilitySVGElement : public AccessibilityRenderObject {
-
 public:
-    static Ref<AccessibilitySVGElement> create(RenderObject*);
+    static Ref<AccessibilitySVGElement> create(RenderObject&, AXObjectCache*);
     virtual ~AccessibilitySVGElement();
 
 protected:
-    explicit AccessibilitySVGElement(RenderObject*);
+    explicit AccessibilitySVGElement(RenderObject&, AXObjectCache*);
+    AXObjectCache* axObjectCache() const override { return m_axObjectCache.get(); }
+    AccessibilityRole determineAriaRoleAttribute() const final;
 
 private:
-    String accessibilityDescription() const final;
+    String description() const final;
     String helpText() const final;
     void accessibilityText(Vector<AccessibilityText>&) const final;
-    AccessibilityRole determineAccessibilityRole() final;
-    AccessibilityRole determineAriaRoleAttribute() const final;
+    AccessibilityRole determineAccessibilityRole() override;
     bool inheritsPresentationalRole() const final;
-    bool isAccessibilitySVGElement() const final { return true; }
     bool computeAccessibilityIsIgnored() const final;
 
     AccessibilityObject* targetForUseElement() const;
 
+    // Returns true if the SVG element associated with this object has a <title> or <desc> child.
+    bool hasTitleOrDescriptionChild() const;
     template <typename ChildrenType>
     Element* childElementWithMatchingLanguage(ChildrenType&) const;
+
+    WeakPtr<AXObjectCache> m_axObjectCache;
 };
 
 } // namespace WebCore
-
-SPECIALIZE_TYPE_TRAITS_ACCESSIBILITY(AccessibilitySVGElement, isAccessibilitySVGElement())

@@ -56,31 +56,26 @@ public:
     static Ref<MediaSourcePrivateGStreamer> open(MediaSourcePrivateClient&, MediaPlayerPrivateGStreamerMSE&);
     virtual ~MediaSourcePrivateGStreamer();
 
+    RefPtr<MediaPlayerPrivateInterface> player() const final;
+
+    constexpr MediaPlatformType platformType() const final { return MediaPlatformType::GStreamer; }
+
     AddStatus addSourceBuffer(const ContentType&, bool, RefPtr<SourceBufferPrivate>&) override;
-    void removeSourceBuffer(SourceBufferPrivate*);
 
     void durationChanged(const MediaTime&) override;
     void markEndOfStream(EndOfStreamStatus) override;
-    void unmarkEndOfStream() override;
-    bool isEnded() const override { return m_isEnded; }
 
-    MediaPlayer::ReadyState readyState() const override;
-    void setReadyState(MediaPlayer::ReadyState) override;
+    MediaPlayer::ReadyState mediaPlayerReadyState() const override;
+    void setMediaPlayerReadyState(MediaPlayer::ReadyState) override;
 
-    void waitForSeekCompleted() override { }
-    void seekCompleted() override;
+    void notifyActiveSourceBuffersChanged() final;
 
-    MediaTime duration() const;
-    MediaTime currentMediaTime() const;
-
-    void sourceBufferPrivateDidChangeActiveState(SourceBufferPrivateGStreamer*, bool);
     void startPlaybackIfHasAllTracks();
-
-    std::unique_ptr<PlatformTimeRanges> buffered();
+    bool hasAllTracks() const { return m_hasAllTracks; }
 
 #if !RELEASE_LOG_DISABLED
     const Logger& logger() const final { return m_logger; }
-    const char* logClassName() const override { return "MediaSourcePrivateGStreamer"; }
+    ASCIILiteral logClassName() const override { return "MediaSourcePrivateGStreamer"_s; }
     const void* logIdentifier() const final { return m_logIdentifier; }
     WTFLogChannel& logChannel() const final;
 
@@ -90,11 +85,7 @@ public:
 private:
     MediaSourcePrivateGStreamer(MediaSourcePrivateClient&, MediaPlayerPrivateGStreamerMSE&);
 
-    HashSet<RefPtr<SourceBufferPrivateGStreamer>> m_sourceBuffers;
-    HashSet<SourceBufferPrivateGStreamer*> m_activeSourceBuffers;
-    Ref<MediaSourcePrivateClient> m_mediaSource;
     MediaPlayerPrivateGStreamerMSE& m_playerPrivate;
-    bool m_isEnded { false };
     bool m_hasAllTracks { false };
 #if !RELEASE_LOG_DISABLED
     Ref<const Logger> m_logger;
@@ -103,6 +94,10 @@ private:
 #endif
 };
 
-}
+} // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::MediaSourcePrivateGStreamer)
+static bool isType(const WebCore::MediaSourcePrivate& mediaSource) { return mediaSource.platformType() == WebCore::MediaPlatformType::GStreamer; }
+SPECIALIZE_TYPE_TRAITS_END()
 
 #endif

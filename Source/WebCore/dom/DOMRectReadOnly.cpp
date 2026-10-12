@@ -30,11 +30,17 @@
 #include "config.h"
 #include "DOMRectReadOnly.h"
 
-#include <wtf/IsoMallocInlines.h>
+#include "WebCoreOpaqueRoot.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(DOMRectReadOnly);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(DOMRectReadOnly);
+
+WebCoreOpaqueRoot root(DOMRectReadOnly* rect)
+{
+    return WebCoreOpaqueRoot { rect };
+}
 
 } // namespace WebCore
 

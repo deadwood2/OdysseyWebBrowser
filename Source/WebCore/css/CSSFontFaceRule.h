@@ -40,8 +40,10 @@ public:
 private:
     CSSFontFaceRule(StyleRuleFontFace&, CSSStyleSheet* parent);
 
-    CSSRule::Type type() const final { return FONT_FACE_RULE; }
+    StyleRuleType styleRuleType() const final { return StyleRuleType::FontFace; }
     String cssText() const final;
+    String cssTextWithReplacementURLs(const HashMap<String, String>&, const HashMap<RefPtr<CSSStyleSheet>, String>&) const final;
+    String cssTextInternal(const String& declarations) const;
     void reattach(StyleRuleBase&) final;
 
     Ref<StyleRuleFontFace> m_fontFaceRule;
@@ -50,4 +52,4 @@ private:
 
 } // namespace WebCore
 
-SPECIALIZE_TYPE_TRAITS_CSS_RULE(CSSFontFaceRule, CSSRule::FONT_FACE_RULE)
+SPECIALIZE_TYPE_TRAITS_CSS_RULE(CSSFontFaceRule, StyleRuleType::FontFace)

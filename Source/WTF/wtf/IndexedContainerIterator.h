@@ -45,7 +45,7 @@ public:
     {
     }
 
-    auto operator*() -> typename std::result_of<decltype(&Container::at)(const Container, unsigned)>::type
+    auto operator*() -> typename std::invoke_result<decltype(&Container::at), const Container, unsigned>::type
     {
         return m_container->at(m_index);
     }
@@ -60,11 +60,6 @@ public:
     {
         ASSERT(m_container == other.m_container);
         return m_index == other.m_index;
-    }
-
-    bool operator!=(const IndexedContainerIterator& other) const
-    {
-        return !(*this == other);
     }
 
 private:

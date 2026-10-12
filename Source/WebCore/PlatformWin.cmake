@@ -1,8 +1,20 @@
 add_definitions(/bigobj -D__STDC_CONSTANT_MACROS)
 
+include(platform/Adwaita.cmake)
+include(platform/Curl.cmake)
+include(platform/ImageDecoders.cmake)
+include(platform/OpenSSL.cmake)
+include(platform/TextureMapper.cmake)
+
+if (USE_CAIRO)
+    include(platform/Cairo.cmake)
+endif ()
+
+if (USE_DAWN)
+    include(platform/Dawn.cmake)
+endif ()
+
 list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
-    "${CMAKE_BINARY_DIR}/../include/private"
-    "${CMAKE_BINARY_DIR}/../include/private/JavaScriptCore"
     "${WEBCORE_DIR}/accessibility/win"
     "${WEBCORE_DIR}/page/win"
     "${WEBCORE_DIR}/platform/graphics/egl"
@@ -26,6 +38,8 @@ list(APPEND WebCore_SOURCES
     page/win/DragControllerWin.cpp
     page/win/EventHandlerWin.cpp
     page/win/FrameWin.cpp
+    page/win/ResourceUsageOverlayWin.cpp
+    page/win/ResourceUsageThreadWin.cpp
 
     platform/Cursor.cpp
     platform/LocalizedStrings.cpp
@@ -33,62 +47,69 @@ list(APPEND WebCore_SOURCES
 
     platform/audio/PlatformMediaSessionManager.cpp
 
-    platform/graphics/egl/GLContextEGL.cpp
+    platform/generic/KeyedDecoderGeneric.cpp
+    platform/generic/KeyedEncoderGeneric.cpp
 
-    platform/graphics/opengl/TemporaryOpenGLSetting.cpp
+    platform/graphics/PlatformDisplay.cpp
+
+    platform/graphics/angle/PlatformDisplayANGLE.cpp
+
+    platform/graphics/egl/GLContext.cpp
+    platform/graphics/egl/GLContextWrapper.cpp
+    platform/graphics/egl/GLDisplay.cpp
+    platform/graphics/egl/GLFence.cpp
+    platform/graphics/egl/GLFenceEGL.cpp
+    platform/graphics/egl/GLFenceGL.cpp
 
     platform/graphics/opentype/OpenTypeUtilities.cpp
 
-    platform/graphics/win/ColorDirect2D.cpp
-    platform/graphics/win/ComplexTextControllerDirectWrite.cpp
     platform/graphics/win/ComplexTextControllerUniscribe.cpp
     platform/graphics/win/DIBPixelData.cpp
     platform/graphics/win/DisplayRefreshMonitorWin.cpp
-    platform/graphics/win/FloatPointDirect2D.cpp
-    platform/graphics/win/FloatRectDirect2D.cpp
-    platform/graphics/win/FloatSizeDirect2D.cpp
+    platform/graphics/win/DrawGlyphsRecorderWin.cpp
+    platform/graphics/win/FloatRectWin.cpp
     platform/graphics/win/FontCacheWin.cpp
+    platform/graphics/win/FontCustomPlatformDataWin.cpp
     platform/graphics/win/FontDescriptionWin.cpp
     platform/graphics/win/FontPlatformDataWin.cpp
     platform/graphics/win/FontWin.cpp
     platform/graphics/win/FullScreenController.cpp
+    platform/graphics/win/FullScreenWindow.cpp
+    platform/graphics/win/GlyphPageTreeNodeWin.cpp
     platform/graphics/win/GraphicsContextWin.cpp
     platform/graphics/win/IconWin.cpp
-    platform/graphics/win/ImageWin.cpp
+    platform/graphics/win/ImageAdapterWin.cpp
     platform/graphics/win/IntPointWin.cpp
     platform/graphics/win/IntRectWin.cpp
     platform/graphics/win/IntSizeWin.cpp
-    platform/graphics/win/MediaPlayerPrivateFullscreenWindow.cpp
+    platform/graphics/win/MediaPlayerPrivateMediaFoundation.cpp
+    platform/graphics/win/PlatformDisplayWin.cpp
     platform/graphics/win/SimpleFontDataWin.cpp
-    platform/graphics/win/TransformationMatrixDirect2D.cpp
+    platform/graphics/win/SystemFontDatabaseWin.cpp
     platform/graphics/win/TransformationMatrixWin.cpp
 
-    platform/network/win/DownloadBundleWin.cpp
+    platform/network/win/CurlSSLHandleWin.cpp
     platform/network/win/NetworkStateNotifierWin.cpp
+
+    platform/text/Hyphenation.cpp
+    platform/text/win/LocaleWin.cpp
 
     platform/win/BString.cpp
     platform/win/BitmapInfo.cpp
     platform/win/ClipboardUtilitiesWin.cpp
     platform/win/CursorWin.cpp
-    platform/win/DefWndProcWindowClass.cpp
     platform/win/DragDataWin.cpp
     platform/win/DragImageWin.cpp
-    platform/win/GDIObjectCounter.cpp
     platform/win/GDIUtilities.cpp
     platform/win/KeyEventWin.cpp
-    platform/win/LocalizedStringsWin.cpp
     platform/win/LoggingWin.cpp
     platform/win/MIMETypeRegistryWin.cpp
     platform/win/MainThreadSharedTimerWin.cpp
     platform/win/PasteboardWin.cpp
     platform/win/PlatformMouseEventWin.cpp
     platform/win/PlatformScreenWin.cpp
-    platform/win/PopupMenuWin.cpp
-    platform/win/SSLKeyGeneratorWin.cpp
-    platform/win/ScrollbarThemeWin.cpp
     platform/win/SearchPopupMenuDB.cpp
-    platform/win/SearchPopupMenuWin.cpp
-    platform/win/SharedBufferWin.cpp
+    platform/win/SharedMemoryWin.cpp
     platform/win/SystemInfo.cpp
     platform/win/UserAgentWin.cpp
     platform/win/WCDataObject.cpp
@@ -96,11 +117,8 @@ list(APPEND WebCore_SOURCES
     platform/win/WebCoreInstanceHandle.cpp
     platform/win/WebCoreTextRenderer.cpp
     platform/win/WheelEventWin.cpp
-    platform/win/WidgetWin.cpp
     platform/win/WindowMessageBroadcaster.cpp
     platform/win/WindowsKeyNames.cpp
-
-    rendering/RenderThemeWin.cpp
 )
 
 list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
@@ -111,110 +129,99 @@ list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
     platform/graphics/opentype/FontMemoryResource.h
 
     platform/graphics/win/DIBPixelData.h
-    platform/graphics/win/FontCustomPlatformData.h
     platform/graphics/win/FullScreenController.h
     platform/graphics/win/FullScreenControllerClient.h
-    platform/graphics/win/GraphicsContextWin.h
+    platform/graphics/win/FullScreenWindow.h
     platform/graphics/win/LocalWindowsContext.h
-    platform/graphics/win/MediaPlayerPrivateFullscreenWindow.h
     platform/graphics/win/SharedGDIObject.h
 
     platform/win/BString.h
     platform/win/BitmapInfo.h
     platform/win/COMPtr.h
-    platform/win/DefWndProcWindowClass.h
-    platform/win/GDIObjectCounter.h
     platform/win/GDIUtilities.h
     platform/win/HWndDC.h
-    platform/win/PopupMenuWin.h
-    platform/win/ScrollbarThemeWin.h
     platform/win/SearchPopupMenuDB.h
-    platform/win/SearchPopupMenuWin.h
     platform/win/SystemInfo.h
     platform/win/WCDataObject.h
     platform/win/WebCoreBundleWin.h
-    platform/win/WebCoreInstanceHandle.h
     platform/win/WebCoreTextRenderer.h
     platform/win/WindowMessageBroadcaster.h
     platform/win/WindowMessageListener.h
     platform/win/WindowsKeyNames.h
-    platform/win/WindowsTouch.h
 )
 
-list(APPEND WebCore_USER_AGENT_STYLE_SHEETS
-    ${WEBCORE_DIR}/css/themeWin.css
-    ${WEBCORE_DIR}/css/themeWinQuirks.css
+list(APPEND WebCore_LIBRARIES
+    crypt32
+    iphlpapi
+    usp10
 )
 
-if (USE_CF)
-    list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
-        "${WEBCORE_DIR}/platform/cf"
-    )
+list(APPEND WebCoreTestSupport_LIBRARIES
+    shlwapi
+)
 
-    list(APPEND WebCore_SOURCES
-        editing/SmartReplaceCF.cpp
+set(iconFiles
+    Resources/missingImage.png
+    Resources/missingImage@2x.png
+    Resources/missingImage@3x.png
+    Resources/panIcon.png
+    Resources/textAreaResizeCorner.png
+    Resources/textAreaResizeCorner@2x.png
+)
 
-        loader/archive/cf/LegacyWebArchive.cpp
+file(COPY ${iconFiles} DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/icons)
 
-        platform/cf/SharedBufferCF.cpp
-
-        platform/text/cf/HyphenationCF.cpp
-    )
-
-    list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
-        loader/archive/cf/LegacyWebArchive.h
-    )
-
-    list(APPEND WebCore_LIBRARIES ${COREFOUNDATION_LIBRARY})
-    list(APPEND WebCoreTestSupport_LIBRARIES ${COREFOUNDATION_LIBRARY})
-else ()
-    list(APPEND WebCore_SOURCES
-        platform/text/Hyphenation.cpp
-    )
-endif ()
-
-if (USE_CFURLCONNECTION)
-    list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
-        ${WEBCORE_DIR}/platform/cf/win
-    )
-    list(APPEND WebCore_SOURCES
-        platform/cf/win/CertificateCFWin.cpp
-    )
-    list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
-        platform/cf/win/CertificateCFWin.h
-    )
-endif ()
-
-if (USE_CF AND NOT WTF_PLATFORM_WIN_CAIRO)
-    list(APPEND WebCore_SOURCES
-        platform/cf/KeyedDecoderCF.cpp
-        platform/cf/KeyedEncoderCF.cpp
-    )
-else ()
-    list(APPEND WebCore_SOURCES
-        platform/generic/KeyedDecoderGeneric.cpp
-        platform/generic/KeyedEncoderGeneric.cpp
-    )
-endif ()
-
-if (${WTF_PLATFORM_WIN_CAIRO})
-    include(PlatformWinCairo.cmake)
-else ()
-    include(PlatformAppleWin.cmake)
-endif ()
-
-make_directory(${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/en.lproj)
-file(COPY
-    "${WEBCORE_DIR}/en.lproj/Localizable.strings"
-    "${WEBCORE_DIR}/en.lproj/mediaControlsLocalizedStrings.js"
+file(COPY ${ModernMediaControlsImageFiles}
     DESTINATION
-    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/en.lproj
-)
-file(COPY
-    "${WEBCORE_DIR}/Modules/mediacontrols/mediaControlsApple.css"
-    "${WEBCORE_DIR}/Modules/mediacontrols/mediaControlsApple.js"
-    DESTINATION
-    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/WebKit.resources/media-controls
 )
 
-set(WebCore_OUTPUT_NAME WebCore${DEBUG_SUFFIX})
+if (ENABLE_VIDEO AND USE_MEDIA_FOUNDATION)
+    # Define a INTERFACE library for MediaFoundation and link it
+    # explicitly with direct WebCore consumers because /DELAYLOAD causes
+    # linker warnings for modules not using MediaFoundation.
+    #  LINK : warning LNK4199: /DELAYLOAD:mf.dll ignored; no imports found from mf.dll
+    add_library(MediaFoundation INTERFACE)
+    target_link_libraries(MediaFoundation INTERFACE
+        d3d9
+        delayimp
+        dwrite
+        dxva2
+        evr
+        mf
+        mfplat
+        mfuuid
+        strmiids
+    )
+    target_link_options(MediaFoundation INTERFACE
+        /DELAYLOAD:d3d9.dll
+        /DELAYLOAD:dxva2.dll
+        /DELAYLOAD:evr.dll
+        /DELAYLOAD:mf.dll
+        /DELAYLOAD:mfplat.dll
+    )
+
+    list(APPEND WebCore_PRIVATE_LIBRARIES MediaFoundation)
+endif ()
+
+if (USE_CAIRO)
+    list(APPEND WebCore_SOURCES
+        platform/graphics/win/cairo/FontCacheWinCairo.cpp
+        platform/graphics/win/cairo/FontCustomPlatformDataWinCairo.cpp
+        platform/graphics/win/cairo/FontPlatformDataWinCairo.cpp
+        platform/graphics/win/cairo/GraphicsContextWinCairo.cpp
+        platform/graphics/win/cairo/ImageAdapterWinCairo.cpp
+        platform/graphics/win/cairo/MediaPlayerPrivateMediaFoundationCairo.cpp
+
+        platform/win/cairo/DragImageWinCairo.cpp
+    )
+endif ()
+
+if (USE_WOFF2)
+    # The WOFF2 libraries don't compile as DLLs on Windows, so add in
+    # the additional libraries WOFF2::dec requires
+    list(APPEND WebCore_LIBRARIES
+        Brotli::dec
+        WOFF2::common
+    )
+endif ()

@@ -52,7 +52,7 @@ struct TypeCastTraits<ExpectedType, ArgType, true /* isBaseType */> {
 
 // Type checking function, to use before casting with downcast<>().
 template <typename ExpectedType, typename ArgType>
-inline bool is(ArgType& source)
+inline bool is(const ArgType& source)
 {
     static_assert(std::is_base_of_v<ArgType, ExpectedType>, "Unnecessary type check");
     return TypeCastTraits<const ExpectedType, const ArgType>::isOfType(source);
@@ -70,22 +70,56 @@ template <typename Reference, typename T>
 using match_constness_t =
     typename std::conditional_t<std::is_const_v<Reference>, typename std::add_const_t<T>, typename std::remove_const_t<T>>;
 
-// Safe downcasting functions.
 template<typename Target, typename Source>
-inline match_constness_t<Source, Target>& downcast(Source& source)
+inline match_constness_t<Source, Target>& uncheckedDowncast(Source& source)
 {
     static_assert(!std::is_same_v<Source, Target>, "Unnecessary cast to same type");
     static_assert(std::is_base_of_v<Source, Target>, "Should be a downcast");
     ASSERT_WITH_SECURITY_IMPLICATION(is<Target>(source));
     return static_cast<match_constness_t<Source, Target>&>(source);
 }
+
 template<typename Target, typename Source>
-inline match_constness_t<Source, Target>* downcast(Source* source)
+inline match_constness_t<Source, Target>* uncheckedDowncast(Source* source)
 {
     static_assert(!std::is_same_v<Source, Target>, "Unnecessary cast to same type");
     static_assert(std::is_base_of_v<Source, Target>, "Should be a downcast");
     ASSERT_WITH_SECURITY_IMPLICATION(!source || is<Target>(*source));
     return static_cast<match_constness_t<Source, Target>*>(source);
+}
+
+template<typename Target, typename Source>
+inline match_constness_t<Source, Target>& downcast(Source& source)
+{
+    static_assert(!std::is_same_v<Source, Target>, "Unnecessary cast to same type");
+    static_assert(std::is_base_of_v<Source, Target>, "Should be a downcast");
+    RELEASE_ASSERT(is<Target>(source));
+    return static_cast<match_constness_t<Source, Target>&>(source);
+}
+
+template<typename Target, typename Source>
+inline match_constness_t<Source, Target>* downcast(Source* source)
+{
+    static_assert(!std::is_same_v<Source, Target>, "Unnecessary cast to same type");
+    static_assert(std::is_base_of_v<Source, Target>, "Should be a downcast");
+    RELEASE_ASSERT(!source || is<Target>(*source));
+    return static_cast<match_constness_t<Source, Target>*>(source);
+}
+
+template<typename Target, typename Source>
+inline match_constness_t<Source, Target>* dynamicDowncast(Source& source)
+{
+    static_assert(!std::is_same_v<Source, Target>, "Unnecessary cast to same type");
+    static_assert(std::is_base_of_v<Source, Target>, "Should be a downcast");
+    return is<Target>(source) ? &static_cast<match_constness_t<Source, Target>&>(source) : nullptr;
+}
+
+template<typename Target, typename Source>
+inline match_constness_t<Source, Target>* dynamicDowncast(Source* source)
+{
+    static_assert(!std::is_same_v<Source, Target>, "Unnecessary cast to same type");
+    static_assert(std::is_base_of_v<Source, Target>, "Should be a downcast");
+    return is<Target>(source) ? static_cast<match_constness_t<Source, Target>*>(source) : nullptr;
 }
 
 // Add support for type checking / casting using is<>() / downcast<>() helpers for a specific class.
@@ -101,8 +135,24 @@ private:
 }; \
 }
 
+// Explicit specialization for C++ standard library types.
+
+template<typename ExpectedType, typename ArgType, typename Deleter>
+inline bool is(std::unique_ptr<ArgType, Deleter>& source)
+{
+    return is<ExpectedType>(source.get());
+}
+
+template<typename ExpectedType, typename ArgType, typename Deleter>
+inline bool is(const std::unique_ptr<ArgType, Deleter>& source)
+{
+    return is<ExpectedType>(source.get());
+}
+
 } // namespace WTF
 
 using WTF::TypeCastTraits;
 using WTF::is;
 using WTF::downcast;
+using WTF::dynamicDowncast;
+using WTF::uncheckedDowncast;

@@ -29,12 +29,19 @@
 #include "config.h"
 #include "ProcessLauncher.h"
 
-#include <process-launcher.h>
+#include "IPCUtilities.h"
 #include <stdint.h>
 #include <sys/socket.h>
 
+#if USE(WPE_BACKEND_PLAYSTATION)
+#include "ProcessProviderLibWPE.h"
+#else
+#include <process-launcher.h>
+#endif
+
 namespace WebKit {
 
+#if !USE(WPE_BACKEND_PLAYSTATION)
 #define MAKE_PROCESS_PATH(x) "/app0/" #x "Process.self"
 static const char* defaultProcessPath(ProcessLauncher::ProcessType processType)
 {
@@ -50,11 +57,11 @@ static const char* defaultProcessPath(ProcessLauncher::ProcessType processType)
         return MAKE_PROCESS_PATH(Web);
     }
 }
+#endif
 
 void ProcessLauncher::launchProcess()
 {
-    IPC::Connection::Identifier serverIdentifier;
-    IPC::Connection::SocketPair socketPair = IPC::Connection::createPlatformConnection(IPC::Connection::ConnectionOptions::SetCloexecOnServer);
+    IPC::SocketPair socketPair = IPC::createPlatformConnection(IPC::PlatformConnectionOptions::SetCloexecOnServer);
 
     int sendBufSize = 32 * 1024;
     setsockopt(socketPair.server, SOL_SOCKET, SO_SNDBUF, &sendBufSize, 4);
@@ -72,10 +79,15 @@ void ProcessLauncher::launchProcess()
         nullptr
     };
 
+#if USE(WPE_BACKEND_PLAYSTATION)
+    auto appLocalPid = ProcessProviderLibWPE::singleton().launchProcess(m_launchOptions, argv, socketPair.client);
+#else
     PlayStation::LaunchParam param { socketPair.client, m_launchOptions.userId };
     int32_t appLocalPid = PlayStation::launchProcess(
         !m_launchOptions.processPath.isEmpty() ? m_launchOptions.processPath.utf8().data() : defaultProcessPath(m_launchOptions.processType),
         argv, param);
+#endif
+
     if (appLocalPid < 0) {
 #ifndef NDEBUG
         fprintf(stderr, "Failed to launch process. err=0x%08x path=%s\n", appLocalPid, m_launchOptions.processPath.utf8().data());
@@ -83,7 +95,7 @@ void ProcessLauncher::launchProcess()
         return;
     }
     close(socketPair.client);
-    serverIdentifier = socketPair.server;
+    IPC::Connection::Identifier serverIdentifier { socketPair.server };
 
     // We've finished launching the process, message back to the main run loop.
     RefPtr<ProcessLauncher> protectedThis(this);
@@ -94,15 +106,19 @@ void ProcessLauncher::launchProcess()
 
 void ProcessLauncher::terminateProcess()
 {
-    if (!m_processIdentifier)
+    if (!m_processID)
         return;
 
-    PlayStation::terminateProcess(m_processIdentifier);
+#if USE(WPE_BACKEND_PLAYSTATION)
+    ProcessProviderLibWPE::singleton().kill(m_processID);
+#else
+    PlayStation::terminateProcess(m_processID);
+#endif
 }
 
 void ProcessLauncher::platformInvalidate()
 {
-    m_processIdentifier = 0;
+    m_processID = 0;
 }
 
 } // namespace WebKit

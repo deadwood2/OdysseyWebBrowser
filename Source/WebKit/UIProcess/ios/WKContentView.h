@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013, 2014 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,6 @@
 #import "WKApplicationStateTrackingView.h"
 #import "WKBase.h"
 #import "WKBrowsingContextController.h"
-#import "WKBrowsingContextGroup.h"
 #import "WKProcessGroup.h"
 #import <WebCore/InspectorOverlay.h>
 #import <wtf/NakedRef.h>
@@ -60,10 +59,9 @@ enum class ViewStabilityFlag : uint8_t;
     WeakObjCPtr<WKWebView> _webView;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
 @property (nonatomic, readonly) WKBrowsingContextController *browsingContextController;
-#pragma clang diagnostic pop
+ALLOW_DEPRECATED_DECLARATIONS_END
 
 @property (nonatomic, readonly) WebKit::WebPageProxy* page;
 @property (nonatomic, readonly) BOOL isFocusingElement;
@@ -71,6 +69,11 @@ enum class ViewStabilityFlag : uint8_t;
 @property (nonatomic, readonly, getter=isResigningFirstResponder) BOOL resigningFirstResponder;
 @property (nonatomic) BOOL sizeChangedSinceLastVisibleContentRectUpdate;
 @property (nonatomic, readonly) UIInterfaceOrientation interfaceOrientation;
+@property (nonatomic, readonly) NSUndoManager *undoManagerForWebView;
+
+#if HAVE(SPATIAL_TRACKING_LABEL)
+@property (nonatomic, readonly) const String& spatialTrackingLabel;
+#endif
 
 - (instancetype)initWithFrame:(CGRect)frame processPool:(NakedRef<WebKit::WebProcessPool>)processPool configuration:(Ref<API::PageConfiguration>&&)configuration webView:(WKWebView *)webView;
 
@@ -90,16 +93,20 @@ enum class ViewStabilityFlag : uint8_t;
 - (void)didInterruptScrolling;
 - (void)didZoomToScale:(CGFloat)scale;
 - (void)willStartZoomOrScroll;
+- (BOOL)screenIsBeingCaptured;
 
 - (void)_webViewDestroyed;
 
 - (WKWebView *)webView;
 - (UIView *)rootContentView;
 
-- (std::unique_ptr<WebKit::DrawingAreaProxy>)_createDrawingAreaProxy:(WebKit::WebProcessProxy&)process;
+- (std::unique_ptr<WebKit::DrawingAreaProxy>)_createDrawingAreaProxy:(WebKit::WebProcessProxy&)webProcessProxy;
 - (void)_processDidExit;
 #if ENABLE(GPU_PROCESS)
 - (void)_gpuProcessDidExit;
+#endif
+#if ENABLE(MODEL_PROCESS)
+- (void)_modelProcessDidExit;
 #endif
 - (void)_processWillSwap;
 - (void)_didRelaunchProcess;
@@ -109,6 +116,12 @@ enum class ViewStabilityFlag : uint8_t;
 #if ENABLE(GPU_PROCESS)
 - (void)_gpuProcessDidCreateContextForVisibilityPropagation;
 #endif // ENABLE(GPU_PROCESS)
+#if ENABLE(MODEL_PROCESS)
+- (void)_modelProcessDidCreateContextForVisibilityPropagation;
+#endif // ENABLE(MODEL_PROCESS)
+#if USE(EXTENSIONKIT)
+- (UIView *)_createVisibilityPropagationView;
+#endif
 #endif // HAVE(VISIBILITY_PROPAGATION_VIEW)
 
 - (void)_setAcceleratedCompositingRootView:(UIView *)rootView;

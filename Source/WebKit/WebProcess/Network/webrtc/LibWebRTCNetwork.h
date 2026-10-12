@@ -26,19 +26,22 @@
 #pragma once
 
 #include "Connection.h"
-#include "DataReference.h"
 #include "LibWebRTCProvider.h"
 #include "LibWebRTCSocketFactory.h"
 #include "WebMDNSRegister.h"
 #include "WebRTCMonitor.h"
 #include "WebRTCResolver.h"
 #include <WebCore/LibWebRTCSocketIdentifier.h>
+#include <wtf/FunctionDispatcher.h>
+#include <wtf/TZoneMalloc.h>
+#include <wtf/UniqueRef.h>
 
 namespace WebKit {
 
-class LibWebRTCNetwork : public IPC::Connection::ThreadMessageReceiverRefCounted {
-    WTF_MAKE_FAST_ALLOCATED;
+class LibWebRTCNetwork : private FunctionDispatcher, private IPC::MessageReceiver {
+    WTF_MAKE_TZONE_ALLOCATED(LibWebRTCNetwork);
 public:
+    static UniqueRef<LibWebRTCNetwork> create() { return UniqueRef { *new LibWebRTCNetwork() }; }
     ~LibWebRTCNetwork();
 
     IPC::Connection* connection() { return m_connection.get(); }
@@ -49,8 +52,6 @@ public:
     bool isActive() const { return m_isActive; }
 
 #if USE(LIBWEBRTC)
-    void didReceiveMessage(IPC::Connection&, IPC::Decoder&);
-
     WebRTCMonitor& monitor() { return m_webNetworkMonitor; }
     LibWebRTCSocketFactory& socketFactory() { return m_socketFactory; }
 
@@ -66,19 +67,25 @@ public:
     void setAsActive();
 
 private:
+    LibWebRTCNetwork() = default;
 #if USE(LIBWEBRTC)
     void setSocketFactoryConnection();
 
-    void signalReadPacket(WebCore::LibWebRTCSocketIdentifier, const IPC::DataReference&, const RTCNetwork::IPAddress&, uint16_t port, int64_t);
-    void signalSentPacket(WebCore::LibWebRTCSocketIdentifier, int, int64_t);
+    void signalReadPacket(WebCore::LibWebRTCSocketIdentifier, std::span<const uint8_t>, const RTCNetwork::IPAddress&, uint16_t port, int64_t);
+    void signalSentPacket(WebCore::LibWebRTCSocketIdentifier, int64_t, int64_t);
     void signalAddressReady(WebCore::LibWebRTCSocketIdentifier, const RTCNetwork::SocketAddress&);
     void signalConnect(WebCore::LibWebRTCSocketIdentifier);
     void signalClose(WebCore::LibWebRTCSocketIdentifier, int);
-    void signalNewConnection(WebCore::LibWebRTCSocketIdentifier socketIdentifier, WebCore::LibWebRTCSocketIdentifier newSocketIdentifier, const WebKit::RTCNetwork::SocketAddress&);
+    void signalUsedInterface(WebCore::LibWebRTCSocketIdentifier, String&&);
 #endif
 
-    // IPC::Connection::ThreadMessageReceiver
-    void dispatchToThread(Function<void()>&&) final;
+    // FunctionDispatcher
+    void dispatch(Function<void()>&&) final;
+
+#if USE(LIBWEBRTC)
+    // IPC::MessageReceiver
+    void didReceiveMessage(IPC::Connection&, IPC::Decoder&) final;
+#endif
 
 #if USE(LIBWEBRTC)
     LibWebRTCSocketFactory m_socketFactory;

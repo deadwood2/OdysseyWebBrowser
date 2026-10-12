@@ -26,22 +26,31 @@
 #if PLATFORM(IOS_FAMILY)
 
 #import "UIKitSPI.h"
+#import "WKVelocityTrackingScrollView.h"
 
 @class WKWebView;
 
-@interface WKScrollView : UIScrollView
+@interface WKScrollView : WKVelocityTrackingScrollView
 
-@property (nonatomic, assign) WKWebView <UIScrollViewDelegate> *internalDelegate;
+@property (nonatomic, assign) WKWebView <WKBEScrollViewDelegate> *internalDelegate;
 
+- (void)_setBackgroundColorInternal:(UIColor *)backgroundColor;
+- (void)_setIndicatorStyleInternal:(UIScrollViewIndicatorStyle)indicatorStyle;
 - (void)_setContentSizePreservingContentOffsetDuringRubberband:(CGSize)contentSize;
 - (void)_setScrollEnabledInternal:(BOOL)enabled;
 - (void)_setZoomEnabledInternal:(BOOL)enabled;
+- (void)_setBouncesInternal:(BOOL)horizontal vertical:(BOOL)vertical;
 - (BOOL)_setContentScrollInsetInternal:(UIEdgeInsets)insets;
+- (void)_setDecelerationRateInternal:(UIScrollViewDecelerationRate)rate;
 
-// FIXME: Likely we can remove this special case for watchOS and tvOS.
-#if !PLATFORM(WATCHOS) && !PLATFORM(APPLETV)
+- (void)_resetContentInset;
+@property (nonatomic, readonly) BOOL _contentInsetWasExternallyOverridden;
+
+// FIXME: Likely we can remove this special case for watchOS.
+#if !PLATFORM(WATCHOS)
 @property (nonatomic, assign, readonly) BOOL _contentInsetAdjustmentBehaviorWasExternallyOverridden;
 - (void)_setContentInsetAdjustmentBehaviorInternal:(UIScrollViewContentInsetAdjustmentBehavior)insetAdjustmentBehavior;
+- (void)_resetContentInsetAdjustmentBehavior;
 #endif
 
 @end

@@ -25,20 +25,34 @@
 
 #pragma once
 
-#include <wtf/EnumTraits.h>
 #include <wtf/HashMap.h>
 #include <wtf/glib/GUniquePtr.h>
 #include <wtf/text/CString.h>
 
 namespace WebCore {
 
+enum class SoupNetworkProxySettingsMode : uint8_t {
+    Default,
+    NoProxy,
+    Custom,
+    Auto
+};
+
 struct SoupNetworkProxySettings {
-    enum class Mode { Default, NoProxy, Custom };
+    using Mode = SoupNetworkProxySettingsMode;
 
     SoupNetworkProxySettings() = default;
 
     explicit SoupNetworkProxySettings(Mode proxyMode)
         : mode(proxyMode)
+    {
+    }
+
+    SoupNetworkProxySettings(Mode proxyMode, const CString& defaultURL, const GUniquePtr<char*>& hosts, const HashMap<CString, CString>& map)
+        : mode(proxyMode)
+        , defaultProxyURL(defaultURL)
+        , ignoreHosts(g_strdupv(hosts.get()))
+        , proxyMap(map)
     {
     }
 
@@ -59,7 +73,19 @@ struct SoupNetworkProxySettings {
         return *this;
     }
 
-    bool isEmpty() const { return mode == Mode::Custom && defaultProxyURL.isNull() && !ignoreHosts && proxyMap.isEmpty(); }
+    bool isEmpty() const
+    {
+        switch (mode) {
+        case Mode::Default:
+        case Mode::NoProxy:
+            return false;
+        case Mode::Custom:
+            return defaultProxyURL.isNull() && !ignoreHosts && proxyMap.isEmpty();
+        case Mode::Auto:
+            return defaultProxyURL.isNull();
+        }
+        RELEASE_ASSERT_NOT_REACHED();
+    }
 
     Mode mode { Mode::Default };
     CString defaultProxyURL;
@@ -68,16 +94,3 @@ struct SoupNetworkProxySettings {
 };
 
 } // namespace WebCore
-
-namespace WTF {
-
-template<> struct EnumTraits<WebCore::SoupNetworkProxySettings::Mode> {
-    using values = EnumValues<
-        WebCore::SoupNetworkProxySettings::Mode,
-        WebCore::SoupNetworkProxySettings::Mode::Default,
-        WebCore::SoupNetworkProxySettings::Mode::NoProxy,
-        WebCore::SoupNetworkProxySettings::Mode::Custom
-    >;
-};
-
-} // namespace WTF

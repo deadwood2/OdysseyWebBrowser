@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2022 Apple Inc. All rights reserved.
  * Copyright (C) 2009 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,8 +32,9 @@
 #include "config.h"
 #include "ThreadableLoader.h"
 
-#include "CachedResourceRequestInitiators.h"
+#include "CachedResourceRequestInitiatorTypes.h"
 #include "Document.h"
+#include "DocumentLoader.h"
 #include "DocumentThreadableLoader.h"
 #include "ResourceError.h"
 #include "ScriptExecutionContext.h"
@@ -40,6 +42,7 @@
 #include "WorkerRunLoop.h"
 #include "WorkerThreadableLoader.h"
 #include "WorkletGlobalScope.h"
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -55,10 +58,10 @@ ThreadableLoaderOptions::ThreadableLoaderOptions(FetchOptions&& baseOptions)
 {
 }
 
-ThreadableLoaderOptions::ThreadableLoaderOptions(const ResourceLoaderOptions& baseOptions, ContentSecurityPolicyEnforcement contentSecurityPolicyEnforcement, String&& initiator, ResponseFilteringPolicy filteringPolicy)
+ThreadableLoaderOptions::ThreadableLoaderOptions(const ResourceLoaderOptions& baseOptions, ContentSecurityPolicyEnforcement contentSecurityPolicyEnforcement, String&& initiatorType, ResponseFilteringPolicy filteringPolicy)
     : ResourceLoaderOptions(baseOptions)
     , contentSecurityPolicyEnforcement(contentSecurityPolicyEnforcement)
-    , initiator(WTFMove(initiator))
+    , initiatorType(WTFMove(initiatorType))
     , filteringPolicy(filteringPolicy)
 {
 }
@@ -75,10 +78,14 @@ ThreadableLoaderOptions ThreadableLoaderOptions::isolatedCopy() const
     copy.redirect = this->redirect;
     copy.referrerPolicy = this->referrerPolicy;
     copy.integrity = this->integrity.isolatedCopy();
+    copy.keepAlive = this->keepAlive;
+    copy.clientIdentifier = this->clientIdentifier;
+    copy.resultingClientIdentifier = this->resultingClientIdentifier;
 
     // ResourceLoaderOptions
     copy.sendLoadCallbacks = this->sendLoadCallbacks;
     copy.sniffContent = this->sniffContent;
+    copy.contentEncodingSniffingPolicy = this->contentEncodingSniffingPolicy;
     copy.dataBufferingPolicy = this->dataBufferingPolicy;
     copy.storedCredentialsPolicy = this->storedCredentialsPolicy;
     copy.securityCheck = this->securityCheck;
@@ -88,13 +95,17 @@ ThreadableLoaderOptions ThreadableLoaderOptions::isolatedCopy() const
     copy.cachingPolicy = this->cachingPolicy;
     copy.sameOriginDataURLFlag = this->sameOriginDataURLFlag;
     copy.initiatorContext = this->initiatorContext;
+    copy.initiator = this->initiator;
     copy.clientCredentialPolicy = this->clientCredentialPolicy;
     copy.maxRedirectCount = this->maxRedirectCount;
     copy.preflightPolicy = this->preflightPolicy;
+    copy.navigationPreloadIdentifier = this->navigationPreloadIdentifier;
+    copy.fetchPriorityHint = this->fetchPriorityHint;
+    copy.shouldEnableContentExtensionsCheck = this->shouldEnableContentExtensionsCheck;
 
     // ThreadableLoaderOptions
     copy.contentSecurityPolicyEnforcement = this->contentSecurityPolicyEnforcement;
-    copy.initiator = this->initiator.isolatedCopy();
+    copy.initiatorType = this->initiatorType.isolatedCopy();
     copy.filteringPolicy = this->filteringPolicy;
 
     return copy;
@@ -103,14 +114,17 @@ ThreadableLoaderOptions ThreadableLoaderOptions::isolatedCopy() const
 
 RefPtr<ThreadableLoader> ThreadableLoader::create(ScriptExecutionContext& context, ThreadableLoaderClient& client, ResourceRequest&& request, const ThreadableLoaderOptions& options, String&& referrer, String&& taskMode)
 {
+    RefPtr document = [&] {
+        if (auto* globalScope = dynamicDowncast<WorkletGlobalScope>(context))
+            return globalScope->responsibleDocument();
+        return dynamicDowncast<Document>(context);
+    }();
+
+    if (auto* documentLoader = document ? document->loader() : nullptr)
+        request.setIsAppInitiated(documentLoader->lastNavigationWasAppInitiated());
+    
     if (is<WorkerGlobalScope>(context) || (is<WorkletGlobalScope>(context) && downcast<WorkletGlobalScope>(context).workerOrWorkletThread()))
         return WorkerThreadableLoader::create(static_cast<WorkerOrWorkletGlobalScope&>(context), client, WTFMove(taskMode), WTFMove(request), options, WTFMove(referrer));
-
-    Document* document = nullptr;
-    if (is<WorkletGlobalScope>(context))
-        document = downcast<WorkletGlobalScope>(context).responsibleDocument();
-    else
-        document = &downcast<Document>(context);
 
     return DocumentThreadableLoader::create(*document, client, WTFMove(request), options, WTFMove(referrer));
 }
@@ -118,14 +132,14 @@ RefPtr<ThreadableLoader> ThreadableLoader::create(ScriptExecutionContext& contex
 void ThreadableLoader::loadResourceSynchronously(ScriptExecutionContext& context, ResourceRequest&& request, ThreadableLoaderClient& client, const ThreadableLoaderOptions& options)
 {
     auto resourceURL = request.url();
-    if (is<WorkerGlobalScope>(context))
-        WorkerThreadableLoader::loadResourceSynchronously(downcast<WorkerGlobalScope>(context), WTFMove(request), client, options);
+    if (auto* globalScope = dynamicDowncast<WorkerGlobalScope>(context))
+        WorkerThreadableLoader::loadResourceSynchronously(*globalScope, WTFMove(request), client, options);
     else
         DocumentThreadableLoader::loadResourceSynchronously(downcast<Document>(context), WTFMove(request), client, options);
     context.didLoadResourceSynchronously(resourceURL);
 }
 
-void ThreadableLoader::logError(ScriptExecutionContext& context, const ResourceError& error, const String& initiator)
+void ThreadableLoader::logError(ScriptExecutionContext& context, const ResourceError& error, const String& initiatorType)
 {
     if (error.isCancellation())
         return;
@@ -139,15 +153,15 @@ void ThreadableLoader::logError(ScriptExecutionContext& context, const ResourceE
     if (error.domain() != errorDomainWebKitInternal && error.domain() != errorDomainWebKitServiceWorker && !error.isAccessControl())
         return;
 
-    const char* messageStart;
-    if (initiator == cachedResourceRequestInitiators().eventsource)
-        messageStart = "EventSource cannot load ";
-    else if (initiator == cachedResourceRequestInitiators().fetch)
-        messageStart = "Fetch API cannot load ";
-    else if (initiator == cachedResourceRequestInitiators().xmlhttprequest)
-        messageStart = "XMLHttpRequest cannot load ";
+    ASCIILiteral messageStart;
+    if (initiatorType == cachedResourceRequestInitiatorTypes().eventsource)
+        messageStart = "EventSource cannot load "_s;
+    else if (initiatorType == cachedResourceRequestInitiatorTypes().fetch)
+        messageStart = "Fetch API cannot load "_s;
+    else if (initiatorType == cachedResourceRequestInitiatorTypes().xmlhttprequest)
+        messageStart = "XMLHttpRequest cannot load "_s;
     else
-        messageStart = "Cannot load ";
+        messageStart = "Cannot load "_s;
 
     String messageEnd = error.isAccessControl() ? " due to access control checks."_s : "."_s;
     context.addConsoleMessage(MessageSource::JS, MessageLevel::Error, makeString(messageStart, error.failingURL().string(), messageEnd));

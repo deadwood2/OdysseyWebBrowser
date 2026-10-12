@@ -40,9 +40,10 @@
 
 namespace WebCore {
 
-Ref<ScrollingStateStickyNode> ScrollingStateStickyNode::create(ScrollingStateTree& stateTree, ScrollingNodeID nodeID)
+ScrollingStateStickyNode::ScrollingStateStickyNode(ScrollingNodeID nodeID, Vector<Ref<ScrollingStateNode>>&& children, OptionSet<ScrollingStateNodeProperty> changedProperties, std::optional<PlatformLayerIdentifier> layerID, StickyPositionViewportConstraints&& constraints)
+    : ScrollingStateNode(ScrollingNodeType::Sticky, nodeID, WTFMove(children), changedProperties, layerID)
+    , m_constraints(WTFMove(constraints))
 {
-    return adoptRef(*new ScrollingStateStickyNode(stateTree, nodeID));
 }
 
 ScrollingStateStickyNode::ScrollingStateStickyNode(ScrollingStateTree& tree, ScrollingNodeID nodeID)
@@ -86,21 +87,21 @@ void ScrollingStateStickyNode::updateConstraints(const StickyPositionViewportCon
 FloatPoint ScrollingStateStickyNode::computeLayerPosition(const LayoutRect& viewportRect) const
 {
     // This logic follows ScrollingTreeStickyNode::computeLayerPosition().
+    FloatSize offsetFromStickyAncestors;
     auto computeLayerPositionForScrollingNode = [&](ScrollingStateNode& scrollingStateNode) {
         FloatRect constrainingRect;
         if (is<ScrollingStateFrameScrollingNode>(scrollingStateNode))
             constrainingRect = viewportRect;
-        else {
-            auto& overflowScrollingNode = downcast<ScrollingStateOverflowScrollingNode>(scrollingStateNode);
-            constrainingRect = FloatRect(overflowScrollingNode.scrollPosition(), m_constraints.constrainingRectAtLastLayout().size());
-        }
+        else if (RefPtr overflowScrollingNode = dynamicDowncast<ScrollingStateOverflowScrollingNode>(scrollingStateNode))
+            constrainingRect = FloatRect(overflowScrollingNode->scrollPosition(), m_constraints.constrainingRectAtLastLayout().size());
+
+        constrainingRect.move(offsetFromStickyAncestors);
         return m_constraints.layerPositionForConstrainingRect(constrainingRect);
     };
 
-    for (auto* ancestor = parent(); ancestor; ancestor = ancestor->parent()) {
-        if (is<ScrollingStateOverflowScrollProxyNode>(*ancestor)) {
-            auto& overflowProxyNode = downcast<ScrollingStateOverflowScrollProxyNode>(*ancestor);
-            auto overflowNode = scrollingStateTree().stateNodeForID(overflowProxyNode.overflowScrollingNode());
+    for (auto ancestor = parent(); ancestor; ancestor = ancestor->parent()) {
+        if (auto* overflowProxyNode = dynamicDowncast<ScrollingStateOverflowScrollProxyNode>(*ancestor)) {
+            auto overflowNode = scrollingStateTree().stateNodeForID(overflowProxyNode->overflowScrollingNode());
             if (!overflowNode)
                 break;
 
@@ -110,7 +111,10 @@ FloatPoint ScrollingStateStickyNode::computeLayerPosition(const LayoutRect& view
         if (is<ScrollingStateScrollingNode>(*ancestor))
             return computeLayerPositionForScrollingNode(*ancestor);
 
-        if (is<ScrollingStateFixedNode>(*ancestor) || is<ScrollingStateStickyNode>(*ancestor)) {
+        if (auto* stickyNode = dynamicDowncast<ScrollingStateStickyNode>(*ancestor))
+            offsetFromStickyAncestors += stickyNode->scrollDeltaSinceLastCommit(viewportRect);
+
+        if (is<ScrollingStateFixedNode>(*ancestor)) {
             // FIXME: Do we need scrolling tree nodes at all for nested cases?
             return m_constraints.layerPositionAtLastLayout();
         }
@@ -124,6 +128,10 @@ void ScrollingStateStickyNode::reconcileLayerPositionForViewportRect(const Layou
     FloatPoint position = computeLayerPosition(viewportRect);
     if (layer().representsGraphicsLayer()) {
         auto* graphicsLayer = static_cast<GraphicsLayer*>(layer());
+        ASSERT(graphicsLayer);
+        // Crash data suggest that graphicsLayer can be null: rdar://106547410.
+        if (!graphicsLayer)
+            return;
 
         LOG_WITH_STREAM(Compositing, stream << "ScrollingStateStickyNode " << scrollingNodeID() << " reconcileLayerPositionForViewportRect " << action << " position of layer " << graphicsLayer->primaryLayerID() << " to " << position << " sticky offset " << m_constraints.stickyOffsetAtLastLayout());
         
@@ -143,7 +151,13 @@ void ScrollingStateStickyNode::reconcileLayerPositionForViewportRect(const Layou
     }
 }
 
-void ScrollingStateStickyNode::dumpProperties(TextStream& ts, ScrollingStateTreeAsTextBehavior behavior) const
+FloatSize ScrollingStateStickyNode::scrollDeltaSinceLastCommit(const LayoutRect& viewportRect) const
+{
+    auto layerPosition = computeLayerPosition(viewportRect);
+    return layerPosition - m_constraints.layerPositionAtLastLayout();
+}
+
+void ScrollingStateStickyNode::dumpProperties(TextStream& ts, OptionSet<ScrollingStateTreeAsTextBehavior> behavior) const
 {
     ts << "Sticky node";
     ScrollingStateNode::dumpProperties(ts, behavior);

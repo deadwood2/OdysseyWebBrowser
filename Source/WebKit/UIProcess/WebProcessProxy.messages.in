@@ -1,4 +1,4 @@
-# Copyright (C) 2010, 2011 Apple Inc. All rights reserved.
+# Copyright (C) 2010-2024 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -22,41 +22,37 @@
 
 messages -> WebProcessProxy LegacyReceiver {
     UpdateBackForwardItem(struct WebKit::BackForwardListItemState backForwardListItemState)
-    DidDestroyFrame(WebCore::FrameIdentifier frameID) 
+    DidDestroyFrame(WebCore::FrameIdentifier frameID, WebKit::WebPageProxyIdentifier pageID) 
 
-    DidDestroyUserGestureToken(uint64_t userGestureTokenID) 
+    DidDestroyUserGestureToken(WebCore::PageIdentifier pageID, WebCore::UserGestureTokenIdentifier userGestureTokenID)
 
     ShouldTerminate() -> (bool shouldTerminate) Synchronous
 
     EnableSuddenTermination()
     DisableSuddenTermination()
 
-    # Plugin messages.
-#if ENABLE(NETSCAPE_PLUGIN_API)
-    GetPlugins(bool refresh) -> (Vector<WebCore::PluginInfo> plugins, Vector<WebCore::PluginInfo> applicationPlugins, struct std::optional<Vector<WebCore::SupportedPluginIdentifier>> supportedPluginIdentifiers) Synchronous
-    GetPluginProcessConnection(uint64_t pluginProcessToken) -> (IPC::Attachment connectionHandle, bool supportsAsynchronousInitialization) Synchronous
-#endif
     GetNetworkProcessConnection() -> (struct WebKit::NetworkProcessConnectionInfo connectionInfo) Synchronous
 
+    WaitForSharedPreferencesForWebProcessToSync(uint64_t sharedPreferencesVersion) -> (bool success) Synchronous
+
 #if ENABLE(GPU_PROCESS)
-    GetGPUProcessConnection(struct WebKit::GPUProcessConnectionParameters parameters) -> (struct WebKit::GPUProcessConnectionInfo connectionInfo) Synchronous
+    CreateGPUProcessConnection(WebKit::GPUProcessConnectionIdentifier identifier, IPC::ConnectionHandle connectionHandle) AllowedWhenWaitingForSyncReply
+    GPUProcessConnectionDidBecomeUnresponsive(WebKit::GPUProcessConnectionIdentifier identifier)
 #endif
 
-#if ENABLE(WEB_AUTHN)
-    GetWebAuthnProcessConnection() -> (struct WebKit::WebAuthnProcessConnectionInfo connectionInfo) Synchronous
+#if ENABLE(MODEL_PROCESS)
+    CreateModelProcessConnection(IPC::ConnectionHandle connectionIdentifier, struct WebKit::ModelProcessConnectionParameters parameters) AllowedWhenWaitingForSyncReply
 #endif
-
-    SetIsHoldingLockedFiles(bool isHoldingLockedFiles)
 
     DidExceedActiveMemoryLimit()
     DidExceedInactiveMemoryLimit()
+    DidExceedMemoryFootprintThreshold(size_t footprint)
     DidExceedCPULimit()
 
     StopResponsivenessTimer()
     DidReceiveBackgroundResponsivenessPing()
 
     MemoryPressureStatusChanged(bool isUnderMemoryPressure)
-    DidExceedInactiveMemoryLimitWhileActive()
 
     DidCollectPrewarmInformation(WebCore::RegistrableDomain domain, struct WebCore::PrewarmInformation prewarmInformation)
 
@@ -64,12 +60,7 @@ messages -> WebProcessProxy LegacyReceiver {
     CacheMediaMIMETypes(Vector<String> types)
 #endif
 
-#if PLATFORM(MAC)
-    RequestHighPerformanceGPU()
-    ReleaseHighPerformanceGPU()
-#endif
-
-#if HAVE(CVDISPLAYLINK)
+#if HAVE(DISPLAY_LINK)
     StartDisplayLink(WebKit::DisplayLinkObserverID observerID, uint32_t displayID, unsigned preferredFramesPerSecond)
     StopDisplayLink(WebKit::DisplayLinkObserverID observerID, uint32_t displayID)
     SetDisplayLinkPreferredFramesPerSecond(WebKit::DisplayLinkObserverID observerID, uint32_t displayID, unsigned preferredFramesPerSecond);
@@ -77,23 +68,27 @@ messages -> WebProcessProxy LegacyReceiver {
 
 #if PLATFORM(GTK) || PLATFORM(WPE)
     SendMessageToWebContext(struct WebKit::UserMessage userMessage)
-    SendMessageToWebContextWithReply(struct WebKit::UserMessage userMessage) -> (struct WebKit::UserMessage replyMessage) Async
+    SendMessageToWebContextWithReply(struct WebKit::UserMessage userMessage) -> (struct WebKit::UserMessage replyMessage)
 #endif
 
-    DidCreateSleepDisabler(WebCore::SleepDisablerIdentifier identifier, String reason, bool display)
-    DidDestroySleepDisabler(WebCore::SleepDisablerIdentifier identifier)
-
-    CreateSpeechRecognitionServer(WebCore::PageIdentifier identifier)
-    DestroySpeechRecognitionServer(WebCore::PageIdentifier identifier)
+    [EnabledBy=SpeechRecognitionEnabled] CreateSpeechRecognitionServer(WebCore::PageIdentifier identifier)
+    [EnabledBy=SpeechRecognitionEnabled] DestroySpeechRecognitionServer(WebCore::PageIdentifier identifier)
 
     SystemBeep()
-    
-#if PLATFORM(MAC)
-    IsAXAuthenticated(audit_token_t auditToken) -> (bool authenticated) Synchronous
+
+#if PLATFORM(MAC) || PLATFORM(MACCATALYST)
+    IsAXAuthenticated(struct WebKit::CoreIPCAuditToken auditToken) -> (bool authenticated) Synchronous
 #endif
 
 #if HAVE(MEDIA_ACCESSIBILITY_FRAMEWORK)
-    SetCaptionDisplayMode(WebCore::CaptionUserPreferences::CaptionDisplayMode mode)
+    SetCaptionDisplayMode(enum:uint8_t WebCore::CaptionUserPreferencesDisplayMode mode)
     SetCaptionLanguage(String language)
 #endif
+
+    GetNotifications(URL registrationURL, String tag) -> (Vector<WebCore::NotificationData> result)
+    [EnabledBy=AppBadgeEnabled] SetAppBadge(std::optional<WebKit::WebPageProxyIdentifier> pageIdentifier, WebCore::SecurityOriginData origin, std::optional<uint64_t> badge)
+    [EnabledBy=AppBadgeEnabled] SetClientBadge(WebKit::WebPageProxyIdentifier pageIdentifier, WebCore::SecurityOriginData origin, std::optional<uint64_t> badge)
+
+    WrapCryptoKey(Vector<uint8_t> key) -> (std::optional<Vector<uint8_t>> wrappedKey) Synchronous
+    UnwrapCryptoKey(struct WebCore::WrappedCryptoKey wrappedKey) -> (std::optional<Vector<uint8_t>> key) Synchronous
 }

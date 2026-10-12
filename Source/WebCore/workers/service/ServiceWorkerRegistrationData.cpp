@@ -26,11 +26,11 @@
 #include "config.h"
 #include "ServiceWorkerRegistrationData.h"
 
-#if ENABLE(SERVICE_WORKER)
+#include <wtf/CrossThreadCopier.h>
 
 namespace WebCore {
 
-ServiceWorkerRegistrationData ServiceWorkerRegistrationData::isolatedCopy() const
+ServiceWorkerRegistrationData ServiceWorkerRegistrationData::isolatedCopy() const &
 {
     return {
         key.isolatedCopy(),
@@ -38,12 +38,24 @@ ServiceWorkerRegistrationData ServiceWorkerRegistrationData::isolatedCopy() cons
         scopeURL.isolatedCopy(),
         updateViaCache,
         lastUpdateTime,
-        installingWorker ? std::optional<ServiceWorkerData>(installingWorker->isolatedCopy()) : std::nullopt,
-        waitingWorker ? std::optional<ServiceWorkerData>(waitingWorker->isolatedCopy()) : std::nullopt,
-        activeWorker ? std::optional<ServiceWorkerData>(activeWorker->isolatedCopy()) : std::nullopt,
+        crossThreadCopy(installingWorker),
+        crossThreadCopy(waitingWorker),
+        crossThreadCopy(activeWorker),
+    };
+}
+
+ServiceWorkerRegistrationData ServiceWorkerRegistrationData::isolatedCopy() &&
+{
+    return {
+        WTFMove(key).isolatedCopy(),
+        identifier,
+        WTFMove(scopeURL).isolatedCopy(),
+        updateViaCache,
+        lastUpdateTime,
+        crossThreadCopy(WTFMove(installingWorker)),
+        crossThreadCopy(WTFMove(waitingWorker)),
+        crossThreadCopy(WTFMove(activeWorker)),
     };
 }
 
 } // namespace WTF
-
-#endif // ENABLE(SERVICE_WORKER)

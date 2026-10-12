@@ -1,4 +1,6 @@
 partial interface TestGlobalObject {
+    attribute TestAsyncIterableConstructor TestAsyncIterable;
+    attribute TestAsyncKeyValueIterableConstructor TestAsyncKeyValueIterable;
     attribute TestCEReactionsConstructor TestCEReactions;
     attribute TestCEReactionsStringifierConstructor TestCEReactionsStringifier;
     attribute TestCallTracerConstructor TestCallTracer;
@@ -45,13 +47,15 @@ partial interface TestGlobalObject {
     attribute TestNamedSetterWithLegacyOverrideBuiltInsConstructor TestNamedSetterWithLegacyOverrideBuiltIns;
     attribute TestNamedSetterWithLegacyUnforgeablePropertiesConstructor TestNamedSetterWithLegacyUnforgeableProperties;
     attribute TestNamedSetterWithLegacyUnforgeablePropertiesAndLegacyOverrideBuiltInsConstructor TestNamedSetterWithLegacyUnforgeablePropertiesAndLegacyOverrideBuiltIns;
-    attribute TestNamespaceObjectConstructor TestInterfaceName;
+    attribute TestNamespaceConstConstructor TestNamespaceConst;
+    [SecureContext] attribute TestNamespaceObjectConstructor TestInterfaceName;
     [Conditional=ConditionDerived] attribute TestOperationConditionalConstructor TestOperationConditional;
     attribute TestOverloadedConstructorsWithSequenceConstructor TestOverloadedConstructorsWithSequence;
     attribute TestPluginInterfaceConstructor TestPluginInterface;
     attribute TestReadOnlyMapLikeConstructor TestReadOnlyMapLike;
     attribute TestReadOnlySetLikeConstructor TestReadOnlySetLike;
     attribute TestReportExtraMemoryCostConstructor TestReportExtraMemoryCost;
+    attribute TestScheduledActionConstructor TestScheduledActionReal;
     [Conditional=Condition1|Condition2] attribute TestSerializedScriptValueInterfaceConstructor TestSerializedScriptValueInterface;
     attribute TestSetLikeConstructor TestSetLike;
     attribute TestSetLikeWithOverriddenOperationsConstructor TestSetLikeWithOverriddenOperations;
@@ -62,5 +66,6 @@ partial interface TestGlobalObject {
     attribute TestStringifierOperationNamedToStringConstructor TestStringifierOperationNamedToString;
     attribute TestStringifierReadOnlyAttributeConstructor TestStringifierReadOnlyAttribute;
     attribute TestStringifierReadWriteAttributeConstructor TestStringifierReadWriteAttribute;
+    attribute TestTaggedWrapperConstructor TestTaggedWrapper;
     attribute TestTypedefsConstructor TestTypedefs;
 };

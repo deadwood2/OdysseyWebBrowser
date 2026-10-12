@@ -37,18 +37,17 @@ namespace JSC { namespace B3 { namespace Air {
 
 void lowerStackArgs(Code& code)
 {
-    PhaseScope phaseScope(code, "lowerStackArgs");
+    PhaseScope phaseScope(code, "lowerStackArgs"_s);
     
     // Now we need to deduce how much argument area we need.
     for (BasicBlock* block : code) {
         for (Inst& inst : *block) {
             for (Arg& arg : inst.args) {
                 if (arg.isCallArg()) {
-                    // For now, we assume that we use 8 bytes of the call arg. But that's not
-                    // such an awesome assumption.
-                    // FIXME: https://bugs.webkit.org/show_bug.cgi?id=150454
                     ASSERT(arg.offset() >= 0);
-                    code.requestCallArgAreaSizeInBytes(arg.offset() + 8);
+                    // We always check the conservative register bytes for Bank::FP because
+                    // CallArgs do not store which bank they are.
+                    code.requestCallArgAreaSizeInBytes(arg.offset() + (code.usesSIMD() ? conservativeRegisterBytes(Bank::FP) : conservativeRegisterBytesWithoutVectors(Bank::FP)));
                 }
             }
         }
@@ -78,8 +77,7 @@ void lowerStackArgs(Code& code)
                     if (Arg::isValidImmForm(offset))
                         inst = Inst(inst.kind.opcode == Lea32 ? Add32 : Add64, inst.origin, Arg::imm(offset), base, inst.args[1]);
                     else {
-                        ASSERT(pinnedExtendedOffsetAddrRegister());
-                        Air::Tmp tmp = Air::Tmp(*pinnedExtendedOffsetAddrRegister());
+                        Air::Tmp tmp = Air::Tmp(extendedOffsetAddrRegister());
                         Arg offsetArg = Arg::bigImm(offset);
                         insertionSet.insert(instIndex, Move, inst.origin, offsetArg, tmp);
                         inst = Inst(inst.kind.opcode == Lea32 ? Add32 : Add64, inst.origin, tmp, base, inst.args[1]);
@@ -110,7 +108,7 @@ void lowerStackArgs(Code& code)
 
             inst.forEachArg(
                 [&] (Arg& arg, Arg::Role role, Bank, Width width) {
-                    auto stackAddr = [&] (Value::OffsetType offsetFromFP) -> Arg {
+                    auto stackAddr = [&] (unsigned instIndex, Value::OffsetType offsetFromFP) -> Arg {
                         int32_t offsetFromSP = offsetFromFP + code.frameSize();
 
                         if (inst.admitsExtendedOffsetAddr(arg)) {
@@ -121,22 +119,30 @@ void lowerStackArgs(Code& code)
                         }
 
                         Arg result = Arg::addr(Air::Tmp(GPRInfo::callFrameRegister), offsetFromFP);
-                        if (result.isValidForm(width))
+                        if (result.isValidForm(Move, width))
                             return result;
 
                         result = Arg::addr(Air::Tmp(MacroAssembler::stackPointerRegister), offsetFromSP);
-                        if (result.isValidForm(width))
+                        if (result.isValidForm(Move, width))
                             return result;
-#if CPU(ARM64)
-                        ASSERT(pinnedExtendedOffsetAddrRegister());
-                        Air::Tmp tmp = Air::Tmp(*pinnedExtendedOffsetAddrRegister());
+
+                        if (inst.kind.opcode == Patch)
+                            return Arg::extendedOffsetAddr(offsetFromFP);
+
+#if CPU(ARM64) || CPU(RISCV64)
+                        Air::Tmp tmp = Air::Tmp(extendedOffsetAddrRegister());
 
                         Arg largeOffset = Arg::isValidImmForm(offsetFromSP) ? Arg::imm(offsetFromSP) : Arg::bigImm(offsetFromSP);
                         insertionSet.insert(instIndex, Move, inst.origin, largeOffset, tmp);
                         insertionSet.insert(instIndex, Add64, inst.origin, Air::Tmp(MacroAssembler::stackPointerRegister), tmp);
                         result = Arg::addr(tmp, 0);
                         return result;
+#elif CPU(ARM)
+                        // We solve this in AirAllocateRegistersAndStackAndGenerateCode.cpp.
+                        UNUSED_PARAM(instIndex);
+                        return result;
 #elif CPU(X86_64)
+                        UNUSED_PARAM(instIndex);
                         // Can't happen on x86: immediates are always big enough for frame size.
                         RELEASE_ASSERT_NOT_REACHED();
 #else
@@ -147,9 +153,11 @@ void lowerStackArgs(Code& code)
                     switch (arg.kind()) {
                     case Arg::Stack: {
                         StackSlot* slot = arg.stackSlot();
+                        if (inst.kind.opcode == Move && slot->kind() == StackSlotKind::Spill)
+                            inst.kind.spill = true;
                         if (Arg::isZDef(role)
                             && slot->kind() == StackSlotKind::Spill
-                            && slot->byteSize() > bytes(width)) {
+                            && slot->byteSize() > bytesForWidth(width)) {
                             // Currently we only handle this simple case because it's the only one
                             // that arises: ZDef's are only 32-bit right now. So, when we hit these
                             // assertions it means that we need to implement those other kinds of
@@ -157,11 +165,11 @@ void lowerStackArgs(Code& code)
                             RELEASE_ASSERT(slot->byteSize() == 8);
                             RELEASE_ASSERT(width == Width32);
 
-#if CPU(ARM64)
-                            Air::Opcode storeOpcode = Store32;
+#if CPU(ARM64) || CPU(RISCV64)
+                            Air::Opcode storeOpcode = Move32;
                             Air::Arg::Kind operandKind = Arg::ZeroReg;
                             Air::Arg operand = Arg::zeroReg();
-#elif CPU(X86_64)
+#elif CPU(X86_64) || CPU(ARM)
                             Air::Opcode storeOpcode = Move32;
                             Air::Arg::Kind operandKind = Arg::Imm;
                             Air::Arg operand = Arg::imm(0);
@@ -171,13 +179,13 @@ void lowerStackArgs(Code& code)
                             RELEASE_ASSERT(isValidForm(storeOpcode, operandKind, Arg::Stack));
                             insertionSet.insert(
                                 instIndex + 1, storeOpcode, inst.origin, operand,
-                                stackAddr(arg.offset() + 4 + slot->offsetFromFP()));
+                                stackAddr(instIndex + 1, arg.offset() + 4 + slot->offsetFromFP()));
                         }
-                        arg = stackAddr(arg.offset() + slot->offsetFromFP());
+                        arg = stackAddr(instIndex, arg.offset() + slot->offsetFromFP());
                         break;
                     }
                     case Arg::CallArg:
-                        arg = stackAddr(arg.offset() - code.frameSize());
+                        arg = stackAddr(instIndex, arg.offset() - code.frameSize());
                         break;
                     default:
                         break;

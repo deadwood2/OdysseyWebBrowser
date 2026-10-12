@@ -24,6 +24,7 @@
  */
 
 #import <WebCore/GeolocationClient.h>
+#import <wtf/TZoneMalloc.h>
 
 namespace WebCore {
 class Geolocation;
@@ -33,13 +34,13 @@ class GeolocationPositionData;
 @class WebView;
 
 class WebGeolocationClient : public WebCore::GeolocationClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(WebGeolocationClient);
 public:
     WebGeolocationClient(WebView *);
     WebView *webView() { return m_webView; }
 
     void geolocationDestroyed() override;
-    void startUpdating(const String& authorizationToken) override;
+    void startUpdating(const String& authorizationToken, bool enableHighAccuracy) override;
     void stopUpdating() override;
 #if PLATFORM(IOS_FAMILY)
     // FIXME: unify this with Mac on OpenSource.

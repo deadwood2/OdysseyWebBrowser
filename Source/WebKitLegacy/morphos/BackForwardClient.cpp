@@ -25,7 +25,7 @@ BackForwardClientMorphOS::BackForwardClientMorphOS(WebPage *page)
 {
 }
 
-void BackForwardClientMorphOS::addItem(Ref<HistoryItem>&& newItem)
+void BackForwardClientMorphOS::addItem(WebCore::FrameIdentifier, Ref<HistoryItem>&& newItem)
 {
     if (!m_capacity || !m_enabled)
         return;
@@ -53,9 +53,10 @@ void BackForwardClientMorphOS::addItem(Ref<HistoryItem>&& newItem)
     m_entryHash.add(newItem.ptr());
     m_entries.insert(m_current + 1, WTFMove(newItem));
     ++m_current;
-	
-	if (m_page->_fHistoryChanged)
-    	m_page->_fHistoryChanged();
+    
+    auto page = m_page.get();
+	if (page && page->_fHistoryChanged)
+    	page->_fHistoryChanged();
 }
 
 void BackForwardClientMorphOS::goBack()
@@ -64,8 +65,9 @@ void BackForwardClientMorphOS::goBack()
     if (m_current > 0) {
         m_current--;
 
-		if (m_page->_fHistoryChanged)
-			m_page->_fHistoryChanged();
+        auto page = m_page.get();
+		if (page && page->_fHistoryChanged)
+			page->_fHistoryChanged();
     }
 }
 
@@ -75,8 +77,9 @@ void BackForwardClientMorphOS::goForward()
     if (m_current < m_entries.size() - 1) {
         m_current++;
 
-		if (m_page->_fHistoryChanged)
-			m_page->_fHistoryChanged();
+        auto page = m_page.get();
+		if (page->_fHistoryChanged)
+			page->_fHistoryChanged();
     }
 }
 
@@ -91,8 +94,9 @@ void BackForwardClientMorphOS::goToItem(HistoryItem& item)
             break;
     if (index < m_entries.size()) {
         m_current = index;
-		if (m_page->_fHistoryChanged)
-			m_page->_fHistoryChanged();
+        auto page = m_page.get();
+		if (page && page->_fHistoryChanged)
+			page->_fHistoryChanged();
     }
 }
 
@@ -162,8 +166,9 @@ void BackForwardClientMorphOS::setCapacity(int size)
         m_current = m_entries.size() - 1;
     }
     m_capacity = size;
-	if (m_page->_fHistoryChanged)
-		m_page->_fHistoryChanged();
+    auto page = m_page.get();
+	if (page->_fHistoryChanged)
+		page->_fHistoryChanged();
 }
 
 bool BackForwardClientMorphOS::enabled()
@@ -178,8 +183,9 @@ void BackForwardClientMorphOS::setEnabled(bool enabled)
         int capacity = m_capacity;
         setCapacity(0);
         setCapacity(capacity);
-		if (m_page->_fHistoryChanged)
-			m_page->_fHistoryChanged();
+        auto page = m_page.get();
+		if (page->_fHistoryChanged)
+			page->_fHistoryChanged();
     }
 }
 
@@ -244,15 +250,14 @@ void BackForwardClientMorphOS::removeItem(HistoryItem* item)
         }
     }
 
-	if (m_page->_fHistoryChanged)
-		m_page->_fHistoryChanged();
+    auto page = m_page.get();
+	if (page->_fHistoryChanged)
+		page->_fHistoryChanged();
 }
 
-bool BackForwardClientMorphOS::containsItem(HistoryItem* entry)
+bool BackForwardClientMorphOS::containsItem(const HistoryItem& entry) const
 {
-    return m_entryHash.contains(entry);
+    return m_entryHash.contains(const_cast<HistoryItem*>(&entry));
 }
 
-
 }
-

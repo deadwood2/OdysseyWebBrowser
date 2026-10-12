@@ -42,11 +42,11 @@ class TransformState {
 public:
     enum TransformDirection { ApplyTransformDirection, UnapplyInverseTransformDirection };
     enum TransformAccumulation { FlattenTransform, AccumulateTransform };
+    enum TransformMatrixTracking { DoNotTrackTransformMatrix, TrackSVGCTMMatrix, TrackSVGScreenCTMMatrix };
 
     TransformState(TransformDirection mappingDirection, const FloatPoint& p, const FloatQuad& quad)
         : m_lastPlanarPoint(p)
         , m_lastPlanarQuad(quad)
-        , m_accumulatingTransform(false)
         , m_mapPoint(true)
         , m_mapQuad(true)
         , m_direction(mappingDirection)
@@ -55,7 +55,6 @@ public:
     
     TransformState(TransformDirection mappingDirection, const FloatPoint& p)
         : m_lastPlanarPoint(p)
-        , m_accumulatingTransform(false)
         , m_mapPoint(true)
         , m_mapQuad(false)
         , m_direction(mappingDirection)
@@ -64,7 +63,6 @@ public:
     
     TransformState(TransformDirection mappingDirection, const FloatQuad& quad)
         : m_lastPlanarQuad(quad)
-        , m_accumulatingTransform(false)
         , m_mapPoint(false)
         , m_mapQuad(true)
         , m_direction(mappingDirection)
@@ -73,7 +71,7 @@ public:
     
     TransformState(const TransformState& other) { *this = other; }
 
-    TransformState& operator=(const TransformState&);
+    WEBCORE_EXPORT TransformState& operator=(const TransformState&);
 
     void setQuad(const FloatQuad& quad)
     {
@@ -91,6 +89,9 @@ public:
 
     void setLastPlanarSecondaryQuad(const std::optional<FloatQuad>&);
 
+    void setTransformMatrixTracking(TransformMatrixTracking tracking) { m_tracking = tracking; }
+    TransformMatrixTracking transformMatrixTracking() const { return m_tracking; }
+
     void move(LayoutUnit x, LayoutUnit y, TransformAccumulation accumulate = FlattenTransform)
     {
         move(LayoutSize(x, y), accumulate);
@@ -98,8 +99,8 @@ public:
 
     void move(const LayoutSize&, TransformAccumulation = FlattenTransform);
     void applyTransform(const AffineTransform& transformFromContainer, TransformAccumulation = FlattenTransform, bool* wasClamped = nullptr);
-    void applyTransform(const TransformationMatrix& transformFromContainer, TransformAccumulation = FlattenTransform, bool* wasClamped = nullptr);
-    void flatten(bool* wasClamped = nullptr);
+    WEBCORE_EXPORT void applyTransform(const TransformationMatrix& transformFromContainer, TransformAccumulation = FlattenTransform, bool* wasClamped = nullptr);
+    WEBCORE_EXPORT void flatten(bool* wasClamped = nullptr);
 
     // Return the coords of the point or quad in the last flattened layer
     FloatPoint lastPlanarPoint() const { return m_lastPlanarPoint; }
@@ -109,18 +110,22 @@ public:
 
     // Return the point or quad mapped through the current transform
     FloatPoint mappedPoint(bool* wasClamped = nullptr) const;
-    FloatQuad mappedQuad(bool* wasClamped = nullptr) const;
-    std::optional<FloatQuad> mappedSecondaryQuad(bool* wasClamped = nullptr) const;
+    WEBCORE_EXPORT FloatQuad mappedQuad(bool* wasClamped = nullptr) const;
+    WEBCORE_EXPORT std::optional<FloatQuad> mappedSecondaryQuad(bool* wasClamped = nullptr) const;
 
     TransformationMatrix* accumulatedTransform() const { return m_accumulatedTransform.get(); }
+    std::unique_ptr<TransformationMatrix> releaseTrackedTransform() { return WTFMove(m_trackedTransform); }
+    TransformDirection direction() const { return m_direction; }
 
 private:
     void translateTransform(const LayoutSize&);
     void translateMappedCoordinates(const LayoutSize&);
     void flattenWithTransform(const TransformationMatrix&, bool* wasClamped);
     void applyAccumulatedOffset();
+
+    bool shouldFlattenBefore(TransformAccumulation accumulate = FlattenTransform);
+    bool shouldFlattenAfter(TransformAccumulation accumulate = FlattenTransform);
     
-    TransformDirection direction() const { return m_direction; }
     TransformDirection inverseDirection() const;
 
     void mapQuad(FloatQuad&, TransformDirection, bool* clamped = nullptr) const;
@@ -131,10 +136,12 @@ private:
 
     // We only allocate the transform if we need to
     std::unique_ptr<TransformationMatrix> m_accumulatedTransform;
+    std::unique_ptr<TransformationMatrix> m_trackedTransform;
     LayoutSize m_accumulatedOffset;
-    bool m_accumulatingTransform;
+    bool m_accumulatingTransform { false };
     bool m_mapPoint;
     bool m_mapQuad;
+    TransformMatrixTracking m_tracking { DoNotTrackTransformMatrix };
     TransformDirection m_direction;
 };
 

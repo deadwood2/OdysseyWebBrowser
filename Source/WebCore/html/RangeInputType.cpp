@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2010 Google Inc. All rights reserved.
- * Copyright (C) 2011-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2014 Google Inc. All rights reserved.
+ * Copyright (C) 2011-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -32,9 +32,10 @@
 #include "config.h"
 #include "RangeInputType.h"
 
-#include "AXObjectCache.h"
 #include "Decimal.h"
-#include "ElementChildIterator.h"
+#include "DocumentInlines.h"
+#include "ElementChildIteratorInlines.h"
+#include "ElementRareData.h"
 #include "EventNames.h"
 #include "HTMLCollection.h"
 #include "HTMLInputElement.h"
@@ -42,13 +43,15 @@
 #include "InputTypeNames.h"
 #include "KeyboardEvent.h"
 #include "MouseEvent.h"
+#include "NodeName.h"
 #include "PlatformMouseEvent.h"
 #include "RenderSlider.h"
-#include "RuntimeEnabledFeatures.h"
 #include "ScopedEventQueue.h"
+#include "ScriptDisallowedScope.h"
 #include "ShadowRoot.h"
 #include "SliderThumbElement.h"
 #include "StepRange.h"
+#include "UserAgentParts.h"
 #include <limits>
 #include <wtf/MathExtras.h>
 
@@ -74,9 +77,9 @@ static const int rangeDefaultStepBase = 0;
 static const int rangeStepScaleFactor = 1;
 static const StepRange::StepDescription rangeStepDescription { rangeDefaultStep, rangeDefaultStepBase, rangeStepScaleFactor };
 
-static Decimal ensureMaximum(const Decimal& proposedValue, const Decimal& minimum, const Decimal& fallbackValue)
+static Decimal ensureMaximum(const Decimal& proposedValue, const Decimal& minimum)
 {
-    return proposedValue >= minimum ? proposedValue : std::max(minimum, fallbackValue);
+    return proposedValue >= minimum ? proposedValue : minimum;
 }
 
 RangeInputType::RangeInputType(HTMLInputElement& element)
@@ -116,44 +119,50 @@ bool RangeInputType::supportsRequired() const
 StepRange RangeInputType::createStepRange(AnyStepHandling anyStepHandling) const
 {
     ASSERT(element());
+    const Decimal stepBase = findStepBase(rangeDefaultStepBase);
     const Decimal minimum = parseToNumber(element()->attributeWithoutSynchronization(minAttr), rangeDefaultMinimum);
-    const Decimal maximum = ensureMaximum(parseToNumber(element()->attributeWithoutSynchronization(maxAttr), rangeDefaultMaximum), minimum, rangeDefaultMaximum);
-
-    const AtomString& precisionValue = element()->attributeWithoutSynchronization(precisionAttr);
-    if (!precisionValue.isNull()) {
-        const Decimal step = equalLettersIgnoringASCIICase(precisionValue, "float") ? Decimal::nan() : 1;
-        return StepRange(minimum, RangeLimitations::Valid, minimum, maximum, step, rangeStepDescription);
-    }
+    const Decimal maximum = ensureMaximum(parseToNumber(element()->attributeWithoutSynchronization(maxAttr), rangeDefaultMaximum), minimum);
 
     const Decimal step = StepRange::parseStep(anyStepHandling, rangeStepDescription, element()->attributeWithoutSynchronization(stepAttr));
-    return StepRange(minimum, RangeLimitations::Valid, minimum, maximum, step, rangeStepDescription);
+    return StepRange(stepBase, RangeLimitations::Valid, minimum, maximum, step, rangeStepDescription);
 }
 
+// FIXME: Should this work for untrusted input?
 void RangeInputType::handleMouseDownEvent(MouseEvent& event)
 {
     ASSERT(element());
+
+    if (!hasCreatedShadowSubtree())
+        return;
+
     if (element()->isDisabledFormControl())
         return;
 
-    if (event.button() != LeftButton || !is<Node>(event.target()))
+    RefPtr targetNode = dynamicDowncast<Node>(event.target());
+    if (!targetNode)
         return;
+
     ASSERT(element()->shadowRoot());
-    auto& targetNode = downcast<Node>(*event.target());
-    if (&targetNode != element() && !targetNode.isDescendantOf(element()->userAgentShadowRoot().get()))
+    if (targetNode != element() && !targetNode->isDescendantOf(element()->protectedUserAgentShadowRoot().get()))
         return;
-    auto& thumb = typedSliderThumbElement();
-    if (&targetNode == &thumb)
+    Ref thumb = typedSliderThumbElement();
+    if (targetNode == thumb.ptr())
         return;
-    thumb.dragFrom(event.absoluteLocation());
+    thumb->dragFrom(event.absoluteLocation());
 }
 
 #if ENABLE(TOUCH_EVENTS)
 void RangeInputType::handleTouchEvent(TouchEvent& event)
 {
-#if PLATFORM(IOS_FAMILY)
-    typedSliderThumbElement().handleTouchEvent(event);
-#elif ENABLE(TOUCH_SLIDER)
     ASSERT(element());
+
+    if (!hasCreatedShadowSubtree())
+        return;
+
+#if ENABLE(IOS_TOUCH_EVENTS)
+    typedSliderThumbElement().handleTouchEvent(event);
+#else
+
     if (element()->isDisabledFormControl())
         return;
 
@@ -167,27 +176,21 @@ void RangeInputType::handleTouchEvent(TouchEvent& event)
         typedSliderThumbElement().setPositionFromPoint(touches->item(0)->absoluteLocation());
         event.setDefaultHandled();
     }
-#else
-    UNUSED_PARAM(event);
-#endif
+#endif // ENABLE(IOS_TOUCH_EVENTS)
 }
-
-#if ENABLE(TOUCH_SLIDER)
-bool RangeInputType::hasTouchEventHandler() const
-{
-    return true;
-}
-#endif
 #endif // ENABLE(TOUCH_EVENTS)
 
 void RangeInputType::disabledStateChanged()
 {
+    if (!hasCreatedShadowSubtree())
+        return;
     typedSliderThumbElement().hostDisabledStateChanged();
 }
 
 auto RangeInputType::handleKeydownEvent(KeyboardEvent& event) -> ShouldCallBaseEventHandler
 {
     ASSERT(element());
+
     if (element()->isDisabledFormControl())
         return ShouldCallBaseEventHandler::Yes;
 
@@ -200,31 +203,29 @@ auto RangeInputType::handleKeydownEvent(KeyboardEvent& event) -> ShouldCallBaseE
 
     // FIXME: We can't use stepUp() for the step value "any". So, we increase
     // or decrease the value by 1/100 of the value range. Is it reasonable?
-    const Decimal step = equalLettersIgnoringASCIICase(element()->attributeWithoutSynchronization(stepAttr), "any") ? (stepRange.maximum() - stepRange.minimum()) / 100 : stepRange.step();
+    const Decimal step = equalLettersIgnoringASCIICase(element()->attributeWithoutSynchronization(stepAttr), "any"_s) ? (stepRange.maximum() - stepRange.minimum()) / 100 : stepRange.step();
     const Decimal bigStep = std::max((stepRange.maximum() - stepRange.minimum()) / 10, step);
 
     bool isVertical = false;
-    if (auto* renderer = element()->renderer()) {
-        ControlPart part = renderer->style().appearance();
-        isVertical = part == SliderVerticalPart || part == MediaVolumeSliderPart;
-    }
+    if (auto* renderer = element()->renderer())
+        isVertical = renderer->style().usedAppearance() == StyleAppearance::SliderVertical;
 
     Decimal newValue;
-    if (key == "Up")
+    if (key == "Up"_s)
         newValue = current + step;
-    else if (key == "Down")
+    else if (key == "Down"_s)
         newValue = current - step;
-    else if (key == "Left")
+    else if (key == "Left"_s)
         newValue = isVertical ? current + step : current - step;
-    else if (key == "Right")
+    else if (key == "Right"_s)
         newValue = isVertical ? current - step : current + step;
-    else if (key == "PageUp")
+    else if (key == "PageUp"_s)
         newValue = current + bigStep;
-    else if (key == "PageDown")
+    else if (key == "PageDown"_s)
         newValue = current - bigStep;
-    else if (key == "Home")
+    else if (key == "Home"_s)
         newValue = isVertical ? stepRange.maximum() : stepRange.minimum();
-    else if (key == "End")
+    else if (key == "End"_s)
         newValue = isVertical ? stepRange.minimum() : stepRange.maximum();
     else
         return ShouldCallBaseEventHandler::Yes; // Did not match any key binding.
@@ -234,44 +235,49 @@ auto RangeInputType::handleKeydownEvent(KeyboardEvent& event) -> ShouldCallBaseE
     if (newValue != current) {
         EventQueueScope scope;
         setValueAsDecimal(newValue, DispatchInputAndChangeEvent);
-
-        if (AXObjectCache* cache = element()->document().existingAXObjectCache())
-            cache->postNotification(element(), AXObjectCache::AXValueChanged);
     }
 
     event.setDefaultHandled();
     return ShouldCallBaseEventHandler::Yes;
 }
 
-void RangeInputType::createShadowSubtreeAndUpdateInnerTextElementEditability(ContainerNode::ChildChange::Source source, bool)
+void RangeInputType::createShadowSubtree()
 {
     ASSERT(needsShadowSubtree());
     ASSERT(element());
     ASSERT(element()->userAgentShadowRoot());
 
-    static MainThreadNeverDestroyed<const AtomString> webkitSliderRunnableTrackName("-webkit-slider-runnable-track", AtomString::ConstructFromLiteral);
-    Document& document = element()->document();
-    auto track = HTMLDivElement::create(document);
-    track->setPseudo(webkitSliderRunnableTrackName);
-    track->appendChild(source, SliderThumbElement::create(document));
-    auto container = SliderContainerElement::create(document);
-    container->appendChild(source, track);
-    element()->userAgentShadowRoot()->appendChild(source, container);
+    Ref document = element()->document();
+
+    Ref shadowRoot = *element()->userAgentShadowRoot();
+    ScriptDisallowedScope::EventAllowedScope eventAllowedScope { shadowRoot };
+
+    Ref track = HTMLDivElement::create(document);
+    Ref container = SliderContainerElement::create(document);
+    shadowRoot->appendChild(ContainerNode::ChildChange::Source::Parser, container);
+    container->appendChild(ContainerNode::ChildChange::Source::Parser, track);
+
+    track->setUserAgentPart(UserAgentParts::webkitSliderRunnableTrack());
+    track->appendChild(ContainerNode::ChildChange::Source::Parser, SliderThumbElement::create(document));
 }
 
 HTMLElement* RangeInputType::sliderTrackElement() const
 {
     ASSERT(element());
-    ASSERT(element()->userAgentShadowRoot());
-    ASSERT(element()->userAgentShadowRoot()->firstChild()); // container
-    ASSERT(element()->userAgentShadowRoot()->firstChild()->isHTMLElement());
-    ASSERT(element()->userAgentShadowRoot()->firstChild()->firstChild()); // track
 
-    RefPtr<ShadowRoot> root = element()->userAgentShadowRoot();
+    if (!hasCreatedShadowSubtree())
+        return nullptr;
+
+    RefPtr root = element()->userAgentShadowRoot();
+    ASSERT(root);
+    ASSERT(root->firstChild()); // container
+    ASSERT(root->firstChild()->isHTMLElement());
+    ASSERT(root->firstChild()->firstChild()); // track
+
     if (!root)
         return nullptr;
     
-    auto* container = childrenOfType<SliderContainerElement>(*root).first();
+    RefPtr container = childrenOfType<SliderContainerElement>(*root).first();
     if (!container)
         return nullptr;
 
@@ -280,6 +286,7 @@ HTMLElement* RangeInputType::sliderTrackElement() const
 
 SliderThumbElement& RangeInputType::typedSliderThumbElement() const
 {
+    ASSERT(hasCreatedShadowSubtree());
     ASSERT(sliderTrackElement()->firstChild()); // thumb
     ASSERT(sliderTrackElement()->firstChild()->isHTMLElement());
 
@@ -318,21 +325,27 @@ bool RangeInputType::accessKeyAction(bool sendMouseEvents)
 
 void RangeInputType::attributeChanged(const QualifiedName& name)
 {
-    // FIXME: Don't we need to do this work for precisionAttr too?
-    if (name == maxAttr || name == minAttr || name == valueAttr) {
+    switch (name.nodeName()) {
+    case AttributeNames::maxAttr:
+    case AttributeNames::minAttr:
+    case AttributeNames::valueAttr:
         // Sanitize the value.
         if (auto* element = this->element()) {
             if (element->hasDirtyValue())
                 element->setValue(element->value());
         }
-        typedSliderThumbElement().setPositionFromValue();
+        if (hasCreatedShadowSubtree())
+            typedSliderThumbElement().setPositionFromValue();
+        break;
+    default:
+        break;
     }
     InputType::attributeChanged(name);
 }
 
-void RangeInputType::setValue(const String& value, bool valueChanged, TextFieldEventBehavior eventBehavior)
+void RangeInputType::setValue(const String& value, bool valueChanged, TextFieldEventBehavior eventBehavior, TextControlSetValueSelection selection)
 {
-    InputType::setValue(value, valueChanged, eventBehavior);
+    InputType::setValue(value, valueChanged, eventBehavior, selection);
 
     if (!valueChanged)
         return;
@@ -342,7 +355,8 @@ void RangeInputType::setValue(const String& value, bool valueChanged, TextFieldE
         element()->setTextAsOfLastFormControlChangeEvent(value);
     }
 
-    typedSliderThumbElement().setPositionFromValue();
+    if (hasCreatedShadowSubtree())
+        typedSliderThumbElement().setPositionFromValue();
 }
 
 String RangeInputType::fallbackValue() const
@@ -360,7 +374,7 @@ String RangeInputType::sanitizeValue(const String& proposedValue) const
 bool RangeInputType::shouldRespectListAttribute()
 {
 #if ENABLE(DATALIST_ELEMENT)
-    return RuntimeEnabledFeatures::sharedFeatures().dataListElementEnabled();
+    return element() && element()->document().settings().dataListElementEnabled();
 #else
     return InputType::themeSupportsDataListUI(this);
 #endif
@@ -371,7 +385,7 @@ void RangeInputType::dataListMayHaveChanged()
 {
     m_tickMarkValuesDirty = true;
     RefPtr<HTMLElement> sliderTrackElement = this->sliderTrackElement();
-    if (sliderTrackElement->renderer())
+    if (sliderTrackElement && sliderTrackElement->renderer())
         sliderTrackElement->renderer()->setNeedsLayout();
 }
 

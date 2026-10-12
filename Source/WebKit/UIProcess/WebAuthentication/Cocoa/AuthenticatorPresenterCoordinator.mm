@@ -31,14 +31,18 @@
 #import "AuthenticatorManager.h"
 #import "WKASCAuthorizationPresenterDelegate.h"
 #import <wtf/BlockPtr.h>
+#import <wtf/TZoneMallocInlines.h>
+#import <wtf/cocoa/SpanCocoa.h>
 
 #import "AuthenticationServicesCoreSoftLink.h"
 
 namespace WebKit {
 using namespace WebCore;
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(AuthenticatorPresenterCoordinator);
+
 AuthenticatorPresenterCoordinator::AuthenticatorPresenterCoordinator(const AuthenticatorManager& manager, const String& rpId, const TransportSet& transports, ClientDataType type, const String& username)
-    : m_manager(makeWeakPtr(manager))
+    : m_manager(manager)
 {
 #if HAVE(ASC_AUTH_UI)
     m_context = adoptNS([allocASCAuthorizationPresentationContextInstance() initWithRequestContext:nullptr appIdentifier:nullptr]);
@@ -60,8 +64,6 @@ AuthenticatorPresenterCoordinator::AuthenticatorPresenterCoordinator(const Authe
         if ((transports.contains(AuthenticatorTransport::Usb) || transports.contains(AuthenticatorTransport::Nfc)) && !transports.contains(AuthenticatorTransport::Internal))
             [m_context addLoginChoice:adoptNS([allocASCSecurityKeyPublicKeyCredentialLoginChoiceInstance() initAssertionPlaceholderChoice]).get()];
         break;
-    default:
-        ASSERT_NOT_REACHED();
     }
 
     m_presenterDelegate = adoptNS([[WKASCAuthorizationPresenterDelegate alloc] initWithCoordinator:*this]);
@@ -196,7 +198,7 @@ void AuthenticatorPresenterCoordinator::selectAssertionResponse(Vector<Ref<Authe
 
             RetainPtr<NSData> userHandle;
             if (response->userHandle())
-                userHandle = adoptNS([[NSData alloc] initWithBytes:response->userHandle()->data() length:response->userHandle()->byteLength()]);
+                userHandle = toNSData(response->userHandle()->span());
 
             auto loginChoice = adoptNS([allocASCSecurityKeyPublicKeyCredentialLoginChoiceInstance() initWithName:response->name() displayName:response->displayName() userHandle:userHandle.get()]);
             [loginChoices addObject:loginChoice.get()];
@@ -213,7 +215,7 @@ void AuthenticatorPresenterCoordinator::selectAssertionResponse(Vector<Ref<Authe
         for (auto& response : responses) {
             RetainPtr<NSData> userHandle;
             if (response->userHandle())
-                userHandle = adoptNS([[NSData alloc] initWithBytes:response->userHandle()->data() length:response->userHandle()->byteLength()]);
+                userHandle = toNSData(response->userHandle()->span());
 
             auto loginChoice = adoptNS([allocASCPlatformPublicKeyCredentialLoginChoiceInstance() initWithName:response->name() displayName:response->displayName() userHandle:userHandle.get()]);
             [m_context addLoginChoice:loginChoice.get()];
@@ -246,7 +248,6 @@ void AuthenticatorPresenterCoordinator::dimissPresenter(WebAuthenticationResult 
         // FIXME(219767): Replace the ASCAppleIDCredential with the upcoming WebAuthn credentials one.
         // This is just a place holder to tell the UI that the ceremony succeeds.
         m_credentialRequestHandler(adoptNS([WebKit::allocASCAppleIDCredentialInstance() initWithUser:@"" identityToken:adoptNS([[NSData alloc] init]).get() state:nil]).get(), nil);
-        return;
     }
 
     [m_presenter dismissWithError:nil];

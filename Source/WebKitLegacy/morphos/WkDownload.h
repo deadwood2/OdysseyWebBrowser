@@ -49,6 +49,8 @@
 - (BOOL)isFailed;
 - (BOOL)isFinished;
 
+- (id<WkDownloadDelegate>)delegate;
+
 // Either modifies the destination path or performs the move itself if called from downloadDidFinish: or later on
 // Will obviously only work once if it's to perform an immediate rename/copy for a completed download
 - (void)moveFinishedDownload:(OBString *)destinationPath;

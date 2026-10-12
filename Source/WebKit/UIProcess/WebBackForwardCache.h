@@ -27,8 +27,10 @@
 
 #include <WebCore/ProcessIdentifier.h>
 #include <pal/SessionID.h>
+#include <wtf/CheckedRef.h>
 #include <wtf/Forward.h>
-#include <wtf/Vector.h>
+#include <wtf/TZoneMalloc.h>
+#include <wtf/WeakListHashSet.h>
 
 namespace WebKit {
 
@@ -39,15 +41,16 @@ class WebPageProxy;
 class WebProcessPool;
 class WebProcessProxy;
 
-class WebBackForwardCache {
-    WTF_MAKE_FAST_ALLOCATED;
+class WebBackForwardCache final : public CanMakeCheckedPtr<WebBackForwardCache> {
+    WTF_MAKE_TZONE_ALLOCATED(WebBackForwardCache);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(WebBackForwardCache);
 public:
     explicit WebBackForwardCache(WebProcessPool&);
     ~WebBackForwardCache();
 
     void setCapacity(unsigned);
     unsigned capacity() const { return m_capacity; }
-    unsigned size() const { return m_itemsWithCachedPage.size(); }
+    unsigned size() const { return m_itemsWithCachedPage.computeSize(); }
 
     void clear();
     void pruneToSize(unsigned);
@@ -69,7 +72,7 @@ private:
 
     WebProcessPool& m_processPool;
     unsigned m_capacity { 0 };
-    Vector<WebBackForwardListItem*, 2> m_itemsWithCachedPage;
+    WeakListHashSet<WebBackForwardListItem> m_itemsWithCachedPage;
 };
 
 } // namespace WebKit

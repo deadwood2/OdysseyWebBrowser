@@ -37,6 +37,11 @@ function xor(a, b)
     return b || false;
 }
 
+function nullish(value)
+{
+    return value === null || value === undefined;
+}
+
 Object.defineProperty(Object, "shallowCopy",
 {
     value(object)
@@ -148,6 +153,31 @@ Object.defineProperty(Map.prototype, "getOrInitialize",
         if (value)
             return value;
 
+        if (typeof initialValue === "function")
+            initialValue = initialValue();
+
+        console.assert(initialValue !== undefined, "getOrInitialize should not be used with undefined.");
+
+        this.set(key, initialValue);
+        return initialValue;
+    }
+});
+
+Object.defineProperty(WeakMap.prototype, "getOrInitialize",
+{
+    value(key, initialValue)
+    {
+        console.assert(initialValue !== undefined, "getOrInitialize should not be used with undefined.");
+
+        let value = this.get(key);
+        if (value)
+            return value;
+
+        if (typeof initialValue === "function")
+            initialValue = initialValue();
+
+        console.assert(initialValue !== undefined, "getOrInitialize should not be used with undefined.");
+
         this.set(key, initialValue);
         return initialValue;
     }
@@ -162,6 +192,31 @@ Object.defineProperty(Set.prototype, "find",
                 return item;
         }
         return undefined;
+    },
+});
+
+Object.defineProperty(Set.prototype, "filter",
+{
+    value(callback, thisArg)
+    {
+        let filtered = new Set;
+        for (let item of this) {
+            if (callback.call(thisArg, item, item, this))
+                filtered.add(item);
+        }
+        return filtered;
+    },
+});
+
+Object.defineProperty(Set.prototype, "some",
+{
+    value(predicate, thisArg)
+    {
+        for (let item of this) {
+            if (predicate.call(thisArg, item, item, this))
+                return true;
+        }
+        return false;
     },
 });
 
@@ -488,6 +543,15 @@ Object.defineProperty(Element.prototype, "recalculateStyles",
     }
 });
 
+Object.defineProperty(Element.prototype, "getComputedCSSPropertyNumberValue", {
+    value(property) {
+        let result = undefined;
+        result ??= this.computedStyleMap?.().get(property)?.value;
+        result ??= window.getComputedStyle(this).getPropertyCSSValue(property)?.getFloatValue(CSSPrimitiveValue.CSS_PX);
+        return result;
+    },
+});
+
 Object.defineProperty(DocumentFragment.prototype, "createChild",
 {
     value: Element.prototype.createChild
@@ -515,6 +579,19 @@ Object.defineProperty(DocumentFragment.prototype, "createChild",
         },
     });
 })();
+
+Object.defineProperty(HTMLCollection.prototype, "indexOf",
+{
+    value(element)
+    {
+        let length = this.length;
+        for (let i = 0; i < length; ++i) {
+            if (this[i] === element)
+                return i;
+        }
+        return -1;
+    }
+});
 
 Object.defineProperty(Event.prototype, "stop",
 {
@@ -556,6 +633,7 @@ Object.defineProperty(Array, "isTypedArray",
             || constructor === Uint8ClampedArray
             || constructor === Uint16Array
             || constructor === Uint32Array
+            || constructor === Float16Array
             || constructor === Float32Array
             || constructor === Float64Array;
     }
@@ -677,6 +755,14 @@ Object.defineProperty(Array, "diffArrays",
     }
 });
 
+Object.defineProperty(Array.prototype, "firstValue",
+{
+    get()
+    {
+        return this[0];
+    }
+});
+
 Object.defineProperty(Array.prototype, "lastValue",
 {
     get()
@@ -725,7 +811,8 @@ Object.defineProperty(Array.prototype, "toggleIncludes",
     value(value, force)
     {
         let exists = this.includes(value);
-        if (exists === !!force)
+
+        if (force !== undefined && exists === !!force)
             return;
 
         if (exists)
@@ -773,7 +860,7 @@ Object.defineProperty(String.prototype, "isLowerCase",
 {
     value()
     {
-        return String(this) === this.toLowerCase();
+        return /^[a-z]+$/.test(this);
     }
 });
 
@@ -781,7 +868,7 @@ Object.defineProperty(String.prototype, "isUpperCase",
 {
     value()
     {
-        return String(this) === this.toUpperCase();
+        return /^[A-Z]+$/.test(this);
     }
 });
 
@@ -1125,6 +1212,7 @@ Object.defineProperty(String, "format",
         var result = initialValue;
         var tokens = String.tokenizeFormatString(format);
         var usedSubstitutionIndexes = {};
+        let ignoredUnknownSpecifierCount = 0;
 
         for (var i = 0; i < tokens.length; ++i) {
             var token = tokens[i];
@@ -1139,24 +1227,24 @@ Object.defineProperty(String, "format",
                 continue;
             }
 
-            if (token.substitutionIndex >= substitutions.length) {
+            let substitutionIndex = token.substitutionIndex - ignoredUnknownSpecifierCount;
+            if (substitutionIndex >= substitutions.length) {
                 // If there are not enough substitutions for the current substitutionIndex
                 // just output the format specifier literally and move on.
-                error("not enough substitution arguments. Had " + substitutions.length + " but needed " + (token.substitutionIndex + 1) + ", so substitution was skipped.");
+                error("not enough substitution arguments. Had " + substitutions.length + " but needed " + (substitutionIndex + 1) + ", so substitution was skipped.");
                 result = append(result, "%" + (token.precision > -1 ? token.precision : "") + token.specifier);
                 continue;
             }
 
-            usedSubstitutionIndexes[token.substitutionIndex] = true;
-
             if (!(token.specifier in formatters)) {
-                // Encountered an unsupported format character, treat as a string.
-                warn("unsupported format character \u201C" + token.specifier + "\u201D. Treating as a string.");
-                result = append(result, substitutions[token.substitutionIndex]);
+                warn(`Unsupported format specifier "%${token.specifier}" will be ignored.`);
+                result = append(result, "%" + token.specifier);
+                ++ignoredUnknownSpecifierCount;
                 continue;
             }
 
-            result = append(result, formatters[token.specifier](substitutions[token.substitutionIndex], token));
+            usedSubstitutionIndexes[substitutionIndex] = true;
+            result = append(result, formatters[token.specifier](substitutions[substitutionIndex], token));
         }
 
         var unusedSubstitutions = [];
@@ -1557,6 +1645,33 @@ function simpleGlobStringToRegExp(globString, regExpFlags)
     return new RegExp(regexString, regExpFlags);
 }
 
+Object.defineProperty(Array.prototype, "min",
+{
+    value(comparator)
+    {
+        return this[this.minIndex(comparator)];
+    },
+});
+
+Object.defineProperty(Array.prototype, "minIndex",
+{
+    value(comparator)
+    {
+        function defaultComparator(a, b)
+        {
+            return a - b;
+        }
+        comparator = comparator || defaultComparator;
+
+        let minIndex = -1;
+        for (let i = 0; i < this.length; ++i) {
+            if (minIndex === -1 || comparator(this[minIndex], this[i]) > 0)
+                minIndex = i;
+        }
+        return minIndex;
+    },
+});
+
 Object.defineProperty(Array.prototype, "lowerBound",
 {
     // Return index of the leftmost element that is equal or greater
@@ -1621,40 +1736,6 @@ Object.defineProperty(Array.prototype, "binaryIndexOf",
 
         var index = this.lowerBound(value, comparator);
         return index < this.length && comparator(value, this[index]) === 0 ? index : -1;
-    }
-});
-
-Object.defineProperty(Array.prototype, "groupBy",
-{
-    value(groupFunction, minGroupSize = 1)
-    {
-        let result = [];
-        let startIndex = null;
-
-        let flush = (endIndex) => {
-            if (startIndex === null)
-                return;
-            let group = this.slice(startIndex, endIndex + 1);
-            let adjacentCount = (endIndex + 1) - startIndex;
-            if (adjacentCount >= minGroupSize)
-                result.push(group);
-            else
-                result.pushAll(group);
-        }
-
-        this.forEach((item, i) => {
-            if (groupFunction(item)) {
-                startIndex ??= i;
-                if (i === this.length - 1)
-                    flush(this.length - 1);
-            } else {
-                flush(i - 1);
-                result.push(item);
-                startIndex = null;
-            }
-        });
-
-        return result;
     }
 });
 
@@ -1784,6 +1865,23 @@ function insertionIndexForObjectInListSortedByFunction(object, list, comparator,
 function insertObjectIntoSortedArray(object, array, comparator)
 {
     array.splice(insertionIndexForObjectInListSortedByFunction(object, array, comparator), 0, object);
+}
+
+async function retryUntil(predicate, {delay, retries} = {})
+{
+    retries ??= 100;
+    delay ??= 100;
+
+    for (let i = 0; i < retries; ++i) {
+        let result = predicate();
+        if (result)
+            return result;
+
+        await Promise.delay(delay);
+    }
+
+    console.assert(false, "retryUntil exceeded the maximum number of retries.", predicate, retries);
+    return null;
 }
 
 WI.setReentrantCheck = function(object, key)

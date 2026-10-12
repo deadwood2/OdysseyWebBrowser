@@ -31,6 +31,8 @@
 #import "UIKitSPI.h"
 #import "WebCoreArgumentCoders.h"
 #import <WebCore/ElementContext.h>
+#import <pal/spi/ios/BrowserEngineKitSPI.h>
+#import <wtf/cocoa/VectorCocoa.h>
 
 namespace WebKit {
 
@@ -39,29 +41,49 @@ static inline NSRange toNSRange(DocumentEditingContext::Range range)
     return NSMakeRange(range.location, range.length);
 }
 
-UIWKDocumentContext *DocumentEditingContext::toPlatformContext(OptionSet<DocumentEditingContextRequest::Options> options)
+#if HAVE(UI_WK_DOCUMENT_CONTEXT)
+
+template <typename ContextType>
+void setOptionalEditingContextProperties(const DocumentEditingContext& context, ContextType *platformContext, OptionSet<DocumentEditingContextRequest::Options> options)
+{
+    for (auto& rect : context.textRects)
+        [platformContext addTextRect:rect.rect forCharacterRange:toNSRange(rect.range)];
+
+    [platformContext setAnnotatedText:context.annotatedText.nsAttributedString().get()];
+
+#if HAVE(AUTOCORRECTION_ENHANCEMENTS)
+    if (options.contains(DocumentEditingContextRequest::Options::AutocorrectedRanges)) {
+        auto ranges = createNSArray(context.autocorrectedRanges, [&] (DocumentEditingContext::Range range) {
+            return [NSValue valueWithRange:toNSRange(range)];
+        });
+
+        if ([platformContext respondsToSelector:@selector(setAutocorrectedRanges:)])
+            [platformContext setAutocorrectedRanges:ranges.get()];
+    }
+#endif // HAVE(AUTOCORRECTION_ENHANCEMENTS)
+}
+
+#endif // HAVE(UI_WK_DOCUMENT_CONTEXT)
+
+UIWKDocumentContext *DocumentEditingContext::toLegacyPlatformContext(OptionSet<DocumentEditingContextRequest::Options> options)
 {
 #if HAVE(UI_WK_DOCUMENT_CONTEXT)
     auto platformContext = adoptNS([[UIWKDocumentContext alloc] init]);
 
     if (options.contains(DocumentEditingContextRequest::Options::AttributedText)) {
-        [platformContext setContextBefore:contextBefore.string.get()];
-        [platformContext setSelectedText:selectedText.string.get()];
-        [platformContext setContextAfter:contextAfter.string.get()];
-        [platformContext setMarkedText:markedText.string.get()];
+        [platformContext setContextBefore:contextBefore.nsAttributedString().get()];
+        [platformContext setSelectedText:selectedText.nsAttributedString().get()];
+        [platformContext setContextAfter:contextAfter.nsAttributedString().get()];
+        [platformContext setMarkedText:markedText.nsAttributedString().get()];
     } else if (options.contains(DocumentEditingContextRequest::Options::Text)) {
-        [platformContext setContextBefore:[contextBefore.string string]];
-        [platformContext setSelectedText:[selectedText.string string]];
-        [platformContext setContextAfter:[contextAfter.string string]];
-        [platformContext setMarkedText:[markedText.string string]];
+        [platformContext setContextBefore:[contextBefore.nsAttributedString() string]];
+        [platformContext setSelectedText:[selectedText.nsAttributedString() string]];
+        [platformContext setContextAfter:[contextAfter.nsAttributedString() string]];
+        [platformContext setMarkedText:[markedText.nsAttributedString() string]];
     }
 
     [platformContext setSelectedRangeInMarkedText:toNSRange(selectedRangeInMarkedText)];
-
-    for (const auto& rect : textRects)
-        [platformContext addTextRect:rect.rect forCharacterRange:toNSRange(rect.range)];
-
-    [platformContext setAnnotatedText:annotatedText.string.get()];
+    setOptionalEditingContextProperties(*this, platformContext.get(), options);
 
     return platformContext.autorelease();
 #else
@@ -70,142 +92,34 @@ UIWKDocumentContext *DocumentEditingContext::toPlatformContext(OptionSet<Documen
 #endif
 }
 
-}
-
-namespace IPC {
-
-void ArgumentCoder<WebKit::DocumentEditingContext::Range>::encode(Encoder& encoder, const WebKit::DocumentEditingContext::Range& range)
+WKBETextDocumentContext *DocumentEditingContext::toPlatformContext(OptionSet<DocumentEditingContextRequest::Options> options)
 {
-    encoder << range.location;
-    encoder << range.length;
-}
-
-std::optional<WebKit::DocumentEditingContext::Range> ArgumentCoder<WebKit::DocumentEditingContext::Range>::decode(Decoder& decoder)
-{
-    WebKit::DocumentEditingContext::Range range;
-
-    if (!decoder.decode(range.location))
-        return std::nullopt;
-    if (!decoder.decode(range.length))
-        return std::nullopt;
-
-    return range;
-}
-
-void ArgumentCoder<WebKit::DocumentEditingContext::TextRectAndRange>::encode(Encoder& encoder, const WebKit::DocumentEditingContext::TextRectAndRange& rect)
-{
-    encoder << rect.rect;
-    encoder << rect.range;
-}
-
-std::optional<WebKit::DocumentEditingContext::TextRectAndRange> ArgumentCoder<WebKit::DocumentEditingContext::TextRectAndRange>::decode(Decoder& decoder)
-{
-    WebKit::DocumentEditingContext::TextRectAndRange rect;
-
-    if (!decoder.decode(rect.rect))
-        return std::nullopt;
-
-    std::optional<WebKit::DocumentEditingContext::Range> range;
-    decoder >> range;
-    if (!range)
-        return std::nullopt;
-    rect.range = *range;
-
-    return rect;
-}
-
-void ArgumentCoder<WebKit::DocumentEditingContext>::encode(Encoder& encoder, const WebKit::DocumentEditingContext& context)
-{
-    encoder << context.contextBefore;
-    encoder << context.selectedText;
-    encoder << context.contextAfter;
-    encoder << context.markedText;
-    encoder << context.annotatedText;
-
-    encoder << context.selectedRangeInMarkedText;
-
-    encoder << context.textRects;
-}
-
-std::optional<WebKit::DocumentEditingContext> ArgumentCoder<WebKit::DocumentEditingContext>::decode(Decoder& decoder)
-{
-    WebKit::DocumentEditingContext context;
-
-    std::optional<WebCore::AttributedString> contextBefore;
-    decoder >> contextBefore;
-    if (!contextBefore)
-        return std::nullopt;
-    context.contextBefore = *contextBefore;
-
-    std::optional<WebCore::AttributedString> selectedText;
-    decoder >> selectedText;
-    if (!selectedText)
-        return std::nullopt;
-    context.selectedText = *selectedText;
-
-    std::optional<WebCore::AttributedString> contextAfter;
-    decoder >> contextAfter;
-    if (!contextAfter)
-        return std::nullopt;
-    context.contextAfter = *contextAfter;
-
-    std::optional<WebCore::AttributedString> markedText;
-    decoder >> markedText;
-    if (!markedText)
-        return std::nullopt;
-    context.markedText = *markedText;
-
-    std::optional<WebCore::AttributedString> annotatedText;
-    decoder >> annotatedText;
-    if (!annotatedText)
-        return std::nullopt;
-    context.annotatedText = *annotatedText;
-
-    std::optional<WebKit::DocumentEditingContext::Range> selectedRangeInMarkedText;
-    decoder >> selectedRangeInMarkedText;
-    if (!selectedRangeInMarkedText)
-        return std::nullopt;
-    context.selectedRangeInMarkedText = *selectedRangeInMarkedText;
-
-    if (!decoder.decode(context.textRects))
-        return std::nullopt;
-
-    return context;
-}
-
-void ArgumentCoder<WebKit::DocumentEditingContextRequest>::encode(Encoder& encoder, const WebKit::DocumentEditingContextRequest& request)
-{
-    encoder << request.options;
-    encoder << request.surroundingGranularity;
-    encoder << request.granularityCount;
-    encoder << request.rect;
-    encoder << request.textInputContext;
-}
-
-std::optional<WebKit::DocumentEditingContextRequest> ArgumentCoder<WebKit::DocumentEditingContextRequest>::decode(Decoder& decoder)
-{
-    WebKit::DocumentEditingContextRequest request;
-
-    if (!decoder.decode(request.options))
-        return std::nullopt;
-
-    if (!decoder.decode(request.surroundingGranularity))
-        return std::nullopt;
-
-    if (!decoder.decode(request.granularityCount))
-        return std::nullopt;
-
-    if (!decoder.decode(request.rect))
-        return std::nullopt;
-
-    std::optional<std::optional<WebCore::ElementContext>> optionalTextInputContext;
-    decoder >> optionalTextInputContext;
-    if (!optionalTextInputContext)
-        return std::nullopt;
-
-    request.textInputContext = optionalTextInputContext.value();
-
-    return request;
+#if HAVE(UI_WK_DOCUMENT_CONTEXT)
+#if USE(BROWSERENGINEKIT)
+    RetainPtr<WKBETextDocumentContext> platformContext;
+    if (options.contains(DocumentEditingContextRequest::Options::AttributedText)) {
+        platformContext = adoptNS([[WKBETextDocumentContext alloc] initWithAttributedSelectedText:selectedText.nsAttributedString().get()
+            contextBefore:contextBefore.nsAttributedString().get()
+            contextAfter:contextAfter.nsAttributedString().get()
+            markedText:markedText.nsAttributedString().get()
+            selectedRangeInMarkedText:toNSRange(selectedRangeInMarkedText)]);
+    } else if (options.contains(DocumentEditingContextRequest::Options::Text)) {
+        platformContext = adoptNS([[WKBETextDocumentContext alloc] initWithSelectedText:[selectedText.nsAttributedString() string]
+            contextBefore:[contextBefore.nsAttributedString() string]
+            contextAfter:[contextAfter.nsAttributedString() string]
+            markedText:[markedText.nsAttributedString() string]
+            selectedRangeInMarkedText:toNSRange(selectedRangeInMarkedText)]);
+    } else
+        ASSERT_NOT_REACHED_WITH_MESSAGE("%s expected at least Options::AttributedText or Options::Text", __PRETTY_FUNCTION__);
+    setOptionalEditingContextProperties(*this, platformContext.get(), options);
+    return platformContext.autorelease();
+#else
+    return toLegacyPlatformContext(options);
+#endif
+#else
+    UNUSED_PARAM(options);
+    return nil;
+#endif
 }
 
 }

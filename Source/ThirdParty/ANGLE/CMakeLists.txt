@@ -9,9 +9,6 @@ elseif (WIN32)
     set(angle_is_winuwp FALSE)
 elseif (UNIX)
     set(is_linux TRUE)
-    if (ENABLE_X11_TARGET)
-        set(angle_use_x11 TRUE)
-    endif ()
 endif ()
 
 include(Compiler.cmake)
@@ -60,26 +57,35 @@ set(EGL_LIBRARY_TYPE STATIC)
 # + angle_(renderer) (Backend and OS specific)
 
 set(ANGLE_PRIVATE_INCLUDE_DIRECTORIES
+    "${CMAKE_CURRENT_SOURCE_DIR}/WebKit"
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/KHR"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_party/base"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/base"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/third_party/xxhash"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/zlib/google"
     "${CMAKE_CURRENT_BINARY_DIR}/include"
 )
 
 set(ANGLE_DEFINITIONS
     ANGLE_ENABLE_ESSL
+    ANGLE_ENABLE_GLSL
 )
 
 set(ANGLE_SOURCES
     ${libangle_common_sources}
+    ${libangle_common_shader_state_sources}
     ${angle_preprocessor_sources}
+    ${angle_translator_glsl_base_sources}
     ${angle_translator_essl_sources}
+    ${angle_translator_essl_symbol_table_sources}
+    ${angle_translator_glsl_and_vulkan_base_sources}
     ${angle_translator_glsl_sources}
     ${angle_translator_sources}
     ${angle_system_utils_sources}
-    "src/libANGLE/FrameCapture_mock.cpp"
+    src/common/angle_version_info.cpp
+    src/libANGLE/capture/FrameCapture_mock.cpp
+    src/libANGLE/capture/serialize_mock.cpp
 )
 
 if (WIN32)
@@ -123,7 +129,7 @@ add_subdirectory(include)
 add_library(ANGLEFramework INTERFACE)
 add_dependencies(ANGLEFramework GLSLANGHeaders ANGLEHeaders)
 
-if (USE_ANGLE_EGL OR USE_ANGLE_WEBGL)
+if (USE_ANGLE_EGL OR ENABLE_WEBGL)
     add_library(ANGLE ${ANGLE_LIBRARY_TYPE}
         ${ANGLE_SOURCES}
         ${libangle_sources}
@@ -139,7 +145,7 @@ if (USE_ANGLE_EGL OR USE_ANGLE_WEBGL)
         LIBANGLE_IMPLEMENTATION
     )
     target_compile_definitions(ANGLE PUBLIC ${ANGLE_DEFINITIONS})
-    target_link_libraries(ANGLE PRIVATE ZLIB::ZLIB)
+    target_link_libraries(ANGLE PRIVATE ZLIB::ZLIB ${CMAKE_DL_LIBS})
 
     target_compile_definitions(ANGLEFramework INTERFACE ${gl_prototypes})
 
@@ -182,7 +188,7 @@ if (USE_ANGLE_EGL OR USE_ANGLE_WEBGL)
         set_target_properties(EGL PROPERTIES LINKER_LANGUAGE CXX)
         if (WIN32)
             # Output library names according to the .def
-            target_sources(EGL PRIVATE src/libEGL/libEGL.def)
+            target_sources(EGL PRIVATE src/libEGL/libEGL_autogen.def)
             set_target_properties(EGL PROPERTIES OUTPUT_NAME libEGL)
         endif ()
 
@@ -203,10 +209,10 @@ else ()
     )
 endif ()
 
-if (USE_ANGLE_WEBGL)
+if (ENABLE_WEBGL)
     set(libglesv2_entry_points_headers
-        src/libGLESv2/entry_points_egl.h
-        src/libGLESv2/entry_points_egl_ext.h
+        src/libGLESv2/entry_points_egl_autogen.h
+        src/libGLESv2/entry_points_egl_ext_autogen.h
         src/libGLESv2/entry_points_gles_2_0_autogen.h
         src/libGLESv2/entry_points_gles_3_0_autogen.h
         src/libGLESv2/entry_points_gles_ext_autogen.h
@@ -237,12 +243,12 @@ if (USE_ANGLE_WEBGL)
 endif ()
 
 if (COMPILER_IS_GCC_OR_CLANG)
-    WEBKIT_ADD_TARGET_CXX_FLAGS(ANGLE -Wno-cast-align
-                                      -Wno-extra
-                                      -Wno-suggest-attribute=format
-                                      -Wno-undef
-                                      -Wno-unused-parameter
-                                      -Wno-return-type)
+    foreach (angle_target ANGLE EGL GLESv2)
+        if (TARGET ${angle_target})
+            WEBKIT_ADD_TARGET_C_FLAGS(${angle_target} -w)
+            WEBKIT_ADD_TARGET_CXX_FLAGS(${angle_target} -w)
+        endif ()
+    endforeach ()
 endif ()
 
 target_link_libraries(ANGLEFramework INTERFACE ANGLE)

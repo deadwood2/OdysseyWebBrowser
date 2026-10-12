@@ -32,7 +32,6 @@
 #pragma once
 
 #include "InspectorOverlay.h"
-#include "PageDebugger.h"
 #include <JavaScriptCore/InspectorAgentRegistry.h>
 #include <JavaScriptCore/InspectorEnvironment.h>
 #include <wtf/Forward.h>
@@ -49,7 +48,6 @@ class InspectorAgent;
 namespace WebCore {
 
 class DOMWrapperWorld;
-class Frame;
 class GraphicsContext;
 class InspectorClient;
 class InspectorDOMAgent;
@@ -57,8 +55,10 @@ class InspectorFrontendClient;
 class InspectorInstrumentation;
 class InspectorPageAgent;
 class InstrumentingAgents;
+class LocalFrame;
 class Node;
 class Page;
+class PageDebugger;
 class WebInjectedScriptManager;
 struct PageAgentContext;
 
@@ -66,19 +66,19 @@ class InspectorController final : public Inspector::InspectorEnvironment {
     WTF_MAKE_NONCOPYABLE(InspectorController);
     WTF_MAKE_FAST_ALLOCATED;
 public:
-    InspectorController(Page&, InspectorClient*);
+    InspectorController(Page&, std::unique_ptr<InspectorClient>&&);
     ~InspectorController() override;
 
     void inspectedPageDestroyed();
 
-    bool enabled() const;
+    WEBCORE_EXPORT bool enabled() const;
     Page& inspectedPage() const;
 
     WEBCORE_EXPORT void show();
 
     WEBCORE_EXPORT void setInspectorFrontendClient(InspectorFrontendClient*);
     unsigned inspectionLevel() const;
-    void didClearWindowObjectInWorld(Frame&, DOMWrapperWorld&);
+    void didClearWindowObjectInWorld(LocalFrame&, DOMWrapperWorld&);
 
     WEBCORE_EXPORT void dispatchMessageFromFrontend(const String& message);
 
@@ -98,16 +98,18 @@ public:
 
     WEBCORE_EXPORT void setIndicating(bool);
 
-    WEBCORE_EXPORT void willComposite(Frame&);
-    WEBCORE_EXPORT void didComposite(Frame&);
+    WEBCORE_EXPORT void willComposite(LocalFrame&);
+    WEBCORE_EXPORT void didComposite(LocalFrame&);
 
     // Testing support.
-    bool isUnderTest() const { return m_isUnderTest; }
+    WEBCORE_EXPORT bool isUnderTest() const;
     void setIsUnderTest(bool isUnderTest) { m_isUnderTest = isUnderTest; }
     WEBCORE_EXPORT void evaluateForTestInFrontend(const String& script);
     WEBCORE_EXPORT unsigned gridOverlayCount() const;
+    WEBCORE_EXPORT unsigned flexOverlayCount() const;
+    WEBCORE_EXPORT unsigned paintRectCount() const;
 
-    InspectorClient* inspectorClient() const { return m_inspectorClient; }
+    InspectorClient* inspectorClient() const { return m_inspectorClient.get(); }
     InspectorFrontendClient* inspectorFrontendClient() const { return m_inspectorFrontendClient; }
 
     Inspector::InspectorAgent& ensureInspectorAgent();
@@ -121,7 +123,7 @@ public:
     Inspector::InspectorEvaluateHandler evaluateHandler() const override;
     void frontendInitialized() override;
     WTF::Stopwatch& executionStopwatch() const final;
-    PageDebugger& debugger() override;
+    JSC::Debugger* debugger() override;
     JSC::VM& vm() override;
 
 private:
@@ -136,11 +138,11 @@ private:
     Ref<Inspector::BackendDispatcher> m_backendDispatcher;
     std::unique_ptr<InspectorOverlay> m_overlay;
     Ref<WTF::Stopwatch> m_executionStopwatch;
-    PageDebugger m_debugger;
+    std::unique_ptr<PageDebugger> m_debugger;
     Inspector::AgentRegistry m_agents;
 
     Page& m_page;
-    InspectorClient* m_inspectorClient;
+    std::unique_ptr<InspectorClient> m_inspectorClient;
     InspectorFrontendClient* m_inspectorFrontendClient { nullptr };
 
     // Lazy, but also on-demand agents.

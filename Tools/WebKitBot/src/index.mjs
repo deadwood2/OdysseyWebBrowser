@@ -25,8 +25,9 @@
 
 import dotenv from "dotenv";
 import storage from "node-persist";
-import WKR from "./WKR.mjs";
 import WebKitBot from "./WebKitBot.mjs";
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import LogLevel from "@slack/web-api";
 import SlackWebAPI from "@slack/web-api";
 
 dotenv.config();
@@ -36,10 +37,10 @@ async function main() {
         dir: "data",
     });
 
-    let webClient = new SlackWebAPI.WebClient(process.env.SLACK_TOKEN);
+    const proxy = new HttpsProxyAgent(process.env.http_proxy);
+    let webClient = new SlackWebAPI.WebClient(process.env.SLACK_TOKEN, {agent: proxy, logLevel: LogLevel.DEBUG});
     let auth = await webClient.auth.test();
 
-    WKR.main(webClient, auth);
     WebKitBot.main(webClient, auth);
 }
 

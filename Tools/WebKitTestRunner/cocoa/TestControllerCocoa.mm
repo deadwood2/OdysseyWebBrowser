@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,6 +27,8 @@
 #import "TestController.h"
 
 #import "CrashReporterInfo.h"
+#import "LayoutTestSpellChecker.h"
+#import "Options.h"
 #import "PlatformWebView.h"
 #import "StringFunctions.h"
 #import "TestInvocation.h"
@@ -35,27 +37,118 @@
 #import "WebCoreTestSupport.h"
 #import <Foundation/Foundation.h>
 #import <Security/SecItem.h>
+#import <WebKit/WKContentRuleListStorePrivate.h>
 #import <WebKit/WKContextConfigurationRef.h>
 #import <WebKit/WKContextPrivate.h>
+#import <WebKit/WKImageCG.h>
+#import <WebKit/WKPreferencesPrivate.h>
 #import <WebKit/WKPreferencesRefPrivate.h>
 #import <WebKit/WKProcessPoolPrivate.h>
 #import <WebKit/WKStringCF.h>
 #import <WebKit/WKUserContentControllerPrivate.h>
+#import <WebKit/WKUserMediaPermissionCheck.h>
 #import <WebKit/WKWebView.h>
 #import <WebKit/WKWebViewConfiguration.h>
 #import <WebKit/WKWebViewConfigurationPrivate.h>
 #import <WebKit/WKWebViewPrivate.h>
 #import <WebKit/WKWebViewPrivateForTesting.h>
+#import <WebKit/WKWebpagePreferencesPrivate.h>
 #import <WebKit/WKWebsiteDataRecordPrivate.h>
 #import <WebKit/WKWebsiteDataStorePrivate.h>
 #import <WebKit/WKWebsiteDataStoreRef.h>
 #import <WebKit/_WKApplicationManifest.h>
-#import <WebKit/_WKUserContentExtensionStore.h>
-#import <WebKit/_WKUserContentExtensionStorePrivate.h>
 #import <WebKit/_WKWebsiteDataStoreConfiguration.h>
+#import <pal/spi/cocoa/LaunchServicesSPI.h>
+#import <wtf/BlockPtr.h>
+#import <wtf/CompletionHandler.h>
 #import <wtf/MainThread.h>
+#import <wtf/RunLoop.h>
+#import <wtf/UniqueRef.h>
 #import <wtf/cocoa/VectorCocoa.h>
 #import <wtf/spi/cocoa/SecuritySPI.h>
+#import <wtf/text/MakeString.h>
+
+#if ENABLE(IMAGE_ANALYSIS)
+
+#import <pal/cocoa/VisionKitCoreSoftLink.h>
+
+#if HAVE(VK_IMAGE_ANALYSIS_FOR_MACHINE_READABLE_CODES)
+
+static const UIMenuIdentifier fakeMachineReadableCodeActionIdentifier = @"org.webkit.FakeMachineReadableCodeMenuAction";
+static UIMenu *fakeMachineReadableCodeMenuForTesting()
+{
+    static NeverDestroyed<RetainPtr<UIMenu>> menu;
+    static std::once_flag s_onceFlag;
+    std::call_once(s_onceFlag, [&] {
+        RetainPtr action = [UIAction actionWithTitle:@"QR Code Action" image:nil identifier:fakeMachineReadableCodeActionIdentifier handler:^(UIAction *) {
+        }];
+        menu.get() = [UIMenu menuWithTitle:@"QR Code" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[ action.get() ]];
+    });
+    return menu->get();
+}
+
+@interface FakeMachineReadableCodeImageAnalysis : NSObject
+@property (nonatomic, readonly) UIMenu *mrcMenu;
+@property (nonatomic, weak) UIViewController *presentingViewControllerForMrcAction;
+@property (nonatomic) CGRect rectForMrcActionInPresentingViewController;
+@end
+
+@implementation FakeMachineReadableCodeImageAnalysis
+
+- (NSArray<VKWKLineInfo *> *)allLines
+{
+    return @[ ];
+}
+
+- (BOOL)hasResultsForAnalysisTypes:(VKAnalysisTypes)analysisTypes
+{
+    return analysisTypes == VKAnalysisTypeMachineReadableCode;
+}
+
+- (UIMenu *)mrcMenu
+{
+    return fakeMachineReadableCodeMenuForTesting();
+}
+
+@end
+
+#endif // HAVE(VK_IMAGE_ANALYSIS_FOR_MACHINE_READABLE_CODES)
+
+static VKImageAnalysisRequestID gCurrentImageAnalysisRequestID = 0;
+
+VKImageAnalysisRequestID swizzledProcessImageAnalysisRequest(id, SEL, VKCImageAnalyzerRequest *, void (^progressHandler)(double), void (^completionHandler)(VKCImageAnalysis *, NSError *))
+{
+    RunLoop::main().dispatchAfter(25_ms, [completionHandler = makeBlockPtr(completionHandler)] {
+#if HAVE(VK_IMAGE_ANALYSIS_FOR_MACHINE_READABLE_CODES)
+        if (WTR::TestController::singleton().shouldUseFakeMachineReadableCodeResultsForImageAnalysis()) {
+            auto result = adoptNS([FakeMachineReadableCodeImageAnalysis new]);
+            completionHandler(static_cast<VKCImageAnalysis *>(result.get()), nil);
+            return;
+        }
+#endif
+        completionHandler(nil, [NSError errorWithDomain:NSCocoaErrorDomain code:404 userInfo:nil]);
+    });
+    return ++gCurrentImageAnalysisRequestID;
+}
+
+#endif // ENABLE(IMAGE_ANALYSIS)
+
+#if ENABLE(DATA_DETECTION)
+
+NSURL *swizzledAppStoreURL(NSURL *url, SEL)
+{
+    auto components = adoptNS([[NSURLComponents alloc] initWithURL:url resolvingAgainstBaseURL:NO]);
+    if (![[components scheme] isEqualToString:@"http"] && ![[components scheme] isEqualToString:@"https"])
+        return nil;
+
+    if (![[components host] isEqualToString:@"itunes.apple.com"])
+        return nil;
+
+    [components setScheme:@"itms-appss"];
+    return [components URL];
+}
+
+#endif // ENABLE(DATA_DETECTION)
 
 namespace WTR {
 
@@ -101,28 +194,63 @@ void initializeWebViewConfiguration(const char* libraryPath, WKStringRef injecte
     }();
 }
 
-void TestController::cocoaPlatformInitialize()
+void TestController::cocoaPlatformInitialize(const Options& options)
 {
     const char* dumpRenderTreeTemp = libraryPathForTesting();
     if (!dumpRenderTreeTemp)
         return;
 
-    String resourceLoadStatisticsFolder = String(dumpRenderTreeTemp) + '/' + "ResourceLoadStatistics";
+    String resourceLoadStatisticsFolder = makeString(String::fromUTF8(dumpRenderTreeTemp), "/ResourceLoadStatistics"_s);
     [[NSFileManager defaultManager] createDirectoryAtPath:resourceLoadStatisticsFolder withIntermediateDirectories:YES attributes:nil error: nil];
-    String fullBrowsingSessionResourceLog = resourceLoadStatisticsFolder + '/' + "full_browsing_session_resourceLog.plist";
+    String fullBrowsingSessionResourceLog = makeString(resourceLoadStatisticsFolder, "/full_browsing_session_resourceLog.plist"_s);
     NSDictionary *resourceLogPlist = @{ @"version": @(1) };
     if (![resourceLogPlist writeToFile:fullBrowsingSessionResourceLog atomically:YES])
         WTFCrash();
+    
+    if (options.webCoreLogChannels.length())
+        [[NSUserDefaults standardUserDefaults] setValue:[NSString stringWithUTF8String:options.webCoreLogChannels.c_str()] forKey:@"WebCoreLogging"];
+
+    if (options.webKitLogChannels.length())
+        [[NSUserDefaults standardUserDefaults] setValue:[NSString stringWithUTF8String:options.webKitLogChannels.c_str()] forKey:@"WebKit2Logging"];
+
+    if (options.lockdownModeEnabled)
+        [WKProcessPool _setCaptivePortalModeEnabledGloballyForTesting:YES];
+
+#if ENABLE(IMAGE_ANALYSIS)
+    m_imageAnalysisRequestSwizzler = makeUnique<InstanceMethodSwizzler>(
+        PAL::getVKCImageAnalyzerClass(),
+        @selector(processRequest:progressHandler:completionHandler:),
+        reinterpret_cast<IMP>(swizzledProcessImageAnalysisRequest)
+    );
+#endif
+
+#if ENABLE(DATA_DETECTION)
+    m_appStoreURLSwizzler = makeUnique<InstanceMethodSwizzler>(NSURL.class, @selector(iTunesStoreURL), reinterpret_cast<IMP>(swizzledAppStoreURL));
+#endif
 }
+
+#if ENABLE(IMAGE_ANALYSIS)
+
+uint64_t TestController::currentImageAnalysisRequestID()
+{
+    return static_cast<uint64_t>(gCurrentImageAnalysisRequestID);
+}
+
+void TestController::installFakeMachineReadableCodeResultsForImageAnalysis()
+{
+    m_useFakeMachineReadableCodeResultsForImageAnalysis = true;
+}
+
+bool TestController::shouldUseFakeMachineReadableCodeResultsForImageAnalysis() const
+{
+    return m_useFakeMachineReadableCodeResultsForImageAnalysis;
+}
+
+#endif // ENABLE(IMAGE_ANALYSIS)
 
 WKContextRef TestController::platformContext()
 {
     return (__bridge WKContextRef)[globalWebViewConfiguration() processPool];
-}
-
-WKPreferencesRef TestController::platformPreferences()
-{
-    return (__bridge WKPreferencesRef)[globalWebViewConfiguration() preferences];
 }
 
 TestFeatures TestController::platformSpecificFeatureOverridesDefaultsForTest(const TestCommand&) const
@@ -131,8 +259,6 @@ TestFeatures TestController::platformSpecificFeatureOverridesDefaultsForTest(con
 
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnNavigation"])
         features.boolTestRunnerFeatures.insert({ "enableProcessSwapOnNavigation", true });
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"EnableProcessSwapOnWindowOpen"])
-        features.boolTestRunnerFeatures.insert({ "enableProcessSwapOnWindowOpen", true });
 
     return features;
 }
@@ -151,7 +277,9 @@ void TestController::platformInitializeDataStore(WKPageConfigurationRef, const T
         if (options.enableInAppBrowserPrivacy())
             [websiteDataStoreConfig setEnableInAppBrowserPrivacyForTesting:YES];
 #endif
-        m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfig.get()]).get();
+        auto store = adoptNS([[WKWebsiteDataStore alloc] _initWithConfiguration:websiteDataStoreConfig.get()]);
+        m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)store.get();
+        [store set_delegate:globalWebsiteDataStoreDelegateClient().get()];
     } else
         m_websiteDataStore = (__bridge WKWebsiteDataStoreRef)[globalWebViewConfiguration() websiteDataStore];
 }
@@ -171,16 +299,26 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
         [copiedConfiguration setLimitsNavigationsToAppBoundDomains:YES];
 
     [copiedConfiguration _setAppInitiatedOverrideValueForTesting:options.isAppInitiated() ? _WKAttributionOverrideTestingAppInitiated : _WKAttributionOverrideTestingUserInitiated];
+    [copiedConfiguration _setLongPressActionsEnabled:options.longPressActionsEnabled()];
 #endif
 
     if (options.enableAttachmentElement())
         [copiedConfiguration _setAttachmentElementEnabled:YES];
+    if (options.enableAttachmentWideLayout())
+        [copiedConfiguration _setAttachmentWideLayoutEnabled:YES];
 
     [copiedConfiguration setWebsiteDataStore:(WKWebsiteDataStore *)websiteDataStore()];
     [copiedConfiguration _setAllowTopNavigationToDataURLs:options.allowTopNavigationToDataURLs()];
     [copiedConfiguration _setAppHighlightsEnabled:options.appHighlightsEnabled()];
 
-    configureContentMode(copiedConfiguration.get(), options);
+    if (!options.contentSecurityPolicyExtensionMode().empty()) {
+        if (options.contentSecurityPolicyExtensionMode() == "v2")
+            [copiedConfiguration _setContentSecurityPolicyModeForExtension:_WKContentSecurityPolicyModeForExtensionManifestV2];
+        if (options.contentSecurityPolicyExtensionMode() == "v3")
+            [copiedConfiguration _setContentSecurityPolicyModeForExtension:_WKContentSecurityPolicyModeForExtensionManifestV3];
+    }
+
+    configureWebpagePreferences(copiedConfiguration.get(), options);
 
     auto applicationManifest = options.applicationManifest();
     if (applicationManifest.length()) {
@@ -188,8 +326,10 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
         NSString *text = [NSString stringWithContentsOfFile:manifestPath usedEncoding:nullptr error:nullptr];
         [copiedConfiguration _setApplicationManifest:[_WKApplicationManifest applicationManifestFromJSON:text manifestURL:nil documentURL:nil]];
     }
+    
+    [copiedConfiguration _setPortsForUpgradingInsecureSchemeForTesting:@[@(options.insecureUpgradePort()), @(options.secureUpgradePort())]];
 
-    m_mainWebView = makeUnique<PlatformWebView>(copiedConfiguration.get(), options);
+    m_mainWebView = makeUnique<PlatformWebView>((__bridge WKPageConfigurationRef)copiedConfiguration.get(), options);
     finishCreatingPlatformWebView(m_mainWebView.get(), options);
 
     if (options.punchOutWhiteBackgroundsInDarkMode())
@@ -202,14 +342,10 @@ void TestController::platformCreateWebView(WKPageConfigurationRef, const TestOpt
     [m_mainWebView->platformView() _setShareSheetCompletesImmediatelyWithResolutionForTesting:YES];
 }
 
-PlatformWebView* TestController::platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef, const TestOptions& options)
+UniqueRef<PlatformWebView> TestController::platformCreateOtherPage(PlatformWebView* parentView, WKPageConfigurationRef configuration, const TestOptions& options)
 {
-    auto newConfiguration = adoptNS([globalWebViewConfiguration() copy]);
-    [newConfiguration _setRelatedWebView:static_cast<WKWebView*>(parentView->platformView())];
-    if ([newConfiguration _relatedWebView])
-        [newConfiguration setWebsiteDataStore:[newConfiguration _relatedWebView].configuration.websiteDataStore];
-    PlatformWebView* view = new PlatformWebView(newConfiguration.get(), options);
-    finishCreatingPlatformWebView(view, options);
+    auto view = makeUniqueRef<PlatformWebView>(configuration, options);
+    finishCreatingPlatformWebView(view.ptr(), options);
     return view;
 }
 
@@ -227,6 +363,7 @@ void TestController::finishCreatingPlatformWebView(PlatformWebView* view, const 
 WKContextRef TestController::platformAdjustContext(WKContextRef context, WKContextConfigurationRef contextConfiguration)
 {
     initializeWebViewConfiguration(libraryPathForTesting(), injectedBundlePath(), context, contextConfiguration);
+    m_preferences = (__bridge WKPreferencesRef)[globalWebViewConfiguration() preferences];
     return (__bridge WKContextRef)[globalWebViewConfiguration() processPool];
 }
 
@@ -262,20 +399,22 @@ void TestController::setDefaultCalendarType(NSString *identifier, NSString *loca
         m_calendarSwizzler = makeUnique<ClassMethodSwizzler>([NSCalendar class], @selector(currentCalendar), reinterpret_cast<IMP>(swizzledCalendar));
 }
 
+#if ENABLE(CONTENT_EXTENSIONS)
 void TestController::resetContentExtensions()
 {
     __block bool doneRemoving = false;
-    [[_WKUserContentExtensionStore defaultStore] removeContentExtensionForIdentifier:@"TestContentExtensions" completionHandler:^(NSError *error) {
+    [[WKContentRuleListStore defaultStore] removeContentRuleListForIdentifier:@"TestContentExtensions" completionHandler:^(NSError *error) {
         doneRemoving = true;
     }];
     platformRunUntil(doneRemoving, noTimeout);
-    [[_WKUserContentExtensionStore defaultStore] _removeAllContentExtensions];
+    [[WKContentRuleListStore defaultStore] _removeAllContentRuleLists];
 
     if (auto* webView = mainWebView()) {
         TestRunnerWKWebView *platformView = webView->platformView();
         [platformView.configuration.userContentController _removeAllUserContentFilters];
     }
 }
+#endif
 
 void TestController::setApplicationBundleIdentifier(const std::string& bundleIdentifier)
 {
@@ -293,6 +432,9 @@ void TestController::clearApplicationBundleIdentifierTestingOverride()
 
 void TestController::cocoaResetStateToConsistentValues(const TestOptions& options)
 {
+#if ENABLE(IMAGE_ANALYSIS)
+    m_useFakeMachineReadableCodeResultsForImageAnalysis = false;
+#endif
     m_calendarSwizzler = nullptr;
     m_overriddenCalendarAndLocaleIdentifiers = { nil, nil };
     
@@ -300,15 +442,33 @@ void TestController::cocoaResetStateToConsistentValues(const TestOptions& option
         TestRunnerWKWebView *platformView = webView->platformView();
         platformView._viewScale = 1;
         platformView._minimumEffectiveDeviceWidth = 0;
+        platformView._editable = NO;
+#if PLATFORM(MAC)
+        platformView.allowsMagnification = NO;
+        [platformView setMagnification:1 centeredAtPoint:CGPointZero];
+#endif
         [platformView _setContinuousSpellCheckingEnabledForTesting:options.shouldShowSpellCheckingDots()];
+        [platformView _setGrammarCheckingEnabledForTesting:YES];
         [platformView resetInteractionCallbacks];
         [platformView _resetNavigationGestureStateForTesting];
-        [platformView.configuration.preferences setTextInteractionEnabled:options.textInteractionEnabled()];
+
+        auto configuration = platformView.configuration;
+        configuration.preferences.textInteractionEnabled = options.textInteractionEnabled();
+        configuration.preferences._textExtractionEnabled = options.textExtractionEnabled();
     }
 
-    [globalWebsiteDataStoreDelegateClient() setAllowRaisingQuota:YES];
+    [LayoutTestSpellChecker uninstallAndReset];
 
-    WebCoreTestSupport::setAdditionalSupportedImageTypesForTesting(options.additionalSupportedImageTypes().c_str());
+    WebCoreTestSupport::setAdditionalSupportedImageTypesForTesting(String::fromLatin1(options.additionalSupportedImageTypes().c_str()));
+
+    [globalWebsiteDataStoreDelegateClient() clearReportedWindowProxyAccessDomains];
+}
+
+void TestController::platformSetStatisticsCrossSiteLoadWithLinkDecoration(WKStringRef fromHost, WKStringRef toHost, bool wasFiltered, void* context, SetStatisticsCrossSiteLoadWithLinkDecorationCallBack callback)
+{
+    [m_mainWebView->platformView() _setStatisticsCrossSiteLoadWithLinkDecorationForTesting:toWTFString(fromHost) withToHost:toWTFString(toHost) withWasFiltered:wasFiltered withCompletionHandler:^{
+        callback(context);
+    }];
 }
 
 void TestController::platformWillRunTest(const TestInvocation& testInvocation)
@@ -347,43 +507,12 @@ unsigned TestController::imageCountInGeneralPasteboard() const
     return imagesArray.count;
 }
 
-void TestController::removeAllSessionCredentials()
+void TestController::removeAllSessionCredentials(CompletionHandler<void(WKTypeRef)>&& completionHandler)
 {
     auto types = adoptNS([[NSSet alloc] initWithObjects:_WKWebsiteDataTypeCredentials, nil]);
-    [[globalWebViewConfiguration() websiteDataStore] removeDataOfTypes:types.get() modifiedSince:[NSDate distantPast] completionHandler:^() {
-        m_currentInvocation->didRemoveAllSessionCredentials();
-    }];
-}
-
-void TestController::getAllStorageAccessEntries()
-{
-    auto* parentView = mainWebView();
-    if (!parentView)
-        return;
-
-    [[globalWebViewConfiguration() websiteDataStore] _getAllStorageAccessEntriesFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *domains) {
-        m_currentInvocation->didReceiveAllStorageAccessEntries(makeVector<String>(domains));
-    }];
-}
-
-void TestController::loadedSubresourceDomains()
-{
-    auto* parentView = mainWebView();
-    if (!parentView)
-        return;
-    
-    [[globalWebViewConfiguration() websiteDataStore] _loadedSubresourceDomainsFor:parentView->platformView() completionHandler:^(NSArray<NSString *> *domains) {
-        m_currentInvocation->didReceiveLoadedSubresourceDomains(makeVector<String>(domains));
-    }];
-}
-
-void TestController::clearLoadedSubresourceDomains()
-{
-    auto* parentView = mainWebView();
-    if (!parentView)
-        return;
-
-    [[globalWebViewConfiguration() websiteDataStore] _clearLoadedSubresourceDomainsFor:parentView->platformView()];
+    [[globalWebViewConfiguration() websiteDataStore] removeDataOfTypes:types.get() modifiedSince:[NSDate distantPast] completionHandler:makeBlockPtr([completionHandler = WTFMove(completionHandler)] () mutable {
+        completionHandler(nullptr);
+    }).get()];
 }
 
 bool TestController::didLoadAppInitiatedRequest()
@@ -459,11 +588,7 @@ void TestController::addTestKeyToKeychain(const String& privateKeyBase64, const 
         (id)kSecAttrLabel: attrLabel,
         (id)kSecAttrApplicationTag: adoptNS([[NSData alloc] initWithBase64EncodedString:applicationTagBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get(),
         (id)kSecAttrAccessible: (id)kSecAttrAccessibleAfterFirstUnlock,
-#if HAVE(DATA_PROTECTION_KEYCHAIN)
         (id)kSecUseDataProtectionKeychain: @YES
-#else
-        (id)kSecAttrNoLegacy: @YES
-#endif
     };
     OSStatus status = SecItemAdd((__bridge CFDictionaryRef)addQuery, NULL);
     ASSERT_UNUSED(status, !status);
@@ -474,11 +599,7 @@ void TestController::cleanUpKeychain(const String& attrLabel, const String& appl
     auto deleteQuery = adoptNS([[NSMutableDictionary alloc] init]);
     [deleteQuery setObject:(id)kSecClassKey forKey:(id)kSecClass];
     [deleteQuery setObject:attrLabel forKey:(id)kSecAttrLabel];
-#if HAVE(DATA_PROTECTION_KEYCHAIN)
     [deleteQuery setObject:@YES forKey:(id)kSecUseDataProtectionKeychain];
-#else
-    [deleteQuery setObject:@YES forKey:(id)kSecAttrNoLegacy];
-#endif
     if (!!applicationLabelBase64)
         [deleteQuery setObject:adoptNS([[NSData alloc] initWithBase64EncodedString:applicationLabelBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get() forKey:(id)kSecAttrApplicationLabel];
 
@@ -492,11 +613,7 @@ bool TestController::keyExistsInKeychain(const String& attrLabel, const String& 
         (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate,
         (id)kSecAttrLabel: attrLabel,
         (id)kSecAttrApplicationLabel: adoptNS([[NSData alloc] initWithBase64EncodedString:applicationLabelBase64 options:NSDataBase64DecodingIgnoreUnknownCharacters]).get(),
-#if HAVE(DATA_PROTECTION_KEYCHAIN)
         (id)kSecUseDataProtectionKeychain: @YES
-#else
-        (id)kSecAttrNoLegacy: @YES
-#endif
     };
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, NULL);
     if (!status)
@@ -510,25 +627,15 @@ void TestController::setAllowStorageQuotaIncrease(bool value)
     [globalWebsiteDataStoreDelegateClient() setAllowRaisingQuota: value];
 }
 
+void TestController::setQuota(uint64_t quota)
+{
+    [globalWebsiteDataStoreDelegateClient() setQuota:quota];
+}
+
 void TestController::setAllowsAnySSLCertificate(bool allows)
 {
     m_allowsAnySSLCertificate = allows;
-    WKWebsiteDataStoreSetAllowsAnySSLCertificateForWebSocketTesting(websiteDataStore(), allows);
     [globalWebsiteDataStoreDelegateClient() setAllowAnySSLCertificate: allows];
-}
-
-void TestController::installCustomMenuAction(const String& name, bool dismissesAutomatically)
-{
-#if PLATFORM(IOS_FAMILY)
-    auto* invocation = m_currentInvocation.get();
-    [m_mainWebView->platformView() installCustomMenuAction:name dismissesAutomatically:dismissesAutomatically callback:[invocation] {
-        if (TestController::singleton().isCurrentInvocation(invocation))
-            invocation->performCustomMenuAction();
-    }];
-#else
-    UNUSED_PARAM(name);
-    UNUSED_PARAM(dismissesAutomatically);
-#endif
 }
 
 void TestController::setAllowedMenuActions(const Vector<String>& actions)
@@ -542,7 +649,7 @@ void TestController::setAllowedMenuActions(const Vector<String>& actions)
 
 bool TestController::isDoingMediaCapture() const
 {
-    return m_mainWebView->platformView()._mediaCaptureState != _WKMediaCaptureStateDeprecatedNone;
+    return m_mainWebView->platformView().microphoneCaptureState != WKMediaCaptureStateNone || m_mainWebView->platformView().cameraCaptureState != WKMediaCaptureStateNone;
 }
 
 #if PLATFORM(IOS_FAMILY)
@@ -559,15 +666,129 @@ static WKContentMode contentMode(const TestOptions& options)
 
 #endif // PLATFORM(IOS_FAMILY)
 
-void TestController::configureContentMode(WKWebViewConfiguration *configuration, const TestOptions& options)
+void TestController::configureWebpagePreferences(WKWebViewConfiguration *configuration, const TestOptions& options)
 {
     auto webpagePreferences = adoptNS([[WKWebpagePreferences alloc] init]);
+    if (options.advancedPrivacyProtectionsEnabled())
+        [webpagePreferences _setNetworkConnectionIntegrityPolicy:_WKWebsiteNetworkConnectionIntegrityPolicyEnabled];
+    else
+        [webpagePreferences _setNetworkConnectionIntegrityPolicy:_WKWebsiteNetworkConnectionIntegrityPolicyNone];
 #if PLATFORM(IOS_FAMILY)
     [webpagePreferences setPreferredContentMode:contentMode(options)];
-#else
-    UNUSED_PARAM(options);
 #endif
     configuration.defaultWebpagePreferences = webpagePreferences.get();
+#if HAVE(INLINE_PREDICTIONS)
+    configuration.allowsInlinePredictions = options.allowsInlinePredictions();
+#endif
+}
+
+WKRetainPtr<WKStringRef> TestController::takeViewPortSnapshot()
+{
+    return adoptWK(WKImageCreateDataURLFromImage(mainWebView()->windowSnapshotImage().get()));
+}
+
+static WKRetainPtr<WKArrayRef> createWKArray(NSArray *nsArray)
+{
+    auto array = adoptWK(WKMutableArrayCreate());
+
+    for (NSString *nsString in nsArray) {
+        auto string = adoptWK(WKStringCreateWithCFString((CFStringRef)nsString));
+        WKArrayAppendItem(array.get(), string.get());
+    }
+
+    return array;
+}
+
+WKRetainPtr<WKArrayRef> TestController::getAndClearReportedWindowProxyAccessDomains()
+{
+    auto domains = createWKArray([globalWebsiteDataStoreDelegateClient() reportedWindowProxyAccessDomains]);
+    [globalWebsiteDataStoreDelegateClient() clearReportedWindowProxyAccessDomains];
+    return domains;
+}
+
+WKRetainPtr<WKStringRef> TestController::getBackgroundFetchIdentifier()
+{
+    __block String result;
+    __block bool isDone = false;
+    [globalWebViewConfiguration().get().websiteDataStore _getAllBackgroundFetchIdentifiers:^(NSArray<NSString *> *identifiers) {
+        if ([identifiers count])
+            result = identifiers[0];
+        isDone = true;
+    }];
+    platformRunUntil(isDone, noTimeout);
+
+    return adoptWK(WKStringCreateWithUTF8CString(result.utf8().data()));
+}
+
+void TestController::abortBackgroundFetch(WKStringRef identifier)
+{
+    __block bool isDone = false;
+    [globalWebViewConfiguration().get().websiteDataStore _abortBackgroundFetch:toWTFString(identifier) completionHandler:^() {
+        isDone = true;
+    }];
+    platformRunUntil(isDone, noTimeout);
+}
+
+void TestController::pauseBackgroundFetch(WKStringRef identifier)
+{
+    __block bool isDone = false;
+    [globalWebViewConfiguration().get().websiteDataStore _pauseBackgroundFetch:toWTFString(identifier) completionHandler:^() {
+        isDone = true;
+    }];
+    platformRunUntil(isDone, noTimeout);
+}
+
+void TestController::resumeBackgroundFetch(WKStringRef identifier)
+{
+    __block bool isDone = false;
+    [globalWebViewConfiguration().get().websiteDataStore _resumeBackgroundFetch:toWTFString(identifier) completionHandler:^() {
+        isDone = true;
+    }];
+    platformRunUntil(isDone, noTimeout);
+}
+
+void TestController::simulateClickBackgroundFetch(WKStringRef identifier)
+{
+    __block bool isDone = false;
+    [globalWebViewConfiguration().get().websiteDataStore _clickBackgroundFetch:toWTFString(identifier) completionHandler:^() {
+        isDone = true;
+    }];
+    platformRunUntil(isDone, noTimeout);
+}
+
+void TestController::setBackgroundFetchPermission(bool value)
+{
+    [globalWebsiteDataStoreDelegateClient() setBackgroundFetchPermission:value];
+}
+
+WKRetainPtr<WKStringRef> TestController::lastAddedBackgroundFetchIdentifier() const
+{
+    return adoptWK(WKStringCreateWithCFString((__bridge CFStringRef)[globalWebsiteDataStoreDelegateClient() lastAddedBackgroundFetchIdentifier]));
+}
+
+WKRetainPtr<WKStringRef> TestController::lastRemovedBackgroundFetchIdentifier() const
+{
+    return adoptWK(WKStringCreateWithCFString((__bridge CFStringRef)[globalWebsiteDataStoreDelegateClient() lastRemovedBackgroundFetchIdentifier]));
+}
+
+WKRetainPtr<WKStringRef> TestController::lastUpdatedBackgroundFetchIdentifier() const
+{
+    return adoptWK(WKStringCreateWithCFString((__bridge CFStringRef)[globalWebsiteDataStoreDelegateClient() lastUpdatedBackgroundFetchIdentifier]));
+}
+
+WKRetainPtr<WKStringRef> TestController::backgroundFetchState(WKStringRef identifier)
+{
+    __block bool isDone = false;
+    __block String backgroundFetchState;
+    [globalWebViewConfiguration().get().websiteDataStore _getBackgroundFetchState:toWTFString(identifier) completionHandler:^(NSDictionary *state) {
+        backgroundFetchState = makeString("{ "_s,
+            "\"downloaded\":"_s, [[state valueForKey:@"Downloaded"] unsignedIntegerValue], ',',
+            "\"isPaused\":"_s, [[state valueForKey:@"IsPaused"] boolValue] ? "true"_s : "false"_s,
+        '}');
+        isDone = true;
+    }];
+    platformRunUntil(isDone, noTimeout);
+    return toWK(backgroundFetchState);
 }
 
 } // namespace WTR

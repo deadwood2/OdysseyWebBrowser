@@ -60,7 +60,6 @@ StandardQueryGL::StandardQueryGL(gl::QueryType type,
                                  const FunctionsGL *functions,
                                  StateManagerGL *stateManager)
     : QueryGL(type),
-      mType(type),
       mFunctions(functions),
       mStateManager(stateManager),
       mActiveQuery(0),
@@ -69,6 +68,11 @@ StandardQueryGL::StandardQueryGL(gl::QueryType type,
 {}
 
 StandardQueryGL::~StandardQueryGL()
+{
+    clearInternalQueries();
+}
+
+void StandardQueryGL::clearInternalQueries()
 {
     if (mActiveQuery != 0)
     {
@@ -87,6 +91,7 @@ StandardQueryGL::~StandardQueryGL()
 
 angle::Result StandardQueryGL::begin(const gl::Context *context)
 {
+    clearInternalQueries();
     mResultSum = 0;
     return resume(context);
 }
@@ -182,6 +187,9 @@ angle::Result StandardQueryGL::resume(const gl::Context *context)
 
         mFunctions->genQueries(1, &mActiveQuery);
         mStateManager->beginQuery(mType, this, mActiveQuery);
+
+        ContextGL *contextGL = GetImplAs<ContextGL>(context);
+        contextGL->markWorkSubmitted();
     }
 
     return angle::Result::Continue;
@@ -240,12 +248,19 @@ class SyncProviderGL
 class SyncProviderGLSync : public SyncProviderGL
 {
   public:
-    SyncProviderGLSync(const FunctionsGL *functions) : mFunctions(functions), mSync(nullptr)
-    {
-        mSync = mFunctions->fenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    }
+    SyncProviderGLSync(const FunctionsGL *functions) : mFunctions(functions), mSync(nullptr) {}
 
     ~SyncProviderGLSync() override { mFunctions->deleteSync(mSync); }
+
+    angle::Result init(const gl::Context *context, gl::QueryType type) override
+    {
+        ContextGL *contextGL = GetImplAs<ContextGL>(context);
+        mSync                = mFunctions->fenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        ANGLE_CHECK(contextGL, mSync != 0, "glFenceSync failed to create a GLsync object.",
+                    GL_OUT_OF_MEMORY);
+        contextGL->markWorkSubmitted();
+        return angle::Result::Continue;
+    }
 
     angle::Result flush(const gl::Context *context, bool force, bool *finished) override
     {
@@ -338,12 +353,12 @@ angle::Result SyncQueryGL::end(const gl::Context *context)
     else if (nativegl::SupportsOcclusionQueries(mFunctions))
     {
         mSyncProvider.reset(new SyncProviderGLQuery(mFunctions));
-        ANGLE_TRY(mSyncProvider->init(context, gl::QueryType::AnySamples));
     }
     else
     {
         ANGLE_GL_UNREACHABLE(GetImplAs<ContextGL>(context));
     }
+    ANGLE_TRY(mSyncProvider->init(context, gl::QueryType::AnySamples));
     return angle::Result::Continue;
 }
 

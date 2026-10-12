@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2014 Yoav Weiss (yoav@yoav.ws)
  * Copyright (C) 2015 Akamai Technologies Inc. All rights reserved.
+ * Copyright (C) 2023 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -24,15 +25,19 @@
 
 #include "CommonVM.h"
 #include "EventLoop.h"
+#include "RejectedPromiseTracker.h"
+#include "ScriptExecutionContext.h"
 #include "WorkerGlobalScope.h"
+#include <JavaScriptCore/CatchScope.h>
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/SetForScope.h>
 
 namespace WebCore {
 
-MicrotaskQueue::MicrotaskQueue(JSC::VM& vm)
-    : m_vm(makeRef(vm))
+MicrotaskQueue::MicrotaskQueue(JSC::VM& vm, EventLoop& eventLoop)
+    : m_vm(vm)
+    , m_eventLoop(eventLoop)
 {
 }
 
@@ -48,11 +53,13 @@ void MicrotaskQueue::performMicrotaskCheckpoint()
     if (m_performingMicrotaskCheckpoint)
         return;
 
-    SetForScope<bool> change(m_performingMicrotaskCheckpoint, true);
-    JSC::JSLockHolder locker(vm());
+    SetForScope change(m_performingMicrotaskCheckpoint, true);
+    Ref vm = this->vm();
+    JSC::JSLockHolder locker(vm);
+    auto catchScope = DECLARE_CATCH_SCOPE(vm);
 
     Vector<std::unique_ptr<EventLoopTask>> toKeep;
-    while (!m_microtaskQueue.isEmpty()) {
+    while (!m_microtaskQueue.isEmpty() && !vm->executionForbidden()) {
         Vector<std::unique_ptr<EventLoopTask>> queue = WTFMove(m_microtaskQueue);
         for (auto& task : queue) {
             auto* group = task->group();
@@ -60,32 +67,60 @@ void MicrotaskQueue::performMicrotaskCheckpoint()
                 continue;
             if (group->isSuspended())
                 toKeep.append(WTFMove(task));
-            else
+            else {
                 task->execute();
+                if (UNLIKELY(!catchScope.clearExceptionExceptTermination()))
+                    break; // Encountered termination.
+            }
         }
     }
 
-    vm().finalizeSynchronousJSExecution();
+    vm->finalizeSynchronousJSExecution();
     m_microtaskQueue = WTFMove(toKeep);
 
-    auto checkpointTasks = std::exchange(m_checkpointTasks, { });
-    for (auto& checkpointTask : checkpointTasks) {
-        auto* group = checkpointTask->group();
-        if (!group || group->isStoppedPermanently())
-            continue;
+    if (!vm->executionForbidden()) {
+        auto checkpointTasks = std::exchange(m_checkpointTasks, { });
+        for (auto& checkpointTask : checkpointTasks) {
+            auto* group = checkpointTask->group();
+            if (!group || group->isStoppedPermanently())
+                continue;
 
-        if (group->isSuspended()) {
-            m_checkpointTasks.append(WTFMove(checkpointTask));
-            continue;
+            if (group->isSuspended()) {
+                m_checkpointTasks.append(WTFMove(checkpointTask));
+                continue;
+            }
+
+            checkpointTask->execute();
+            if (UNLIKELY(!catchScope.clearExceptionExceptTermination()))
+                break; // Encountered termination.
         }
-
-        checkpointTask->execute();
     }
+
+    // https://html.spec.whatwg.org/multipage/webappapis.html#perform-a-microtask-checkpoint (step 4).
+    Ref { *m_eventLoop }->forEachAssociatedContext([vm = vm.copyRef()](auto& context) {
+        if (UNLIKELY(vm->executionForbidden()))
+            return;
+        auto catchScope = DECLARE_CATCH_SCOPE(vm);
+        if (CheckedPtr tracker = context.rejectedPromiseTracker())
+            tracker->processQueueSoon();
+        catchScope.clearExceptionExceptTermination();
+    });
+
+    // FIXME: We should cleanup Indexed Database transactions as per:
+    // https://html.spec.whatwg.org/multipage/webappapis.html#perform-a-microtask-checkpoint (step 5).
 }
 
 void MicrotaskQueue::addCheckpointTask(std::unique_ptr<EventLoopTask>&& task)
 {
     m_checkpointTasks.append(WTFMove(task));
+}
+
+bool MicrotaskQueue::hasMicrotasksForFullyActiveDocument() const
+{
+    return m_microtaskQueue.containsIf([](auto& task) {
+        auto group = task->group();
+        return group && !group->isStoppedPermanently() && !group->isSuspended();
+    });
 }
 
 } // namespace WebCore

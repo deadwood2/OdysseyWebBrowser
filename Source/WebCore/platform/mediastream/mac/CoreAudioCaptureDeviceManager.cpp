@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -49,6 +49,8 @@ CoreAudioCaptureDeviceManager& CoreAudioCaptureDeviceManager::singleton()
     return manager;
 }
 
+CoreAudioCaptureDeviceManager::~CoreAudioCaptureDeviceManager() = default;
+
 const Vector<CaptureDevice>& CoreAudioCaptureDeviceManager::captureDevices()
 {
     coreAudioCaptureDevices();
@@ -87,9 +89,9 @@ static bool deviceHasInputStreams(AudioObjectID deviceID)
 #if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
         kAudioObjectPropertyElementMain
 #else
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         kAudioObjectPropertyElementMaster
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
     };
     return deviceHasStreams(deviceID, address);
@@ -103,50 +105,56 @@ static bool deviceHasOutputStreams(AudioObjectID deviceID)
 #if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
         kAudioObjectPropertyElementMain
 #else
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         kAudioObjectPropertyElementMaster
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
     };
     return deviceHasStreams(deviceID, address);
 }
 
-static bool isValidCaptureDevice(const CoreAudioCaptureDevice& device)
+static bool isValidCaptureDevice(const CoreAudioCaptureDevice& device, bool filterTapEnabledDevices)
 {
-    // Ignore output devices that have input only for echo cancellation.
-    AudioObjectPropertyAddress address = {
-        kAudioDevicePropertyTapEnabled,
-        kAudioDevicePropertyScopeOutput,
-#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
-        kAudioObjectPropertyElementMain
+    if (filterTapEnabledDevices) {
+        // Ignore output devices that have input only for echo cancellation.
+        AudioObjectPropertyAddress address = {
+#if HAVE(AUDIO_DEVICE_PROPERTY_REFERENCE_STREAM_ENABLED)
+            kAudioDevicePropertyReferenceStreamEnabled,
 #else
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-        kAudioObjectPropertyElementMaster
-        ALLOW_DEPRECATED_DECLARATIONS_END
+            kAudioDevicePropertyTapEnabled,
 #endif
-    };
-    if (AudioObjectHasProperty(device.deviceID(), &address)) {
-        RELEASE_LOG(WebRTC, "Ignoring output device that have input only for echo cancellation");
-        return false;
+            kAudioDevicePropertyScopeOutput,
+#if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
+            kAudioObjectPropertyElementMain
+#else
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+            kAudioObjectPropertyElementMaster
+ALLOW_DEPRECATED_DECLARATIONS_END
+#endif
+        };
+        if (AudioObjectHasProperty(device.deviceID(), &address)) {
+            RELEASE_LOG(WebRTC, "Ignoring output device that have input only for echo cancellation");
+            return false;
+        }
     }
 
     // Ignore non-aggregable devices.
     UInt32 dataSize = 0;
-    address = {
+    AudioObjectPropertyAddress address = {
         kAudioObjectPropertyCreator,
         kAudioObjectPropertyScopeGlobal,
 #if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
         kAudioObjectPropertyElementMain
 #else
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         kAudioObjectPropertyElementMaster
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
     };
     CFStringRef name = nullptr;
     dataSize = sizeof(name);
     AudioObjectGetPropertyData(device.deviceID(), &address, 0, nullptr, &dataSize, &name);
-    bool isNonAggregable = !name || !String(name).startsWith("com.apple.audio.CoreAudio");
+    bool isNonAggregable = !name || !String(name).startsWith("com.apple.audio.CoreAudio"_s);
     if (name)
         CFRelease(name);
     if (isNonAggregable) {
@@ -160,12 +168,12 @@ static bool isValidCaptureDevice(const CoreAudioCaptureDevice& device)
         return false;
     }
 
-    if (device.label().startsWith("VPAUAggregateAudioDevice")) {
+    if (device.label().startsWith("VPAUAggregateAudioDevice"_s)) {
         RELEASE_LOG(WebRTC, "Ignoring output VPAUAggregateAudioDevice device");
         return false;
     }
 
-    if (device.label().contains("WebexMediaAudioDevice")) {
+    if (device.label().contains("WebexMediaAudioDevice"_s)) {
         RELEASE_LOG(WebRTC, "Ignoring webex audio device");
         return false;
     }
@@ -207,9 +215,9 @@ Vector<CoreAudioCaptureDevice>& CoreAudioCaptureDeviceManager::coreAudioCaptureD
 #if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
             kAudioObjectPropertyElementMain
 #else
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             kAudioObjectPropertyElementMaster
-            ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
         };
         auto err = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject, &address, dispatch_get_main_queue(), listener);
@@ -222,9 +230,9 @@ Vector<CoreAudioCaptureDevice>& CoreAudioCaptureDeviceManager::coreAudioCaptureD
 #if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
             kAudioObjectPropertyElementMain
 #else
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             kAudioObjectPropertyElementMaster
-            ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
         };
         err = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject, &address, dispatch_get_main_queue(), listener);
@@ -237,9 +245,9 @@ Vector<CoreAudioCaptureDevice>& CoreAudioCaptureDeviceManager::coreAudioCaptureD
 #if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
             kAudioObjectPropertyElementMain
 #else
-            ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
             kAudioObjectPropertyElementMaster
-            ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
         };
         err = AudioObjectAddPropertyListenerBlock(kAudioObjectSystemObject, &address, dispatch_get_main_queue(), listener);
@@ -266,7 +274,7 @@ static inline bool hasDevice(const Vector<CoreAudioCaptureDevice>& devices, uint
     });
 }
 
-static inline Vector<CoreAudioCaptureDevice> computeAudioDeviceList()
+static inline Vector<CoreAudioCaptureDevice> computeAudioDeviceList(bool filterTapEnabledDevices)
 {
     AudioObjectPropertyAddress address = {
         kAudioHardwarePropertyDevices,
@@ -274,9 +282,9 @@ static inline Vector<CoreAudioCaptureDevice> computeAudioDeviceList()
 #if HAVE(AUDIO_OBJECT_PROPERTY_ELEMENT_MAIN)
         kAudioObjectPropertyElementMain
 #else
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         kAudioObjectPropertyElementMaster
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 #endif
     };
     UInt32 dataSize = 0;
@@ -304,7 +312,7 @@ static inline Vector<CoreAudioCaptureDevice> computeAudioDeviceList()
             continue;
 
         auto microphoneDevice = CoreAudioCaptureDevice::create(deviceID, CaptureDevice::DeviceType::Microphone, { });
-        if (microphoneDevice && isValidCaptureDevice(microphoneDevice.value()))
+        if (microphoneDevice && isValidCaptureDevice(microphoneDevice.value(), filterTapEnabledDevices))
             audioDevices.append(WTFMove(microphoneDevice.value()));
     }
 
@@ -346,7 +354,7 @@ void CoreAudioCaptureDeviceManager::refreshAudioCaptureDevices(NotifyIfDevicesHa
 {
     ASSERT(isMainThread());
 
-    auto audioDevices = computeAudioDeviceList();
+    auto audioDevices = computeAudioDeviceList(m_filterTapEnabledDevices);
     bool haveDeviceChanges = audioDevices.size() != m_coreAudioCaptureDevices.size();
     if (!haveDeviceChanges) {
         for (size_t cptr = 0; cptr < audioDevices.size(); ++cptr) {
@@ -373,10 +381,8 @@ void CoreAudioCaptureDeviceManager::refreshAudioCaptureDevices(NotifyIfDevicesHa
             m_speakerDevices.append(device);
     }
 
-    if (notify == NotifyIfDevicesHaveChanged::Notify) {
+    if (notify == NotifyIfDevicesHaveChanged::Notify)
         deviceChanged();
-        CoreAudioCaptureSourceFactory::singleton().devicesChanged(m_captureDevices);
-    }
 }
 
 } // namespace WebCore

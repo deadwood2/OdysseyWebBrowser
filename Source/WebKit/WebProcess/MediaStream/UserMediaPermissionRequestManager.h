@@ -31,6 +31,16 @@
 #include <wtf/HashMap.h>
 #include <wtf/Ref.h>
 #include <wtf/RefPtr.h>
+#include <wtf/TZoneMalloc.h>
+
+namespace WebKit {
+class UserMediaPermissionRequestManager;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::UserMediaPermissionRequestManager> : std::true_type { };
+}
 
 namespace WebKit {
 
@@ -38,23 +48,24 @@ class WebPage;
 
 class UserMediaPermissionRequestManager : public WebCore::MediaCanStartListener
 #if USE(GSTREAMER)
-                                        , public WebCore::RealtimeMediaSourceCenter::Observer
+                                        , public WebCore::RealtimeMediaSourceCenterObserver
 #endif
 {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(UserMediaPermissionRequestManager);
 public:
     using WebCore::MediaCanStartListener::weakPtrFactory;
-    using WeakValueType = WebCore::MediaCanStartListener::WeakValueType;
+    using WebCore::MediaCanStartListener::WeakValueType;
+    using WebCore::MediaCanStartListener::WeakPtrImplType;
 
     explicit UserMediaPermissionRequestManager(WebPage&);
     ~UserMediaPermissionRequestManager() = default;
 
     void startUserMediaRequest(WebCore::UserMediaRequest&);
     void cancelUserMediaRequest(WebCore::UserMediaRequest&);
-    void userMediaAccessWasGranted(WebCore::UserMediaRequestIdentifier, WebCore::CaptureDevice&& audioDevice, WebCore::CaptureDevice&& videoDevice, String&& deviceIdentifierHashSalt, CompletionHandler<void()>&&);
-    void userMediaAccessWasDenied(WebCore::UserMediaRequestIdentifier, WebCore::UserMediaRequest::MediaAccessDenialReason, String&&);
+    void userMediaAccessWasGranted(WebCore::UserMediaRequestIdentifier, WebCore::CaptureDevice&& audioDevice, WebCore::CaptureDevice&& videoDevice, WebCore::MediaDeviceHashSalts&&, CompletionHandler<void()>&&);
+    void userMediaAccessWasDenied(WebCore::UserMediaRequestIdentifier, WebCore::MediaAccessDenialReason, String&&, WebCore::MediaConstraintType);
 
-    void enumerateMediaDevices(WebCore::Document&, CompletionHandler<void(const Vector<WebCore::CaptureDevice>&, const String&)>&&);
+    void enumerateMediaDevices(WebCore::Document&, CompletionHandler<void(Vector<WebCore::CaptureDeviceWithCapabilities>&&, WebCore::MediaDeviceHashSalts&&)>&&);
 
     WebCore::UserMediaClient::DeviceChangeObserverToken addDeviceChangeObserver(WTF::Function<void()>&&);
     void removeDeviceChangeObserver(WebCore::UserMediaClient::DeviceChangeObserverToken);
@@ -63,8 +74,9 @@ public:
 
 private:
 #if USE(GSTREAMER)
-    // WebCore::RealtimeMediaSourceCenter::Observer
+    // WebCore::RealtimeMediaSourceCenterObserver
     void devicesChanged() final;
+    void deviceWillBeRemoved(const String& persistentId) final { }
 #endif
 
     void sendUserMediaRequest(WebCore::UserMediaRequest&);

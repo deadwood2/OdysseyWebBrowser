@@ -30,6 +30,17 @@
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
+class SpeechSynthesisClientObserver;
+class SpeechSynthesisClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::SpeechSynthesisClientObserver> : std::true_type { };
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::SpeechSynthesisClient> : std::true_type { };
+}
+
+namespace WebCore {
 
 class PlatformSpeechSynthesisUtterance;
 class SpeechSynthesisClientObserver;
@@ -47,6 +58,7 @@ public:
     virtual void cancel() = 0;
     virtual void pause() = 0;
     virtual void resume() = 0;
+    virtual void resetState() = 0;
 
 };
 
@@ -59,7 +71,7 @@ public:
     virtual void didPauseSpeaking() = 0;
     virtual void didResumeSpeaking() = 0;
     virtual void speakingErrorOccurred() = 0;
-    virtual void boundaryEventOccurred(bool wordBoundary, unsigned charIndex) = 0;
+    virtual void boundaryEventOccurred(bool wordBoundary, unsigned charIndex, unsigned charLength) = 0;
     virtual void voicesChanged() = 0;
 };
 

@@ -28,21 +28,28 @@
 
 #if ENABLE(WEB_RTC)
 
+#include "ContextDestructionObserverInlines.h"
 #include "Event.h"
 #include "EventNames.h"
 #include "RTCPeerConnection.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(RTCIceTransport);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RTCIceTransport);
+
+Ref<RTCIceTransport> RTCIceTransport::create(ScriptExecutionContext& context, UniqueRef<RTCIceTransportBackend>&& backend, RTCPeerConnection& connection)
+{
+    auto result = adoptRef(*new RTCIceTransport(context, WTFMove(backend), connection));
+    result->suspendIfNeeded();
+    return result;
+}
 
 RTCIceTransport::RTCIceTransport(ScriptExecutionContext& context, UniqueRef<RTCIceTransportBackend>&& backend, RTCPeerConnection& connection)
     : ActiveDOMObject(&context)
     , m_backend(WTFMove(backend))
-    , m_connection(makeWeakPtr(connection))
+    , m_connection(connection)
 {
-    suspendIfNeeded();
     m_backend->registerClient(*this);
 }
 
@@ -72,8 +79,11 @@ void RTCIceTransport::onStateChanged(RTCIceTransportState state)
             return;
 
         m_transportState = state;
-        if (m_connection)
-            m_connection->processIceTransportStateChange(*this);
+        if (m_transportState == RTCIceTransportState::Failed)
+            m_selectedCandidatePair = { };
+
+        if (auto connection = this->connection())
+            connection->processIceTransportStateChange(*this);
     });
 }
 
@@ -89,6 +99,26 @@ void RTCIceTransport::onGatheringStateChanged(RTCIceGatheringState state)
         m_gatheringState = state;
         dispatchEvent(Event::create(eventNames().gatheringstatechangeEvent, Event::CanBubble::Yes, Event::IsCancelable::No));
     });
+}
+
+void RTCIceTransport::onSelectedCandidatePairChanged(RefPtr<RTCIceCandidate>&& local, RefPtr<RTCIceCandidate>&& remote)
+{
+    queueTaskKeepingObjectAlive(*this, TaskSource::Networking, [this, local = WTFMove(local), remote = WTFMove(remote)]() mutable {
+        if (m_isStopped)
+            return;
+
+        m_selectedCandidatePair = CandidatePair { WTFMove(local), WTFMove(remote) };
+        dispatchEvent(Event::create(eventNames().selectedcandidatepairchangeEvent, Event::CanBubble::Yes, Event::IsCancelable::No));
+    });
+}
+
+std::optional<RTCIceTransport::CandidatePair> RTCIceTransport::getSelectedCandidatePair()
+{
+    if (m_transportState == RTCIceTransportState::Closed)
+        return { };
+
+    ASSERT(m_transportState != RTCIceTransportState::New || !m_selectedCandidatePair);
+    return m_selectedCandidatePair;
 }
 
 } // namespace WebCore

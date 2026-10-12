@@ -27,17 +27,19 @@
 
 #include "Decoder.h"
 #include "Encoder.h"
+#include <wtf/CheckedRef.h>
+#include <wtf/CrossThreadCopier.h>
 #include <wtf/RobinHoodHashMap.h>
 #include <wtf/text/StringHash.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
 
-struct WebPreferencesStore {
-    WebPreferencesStore();
+// FIXME: WebPreferencesStore should be RefCounted. See usage in WebProcessPool.cpp.
 
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, WebPreferencesStore&);
+struct WebPreferencesStore {
+    using Value = std::variant<String, bool, uint32_t, double>;
+    using ValueMap = MemoryCompactRobinHoodHashMap<String, Value>;
 
     // NOTE: The getters in this class have non-standard names to aid in the use of the preference macros.
 
@@ -64,11 +66,11 @@ struct WebPreferencesStore {
     static void overrideBoolValueForKey(const String& key, bool value);
     static void removeTestRunnerOverrides();
 
-    using Value = Variant<String, bool, uint32_t, double>;
+    ValueMap m_values { };
+    ValueMap m_overriddenDefaults { };
 
-    using ValueMap = MemoryCompactRobinHoodHashMap<String, Value>;
-    ValueMap m_values;
-    ValueMap m_overriddenDefaults;
+    WebPreferencesStore isolatedCopy() const & { return { crossThreadCopy(m_values), crossThreadCopy(m_overriddenDefaults) }; }
+    WebPreferencesStore isolatedCopy() && { return { crossThreadCopy(WTFMove(m_values)), crossThreadCopy(WTFMove(m_overriddenDefaults)) }; }
 
     static ValueMap& defaults();
 };

@@ -203,6 +203,11 @@ ImageIndex ImageIndex::MakeFromType(TextureType type,
     return ImageIndex(type, levelIndex, layerIndex, overrideLayerCount);
 }
 
+ImageIndex ImageIndex::MakeBuffer()
+{
+    return ImageIndex(TextureType::Buffer, 0, kEntireLevel, 1);
+}
+
 ImageIndex ImageIndex::Make2DMultisample()
 {
     return ImageIndex(TextureType::_2DMultisample, 0, kEntireLevel, 1);
@@ -292,6 +297,13 @@ ImageIndexIterator ImageIndexIterator::Make2DMultisample()
                               nullptr);
 }
 
+ImageIndexIterator ImageIndexIterator::MakeBuffer()
+{
+    return ImageIndexIterator(TextureType::Buffer, Range<GLint>(0, 1),
+                              Range<GLint>(ImageIndex::kEntireLevel, ImageIndex::kEntireLevel),
+                              nullptr);
+}
+
 ImageIndexIterator ImageIndexIterator::Make2DMultisampleArray(const GLsizei *layerCounts)
 {
     return ImageIndexIterator(TextureType::_2DMultisampleArray, Range<GLint>(0, 1),
@@ -305,7 +317,8 @@ ImageIndexIterator ImageIndexIterator::MakeGeneric(TextureType type,
                                                    GLint minLayer,
                                                    GLint maxLayer)
 {
-    if (type == TextureType::CubeMap)
+    if (type == TextureType::CubeMap && minLayer == ImageIndex::kEntireLevel &&
+        maxLayer == ImageIndex::kEntireLevel)
     {
         return MakeCube(minMip, maxMip);
     }

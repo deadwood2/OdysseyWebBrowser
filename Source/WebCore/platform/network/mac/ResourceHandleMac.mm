@@ -32,9 +32,10 @@
 #import "CookieStorage.h"
 #import "CredentialStorage.h"
 #import "FormDataStreamMac.h"
-#import "Frame.h"
 #import "FrameLoader.h"
 #import "HTTPHeaderNames.h"
+#import "HTTPStatusCodes.h"
+#import "LocalFrame.h"
 #import "Logging.h"
 #import "MIMETypeRegistry.h"
 #import "NetworkStorageSession.h"
@@ -72,12 +73,12 @@ static void applyBasicAuthorizationHeader(ResourceRequest& request, const Creden
 
 static NSOperationQueue *operationQueueForAsyncClients()
 {
-    static auto queue = makeNeverDestroyed([] {
+    static NeverDestroyed queue = [] {
         auto queue = adoptNS([[NSOperationQueue alloc] init]);
         // Default concurrent operation count depends on current system workload, but delegate methods are mostly idling in IPC, so we can run as many as needed.
         [queue setMaxConcurrentOperationCount:NSOperationQueueDefaultMaxConcurrentOperationCount];
         return queue;
-    }());
+    }();
     return queue.get().get();
 }
 
@@ -103,17 +104,15 @@ static bool synchronousWillSendRequestEnabled()
 
 #endif
 
-#if PLATFORM(COCOA)
-
-NSURLRequest *ResourceHandle::applySniffingPoliciesIfNeeded(NSURLRequest *request, bool shouldContentSniff, bool shouldContentEncodingSniff)
+NSURLRequest *ResourceHandle::applySniffingPoliciesIfNeeded(NSURLRequest *request, bool shouldContentSniff, ContentEncodingSniffingPolicy contentEncodingSniffingPolicy)
 {
 #if !USE(CFNETWORK_CONTENT_ENCODING_SNIFFING_OVERRIDE)
-    UNUSED_PARAM(shouldContentEncodingSniff);
+    UNUSED_PARAM(contentEncodingSniffingPolicy);
 #endif
 
     if (shouldContentSniff
 #if USE(CFNETWORK_CONTENT_ENCODING_SNIFFING_OVERRIDE)
-        && shouldContentEncodingSniff
+        && contentEncodingSniffingPolicy == ContentEncodingSniffingPolicy::Default
 #endif
         )
         return request;
@@ -121,7 +120,7 @@ NSURLRequest *ResourceHandle::applySniffingPoliciesIfNeeded(NSURLRequest *reques
     auto mutableRequest = adoptNS([request mutableCopy]);
 
 #if USE(CFNETWORK_CONTENT_ENCODING_SNIFFING_OVERRIDE)
-    if (!shouldContentEncodingSniff)
+    if (contentEncodingSniffingPolicy == ContentEncodingSniffingPolicy::Disable)
         [mutableRequest _setProperty:@YES forKey:(__bridge NSString *)kCFURLRequestContentDecoderSkipURLCheck];
 #endif
 
@@ -131,12 +130,10 @@ NSURLRequest *ResourceHandle::applySniffingPoliciesIfNeeded(NSURLRequest *reques
     return mutableRequest.autorelease();
 }
 
-#endif
-
 #if !PLATFORM(IOS_FAMILY)
-void ResourceHandle::createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, bool shouldContentEncodingSniff, SchedulingBehavior schedulingBehavior)
+void ResourceHandle::createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, ContentEncodingSniffingPolicy contentEncodingSniffingPolicy, SchedulingBehavior schedulingBehavior)
 #else
-void ResourceHandle::createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, bool shouldContentEncodingSniff, SchedulingBehavior schedulingBehavior, NSDictionary *connectionProperties)
+void ResourceHandle::createNSURLConnection(id delegate, bool shouldUseCredentialStorage, bool shouldContentSniff, ContentEncodingSniffingPolicy contentEncodingSniffingPolicy, SchedulingBehavior schedulingBehavior, NSDictionary *connectionProperties)
 #endif
 {
     // Credentials for ftp can only be passed in URL, the connection:didReceiveAuthenticationChallenge: delegate call won't be made.
@@ -158,17 +155,17 @@ void ResourceHandle::createNSURLConnection(id delegate, bool shouldUseCredential
             // This makes it possible to implement logout by sending an XMLHttpRequest with known incorrect credentials, and aborting it immediately
             // (so that an authentication dialog doesn't pop up).
             if (auto* networkStorageSession = d->m_context->storageSession())
-                networkStorageSession->credentialStorage().set(firstRequest().cachePartition(), Credential(d->m_user, d->m_password, CredentialPersistenceNone), firstRequest().url());
+                networkStorageSession->credentialStorage().set(firstRequest().cachePartition(), Credential(d->m_user, d->m_password, CredentialPersistence::None), firstRequest().url());
         }
     }
         
-    if (!d->m_initialCredential.isEmpty()) {
+    if (!d->m_initialCredential.isEmpty() && !firstRequest().hasHTTPHeaderField(HTTPHeaderName::Authorization)) {
         // FIXME: Support Digest authentication, and Proxy-Authorization.
         applyBasicAuthorizationHeader(firstRequest(), d->m_initialCredential);
     }
 
     auto nsRequest = retainPtr(firstRequest().nsURLRequest(HTTPBodyUpdatePolicy::UpdateHTTPBody));
-    nsRequest = applySniffingPoliciesIfNeeded(nsRequest.get(), shouldContentSniff, shouldContentEncodingSniff);
+    nsRequest = applySniffingPoliciesIfNeeded(nsRequest.get(), shouldContentSniff, contentEncodingSniffingPolicy);
 
     if (d->m_storageSession)
         nsRequest = copyRequestWithStorageSession(d->m_storageSession.get(), nsRequest.get());
@@ -253,14 +250,14 @@ bool ResourceHandle::start()
         ResourceHandle::makeDelegate(shouldUseCredentialStorage, nullptr),
         shouldUseCredentialStorage,
         d->m_shouldContentSniff || d->m_context->localFileContentSniffingEnabled(),
-        d->m_shouldContentEncodingSniff,
+        d->m_contentEncodingSniffingPolicy,
         schedulingBehavior);
 #else
     createNSURLConnection(
         ResourceHandle::makeDelegate(shouldUseCredentialStorage, nullptr),
         shouldUseCredentialStorage,
         d->m_shouldContentSniff || d->m_context->localFileContentSniffingEnabled(),
-        d->m_shouldContentEncodingSniff,
+        d->m_contentEncodingSniffingPolicy,
         schedulingBehavior,
         (NSDictionary *)client()->connectionProperties(this).get());
 #endif
@@ -362,8 +359,7 @@ void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* contex
 
     bool defersLoading = false;
     bool shouldContentSniff = true;
-    bool shouldContentEncodingSniff = true;
-    RefPtr<ResourceHandle> handle = adoptRef(new ResourceHandle(context, request, &client, defersLoading, shouldContentSniff, shouldContentEncodingSniff, sourceOrigin, false));
+    RefPtr<ResourceHandle> handle = adoptRef(new ResourceHandle(context, request, &client, defersLoading, shouldContentSniff, ContentEncodingSniffingPolicy::Default, sourceOrigin, false));
 
     handle->d->m_storageSession = context->storageSession()->platformSession();
 
@@ -378,14 +374,14 @@ void ResourceHandle::platformLoadResourceSynchronously(NetworkingContext* contex
         handle->makeDelegate(shouldUseCredentialStorage, &client.messageQueue()),
         shouldUseCredentialStorage,
         handle->shouldContentSniff() || context->localFileContentSniffingEnabled(),
-        handle->shouldContentEncodingSniff(),
+        handle->contentEncodingSniffingPolicy(),
         SchedulingBehavior::Synchronous);
 #else
     handle->createNSURLConnection(
         handle->makeDelegate(shouldUseCredentialStorage, &client.messageQueue()), // A synchronous request cannot turn into a download, so there is no need to proxy the delegate.
         shouldUseCredentialStorage,
         handle->shouldContentSniff() || (context && context->localFileContentSniffingEnabled()),
-        handle->shouldContentEncodingSniff(),
+        handle->contentEncodingSniffingPolicy(),
         SchedulingBehavior::Synchronous,
         (NSDictionary *)handle->client()->connectionProperties(handle.get()).get());
 #endif
@@ -412,24 +408,31 @@ void ResourceHandle::willSendRequest(ResourceRequest&& request, ResourceResponse
 {
     ASSERT(!redirectResponse.isNull());
 
-    if (redirectResponse.httpStatusCode() == 307) {
+    const auto& previousRequest = d->m_previousRequest.isNull() ? d->m_firstRequest : d->m_previousRequest;
+    if (redirectResponse.httpStatusCode() == httpStatus307TemporaryRedirect) {
         String lastHTTPMethod = d->m_lastHTTPMethod;
         if (!equalIgnoringASCIICase(lastHTTPMethod, request.httpMethod())) {
             request.setHTTPMethod(lastHTTPMethod);
     
-            FormData* body = d->m_firstRequest.httpBody();
-            if (!equalLettersIgnoringASCIICase(lastHTTPMethod, "get") && body && !body->isEmpty())
-                request.setHTTPBody(body);
+            auto body = previousRequest.httpBody();
+            if (!equalLettersIgnoringASCIICase(lastHTTPMethod, "get"_s) && body && !body->isEmpty())
+                request.setHTTPBody(WTFMove(body));
 
-            String originalContentType = d->m_firstRequest.httpContentType();
+            String originalContentType = previousRequest.httpContentType();
             if (!originalContentType.isEmpty())
                 request.setHTTPHeaderField(HTTPHeaderName::ContentType, originalContentType);
         }
-    } else if (redirectResponse.httpStatusCode() == 303 && equalLettersIgnoringASCIICase(d->m_firstRequest.httpMethod(), "head")) // FIXME: (rdar://problem/13706454).
-        request.setHTTPMethod("HEAD"_s);
+    } else if (redirectResponse.httpStatusCode() == httpStatus303SeeOther) { // FIXME: (rdar://problem/13706454).
+        if (equalLettersIgnoringASCIICase(previousRequest.httpMethod(), "head"_s))
+            request.setHTTPMethod("HEAD"_s);
+
+        String originalContentType = previousRequest.httpContentType();
+        if (!originalContentType.isEmpty())
+            request.setHTTPHeaderField(HTTPHeaderName::ContentType, originalContentType);
+    }
 
     // Should not set Referer after a redirect from a secure resource to non-secure one.
-    if (!request.url().protocolIs("https") && protocolIs(request.httpReferrer(), "https") && d->m_context->shouldClearReferrerOnHTTPSToHTTPRedirect())
+    if (!request.url().protocolIs("https"_s) && protocolIs(request.httpReferrer(), "https"_s) && d->m_context->shouldClearReferrerOnHTTPSToHTTPRedirect())
         request.clearHTTPReferrer();
 
     const URL& url = request.url();
@@ -437,6 +440,10 @@ void ResourceHandle::willSendRequest(ResourceRequest&& request, ResourceResponse
     d->m_password = url.password();
     d->m_lastHTTPMethod = request.httpMethod();
     request.removeCredentials();
+
+    if (auto authorization = previousRequest.httpHeaderField(HTTPHeaderName::Authorization); !authorization.isNull()
+        && protocolHostAndPortAreEqual(previousRequest.url(), request.url()))
+        request.setHTTPHeaderField(HTTPHeaderName::Authorization, authorization);
 
     if (!protocolHostAndPortAreEqual(request.url(), redirectResponse.url())) {
         // The network layer might carry over some headers from the original request that
@@ -459,10 +466,11 @@ void ResourceHandle::willSendRequest(ResourceRequest&& request, ResourceResponse
         }
     }
 
-    client()->willSendRequestAsync(this, WTFMove(request), WTFMove(redirectResponse), [this, protectedThis = makeRef(*this), completionHandler = WTFMove(completionHandler)] (ResourceRequest&& request) mutable {
+    client()->willSendRequestAsync(this, WTFMove(request), WTFMove(redirectResponse), [this, protectedThis = Ref { *this }, completionHandler = WTFMove(completionHandler)] (ResourceRequest&& request) mutable {
         // Client call may not preserve the session, especially if the request is sent over IPC.
         if (!request.isNull())
             request.setStorageSession(d->m_storageSession.get());
+        d->m_previousRequest = request;
         completionHandler(WTFMove(request));
     });
 }
@@ -520,7 +528,7 @@ bool ResourceHandle::tryHandlePasswordBasedAuthentication(const AuthenticationCh
     if (!challenge.protectionSpace().isPasswordBased())
         return false;
 
-    if (!d->m_user.isNull() && !d->m_password.isNull()) {
+    if (!d->m_user.isEmpty() || !d->m_password.isEmpty()) {
         auto credential = adoptNS([[NSURLCredential alloc] initWithUser:d->m_user
             password:d->m_password persistence:NSURLCredentialPersistenceForSession]);
         d->m_currentMacChallenge = challenge.nsURLAuthenticationChallenge();
@@ -547,8 +555,8 @@ bool ResourceHandle::tryHandlePasswordBasedAuthentication(const AuthenticationCh
             if (auto* networkStorageSession = d->m_context->storageSession())
                 credential = networkStorageSession->credentialStorage().get(d->m_partition, challenge.protectionSpace());
             if (!credential.isEmpty() && credential != d->m_initialCredential) {
-                ASSERT(credential.persistence() == CredentialPersistenceNone);
-                if (challenge.failureResponse().httpStatusCode() == 401) {
+                ASSERT(credential.persistence() == CredentialPersistence::None);
+                if (challenge.failureResponse().httpStatusCode() == httpStatus401Unauthorized) {
                     // Store the credential back, possibly adding it as a default for this directory.
                     if (auto* networkStorageSession = d->m_context->storageSession())
                         networkStorageSession->credentialStorage().set(d->m_partition, credential, challenge.protectionSpace(), challenge.failureResponse().url());
@@ -577,7 +585,7 @@ void ResourceHandle::receivedCredential(const AuthenticationChallenge& challenge
     LOG(Network, "Handle %p receivedCredential", this);
 
     ASSERT(!challenge.isNull());
-    if (challenge != d->m_currentWebChallenge)
+    if (!AuthenticationChallengeBase::equalForWebKitLegacyChallengeComparison(challenge, d->m_currentWebChallenge))
         return;
 
     // FIXME: Support empty credentials. Currently, an empty credential cannot be stored in WebCore credential storage, as that's empty value for its map.
@@ -586,12 +594,12 @@ void ResourceHandle::receivedCredential(const AuthenticationChallenge& challenge
         return;
     }
 
-    if (credential.persistence() == CredentialPersistenceForSession && challenge.protectionSpace().authenticationScheme() != ProtectionSpaceAuthenticationSchemeServerTrustEvaluationRequested) {
+    if (credential.persistence() == CredentialPersistence::ForSession && challenge.protectionSpace().authenticationScheme() != ProtectionSpace::AuthenticationScheme::ServerTrustEvaluationRequested) {
         // Manage per-session credentials internally, because once NSURLCredentialPersistenceForSession is used, there is no way
         // to ignore it for a particular request (short of removing it altogether).
-        Credential webCredential(credential, CredentialPersistenceNone);
+        Credential webCredential(credential, CredentialPersistence::None);
         URL urlToStore;
-        if (challenge.failureResponse().httpStatusCode() == 401)
+        if (challenge.failureResponse().httpStatusCode() == httpStatus401Unauthorized)
             urlToStore = challenge.failureResponse().url();
         if (auto* networkStorageSession = d->m_context->storageSession())
             networkStorageSession->credentialStorage().set(d->m_partition, webCredential, ProtectionSpace([d->m_currentMacChallenge protectionSpace]), urlToStore);
@@ -607,7 +615,7 @@ void ResourceHandle::receivedRequestToContinueWithoutCredential(const Authentica
     LOG(Network, "Handle %p receivedRequestToContinueWithoutCredential", this);
 
     ASSERT(!challenge.isNull());
-    if (challenge != d->m_currentWebChallenge)
+    if (!AuthenticationChallengeBase::equalForWebKitLegacyChallengeComparison(challenge, d->m_currentWebChallenge))
         return;
 
     [[d->m_currentMacChallenge sender] continueWithoutCredentialForAuthenticationChallenge:d->m_currentMacChallenge];
@@ -619,7 +627,7 @@ void ResourceHandle::receivedCancellation(const AuthenticationChallenge& challen
 {
     LOG(Network, "Handle %p receivedCancellation", this);
 
-    if (challenge != d->m_currentWebChallenge)
+    if (!AuthenticationChallengeBase::equalForWebKitLegacyChallengeComparison(challenge, d->m_currentWebChallenge))
         return;
 
     if (client())
@@ -631,7 +639,7 @@ void ResourceHandle::receivedRequestToPerformDefaultHandling(const Authenticatio
     LOG(Network, "Handle %p receivedRequestToPerformDefaultHandling", this);
 
     ASSERT(!challenge.isNull());
-    if (challenge != d->m_currentWebChallenge)
+    if (!AuthenticationChallengeBase::equalForWebKitLegacyChallengeComparison(challenge, d->m_currentWebChallenge))
         return;
 
     [[d->m_currentMacChallenge sender] performDefaultHandlingForAuthenticationChallenge:d->m_currentMacChallenge];
@@ -644,7 +652,7 @@ void ResourceHandle::receivedChallengeRejection(const AuthenticationChallenge& c
     LOG(Network, "Handle %p receivedChallengeRejection", this);
 
     ASSERT(!challenge.isNull());
-    if (challenge != d->m_currentWebChallenge)
+    if (!AuthenticationChallengeBase::equalForWebKitLegacyChallengeComparison(challenge, d->m_currentWebChallenge))
         return;
 
     [[d->m_currentMacChallenge sender] rejectProtectionSpaceAndContinueWithChallenge:d->m_currentMacChallenge];

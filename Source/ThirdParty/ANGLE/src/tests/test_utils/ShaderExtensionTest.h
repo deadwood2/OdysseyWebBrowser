@@ -30,7 +30,9 @@ class ShaderExtensionTest
     void SetUp() override
     {
         sh::InitBuiltInResources(&mResources);
-        mCompiler = nullptr;
+        mCompiler                  = nullptr;
+        mCompileOptions            = {};
+        mCompileOptions.objectCode = true;
     }
 
     void TearDown() override { DestroyCompiler(); }
@@ -64,7 +66,7 @@ class ShaderExtensionTest
                                                const char *shader)
     {
         const char *shaderStrings[] = {version, pragma, shader};
-        bool success                = sh::Compile(mCompiler, shaderStrings, 3, 0);
+        bool success                = sh::Compile(mCompiler, shaderStrings, 3, mCompileOptions);
         if (success)
         {
             return ::testing::AssertionSuccess() << "Compilation success";
@@ -75,6 +77,7 @@ class ShaderExtensionTest
   protected:
     ShBuiltInResources mResources;
     ShHandle mCompiler;
+    ShCompileOptions mCompileOptions;
 };
 
 }  // namespace sh

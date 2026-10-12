@@ -26,25 +26,29 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import <Foundation/Foundation.h>
-#import <WebKitLegacy/WebKitAvailability.h>
-
 #ifndef WebDownload_h
 #define WebDownload_h
 
-#if (defined TARGET_OS_MACCATALYST && TARGET_OS_MACCATALYST)
-#import <CFNetwork/CFNSURLConnection.h>
-#elif !TARGET_OS_IPHONE || (defined USE_APPLE_INTERNAL_SDK && USE_APPLE_INTERNAL_SDK)
+#import <Foundation/Foundation.h>
+#import <WebKitLegacy/WebKitAvailability.h>
+
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST || (defined(USE_APPLE_INTERNAL_SDK) && USE_APPLE_INTERNAL_SDK)
 #import <Foundation/NSURLDownload.h>
 #else
-#import <WebKitLegacy/NSURLDownloadSPI.h>
+__attribute__((visibility("hidden")))
+@interface NSURLDownload : NSObject
+@end
+
+@protocol NSURLDownloadDelegate;
 #endif
 
 #if TARGET_OS_IPHONE
 #import <WebKitLegacy/WAKAppKitStubs.h>
 #endif
 
+#if !TARGET_OS_IPHONE
 @class NSWindow;
+#endif
 @class WebDownloadInternal;
 
 /*!
@@ -78,7 +82,11 @@ WEBKIT_DEPRECATED_MAC(10_4, 10_14)
 /*!
     @method downloadWindowForAuthenticationSheet:
 */
+#if TARGET_OS_IPHONE
+- (WAKWindow *)downloadWindowForAuthenticationSheet:(WebDownload *)download;
+#else
 - (NSWindow *)downloadWindowForAuthenticationSheet:(WebDownload *)download;
+#endif
 
 @end
 

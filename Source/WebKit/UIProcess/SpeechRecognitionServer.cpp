@@ -26,22 +26,26 @@
 #include "config.h"
 #include "SpeechRecognitionServer.h"
 
+#include "MessageSenderInlines.h"
 #include "UserMediaProcessManager.h"
 #include "WebProcessProxy.h"
 #include "WebSpeechRecognitionConnectionMessages.h"
 #include <WebCore/SpeechRecognitionRequestInfo.h>
 #include <WebCore/SpeechRecognitionUpdate.h>
+#include <wtf/TZoneMallocInlines.h>
 
-#define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, messageSenderConnection())
+#define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, *messageSenderConnection())
 
 namespace WebKit {
 
-SpeechRecognitionServer::SpeechRecognitionServer(Ref<IPC::Connection>&& connection, SpeechRecognitionServerIdentifier identifier, SpeechRecognitionPermissionChecker&& permissionChecker, SpeechRecognitionCheckIfMockSpeechRecognitionEnabled&& checkIfEnabled
+WTF_MAKE_TZONE_ALLOCATED_IMPL(SpeechRecognitionServer);
+
+SpeechRecognitionServer::SpeechRecognitionServer(WebProcessProxy& process, SpeechRecognitionServerIdentifier identifier, SpeechRecognitionPermissionChecker&& permissionChecker, SpeechRecognitionCheckIfMockSpeechRecognitionEnabled&& checkIfEnabled
 #if ENABLE(MEDIA_STREAM)
     , RealtimeMediaSourceCreateFunction&& function
 #endif
     )
-    : m_connection(WTFMove(connection))
+    : m_process(process)
     , m_identifier(identifier)
     , m_permissionChecker(WTFMove(permissionChecker))
     , m_checkIfMockSpeechRecognitionEnabled(WTFMove(checkIfEnabled))
@@ -49,6 +53,11 @@ SpeechRecognitionServer::SpeechRecognitionServer(Ref<IPC::Connection>&& connecti
     , m_realtimeMediaSourceCreateFunction(WTFMove(function))
 #endif
 {
+}
+
+const SharedPreferencesForWebProcess& SpeechRecognitionServer::sharedPreferencesForWebProcess() const
+{
+    return m_process->sharedPreferencesForWebProcess();
 }
 
 void SpeechRecognitionServer::start(WebCore::SpeechRecognitionConnectionClientIdentifier clientIdentifier, String&& lang, bool continuous, bool interimResults, uint64_t maxAlternatives, WebCore::ClientOrigin&& origin, WebCore::FrameIdentifier frameIdentifier)
@@ -63,7 +72,7 @@ void SpeechRecognitionServer::start(WebCore::SpeechRecognitionConnectionClientId
 
 void SpeechRecognitionServer::requestPermissionForRequest(WebCore::SpeechRecognitionRequest& request)
 {
-    m_permissionChecker(request, [this, weakThis = makeWeakPtr(this), weakRequest = makeWeakPtr(request)](auto error) mutable {
+    m_permissionChecker(request, [this, weakThis = WeakPtr { *this }, weakRequest = WeakPtr { request }](auto error) mutable {
         if (!weakThis || !weakRequest)
             return;
 
@@ -87,7 +96,7 @@ void SpeechRecognitionServer::handleRequest(UniqueRef<WebCore::SpeechRecognition
     }
 
     auto clientIdentifier = request->clientIdentifier();
-    m_recognizer = makeUnique<WebCore::SpeechRecognizer>([this, weakThis = makeWeakPtr(this)](auto& update) {
+    m_recognizer = makeUnique<WebCore::SpeechRecognizer>([this, weakThis = WeakPtr { *this }](auto& update) {
         if (!weakThis)
             return;
 
@@ -102,7 +111,7 @@ void SpeechRecognitionServer::handleRequest(UniqueRef<WebCore::SpeechRecognition
 #if ENABLE(MEDIA_STREAM)
     auto sourceOrError = m_realtimeMediaSourceCreateFunction();
     if (!sourceOrError) {
-        sendUpdate(WebCore::SpeechRecognitionUpdate::createError(clientIdentifier, WebCore::SpeechRecognitionError { WebCore::SpeechRecognitionErrorType::AudioCapture, sourceOrError.errorMessage }));
+        sendUpdate(WebCore::SpeechRecognitionUpdate::createError(clientIdentifier, WebCore::SpeechRecognitionError { WebCore::SpeechRecognitionErrorType::AudioCapture, sourceOrError.error.errorMessage }));
         return;
     }
 
@@ -163,7 +172,7 @@ void SpeechRecognitionServer::sendUpdate(const WebCore::SpeechRecognitionUpdate&
 
 IPC::Connection* SpeechRecognitionServer::messageSenderConnection() const
 {
-    return m_connection.ptr();
+    return &m_process->connection();
 }
 
 uint64_t SpeechRecognitionServer::messageSenderDestinationID() const

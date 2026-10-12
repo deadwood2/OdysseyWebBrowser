@@ -40,10 +40,12 @@ SOFT_LINK_CONSTANT_FOR_HEADER(PAL, UIKit, UIApplicationWillEnterForegroundNotifi
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, UIKit, UIApplicationDidBecomeActiveNotification, NSNotificationName)
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, UIKit, UIApplicationDidEnterBackgroundNotification, NSNotificationName)
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, UIKit, UIContentSizeCategoryDidChangeNotification, NSNotificationName)
+SOFT_LINK_CONSTANT_FOR_HEADER(PAL, UIKit, UIApplicationDidChangeStatusBarOrientationNotification, NSNotificationName)
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, UIKit, UIFontTextStyleCallout, UIFontTextStyle)
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, UIKit, UIPasteboardNameGeneral, UIPasteboardName)
 SOFT_LINK_CONSTANT_FOR_HEADER(PAL, UIKit, UITextEffectsBeneathStatusBarWindowLevel, UIWindowLevel)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, NSParagraphStyle)
+SOFT_LINK_CLASS_FOR_HEADER(PAL, NSPresentationIntent)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, NSShadow)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, NSTextList)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, UIApplication)
@@ -58,6 +60,7 @@ SOFT_LINK_CLASS_FOR_HEADER(PAL, UILabel)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, UIPasteboard)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, UIScreen)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, UITapGestureRecognizer)
+SOFT_LINK_CLASS_FOR_HEADER(PAL, UITextEffectsWindow)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, UITraitCollection)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, UIView)
 SOFT_LINK_CLASS_FOR_HEADER(PAL, UIViewController)
@@ -72,6 +75,8 @@ SOFT_LINK_FUNCTION_FOR_HEADER(PAL, UIKit, UIAccessibilityIsReduceMotionEnabled, 
 #define UIAccessibilityIsReduceMotionEnabled PAL::softLink_UIKit_UIAccessibilityIsReduceMotionEnabled
 SOFT_LINK_FUNCTION_FOR_HEADER(PAL, UIKit, UIAccessibilityDarkerSystemColorsEnabled, BOOL, (void), ())
 #define UIAccessibilityDarkerSystemColorsEnabled PAL::softLink_UIKit_UIAccessibilityDarkerSystemColorsEnabled
+SOFT_LINK_FUNCTION_FOR_HEADER(PAL, UIKit, UIAccessibilityIsOnOffSwitchLabelsEnabled, BOOL, (void), ())
+#define UIAccessibilityIsOnOffSwitchLabelsEnabled PAL::softLink_UIKit_UIAccessibilityIsOnOffSwitchLabelsEnabled
 SOFT_LINK_FUNCTION_FOR_HEADER(PAL, UIKit, UIAccessibilityPostNotification, void, (UIAccessibilityNotifications n, id argument), (n, argument))
 #define UIAccessibilityPostNotification PAL::softLink_UIKit_UIAccessibilityPostNotification
 SOFT_LINK_FUNCTION_FOR_HEADER(PAL, UIKit, UIGraphicsGetCurrentContext, CGContextRef, (void), ())

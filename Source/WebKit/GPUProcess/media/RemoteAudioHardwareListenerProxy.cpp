@@ -30,11 +30,14 @@
 
 #include "GPUConnectionToWebProcess.h"
 #include "RemoteAudioHardwareListenerMessages.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(RemoteAudioHardwareListenerProxy);
+
 RemoteAudioHardwareListenerProxy::RemoteAudioHardwareListenerProxy(GPUConnectionToWebProcess& gpuConnection, RemoteAudioHardwareListenerIdentifier&& identifier)
-    : m_gpuConnection(makeWeakPtr(gpuConnection))
+    : m_gpuConnection(gpuConnection)
     , m_identifier(WTFMove(identifier))
     , m_listener(WebCore::AudioHardwareListener::create(*this))
 {
@@ -45,27 +48,24 @@ RemoteAudioHardwareListenerProxy::~RemoteAudioHardwareListenerProxy() = default;
 
 void RemoteAudioHardwareListenerProxy::audioHardwareDidBecomeActive()
 {
-    if (!m_gpuConnection)
-        return;
-
-    m_gpuConnection->connection().send(Messages::RemoteAudioHardwareListener::AudioHardwareDidBecomeActive(), m_identifier);
+    if (auto connection = m_gpuConnection.get())
+        connection->connection().send(Messages::RemoteAudioHardwareListener::AudioHardwareDidBecomeActive(), m_identifier);
 }
 
 void RemoteAudioHardwareListenerProxy::audioHardwareDidBecomeInactive()
 {
-    if (!m_gpuConnection)
-        return;
-
-    m_gpuConnection->connection().send(Messages::RemoteAudioHardwareListener::AudioHardwareDidBecomeInactive(), m_identifier);
+    if (auto connection = m_gpuConnection.get())
+        connection->connection().send(Messages::RemoteAudioHardwareListener::AudioHardwareDidBecomeInactive(), m_identifier);
 }
 
 void RemoteAudioHardwareListenerProxy::audioOutputDeviceChanged()
 {
-    if (!m_gpuConnection)
+    auto connection = m_gpuConnection.get();
+    if (!connection)
         return;
 
     auto supportedBufferSizes = m_listener->supportedBufferSizes();
-    m_gpuConnection->connection().send(Messages::RemoteAudioHardwareListener::AudioOutputDeviceChanged(supportedBufferSizes.minimum, supportedBufferSizes.maximum), m_identifier);
+    connection->connection().send(Messages::RemoteAudioHardwareListener::AudioOutputDeviceChanged(supportedBufferSizes.minimum, supportedBufferSizes.maximum), m_identifier);
 }
 
 }

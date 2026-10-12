@@ -105,7 +105,7 @@ TEST(WebKit, LoadInvalidURLRequestNonASCII)
 {
     __block bool done = false;
     auto delegate = adoptNS([TestNavigationDelegate new]);
-    delegate.get().webContentProcessDidTerminate = ^(WKWebView *) {
+    delegate.get().webContentProcessDidTerminate = ^(WKWebView *, _WKProcessTerminationReason) {
         ASSERT_NOT_REACHED();
     };
     delegate.get().didFailProvisionalNavigation = ^(WKWebView *, WKNavigation *, NSError *error) {
@@ -134,6 +134,19 @@ TEST(WebKit, LoadNSURLRequestSubclass)
     [configuration setURLSchemeHandler:handler.get() forURLScheme:@"test"];
     auto webView = adoptNS([[WKWebView alloc] initWithFrame:NSZeroRect configuration:configuration.get()]);
     [webView loadRequest:request.get()];
+    [webView _test_waitForDidFinishNavigation];
+}
+
+TEST(WebKit, LoadNSURLRequestWithMutablePropertiesAndKeys)
+{
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[[NSBundle mainBundle] URLForResource:@"simple" withExtension:@"html" subdirectory:@"TestWebKitAPI.resources"]];
+    [NSURLProtocol setProperty:[NSMutableData data] forKey:[NSMutableString stringWithString:@"mutablestring"] inRequest:request];
+    [NSURLProtocol setProperty:[NSMutableArray array] forKey:@"key1" inRequest:request];
+    [NSURLProtocol setProperty:[NSMutableDictionary dictionary] forKey:@"key2" inRequest:request];
+    [NSURLProtocol setProperty:[NSMutableString string] forKey:@"key3" inRequest:request];
+    auto webView = adoptNS([WKWebView new]);
+    auto response = adoptNS([[NSURLResponse alloc] initWithURL:request.URL MIMEType:nil expectedContentLength:0 textEncodingName:nil]);
+    [webView loadSimulatedRequest:request response:response.get() responseData:[NSData data]];
     [webView _test_waitForDidFinishNavigation];
 }
 

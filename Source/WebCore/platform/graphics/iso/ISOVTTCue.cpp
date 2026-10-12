@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2014-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,13 +52,17 @@ private:
             return true;
         }
 
+        auto bytesRemaining = view.byteLength() - localOffset;
+        if (characterCount > bytesRemaining)
+            return false;
+
         Vector<LChar> characters;
         characters.reserveInitialCapacity(static_cast<size_t>(characterCount));
         while (characterCount--) {
             int8_t character = 0;
             if (!checkedRead<int8_t>(character, view, localOffset, BigEndian))
                 return false;
-            characters.uncheckedAppend(character);
+            characters.append(character);
         }
 
         m_contents = String::fromUTF8(characters);
@@ -80,16 +84,20 @@ ISOWebVTTCue::ISOWebVTTCue(const MediaTime& presentationTime, const MediaTime& d
 {
 }
 
-ISOWebVTTCue::ISOWebVTTCue(MediaTime&& presentationTime, MediaTime&& duration, String&& sourceID, String&& id, String&& originalStartTime, String&& settings, String&& cueText)
+ISOWebVTTCue::ISOWebVTTCue(MediaTime&& presentationTime, MediaTime&& duration, AtomString&& cueID, String&& cueText, String&& settings, String&& sourceID, String&& originalStartTime)
     : m_presentationTime(WTFMove(presentationTime))
     , m_duration(WTFMove(duration))
     , m_sourceID(WTFMove(sourceID))
-    , m_identifier(WTFMove(id))
+    , m_identifier(WTFMove(cueID))
     , m_originalStartTime(WTFMove(originalStartTime))
     , m_settings(WTFMove(settings))
     , m_cueText(WTFMove(cueText))
 {
 }
+
+ISOWebVTTCue::ISOWebVTTCue() = default;
+ISOWebVTTCue::ISOWebVTTCue(ISOWebVTTCue&&) = default;
+ISOWebVTTCue::~ISOWebVTTCue() = default;
 
 bool ISOWebVTTCue::parse(DataView& view, unsigned& offset)
 {
@@ -102,7 +110,7 @@ bool ISOWebVTTCue::parse(DataView& view, unsigned& offset)
         if (stringBox.boxType() == vttCueSourceIDBoxType())
             m_sourceID = stringBox.contents();
         else if (stringBox.boxType() == vttIdBoxType())
-            m_identifier = stringBox.contents();
+            m_identifier = AtomString { stringBox.contents() };
         else if (stringBox.boxType() == vttCurrentTimeBoxType())
             m_originalStartTime = stringBox.contents();
         else if (stringBox.boxType() == vttSettingsBoxType())
@@ -110,7 +118,7 @@ bool ISOWebVTTCue::parse(DataView& view, unsigned& offset)
         else if (stringBox.boxType() == vttPayloadBoxType())
             m_cueText = stringBox.contents();
         else
-            LOG(Media, "ISOWebVTTCue::ISOWebVTTCue - skipping box id = \"%s\", size = %zu", stringBox.boxType().toString().utf8().data(), (size_t)stringBox.size());
+            LOG(Media, "ISOWebVTTCue::ISOWebVTTCue - skipping box id = \"%s\", size = %" PRIu64, stringBox.boxType().string().data(), stringBox.size());
     }
     return true;
 }
@@ -119,9 +127,7 @@ String ISOWebVTTCue::toJSONString() const
 {
     auto object = JSON::Object::create();
 
-#if !LOG_DISABLED
     object->setString("text"_s, m_cueText);
-#endif
     object->setString("sourceId"_s, encodeWithURLEscapeSequences(m_sourceID));
     object->setString("id"_s, encodeWithURLEscapeSequences(m_identifier));
 

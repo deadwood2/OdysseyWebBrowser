@@ -28,6 +28,16 @@ messages -> GPUProcessProxy {
     DidCreateContextForVisibilityPropagation(WebKit::WebPageProxyIdentifier pageProxyID, WebCore::PageIdentifier pageID, WebKit::LayerHostingContextID contextID)
 #endif
 
+#if ENABLE(VP9)
+    SetHasVP9HardwareDecoder(bool hasVP9HardwareDecoder)
+#endif
+#if ENABLE(AV1)
+    SetHasAV1HardwareDecoder(bool hasAV1HardwareDecoder)
+#endif
+#if ENABLE(MEDIA_STREAM) && PLATFORM(IOS_FAMILY)
+    StatusBarWasTapped() -> () Async
+#endif
+
     ProcessIsReadyToExit()
     TerminateWebProcess(WebCore::ProcessIdentifier webProcessIdentifier)
 }

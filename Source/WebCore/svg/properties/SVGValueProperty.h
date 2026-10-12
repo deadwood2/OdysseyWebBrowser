@@ -46,18 +46,14 @@ public:
     // Used by the SVGAnimatedPropertyAnimator to pass m_value to SVGAnimationFunction.
     PropertyType& value() { return m_value; }
 
-    // Visual Studio doesn't seem to see these private constructors from subclasses.
-    // FIXME: See what it takes to remove this hack.
-#if !COMPILER(MSVC)
 protected:
-#endif
     // Create an initialized property, e.g creating an item to be appended in an SVGList.
     SVGValueProperty(const PropertyType& value)
         : m_value(value)
     {
     }
 
-    // Needed when value should not be copied, e.g. SVGTransfromValue.
+    // Needed when value should not be copied, e.g. SVGTransformValue.
     SVGValueProperty(PropertyType&& value)
         : m_value(WTFMove(value))
     {

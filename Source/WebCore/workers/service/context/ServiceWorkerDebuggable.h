@@ -26,7 +26,6 @@
 #pragma once
 
 #if ENABLE(REMOTE_INSPECTOR)
-#if ENABLE(SERVICE_WORKER)
 
 #include "ServiceWorkerContextData.h"
 #include <JavaScriptCore/RemoteInspectionTarget.h>
@@ -40,7 +39,7 @@ class ServiceWorkerDebuggable final : public Inspector::RemoteInspectionTarget {
     WTF_MAKE_FAST_ALLOCATED;
     WTF_MAKE_NONCOPYABLE(ServiceWorkerDebuggable);
 public:
-    ServiceWorkerDebuggable(ServiceWorkerThreadProxy&, const ServiceWorkerContextData&);
+    static Ref<ServiceWorkerDebuggable> create(ServiceWorkerThreadProxy&, const ServiceWorkerContextData&);
     ~ServiceWorkerDebuggable() = default;
 
     Inspector::RemoteControllableTarget::Type type() const final { return Inspector::RemoteControllableTarget::Type::ServiceWorker; }
@@ -51,10 +50,12 @@ public:
 
     void connect(Inspector::FrontendChannel&, bool isAutomaticConnection = false, bool immediatelyPause = false) final;
     void disconnect(Inspector::FrontendChannel&) final;
-    void dispatchMessageFromRemote(const String& message) final;
+    void dispatchMessageFromRemote(String&& message) final;
 
 private:
-    ServiceWorkerThreadProxy& m_serviceWorkerThreadProxy;
+    ServiceWorkerDebuggable(ServiceWorkerThreadProxy&, const ServiceWorkerContextData&);
+
+    ThreadSafeWeakPtr<ServiceWorkerThreadProxy> m_serviceWorkerThreadProxy;
     String m_scopeURL;
 };
 
@@ -62,5 +63,4 @@ private:
 
 SPECIALIZE_TYPE_TRAITS_CONTROLLABLE_TARGET(WebCore::ServiceWorkerDebuggable, ServiceWorker);
 
-#endif // ENABLE(SERVICE_WORKER)
 #endif // ENABLE(REMOTE_INSPECTOR)

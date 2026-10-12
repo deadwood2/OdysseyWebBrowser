@@ -25,11 +25,12 @@
 
 #pragma once
 
-#if ENABLE(GPU_PROCESS)
+#if ENABLE(GPU_PROCESS) && ENABLE(VIDEO)
 
 #include <WebCore/MediaPlayerEnums.h>
 #include <wtf/HashMap.h>
 #include <wtf/HashSet.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/text/StringHash.h>
 
 namespace WebCore {
@@ -41,12 +42,12 @@ namespace WebKit {
 class RemoteMediaPlayerManager;
 
 class RemoteMediaPlayerMIMETypeCache {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(RemoteMediaPlayerMIMETypeCache);
 public:
     RemoteMediaPlayerMIMETypeCache(RemoteMediaPlayerManager&, WebCore::MediaPlayerEnums::MediaEngineIdentifier);
     ~RemoteMediaPlayerMIMETypeCache() = default;
 
-    HashSet<String, ASCIICaseInsensitiveHash>& supportedTypes();
+    HashSet<String>& supportedTypes();
     WebCore::MediaPlayerEnums::SupportsType supportsTypeAndCodecs(const WebCore::MediaEngineSupportParameters&);
     void addSupportedTypes(const Vector<String>&);
     bool isEmpty() const;
@@ -55,11 +56,12 @@ private:
     RemoteMediaPlayerManager& m_manager;
     WebCore::MediaPlayerEnums::MediaEngineIdentifier m_engineIdentifier;
 
-    using SupportedTypesAndCodecsKey = std::tuple<String, bool, bool>;
+    using SupportedTypesAndCodecsKey = std::tuple<String, bool, bool, bool>;
     std::optional<HashMap<SupportedTypesAndCodecsKey, WebCore::MediaPlayerEnums::SupportsType>> m_supportsTypeAndCodecsCache;
-    std::optional<HashSet<String, ASCIICaseInsensitiveHash>> m_supportedTypesCache;
+    HashSet<String> m_supportedTypesCache;
+    bool m_hasPopulatedSupportedTypesCacheFromGPUProcess { false };
 };
 
 } // namespace WebKit
 
-#endif
+#endif // ENABLE(GPU_PROCESS) && ENABLE(VIDEO)

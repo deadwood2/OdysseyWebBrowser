@@ -31,122 +31,122 @@ namespace WebCore {
 
 void Cursor::ensurePlatformCursor() const
 {
-    if (m_platformCursor || m_type == Cursor::Pointer)
+    if (m_platformCursor || m_type == Type::Pointer)
         return;
 
     switch (m_type) {
-    case Cursor::Pointer:
+    case Type::Pointer:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NORMAL);
         break;
-    case Cursor::Cross:
+    case Type::Cross:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_AIMING);
         break;
-    case Cursor::Hand:
+    case Type::Hand:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_SELECTLINK);
         break;
-    case Cursor::IBeam:
+    case Type::IBeam:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_SELECTTEXT);
         break;
-    case Cursor::Wait:
+    case Type::Wait:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_BUSY);
         break;
-    case Cursor::Help:
+    case Type::Help:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_HELP);
         break;
-    case Cursor::Move:
-    case Cursor::MiddlePanning:
+    case Type::Move:
+    case Type::MiddlePanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_MOVE);
         break;
-    case Cursor::EastResize:
-    case Cursor::EastPanning:
+    case Type::EastResize:
+    case Type::EastPanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_HORIZONTALRESIZE);
         break;
-    case Cursor::NorthResize:
-    case Cursor::NorthPanning:
+    case Type::NorthResize:
+    case Type::NorthPanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_VERTICALRESIZE);
         break;
-    case Cursor::NorthEastResize:
-    case Cursor::NorthEastPanning:
+    case Type::NorthEastResize:
+    case Type::NorthEastPanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_DIAGONALRESIZE1);
         break;
-    case Cursor::NorthWestResize:
-    case Cursor::NorthWestPanning:
+    case Type::NorthWestResize:
+    case Type::NorthWestPanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_DIAGONALRESIZE2);
         break;
-    case Cursor::SouthResize:
-    case Cursor::SouthPanning:
+    case Type::SouthResize:
+    case Type::SouthPanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_VERTICALRESIZE);
         break;
-    case Cursor::SouthEastResize:
-    case Cursor::SouthEastPanning:
+    case Type::SouthEastResize:
+    case Type::SouthEastPanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_DIAGONALRESIZE1);
         break;
-    case Cursor::SouthWestResize:
-    case Cursor::SouthWestPanning:
+    case Type::SouthWestResize:
+    case Type::SouthWestPanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_DIAGONALRESIZE2);
         break;
-    case Cursor::WestResize:
-    case Cursor::WestPanning:
+    case Type::WestResize:
+    case Type::WestPanning:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_HORIZONTALRESIZE);
         break;
-    case Cursor::NorthSouthResize:
+    case Type::NorthSouthResize:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_VERTICALRESIZE);
         break;
-    case Cursor::EastWestResize:
+    case Type::EastWestResize:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_HORIZONTALRESIZE);
         break;
-    case Cursor::NorthEastSouthWestResize:
+    case Type::NorthEastSouthWestResize:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_DIAGONALRESIZE1);
         break;
-    case Cursor::NorthWestSouthEastResize:
+    case Type::NorthWestSouthEastResize:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_DIAGONALRESIZE1);
         break;
-    case Cursor::ColumnResize:
+    case Type::ColumnResize:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_HORIZONTALRESIZE);
         break;
-    case Cursor::RowResize:
+    case Type::RowResize:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_HORIZONTALRESIZE);
         break;
-    case Cursor::VerticalText:
+    case Type::VerticalText:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_SELECTTEXT);
         break;
-    case Cursor::Cell:
+    case Type::Cell:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_SELECTTEXT);
         break;
-    case Cursor::ContextMenu:
+    case Type::ContextMenu:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NORMAL);
         break;
-    case Cursor::Alias:
+    case Type::Alias:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NORMAL);
         break;
-    case Cursor::Progress:
+    case Type::Progress:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_WORKING);
         break;
-    case Cursor::NoDrop:
+    case Type::NoDrop:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NOTAVAILABLE);
         break;
-    case Cursor::NotAllowed:
+    case Type::NotAllowed:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NOTAVAILABLE);
         break;
-    case Cursor::Copy:
+    case Type::Copy:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NORMAL);
         break;
-    case Cursor::None:
+    case Type::None:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_DOT);
         break;
-    case Cursor::ZoomIn:
+    case Type::ZoomIn:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NORMAL);
         break;
-    case Cursor::ZoomOut:
+    case Type::ZoomOut:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NORMAL);
         break;
-    case Cursor::Grab:
+    case Type::Grab:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NORMAL);
         break;
-    case Cursor::Grabbing:
+    case Type::Grabbing:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_MOVE);
         break;
-    case Cursor::Custom:
+    case Type::Custom:
         m_platformCursor = WebCore::PlatformCursor(POINTERTYPE_NORMAL);
         break;
     }

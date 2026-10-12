@@ -111,10 +111,14 @@ def parse_args(args):
                              help='Only build, check and run TestWTF'),
         optparse.make_option('--webkit-only', action='store_const', const='TestWebKitAPI', dest='api_binary',
                              help='Only check and run TestWebKitAPI'),
+        optparse.make_option('--ipc-only', action='store_const', const='TestIPC', dest='api_binary',
+                             help='Only check and run TestIPC (Darwin ports only)'),
         optparse.make_option('--web-core-only', action='store_const', const='TestWebCore', dest='api_binary',
                              help='Only check and run TestWebCore.exe (Windows only)'),
         optparse.make_option('--webkit-legacy-only', action='store_const', const='TestWebKitLegacy', dest='api_binary',
                              help='Only check and run TestWebKitLegacy.exe (Windows only)'),
+        optparse.make_option('--wgsl-only', action='store_const', const='TestWGSL', dest='api_binary',
+                             help='Only check and run TestWGSL (Darwin ports only)'),
         optparse.make_option('-d', '--dump', action='store_true', default=False,
                              help='Dump all test names without running them'),
         optparse.make_option('--build', dest='build', action='store_true', default=True,
@@ -140,6 +144,15 @@ def parse_args(args):
                              help='Run all tests, even DISABLED tests'),
         optparse.make_option('--additional-env-var', type='string', action='append', default=[],
                              help='Passes that environment variable to the tests (--additional-env-var=NAME=VALUE)'),
+
+        optparse.make_option('--remote-layer-tree', action='store_true', default=False,
+                             help='Use the remote layer tree drawing model (macOS WebKit2 only)'),
+        optparse.make_option('--no-remote-layer-tree', action='store_true', default=False,
+                             help='Disable the remote layer tree drawing model (macOS WebKit2 only)'),
+        optparse.make_option('--use-gpu-process', action='store_true', default=False,
+                             help='Enable GPU process DOM rendering'),
+        optparse.make_option('--no-use-gpu-process', action='store_true', default=False,
+                             help='Disable GPU process DOM rendering'),
     ]))
     option_group_definitions.append(('Upload Options', upload_options()))
 

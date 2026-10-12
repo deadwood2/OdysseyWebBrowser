@@ -214,7 +214,13 @@ class PlatformInfo(object):
             return []
 
         XCODE_SDK_REGEX = re.compile(r'\-sdk (?P<sdk>\D+)\d+\.\d+(?P<specifier>\D*)')
-        output = self._executive.run_command(['xcodebuild', '-showsdks'], return_stderr=False)
+
+        output = ''
+
+        try:
+            output = self._executive.run_command(['xcodebuild', '-showsdks'], return_stderr=False)
+        except ScriptError:
+            return []
 
         sdks = list()
         for line in output.splitlines():
@@ -234,6 +240,8 @@ class PlatformInfo(object):
             return 'win'
         if sys_platform.startswith('freebsd'):
             return 'freebsd'
+        if sys_platform.startswith('netbsd'):
+            return 'netbsd'
         if sys_platform.startswith('openbsd'):
             return 'openbsd'
         if sys_platform.startswith('haiku'):

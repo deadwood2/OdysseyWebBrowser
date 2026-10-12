@@ -21,15 +21,21 @@
 #include "config.h"
 #include "RenderFileUploadControl.h"
 
+#include "ElementRareData.h"
 #include "FileList.h"
 #include "FontCascade.h"
 #include "GraphicsContext.h"
 #include "HTMLInputElement.h"
 #include "HTMLNames.h"
 #include "Icon.h"
+#include "InlineIteratorInlineBox.h"
 #include "LocalizedStrings.h"
 #include "PaintInfo.h"
+#include "RenderBlockInlines.h"
+#include "RenderBoxInlines.h"
+#include "RenderBoxModelObjectInlines.h"
 #include "RenderButton.h"
+#include "RenderElementInlines.h"
 #include "RenderText.h"
 #include "RenderTheme.h"
 #include "ShadowRoot.h"
@@ -37,31 +43,36 @@
 #include "TextRun.h"
 #include "VisiblePosition.h"
 #include <math.h>
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
 using namespace HTMLNames;
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(RenderFileUploadControl);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RenderFileUploadControl);
 
-const int afterButtonSpacing = 4;
-#if !PLATFORM(IOS_FAMILY)
-const int iconHeight = 16;
-const int iconWidth = 16;
-const int iconFilenameSpacing = 2;
-const int defaultWidthNumChars = 34;
-#else
-// On iOS the icon height matches the button height, to maximize the icon size.
-const int iconFilenameSpacing = afterButtonSpacing;
-const int defaultWidthNumChars = 38;
+constexpr int afterButtonSpacing = 4;
+constexpr int buttonShadowHeight = 2;
+
+#if !PLATFORM(COCOA)
+// On Cocoa platforms the icon height matches the button height, to maximize the icon size.
+constexpr int iconLogicalHeight = 16;
+constexpr int iconLogicalWidth = 16;
 #endif
-const int buttonShadowHeight = 2;
+
+#if !PLATFORM(IOS_FAMILY)
+constexpr int iconFilenameSpacing = 2;
+constexpr int defaultWidthNumChars = 34;
+#else
+constexpr int iconFilenameSpacing = afterButtonSpacing;
+constexpr int defaultWidthNumChars = 38;
+#endif
 
 RenderFileUploadControl::RenderFileUploadControl(HTMLInputElement& input, RenderStyle&& style)
-    : RenderBlockFlow(input, WTFMove(style))
+    : RenderBlockFlow(Type::FileUploadControl, input, WTFMove(style))
     , m_canReceiveDroppedFiles(input.canReceiveDroppedFiles())
 {
+    ASSERT(isRenderFileUploadControl());
 }
 
 RenderFileUploadControl::~RenderFileUploadControl() = default;
@@ -91,35 +102,41 @@ void RenderFileUploadControl::updateFromElement()
         repaint();
 }
 
-static int nodeWidth(Node* node)
+static int nodeLogicalWidth(Node* node)
 {
-    return (node && node->renderBox()) ? roundToInt(node->renderBox()->size().width()) : 0;
+    return (node && node->renderBox()) ? roundToInt(node->renderBox()->logicalSize().width()) : 0;
 }
 
-#if PLATFORM(IOS_FAMILY)
-static int nodeHeight(Node* node)
+#if PLATFORM(COCOA)
+static int nodeLogicalHeight(Node* node)
 {
-    return (node && node->renderBox()) ? roundToInt(node->renderBox()->size().height()) : 0;
+    return (node && node->renderBox()) ? roundToInt(node->renderBox()->logicalSize().height()) : 0;
 }
 #endif
 
-int RenderFileUploadControl::maxFilenameWidth() const
+int RenderFileUploadControl::maxFilenameLogicalWidth() const
 {
-#if PLATFORM(IOS_FAMILY)
-    int iconWidth = nodeHeight(uploadButton());
+#if PLATFORM(COCOA)
+    int iconLogicalWidth = nodeLogicalHeight(uploadButton());
 #endif
-    return std::max(0, snappedIntRect(contentBoxRect()).width() - nodeWidth(uploadButton()) - afterButtonSpacing
-        - (inputElement().icon() ? iconWidth + iconFilenameSpacing : 0));
+    return std::max(0, roundToInt(contentLogicalWidth()) - nodeLogicalWidth(uploadButton()) - afterButtonSpacing
+        - (inputElement().icon() ? iconLogicalWidth + iconFilenameSpacing : 0));
 }
 
 void RenderFileUploadControl::paintObject(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
-    if (style().visibility() != Visibility::Visible)
+    if (style().usedVisibility() != Visibility::Visible)
         return;
     
-    if (paintInfo.context().paintingDisabled())
-        return;
+    if (!paintInfo.context().paintingDisabled())
+        paintControl(paintInfo, paintOffset);
 
+    // Paint the children.
+    RenderBlockFlow::paintObject(paintInfo, paintOffset);
+}
+
+void RenderFileUploadControl::paintControl(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
+{
     // Push a clip.
     GraphicsContextStateSaver stateSaver(paintInfo.context(), false);
     if (paintInfo.phase == PaintPhase::Foreground || paintInfo.phase == PaintPhase::ChildBlockBackgrounds) {
@@ -131,90 +148,141 @@ void RenderFileUploadControl::paintObject(PaintInfo& paintInfo, const LayoutPoin
         paintInfo.context().clip(clipRect);
     }
 
+    auto isHorizontalWritingMode = style().isHorizontalWritingMode();
+    auto isFlippedBlocksWritingMode = style().isFlippedBlocksWritingMode();
+    auto logicalPaintOffset = isHorizontalWritingMode ? paintOffset : paintOffset.transposedPoint();
+
     if (paintInfo.phase == PaintPhase::Foreground) {
         const String& displayedFilename = fileTextValue();
         const FontCascade& font = style().fontCascade();
-        TextRun textRun = constructTextRun(displayedFilename, style(), AllowRightExpansion, RespectDirection | RespectDirectionOverride);
-
-#if PLATFORM(IOS_FAMILY)
-        int iconHeight = nodeHeight(uploadButton());
-        int iconWidth = iconHeight;
+        TextRun textRun = constructTextRun(displayedFilename, style(), ExpansionBehavior::allowRightOnly(), RespectDirection | RespectDirectionOverride);
+#if PLATFORM(COCOA)
+        int iconLogicalHeight = nodeLogicalHeight(uploadButton());
+        int iconLogicalWidth = iconLogicalHeight;
 #endif
         // Determine where the filename should be placed
-        LayoutUnit contentLeft = paintOffset.x() + borderLeft() + paddingLeft();
+        LayoutUnit contentLogicalLeft = logicalPaintOffset.x() + logicalLeftOffsetForContent();
+        if (style().isLeftToRightDirection())
+            contentLogicalLeft += textIndentOffset();
+        else
+            contentLogicalLeft -= textIndentOffset();
+
         HTMLInputElement* button = uploadButton();
         if (!button)
             return;
 
-        LayoutUnit buttonWidth = nodeWidth(button);
-        LayoutUnit buttonAndIconWidth = buttonWidth + afterButtonSpacing
-            + (inputElement().icon() ? iconWidth + iconFilenameSpacing : 0);
-        LayoutUnit textX;
+        LayoutUnit buttonLogicalWidth = nodeLogicalWidth(button);
+        LayoutUnit buttonAndIconLogicalWidth = buttonLogicalWidth + afterButtonSpacing
+            + (inputElement().icon() ? iconLogicalWidth + iconFilenameSpacing : 0);
+        LayoutUnit textLogicalLeft;
         if (style().isLeftToRightDirection())
-            textX = contentLeft + buttonAndIconWidth;
+            textLogicalLeft = contentLogicalLeft + buttonAndIconLogicalWidth;
         else
-            textX = contentLeft + contentWidth() - buttonAndIconWidth - font.width(textRun);
+            textLogicalLeft = contentLogicalLeft + contentLogicalWidth() - buttonAndIconLogicalWidth - font.width(textRun);
 
-        LayoutUnit textY;
         // We want to match the button's baseline
         // FIXME: Make this work with transforms.
-        if (RenderButton* buttonRenderer = downcast<RenderButton>(button->renderer()))
-            textY = paintOffset.y() + borderTop() + paddingTop() + buttonRenderer->baselinePosition(AlphabeticBaseline, true, HorizontalLine, PositionOnContainingLine);
-        else
-            textY = baselinePosition(AlphabeticBaseline, true, HorizontalLine, PositionOnContainingLine);
+        auto textLogicalTop = [&]() -> float {
+            if (auto* buttonRenderer = downcast<RenderButton>(button->renderer())) {
+                if (auto* buttonTextRenderer = buttonRenderer->textRenderer()) {
+                    if (auto textBox = InlineIterator::firstTextBoxFor(*buttonTextRenderer)) {
+                        auto textVisualRect = textBox->visualRectIgnoringBlockDirection();
+                        textVisualRect.setLocation(buttonTextRenderer->localToContainerPoint(textVisualRect.location(), this));
+                        textVisualRect.moveBy(roundPointToDevicePixels(paintOffset, document().deviceScaleFactor()));
+
+                        auto metrics = textBox->style().fontCascade().metricsOfPrimaryFont();
+
+                        if (!isHorizontalWritingMode) {
+                            if (isFlippedBlocksWritingMode)
+                                return textVisualRect.x() - metrics.intAscent();
+
+                            return textVisualRect.x() + metrics.intDescent();
+                        }
+
+                        if (isFlippedBlocksWritingMode)
+                            return textVisualRect.y() - metrics.intDescent();
+
+                        return textVisualRect.y() + metrics.intAscent();
+                    }
+                }
+            }
+
+            return roundToInt(baselinePosition(AlphabeticBaseline, true, isHorizontalWritingMode ? HorizontalLine : VerticalLine, PositionOnContainingLine));
+        }();
 
         paintInfo.context().setFillColor(style().visitedDependentColorWithColorFilter(CSSPropertyColor));
         
         // Draw the filename
-        paintInfo.context().drawBidiText(font, textRun, IntPoint(roundToInt(textX), roundToInt(textY)));
-        
+        {
+            GraphicsContextStateSaver stateSaver(paintInfo.context());
+
+            auto textOrigin = IntPoint(roundToInt(textLogicalLeft), std::round(textLogicalTop));
+            if (!isHorizontalWritingMode) {
+                textOrigin = textOrigin.transposedPoint();
+                paintInfo.context().translate(textOrigin);
+                paintInfo.context().rotate(piOverTwoFloat);
+                paintInfo.context().translate(-textOrigin);
+            }
+
+            paintInfo.context().drawBidiText(font, textRun, textOrigin);
+        }
+
         if (inputElement().icon()) {
             // Determine where the icon should be placed
-            LayoutUnit iconY = paintOffset.y() + borderTop() + paddingTop() + (contentHeight() - iconHeight) / 2;
-            LayoutUnit iconX;
+            LayoutUnit borderAndPaddingOffsetForIcon = (!isHorizontalWritingMode && isFlippedBlocksWritingMode) ? borderAndPaddingAfter() : borderAndPaddingBefore();
+            LayoutUnit iconLogicalTop = logicalPaintOffset.y() + borderAndPaddingOffsetForIcon  + (contentLogicalHeight() - iconLogicalHeight) / 2;
+            LayoutUnit iconLogicalLeft;
             if (style().isLeftToRightDirection())
-                iconX = contentLeft + buttonWidth + afterButtonSpacing;
+                iconLogicalLeft = contentLogicalLeft + buttonLogicalWidth + afterButtonSpacing;
             else
-                iconX = contentLeft + contentWidth() - buttonWidth - afterButtonSpacing - iconWidth;
+                iconLogicalLeft = contentLogicalLeft + contentLogicalWidth() - buttonLogicalWidth - afterButtonSpacing - iconLogicalWidth;
 
-#if PLATFORM(IOS_FAMILY)
+            IntRect iconRect(iconLogicalLeft, iconLogicalTop, iconLogicalWidth, iconLogicalHeight);
+            if (!isHorizontalWritingMode)
+                iconRect = iconRect.transposedRect();
+
+#if PLATFORM(COCOA)
             if (RenderButton* buttonRenderer = downcast<RenderButton>(button->renderer())) {
                 // Draw the file icon and decorations.
-                IntRect iconRect(iconX, iconY, iconWidth, iconHeight);
-                RenderTheme::FileUploadDecorations decorationsType = inputElement().files()->length() == 1 ? RenderTheme::SingleFile : RenderTheme::MultipleFiles;
+                auto decorationsType = inputElement().files()->length() == 1 ? RenderTheme::FileUploadDecorations::SingleFile : RenderTheme::FileUploadDecorations::MultipleFiles;
                 theme().paintFileUploadIconDecorations(*this, *buttonRenderer, paintInfo, iconRect, inputElement().icon(), decorationsType);
             }
 #else
             // Draw the file icon
-            inputElement().icon()->paint(paintInfo.context(), IntRect(roundToInt(iconX), roundToInt(iconY), iconWidth, iconHeight));
+            inputElement().icon()->paint(paintInfo.context(), iconRect);
 #endif
         }
     }
-
-    // Paint the children.
-    RenderBlockFlow::paintObject(paintInfo, paintOffset);
 }
 
 void RenderFileUploadControl::computeIntrinsicLogicalWidths(LayoutUnit& minLogicalWidth, LayoutUnit& maxLogicalWidth) const
 {
-    if (shouldApplySizeContainment(*this))
+    if (shouldApplySizeOrInlineSizeContainment()) {
+        if (auto logicalWidth = explicitIntrinsicInnerLogicalWidth()) {
+            minLogicalWidth = logicalWidth.value();
+            maxLogicalWidth = logicalWidth.value();
+        }
         return;
+    }
     // Figure out how big the filename space needs to be for a given number of characters
     // (using "0" as the nominal character).
     const UChar character = '0';
-    const String characterAsString = String(&character, 1);
+    const String characterAsString = span(character);
     const FontCascade& font = style().fontCascade();
     // FIXME: Remove the need for this const_cast by making constructTextRun take a const RenderObject*.
-    float minDefaultLabelWidth = defaultWidthNumChars * font.width(constructTextRun(characterAsString, style(), AllowRightExpansion));
+    float minDefaultLabelWidth = defaultWidthNumChars * font.width(constructTextRun(characterAsString, style(), ExpansionBehavior::allowRightOnly()));
 
     const String label = theme().fileListDefaultLabel(inputElement().multiple());
-    float defaultLabelWidth = font.width(constructTextRun(label, style(), AllowRightExpansion));
+    float defaultLabelWidth = font.width(constructTextRun(label, style(), ExpansionBehavior::allowRightOnly()));
     if (HTMLInputElement* button = uploadButton())
         if (RenderObject* buttonRenderer = button->renderer())
             defaultLabelWidth += buttonRenderer->maxPreferredLogicalWidth() + afterButtonSpacing;
     maxLogicalWidth = static_cast<int>(ceilf(std::max(minDefaultLabelWidth, defaultLabelWidth)));
 
-    if (!style().width().isPercentOrCalculated())
+    auto& logicalWidth = style().logicalWidth();
+    if (logicalWidth.isCalculated())
+        minLogicalWidth = std::max(0_lu, valueForLength(logicalWidth, 0_lu));
+    else if (!logicalWidth.isPercent())
         minLogicalWidth = maxLogicalWidth;
 }
 
@@ -225,17 +293,17 @@ void RenderFileUploadControl::computePreferredLogicalWidths()
     m_minPreferredLogicalWidth = 0;
     m_maxPreferredLogicalWidth = 0;
 
-    if (style().width().isFixed() && style().width().value() > 0)
-        m_minPreferredLogicalWidth = m_maxPreferredLogicalWidth = adjustContentBoxLogicalWidthForBoxSizing(style().width());
+    if (style().logicalWidth().isFixed() && style().logicalWidth().value() > 0)
+        m_minPreferredLogicalWidth = m_maxPreferredLogicalWidth = adjustContentBoxLogicalWidthForBoxSizing(style().logicalWidth());
     else
         computeIntrinsicLogicalWidths(m_minPreferredLogicalWidth, m_maxPreferredLogicalWidth);
 
-    RenderBox::computePreferredLogicalWidths(style().minWidth(), style().maxWidth(), horizontalBorderAndPaddingExtent());
+    RenderBox::computePreferredLogicalWidths(style().logicalMinWidth(), style().logicalMaxWidth(), style().isHorizontalWritingMode() ? horizontalBorderAndPaddingExtent() : verticalBorderAndPaddingExtent());
 
     setPreferredLogicalWidthsDirty(false);
 }
 
-VisiblePosition RenderFileUploadControl::positionForPoint(const LayoutPoint&, const RenderFragmentContainer*)
+VisiblePosition RenderFileUploadControl::positionForPoint(const LayoutPoint&, HitTestSource, const RenderFragmentContainer*)
 {
     return VisiblePosition();
 }
@@ -243,8 +311,7 @@ VisiblePosition RenderFileUploadControl::positionForPoint(const LayoutPoint&, co
 HTMLInputElement* RenderFileUploadControl::uploadButton() const
 {
     ASSERT(inputElement().shadowRoot());
-    Node* buttonNode = inputElement().shadowRoot()->firstChild();
-    return is<HTMLInputElement>(buttonNode) ? downcast<HTMLInputElement>(buttonNode) : nullptr;
+    return dynamicDowncast<HTMLInputElement>(inputElement().shadowRoot()->firstChild());
 }
 
 String RenderFileUploadControl::buttonValue()
@@ -258,10 +325,15 @@ String RenderFileUploadControl::buttonValue()
 String RenderFileUploadControl::fileTextValue() const
 {
     auto& input = inputElement();
-    ASSERT(inputElement().files());
-    if (input.files()->length() && !input.displayString().isEmpty())
-        return StringTruncator::rightTruncate(input.displayString(), maxFilenameWidth(), style().fontCascade());
-    return theme().fileListNameForWidth(input.files(), style().fontCascade(), maxFilenameWidth(), input.multiple());
+    if (!input.files())
+        return { };
+    if (input.files()->length() && !input.displayString().isEmpty()) {
+        if (input.files()->length() == 1)
+            return StringTruncator::centerTruncate(input.displayString(), maxFilenameLogicalWidth(), style().fontCascade());
+
+        return StringTruncator::rightTruncate(input.displayString(), maxFilenameLogicalWidth(), style().fontCascade());
+    }
+    return theme().fileListNameForWidth(input.files(), style().fontCascade(), maxFilenameLogicalWidth(), input.multiple());
 }
     
 } // namespace WebCore

@@ -32,28 +32,32 @@
 #include "RemoteCDMInstanceConfiguration.h"
 #include "RemoteCDMInstanceMessages.h"
 #include "RemoteCDMInstanceSessionProxy.h"
-#include "SharedBufferCopy.h"
+#include "WebCoreArgumentCoders.h"
 #include <WebCore/CDMInstance.h>
 
 namespace WebKit {
 
 using namespace WebCore;
 
-std::unique_ptr<RemoteCDMInstanceProxy> RemoteCDMInstanceProxy::create(WeakPtr<RemoteCDMProxy>&& cdm, Ref<CDMInstance>&& priv, RemoteCDMInstanceIdentifier identifier)
+std::unique_ptr<RemoteCDMInstanceProxy> RemoteCDMInstanceProxy::create(RemoteCDMProxy& cdm, Ref<CDMInstance>&& priv, RemoteCDMInstanceIdentifier identifier)
 {
     auto configuration = makeUniqueRefWithoutFastMallocCheck<RemoteCDMInstanceConfiguration, RemoteCDMInstanceConfiguration&&>({
         priv->keySystem(),
     });
-    return std::unique_ptr<RemoteCDMInstanceProxy>(new RemoteCDMInstanceProxy(WTFMove(cdm), WTFMove(priv), WTFMove(configuration), identifier));
+    return std::unique_ptr<RemoteCDMInstanceProxy>(new RemoteCDMInstanceProxy(cdm, WTFMove(priv), WTFMove(configuration), identifier));
 }
 
-RemoteCDMInstanceProxy::RemoteCDMInstanceProxy(WeakPtr<RemoteCDMProxy>&& cdm, Ref<CDMInstance>&& priv, UniqueRef<RemoteCDMInstanceConfiguration>&& configuration, RemoteCDMInstanceIdentifier identifier)
-    : m_cdm(WTFMove(cdm))
+RemoteCDMInstanceProxy::RemoteCDMInstanceProxy(RemoteCDMProxy& cdm, Ref<CDMInstance>&& priv, UniqueRef<RemoteCDMInstanceConfiguration>&& configuration, RemoteCDMInstanceIdentifier identifier)
+    : m_cdm(cdm)
     , m_instance(WTFMove(priv))
     , m_configuration(WTFMove(configuration))
     , m_identifier(identifier)
+#if !RELEASE_LOG_DISABLED
+    , m_logger(cdm.logger())
+    , m_logIdentifier(cdm.logIdentifier())
+#endif
 {
-    m_instance->setClient(makeWeakPtr<CDMInstanceClient>(this));
+    m_instance->setClient(*this);
 }
 
 RemoteCDMInstanceProxy::~RemoteCDMInstanceProxy()
@@ -70,7 +74,7 @@ void RemoteCDMInstanceProxy::unrequestedInitializationDataReceived(const String&
     if (!factory)
         return;
 
-    auto* gpuConnectionToWebProcess = factory->gpuConnectionToWebProcess();
+    RefPtr gpuConnectionToWebProcess = factory->gpuConnectionToWebProcess();
     if (!gpuConnectionToWebProcess)
         return;
 
@@ -82,30 +86,42 @@ void RemoteCDMInstanceProxy::initializeWithConfiguration(const WebCore::CDMKeySy
     m_instance->initializeWithConfiguration(configuration, allowDistinctiveIdentifiers, allowPersistentState, WTFMove(completion));
 }
 
-void RemoteCDMInstanceProxy::setServerCertificate(IPC::SharedBufferCopy&& certificate, CompletionHandler<void(SuccessValue)>&& completion)
+void RemoteCDMInstanceProxy::setServerCertificate(Ref<SharedBuffer>&& certificate, CompletionHandler<void(SuccessValue)>&& completion)
 {
-    if (!certificate.buffer()) {
-        completion(CDMInstance::Failed);
-        return;
-    }
-
-    m_instance->setServerCertificate(certificate.buffer().releaseNonNull(), WTFMove(completion));
+    m_instance->setServerCertificate(WTFMove(certificate), WTFMove(completion));
 }
 
 void RemoteCDMInstanceProxy::setStorageDirectory(const String& directory)
 {
-    m_instance->setStorageDirectory(directory);
+    if (!m_cdm)
+        return;
+
+    auto* factory = m_cdm->factory();
+    if (!factory)
+        return;
+
+    auto mediaKeysStorageDirectory = factory->mediaKeysStorageDirectory();
+    if (mediaKeysStorageDirectory.isEmpty())
+        return;
+
+    if (directory.startsWith(mediaKeysStorageDirectory))
+        m_instance->setStorageDirectory(directory);
 }
 
-void RemoteCDMInstanceProxy::createSession(CompletionHandler<void(const RemoteCDMInstanceSessionIdentifier&)>&& completion)
+void RemoteCDMInstanceProxy::createSession(uint64_t logIdentifier, CompletionHandler<void(const RemoteCDMInstanceSessionIdentifier&)>&& completion)
 {
     auto privSession = m_instance->createSession();
     if (!privSession || !m_cdm || !m_cdm->factory()) {
         completion({ });
         return;
     }
+
+#if !RELEASE_LOG_DISABLED
+    privSession->setLogIdentifier(m_logIdentifier);
+#endif
+
     auto identifier = RemoteCDMInstanceSessionIdentifier::generate();
-    auto session = RemoteCDMInstanceSessionProxy::create(makeWeakPtr(m_cdm.get()), privSession.releaseNonNull(), identifier);
+    auto session = RemoteCDMInstanceSessionProxy::create(m_cdm.get(), privSession.releaseNonNull(), logIdentifier, identifier);
     m_cdm->factory()->addSession(identifier, WTFMove(session));
     completion(identifier);
 }

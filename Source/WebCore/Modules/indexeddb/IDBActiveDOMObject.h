@@ -26,6 +26,7 @@
 #pragma once
 
 #include "ActiveDOMObject.h"
+#include "ContextDestructionObserverInlines.h"
 #include "ScriptExecutionContext.h"
 #include <wtf/Threading.h>
 
@@ -61,7 +62,7 @@ public:
         context->postCrossThreadTask(object, method, arguments...);
     }
 
-    void callFunctionOnOriginThread(WTF::Function<void ()>&& function)
+    void callFunctionOnOriginThread(Function<void()>&& function)
     {
         if (canCurrentThreadAccessThreadLocalData(originThread())) {
             function();

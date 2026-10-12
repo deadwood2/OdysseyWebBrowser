@@ -26,25 +26,29 @@
 
 #pragma once
 
+#include "WebProcessProxy.h"
 #include <WebCore/RegistrableDomain.h>
 #include <pal/SessionID.h>
+#include <wtf/CheckedRef.h>
 #include <wtf/HashMap.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/text/WTFString.h>
 
 namespace WebKit {
 
+class ProcessThrottlerActivity;
 class WebProcessPool;
-class WebProcessProxy;
 class WebsiteDataStore;
 
-class WebProcessCache {
-    WTF_MAKE_FAST_ALLOCATED;
+class WebProcessCache final : public CanMakeCheckedPtr<WebProcessCache> {
+    WTF_MAKE_TZONE_ALLOCATED(WebProcessCache);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(WebProcessCache);
 public:
     explicit WebProcessCache(WebProcessPool&);
 
     bool addProcessIfPossible(Ref<WebProcessProxy>&&);
-    RefPtr<WebProcessProxy> takeProcess(const WebCore::RegistrableDomain&, WebsiteDataStore&);
+    RefPtr<WebProcessProxy> takeProcess(const WebCore::RegistrableDomain&, WebsiteDataStore&, WebProcessProxy::LockdownMode, const API::PageConfiguration&);
 
     void updateCapacity(WebProcessPool&);
     unsigned capacity() const { return m_capacity; }
@@ -56,36 +60,39 @@ public:
 
     void clearAllProcessesForSession(PAL::SessionID);
 
-    enum class ShouldShutDownProcess { No, Yes };
+    enum class ShouldShutDownProcess : bool { No, Yes };
     void removeProcess(WebProcessProxy&, ShouldShutDownProcess);
+    static void setCachedProcessSuspensionDelayForTesting(Seconds);
 
 private:
     static Seconds cachedProcessLifetime;
     static Seconds clearingDelayAfterApplicationResignsActive;
 
     class CachedProcess {
-        WTF_MAKE_FAST_ALLOCATED;
+        WTF_MAKE_TZONE_ALLOCATED(CachedProcess);
     public:
         CachedProcess(Ref<WebProcessProxy>&&);
         ~CachedProcess();
 
         Ref<WebProcessProxy> takeProcess();
         WebProcessProxy& process() { ASSERT(m_process); return *m_process; }
+        void startSuspensionTimer();
 
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(GTK) || PLATFORM(WPE)
         bool isSuspended() const { return !m_suspensionTimer.isActive(); }
 #endif
 
     private:
         void evictionTimerFired();
-#if PLATFORM(MAC)
+#if PLATFORM(MAC) || PLATFORM(GTK) || PLATFORM(WPE)
         void suspensionTimerFired();
 #endif
 
         RefPtr<WebProcessProxy> m_process;
-        RunLoop::Timer<CachedProcess> m_evictionTimer;
-#if PLATFORM(MAC)
-        RunLoop::Timer<CachedProcess> m_suspensionTimer;
+        RunLoop::Timer m_evictionTimer;
+#if PLATFORM(MAC) || PLATFORM(GTK) || PLATFORM(WPE)
+        RunLoop::Timer m_suspensionTimer;
+        std::unique_ptr<ProcessThrottlerActivity> m_backgroundActivity;
 #endif
     };
 
@@ -97,7 +104,7 @@ private:
 
     HashMap<uint64_t, std::unique_ptr<CachedProcess>> m_pendingAddRequests;
     HashMap<WebCore::RegistrableDomain, std::unique_ptr<CachedProcess>> m_processesPerRegistrableDomain;
-    RunLoop::Timer<WebProcessCache> m_evictionTimer;
+    RunLoop::Timer m_evictionTimer;
 };
 
 } // namespace WebKit

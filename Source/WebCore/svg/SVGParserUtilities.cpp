@@ -2,7 +2,7 @@
  * Copyright (C) 2002, 2003 The Karbon Developers
  * Copyright (C) 2006 Alexander Kellett <lypanov@kde.org>
  * Copyright (C) 2006, 2007 Rob Buis <buis@kde.org>
- * Copyright (C) 2007-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2007-2024 Apple Inc. All rights reserved.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -149,7 +149,7 @@ std::optional<float> parseNumber(StringParsingBuffer<UChar>& buffer, SuffixSkipp
     return genericParseNumber(buffer, skip);
 }
 
-std::optional<float> parseNumber(const StringView& string, SuffixSkippingPolicy skip)
+std::optional<float> parseNumber(StringView string, SuffixSkippingPolicy skip)
 {
     return readCharactersForParsing(string, [skip](auto buffer) -> std::optional<float> {
         auto result = genericParseNumber(buffer, skip);
@@ -192,7 +192,7 @@ std::optional<bool> parseArcFlag(StringParsingBuffer<UChar>& buffer)
     return genericParseArcFlag(buffer);
 }
 
-std::optional<std::pair<float, float>> parseNumberOptionalNumber(const StringView& string)
+std::optional<std::pair<float, float>> parseNumberOptionalNumber(StringView string)
 {
     if (string.isEmpty())
         return std::nullopt;
@@ -216,7 +216,7 @@ std::optional<std::pair<float, float>> parseNumberOptionalNumber(const StringVie
     });
 }
 
-std::optional<FloatPoint> parsePoint(const StringView& string)
+std::optional<FloatPoint> parsePoint(StringView string)
 {
     if (string.isEmpty())
         return std::nullopt;
@@ -236,7 +236,7 @@ std::optional<FloatPoint> parsePoint(const StringView& string)
     });
 }
 
-std::optional<FloatRect> parseRect(const StringView& string)
+std::optional<FloatRect> parseRect(StringView string)
 {
     return readCharactersForParsing(string, [](auto buffer) -> std::optional<FloatRect> {
         skipOptionalSVGSpaces(buffer);
@@ -258,7 +258,7 @@ std::optional<FloatRect> parseRect(const StringView& string)
     });
 }
 
-std::optional<HashSet<String>> parseGlyphName(const StringView& string)
+std::optional<HashSet<String>> parseGlyphName(StringView string)
 {
     // FIXME: Parsing error detection is missing.
 
@@ -278,10 +278,10 @@ std::optional<HashSet<String>> parseGlyphName(const StringView& string)
 
             // walk backwards from the ; to ignore any whitespace
             auto inputEnd = buffer.position() - 1;
-            while (inputStart < inputEnd && isSVGSpace(*inputEnd))
+            while (inputStart < inputEnd && isASCIIWhitespace(*inputEnd))
                 --inputEnd;
 
-            values.add(String(inputStart, inputEnd - inputStart + 1));
+            values.add(String({ inputStart, static_cast<size_t>(inputEnd - inputStart + 1) }));
             skipOptionalSVGSpacesOrDelimiter(buffer, ',');
         }
         return values;
@@ -289,8 +289,9 @@ std::optional<HashSet<String>> parseGlyphName(const StringView& string)
 
 }
 
-template<typename CharacterType> static std::optional<UnicodeRange> parseUnicodeRange(StringParsingBuffer<CharacterType> buffer)
+template<typename CharacterType> static std::optional<UnicodeRange> parseUnicodeRange(std::span<const CharacterType> span)
 {
+    StringParsingBuffer buffer { span };
     unsigned length = buffer.lengthRemaining();
     if (length < 2 || buffer[0] != 'U' || buffer[1] != '+')
         return std::nullopt;
@@ -361,7 +362,7 @@ template<typename CharacterType> static std::optional<UnicodeRange> parseUnicode
     return range;
 }
 
-std::optional<std::pair<UnicodeRanges, HashSet<String>>> parseKerningUnicodeString(const StringView& string)
+std::optional<std::pair<UnicodeRanges, HashSet<String>>> parseKerningUnicodeString(StringView string)
 {
     // FIXME: Parsing error detection is missing.
 
@@ -378,10 +379,10 @@ std::optional<std::pair<UnicodeRanges, HashSet<String>>> parseKerningUnicodeStri
                 break;
 
             // Try to parse unicode range first
-            if (auto range = parseUnicodeRange(StringParsingBuffer { inputStart, buffer.position() }))
+            if (auto range = parseUnicodeRange(std::span { inputStart, buffer.position() }))
                 rangeList.append(WTFMove(*range));
             else
-                stringList.add(String(inputStart, buffer.position() - inputStart));
+                stringList.add(String({ inputStart, buffer.position() }));
 
             if (buffer.atEnd())
                 break;

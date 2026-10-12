@@ -28,8 +28,8 @@
 
 #if PLATFORM(COCOA)
 
+#import "ImageAnalysisUtilities.h"
 #import <Foundation/NSBundle.h>
-
 #import <pal/spi/cocoa/FeatureFlagsSPI.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/cocoa/RuntimeApplicationChecksCocoa.h>
@@ -37,34 +37,65 @@
 
 namespace WebKit {
 
-// Because of <rdar://problem/60608008>, WebKit has to parse the feature flags plist file
-bool isFeatureFlagEnabled(const char* featureName, bool defaultValue)
-{
-#if HAVE(SYSTEM_FEATURE_FLAGS)
-
 #if PLATFORM(MAC)
-    static bool isSystemWebKit = [] {
-        NSBundle *bundle = [NSBundle bundleForClass:NSClassFromString(@"WKWebView")];
-        return [bundle.bundlePath hasPrefix:@"/System/"];
-    }();
-
-    if (isSystemWebKit)
-        return _os_feature_enabled_impl("WebKit", featureName);
-
-    return defaultValue;
-#else
-    UNUSED_PARAM(defaultValue);
-    return _os_feature_enabled_impl("WebKit", featureName);
-#endif // PLATFORM(MAC)
-
-#else
-
-    UNUSED_PARAM(featureName);
-    return defaultValue;
-
-#endif // HAVE(SYSTEM_FEATURE_FLAGS)
+bool defaultScrollAnimatorEnabled()
+{
+    return [[NSUserDefaults standardUserDefaults] boolForKey:@"NSScrollAnimationEnabled"];
 }
+#endif
+
+#if ENABLE(IMAGE_ANALYSIS)
+
+bool defaultTextRecognitionInVideosEnabled()
+{
+    static bool enabled = false;
+#if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
+    static std::once_flag flag;
+    std::call_once(flag, [] {
+        enabled = os_feature_enabled(VisualIntelligence, LiveText);
+    });
+#endif
+    return enabled;
+}
+
+bool defaultVisualTranslationEnabled()
+{
+    static bool enabled = false;
+#if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
+    static std::once_flag flag;
+    std::call_once(flag, [] {
+        enabled = os_feature_enabled(Translate, EnableVisualIntelligenceUI);
+    });
+#endif
+    return enabled;
+}
+
+bool defaultRemoveBackgroundEnabled()
+{
+    static bool enabled = false;
+#if ENABLE(IMAGE_ANALYSIS_ENHANCEMENTS)
+    static std::once_flag flag;
+    std::call_once(flag, [] {
+        enabled = os_feature_enabled(VisualIntelligence, RemoveBackground);
+    });
+#endif
+    return enabled;
+}
+
+#endif // ENABLE(IMAGE_ANALYSIS)
+
+#if HAVE(SC_CONTENT_SHARING_PICKER)
+bool defaultUseSCContentSharingPicker()
+{
+    static bool enabled = false;
+    static std::once_flag flag;
+    std::call_once(flag, [] {
+        enabled = os_feature_enabled(Bilby, Newsroom);
+    });
+    return enabled;
+}
+#endif
 
 } // namespace WebKit
 
-#endif
+#endif // PLATFORM(COCOA)

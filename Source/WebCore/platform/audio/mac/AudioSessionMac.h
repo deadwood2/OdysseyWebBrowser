@@ -27,14 +27,15 @@
 
 #if USE(AUDIO_SESSION) && PLATFORM(MAC)
 
-#include "AudioSession.h"
+#include "AudioSessionCocoa.h"
+#include <pal/spi/cf/CoreAudioSPI.h>
 
 typedef UInt32 AudioObjectID;
 typedef struct AudioObjectPropertyAddress AudioObjectPropertyAddress;
 
 namespace WebCore {
 
-class AudioSessionMac final : public AudioSession {
+class AudioSessionMac final : public AudioSessionCocoa {
 public:
     AudioSessionMac() = default;
     virtual ~AudioSessionMac() = default;
@@ -42,34 +43,51 @@ public:
 private:
     void addSampleRateObserverIfNeeded() const;
     void addBufferSizeObserverIfNeeded() const;
+    void addDefaultDeviceObserverIfNeeded() const;
+    void addMuteChangeObserverIfNeeded() const;
+    void removeMuteChangeObserverIfNeeded() const;
+
+    float sampleRateWithoutCaching() const;
+    std::optional<size_t> bufferSizeWithoutCaching() const;
+    void removePropertyListenersForDefaultDevice() const;
 
     static OSStatus handleSampleRateChange(AudioObjectID, UInt32, const AudioObjectPropertyAddress*, void* inClientData);
     void handleSampleRateChange() const;
     static OSStatus handleBufferSizeChange(AudioObjectID, UInt32, const AudioObjectPropertyAddress*, void* inClientData);
     void handleBufferSizeChange() const;
+    static OSStatus handleDefaultDeviceChange(AudioObjectID, UInt32, const AudioObjectPropertyAddress*, void* inClientData);
+
+    AudioDeviceID defaultDevice() const;
+    static const AudioObjectPropertyAddress& defaultOutputDeviceAddress();
+    static const AudioObjectPropertyAddress& nominalSampleRateAddress();
+    static const AudioObjectPropertyAddress& bufferSizeAddress();
+    static const AudioObjectPropertyAddress& muteAddress();
 
     // AudioSession
     CategoryType category() const final { return m_category; }
+    RouteSharingPolicy routeSharingPolicy() const { return m_policy; }
     void audioOutputDeviceChanged() final;
     void setIsPlayingToBluetoothOverride(std::optional<bool>) final;
-    void setCategory(CategoryType, RouteSharingPolicy) final;
+    void setCategory(CategoryType, Mode, RouteSharingPolicy) final;
     float sampleRate() const final;
     size_t bufferSize() const final;
     size_t numberOfOutputChannels() const final;
     size_t maximumNumberOfOutputChannels() const final;
-    bool tryToSetActiveInternal(bool) final;
-    RouteSharingPolicy routeSharingPolicy() const final;
     String routingContextUID() const final;
     size_t preferredBufferSize() const final;
     void setPreferredBufferSize(size_t) final;
     bool isMuted() const final;
     void handleMutedStateChange() final;
-    void addConfigurationChangeObserver(ConfigurationChangeObserver&) final;
-    void removeConfigurationChangeObserver(ConfigurationChangeObserver&) final;
+    void addConfigurationChangeObserver(AudioSessionConfigurationChangeObserver&) final;
+    void removeConfigurationChangeObserver(AudioSessionConfigurationChangeObserver&) final;
+
+    WTFLogChannel& logChannel() const;
+    const void* logIdentifier() const;
 
     std::optional<bool> m_lastMutedState;
-    mutable WeakHashSet<ConfigurationChangeObserver> m_configurationChangeObservers;
+    mutable WeakHashSet<AudioSessionConfigurationChangeObserver> m_configurationChangeObservers;
     AudioSession::CategoryType m_category { AudioSession::CategoryType::None };
+    RouteSharingPolicy m_policy { RouteSharingPolicy::Default };
 #if ENABLE(ROUTING_ARBITRATION)
     bool m_setupArbitrationOngoing { false };
     bool m_inRoutingArbitration { false };
@@ -78,8 +96,11 @@ private:
 #endif
     mutable bool m_hasSampleRateObserver { false };
     mutable bool m_hasBufferSizeObserver { false };
+    mutable bool m_hasDefaultDeviceObserver { false };
+    mutable bool m_hasMuteChangeObserver { false };
     mutable std::optional<double> m_sampleRate;
     mutable std::optional<size_t> m_bufferSize;
+    mutable std::optional<AudioDeviceID> m_defaultDevice;
 };
 
 }

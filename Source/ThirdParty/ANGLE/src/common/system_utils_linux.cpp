@@ -45,11 +45,17 @@ const char *GetSharedLibraryExtension()
     return "so";
 }
 
-double GetCurrentTime()
+double GetCurrentSystemTime()
 {
     struct timespec currentTime;
     clock_gettime(CLOCK_MONOTONIC, &currentTime);
     return currentTime.tv_sec + currentTime.tv_nsec * 1e-9;
 }
 
+void SetCurrentThreadName(const char *name)
+{
+    // There's a 15-character (16 including '\0') limit.  If the name is too big (and ERANGE is
+    // returned), just ignore the name.
+    pthread_setname_np(pthread_self(), name);
+}
 }  // namespace angle

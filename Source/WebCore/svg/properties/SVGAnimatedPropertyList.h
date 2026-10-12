@@ -99,25 +99,19 @@ public:
     // Controlling the instance animation.
     void instanceStartAnimation(SVGAttributeAnimator& animator, SVGAnimatedProperty& animated) override
     {
-        if (isAnimating())
-            return;
-        m_animVal = static_cast<SVGAnimatedPropertyList&>(animated).animVal();
+        if (!isAnimating())
+            m_animVal = static_cast<SVGAnimatedPropertyList&>(animated).animVal();
         SVGAnimatedProperty::instanceStartAnimation(animator, animated);
     }
 
     void instanceStopAnimation(SVGAttributeAnimator& animator) override
     {
-        if (!isAnimating())
-            return;
-        m_animVal = nullptr;
         SVGAnimatedProperty::instanceStopAnimation(animator);
+        if (!isAnimating())
+            m_animVal = nullptr;
     }
 
-    // Visual Studio doesn't seem to see these private constructors from subclasses.
-    // FIXME: See what it takes to remove this hack.
-#if !COMPILER(MSVC)
 protected:
-#endif
     template<typename... Arguments>
     SVGAnimatedPropertyList(SVGElement* contextElement, Arguments&&... arguments)
         : SVGAnimatedProperty(contextElement)

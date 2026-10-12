@@ -28,7 +28,7 @@
 namespace WebCore {
 
 ShadowData::ShadowData(const ShadowData& o)
-    : m_location(o.m_location)
+    : m_location(o.m_location.x(), o.m_location.y())
     , m_spread(o.m_spread)
     , m_radius(o.m_radius)
     , m_color(o.m_color)
@@ -36,6 +36,12 @@ ShadowData::ShadowData(const ShadowData& o)
     , m_isWebkitBoxShadow(o.m_isWebkitBoxShadow)
     , m_next(o.m_next ? makeUnique<ShadowData>(*o.m_next) : nullptr)
 {
+}
+
+void ShadowData::deleteNextLinkedListWithoutRecursion()
+{
+    // Avoid recursion errors when the linked list is too long.
+    for (auto next = std::exchange(m_next, nullptr); (next = std::exchange(next->m_next, nullptr));) { }
 }
 
 std::optional<ShadowData> ShadowData::clone(const ShadowData* data)
@@ -47,56 +53,89 @@ std::optional<ShadowData> ShadowData::clone(const ShadowData* data)
 
 bool ShadowData::operator==(const ShadowData& o) const
 {
-    if (!arePointingToEqualData(m_next, o.m_next))
+    auto comparison = [](const auto& a, const auto& b) {
+        return a.m_location == b.m_location
+            && a.m_radius == b.m_radius
+            && a.m_spread == b.m_spread
+            && a.m_style == b.m_style
+            && a.m_color == b.m_color
+            && a.m_isWebkitBoxShadow == b.m_isWebkitBoxShadow;
+    };
+
+    if (!comparison(*this, o))
         return false;
-    
-    return m_location == o.m_location
-        && m_radius == o.m_radius
-        && m_spread == o.m_spread
-        && m_style == o.m_style
-        && m_color == o.m_color
-        && m_isWebkitBoxShadow == o.m_isWebkitBoxShadow;
+
+    // Avoid relying on recursion in case the linked list is very long.
+    auto* next = m_next.get();
+    auto* oNext = o.m_next.get();
+    while (next || oNext) {
+        if (!next || !oNext || !comparison(*next, *oNext))
+            return false;
+        next = next->m_next.get();
+        oNext = oNext->m_next.get();
+    }
+
+    return true;
 }
 
-static inline void calculateShadowExtent(const ShadowData* shadow, LayoutUnit additionalOutlineSize, LayoutUnit& shadowLeft, LayoutUnit& shadowRight, LayoutUnit& shadowTop, LayoutUnit& shadowBottom)
+LayoutBoxExtent ShadowData::shadowOutsetExtent() const
 {
-    do {
-        LayoutUnit extentAndSpread = shadow->paintingExtent() + shadow->spread() + additionalOutlineSize;
-        if (shadow->style() == ShadowStyle::Normal) {
-            shadowLeft = std::min(shadow->x() - extentAndSpread, shadowLeft);
-            shadowRight = std::max(shadow->x() + extentAndSpread, shadowRight);
-            shadowTop = std::min(shadow->y() - extentAndSpread, shadowTop);
-            shadowBottom = std::max(shadow->y() + extentAndSpread, shadowBottom);
-        }
+    LayoutUnit top;
+    LayoutUnit right;
+    LayoutUnit bottom;
+    LayoutUnit left;
 
-        shadow = shadow->next();
-    } while (shadow);
+    for (auto* shadow = this; shadow; shadow = shadow->next()) {
+        auto extentAndSpread = shadow->paintingExtent() + LayoutUnit(shadow->spread().value());
+        if (shadow->style() == ShadowStyle::Inset)
+            continue;
+
+        left = std::min(LayoutUnit(shadow->x().value()) - extentAndSpread, left);
+        right = std::max(LayoutUnit(shadow->x().value()) + extentAndSpread, right);
+        top = std::min(LayoutUnit(shadow->y().value()) - extentAndSpread, top);
+        bottom = std::max(LayoutUnit(shadow->y().value()) + extentAndSpread, bottom);
+    }
+
+    return { top, right, bottom, left };
 }
 
-void ShadowData::adjustRectForShadow(LayoutRect& rect, int additionalOutlineSize) const
+LayoutBoxExtent ShadowData::shadowInsetExtent() const
 {
-    LayoutUnit shadowLeft;
-    LayoutUnit shadowRight;
-    LayoutUnit shadowTop;
-    LayoutUnit shadowBottom;
-    calculateShadowExtent(this, additionalOutlineSize, shadowLeft, shadowRight, shadowTop, shadowBottom);
+    LayoutUnit top;
+    LayoutUnit right;
+    LayoutUnit bottom;
+    LayoutUnit left;
 
-    rect.move(shadowLeft, shadowTop);
-    rect.setWidth(rect.width() - shadowLeft + shadowRight);
-    rect.setHeight(rect.height() - shadowTop + shadowBottom);
+    for (auto* shadow = this; shadow; shadow = shadow->next()) {
+        if (shadow->style() == ShadowStyle::Normal)
+            continue;
+
+        auto extentAndSpread = shadow->paintingExtent() + LayoutUnit(shadow->spread().value());
+        top = std::max<LayoutUnit>(top, LayoutUnit(shadow->y().value()) + extentAndSpread);
+        right = std::min<LayoutUnit>(right, LayoutUnit(shadow->x().value()) - extentAndSpread);
+        bottom = std::min<LayoutUnit>(bottom, LayoutUnit(shadow->y().value()) - extentAndSpread);
+        left = std::max<LayoutUnit>(left, LayoutUnit(shadow->x().value()) + extentAndSpread);
+    }
+
+    return { top, right, bottom, left };
 }
 
-void ShadowData::adjustRectForShadow(FloatRect& rect, int additionalOutlineSize) const
+void ShadowData::adjustRectForShadow(LayoutRect& rect) const
 {
-    LayoutUnit shadowLeft = 0;
-    LayoutUnit shadowRight = 0;
-    LayoutUnit shadowTop = 0;
-    LayoutUnit shadowBottom = 0;
-    calculateShadowExtent(this, additionalOutlineSize, shadowLeft, shadowRight, shadowTop, shadowBottom);
+    auto shadowExtent = shadowOutsetExtent();
 
-    rect.move(shadowLeft, shadowTop);
-    rect.setWidth(rect.width() - shadowLeft + shadowRight);
-    rect.setHeight(rect.height() - shadowTop + shadowBottom);
+    rect.move(shadowExtent.left(), shadowExtent.top());
+    rect.setWidth(rect.width() - shadowExtent.left() + shadowExtent.right());
+    rect.setHeight(rect.height() - shadowExtent.top() + shadowExtent.bottom());
+}
+
+void ShadowData::adjustRectForShadow(FloatRect& rect) const
+{
+    auto shadowExtent = shadowOutsetExtent();
+
+    rect.move(shadowExtent.left(), shadowExtent.top());
+    rect.setWidth(rect.width() - shadowExtent.left() + shadowExtent.right());
+    rect.setHeight(rect.height() - shadowExtent.top() + shadowExtent.bottom());
 }
 
 TextStream& operator<<(TextStream& ts, const ShadowData& data)

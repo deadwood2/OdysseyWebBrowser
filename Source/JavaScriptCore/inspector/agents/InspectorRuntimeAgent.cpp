@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,16 +44,19 @@
 #include "TypeProfiler.h"
 #include "TypeProfilerLog.h"
 #include <wtf/JSONValues.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/text/StringToIntegerConversion.h>
 
 namespace Inspector {
 
 using namespace JSC;
 
+WTF_MAKE_TZONE_ALLOCATED_IMPL(InspectorRuntimeAgent);
+
 InspectorRuntimeAgent::InspectorRuntimeAgent(AgentContext& context)
     : InspectorAgentBase("Runtime"_s)
     , m_injectedScriptManager(context.injectedScriptManager)
-    , m_debugger(context.environment.debugger())
+    , m_debugger(*context.environment.debugger())
     , m_vm(context.environment.vm())
 {
 }
@@ -89,7 +92,7 @@ Protocol::ErrorStringOr<std::tuple<Protocol::Runtime::SyntaxErrorType, String /*
     JSLockHolder lock(m_vm);
 
     ParserError error;
-    checkSyntax(m_vm, JSC::makeSource(expression, { }), error);
+    checkSyntax(m_vm, JSC::makeSource(expression, { }, SourceTaintedOrigin::Untainted), error);
 
     std::optional<Protocol::Runtime::SyntaxErrorType> result;
     String message;
@@ -121,13 +124,22 @@ Protocol::ErrorStringOr<std::tuple<Protocol::Runtime::SyntaxErrorType, String /*
     return { { *result, message, WTFMove(range) } };
 }
 
-Protocol::ErrorStringOr<std::tuple<Ref<Protocol::Runtime::RemoteObject>, std::optional<bool> /* wasThrown */, std::optional<int> /* savedResultIndex */>> InspectorRuntimeAgent::evaluate(const String& expression, const String& objectGroup, std::optional<bool>&& includeCommandLineAPI, std::optional<bool>&& doNotPauseOnExceptionsAndMuteConsole, std::optional<Protocol::Runtime::ExecutionContextId>&& executionContextId, std::optional<bool>&& returnByValue, std::optional<bool>&& generatePreview, std::optional<bool>&& saveResult, std::optional<bool>&& /* emulateUserGesture */)
+Protocol::ErrorStringOr<std::tuple<Ref<Protocol::Runtime::RemoteObject>, std::optional<bool> /* wasThrown */, std::optional<int> /* savedResultIndex */>> InspectorRuntimeAgent::evaluate(const String& expression, const String& objectGroup, std::optional<bool>&& includeCommandLineAPI, std::optional<bool>&& doNotPauseOnExceptionsAndMuteConsole, std::optional<Protocol::Runtime::ExecutionContextId>&& executionContextId, std::optional<bool>&& returnByValue, std::optional<bool>&& generatePreview, std::optional<bool>&& saveResult, std::optional<bool>&& emulateUserGesture)
 {
     Protocol::ErrorString errorString;
 
     InjectedScript injectedScript = injectedScriptForEval(errorString, WTFMove(executionContextId));
     if (injectedScript.hasNoValue())
         return makeUnexpected(errorString);
+
+    return evaluate(injectedScript, expression, objectGroup, WTFMove(includeCommandLineAPI), WTFMove(doNotPauseOnExceptionsAndMuteConsole), WTFMove(returnByValue), WTFMove(generatePreview), WTFMove(saveResult), WTFMove(emulateUserGesture));
+}
+
+Protocol::ErrorStringOr<std::tuple<Ref<Protocol::Runtime::RemoteObject>, std::optional<bool> /* wasThrown */, std::optional<int> /* savedResultIndex */>> InspectorRuntimeAgent::evaluate(InjectedScript& injectedScript, const String& expression, const String& objectGroup, std::optional<bool>&& includeCommandLineAPI, std::optional<bool>&& doNotPauseOnExceptionsAndMuteConsole, std::optional<bool>&& returnByValue, std::optional<bool>&& generatePreview, std::optional<bool>&& saveResult, std::optional<bool>&& /* emulateUserGesture */)
+{
+    ASSERT(!injectedScript.hasNoValue());
+
+    Protocol::ErrorString errorString;
 
     RefPtr<Protocol::Runtime::RemoteObject> result;
     std::optional<bool> wasThrown;
@@ -168,16 +180,20 @@ void InspectorRuntimeAgent::awaitPromise(const Protocol::Runtime::RemoteObjectId
     });
 }
 
-Protocol::ErrorStringOr<std::tuple<Ref<Protocol::Runtime::RemoteObject>, std::optional<bool> /* wasThrown */>> InspectorRuntimeAgent::callFunctionOn(const Protocol::Runtime::RemoteObjectId& objectId, const String& functionDeclaration, RefPtr<JSON::Array>&& arguments, std::optional<bool>&& doNotPauseOnExceptionsAndMuteConsole, std::optional<bool>&& returnByValue, std::optional<bool>&& generatePreview, std::optional<bool>&& /* emulateUserGesture */)
+void InspectorRuntimeAgent::callFunctionOn(const Protocol::Runtime::RemoteObjectId& objectId, const String& functionDeclaration, RefPtr<JSON::Array>&& arguments, std::optional<bool>&& doNotPauseOnExceptionsAndMuteConsole, std::optional<bool>&& returnByValue, std::optional<bool>&& generatePreview, std::optional<bool>&& emulateUserGesture, std::optional<bool>&& awaitPromise, Ref<CallFunctionOnCallback>&& callback)
 {
-    Protocol::ErrorString errorString;
-
     InjectedScript injectedScript = m_injectedScriptManager.injectedScriptForObjectId(objectId);
-    if (injectedScript.hasNoValue())
-        return makeUnexpected("Missing injected script for given objectId"_s);
+    if (injectedScript.hasNoValue()) {
+        callback->sendFailure("Missing injected script for given objectId"_s);
+        return;
+    }
 
-    RefPtr<Protocol::Runtime::RemoteObject> result;
-    std::optional<bool> wasThrown;
+    callFunctionOn(injectedScript, objectId, functionDeclaration, WTFMove(arguments), WTFMove(doNotPauseOnExceptionsAndMuteConsole), WTFMove(returnByValue), WTFMove(generatePreview), WTFMove(emulateUserGesture), WTFMove(awaitPromise), WTFMove(callback));
+}
+
+void InspectorRuntimeAgent::callFunctionOn(InjectedScript& injectedScript, const Protocol::Runtime::RemoteObjectId& objectId, const String& functionDeclaration, RefPtr<JSON::Array>&& arguments, std::optional<bool>&& doNotPauseOnExceptionsAndMuteConsole, std::optional<bool>&& returnByValue, std::optional<bool>&& generatePreview, std::optional<bool>&& /* emulateUserGesture */, std::optional<bool>&& awaitPromise, Ref<CallFunctionOnCallback>&& callback)
+{
+    ASSERT(!injectedScript.hasNoValue());
 
     JSC::Debugger::TemporarilyDisableExceptionBreakpoints temporarilyDisableExceptionBreakpoints(m_debugger);
 
@@ -187,15 +203,16 @@ Protocol::ErrorStringOr<std::tuple<Ref<Protocol::Runtime::RemoteObject>, std::op
         muteConsole();
     }
 
-    injectedScript.callFunctionOn(errorString, objectId, functionDeclaration, arguments ? arguments->toJSONString() : nullString(), returnByValue.value_or(false), generatePreview.value_or(false), result, wasThrown);
+    injectedScript.callFunctionOn(objectId, functionDeclaration, arguments ? arguments->toJSONString() : nullString(), returnByValue.value_or(false), generatePreview.value_or(false), awaitPromise.value_or(false), [callback = WTFMove(callback)] (Protocol::ErrorString& errorString, RefPtr<Protocol::Runtime::RemoteObject>&& result, std::optional<bool>&& wasThrown, std::optional<int>&& savedResultIndex) {
+        UNUSED_PARAM(savedResultIndex);
+        if (!result)
+            callback->sendFailure(errorString);
+        else
+            callback->sendSuccess(result.releaseNonNull(), WTFMove(wasThrown));
+    });
 
     if (pauseAndMute)
         unmuteConsole();
-
-    if (!result)
-        return makeUnexpected(errorString);
-
-    return { { result.releaseNonNull(), WTFMove(wasThrown) } };
 }
 
 Protocol::ErrorStringOr<Ref<Protocol::Runtime::ObjectPreview>> InspectorRuntimeAgent::getPreview(const Protocol::Runtime::RemoteObjectId& objectId)
@@ -331,7 +348,7 @@ Protocol::ErrorStringOr<std::optional<int> /* saveResultIndex */> InspectorRunti
 
     InjectedScript injectedScript;
 
-    auto objectId = callArgument->getString(Protocol::Runtime::CallArgument::objectIdKey);
+    auto objectId = callArgument->getString("objectId"_s);
     if (!objectId) {
         injectedScript = injectedScriptForEval(errorString, WTFMove(executionContextId));
         if (injectedScript.hasNoValue())
@@ -392,9 +409,9 @@ Protocol::ErrorStringOr<Ref<JSON::ArrayOf<Protocol::Runtime::TypeDescription>>> 
         if (!location)
             return makeUnexpected("Unexpected non-object item in locations"_s);
 
-        auto descriptor = location->getInteger(Protocol::Runtime::TypeLocation::typeInformationDescriptorKey).value_or(TypeProfilerSearchDescriptorNormal);
-        auto sourceIDString = location->getString(Protocol::Runtime::TypeLocation::sourceIDKey);
-        auto divot = location->getInteger(Protocol::Runtime::TypeLocation::divotKey).value_or(0);
+        auto descriptor = location->getInteger("typeInformationDescriptor"_s).value_or(TypeProfilerSearchDescriptorNormal);
+        auto sourceIDString = location->getString("sourceID"_s);
+        auto divot = location->getInteger("divot"_s).value_or(0);
 
         auto typeLocation = m_vm.typeProfiler()->findLocation(divot, parseInteger<uintptr_t>(sourceIDString).value(), static_cast<TypeProfilerSearchDescriptor>(descriptor), m_vm);
 

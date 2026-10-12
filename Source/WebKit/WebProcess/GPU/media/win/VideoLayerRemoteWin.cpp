@@ -26,14 +26,14 @@
 #include "config.h"
 #include "VideoLayerRemote.h"
 
-#if ENABLE(GPU_PROCESS)
+#if ENABLE(GPU_PROCESS) && ENABLE(VIDEO)
 
 #include <WebCore/NotImplemented.h>
 #include <WebCore/TextureMapperPlatformLayer.h>
 
 namespace WebKit {
 
-PlatformLayerContainer createVideoLayerRemote(MediaPlayerPrivateRemote*, LayerHostingContextID, WebCore::MediaPlayerEnums::VideoGravity)
+PlatformLayerContainer createVideoLayerRemote(MediaPlayerPrivateRemote*, LayerHostingContextID, WebCore::MediaPlayerEnums::VideoGravity, WebCore::IntSize)
 {
     notImplemented();
     return nullptr;
@@ -41,4 +41,4 @@ PlatformLayerContainer createVideoLayerRemote(MediaPlayerPrivateRemote*, LayerHo
 
 }
 
-#endif
+#endif // ENABLE(GPU_PROCESS) && ENABLE(VIDEO)

@@ -24,18 +24,17 @@
  */
 
 #include "config.h"
+#include "AudioTrackList.h"
 
 #if ENABLE(VIDEO)
 
-#include "AudioTrackList.h"
-
 #include "AudioTrack.h"
-#include "HTMLMediaElement.h"
+#include "ContextDestructionObserverInlines.h"
 
 namespace WebCore {
 
-AudioTrackList::AudioTrackList(WeakPtr<HTMLMediaElement> element, ScriptExecutionContext* context)
-    : TrackListBase(element, context)
+AudioTrackList::AudioTrackList(ScriptExecutionContext* context)
+    : TrackListBase(context, TrackListBase::VideoTrackList)
 {
 }
 
@@ -53,17 +52,34 @@ void AudioTrackList::append(Ref<AudioTrack>&& track)
     }
     m_inbandTracks.insert(insertionIndex, track.ptr());
 
-
-    ASSERT(!track->mediaElement() || track->mediaElement() == mediaElement());
-    track->setMediaElement(mediaElement());
+    if (!track->trackList())
+        track->setTrackList(*this);
 
     scheduleAddTrackEvent(WTFMove(track));
+}
+
+void AudioTrackList::remove(TrackBase& track, bool scheduleEvent)
+{
+    auto& audioTrack = downcast<AudioTrack>(track);
+    if (audioTrack.trackList() == this)
+        audioTrack.clearTrackList();
+
+    TrackListBase::remove(track, scheduleEvent);
 }
 
 AudioTrack* AudioTrackList::item(unsigned index) const
 {
     if (index < m_inbandTracks.size())
         return downcast<AudioTrack>(m_inbandTracks[index].get());
+    return nullptr;
+}
+
+AudioTrack* AudioTrackList::firstEnabled() const
+{
+    for (auto& item : m_inbandTracks) {
+        if (item && item->enabled())
+            return downcast<AudioTrack>(item.get());
+    }
     return nullptr;
 }
 
@@ -77,14 +93,19 @@ AudioTrack* AudioTrackList::getTrackById(const AtomString& id) const
     return nullptr;
 }
 
-EventTargetInterface AudioTrackList::eventTargetInterface() const
+AudioTrack* AudioTrackList::getTrackById(TrackID id) const
 {
-    return AudioTrackListEventTargetInterfaceType;
+    for (auto& inbandTrack : m_inbandTracks) {
+        auto& track = downcast<AudioTrack>(*inbandTrack);
+        if (track.trackId() == id)
+            return &track;
+    }
+    return nullptr;
 }
 
-const char* AudioTrackList::activeDOMObjectName() const
+enum EventTargetInterfaceType AudioTrackList::eventTargetInterface() const
 {
-    return "AudioTrackList";
+    return EventTargetInterfaceType::AudioTrackList;
 }
 
 } // namespace WebCore

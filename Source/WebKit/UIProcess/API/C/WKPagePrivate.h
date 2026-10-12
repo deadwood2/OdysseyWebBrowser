@@ -146,8 +146,12 @@ enum {
     kWKMediaHasActiveVideoCaptureDevice = 1 << 3,
     kWKMediaHasMutedAudioCaptureDevice = 1 << 4,
     kWKMediaHasMutedVideoCaptureDevice = 1 << 5,
-    kWKMediaHasActiveDisplayCaptureDevice = 1 << 6,
-    kWKMediaHasMutedDisplayCaptureDevice = 1 << 7,
+    kWKMediaHasActiveScreenCaptureDevice = 1 << 6,
+    kWKMediaHasActiveDisplayCaptureDevice = kWKMediaHasActiveScreenCaptureDevice,
+    kWKMediaHasMutedScreenCaptureDevice = 1 << 7,
+    kWKMediaHasMutedDisplayCaptureDevice = kWKMediaHasMutedScreenCaptureDevice,
+    kWKMediaHasActiveWindowCaptureDevice = 1 << 8,
+    kWKMediaHasMutedWindowCaptureDevice = 1 << 9,
 };
 typedef uint32_t WKMediaState;
 
@@ -165,10 +169,8 @@ WK_EXPORT void WKPageSetIgnoresViewportScaleLimits(WKPageRef page, bool ignoresV
 WK_EXPORT WKProcessID WKPageGetProcessIdentifier(WKPageRef page);
 WK_EXPORT WKProcessID WKPageGetGPUProcessIdentifier(WKPageRef page);
 
-#ifdef __BLOCKS__
-typedef void (^WKPageGetApplicationManifestBlock)(void);
-WK_EXPORT void WKPageGetApplicationManifest_b(WKPageRef page, WKPageGetApplicationManifestBlock block);
-#endif
+typedef void (*WKPageGetApplicationManifestFunction)(void* functionContext);
+WK_EXPORT void WKPageGetApplicationManifest(WKPageRef page, void* context, WKPageGetApplicationManifestFunction block);
 
 typedef void (*WKPageDumpPrivateClickMeasurementFunction)(WKStringRef privateClickMeasurementRepresentation, void* functionContext);
 WK_EXPORT void WKPageDumpPrivateClickMeasurement(WKPageRef, WKPageDumpPrivateClickMeasurementFunction, void* callbackContext);
@@ -180,8 +182,8 @@ typedef void (*WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTestingFu
 WK_EXPORT void WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTesting(WKPageRef page, WKPageMarkAttributedPrivateClickMeasurementsAsExpiredForTestingFunction callback, void* callbackContext);
 typedef void (*WKPageSetPrivateClickMeasurementEphemeralMeasurementForTestingFunction)(void* functionContext);
 WK_EXPORT void WKPageSetPrivateClickMeasurementEphemeralMeasurementForTesting(WKPageRef page, bool value, WKPageSetPrivateClickMeasurementEphemeralMeasurementForTestingFunction callback, void* callbackContext);
-typedef void (*WKPageSimulateResourceLoadStatisticsSessionRestartFunction)(void* functionContext);
-WK_EXPORT void WKPageSimulateResourceLoadStatisticsSessionRestart(WKPageRef page, WKPageSimulateResourceLoadStatisticsSessionRestartFunction callback, void* callbackContext);
+typedef void (*WKPageSimulatePrivateClickMeasurementSessionRestartFunction)(void* functionContext);
+WK_EXPORT void WKPageSimulatePrivateClickMeasurementSessionRestart(WKPageRef page, WKPageSimulatePrivateClickMeasurementSessionRestartFunction callback, void* callbackContext);
 typedef void (*WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTestingFunction)(void* functionContext);
 WK_EXPORT void WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTesting(WKPageRef page, WKURLRef urlString, WKPageSetPrivateClickMeasurementTokenPublicKeyURLForTestingFunction callback, void* callbackContext);
 typedef void (*WKPageSetPrivateClickMeasurementTokenSignatureURLForTestingFunction)(void* functionContext);
@@ -192,9 +194,13 @@ typedef void (*WKPageMarkPrivateClickMeasurementsAsExpiredForTestingFunction)(vo
 WK_EXPORT void WKPageMarkPrivateClickMeasurementsAsExpiredForTesting(WKPageRef page, WKPageMarkPrivateClickMeasurementsAsExpiredForTestingFunction callback, void* callbackContext);
 typedef void (*WKPageSetPCMFraudPreventionValuesForTestingFunction)(void* functionContext);
 WK_EXPORT void WKPageSetPCMFraudPreventionValuesForTesting(WKPageRef page, WKStringRef secretToken, WKStringRef unlinkableToken, WKStringRef signature, WKStringRef keyID, WKPageSetPCMFraudPreventionValuesForTestingFunction callback, void* callbackContext);
+typedef void (*WKPageSetPrivateClickMeasurementAppBundleIDForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPrivateClickMeasurementAppBundleIDForTesting(WKPageRef pageRef, WKStringRef appBundleIDForTesting, WKPageSetPrivateClickMeasurementAppBundleIDForTestingFunction callback, void* callbackContext);
 
 WK_EXPORT void WKPageSetMockCameraOrientation(WKPageRef page, uint64_t orientation);
 WK_EXPORT bool WKPageIsMockRealtimeMediaSourceCenterEnabled(WKPageRef page);
+WK_EXPORT void WKPageSetMockCaptureDevicesInterrupted(WKPageRef page, bool isCameraInterrupted, bool isMicrophoneInterrupted);
+WK_EXPORT void WKPageTriggerMockCaptureConfigurationChange(WKPageRef page, bool forMicrophone, bool forDisplay);
 
 typedef void (*WKPageLoadedSubresourceDomainsFunction)(WKArrayRef domains, void* functionContext);
 WK_EXPORT void WKPageLoadedSubresourceDomains(WKPageRef page, WKPageLoadedSubresourceDomainsFunction callback, void* callbackContext);
@@ -204,6 +210,16 @@ WK_EXPORT void WKPageSetMediaCaptureReportingDelayForTesting(WKPageRef page, dou
 
 WK_EXPORT void WKPageDispatchActivityStateUpdateForTesting(WKPageRef page);
 
+WK_EXPORT void WKPagePermissionChanged(WKStringRef permissionName, WKStringRef originString);
+
+WK_EXPORT void WKPageExecuteCommandForTesting(WKPageRef pageRef, WKStringRef command, WKStringRef value);
+WK_EXPORT bool WKPageIsEditingCommandEnabledForTesting(WKPageRef page, WKStringRef command);
+WK_EXPORT void WKPageSetPermissionLevelForTesting(WKPageRef page, WKStringRef origin, bool allowed);
+
+typedef void (*WKPageSetTopContentInsetForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetTopContentInsetForTesting(WKPageRef page, float contentInset, void* context, WKPageSetTopContentInsetForTestingFunction callback);
+typedef void (*WKPageSetPageScaleFactorForTestingFunction)(void* functionContext);
+WK_EXPORT void WKPageSetPageScaleFactorForTesting(WKPageRef page, float scaleFactor, WKPoint point, void* context, WKPageSetPageScaleFactorForTestingFunction completionHandler);
 #ifdef __cplusplus
 }
 #endif

@@ -23,6 +23,7 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "WebKit.h"
 #include "StorageTracker.h"
 
 #include "StorageThread.h"
@@ -32,15 +33,16 @@
 #include <WebCore/SQLiteStatement.h>
 #include <WebCore/SecurityOrigin.h>
 #include <WebCore/SecurityOriginData.h>
-#include <WebCore/TextEncoding.h>
+#include <pal/text/TextEncoding.h>
 #include <wtf/FileSystem.h>
 #include <wtf/MainThread.h>
 #include <wtf/StdLibExtras.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/Vector.h>
 #include <wtf/text/CString.h>
 
-#if PLATFORM(IOS_FAMILY)
-#include <pal/spi/ios/SQLite3SPI.h>
+#if PLATFORM(COCOA)
+#include <pal/spi/cocoa/SQLite3SPI.h>
 #endif
 
 using namespace WebCore;
@@ -52,7 +54,9 @@ static StorageTracker* storageTracker = nullptr;
 // If there is no document referencing a storage database, close the underlying database
 // after it has been idle for m_StorageDatabaseIdleInterval seconds.
 static const Seconds defaultStorageDatabaseIdleInterval { 300_s };
-    
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(StorageTracker);
+
 void StorageTracker::initializeTracker(const String& storagePath, StorageTrackerClient* client)
 {
     ASSERT(isMainThread());
@@ -73,21 +77,21 @@ void StorageTracker::internalInitialize()
 
     // Make sure text encoding maps have been built on the main thread, as the StorageTracker thread might try to do it there instead.
     // FIXME (<rdar://problem/9127819>): Is there a more explicit way of doing this besides accessing the UTF8Encoding?
-    UTF8Encoding();
+    PAL::UTF8Encoding();
     
     storageTracker->setIsActive(true);
     storageTracker->m_thread->start();  
     storageTracker->importOriginIdentifiers();
 
     m_thread->dispatch([this] {
-        FileSystem::deleteFile(FileSystem::pathByAppendingComponent(m_storageDirectoryPath, "StorageTracker.db"));
+        FileSystem::deleteFile(FileSystem::pathByAppendingComponent(m_storageDirectoryPath, "StorageTracker.db"_s));
     });
 }
 
 StorageTracker& StorageTracker::tracker()
 {
     if (!storageTracker)
-        storageTracker = new StorageTracker("");
+        storageTracker = new StorageTracker(emptyString());
     if (storageTracker->m_needsInitialization)
         storageTracker->internalInitialize();
     
@@ -107,7 +111,7 @@ StorageTracker::StorageTracker(const String& storagePath)
 String StorageTracker::trackerDatabasePath()
 {
     ASSERT(!m_databaseMutex.tryLock());
-    return FileSystem::pathByAppendingComponent(m_storageDirectoryPath, "LegacyStorageTracker.db");
+    return FileSystem::pathByAppendingComponent(m_storageDirectoryPath, "LegacyStorageTracker.db"_s);
 }
 
 static bool ensureDatabaseFileExists(const String& fileName, bool createIfDoesNotExist)
@@ -145,7 +149,7 @@ void StorageTracker::openTrackerDatabase(bool createIfDoesNotExist)
     
     m_database.disableThreadingChecks();
     
-    if (!m_database.tableExists("Origins")) {
+    if (!m_database.tableExists("Origins"_s)) {
         if (!m_database.executeCommand("CREATE TABLE Origins (origin TEXT UNIQUE ON CONFLICT REPLACE, path TEXT);"_s))
             LOG_ERROR("Failed to create Origins table.");
     }
@@ -260,7 +264,7 @@ void StorageTracker::syncFileSystemAndTrackerDatabase()
             continue;
 
         auto filePath = FileSystem::pathByAppendingComponent(m_storageDirectoryPath, fileName);
-        String originIdentifier = fileName.substring(0, fileName.length() - fileExtension.length());
+        String originIdentifier = fileName.left(fileName.length() - fileExtension.length());
         if (!originSetCopy.contains(originIdentifier))
             syncSetOriginDetails(originIdentifier, filePath);
 
@@ -358,7 +362,7 @@ Vector<SecurityOriginData> StorageTracker::origins()
             ASSERT_NOT_REACHED();
             continue;
         }
-        result.uncheckedAppend(origin.value());
+        result.append(origin.value());
     }
     return result;
 }
@@ -490,7 +494,7 @@ void StorageTracker::deleteOrigin(const SecurityOriginData& origin)
         m_originSet.remove(originId);
     }
 
-    m_thread->dispatch([this, originId = originId.isolatedCopy()] {
+    m_thread->dispatch([this, originId = WTFMove(originId).isolatedCopy()] {
         syncDeleteOrigin(originId);
     });
 }

@@ -34,10 +34,6 @@
 #include <wtf/HashMap.h>
 #include <wtf/RefCounted.h>
 
-namespace PAL {
-class SessionID;
-}
-
 namespace WebCore {
 
 class IDBCursorInfo;
@@ -49,7 +45,7 @@ class IDBValue;
 struct IDBKeyRangeData;
 
 namespace IndexedDB {
-enum class GetAllType : uint8_t;
+enum class GetAllType : bool;
 enum class IndexRecordType : bool;
 }
 
@@ -59,9 +55,9 @@ class MemoryBackingStoreTransaction;
 
 typedef HashMap<IDBKeyData, ThreadSafeDataBuffer, IDBKeyDataHash, IDBKeyDataHashTraits> KeyValueMap;
 
-class MemoryObjectStore : public RefCounted<MemoryObjectStore> {
+class MemoryObjectStore : public RefCounted<MemoryObjectStore>, public CanMakeWeakPtr<MemoryObjectStore> {
 public:
-    static Ref<MemoryObjectStore> create(PAL::SessionID, const IDBObjectStoreInfo&);
+    static Ref<MemoryObjectStore> create(const IDBObjectStoreInfo&);
 
     ~MemoryObjectStore();
 
@@ -95,6 +91,7 @@ public:
     void getAllRecords(const IDBKeyRangeData&, std::optional<uint32_t> count, IndexedDB::GetAllType, IDBGetAllResult&) const;
 
     const IDBObjectStoreInfo& info() const { return m_info; }
+    IDBObjectStoreInfo& info() { return m_info; }
 
     MemoryObjectStoreCursor* maybeOpenCursor(const IDBCursorInfo&);
 
@@ -107,8 +104,10 @@ public:
     void rename(const String& newName) { m_info.rename(newName); }
     void renameIndex(MemoryIndex&, const String& newName);
 
+    RefPtr<MemoryIndex> takeIndexByIdentifier(uint64_t indexIdentifier);
+
 private:
-    MemoryObjectStore(PAL::SessionID, const IDBObjectStoreInfo&);
+    MemoryObjectStore(const IDBObjectStoreInfo&);
 
     IDBKeyDataSet::iterator lowestIteratorInRange(const IDBKeyRangeData&, bool reverse) const;
 
@@ -117,8 +116,6 @@ private:
     void updateIndexesForDeleteRecord(const IDBKeyData& value);
     void updateCursorsForPutRecord(IDBKeyDataSet::iterator);
     void updateCursorsForDeleteRecord(const IDBKeyData&);
-
-    RefPtr<MemoryIndex> takeIndexByIdentifier(uint64_t indexIdentifier);
 
     IDBObjectStoreInfo m_info;
 

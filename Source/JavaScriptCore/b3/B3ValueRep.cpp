@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,10 +30,13 @@
 
 #include "AssemblyHelpers.h"
 #include "JSCJSValueInlines.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC { namespace B3 {
 
-void ValueRep::addUsedRegistersTo(RegisterSet& set) const
+WTF_MAKE_TZONE_ALLOCATED_IMPL(ValueRep);
+
+void ValueRep::addUsedRegistersTo(bool isSIMDContext, RegisterSetBuilder& set) const
 {
     switch (m_kind) {
     case WarmAny:
@@ -47,21 +50,33 @@ void ValueRep::addUsedRegistersTo(RegisterSet& set) const
         return;
     case LateRegister:
     case Register:
-        set.set(reg());
+        set.add(reg(), isSIMDContext ? conservativeWidth(reg()) : conservativeWidthWithoutVectors(reg()));
         return;
     case Stack:
     case StackArgument:
-        set.set(MacroAssembler::stackPointerRegister);
-        set.set(GPRInfo::callFrameRegister);
+        set.add(MacroAssembler::stackPointerRegister, IgnoreVectors);
+        set.add(GPRInfo::callFrameRegister, IgnoreVectors);
         return;
+#if USE(JSVALUE32_64)
+    case SomeRegisterPair:
+    case SomeRegisterPairWithClobber:
+    case SomeEarlyRegisterPair:
+    case SomeLateRegisterPair:
+        return;
+    case LateRegisterPair:
+    case RegisterPair:
+        set.add(regLo(), isSIMDContext ? conservativeWidth(regLo()) : conservativeWidthWithoutVectors(reg()));
+        set.add(regHi(), isSIMDContext ? conservativeWidth(regHi()) : conservativeWidthWithoutVectors(reg()));
+        return;
+#endif
     }
     RELEASE_ASSERT_NOT_REACHED();
 }
 
-RegisterSet ValueRep::usedRegisters() const
+RegisterSetBuilder ValueRep::usedRegisters(bool isSIMDContext) const
 {
-    RegisterSet result;
-    addUsedRegistersTo(result);
+    RegisterSetBuilder result;
+    addUsedRegistersTo(isSIMDContext, result);
     return result;
 }
 
@@ -90,9 +105,27 @@ void ValueRep::dump(PrintStream& out) const
     case Constant:
         out.print("(", value(), ")");
         return;
+#if USE(JSVALUE32_64)
+    case SomeRegisterPair:
+    case SomeRegisterPairWithClobber:
+    case SomeEarlyRegisterPair:
+    case SomeLateRegisterPair:
+        return;
+    case LateRegisterPair:
+    case RegisterPair:
+        out.print("(", regHi(), ",", regLo(), ")");
+        return;
+#endif
     }
     RELEASE_ASSERT_NOT_REACHED();
 }
+
+// We use `B3::ValueRep` for bookkeeping in the BBQ wasm backend, including on
+// 32-bit platforms, but not for code generation (yet!), so we don't actually
+// want to provide these symbols until they are properly supported on those
+// platforms.
+
+#if USE(JSVALUE64)
 
 void ValueRep::emitRestore(AssemblyHelpers& jit, Reg reg) const
 {
@@ -158,6 +191,8 @@ ValueRecovery ValueRep::recoveryForJSValue() const
     }
 }
 
+#endif // USE(JSVALUE64) [see note above]
+
 } } // namespace JSC::B3
 
 namespace WTF {
@@ -203,6 +238,26 @@ void printInternal(PrintStream& out, ValueRep::Kind kind)
     case ValueRep::Constant:
         out.print("Constant");
         return;
+#if USE(JSVALUE32_64)
+    case ValueRep::SomeRegisterPair:
+        out.print("SomeRegisterPair");
+        return;
+    case ValueRep::SomeRegisterPairWithClobber:
+        out.print("SomeRegisterPairWithClobber");
+        return;
+    case ValueRep::SomeEarlyRegisterPair:
+        out.print("SomeEarlyRegisterPair");
+        return;
+    case ValueRep::SomeLateRegisterPair:
+        out.print("SomeLateRegisterPair");
+        return;
+    case ValueRep::RegisterPair:
+        out.print("RegisterPair");
+        return;
+    case ValueRep::LateRegisterPair:
+        out.print("LateRegisterPair");
+        return;
+#endif
     }
     RELEASE_ASSERT_NOT_REACHED();
 }

@@ -10,6 +10,7 @@
 #undef PAL_EXPORT
 #undef WEBCORE_EXPORT
 #undef JS_EXPORT_PRIVATE
+#undef WTF_EXPORT_PRIVATE
 
 #include <JavaScriptCore/JSExportMacros.h>
 #include <WebCore/PlatformExportMacros.h>

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,22 +31,25 @@
 #include "APIContentRuleList.h"
 #include "NetworkCacheData.h"
 #include "NetworkCacheFileSystem.h"
-#include "SharedMemory.h"
 #include "WebCompiledContentRuleList.h"
+#include <WebCore/CommonAtomStrings.h>
 #include <WebCore/ContentExtensionCompiler.h>
 #include <WebCore/ContentExtensionError.h>
 #include <WebCore/ContentExtensionParser.h>
 #include <WebCore/QualifiedName.h>
 #include <WebCore/SharedBuffer.h>
+#include <WebCore/SharedMemory.h>
 #include <string>
 #include <wtf/CompletionHandler.h>
+#include <wtf/CrossThreadCopier.h>
 #include <wtf/FileSystem.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/RunLoop.h>
+#include <wtf/StdLibExtras.h>
 #include <wtf/WorkQueue.h>
 #include <wtf/persistence/PersistentDecoder.h>
 #include <wtf/persistence/PersistentEncoder.h>
-
+#include <wtf/text/MakeString.h>
 
 namespace API {
 using namespace WebKit::NetworkCache;
@@ -54,8 +57,8 @@ using namespace FileSystem;
 
 ContentRuleListStore& ContentRuleListStore::defaultStore()
 {
-    static ContentRuleListStore* defaultStore = adoptRef(new ContentRuleListStore()).leakRef();
-    return *defaultStore;
+    static NeverDestroyed<Ref<ContentRuleListStore>> defaultStore = adoptRef(*new ContentRuleListStore());
+    return defaultStore->get();
 }
 
 Ref<ContentRuleListStore> ContentRuleListStore::storeWithPath(const WTF::String& storePath)
@@ -70,52 +73,53 @@ ContentRuleListStore::ContentRuleListStore()
 
 ContentRuleListStore::ContentRuleListStore(const WTF::String& storePath)
     : m_storePath(storePath)
-    , m_compileQueue(WorkQueue::create("ContentRuleListStore Compile Queue", WorkQueue::Type::Concurrent))
-    , m_readQueue(WorkQueue::create("ContentRuleListStore Read Queue"))
-    , m_removeQueue(WorkQueue::create("ContentRuleListStore Remove Queue"))
+    , m_compileQueue(ConcurrentWorkQueue::create("ContentRuleListStore Compile Queue"_s))
+    , m_readQueue(WorkQueue::create("ContentRuleListStore Read Queue"_s))
+    , m_removeQueue(WorkQueue::create("ContentRuleListStore Remove Queue"_s))
 {
     makeAllDirectories(storePath);
 }
 
 ContentRuleListStore::~ContentRuleListStore() = default;
 
-// FIXME: Remove legacyFilename in 2022 or 2023 after users have had a chance to run the updating logic.
-static const WTF::String& constructedPathPrefix(bool legacyFilename)
-{
-    static NeverDestroyed<WTF::String> prefix("ContentRuleList-");
-    static NeverDestroyed<WTF::String> legacyPrefix("ContentExtension-");
-    if (legacyFilename)
-        return legacyPrefix;
-    return prefix;
-}
+static constexpr auto constructedPathPrefix { "ContentRuleList-"_s };
 
-static WTF::String constructedPath(const WTF::String& base, const WTF::String& identifier, bool legacyFilename)
+static WTF::String constructedPath(const WTF::String& base, const WTF::String& identifier)
 {
-    return pathByAppendingComponent(base, makeString(constructedPathPrefix(legacyFilename), encodeForFileName(identifier)));
+    RELEASE_ASSERT(!base.isEmpty());
+    return pathByAppendingComponent(base, makeString(constructedPathPrefix, encodeForFileName(identifier)));
 }
 
 // The size and offset of the densely packed bytes in the file, not sizeof and offsetof, which would
 // represent the size and offset of the structure in memory, possibly with compiler-added padding.
-const size_t ContentRuleListFileHeaderSize = 2 * sizeof(uint32_t) + 5 * sizeof(uint64_t);
-const size_t ConditionsApplyOnlyToDomainOffset = sizeof(uint32_t) + 5 * sizeof(uint64_t);
+const size_t CurrentVersionFileHeaderSize = 2 * sizeof(uint32_t) + 7 * sizeof(uint64_t);
+
+static size_t headerSize(uint32_t version)
+{
+    if (version < 12)
+        return 2 * sizeof(uint32_t) + 5 * sizeof(uint64_t);
+    return CurrentVersionFileHeaderSize;
+}
 
 struct ContentRuleListMetaData {
     uint32_t version { ContentRuleListStore::CurrentContentRuleListFileVersion };
     uint64_t sourceSize { 0 };
     uint64_t actionsSize { 0 };
-    uint64_t filtersWithoutConditionsBytecodeSize { 0 };
-    uint64_t filtersWithConditionsBytecodeSize { 0 };
-    uint64_t conditionedFiltersBytecodeSize { 0 };
-    uint32_t conditionsApplyOnlyToDomain { false };
+    uint64_t urlFiltersBytecodeSize { 0 };
+    uint64_t topURLFiltersBytecodeSize { 0 };
+    uint64_t frameURLFiltersBytecodeSize { 0 };
+    uint32_t unused32bits { false };
+    uint64_t unused64bits1 { 0 };
+    uint64_t unused64bits2 { 0 }; // Additional space on disk reserved so we can add something without incrementing the version number.
     
     size_t fileSize() const
     {
-        return ContentRuleListFileHeaderSize
+        return headerSize(version)
             + sourceSize
             + actionsSize
-            + filtersWithoutConditionsBytecodeSize
-            + filtersWithConditionsBytecodeSize
-            + conditionedFiltersBytecodeSize;
+            + urlFiltersBytecodeSize
+            + topURLFiltersBytecodeSize
+            + frameURLFiltersBytecodeSize;
     }
 };
 
@@ -126,85 +130,91 @@ static WebKit::NetworkCache::Data encodeContentRuleListMetaData(const ContentRul
     encoder << metaData.version;
     encoder << metaData.sourceSize;
     encoder << metaData.actionsSize;
-    encoder << metaData.filtersWithoutConditionsBytecodeSize;
-    encoder << metaData.filtersWithConditionsBytecodeSize;
-    encoder << metaData.conditionedFiltersBytecodeSize;
-    encoder << metaData.conditionsApplyOnlyToDomain;
+    encoder << metaData.urlFiltersBytecodeSize;
+    encoder << metaData.topURLFiltersBytecodeSize;
+    encoder << metaData.frameURLFiltersBytecodeSize;
+    encoder << metaData.unused32bits;
+    encoder << metaData.unused64bits1;
+    encoder << metaData.unused64bits2;
 
-    ASSERT(encoder.bufferSize() == ContentRuleListFileHeaderSize);
-    return WebKit::NetworkCache::Data(encoder.buffer(), encoder.bufferSize());
+    ASSERT(encoder.bufferSize() == CurrentVersionFileHeaderSize);
+    return WebKit::NetworkCache::Data(encoder.span());
 }
 
-template<typename T> void getData(const T&, const Function<bool(Span<const uint8_t>)>&);
-template<> void getData(const WebKit::NetworkCache::Data& data, const Function<bool(Span<const uint8_t>)>& function)
+template<typename T> void getData(const T&, const Function<bool(std::span<const uint8_t>)>&);
+template<> void getData(const WebKit::NetworkCache::Data& data, const Function<bool(std::span<const uint8_t>)>& function)
 {
     data.apply(function);
 }
-template<> void getData(const WebCore::SharedBuffer& data, const Function<bool(Span<const uint8_t>)>& function)
+template<> void getData(const WebCore::SharedBuffer& data, const Function<bool(std::span<const uint8_t>)>& function)
 {
-    function({ data.data(), data.size() });
+    function(data.span());
 }
 
-template<typename T>
-static std::optional<ContentRuleListMetaData> decodeContentRuleListMetaData(const T& fileData)
+static std::optional<ContentRuleListMetaData> decodeContentRuleListMetaData(const WebKit::NetworkCache::Data& fileData)
 {
-    bool success = false;
     ContentRuleListMetaData metaData;
-    getData(fileData, [&metaData, &success, &fileData](Span<const uint8_t> span) {
-        // The file data should be mapped into one continuous memory segment so the size
-        // passed to the applier should always equal the data size.
-        if (span.size() != fileData.size())
-            return false;
+    auto span = fileData.span();
 
-        WTF::Persistence::Decoder decoder(span);
-        
-        std::optional<uint32_t> version;
-        decoder >> version;
-        if (!version)
-            return false;
-        metaData.version = WTFMove(*version);
-
-        std::optional<uint64_t> sourceSize;
-        decoder >> sourceSize;
-        if (!sourceSize)
-            return false;
-        metaData.sourceSize = WTFMove(*sourceSize);
-
-        std::optional<uint64_t> actionsSize;
-        decoder >> actionsSize;
-        if (!actionsSize)
-            return false;
-        metaData.actionsSize = WTFMove(*actionsSize);
-
-        std::optional<uint64_t> filtersWithoutConditionsBytecodeSize;
-        decoder >> filtersWithoutConditionsBytecodeSize;
-        if (!filtersWithoutConditionsBytecodeSize)
-            return false;
-        metaData.filtersWithoutConditionsBytecodeSize = WTFMove(*filtersWithoutConditionsBytecodeSize);
-
-        std::optional<uint64_t> filtersWithConditionsBytecodeSize;
-        decoder >> filtersWithConditionsBytecodeSize;
-        if (!filtersWithConditionsBytecodeSize)
-            return false;
-        metaData.filtersWithConditionsBytecodeSize = WTFMove(*filtersWithConditionsBytecodeSize);
-
-        std::optional<uint64_t> conditionedFiltersBytecodeSize;
-        decoder >> conditionedFiltersBytecodeSize;
-        if (!conditionedFiltersBytecodeSize)
-            return false;
-        metaData.conditionedFiltersBytecodeSize = WTFMove(*conditionedFiltersBytecodeSize);
-
-        std::optional<uint32_t> conditionsApplyOnlyToDomain;
-        decoder >> conditionsApplyOnlyToDomain;
-        if (!conditionsApplyOnlyToDomain)
-            return false;
-        metaData.conditionsApplyOnlyToDomain = WTFMove(*conditionsApplyOnlyToDomain);
-
-        success = true;
-        return false;
-    });
-    if (!success)
+    WTF::Persistence::Decoder decoder(span);
+    
+    std::optional<uint32_t> version;
+    decoder >> version;
+    if (!version)
         return std::nullopt;
+    metaData.version = WTFMove(*version);
+
+    std::optional<uint64_t> sourceSize;
+    decoder >> sourceSize;
+    if (!sourceSize)
+        return std::nullopt;
+    metaData.sourceSize = WTFMove(*sourceSize);
+
+    std::optional<uint64_t> actionsSize;
+    decoder >> actionsSize;
+    if (!actionsSize)
+        return std::nullopt;
+    metaData.actionsSize = WTFMove(*actionsSize);
+
+    std::optional<uint64_t> urlFiltersBytecodeSize;
+    decoder >> urlFiltersBytecodeSize;
+    if (!urlFiltersBytecodeSize)
+        return std::nullopt;
+    metaData.urlFiltersBytecodeSize = WTFMove(*urlFiltersBytecodeSize);
+
+    std::optional<uint64_t> topURLFiltersBytecodeSize;
+    decoder >> topURLFiltersBytecodeSize;
+    if (!topURLFiltersBytecodeSize)
+        return std::nullopt;
+    metaData.topURLFiltersBytecodeSize = WTFMove(*topURLFiltersBytecodeSize);
+
+    std::optional<uint64_t> frameURLFiltersBytecodeSize;
+    decoder >> frameURLFiltersBytecodeSize;
+    if (!frameURLFiltersBytecodeSize)
+        return std::nullopt;
+    metaData.frameURLFiltersBytecodeSize = WTFMove(*frameURLFiltersBytecodeSize);
+
+    std::optional<uint32_t> unused32bits;
+    decoder >> unused32bits;
+    if (!unused32bits)
+        return std::nullopt;
+    metaData.unused32bits = 0;
+
+    if (metaData.version < 12)
+        return metaData;
+
+    std::optional<uint64_t> unused1;
+    decoder >> unused1;
+    if (!unused1)
+        return std::nullopt;
+    metaData.unused64bits1 = 0;
+
+    std::optional<uint64_t> unused2;
+    decoder >> unused2;
+    if (!unused2)
+        return std::nullopt;
+    metaData.unused64bits2 = 0;
+
     return metaData;
 }
 
@@ -215,8 +225,9 @@ struct MappedData {
 
 static std::optional<MappedData> openAndMapContentRuleList(const WTF::String& path)
 {
-    FileSystem::makeSafeToUseMemoryMapForPath(path);
-    WebKit::NetworkCache::Data fileData = mapFile(fileSystemRepresentation(path).data());
+    if (!FileSystem::makeSafeToUseMemoryMapForPath(path))
+        return std::nullopt;
+    auto fileData = mapFile(path);
     if (fileData.isNull())
         return std::nullopt;
     auto metaData = decodeContentRuleListMetaData(fileData);
@@ -228,8 +239,8 @@ static std::optional<MappedData> openAndMapContentRuleList(const WTF::String& pa
 static bool writeDataToFile(const WebKit::NetworkCache::Data& fileData, PlatformFileHandle fd)
 {
     bool success = true;
-    fileData.apply([fd, &success](Span<const uint8_t> span) {
-        if (writeToFile(fd, span.data(), span.size()) == -1) {
+    fileData.apply([fd, &success](std::span<const uint8_t> span) {
+        if (writeToFile(fd, span) == -1) {
             success = false;
             return false;
         }
@@ -251,73 +262,69 @@ static Expected<MappedData, std::error_code> compiledToFile(WTF::String&& json, 
         {
             ASSERT(!metaData.sourceSize);
             ASSERT(!metaData.actionsSize);
-            ASSERT(!metaData.filtersWithoutConditionsBytecodeSize);
-            ASSERT(!metaData.filtersWithConditionsBytecodeSize);
-            ASSERT(!metaData.conditionedFiltersBytecodeSize);
-            ASSERT(!metaData.conditionsApplyOnlyToDomain);
+            ASSERT(!metaData.urlFiltersBytecodeSize);
+            ASSERT(!metaData.topURLFiltersBytecodeSize);
+            ASSERT(!metaData.frameURLFiltersBytecodeSize);
         }
         
         void writeSource(WTF::String&& sourceJSON) final
         {
-            ASSERT(!m_filtersWithoutConditionsBytecodeWritten);
-            ASSERT(!m_filtersWithConditionBytecodeWritten);
-            ASSERT(!m_conditionFiltersBytecodeWritten);
-            ASSERT(!m_actionsWritten);
             ASSERT(!m_sourceWritten);
+            ASSERT(!m_actionsWritten);
+            ASSERT(!m_urlFiltersBytecodeWritten);
+            ASSERT(!m_topURLFiltersBytecodeWritten);
+            ASSERT(!m_frameURLFiltersBytecodeWritten);
+
             writeToFile(sourceJSON.is8Bit());
             m_sourceWritten += sizeof(bool);
             if (sourceJSON.is8Bit()) {
-                size_t serializedLength = sourceJSON.length() * sizeof(LChar);
-                writeToFile(WebKit::NetworkCache::Data(sourceJSON.characters8(), serializedLength));
-                m_sourceWritten += serializedLength;
+                writeToFile(WebKit::NetworkCache::Data(sourceJSON.span8()));
+                m_sourceWritten += sourceJSON.length();
             } else {
-                size_t serializedLength = sourceJSON.length() * sizeof(UChar);
-                writeToFile(WebKit::NetworkCache::Data(reinterpret_cast<const uint8_t*>(sourceJSON.characters16()), serializedLength));
-                m_sourceWritten += serializedLength;
+                writeToFile(WebKit::NetworkCache::Data(asBytes(sourceJSON.span16())));
+                m_sourceWritten += sourceJSON.length() * sizeof(UChar);
             }
         }
-        
-        void writeFiltersWithoutConditionsBytecode(Vector<DFABytecode>&& bytecode) final
+
+        void writeActions(Vector<SerializedActionByte>&& actions) final
         {
-            ASSERT(!m_filtersWithConditionBytecodeWritten);
-            ASSERT(!m_conditionFiltersBytecodeWritten);
-            m_filtersWithoutConditionsBytecodeWritten += bytecode.size();
-            writeToFile(WebKit::NetworkCache::Data(bytecode.data(), bytecode.size()));
+            ASSERT(!m_actionsWritten);
+            ASSERT(!m_urlFiltersBytecodeWritten);
+            ASSERT(!m_topURLFiltersBytecodeWritten);
+            ASSERT(!m_frameURLFiltersBytecodeWritten);
+            m_actionsWritten += actions.size();
+            writeToFile(WebKit::NetworkCache::Data(actions.span()));
         }
-        
-        void writeFiltersWithConditionsBytecode(Vector<DFABytecode>&& bytecode) final
+
+        void writeURLFiltersBytecode(Vector<DFABytecode>&& bytecode) final
         {
-            ASSERT(!m_conditionFiltersBytecodeWritten);
-            m_filtersWithConditionBytecodeWritten += bytecode.size();
-            writeToFile(WebKit::NetworkCache::Data(bytecode.data(), bytecode.size()));
+            ASSERT(!m_topURLFiltersBytecodeWritten);
+            ASSERT(!m_frameURLFiltersBytecodeWritten);
+            m_urlFiltersBytecodeWritten += bytecode.size();
+            writeToFile(WebKit::NetworkCache::Data(bytecode.span()));
         }
         
         void writeTopURLFiltersBytecode(Vector<DFABytecode>&& bytecode) final
         {
-            m_conditionFiltersBytecodeWritten += bytecode.size();
-            writeToFile(WebKit::NetworkCache::Data(bytecode.data(), bytecode.size()));
+            ASSERT(!m_frameURLFiltersBytecodeWritten);
+            m_topURLFiltersBytecodeWritten += bytecode.size();
+            writeToFile(WebKit::NetworkCache::Data(bytecode.span()));
         }
 
-        void writeActions(Vector<SerializedActionByte>&& actions, bool conditionsApplyOnlyToDomain) final
+        void writeFrameURLFiltersBytecode(Vector<DFABytecode>&& bytecode) final
         {
-            ASSERT(!m_filtersWithoutConditionsBytecodeWritten);
-            ASSERT(!m_filtersWithConditionBytecodeWritten);
-            ASSERT(!m_conditionFiltersBytecodeWritten);
-            ASSERT(!m_actionsWritten);
-            m_actionsWritten += actions.size();
-            m_conditionsApplyOnlyToDomain = conditionsApplyOnlyToDomain;
-            writeToFile(WebKit::NetworkCache::Data(actions.data(), actions.size()));
+            m_frameURLFiltersBytecodeWritten += bytecode.size();
+            writeToFile(WebKit::NetworkCache::Data(bytecode.span()));
         }
         
         void finalize() final
         {
             m_metaData.sourceSize = m_sourceWritten;
             m_metaData.actionsSize = m_actionsWritten;
-            m_metaData.filtersWithoutConditionsBytecodeSize = m_filtersWithoutConditionsBytecodeWritten;
-            m_metaData.filtersWithConditionsBytecodeSize = m_filtersWithConditionBytecodeWritten;
-            m_metaData.conditionedFiltersBytecodeSize = m_conditionFiltersBytecodeWritten;
-            m_metaData.conditionsApplyOnlyToDomain = m_conditionsApplyOnlyToDomain;
-            
+            m_metaData.urlFiltersBytecodeSize = m_urlFiltersBytecodeWritten;
+            m_metaData.topURLFiltersBytecodeSize = m_topURLFiltersBytecodeWritten;
+            m_metaData.frameURLFiltersBytecodeSize = m_frameURLFiltersBytecodeWritten;
+
             WebKit::NetworkCache::Data header = encodeContentRuleListMetaData(m_metaData);
             if (!m_fileError && seekFile(m_fileHandle, 0ll, FileSeekOrigin::Beginning) == -1) {
                 closeFile(m_fileHandle);
@@ -331,7 +338,7 @@ static Expected<MappedData, std::error_code> compiledToFile(WTF::String&& json, 
     private:
         void writeToFile(bool value)
         {
-            writeToFile(WebKit::NetworkCache::Data(reinterpret_cast<const uint8_t*>(&value), sizeof(value)));
+            writeToFile(WebKit::NetworkCache::Data({ reinterpret_cast<const uint8_t*>(&value), sizeof(value) }));
         }
         void writeToFile(const WebKit::NetworkCache::Data& data)
         {
@@ -343,26 +350,24 @@ static Expected<MappedData, std::error_code> compiledToFile(WTF::String&& json, 
         
         PlatformFileHandle m_fileHandle;
         ContentRuleListMetaData& m_metaData;
-        size_t m_filtersWithoutConditionsBytecodeWritten { 0 };
-        size_t m_filtersWithConditionBytecodeWritten { 0 };
-        size_t m_conditionFiltersBytecodeWritten { 0 };
-        size_t m_actionsWritten { 0 };
         size_t m_sourceWritten { 0 };
-        bool m_conditionsApplyOnlyToDomain { false };
+        size_t m_actionsWritten { 0 };
+        size_t m_urlFiltersBytecodeWritten { 0 };
+        size_t m_topURLFiltersBytecodeWritten { 0 };
+        size_t m_frameURLFiltersBytecodeWritten { 0 };
         bool m_fileError { false };
     };
 
-    auto temporaryFileHandle = invalidPlatformFileHandle;
-    WTF::String temporaryFilePath = openTemporaryFile("ContentRuleList", temporaryFileHandle);
+    auto [temporaryFilePath, temporaryFileHandle] = openTemporaryFile("ContentRuleList"_s);
     if (temporaryFileHandle == invalidPlatformFileHandle) {
         WTFLogAlways("Content Rule List compiling failed: Opening temporary file failed.");
         return makeUnexpected(ContentRuleListStore::Error::CompileFailed);
     }
     
-    char invalidHeader[ContentRuleListFileHeaderSize];
-    memset(invalidHeader, 0xFF, sizeof(invalidHeader));
+    std::array<uint8_t, CurrentVersionFileHeaderSize> invalidHeader;
+    memset(invalidHeader.data(), 0xFF, invalidHeader.size());
     // This header will be rewritten in CompilationClient::finalize.
-    if (writeToFile(temporaryFileHandle, invalidHeader, sizeof(invalidHeader)) == -1) {
+    if (writeToFile(temporaryFileHandle, invalidHeader) == -1) {
         WTFLogAlways("Content Rule List compiling failed: Writing header to file failed.");
         closeFile(temporaryFileHandle);
         return makeUnexpected(ContentRuleListStore::Error::CompileFailed);
@@ -382,12 +387,6 @@ static Expected<MappedData, std::error_code> compiledToFile(WTF::String&& json, 
         return makeUnexpected(ContentRuleListStore::Error::CompileFailed);
     }
 
-    auto mappedData = adoptAndMapFile(temporaryFileHandle, 0, metaData.fileSize());
-    if (mappedData.isNull()) {
-        WTFLogAlways("Content Rule List compiling failed: Mapping file failed.");
-        return makeUnexpected(ContentRuleListStore::Error::CompileFailed);
-    }
-
     // Try and delete any files at the destination instead of overwriting them
     // in case there is already a file there and it is mmapped.
     deleteFile(finalFilePath);
@@ -396,113 +395,113 @@ static Expected<MappedData, std::error_code> compiledToFile(WTF::String&& json, 
         WTFLogAlways("Content Rule List compiling failed: Moving file failed.");
         return makeUnexpected(ContentRuleListStore::Error::CompileFailed);
     }
-    
-    FileSystem::makeSafeToUseMemoryMapForPath(finalFilePath);
-    
+
+    if (!FileSystem::makeSafeToUseMemoryMapForPath(finalFilePath))
+        return makeUnexpected(ContentRuleListStore::Error::CompileFailed);
+
+    auto mappedData = mapFile(finalFilePath);
+    if (mappedData.isNull()) {
+        WTFLogAlways("Content Rule List compiling failed: Mapping file failed.");
+        return makeUnexpected(ContentRuleListStore::Error::CompileFailed);
+    }
+
     return {{ WTFMove(metaData), WTFMove(mappedData) }};
 }
 
-static Ref<API::ContentRuleList> createExtension(const WTF::String& identifier, MappedData&& data)
+static Ref<API::ContentRuleList> createExtension(WTF::String&& identifier, MappedData&& data)
 {
     auto sharedMemory = data.data.tryCreateSharedMemory();
 
     // Content extensions are always compiled to files, and at this point the file
     // has been already mapped, therefore tryCreateSharedMemory() cannot fail.
-    ASSERT(sharedMemory);
+    RELEASE_ASSERT(sharedMemory);
 
-    const size_t headerAndSourceSize = ContentRuleListFileHeaderSize + data.metaData.sourceSize;
+    const size_t headerAndSourceSize = headerSize(data.metaData.version) + data.metaData.sourceSize;
+    const size_t actionsOffset = headerAndSourceSize;
+    const size_t urlFiltersOffset = actionsOffset + data.metaData.actionsSize;
+    const size_t topURLFiltersOffset = urlFiltersOffset + data.metaData.urlFiltersBytecodeSize;
+    const size_t frameURLFiltersOffset = topURLFiltersOffset + data.metaData.topURLFiltersBytecodeSize;
+
     auto compiledContentRuleListData = WebKit::WebCompiledContentRuleListData(
-        WTFMove(sharedMemory),
-        ConditionsApplyOnlyToDomainOffset,
-        headerAndSourceSize,
+        WTFMove(identifier),
+        sharedMemory.releaseNonNull(),
+        actionsOffset,
         data.metaData.actionsSize,
-        headerAndSourceSize
-            + data.metaData.actionsSize,
-        data.metaData.filtersWithoutConditionsBytecodeSize,
-        headerAndSourceSize
-            + data.metaData.actionsSize
-            + data.metaData.filtersWithoutConditionsBytecodeSize,
-        data.metaData.filtersWithConditionsBytecodeSize,
-        headerAndSourceSize
-            + data.metaData.actionsSize
-            + data.metaData.filtersWithoutConditionsBytecodeSize
-            + data.metaData.filtersWithConditionsBytecodeSize,
-        data.metaData.conditionedFiltersBytecodeSize
+        urlFiltersOffset,
+        data.metaData.urlFiltersBytecodeSize,
+        topURLFiltersOffset,
+        data.metaData.topURLFiltersBytecodeSize,
+        frameURLFiltersOffset,
+        data.metaData.frameURLFiltersBytecodeSize
     );
-    auto compiledContentRuleList = WebKit::WebCompiledContentRuleList::create(WTFMove(compiledContentRuleListData));
-    return API::ContentRuleList::create(identifier, WTFMove(compiledContentRuleList), WTFMove(data.data));
+
+    RefPtr compiledContentRuleList = WebKit::WebCompiledContentRuleList::create(WTFMove(compiledContentRuleListData));
+    ASSERT(compiledContentRuleList);
+    return API::ContentRuleList::create(compiledContentRuleList.releaseNonNull(), WTFMove(data.data));
 }
 
 static WTF::String getContentRuleListSourceFromMappedFile(const MappedData& mappedData)
 {
     ASSERT(!RunLoop::isMain());
 
-    switch (mappedData.metaData.version) {
-    case 9:
-    case 10:
-    case 11:
-        if (!mappedData.metaData.sourceSize)
-            return { };
-        bool is8Bit = mappedData.data.data()[ContentRuleListFileHeaderSize];
-        size_t start = ContentRuleListFileHeaderSize + sizeof(bool);
-        size_t length = mappedData.metaData.sourceSize - sizeof(bool);
-        if (is8Bit)
-            return WTF::String(mappedData.data.data() + start, length);
-        if (length % sizeof(UChar)) {
-            ASSERT_NOT_REACHED();
-            return { };
-        }
-        return WTF::String(reinterpret_cast<const UChar*>(mappedData.data.data() + start), length / sizeof(UChar));
+    if (mappedData.metaData.version < 9) {
+        // Older versions cannot recover the original JSON source from disk.
+        return { };
     }
 
-    // Older versions cannot recover the original JSON source from disk.
-    return { };
+    if (!mappedData.metaData.sourceSize)
+        return { };
+
+    auto headerSizeBytes = headerSize(mappedData.metaData.version);
+    bool is8Bit = mappedData.data.span()[headerSizeBytes];
+    size_t start = headerSizeBytes + sizeof(bool);
+    size_t length = mappedData.metaData.sourceSize - sizeof(bool);
+    if (is8Bit)
+        return mappedData.data.span().subspan(start, length);
+
+    if (length % sizeof(UChar)) {
+        ASSERT_NOT_REACHED();
+        return { };
+    }
+
+    return spanReinterpretCast<const UChar>(mappedData.data.span().subspan(start, length));
 }
 
-void ContentRuleListStore::lookupContentRuleList(const WTF::String& identifier, CompletionHandler<void(RefPtr<API::ContentRuleList>, std::error_code)> completionHandler)
+void ContentRuleListStore::lookupContentRuleList(WTF::String&& identifier, CompletionHandler<void(RefPtr<API::ContentRuleList>, std::error_code)> completionHandler)
+{
+    auto filePath = constructedPath(m_storePath, identifier);
+    lookupContentRuleListFile(WTFMove(filePath), WTFMove(identifier), WTFMove(completionHandler));
+}
+
+void ContentRuleListStore::lookupContentRuleListFile(WTF::String&& filePath, WTF::String&& identifier, CompletionHandler<void(RefPtr<API::ContentRuleList>, std::error_code)> completionHandler)
 {
     ASSERT(RunLoop::isMain());
-    m_readQueue->dispatch([protectedThis = makeRef(*this), identifier = identifier.isolatedCopy(), storePath = m_storePath.isolatedCopy(), completionHandler = WTFMove(completionHandler)]() mutable {
-        auto path = constructedPath(storePath, identifier, false);
-        auto legacyPath = constructedPath(storePath, identifier, true);
-        if (fileExists(legacyPath)) {
-            // Try and delete any files at the destination instead of overwriting them
-            // in case there is already a file there and it is mmapped.
-            deleteFile(path);
-            if (!moveFile(legacyPath, path)) {
-                WTFLogAlways("Content Rule List lookup failed: Moving a legacy file failed.");
-                if (!deleteFile(legacyPath))
-                    WTFLogAlways("Content Rule List lookup failed: Deleting a legacy file failed.");
-                RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler)] () mutable {
-                    completionHandler(nullptr, Error::LookupFailed);
-                });
-                return;
-            }
-        }
 
-        auto contentRuleList = openAndMapContentRuleList(path);
+    m_readQueue->dispatch([protectedThis = Ref { *this }, filePath = WTFMove(filePath).isolatedCopy(), identifier = WTFMove(identifier).isolatedCopy(), completionHandler = WTFMove(completionHandler)]() mutable {
+        auto contentRuleList = openAndMapContentRuleList(filePath);
         if (!contentRuleList) {
             RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler)] () mutable {
                 completionHandler(nullptr, Error::LookupFailed);
             });
             return;
         }
-        
+
         if (contentRuleList->metaData.version != ContentRuleListStore::CurrentContentRuleListFileVersion) {
             if (auto sourceFromOldVersion = getContentRuleListSourceFromMappedFile(*contentRuleList); !sourceFromOldVersion.isEmpty()) {
-                RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), sourceFromOldVersion = sourceFromOldVersion.isolatedCopy(), identifier = identifier.isolatedCopy(), completionHandler = WTFMove(completionHandler)] () mutable {
-                    protectedThis->compileContentRuleList(identifier, WTFMove(sourceFromOldVersion), WTFMove(completionHandler));
+                RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), sourceFromOldVersion = WTFMove(sourceFromOldVersion).isolatedCopy(), identifier = WTFMove(identifier).isolatedCopy(), completionHandler = WTFMove(completionHandler)] () mutable {
+                    protectedThis->compileContentRuleList(WTFMove(identifier), WTFMove(sourceFromOldVersion), WTFMove(completionHandler));
                 });
                 return;
             }
+
             RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler)] () mutable {
                 completionHandler(nullptr, Error::VersionMismatch);
             });
             return;
         }
-        
-        RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), identifier = identifier.isolatedCopy(), contentRuleList = WTFMove(*contentRuleList), completionHandler = WTFMove(completionHandler)] () mutable {
-            completionHandler(createExtension(identifier, WTFMove(contentRuleList)), { });
+
+        RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), identifier = WTFMove(identifier).isolatedCopy(), contentRuleList = WTFMove(*contentRuleList), completionHandler = WTFMove(completionHandler)] () mutable {
+            completionHandler(createExtension(WTFMove(identifier), WTFMove(contentRuleList)), { });
         });
     });
 }
@@ -510,18 +509,12 @@ void ContentRuleListStore::lookupContentRuleList(const WTF::String& identifier, 
 void ContentRuleListStore::getAvailableContentRuleListIdentifiers(CompletionHandler<void(WTF::Vector<WTF::String>)> completionHandler)
 {
     ASSERT(RunLoop::isMain());
-    m_readQueue->dispatch([protectedThis = makeRef(*this), storePath = m_storePath.isolatedCopy(), completionHandler = WTFMove(completionHandler)]() mutable {
-        auto prefix = constructedPathPrefix(false /*legacy*/);
-        auto prefixLength = prefix.length();
-        auto legacyPrefix = constructedPathPrefix(true /*legacy*/);
-        auto legacyPrefixLength = legacyPrefix.length();
 
+    m_readQueue->dispatch([protectedThis = Ref { *this }, storePath = m_storePath.isolatedCopy(), completionHandler = WTFMove(completionHandler)]() mutable {
         Vector<WTF::String> identifiers;
         for (auto& fileName : listDirectory(storePath)) {
-            if (fileName.startsWith(prefix))
-                identifiers.append(decodeFromFilename(fileName.substring(prefixLength)));
-            else if (fileName.startsWith(legacyPrefix))
-                identifiers.append(decodeFromFilename(fileName.substring(legacyPrefixLength)));
+            if (fileName.startsWith(constructedPathPrefix))
+                identifiers.append(decodeFromFilename(fileName.substring(constructedPathPrefix.length())));
         }
 
         RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler), identifiers = WTFMove(identifiers)]() mutable {
@@ -530,20 +523,25 @@ void ContentRuleListStore::getAvailableContentRuleListIdentifiers(CompletionHand
     });
 }
 
-void ContentRuleListStore::compileContentRuleList(const WTF::String& identifier, WTF::String&& json, CompletionHandler<void(RefPtr<API::ContentRuleList>, std::error_code)> completionHandler)
+void ContentRuleListStore::compileContentRuleList(WTF::String&& identifier, WTF::String&& json, CompletionHandler<void(RefPtr<API::ContentRuleList>, std::error_code)> completionHandler)
+{
+    auto filePath = constructedPath(m_storePath, identifier);
+    compileContentRuleListFile(WTFMove(filePath), WTFMove(identifier), WTFMove(json), WTFMove(completionHandler));
+}
+
+void ContentRuleListStore::compileContentRuleListFile(WTF::String&& filePath, WTF::String&& identifier, WTF::String&& json, CompletionHandler<void(RefPtr<API::ContentRuleList>, std::error_code)> completionHandler)
 {
     ASSERT(RunLoop::isMain());
-    AtomString::init();
+
+    WebCore::initializeCommonAtomStrings();
     WebCore::QualifiedName::init();
-    
+
     auto parsedRules = WebCore::ContentExtensions::parseRuleList(json);
     if (!parsedRules.has_value())
         return completionHandler(nullptr, parsedRules.error());
-    
-    m_compileQueue->dispatch([protectedThis = makeRef(*this), identifier = identifier.isolatedCopy(), json = json.isolatedCopy(), parsedRules = parsedRules.value().isolatedCopy(), storePath = m_storePath.isolatedCopy(), completionHandler = WTFMove(completionHandler)] () mutable {
-        auto path = constructedPath(storePath, identifier, false);
 
-        auto result = compiledToFile(WTFMove(json), WTFMove(parsedRules), path);
+    m_compileQueue->dispatch([protectedThis = Ref { *this }, filePath = WTFMove(filePath).isolatedCopy(), identifier = WTFMove(identifier).isolatedCopy(), json = WTFMove(json).isolatedCopy(), parsedRules = crossThreadCopy(WTFMove(parsedRules).value()), storePath = m_storePath.isolatedCopy(), completionHandler = WTFMove(completionHandler)] () mutable {
+        auto result = compiledToFile(WTFMove(json), WTFMove(parsedRules), filePath);
         if (!result.has_value()) {
             RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), error = WTFMove(result.error()), completionHandler = WTFMove(completionHandler)] () mutable {
                 completionHandler(nullptr, error);
@@ -552,27 +550,30 @@ void ContentRuleListStore::compileContentRuleList(const WTF::String& identifier,
         }
 
         RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), identifier = WTFMove(identifier), data = WTFMove(result.value()), completionHandler = WTFMove(completionHandler)] () mutable {
-            auto contentRuleList = createExtension(identifier, WTFMove(data));
+            auto contentRuleList = createExtension(WTFMove(identifier), WTFMove(data));
             completionHandler(contentRuleList.ptr(), { });
         });
     });
 }
 
-void ContentRuleListStore::removeContentRuleList(const WTF::String& identifier, CompletionHandler<void(std::error_code)> completionHandler)
+void ContentRuleListStore::removeContentRuleList(WTF::String&& identifier, CompletionHandler<void(std::error_code)> completionHandler)
+{
+    auto filePath = constructedPath(m_storePath, identifier);
+    removeContentRuleListFile(WTFMove(filePath), WTFMove(completionHandler));
+}
+
+void ContentRuleListStore::removeContentRuleListFile(WTF::String&& filePath, CompletionHandler<void(std::error_code)> completionHandler)
 {
     ASSERT(RunLoop::isMain());
-    m_removeQueue->dispatch([protectedThis = makeRef(*this), identifier = identifier.isolatedCopy(), storePath = m_storePath.isolatedCopy(), completionHandler = WTFMove(completionHandler)]() mutable {
+
+    m_removeQueue->dispatch([protectedThis = Ref { *this }, filePath = WTFMove(filePath).isolatedCopy(), completionHandler = WTFMove(completionHandler)]() mutable {
         auto complete = [protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler)](std::error_code error) mutable {
             RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler), error = WTFMove(error)] () mutable {
                 completionHandler(error);
             });
         };
-        if (auto legacyPath = constructedPath(storePath, identifier, true); fileExists(legacyPath)) {
-            if (!deleteFile(legacyPath))
-                return complete(Error::RemoveFailed);
-            return complete({ });
-        }
-        if (auto path = constructedPath(storePath, identifier, false); !deleteFile(path))
+
+        if (!deleteFile(filePath))
             return complete(Error::RemoveFailed);
         complete({ });
     });
@@ -586,32 +587,31 @@ void ContentRuleListStore::synchronousRemoveAllContentRuleLists()
 
 void ContentRuleListStore::invalidateContentRuleListVersion(const WTF::String& identifier)
 {
-    auto file = openFile(constructedPath(m_storePath, identifier, false), FileOpenMode::Write);
+    auto file = openFile(constructedPath(m_storePath, identifier), FileOpenMode::Truncate);
     if (file == invalidPlatformFileHandle)
         return;
+
     ContentRuleListMetaData invalidHeader = {0, 0, 0, 0, 0, 0};
-    auto bytesWritten = writeToFile(file, &invalidHeader, sizeof(invalidHeader));
+    auto bytesWritten = writeToFile(file, { reinterpret_cast<const uint8_t*>(&invalidHeader), sizeof(invalidHeader) });
     ASSERT_UNUSED(bytesWritten, bytesWritten == sizeof(invalidHeader));
     closeFile(file);
 }
 
-void ContentRuleListStore::getContentRuleListSource(const WTF::String& identifier, CompletionHandler<void(WTF::String)> completionHandler)
+void ContentRuleListStore::getContentRuleListSource(WTF::String&& identifier, CompletionHandler<void(WTF::String)> completionHandler)
 {
     ASSERT(RunLoop::isMain());
-    m_readQueue->dispatch([protectedThis = makeRef(*this), identifier = identifier.isolatedCopy(), storePath = m_storePath.isolatedCopy(), completionHandler = WTFMove(completionHandler)]() mutable {
-        auto complete = [protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler)](WTF::String source) mutable {
-            RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler), source = source.isolatedCopy()] () mutable {
+
+    m_readQueue->dispatch([protectedThis = Ref { *this }, filePath = constructedPath(m_storePath, identifier).isolatedCopy(), completionHandler = WTFMove(completionHandler)]() mutable {
+        auto complete = [protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler)](WTF::String&& source) mutable {
+            RunLoop::main().dispatch([protectedThis = WTFMove(protectedThis), completionHandler = WTFMove(completionHandler), source = WTFMove(source).isolatedCopy()] () mutable {
                 completionHandler(source);
             });
         };
 
-        auto contentRuleList = openAndMapContentRuleList(constructedPath(storePath, identifier, false));
-        if (!contentRuleList) {
-            auto legacyContentRuleList = openAndMapContentRuleList(constructedPath(storePath, identifier, true));
-            if (!legacyContentRuleList)
-                return complete({ });
-            return complete(getContentRuleListSourceFromMappedFile(*legacyContentRuleList));
-        }
+        auto contentRuleList = openAndMapContentRuleList(filePath);
+        if (!contentRuleList)
+            return complete({ });
+
         complete(getContentRuleListSourceFromMappedFile(*contentRuleList));
     });
 }

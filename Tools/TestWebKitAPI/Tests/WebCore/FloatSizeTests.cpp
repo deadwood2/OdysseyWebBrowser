@@ -28,13 +28,10 @@
 #include <WebCore/FloatSize.h>
 #include <WebCore/IntPoint.h>
 #include <WebCore/IntSize.h>
+#include <wtf/Markable.h>
 
 #if USE(CG)
 #include <CoreGraphics/CoreGraphics.h>
-#endif
-
-#if PLATFORM(WIN)
-#include <d2d1.h>
 #endif
 
 namespace TestWebKitAPI {
@@ -91,6 +88,28 @@ TEST(FloatSize, IntSizeConstruction)
     EXPECT_NEAR(1.3333f, test.aspectRatio(), epsilon);
 
     testGetAndSet(test);
+}
+
+TEST(FloatSize, MinDimension)
+{
+    WebCore::FloatSize test(1024.0f, 768.0f);
+
+    EXPECT_FLOAT_EQ(768.0f, test.minDimension());
+
+    test.scale(1.0f, 2.0f);
+
+    EXPECT_FLOAT_EQ(1024.0f, test.minDimension());
+}
+
+TEST(FloatSize, MaxDimension)
+{
+    WebCore::FloatSize test(1024.0f, 768.0f);
+
+    EXPECT_FLOAT_EQ(1024.0f, test.maxDimension());
+
+    test.scale(1.0f, 2.0f);
+
+    EXPECT_FLOAT_EQ(1536.0f, test.maxDimension());
 }
 
 TEST(FloatSize, Scale)
@@ -172,9 +191,9 @@ TEST(FloatSize, TransposedSize)
 
 TEST(FloatSize, Casting)
 {
+#if USE(CG)
     WebCore::FloatSize test(1024.0f, 768.0f);
 
-#if USE(CG)
     CGSize cgSize = test;
 
     EXPECT_FLOAT_EQ(1024.0f, cgSize.width);
@@ -186,20 +205,6 @@ TEST(FloatSize, Casting)
 
     EXPECT_FLOAT_EQ(-22.3f, testCG.width());
     EXPECT_FLOAT_EQ(14.2f, testCG.height());
-#endif
-
-#if PLATFORM(WIN)
-    D2D1_SIZE_F d2dSize = test;
-
-    EXPECT_FLOAT_EQ(1024.0f, d2dSize.width);
-    EXPECT_FLOAT_EQ(768.0f, d2dSize.height);
-
-    D2D1_SIZE_F d2dSize2 = D2D1::SizeF(-22.3f, 14.2f);
-
-    WebCore::FloatSize testD2D(d2dSize2);
-
-    EXPECT_FLOAT_EQ(-22.3f, testD2D.width());
-    EXPECT_FLOAT_EQ(14.2f, testD2D.height());
 #endif
 }
 
@@ -323,6 +328,17 @@ TEST(FloatSize, Rounded)
 
     EXPECT_EQ(1025, expandedSize.width());
     EXPECT_EQ(769, expandedSize.height());
+}
+
+TEST(FloatSize, Markable)
+{
+    WebCore::FloatSize size(1024.3f, 768.6f);
+    Markable<WebCore::FloatSize, WebCore::FloatSize::MarkableTraits> optional;
+    EXPECT_FALSE(optional) << "nullopt";
+    optional = size;
+    EXPECT_EQ((optional.value_or(WebCore::FloatSize { })), size) << "retained";
+    optional = WebCore::FloatSize::nanSize();
+    EXPECT_FALSE(optional) << "nullopt";
 }
 
 }

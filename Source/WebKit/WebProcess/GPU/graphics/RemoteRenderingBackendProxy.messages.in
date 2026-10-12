@@ -22,10 +22,10 @@
 
 #if ENABLE(GPU_PROCESS)
 
-messages -> RemoteRenderingBackendProxy NotRefCounted {
-    DidCreateImageBufferBackend(WebKit::ImageBufferBackendHandle handle, WebCore::RenderingResourceIdentifier renderingResourceIdentifier)
-    DidFlush(WebCore::DisplayList::FlushIdentifier flushIdentifier, WebCore::RenderingResourceIdentifier renderingResourceIdentifier)
+messages -> RemoteRenderingBackendProxy NotRefCounted WantsDispatchMessage {
     DidFinalizeRenderingUpdate(WebKit::RenderingUpdateID didRenderingUpdateID)
+    DidInitialize(IPC::Semaphore wakeUpSemaphore, IPC::Semaphore clientWaitSemaphore) CanDispatchOutOfOrder
+    DidMarkLayersAsVolatile(WebKit::MarkSurfacesAsVolatileRequestIdentifier requestIdentifier, Vector<std::pair<WebKit::RemoteImageBufferSetIdentifier, OptionSet<WebKit::BufferInSetType>>> markedBufferSets, bool didMarkAllLayersAsVolatile)
 }
 
 #endif // ENABLE(GPU_PROCESS)

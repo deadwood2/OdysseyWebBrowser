@@ -23,15 +23,17 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef NetworkProcessConnection_h
-#define NetworkProcessConnection_h
+#pragma once
 
 #include "Connection.h"
-#include "ShareableResource.h"
 #include <JavaScriptCore/ConsoleTypes.h>
+#include <WebCore/FrameIdentifier.h>
 #include <WebCore/MessagePortChannelProvider.h>
+#include <WebCore/PageIdentifier.h>
 #include <WebCore/RTCDataChannelIdentifier.h>
+#include <WebCore/ResourceLoaderIdentifier.h>
 #include <WebCore/ServiceWorkerTypes.h>
+#include <WebCore/ShareableResource.h>
 #include <wtf/RefCounted.h>
 #include <wtf/text/WTFString.h>
 
@@ -39,39 +41,43 @@ namespace WebCore {
 class ResourceError;
 class ResourceRequest;
 class ResourceResponse;
+struct ClientOrigin;
 struct Cookie;
 struct MessagePortIdentifier;
 struct MessageWithMessagePorts;
+class SecurityOriginData;
 enum class HTTPCookieAcceptPolicy : uint8_t;
 }
 
 namespace WebKit {
 
 class WebIDBConnectionToServer;
+class WebSharedWorkerObjectConnection;
 class WebSWClientConnection;
+class WebSharedWorkerObjectConnection;
 
-typedef uint64_t ResourceLoadIdentifier;
+enum class WebsiteDataType : uint32_t;
 
 class NetworkProcessConnection : public RefCounted<NetworkProcessConnection>, IPC::Connection::Client {
 public:
-    static Ref<NetworkProcessConnection> create(IPC::Connection::Identifier connectionIdentifier, WebCore::HTTPCookieAcceptPolicy httpCookieAcceptPolicy)
+    static Ref<NetworkProcessConnection> create(IPC::Connection::Identifier&& connectionIdentifier, WebCore::HTTPCookieAcceptPolicy httpCookieAcceptPolicy)
     {
         return adoptRef(*new NetworkProcessConnection(connectionIdentifier, httpCookieAcceptPolicy));
     }
     ~NetworkProcessConnection();
     
+    Ref<IPC::Connection> protectedConnection() { return m_connection; }
     IPC::Connection& connection() { return m_connection.get(); }
 
     void didReceiveNetworkProcessConnectionMessage(IPC::Connection&, IPC::Decoder&);
 
-    void writeBlobsToTemporaryFiles(const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&&);
+    void writeBlobsToTemporaryFilesForIndexedDB(const Vector<String>& blobURLs, CompletionHandler<void(Vector<String>&& filePaths)>&&);
 
     WebIDBConnectionToServer* existingIDBConnectionToServer() const { return m_webIDBConnection.get(); };
     WebIDBConnectionToServer& idbConnectionToServer();
 
-#if ENABLE(SERVICE_WORKER)
     WebSWClientConnection& serviceWorkerConnection();
-#endif
+    WebSharedWorkerObjectConnection& sharedWorkerConnection();
 
 #if HAVE(AUDIT_TOKEN)
     void setNetworkProcessAuditToken(std::optional<audit_token_t> auditToken) { m_networkProcessAuditToken = auditToken; }
@@ -82,11 +88,12 @@ public:
     bool cookiesEnabled() const;
 
 #if HAVE(COOKIE_CHANGE_LISTENER_API)
-    void cookiesAdded(const String& host, const Vector<WebCore::Cookie>&);
-    void cookiesDeleted(const String& host, const Vector<WebCore::Cookie>&);
+    void cookiesAdded(const String& host, Vector<WebCore::Cookie>&&);
+    void cookiesDeleted(const String& host, Vector<WebCore::Cookie>&&);
     void allCookiesDeleted();
 #endif
-
+    void updateCachedCookiesEnabled();
+    void loadCancelledDownloadRedirectRequestInFrame(WebCore::ResourceRequest&&, WebCore::FrameIdentifier, WebCore::PageIdentifier);
 private:
     NetworkProcessConnection(IPC::Connection::Identifier, WebCore::HTTPCookieAcceptPolicy);
 
@@ -94,19 +101,18 @@ private:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) override;
     void didClose(IPC::Connection&) override;
-    void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName) override;
+    void didReceiveInvalidMessage(IPC::Connection&, IPC::MessageName, int32_t) override;
 
-    void didFinishPingLoad(uint64_t pingLoadIdentifier, WebCore::ResourceError&&, WebCore::ResourceResponse&&);
-    void didFinishPreconnection(uint64_t preconnectionIdentifier, WebCore::ResourceError&&);
+    void didFinishPingLoad(WebCore::ResourceLoaderIdentifier pingLoadIdentifier, WebCore::ResourceError&&, WebCore::ResourceResponse&&);
+    void didFinishPreconnection(WebCore::ResourceLoaderIdentifier preconnectionIdentifier, WebCore::ResourceError&&);
     void setOnLineState(bool isOnLine);
     void cookieAcceptPolicyChanged(WebCore::HTTPCookieAcceptPolicy);
 
-    void checkProcessLocalPortForActivity(const WebCore::MessagePortIdentifier&, CompletionHandler<void(WebCore::MessagePortChannelProvider::HasActivity)>&&);
     void messagesAvailableForPort(const WebCore::MessagePortIdentifier&);
 
 #if ENABLE(SHAREABLE_RESOURCE)
     // Message handlers.
-    void didCacheResource(const WebCore::ResourceRequest&, const ShareableResource::Handle&);
+    void didCacheResource(const WebCore::ResourceRequest&, WebCore::ShareableResource::Handle&&);
 #endif
 #if ENABLE(WEB_RTC)
     void connectToRTCDataChannelRemoteSource(WebCore::RTCDataChannelIdentifier source, WebCore::RTCDataChannelIdentifier handler, CompletionHandler<void(std::optional<bool>)>&&);
@@ -122,12 +128,9 @@ private:
 
     RefPtr<WebIDBConnectionToServer> m_webIDBConnection;
 
-#if ENABLE(SERVICE_WORKER)
     RefPtr<WebSWClientConnection> m_swConnection;
-#endif
+    RefPtr<WebSharedWorkerObjectConnection> m_sharedWorkerConnection;
     WebCore::HTTPCookieAcceptPolicy m_cookieAcceptPolicy;
 };
 
 } // namespace WebKit
-
-#endif // NetworkProcessConnection_h

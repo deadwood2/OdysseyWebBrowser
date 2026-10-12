@@ -30,10 +30,12 @@
 
 #import "FocusedElementInformation.h"
 #import "UIKitSPI.h"
-#import "UserInterfaceIdiom.h"
+#import "UIKitUtilities.h"
 #import "WKContentViewInteraction.h"
 #import "WebPageProxy.h"
-#import <WebCore/Color.h>
+#import <WebCore/ColorCocoa.h>
+#import <pal/system/ios/UserInterfaceIdiom.h>
+#import <wtf/cocoa/VectorCocoa.h>
 
 #pragma mark - WKColorPicker
 
@@ -73,21 +75,20 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 #if ENABLE(DATALIST_ELEMENT)
 - (NSArray<UIColor *> *)focusedElementSuggestedColors
 {
-    size_t numColorSuggestions = _view.focusedElementInformation.suggestedColors.size();
-    if (!numColorSuggestions)
+    auto& colors = _view.focusedElementInformation.suggestedColors;
+
+    if (colors.isEmpty())
         return nil;
 
-    NSMutableArray<UIColor *> *colors = [NSMutableArray array];
-    for (const WebCore::Color& color : _view.focusedElementInformation.suggestedColors)
-        [colors addObject:[UIColor colorWithCGColor:cachedCGColor(color)]];
-
-    return colors;
+    return createNSArray(colors, [] (auto& color) {
+        return cocoaColor(color);
+    }).autorelease();
 }
 #endif
 
 - (void)updateColorPickerState
 {
-    [_colorPickerViewController setSelectedColor:[UIColor colorWithCGColor:cachedCGColor(_view.focusedElementInformation.colorValue)]];
+    [_colorPickerViewController setSelectedColor:cocoaColor(_view.focusedElementInformation.colorValue).get()];
 #if ENABLE(DATALIST_ELEMENT)
     if ([_colorPickerViewController respondsToSelector:@selector(_setSuggestedColors:)])
         [_colorPickerViewController _setSuggestedColors:[self focusedElementSuggestedColors]];
@@ -118,8 +119,12 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     [self updateColorPickerState];
     [self configurePresentation];
 
-    UIViewController *presentingViewController = [UIViewController _viewControllerForFullScreenPresentationFromView:_view];
+    auto presentingViewController = _view._wk_viewControllerForFullScreenPresentation;
     [presentingViewController presentViewController:_colorPickerViewController.get() animated:YES completion:nil];
+}
+
+- (void)controlUpdateEditing
+{
 }
 
 - (void)controlEndEditing
@@ -158,7 +163,8 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 - (instancetype)initWithView:(WKContentView *)view
 {
     RetainPtr<NSObject <WKFormControl>> control = adoptNS([[WKColorPicker alloc] initWithView:view]);
-    return [super initWithView:view control:WTFMove(control)];
+    self = [super initWithView:view control:WTFMove(control)];
+    return self;
 }
 
 @end

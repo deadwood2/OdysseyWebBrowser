@@ -75,7 +75,7 @@ const SocketConnection::MessageHandlers& SessionHost::messageHandlers()
             gboolean isPaired;
             while (g_variant_iter_loop(iter.get(), "(t&s&s&sb)", &targetID, &type, &name, &dummy, &isPaired)) {
                 if (!g_strcmp0(type, "Automation"))
-                    targetList.uncheckedAppend({ targetID, name, static_cast<bool>(isPaired) });
+                    targetList.append({ targetID, name, static_cast<bool>(isPaired) });
             }
             sessionHost.setTargetList(connectionID, WTFMove(targetList));
         }}
@@ -101,7 +101,7 @@ void SessionHost::connectToBrowser(Function<void (std::optional<String> error)>&
 bool SessionHost::isConnected() const
 {
     // Session is connected when launching or when socket connection hasn't been closed.
-    return m_browser && (!m_socketConnection || !m_socketConnection->isClosed());
+    return (m_browser || m_isRemoteBrowser) && (!m_socketConnection || !m_socketConnection->isClosed());
 }
 
 struct ConnectToBrowserAsyncData {
@@ -134,10 +134,28 @@ static guint16 freePort()
 
 void SessionHost::launchBrowser(Function<void (std::optional<String> error)>&& completionHandler)
 {
+    String targetIp;
+    uint16_t targetPort = 0;
+
+    if (!m_targetIp.isEmpty() && m_targetPort) {
+        targetIp = m_targetIp;
+        targetPort = m_targetPort;
+    } else if (m_capabilities.targetAddr && m_capabilities.targetPort) {
+        targetIp = m_capabilities.targetAddr.value();
+        targetPort = m_capabilities.targetPort.value();
+    }
+
     m_cancellable = adoptGRef(g_cancellable_new());
+    GUniquePtr<char> inspectorAddress(
+        g_strdup_printf("%s:%u", targetIp.isEmpty() ? "127.0.0.1" : targetIp.latin1().data(), targetPort > 0 ? targetPort : freePort())
+    );
+    if (!targetIp.isEmpty()) {
+        m_isRemoteBrowser = true;
+        connectToBrowser(makeUnique<ConnectToBrowserAsyncData>(this, WTFMove(inspectorAddress), m_cancellable.get(), WTFMove(completionHandler)));
+        return;
+    }
+
     GRefPtr<GSubprocessLauncher> launcher = adoptGRef(g_subprocess_launcher_new(G_SUBPROCESS_FLAGS_NONE));
-    guint16 port = freePort();
-    GUniquePtr<char> inspectorAddress(g_strdup_printf("127.0.0.1:%u", port));
     g_subprocess_launcher_setenv(launcher.get(), "WEBKIT_INSPECTOR_SERVER", inspectorAddress.get(), TRUE);
 #if PLATFORM(GTK)
     g_subprocess_launcher_setenv(launcher.get(), "GTK_OVERLAY_SCROLLING", m_capabilities.useOverlayScrollbars.value() ? "1" : "0", TRUE);
@@ -170,7 +188,7 @@ void SessionHost::launchBrowser(Function<void (std::optional<String> error)>&& c
 
 void SessionHost::connectToBrowser(std::unique_ptr<ConnectToBrowserAsyncData>&& data)
 {
-    if (!m_browser)
+    if (!m_browser && !m_isRemoteBrowser)
         return;
 
     RunLoop::main().dispatchAfter(100_ms, [connectToBrowserData = WTFMove(data)]() mutable {
@@ -192,10 +210,10 @@ void SessionHost::connectToBrowser(std::unique_ptr<ConnectToBrowserAsyncData>&& 
                         data->sessionHost->connectToBrowser(WTFMove(data));
                         return;
                     }
-
                     data->completionHandler(String::fromUTF8(error->message));
                     return;
                 }
+
                 data->sessionHost->setupConnection(SocketConnection::create(WTFMove(connection), messageHandlers(), data->sessionHost));
                 data->completionHandler(std::nullopt);
         }, data);
@@ -205,8 +223,12 @@ void SessionHost::connectToBrowser(std::unique_ptr<ConnectToBrowserAsyncData>&& 
 void SessionHost::connectionDidClose()
 {
     m_browser = nullptr;
+    m_isRemoteBrowser = false;
+
     inspectorDisconnected();
     m_socketConnection = nullptr;
+    m_connectionID = 0;
+    m_target = Target();
 }
 
 void SessionHost::setupConnection(Ref<SocketConnection>&& connection)
@@ -264,6 +286,8 @@ bool SessionHost::buildSessionCapabilities(GVariantBuilder* builder) const
         GVariantBuilder dictBuilder;
         g_variant_builder_init(&dictBuilder, G_VARIANT_TYPE("a{sv}"));
         g_variant_builder_add(&dictBuilder, "{sv}", "type", g_variant_new_string(m_capabilities.proxy->type.utf8().data()));
+        if (m_capabilities.proxy->autoconfigURL)
+            g_variant_builder_add(&dictBuilder, "{sv}", "autoconfigURL", g_variant_new_string(m_capabilities.proxy->autoconfigURL->string().utf8().data()));
         if (m_capabilities.proxy->ftpURL)
             g_variant_builder_add(&dictBuilder, "{sv}", "ftpURL", g_variant_new_string(m_capabilities.proxy->ftpURL->string().utf8().data()));
         if (m_capabilities.proxy->httpURL)
@@ -276,12 +300,12 @@ bool SessionHost::buildSessionCapabilities(GVariantBuilder* builder) const
             switch (m_capabilities.proxy->socksVersion.value()) {
             case 4:
                 if (URL::hostIsIPAddress(socksURL.host()))
-                    socksURL.setProtocol("socks4");
+                    socksURL.setProtocol("socks4"_s);
                 else
-                    socksURL.setProtocol("socks4a");
+                    socksURL.setProtocol("socks4a"_s);
                 break;
             case 5:
-                socksURL.setProtocol("socks5");
+                socksURL.setProtocol("socks5"_s);
                 break;
             default:
                 break;
@@ -306,7 +330,7 @@ void SessionHost::startAutomationSession(Function<void (bool, std::optional<Stri
     ASSERT(m_socketConnection);
     ASSERT(!m_startSessionCompletionHandler);
     m_startSessionCompletionHandler = WTFMove(completionHandler);
-    m_sessionID = createCanonicalUUIDString();
+    m_sessionID = createVersion4UUIDString();
     GVariantBuilder builder;
     m_socketConnection->sendMessage("StartAutomationSession", g_variant_new("(sa{sv})", m_sessionID.utf8().data(), buildSessionCapabilities(&builder) ? &builder : nullptr));
 }
@@ -322,33 +346,29 @@ void SessionHost::didStartAutomationSession(GVariant* parameters)
 
 void SessionHost::setTargetList(uint64_t connectionID, Vector<Target>&& targetList)
 {
-    // The server notifies all its clients when connection is lost by sending an empty target list.
-    // We only care about automation connection.
     if (m_connectionID && m_connectionID != connectionID)
         return;
 
     ASSERT(targetList.size() <= 1);
     if (targetList.isEmpty()) {
-        m_target = Target();
+        // An empty *automation* targetList may occur if the server is exposing other types of targets,
+        // such as WebPage (this can be ignored), or if the server has removed the Automation target
+        // because the session has ended (in this case, we must reset our state).
         if (m_connectionID) {
             if (m_socketConnection)
                 m_socketConnection->close();
-            m_connectionID = 0;
+            connectionDidClose();
         }
         return;
     }
 
-    m_target = targetList[0];
-    if (m_connectionID) {
-        ASSERT(m_connectionID == connectionID);
-        return;
-    }
 
     if (!m_startSessionCompletionHandler) {
-        // Session creation was already rejected.
+        // Session creation was already handled and we ignore different sessions
         return;
     }
 
+    m_target = targetList[0];
     m_connectionID = connectionID;
     m_socketConnection->sendMessage("Setup", g_variant_new("(tt)", m_connectionID, m_target.id));
 
@@ -369,6 +389,11 @@ void SessionHost::sendMessageToBackend(const String& message)
     ASSERT(m_connectionID);
     ASSERT(m_target.id);
     m_socketConnection->sendMessage("SendMessageToBackend", g_variant_new("(tts)", m_connectionID, m_target.id, message.utf8().data()));
+}
+
+bool SessionHost::isRemoteBrowser() const
+{
+    return m_isRemoteBrowser;
 }
 
 } // namespace WebDriver

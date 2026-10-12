@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Apple Inc. All rights reserved.
+ * Copyright (C) 2010-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,7 +26,6 @@
 #pragma once
 
 #include "APIObject.h"
-#include "ArgumentCoders.h"
 #include <wtf/Forward.h>
 #include <wtf/URL.h>
 #include <wtf/text/WTFString.h>
@@ -84,21 +83,6 @@ public:
         return m_parsedURL->lastPathComponent().toString();
     }
 
-    void encode(IPC::Encoder& encoder) const
-    {
-        encoder << m_string;
-    }
-
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder& decoder, RefPtr<Object>& result)
-    {
-        WTF::String string;
-        if (!decoder.decode(string))
-            return false;
-        
-        result = create(string);
-        return true;
-    }
-
 private:
     URL(const WTF::String& string)
         : m_string(string)
@@ -121,7 +105,7 @@ private:
     {
         if (m_parsedURL)
             return;
-        m_parsedURL = makeUnique<WTF::URL>(WTF::URL(), m_string);
+        m_parsedURL = makeUnique<WTF::URL>(m_string);
     }
 
     WTF::String m_string;
@@ -129,3 +113,5 @@ private:
 };
 
 } // namespace WebKit
+
+SPECIALIZE_TYPE_TRAITS_API_OBJECT(URL);

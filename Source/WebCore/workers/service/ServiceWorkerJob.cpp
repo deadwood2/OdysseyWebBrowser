@@ -26,8 +26,6 @@
 #include "config.h"
 #include "ServiceWorkerJob.h"
 
-#if ENABLE(SERVICE_WORKER)
-
 #include "HTTPHeaderNames.h"
 #include "JSDOMPromiseDeferred.h"
 #include "MIMETypeRegistry.h"
@@ -37,7 +35,9 @@
 #include "SecurityOrigin.h"
 #include "ServiceWorkerJobData.h"
 #include "ServiceWorkerRegistration.h"
+#include "WorkerFetchResult.h"
 #include "WorkerRunLoop.h"
+#include <wtf/text/MakeString.h>
 
 namespace WebCore {
 
@@ -94,25 +94,36 @@ void ServiceWorkerJob::startScriptFetch(FetchOptions::Cache cachePolicy)
     m_client.startScriptFetchForJob(*this, cachePolicy);
 }
 
+static ResourceRequest scriptResourceRequest(ScriptExecutionContext& context, const URL& url)
+{
+    ResourceRequest request { url };
+    request.setInitiatorIdentifier(context.resourceRequestIdentifier());
+    return request;
+}
+
+static FetchOptions scriptFetchOptions(FetchOptions::Cache cachePolicy, FetchOptions::Destination destination)
+{
+    FetchOptions options;
+    options.mode = FetchOptions::Mode::SameOrigin;
+    options.cache = cachePolicy;
+    options.redirect = FetchOptions::Redirect::Error;
+    options.destination = destination;
+    options.credentials = FetchOptions::Credentials::SameOrigin;
+    return options;
+}
+
 void ServiceWorkerJob::fetchScriptWithContext(ScriptExecutionContext& context, FetchOptions::Cache cachePolicy)
 {
     ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(!m_completed);
 
-    // FIXME: WorkerScriptLoader is the wrong loader class to use here, but there's nothing else better right now.
+    auto source = m_jobData.workerType == WorkerType::Module ? WorkerScriptLoader::Source::ModuleScript : WorkerScriptLoader::Source::ClassicWorkerScript;
+
     m_scriptLoader = WorkerScriptLoader::create();
+    auto request = scriptResourceRequest(context, m_jobData.scriptURL);
+    request.addHTTPHeaderField(HTTPHeaderName::ServiceWorker, "script"_s);
 
-    ResourceRequest request { m_jobData.scriptURL };
-    request.setInitiatorIdentifier(context.resourceRequestIdentifier());
-    request.addHTTPHeaderField("Service-Worker"_s, "script"_s);
-
-    FetchOptions options;
-    options.mode = FetchOptions::Mode::SameOrigin;
-    options.cache = cachePolicy;
-    options.redirect = FetchOptions::Redirect::Error;
-    options.destination = FetchOptions::Destination::Serviceworker;
-    options.credentials = FetchOptions::Credentials::SameOrigin;
-    m_scriptLoader->loadAsynchronously(context, WTFMove(request), WTFMove(options), ContentSecurityPolicyEnforcement::DoNotEnforce, ServiceWorkersMode::None, *this, WorkerRunLoop::defaultMode());
+    m_scriptLoader->loadAsynchronously(context, WTFMove(request), source, scriptFetchOptions(cachePolicy, FetchOptions::Destination::Serviceworker), ContentSecurityPolicyEnforcement::DoNotEnforce, ServiceWorkersMode::None, *this, WorkerRunLoop::defaultMode());
 }
 
 ResourceError ServiceWorkerJob::validateServiceWorkerResponse(const ServiceWorkerJobData& jobData, const ResourceResponse& response)
@@ -126,7 +137,7 @@ ResourceError ServiceWorkerJob::validateServiceWorkerResponse(const ServiceWorke
     if (serviceWorkerAllowed.isNull()) {
         auto path = jobData.scriptURL.path();
         // Last part of the path is the script's filename.
-        maxScopeString = path.substring(0, path.reverseFind('/') + 1).toString();
+        maxScopeString = path.left(path.reverseFind('/') + 1).toString();
     } else {
         auto maxScope = URL(jobData.scriptURL, serviceWorkerAllowed);
         if (SecurityOrigin::create(maxScope)->isSameOriginAs(SecurityOrigin::create(jobData.scriptURL)))
@@ -140,7 +151,7 @@ ResourceError ServiceWorkerJob::validateServiceWorkerResponse(const ServiceWorke
     return { };
 }
 
-void ServiceWorkerJob::didReceiveResponse(unsigned long, const ResourceResponse& response)
+void ServiceWorkerJob::didReceiveResponse(ScriptExecutionContextIdentifier, ResourceLoaderIdentifier, const ResourceResponse& response)
 {
     ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(!m_completed);
@@ -153,38 +164,35 @@ void ServiceWorkerJob::didReceiveResponse(unsigned long, const ResourceResponse&
     m_scriptLoader->cancel();
     m_scriptLoader = nullptr;
 
-    Exception exception { SecurityError, error.localizedDescription() };
+    Exception exception { ExceptionCode::SecurityError, error.localizedDescription() };
     m_client.jobFailedLoadingScript(*this, WTFMove(error), WTFMove(exception));
 }
 
-void ServiceWorkerJob::notifyFinished()
+void ServiceWorkerJob::notifyFinished(ScriptExecutionContextIdentifier)
 {
     ASSERT(m_creationThread.ptr() == &Thread::current());
     ASSERT(m_scriptLoader);
-    
-    auto scriptLoader = WTFMove(m_scriptLoader);
+
+    auto scriptLoader = std::exchange(m_scriptLoader, { });
 
     if (!scriptLoader->failed()) {
-        m_client.jobFinishedLoadingScript(*this, scriptLoader->script(), scriptLoader->certificateInfo(), scriptLoader->contentSecurityPolicy(), scriptLoader->crossOriginEmbedderPolicy(), scriptLoader->referrerPolicy());
+        m_client.jobFinishedLoadingScript(*this, scriptLoader->fetchResult());
         return;
     }
 
     auto& error = scriptLoader->error();
     ASSERT(!error.isNull());
 
-    m_client.jobFailedLoadingScript(*this, error, Exception { error.isAccessControl() ? SecurityError : TypeError, makeString("Script ", scriptLoader->url().string(), " load failed") });
+    m_client.jobFailedLoadingScript(*this, error, Exception { error.isAccessControl() ? ExceptionCode::SecurityError : ExceptionCode::TypeError, makeString("Script "_s, scriptLoader->url().string(), " load failed"_s) });
 }
 
 bool ServiceWorkerJob::cancelPendingLoad()
 {
-    if (!m_scriptLoader)
-        return false;
-
-    m_scriptLoader->cancel();
-    m_scriptLoader = nullptr;
-    return true;
+    if (auto loader = std::exchange(m_scriptLoader, { })) {
+        loader->cancel();
+        return true;
+    }
+    return false;
 }
 
 } // namespace WebCore
-
-#endif // ENABLE(SERVICE_WORKER)

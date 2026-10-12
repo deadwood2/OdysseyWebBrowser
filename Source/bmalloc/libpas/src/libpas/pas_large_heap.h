@@ -27,6 +27,7 @@
 #define PAS_LARGE_HEAP_H
 
 #include "pas_fast_large_free_heap.h"
+#include "pas_allocation_mode.h"
 #include "pas_heap_summary.h"
 #include "pas_heap_table_state.h"
 #include "pas_physical_memory_transaction.h"
@@ -51,26 +52,41 @@ struct pas_large_heap {
 PAS_API void pas_large_heap_construct(pas_large_heap* heap);
 
 PAS_API pas_allocation_result
+pas_large_heap_try_allocate_and_forget(pas_large_heap* heap,
+                                       size_t size, size_t alignment,
+                                       pas_allocation_mode allocation_mode,
+                                       const pas_heap_config* config,
+                                       pas_physical_memory_transaction* transaction);
+
+PAS_API pas_allocation_result
 pas_large_heap_try_allocate(pas_large_heap* heap,
                             size_t size, size_t alignment,
-                            pas_heap_config* config,
+                            pas_allocation_mode allocation_mode,
+                            const pas_heap_config* config,
+                            pas_physical_memory_transaction* transaction);
+
+PAS_API pas_allocation_result
+pas_large_heap_try_allocate_pgm(pas_large_heap* heap,
+                            size_t size, size_t alignment,
+                            pas_allocation_mode allocation_mode,
+                            const pas_heap_config* config,
                             pas_physical_memory_transaction* transaction);
 
 /* Returns true if an object was found and deallocated. */
 PAS_API bool pas_large_heap_try_deallocate(uintptr_t base,
-                                           pas_heap_config* config);
+                                           const pas_heap_config* config);
 
 /* Returns true if an object was found and shrunk. */
 PAS_API bool pas_large_heap_try_shrink(uintptr_t base,
                                        size_t new_size,
-                                       pas_heap_config* config);
+                                       const pas_heap_config* config);
 
 /* This is a super crazy function that lets you shove memory into the allocator. There is
    one user (the large region) and it only does it to one heap (the primitive heap). It's
    not something you probably ever want to do. */
 PAS_API void pas_large_heap_shove_into_free(pas_large_heap* heap, uintptr_t begin, uintptr_t end,
                                             pas_zero_mode zero_mode,
-                                            pas_heap_config* config);
+                                            const pas_heap_config* config);
 
 typedef bool (*pas_large_heap_for_each_live_object_callback)(pas_large_heap* heap,
                                                              uintptr_t begin,

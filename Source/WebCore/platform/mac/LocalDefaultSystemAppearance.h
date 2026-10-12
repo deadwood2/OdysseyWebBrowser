@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include "Color.h"
 #include <wtf/Noncopyable.h>
 #include <wtf/RetainPtr.h>
 
@@ -33,6 +34,8 @@
 OBJC_CLASS NSAppearance;
 
 namespace WebCore {
+
+class Color;
     
 // This class automatically saves and restores the current NSAppearance for
 // functions which call out into AppKit and rely on the current NSAppearance being set
@@ -40,26 +43,16 @@ class LocalDefaultSystemAppearance {
     WTF_MAKE_NONCOPYABLE(LocalDefaultSystemAppearance);
 
 public:
-    WEBCORE_EXPORT LocalDefaultSystemAppearance(bool useDarkAppearance);
+    WEBCORE_EXPORT LocalDefaultSystemAppearance(bool useDarkAppearance, const Color& tintColor = { });
     WEBCORE_EXPORT ~LocalDefaultSystemAppearance();
 
-    bool usingDarkAppearance() const
-    {
-#if HAVE(OS_DARK_MODE_SUPPORT)
-        return m_usingDarkAppearance;
-#else
-        return false;
-#endif
-    }
+    bool usingDarkAppearance() const { return m_usingDarkAppearance; }
 
 private:
-#if HAVE(OS_DARK_MODE_SUPPORT)
     RetainPtr<NSAppearance> m_savedSystemAppearance;
     bool m_usingDarkAppearance { false };
-#endif
 };
     
 }
 
 #endif // USE(APPKIT)
-

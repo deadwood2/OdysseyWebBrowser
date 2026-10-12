@@ -30,8 +30,11 @@
 
 #include "WebPageProxy.h"
 #include <WebCore/MIMETypeRegistry.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebKit {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(SystemPreviewController);
 
 SystemPreviewController::SystemPreviewController(WebPageProxy& webPageProxy)
     : m_webPageProxy(webPageProxy)
@@ -40,7 +43,7 @@ SystemPreviewController::SystemPreviewController(WebPageProxy& webPageProxy)
 
 bool SystemPreviewController::canPreview(const String& mimeType) const
 {
-    return WebCore::MIMETypeRegistry::isSystemPreviewMIMEType(mimeType);
+    return WebCore::MIMETypeRegistry::isUSDMIMEType(mimeType);
 }
 
 }

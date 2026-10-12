@@ -28,37 +28,46 @@
 #if ENABLE(MEDIA_STREAM)
 
 #include "AudioMediaStreamTrackRendererInternalUnit.h"
-#include <wtf/Forward.h>
+#include "BaseAudioMediaStreamTrackRendererUnit.h"
 #include <wtf/HashSet.h>
 #include <wtf/Lock.h>
 #include <wtf/UniqueRef.h>
 #include <wtf/Vector.h>
+#include <wtf/WeakHashSet.h>
+
+namespace WebCore {
+class AudioMediaStreamTrackRendererUnit;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::AudioMediaStreamTrackRendererUnit> : std::true_type { };
+}
 
 namespace WebCore {
 
 class AudioSampleDataSource;
 class AudioSampleBufferList;
 class CAAudioStreamDescription;
-class AudioMediaStreamTrackRendererInternalUnit;
 
-class AudioMediaStreamTrackRendererUnit {
+class AudioMediaStreamTrackRendererUnit : public BaseAudioMediaStreamTrackRendererUnit, public CanMakeWeakPtr<AudioMediaStreamTrackRendererUnit, WeakPtrFactoryInitialization::Eager>, AudioMediaStreamTrackRendererInternalUnit::Client {
 public:
     WEBCORE_EXPORT static AudioMediaStreamTrackRendererUnit& singleton();
 
     AudioMediaStreamTrackRendererUnit();
     ~AudioMediaStreamTrackRendererUnit();
 
-    using CreateInternalUnitFunction = Function<UniqueRef<AudioMediaStreamTrackRendererInternalUnit>(AudioMediaStreamTrackRendererInternalUnit::RenderCallback&&)>;
-    WEBCORE_EXPORT static void setCreateInternalUnitFunction(CreateInternalUnitFunction&&);
+    // AudioMediaStreamTrackRendererInternalUnit
+    OSStatus render(size_t sampleCount, AudioBufferList&, uint64_t sampleTime, double hostTime, AudioUnitRenderActionFlags&) final;
+    void reset() final;
 
-    WEBCORE_EXPORT void render(size_t sampleCount, AudioBufferList&, uint64_t sampleTime, double hostTime, AudioUnitRenderActionFlags&);
+    void retrieveFormatDescription(CompletionHandler<void(std::optional<CAAudioStreamDescription>)>&&);
 
-    void setAudioOutputDevice(const String&);
-
-    void addSource(Ref<AudioSampleDataSource>&&);
-    void removeSource(AudioSampleDataSource&);
-
-    void retrieveFormatDescription(CompletionHandler<void(const CAAudioStreamDescription*)>&&);
+    // BaseAudioMediaStreamTrackRendererUnit
+    void setAudioOutputDevice(const String&) final;
+    void addSource(Ref<AudioSampleDataSource>&&) final;
+    void removeSource(AudioSampleDataSource&) final;
+    void addResetObserver(ResetObserver& observer) final { m_resetObservers.add(observer); }
 
 private:
     void start();
@@ -73,6 +82,7 @@ private:
     bool m_hasPendingRenderSources WTF_GUARDED_BY_LOCK(m_pendingRenderSourcesLock) { false };
     Lock m_pendingRenderSourcesLock;
     UniqueRef<AudioMediaStreamTrackRendererInternalUnit> m_internalUnit;
+    WeakHashSet<ResetObserver> m_resetObservers;
 };
 
 }

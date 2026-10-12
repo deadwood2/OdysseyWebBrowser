@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 
 #include "common/debug.h"
 
@@ -22,15 +23,19 @@ struct HandleAllocator::HandleRangeComparator
     bool operator()(const HandleRange &range, GLuint handle) const { return (range.end < handle); }
 };
 
-HandleAllocator::HandleAllocator() : mBaseValue(1), mNextValue(1), mLoggingEnabled(false)
+HandleAllocator::HandleAllocator()
+    : mBaseValue(1),
+      mNextValue(1),
+      mMaxValue(std::numeric_limits<GLuint>::max()),
+      mLoggingEnabled(false)
 {
-    mUnallocatedList.push_back(HandleRange(1, std::numeric_limits<GLuint>::max()));
+    mUnallocatedList.push_back(HandleRange(1, mMaxValue));
 }
 
 HandleAllocator::HandleAllocator(GLuint maximumHandleValue)
-    : mBaseValue(1), mNextValue(1), mLoggingEnabled(false)
+    : mBaseValue(1), mNextValue(1), mMaxValue(maximumHandleValue), mLoggingEnabled(false)
 {
-    mUnallocatedList.push_back(HandleRange(1, maximumHandleValue));
+    mUnallocatedList.push_back(HandleRange(1, mMaxValue));
 }
 
 HandleAllocator::~HandleAllocator() {}
@@ -89,6 +94,22 @@ void HandleAllocator::release(GLuint handle)
     if (mLoggingEnabled)
     {
         WARN() << "HandleAllocator::release releasing " << handle << std::endl;
+    }
+
+    // Try consolidating the ranges first.
+    for (HandleRange &handleRange : mUnallocatedList)
+    {
+        if (handleRange.begin - 1 == handle)
+        {
+            handleRange.begin--;
+            return;
+        }
+
+        if (handleRange.end == handle - 1)
+        {
+            handleRange.end++;
+            return;
+        }
     }
 
     // Add to released list, logarithmic time for push_heap.
@@ -153,10 +174,15 @@ void HandleAllocator::reserve(GLuint handle)
 void HandleAllocator::reset()
 {
     mUnallocatedList.clear();
-    mUnallocatedList.push_back(HandleRange(1, std::numeric_limits<GLuint>::max()));
+    mUnallocatedList.push_back(HandleRange(1, mMaxValue));
     mReleasedList.clear();
     mBaseValue = 1;
     mNextValue = 1;
+}
+
+bool HandleAllocator::anyHandleAvailableForAllocation() const
+{
+    return !mUnallocatedList.empty() || !mReleasedList.empty();
 }
 
 void HandleAllocator::enableLogging(bool enabled)

@@ -33,12 +33,12 @@ namespace WebCore {
 
 #if ENABLE(APP_HIGHLIGHTS)
 
-class SharedBuffer;
+class FragmentedSharedBuffer;
 
 class AppHighlightRangeData {
 WTF_MAKE_FAST_ALLOCATED;
 public:
-    WEBCORE_EXPORT static std::optional<AppHighlightRangeData> create(const SharedBuffer&);
+    WEBCORE_EXPORT static std::optional<AppHighlightRangeData> create(const FragmentedSharedBuffer&);
     struct NodePathComponent {
         String identifier;
         String nodeName;
@@ -61,18 +61,7 @@ public:
         {
         }
 
-        bool operator==(const NodePathComponent& other) const
-        {
-            return identifier == other.identifier && nodeName == other.nodeName && textData == other.textData && pathIndex == other.pathIndex;
-        }
-
-        bool operator!=(const NodePathComponent& other) const
-        {
-            return !(*this == other);
-        }
-
-        template<class Encoder> void encode(Encoder&) const;
-        template<class Decoder> static std::optional<NodePathComponent> decode(Decoder&);
+        friend bool operator==(const NodePathComponent&, const NodePathComponent&) = default;
     };
 
     using NodePath = Vector<NodePathComponent>;
@@ -99,6 +88,8 @@ public:
     {
     }
 
+    AppHighlightRangeData& operator=(const AppHighlightRangeData&) = default;
+
     const String& identifier() const { return m_identifier; }
     const String& text() const { return m_text; }
     const NodePath& startContainer() const { return m_startContainer; }
@@ -106,10 +97,7 @@ public:
     const NodePath& endContainer() const { return m_endContainer; }
     uint32_t endOffset() const { return m_endOffset; }
 
-    template<class Encoder> void encode(Encoder&) const;
-    template<class Decoder> static std::optional<AppHighlightRangeData> decode(Decoder&);
-
-    Ref<SharedBuffer> toSharedBuffer() const;
+    Ref<FragmentedSharedBuffer> toSharedBuffer() const;
 
 private:
     String m_identifier;

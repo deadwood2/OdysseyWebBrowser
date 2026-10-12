@@ -29,6 +29,7 @@
 #ifndef AudioArray_h
 #define AudioArray_h
 
+#include <span>
 #include <string.h>
 #include <wtf/CheckedArithmetic.h>
 #include <wtf/FastMalloc.h>
@@ -58,7 +59,10 @@ public:
             return;
 
         Checked<size_t> initialSize = sizeof(T) * n;
-        const size_t alignment = 16;
+        // Accelerate.framework behaves differently based on input vector alignment. And each implementation
+        // has very small difference in output! We ensure 32byte alignment so that we will always take the most
+        // optimized implementation if possible, which makes the result deterministic.
+        constexpr size_t alignment = 32;
 
         fastAlignedFree(m_allocation);
 
@@ -69,6 +73,8 @@ public:
         zero();
     }
 
+    std::span<T> span() { return { data(), size() }; }
+    std::span<const T> span() const { return { data(), size() }; }
     T* data() { return m_allocation; }
     const T* data() const { return m_allocation; }
     size_t size() const { return m_size; }
@@ -86,7 +92,7 @@ public:
     {
         // Note that although it is a size_t, m_size is now guaranteed to be
         // no greater than max unsigned. This guarantee is enforced in resize().
-        ASSERT_WITH_SECURITY_IMPLICATION(i < size());
+        RELEASE_ASSERT(i < size());
         return data()[i];
     }
 

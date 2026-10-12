@@ -1,3 +1,4 @@
+#include "config.h"
 #include "MediaPlayerPrivateMorphOS.h"
 
 #if ENABLE(VIDEO)
@@ -9,6 +10,7 @@
 #include "AcinerellaContainer.h"
 #include "AudioTrackPrivateMorphOS.h"
 #include "VideoTrackPrivateMorphOS.h"
+#include "PlatformMediaResourceLoader.h"
 
 #include "HTMLMediaElement.h"
 #include "Frame.h"
@@ -17,9 +19,10 @@
 #include <proto/exec.h>
 #include <exec/exec.h>
 
-#define D(x)
+#define D(x) 
 #define DM(x)
 #define DMHOST(x) 
+#define DSEEK(x) 
 
 namespace WebCore {
 
@@ -33,7 +36,9 @@ class MediaPlayerFactoryMediaSourceMorphOS final : public MediaPlayerFactory {
 public:
     MediaPlayerEnums::MediaEngineIdentifier identifier() const final { return MediaPlayerEnums::MediaEngineIdentifier::MorphOS; };
 
-    std::unique_ptr<MediaPlayerPrivateInterface> createMediaEnginePlayer(MediaPlayer* player) const final { return makeUnique<MediaPlayerPrivateMorphOS>(player); }
+    Ref<MediaPlayerPrivateInterface> createMediaEnginePlayer(MediaPlayer* player) const final {
+        return adoptRef(*new MediaPlayerPrivateMorphOS(player));
+    }
 
     static bool isCGXVideoValid()
     {
@@ -58,54 +63,54 @@ public:
         return valid;
     }
 
-    static void s_getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types, bool withHLS)
+    static void s_getSupportedTypes(HashSet<String>& types, bool withHLS)
     {
 		// Audio
-		types.add(String("audio/aac"));
-		types.add(String("audio/basic"));
-		types.add(String("audio/mp3"));
-		types.add(String("audio/mp4"));
-		types.add(String("audio/flac"));
-		types.add(String("audio/mpeg"));
-		types.add(String("audio/vnd.wave"));
-		types.add(String("audio/wav"));
-		types.add(String("audio/wave"));
+		types.add("audio/aac"_s);
+		types.add("audio/basic"_s);
+		types.add("audio/mp3"_s);
+		types.add("audio/mp4"_s);
+		types.add("audio/flac"_s);
+		types.add("audio/mpeg"_s);
+		types.add("audio/vnd.wave"_s);
+		types.add("audio/wav"_s);
+		types.add("audio/wave"_s);
 
-		types.add(String("audio/x-aiff"));
-		types.add(String("audio/x-flac"));
-		types.add(String("audio/x-m4a"));
-		types.add(String("audio/x-pn-wav"));
-		types.add(String("audio/x-wav"));
+		types.add("audio/x-aiff"_s);
+		types.add("audio/x-flac"_s);
+		types.add("audio/x-m4a"_s);
+		types.add("audio/x-pn-wav"_s);
+		types.add("audio/x-wav"_s);
 
-		types.add(String("audio/ogg"));
-		types.add(String("audio/webm"));
+		types.add("audio/ogg"_s);
+		types.add("audio/webm"_s);
 
-		types.add(String("audio/x-scpls"));
-		types.add(String("audio/mpa"));
-		types.add(String("audio/mpa-robust"));
+		types.add("audio/x-scpls"_s);
+		types.add("audio/mpa"_s);
+		types.add("audio/mpa-robust"_s);
 
 		// Video
-		types.add(String("video/avi"));
-		types.add(String("video/flv"));
-		types.add(String("video/mp4"));
-		types.add(String("video/3gpp")); // this is mp4
-		types.add(String("video/vnd.objectvideo"));
-		types.add(String("video/x-flv"));
+		types.add("video/avi"_s);
+		types.add("video/flv"_s);
+		types.add("video/mp4"_s);
+		types.add("video/3gpp"_s); // this is mp4
+		types.add("video/vnd.objectvideo"_s);
+		types.add("video/x-flv"_s);
 
-		types.add(String("video/ogg"));
-		types.add(String("video/x-theora+ogg"));
-		types.add(String("video/webm"));
+		types.add("video/ogg"_s);
+		types.add("video/x-theora+ogg"_s);
+		types.add("video/webm"_s);
 
 		// HLS
 		if (withHLS)
 		{
-			types.add(String("audio/x-mpegurl"));
-			types.add(String("application/x-mpegurl"));
-			types.add(String("application/vnd.apple.mpegurl"));
+			types.add("audio/x-mpegurl"_s);
+			types.add("application/x-mpegurl"_s);
+			types.add("application/vnd.apple.mpegurl"_s);
 		}
     }
 
-	void getSupportedTypes(HashSet<String, ASCIICaseInsensitiveHash>& types) const final
+	void getSupportedTypes(HashSet<String>& types) const final
 	{
 		s_getSupportedTypes(types, true);
 	}
@@ -123,7 +128,12 @@ public:
 			DMHOST(dprintf("%s: vmframe %p\n", __func__, frame));
 			if (frame)
 			{
-				Document *doc = frame->mainFrame().document();
+//				Document *doc = frame->mainFrame().document();
+
+                Document *doc = nullptr;
+                if (auto* localFrame = dynamicDowncast<LocalFrame>(frame->mainFrame()))
+                    doc = localFrame->document();
+
 				DMHOST(dprintf("%s: doc %p\n", __func__, doc));
 				if (doc)
 				{
@@ -138,7 +148,7 @@ public:
 		}
 		else
 		{
-			Document *doc = page->mainFrame().document();
+			Document *doc = dynamicDowncast<LocalFrame>(page->mainFrame())->document();
 			DMHOST(dprintf("%s: doc %p urlvalid %d (%s)\n", __func__, doc, parameters.url.isValid(), parameters.url.string().utf8().data()));
 			if (doc)
 			{
@@ -150,12 +160,12 @@ public:
 			}
 		}
     
-    	if (startsWithLettersIgnoringASCIICase(parameters.type.raw(), "image/"))
+    	if (startsWithLettersIgnoringASCIICase(parameters.type.raw(), "image/"_s))
     	{
     		return MediaPlayer::SupportsType::IsNotSupported;
 		}
 		
-    	if (startsWithLettersIgnoringASCIICase(parameters.url.string(), "data:"))
+    	if (startsWithLettersIgnoringASCIICase(parameters.url.string(), "data:"_s))
     	{
     		return MediaPlayer::SupportsType::IsNotSupported;
 		}
@@ -186,7 +196,7 @@ public:
 			return MediaPlayer::SupportsType::IsNotSupported;
 		}
 
-    	if (startsWithLettersIgnoringASCIICase(parameters.url.string(), "blob:"))
+    	if (startsWithLettersIgnoringASCIICase(parameters.url.string(), "blob:"_s))
     	{
 #if ENABLE(MEDIA_SOURCE)
 			if (!parameters.isMediaSource)
@@ -200,7 +210,7 @@ public:
 			DM(dprintf("%s: container empty, assume 'maybe'\n", __func__));
 			return MediaPlayer::SupportsType::MayBeSupported;
 		}
-		HashSet<String, ASCIICaseInsensitiveHash> types;
+		HashSet<String> types;
 		s_getSupportedTypes(types, withHLS);
 		DM(dprintf("%s: '%s' contained in list? %d\n", __func__, parameters.type.containerType().utf8().data(), types.contains(containerType)));
 		if (types.contains(containerType))
@@ -216,20 +226,20 @@ public:
 			for (size_t i = 0; i < codecs.size(); i++)
 			{
 				auto &codec = codecs.at(i);
-				if (startsWithLettersIgnoringASCIICase(codec, "av01") || startsWithLettersIgnoringASCIICase(codec, "av1")) // requires ffmpeg 4.0 + additional libs
+				if (startsWithLettersIgnoringASCIICase(codec, "av01"_s) || startsWithLettersIgnoringASCIICase(codec, "av1"_s)) // requires ffmpeg 4.0 + additional libs
 				{
 					DM(dprintf("%s: rejecting unsupported codec %s\n", __func__, codec.utf8().data()));
 					return MediaPlayer::SupportsType::IsNotSupported;
 				}
 #if 0
 				// higher profile h264 seem to fail decoding (on vimeo, but work on yt!)
-				else if (startsWithLettersIgnoringASCIICase(codec, "avc1.5") || startsWithLettersIgnoringASCIICase(codec, "avc1.6") || startsWithLettersIgnoringASCIICase(codec, "avc1.7") || startsWithLettersIgnoringASCIICase(codec, "avc1.8") || startsWithLettersIgnoringASCIICase(codec, "avc1.f"))
+				else if (startsWithLettersIgnoringASCIICase(codec, "avc1.5"_s) || startsWithLettersIgnoringASCIICase(codec, "avc1.6"_s) || startsWithLettersIgnoringASCIICase(codec, "avc1.7"_s) || startsWithLettersIgnoringASCIICase(codec, "avc1.8"_s) || startsWithLettersIgnoringASCIICase(codec, "avc1.f"_s))
 				{
 					DM(dprintf("%s: rejecting unsupported codec %s\n", __func__, codec.utf8().data()));
 					return MediaPlayer::SupportsType::IsNotSupported;
 				}
 #endif
-				else if (startsWithLettersIgnoringASCIICase(codec, "hvc1")) // not enabled in ffmpeg (h265 variant)
+				else if (startsWithLettersIgnoringASCIICase(codec, "hvc1"_s)) // not enabled in ffmpeg (h265 variant)
 				{
 					if (MediaPlayerMorphOSSettings::settings().m_supportHVCForHost && !MediaPlayerMorphOSSettings::settings().m_supportHVCForHost(page, host))
 					{
@@ -237,7 +247,7 @@ public:
 						return MediaPlayer::SupportsType::IsNotSupported;
 					}
 				}
-                else if (startsWithLettersIgnoringASCIICase(codec, "vp9"))
+                else if (startsWithLettersIgnoringASCIICase(codec, "vp9"_s))
                 {
 					if (MediaPlayerMorphOSSettings::settings().m_supportVP9ForHost && !MediaPlayerMorphOSSettings::settings().m_supportVP9ForHost(page, host))
 					{
@@ -271,6 +281,11 @@ MediaPlayerPrivateMorphOS::MediaPlayerPrivateMorphOS(MediaPlayer* player)
 
 MediaPlayerPrivateMorphOS::~MediaPlayerPrivateMorphOS()
 {
+#if ENABLE(MEDIA_SOURCE)
+	if (m_mediaSourcePrivate)
+		m_mediaSourcePrivate->orphan();
+#endif
+
 	if (m_acinerella)
 		m_acinerella->terminate();
 
@@ -292,7 +307,7 @@ MediaPlayer::SupportsType MediaPlayerPrivateMorphOS::extendedSupportsType(const 
 
 bool MediaPlayerPrivateMorphOS::supportsKeySystem(const String& keySystem, const String& mimeType)
 {
-	if (equalIgnoringASCIICase(keySystem, "org.w3c.clearkey") && !mimeType.isEmpty() && equalIgnoringASCIICase(mimeType, "application/x-mpegurl"))
+	if (equalIgnoringASCIICase(keySystem, "org.w3c.clearkey"_s) && !mimeType.isEmpty() && equalIgnoringASCIICase(mimeType, "application/x-mpegurl"_s))
 		return true;
 	return false;
 }
@@ -303,7 +318,7 @@ void MediaPlayerPrivateMorphOS::load(const String& url)
 
 	cancelLoad();
 
-	if (startsWithLettersIgnoringASCIICase(url, "about:"))
+	if (startsWithLettersIgnoringASCIICase(url, "about:"_s))
 		return;
 
 	if (!canLoad(false))
@@ -318,12 +333,12 @@ void MediaPlayerPrivateMorphOS::load(const String& url)
 }
 
 #if ENABLE(MEDIA_SOURCE)
-void MediaPlayerPrivateMorphOS::load(const URL& url, const ContentType&, MediaSourcePrivateClient* client)
+void MediaPlayerPrivateMorphOS::load(const URL& url, const ContentType&, MediaSourcePrivateClient& client)
 {
 	D(dprintf("%s: %s\n", __PRETTY_FUNCTION__, url.string().utf8().data()));
 	cancelLoad();
 
-	if (startsWithLettersIgnoringASCIICase(url.string(), "about:"))
+	if (startsWithLettersIgnoringASCIICase(url.string(), "about:"_s))
 		return;
 		
 	if (!canLoad(true))
@@ -334,7 +349,7 @@ void MediaPlayerPrivateMorphOS::load(const URL& url, const ContentType&, MediaSo
 	m_readyState = MediaPlayer::ReadyState::HaveNothing;
 	m_player->readyStateChanged();
 
-	m_mediaSourcePrivate = MediaSourcePrivateMorphOS::create(*this, *client, url.string());
+	m_mediaSourcePrivate = MediaSourcePrivateMorphOS::create(*this, client, url.string());
 }
 #endif
 
@@ -342,7 +357,7 @@ bool MediaPlayerPrivateMorphOS::canLoad(bool isMediaSource)
 {
 	Page *page = m_player->client().mediaPlayerPage();
 	String host;
-	Document *doc = page ? page->mainFrame().document() : nullptr;
+	Document *doc = page ? dynamicDowncast<LocalFrame>(page->mainFrame())->document() : nullptr;
 	if (doc)
 	{
 		host = doc->url().host().toString();
@@ -490,21 +505,7 @@ FloatSize MediaPlayerPrivateMorphOS::naturalSize() const
 	return { float(m_width), float(m_height) };
 }
 
-float MediaPlayerPrivateMorphOS::duration() const
-{
-	return durationDouble();
-}
-
-double MediaPlayerPrivateMorphOS::durationDouble() const
-{
-#if ENABLE(MEDIA_SOURCE)
-	if (m_mediaSourcePrivate)
-		return m_mediaSourcePrivate->duration().toDouble();
-#endif
-	return m_duration;
-}
-
-MediaTime MediaPlayerPrivateMorphOS::durationMediaTime() const
+MediaTime MediaPlayerPrivateMorphOS::duration() const
 {
 	if (m_acinerella && m_acinerella->isLive())
 		return MediaTime::invalidTime();
@@ -512,7 +513,12 @@ MediaTime MediaPlayerPrivateMorphOS::durationMediaTime() const
 	if (m_mediaSourcePrivate)
 		return m_mediaSourcePrivate->duration();
 #endif
-	return MediaTime::createWithDouble(durationDouble());
+	return m_duration;
+}
+
+MediaTime MediaPlayerPrivateMorphOS::currentTime() const
+{
+    return m_currentTime;
 }
 
 bool MediaPlayerPrivateMorphOS::hasVideo() const
@@ -555,14 +561,17 @@ bool MediaPlayerPrivateMorphOS::seeking() const
 	return false;
 }
 
-void MediaPlayerPrivateMorphOS::seek(float time)
+void MediaPlayerPrivateMorphOS::seekToTarget(const SeekTarget& target)
 {
-	D(dprintf("%s: %f\n", __PRETTY_FUNCTION__, time));
+    float time = target.time.toFloat();
+
+	DSEEK(dprintf("%s: %f\n", __PRETTY_FUNCTION__, time));
+
 	if (m_acinerella)
 		return m_acinerella->seek(time);
 #if ENABLE(MEDIA_SOURCE)
 	else if (m_mediaSourcePrivate)
-		return m_mediaSourcePrivate->seek(time);
+		return m_mediaSourcePrivate->seekToTarget(target);
 #endif
 }
 
@@ -606,14 +615,14 @@ MediaPlayer::ReadyState MediaPlayerPrivateMorphOS::readyState() const
 	return m_readyState;
 }
 
-std::unique_ptr<PlatformTimeRanges> MediaPlayerPrivateMorphOS::buffered() const
+const PlatformTimeRanges& MediaPlayerPrivateMorphOS::buffered() const
 {
 #if ENABLE(MEDIA_SOURCE)
 	if (m_mediaSourcePrivate)
-		return m_mediaSourcePrivate->buffered();
+        m_mediaSourcePrivate->buffered();
 #endif
-	return makeUnique<PlatformTimeRanges>(MediaTime::createWithDouble(std::max(0.0, m_currentTime - 1.0 )),
-		MediaTime::createWithDouble(m_currentTime + 10.0));
+
+    return m_buffered;
 }
 
 void MediaPlayerPrivateMorphOS::paint(GraphicsContext& gc, const FloatRect& rect)
@@ -644,7 +653,7 @@ void MediaPlayerPrivateMorphOS::accNextFrameReady()
 		if (MediaPlayerMorphOSSettings::settings().m_overlayRequest)
 		{
 			MediaPlayerMorphOSSettings::settings().m_overlayRequest(m_player,
-				[weak = makeWeakPtr(this)](void *ptr, int sx, int sy, int ml, int mt, int mr, int mb, int w, int h) {
+				[weak = WeakPtr{*this}](void *ptr, int sx, int sy, int ml, int mt, int mr, int mb, int w, int h) {
 				if (weak) {
 					if (weak->m_acinerella)
 						weak->m_acinerella->setOverlayWindowCoords((struct ::Window *)ptr, sx, sy, ml, mt, mr, mb, w, h);
@@ -687,10 +696,7 @@ bool MediaPlayerPrivateMorphOS::accCodecSupported(const String &codec)
 {
 	MediaEngineSupportParameters parameters;
 	parameters.page = m_player->client().mediaPlayerPage();
-	String ct; // audio/mp4; codecs="mp4a.40.2"
-	ct = "video/mp4; codecs=\"";
-	ct.append(codec);
-	ct.append("\"");
+    auto ct = makeString("video/mp4; codecs=\""_s, codec, "\""_s);
 	parameters.type = ContentType(ct);
 	return MediaPlayerFactoryMediaSourceMorphOS::s_supportsTypeAndCodecs(parameters) == MediaPlayer::SupportsType::IsSupported;
 }
@@ -726,14 +732,14 @@ MediaPlayer::MovieLoadType MediaPlayerPrivateMorphOS::movieLoadType() const
 	return MediaPlayer::MovieLoadType::Download;
 }
 
-float MediaPlayerPrivateMorphOS::maxTimeSeekable() const
+MediaTime MediaPlayerPrivateMorphOS::maxTimeSeekable() const
 {
 	if (m_acinerella && m_acinerella->canSeek())
 		return m_duration;
 #if ENABLE(MEDIA_SOURCE)
 	return m_duration;
 #endif
-	return 0.f;
+	return MediaTime::createWithDouble(0.0);
 }
 
 void MediaPlayerPrivateMorphOS::accInitialized(MediaPlayerMorphOSInfo info)
@@ -782,13 +788,13 @@ void MediaPlayerPrivateMorphOS::accInitialized(MediaPlayerMorphOSInfo info)
 		{
 			if (info.m_width)
 			{
-				m_videoTrack = VideoTrackPrivateMorphOS::create(makeWeakPtr(this), 0);
+				m_videoTrack = VideoTrackPrivateMorphOS::create(WeakPtr{*this}, 0);
 				m_player->addVideoTrack(*m_videoTrack.get());
 			}
 			
 			if (info.m_channels)
 			{
-				m_audioTrack = AudioTrackPrivateMorphOS::create(makeWeakPtr(this), 0);
+				m_audioTrack = AudioTrackPrivateMorphOS::create(WeakPtr{*this}, 0);
 				m_player->addAudioTrack(*m_audioTrack.get());
 			}
 		}
@@ -810,9 +816,10 @@ void MediaPlayerPrivateMorphOS::accUpdated(MediaPlayerMorphOSInfo info)
 	}
 }
 
-void MediaPlayerPrivateMorphOS::accSetNetworkState(WebCore::MediaPlayerEnums::NetworkState state)
+void MediaPlayerPrivateMorphOS::accSetNetworkState(WebCore::MediaPlayerEnums::NetworkState state, const WTF::String &error)
 {
 	m_networkState = state;
+    m_errorMessage = error;
 	m_player->networkStateChanged();
 }
 
@@ -831,13 +838,22 @@ void MediaPlayerPrivateMorphOS::accSetBufferLength(double buffer)
 
 void MediaPlayerPrivateMorphOS::accSetPosition(double pos)
 {
-	D(dprintf("%s: timechanged to %f\n", __func__, this, float(pos)));
-	m_currentTime = pos;
+	D(dprintf("%s: timechanged to %f\n", __func__, float(pos)));
+	m_currentTime = MediaTime::createWithDouble(pos);
+    m_buffered = PlatformTimeRanges(MediaTime::createWithDouble(std::max(0.0, m_currentTime.toDouble() - 1.0 )),
+		MediaTime::createWithDouble(m_currentTime.toDouble() + 10.0));
 	m_player->timeChanged();
+}
+
+void MediaPlayerPrivateMorphOS::accSeeked(double position)
+{
+    m_player->seeked(MediaTime::createWithDouble(position));
+    accSetPosition(position);
 }
 
 void MediaPlayerPrivateMorphOS::accSetDuration(double dur)
 {
+	D(dprintf("%s: duration to %f\n", __func__, float(dur)));
 #if ENABLE(MEDIA_SOURCE)
 	if (m_mediaSourcePrivate)
 	{
@@ -845,10 +861,10 @@ void MediaPlayerPrivateMorphOS::accSetDuration(double dur)
 		return;
 	}
 #endif
-	if (abs(dur - m_duration) >= 1.0)
+	if (m_duration.isInvalid() || (abs(dur - m_duration.toDouble()) >= 1.0))
 	{
-		D(dprintf("%s: changed to %f\n", __func__, this, float(dur)));
-		m_duration = ceil(dur);
+		D(dprintf("%s: changed to %f\n", __func__, float(dur)));
+		m_duration = MediaTime::createWithDouble(ceil(dur));
 		m_player->durationChanged();
 	}
 }
@@ -856,6 +872,8 @@ void MediaPlayerPrivateMorphOS::accSetDuration(double dur)
 void MediaPlayerPrivateMorphOS::accEnded()
 {
 	m_currentTime = m_duration;
+    m_buffered = PlatformTimeRanges(MediaTime::createWithDouble(std::max(0.0, m_currentTime.toDouble() - 1.0 )),
+		MediaTime::createWithDouble(m_currentTime.toDouble()));
 	m_player->timeChanged();
 	m_player->characteristicChanged();
 	m_player->playbackStateChanged();
@@ -910,7 +928,13 @@ void MediaPlayerPrivateMorphOS::onTrackEnabled(int index, bool enabled)
 void MediaPlayerPrivateMorphOS::selectHLSStream(const String& url)
 {
 	if (m_acinerella)
-		m_acinerella->selectStream(url, m_currentTime);
+		m_acinerella->selectStream(url, m_currentTime.toDouble());
+}
+
+String MediaPlayerPrivateMorphOS::errorMessage() const
+{
+    D(dprintf("%s: %s\n", __func__, m_errorMessage.utf8().data()));
+    return m_errorMessage;
 }
 
 }

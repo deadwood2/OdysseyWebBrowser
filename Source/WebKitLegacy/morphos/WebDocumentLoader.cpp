@@ -25,7 +25,7 @@
 
 #include "WebKit.h"
 #include "WebDocumentLoader.h"
-
+#include <WebCore/FrameDestructionObserverInlines.h>
 #include "WebFrame.h"
 
 namespace WebKit {
@@ -37,14 +37,14 @@ WebDocumentLoader::WebDocumentLoader(const ResourceRequest& request, const Subst
 {
 }
 
-void WebDocumentLoader::detachFromFrame()
+void WebDocumentLoader::detachFromFrame(WebCore::LoadWillContinueInAnotherProcess lwciap)
 {
     if (m_navigationID)
         WebFrame::fromCoreFrame(*frame())->documentLoaderDetached(m_navigationID);
 
     m_navigationID = 0;
 
-    DocumentLoader::detachFromFrame();
+    DocumentLoader::detachFromFrame(lwciap);
 }
 
 void WebDocumentLoader::setNavigationID(uint64_t navigationID)

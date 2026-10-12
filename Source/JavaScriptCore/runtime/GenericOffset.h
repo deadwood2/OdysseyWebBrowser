@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,13 +27,14 @@
 
 #include <limits.h>
 #include <wtf/Assertions.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace JSC {
 
 // A mixin for creating the various kinds of variable offsets that our engine supports.
 template<typename T>
 class GenericOffset {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(GenericOffset);
 public:
     static constexpr unsigned invalidOffset = UINT_MAX;
     
@@ -60,29 +61,22 @@ public:
         return m_offset;
     }
     
-    bool operator==(const T& other) const
+    friend bool operator==(const GenericOffset&, const GenericOffset&) = default;
+    bool operator<(const GenericOffset& other) const
     {
-        return m_offset == other.offsetUnchecked();
+        return m_offset < other.m_offset;
     }
-    bool operator!=(const T& other) const
+    bool operator>(const GenericOffset& other) const
     {
-        return m_offset != other.offsetUnchecked();
+        return m_offset > other.m_offset;
     }
-    bool operator<(const T& other) const
+    bool operator<=(const GenericOffset& other) const
     {
-        return m_offset < other.offsetUnchecked();
+        return m_offset <= other.m_offset;
     }
-    bool operator>(const T& other) const
+    bool operator>=(const GenericOffset& other) const
     {
-        return m_offset > other.offsetUnchecked();
-    }
-    bool operator<=(const T& other) const
-    {
-        return m_offset <= other.offsetUnchecked();
-    }
-    bool operator>=(const T& other) const
-    {
-        return m_offset >= other.offsetUnchecked();
+        return m_offset >= other.m_offset;
     }
     
     T operator+(int value) const

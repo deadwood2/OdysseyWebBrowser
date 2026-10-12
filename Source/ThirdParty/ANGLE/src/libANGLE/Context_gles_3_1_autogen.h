@@ -42,8 +42,8 @@
     void getProgramResourceName(ShaderProgramID programPacked, GLenum programInterface,            \
                                 GLuint index, GLsizei bufSize, GLsizei *length, GLchar *name);     \
     void getProgramResourceiv(ShaderProgramID programPacked, GLenum programInterface,              \
-                              GLuint index, GLsizei propCount, const GLenum *props,                \
-                              GLsizei bufSize, GLsizei *length, GLint *params);                    \
+                              GLuint index, GLsizei propCount, const GLenum *props, GLsizei count, \
+                              GLsizei *length, GLint *params);                                     \
     void getTexLevelParameterfv(TextureTarget targetPacked, GLint level, GLenum pname,             \
                                 GLfloat *params);                                                  \
     void getTexLevelParameteriv(TextureTarget targetPacked, GLint level, GLenum pname,             \
@@ -117,7 +117,6 @@
                                    GLsizei count, GLboolean transpose, const GLfloat *value);      \
     void programUniformMatrix4x3fv(ShaderProgramID programPacked, UniformLocation locationPacked,  \
                                    GLsizei count, GLboolean transpose, const GLfloat *value);      \
-    void sampleMaski(GLuint maskNumber, GLbitfield mask);                                          \
     void texStorage2DMultisample(TextureType targetPacked, GLsizei samples, GLenum internalformat, \
                                  GLsizei width, GLsizei height, GLboolean fixedsamplelocations);   \
     void useProgramStages(ProgramPipelineID pipelinePacked, GLbitfield stages,                     \

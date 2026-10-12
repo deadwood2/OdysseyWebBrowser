@@ -39,7 +39,12 @@ SOFTLINK_AVKIT_FRAMEWORK()
 SOFT_LINK_CLASS_OPTIONAL(AVKit, AVBackgroundView)
 
 @interface WKFullscreenStackView () {
+
+#if PLATFORM(APPLETV)
+    RetainPtr<UIView> _backgroundView;
+#else
     RetainPtr<AVBackgroundView> _backgroundView;
+#endif
 }
 @end
 
@@ -56,25 +61,27 @@ SOFT_LINK_CLASS_OPTIONAL(AVKit, AVBackgroundView)
         return nil;
 
     [self setClipsToBounds:YES];
-
+#if !PLATFORM(APPLETV)
     _backgroundView = adoptNS([allocAVBackgroundViewInstance() initWithFrame:frame]);
-    [self addSubview:_backgroundView.get()];
-
     // FIXME: remove this once AVBackgroundView handles this. https://bugs.webkit.org/show_bug.cgi?id=188022
     [_backgroundView setClipsToBounds:YES];
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     [_backgroundView.get().layer setContinuousCorners:YES];
 ALLOW_DEPRECATED_DECLARATIONS_END
     [_backgroundView.get().layer setCornerRadius:16];
-
+    [_backgroundView.get().layer setCornerCurve:kCACornerCurveCircular];
+    [self addSubview:_backgroundView.get()];
+#endif
     return self;
 }
 
+#if !PLATFORM(APPLETV)
 - (void)addArrangedSubview:(UIView *)subview applyingMaterialStyle:(AVBackgroundViewMaterialStyle)materialStyle tintEffectStyle:(AVBackgroundViewTintEffectStyle)tintEffectStyle
 {
     [_backgroundView.get() addSubview:subview applyingMaterialStyle:materialStyle tintEffectStyle:tintEffectStyle];
     [self addArrangedSubview:subview];
 }
+#endif
 
 #pragma mark - UIView Overrides
 

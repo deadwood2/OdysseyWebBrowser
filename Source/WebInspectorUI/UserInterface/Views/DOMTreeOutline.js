@@ -30,7 +30,7 @@
 
 WI.DOMTreeOutline = class DOMTreeOutline extends WI.TreeOutline
 {
-    constructor({selectable, omitRootDOMNode, excludeRevealElementContextMenu, showInspectedNode} = {})
+    constructor({selectable, omitRootDOMNode, excludeRevealElementContextMenu, showInspectedNode, showBadges} = {})
     {
         super(selectable);
 
@@ -61,8 +61,11 @@ WI.DOMTreeOutline = class DOMTreeOutline extends WI.TreeOutline
         this._hideElementsKeyboardShortcut = new WI.KeyboardShortcut(null, "H", this._hideElements.bind(this), this.element);
         this._hideElementsKeyboardShortcut.implicitlyPreventsDefault = false;
 
-        if (showInspectedNode)
+        this._showInspectedNode = !!showInspectedNode;
+        if (this._showInspectedNode)
             WI.domManager.addEventListener(WI.DOMManager.Event.InspectedNodeChanged, this._handleInspectedNodeChanged, this);
+
+        this._showBadges = !!showBadges;
     }
 
     // Public
@@ -170,22 +173,32 @@ WI.DOMTreeOutline = class DOMTreeOutline extends WI.TreeOutline
 
         this.removeChildren();
 
+        const elementCloseTag = false;
+
         var treeElement;
         if (this._includeRootDOMNode) {
-            treeElement = new WI.DOMTreeElement(this.rootDOMNode);
+            treeElement = new WI.DOMTreeElement(this.rootDOMNode, elementCloseTag, {showBadges: this._showBadges});
             treeElement.selectable = this.selectable;
             this.appendChild(treeElement);
         } else {
             // FIXME: this could use findTreeElement to reuse a tree element if it already exists
             var node = this.rootDOMNode.firstChild;
             while (node) {
-                treeElement = new WI.DOMTreeElement(node);
+                treeElement = new WI.DOMTreeElement(node, elementCloseTag, {showBadges: this._showBadges});
                 treeElement.selectable = this.selectable;
                 this.appendChild(treeElement);
                 node = node.nextSibling;
 
-                if (treeElement.hasChildren && !treeElement.expanded)
+                if (treeElement.expandable && !treeElement.expanded)
                     treeElement.expand();
+            }
+        }
+
+        if (this._showInspectedNode && WI.domManager.inspectedNode) {
+            let inspectedNodeTreeElement = this.findTreeElement(WI.domManager.inspectedNode);
+            if (inspectedNodeTreeElement) {
+                inspectedNodeTreeElement.reveal();
+                inspectedNodeTreeElement.listItemElement.classList.add("inspected-node");
             }
         }
 
@@ -455,7 +468,7 @@ WI.DOMTreeOutline = class DOMTreeOutline extends WI.TreeOutline
             this._previousHoveredElement = null;
         }
 
-        if (element) {
+        if (element instanceof WI.DOMTreeElement) {
             element.hovered = true;
             this._previousHoveredElement = element;
 

@@ -32,29 +32,45 @@
 #include "AbstractWorker.h"
 
 #include "ContentSecurityPolicy.h"
+#include "OriginAccessPatterns.h"
 #include "ScriptExecutionContext.h"
 #include "SecurityOrigin.h"
-#include <wtf/IsoMallocInlines.h>
+#include "WorkerOptions.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(AbstractWorker);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(AbstractWorker);
 
-ExceptionOr<URL> AbstractWorker::resolveURL(const String& url, bool shouldBypassMainWorldContentSecurityPolicy)
+FetchOptions AbstractWorker::workerFetchOptions(const WorkerOptions& options, FetchOptions::Destination destination)
+{
+    FetchOptions fetchOptions;
+    fetchOptions.mode = FetchOptions::Mode::SameOrigin;
+    if (options.type == WorkerType::Module)
+        fetchOptions.credentials = options.credentials;
+    else
+        fetchOptions.credentials = FetchOptions::Credentials::SameOrigin;
+    fetchOptions.cache = FetchOptions::Cache::Default;
+    fetchOptions.redirect = FetchOptions::Redirect::Follow;
+    fetchOptions.destination = destination;
+    return fetchOptions;
+}
+
+ExceptionOr<URL> AbstractWorker::resolveURL(const String& url)
 {
     auto& context = *scriptExecutionContext();
 
     // FIXME: This should use the dynamic global scope (bug #27887).
     URL scriptURL = context.completeURL(url);
     if (!scriptURL.isValid())
-        return Exception { SyntaxError };
+        return Exception { ExceptionCode::SyntaxError };
 
-    if (!context.securityOrigin()->canRequest(scriptURL) && !scriptURL.protocolIsData())
-        return Exception { SecurityError };
+    if (!context.protectedSecurityOrigin()->canRequest(scriptURL, OriginAccessPatternsForWebProcess::singleton()) && !scriptURL.protocolIsData())
+        return Exception { ExceptionCode::SecurityError };
 
     ASSERT(context.contentSecurityPolicy());
-    if (!shouldBypassMainWorldContentSecurityPolicy && !context.contentSecurityPolicy()->allowChildContextFromSource(scriptURL))
-        return Exception { SecurityError };
+    if (!context.checkedContentSecurityPolicy()->allowWorkerFromSource(scriptURL))
+        return Exception { ExceptionCode::SecurityError };
 
     return scriptURL;
 }

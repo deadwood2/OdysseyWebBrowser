@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,43 +27,77 @@
 #include <wtf/cf/CFURLExtras.h>
 
 #include <wtf/URL.h>
-#include <wtf/text/CString.h>
 
 namespace WTF {
 
-void getURLBytes(CFURLRef url, URLCharBuffer& result)
+RetainPtr<CFDataRef> bytesAsCFData(std::span<const uint8_t> bytes)
 {
-    CFIndex bytesLength = CFURLGetBytes(url, nullptr, 0);
-    result.resize(bytesLength);
-    CFIndex finalLength = CFURLGetBytes(url, reinterpret_cast<UInt8*>(result.data()), bytesLength);
-    ASSERT_UNUSED(finalLength, finalLength == bytesLength);
+    return adoptCF(CFDataCreate(nullptr, bytes.data(), bytes.size()));
 }
 
-void getURLBytes(CFURLRef url, CString& result)
+RetainPtr<CFDataRef> bytesAsCFData(CFURLRef url)
 {
-    CFIndex bytesLength = CFURLGetBytes(url, nullptr, 0);
-    char* bytes;
-    result = CString::newUninitialized(bytesLength, bytes);
-    CFIndex finalLength = CFURLGetBytes(url, reinterpret_cast<UInt8*>(bytes), bytesLength);
-    ASSERT_UNUSED(finalLength, finalLength == bytesLength);
+    if (!url)
+        return nullptr;
+    auto bytesLength = CFURLGetBytes(url, nullptr, 0);
+    RELEASE_ASSERT(bytesLength != -1);
+    auto buffer = static_cast<uint8_t*>(malloc(bytesLength));
+    RELEASE_ASSERT(buffer);
+    CFURLGetBytes(url, buffer, bytesLength);
+    return adoptCF(CFDataCreateWithBytesNoCopy(nullptr, buffer, bytesLength, kCFAllocatorMalloc));
 }
 
-bool isCFURLSameOrigin(CFURLRef cfURL, const URL& url)
+String bytesAsString(CFURLRef url)
 {
-    ASSERT(url.protocolIsInHTTPFamily());
+    if (!url)
+        return { };
+    auto bytesLength = CFURLGetBytes(url, nullptr, 0);
+    RELEASE_ASSERT(bytesLength != -1);
+    RELEASE_ASSERT(bytesLength <= static_cast<CFIndex>(String::MaxLength));
+    LChar* buffer;
+    auto result = String::createUninitialized(bytesLength, buffer);
+    CFURLGetBytes(url, buffer, bytesLength);
+    return result;
+}
 
-    if (url.hasCredentials())
-        return protocolHostAndPortAreEqual(url, URL { cfURL });
+Vector<uint8_t, URLBytesVectorInlineCapacity> bytesAsVector(CFURLRef url)
+{
+    if (!url)
+        return { };
 
-    URLCharBuffer bytes;
-    getURLBytes(cfURL, bytes);
-    StringView cfURLString { reinterpret_cast<const LChar*>(bytes.data()), static_cast<unsigned>(bytes.size()) };
+    Vector<uint8_t, URLBytesVectorInlineCapacity> result(URLBytesVectorInlineCapacity);
+    auto bytesLength = CFURLGetBytes(url, result.data(), URLBytesVectorInlineCapacity);
+    if (bytesLength != -1)
+        result.shrink(bytesLength);
+    else {
+        bytesLength = CFURLGetBytes(url, nullptr, 0);
+        RELEASE_ASSERT(bytesLength != -1);
+        result.grow(bytesLength);
+        CFURLGetBytes(url, result.data(), bytesLength);
+    }
 
-    if (!url.hasPath())
-        return StringView { url.string() } == cfURLString;
+    // This may look like it copies the bytes in the vector, but due to the return value optimization it does not.
+    return result;
+}
 
-    auto urlWithoutPath = StringView { url.string() }.substring(0, url.pathStart() + 1);
-    return cfURLString.startsWith(urlWithoutPath);
+bool isSameOrigin(CFURLRef a, const URL& b)
+{
+    ASSERT(b.protocolIsInHTTPFamily());
+
+    if (b.hasCredentials())
+        return protocolHostAndPortAreEqual(a, b);
+
+    auto aBytes = bytesAsVector(a);
+    RELEASE_ASSERT(aBytes.size() <= String::MaxLength);
+
+    StringView aString { aBytes.span() };
+    StringView bString { b.string() };
+
+    if (!b.hasPath())
+        return aString == bString;
+
+    unsigned afterPathSeparator = b.pathStart() + 1;
+    return aString.left(afterPathSeparator) == bString.left(afterPathSeparator);
 }
 
 }

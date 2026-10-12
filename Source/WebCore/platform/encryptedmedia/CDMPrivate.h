@@ -33,6 +33,15 @@
 #include <wtf/Forward.h>
 #include <wtf/WeakPtr.h>
 
+namespace WebCore {
+class CDMPrivate;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::CDMPrivate> : std::true_type { };
+}
+
 #if !RELEASE_LOG_DISABLED
 namespace WTF {
 class Logger;
@@ -44,13 +53,23 @@ namespace WebCore {
 struct CDMKeySystemConfiguration;
 struct CDMMediaCapability;
 struct CDMRestrictions;
+class SharedBuffer;
+
+class CDMPrivateClient {
+public:
+    virtual ~CDMPrivateClient() = default;
+
+#if !RELEASE_LOG_DISABLED
+    virtual const Logger& logger() const = 0;
+#endif
+};
 
 class CDMPrivate : public CanMakeWeakPtr<CDMPrivate> {
 public:
     WEBCORE_EXPORT virtual ~CDMPrivate();
 
 #if !RELEASE_LOG_DISABLED
-    virtual void setLogger(WTF::Logger&, const void*) { };
+    virtual void setLogIdentifier(const void*) { };
 #endif
 
     enum class LocalStorageAccess : bool {
@@ -58,7 +77,7 @@ public:
         Allowed,
     };
 
-    using SupportedConfigurationCallback = WTF::Function<void(std::optional<CDMKeySystemConfiguration>)>;
+    using SupportedConfigurationCallback = Function<void(std::optional<CDMKeySystemConfiguration>)>;
     WEBCORE_EXPORT virtual void getSupportedConfiguration(CDMKeySystemConfiguration&& candidateConfiguration, LocalStorageAccess, SupportedConfigurationCallback&&);
 
     virtual Vector<AtomString> supportedInitDataTypes() const = 0;
@@ -74,7 +93,6 @@ public:
     virtual bool supportsServerCertificates() const = 0;
     virtual bool supportsSessions() const = 0;
     virtual bool supportsInitData(const AtomString&, const SharedBuffer&) const = 0;
-    WEBCORE_EXPORT virtual RefPtr<SharedBuffer> sanitizeInitData(const AtomString& initDataType, const SharedBuffer& initData) const;
     virtual RefPtr<SharedBuffer> sanitizeResponse(const SharedBuffer&) const = 0;
     virtual std::optional<String> sanitizeSessionId(const String&) const = 0;
 
@@ -103,7 +121,7 @@ protected:
     std::optional<CDMKeySystemConfiguration> getSupportedConfiguration(const CDMKeySystemConfiguration& candidateConfiguration, CDMRestrictions&, LocalStorageAccess);
     std::optional<Vector<CDMMediaCapability>> getSupportedCapabilitiesForAudioVideoType(AudioVideoType, const Vector<CDMMediaCapability>& requestedCapabilities, const CDMKeySystemConfiguration& partialConfiguration, CDMRestrictions&);
 
-    using ConsentStatusCallback = WTF::Function<void(ConsentStatus, CDMKeySystemConfiguration&&, CDMRestrictions&&)>;
+    using ConsentStatusCallback = Function<void(ConsentStatus, CDMKeySystemConfiguration&&, CDMRestrictions&&)>;
     void getConsentStatus(CDMKeySystemConfiguration&& accumulatedConfiguration, CDMRestrictions&&, LocalStorageAccess, ConsentStatusCallback&&);
 };
 

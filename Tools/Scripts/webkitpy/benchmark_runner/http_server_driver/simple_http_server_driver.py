@@ -1,9 +1,8 @@
-#!/usr/bin/env python
-
 import logging
 import os
 import re
 import subprocess
+import shutil
 import sys
 import time
 
@@ -20,20 +19,27 @@ class SimpleHTTPServerDriver(HTTPServerDriver):
 
     platforms = ['osx', 'linux']
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         self._server_process = None
         self._server_port = 0
         self._ip = '127.0.0.1'
+        self._http_log_path = None
+        self._server_type = kwargs.get('server_type', 'twisted')
+        self.set_device_id(kwargs.get('device_id'))
         self._ensure_http_server_dependencies()
 
     def serve(self, web_root):
         _log.info('Launching an http server')
-        http_server_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "http_server/twisted_http_server.py")
-        interface_args = []
+        http_server_file = 'http_server/{}_http_server.py'.format(self._server_type)
+        http_server_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), http_server_file)
+        extra_args = []
         if self._ip:
-            interface_args.extend(['--interface', self._ip])
+            extra_args.extend(['--interface', self._ip])
+        if self._http_log_path:
+            extra_args.extend(['--log-path', self._http_log_path])
+            _log.info('HTTP requests will be logged to {}'.format(self._http_log_path))
         self._server_port = 0
-        self._server_process = subprocess.Popen([sys.executable, http_server_path, web_root] + interface_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self._server_process = subprocess.Popen([sys.executable, http_server_path, web_root] + extra_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         max_attempt = 7
         retry_sequence = map(lambda attempt: attempt != max_attempt - 1, range(max_attempt))
         interval = 0.5
@@ -64,7 +70,9 @@ class SimpleHTTPServerDriver(HTTPServerDriver):
                 self._server_port = connections[0].laddr[1]
         except ImportError:
             try:
-                output = subprocess.check_output(['/usr/sbin/lsof', '-a', '-P', '-iTCP', '-sTCP:LISTEN', '-p', str(self._server_process.pid)])
+                # lsof on Linux is shipped on /usr/bin typically, but on Mac on /usr/sbin
+                lsof_path = shutil.which('lsof') or '/usr/sbin/lsof'
+                output = subprocess.check_output([lsof_path, '-a', '-P', '-iTCP', '-sTCP:LISTEN', '-p', str(self._server_process.pid)])
                 self._server_port = int(re.search(r'TCP .*:(\d+) \(LISTEN\)', str(output)).group(1))
             except Exception as error:
                 _log.info('Error: %s' % error)
@@ -105,6 +113,13 @@ class SimpleHTTPServerDriver(HTTPServerDriver):
     def set_device_id(self, device_id):
         pass
 
+    def set_http_log(self, log_path):
+        self._http_log_path = log_path
+
+    def set_http_server_type(self, server_type):
+        self._server_type = server_type
+
     def _ensure_http_server_dependencies(self):
         _log.info('Ensure dependencies of http server is satisfied')
-        from webkitpy.autoinstalled import twisted
+        if(self._server_type == 'twisted'):
+            from webkitpy.autoinstalled import twisted

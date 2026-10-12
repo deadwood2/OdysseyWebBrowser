@@ -26,7 +26,7 @@
 #pragma once
 
 #include "AnimationEffect.h"
-#include "AnimationEffectPhase.h"
+#include "AnimationEffectTiming.h"
 #include "BasicEffectTiming.h"
 #include "ComputedEffectTiming.h"
 #include "ExceptionOr.h"
@@ -37,95 +37,88 @@
 #include "TimingFunction.h"
 #include "WebAnimation.h"
 #include "WebAnimationUtilities.h"
+#include <variant>
 #include <wtf/Forward.h>
 #include <wtf/Ref.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Seconds.h>
-#include <wtf/Variant.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
 class AnimationEffect : public RefCounted<AnimationEffect>, public CanMakeWeakPtr<AnimationEffect> {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(AnimationEffect);
 public:
     virtual ~AnimationEffect();
 
+    virtual bool isCustomEffect() const { return false; }
     virtual bool isKeyframeEffect() const { return false; }
 
     EffectTiming getBindingsTiming() const;
-    EffectTiming getTiming() const;
     BasicEffectTiming getBasicTiming(std::optional<Seconds> = std::nullopt) const;
     ComputedEffectTiming getBindingsComputedTiming() const;
     ComputedEffectTiming getComputedTiming(std::optional<Seconds> = std::nullopt) const;
     ExceptionOr<void> bindingsUpdateTiming(std::optional<OptionalEffectTiming>);
     ExceptionOr<void> updateTiming(std::optional<OptionalEffectTiming>);
 
-    virtual void apply(RenderStyle& targetStyle, const RenderStyle* parentElementStyle, std::optional<Seconds> = std::nullopt) = 0;
-    virtual void invalidate() = 0;
-    virtual void animationDidTick() = 0;
-    virtual void animationDidPlay() = 0;
-    virtual void animationDidChangeTimingProperties() = 0;
-    virtual void animationWasCanceled() = 0;
-    virtual void animationSuspensionStateDidChange(bool) = 0;
-    virtual void animationTimelineDidChange(AnimationTimeline*) = 0;
+    virtual void animationDidTick() { };
+    virtual void animationDidChangeTimingProperties() { };
+    virtual void animationWasCanceled() { };
+    virtual void animationSuspensionStateDidChange(bool) { };
+    virtual void animationTimelineDidChange(AnimationTimeline*) { };
+    virtual void animationDidFinish() { };
+
+    AnimationEffectTiming timing() const { return m_timing; }
 
     WebAnimation* animation() const { return m_animation.get(); }
-    virtual void setAnimation(WebAnimation* animation) { m_animation = makeWeakPtr(animation); }
+    virtual void setAnimation(WebAnimation*);
 
-    Seconds delay() const { return m_delay; }
+    Seconds delay() const { return m_timing.delay; }
     void setDelay(const Seconds&);
 
-    Seconds endDelay() const { return m_endDelay; }
+    Seconds endDelay() const { return m_timing.endDelay; }
     void setEndDelay(const Seconds&);
 
-    FillMode fill() const { return m_fill; }
+    FillMode fill() const { return m_timing.fill; }
     void setFill(FillMode);
 
-    double iterationStart() const { return m_iterationStart; }
+    double iterationStart() const { return m_timing.iterationStart; }
     ExceptionOr<void> setIterationStart(double);
 
-    double iterations() const { return m_iterations; }
+    double iterations() const { return m_timing.iterations; }
     ExceptionOr<void> setIterations(double);
 
-    Seconds iterationDuration() const { return m_iterationDuration; }
+    Seconds iterationDuration() const { return m_timing.iterationDuration; }
     void setIterationDuration(const Seconds&);
 
-    PlaybackDirection direction() const { return m_direction; }
+    PlaybackDirection direction() const { return m_timing.direction; }
     void setDirection(PlaybackDirection);
 
-    TimingFunction* timingFunction() const { return m_timingFunction.get(); }
+    TimingFunction* timingFunction() const { return m_timing.timingFunction.get(); }
     void setTimingFunction(const RefPtr<TimingFunction>&);
 
-    Seconds activeDuration() const { return m_activeDuration; }
-    Seconds endTime() const { return m_endTime; }
+    Seconds activeDuration() const { return m_timing.activeDuration; }
+    Seconds endTime() const { return m_timing.endTime; }
 
     void updateStaticTimingProperties();
 
-    virtual Seconds timeToNextTick() const { return Seconds::infinity(); }
+    virtual Seconds timeToNextTick(const BasicEffectTiming&) const;
+
+    virtual bool preventsAnimationReadiness() const { return false; }
 
 protected:
     explicit AnimationEffect();
 
+    virtual bool ticksContinuouslyWhileActive() const { return false; }
     virtual std::optional<double> progressUntilNextStep(double) const;
 
 private:
-    enum class ComputedDirection : uint8_t { Forwards, Reverse };
+    std::optional<Seconds> localTime(std::optional<Seconds>) const;
+    double playbackRate() const;
 
-    FillMode m_fill { FillMode::Auto };
-    PlaybackDirection m_direction { PlaybackDirection::Normal };
-
-    WeakPtr<WebAnimation> m_animation;
-    RefPtr<TimingFunction> m_timingFunction;
-
-    double m_iterationStart { 0 };
-    double m_iterations { 1 };
-
-    Seconds m_delay { 0_s };
-    Seconds m_endDelay { 0_s };
-    Seconds m_iterationDuration { 0_s };
-    Seconds m_activeDuration { 0_s };
-    Seconds m_endTime { 0_s };
+    AnimationEffectTiming m_timing;
+    WeakPtr<WebAnimation, WeakPtrImplWithEventTargetData> m_animation;
 };
 
 } // namespace WebCore

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,9 +27,10 @@
 #include "JSObjectGetProxyTargetTest.h"
 
 #include "APICast.h"
+#include "IntegrityInlines.h"
 #include "JSCInlines.h"
+#include "JSGlobalProxyInlines.h"
 #include "JSObjectRefPrivate.h"
-#include "JSProxy.h"
 #include "JavaScript.h"
 #include "ProxyObject.h"
 
@@ -54,15 +55,15 @@ int testJSObjectGetProxyTarget()
 
     JSGlobalObject* globalObjectObject;
     JSObjectRef globalObjectRef;
-    JSProxy* jsProxyObject;
+    JSGlobalProxy* jsProxyObject;
 
     {
         JSLockHolder locker(vm);
-        JSProxy* globalObjectProxyObject = jsCast<JSProxy*>(toJS(globalObjectProxy));
+        JSGlobalProxy* globalObjectProxyObject = jsCast<JSGlobalProxy*>(toJS(globalObjectProxy));
         globalObjectObject = jsCast<JSGlobalObject*>(globalObjectProxyObject->target());
-        Structure* proxyStructure = JSProxy::createStructure(vm, globalObjectObject, globalObjectObject->objectPrototype());
+        Structure* proxyStructure = JSGlobalProxy::createStructure(vm, globalObjectObject, globalObjectObject->objectPrototype());
         globalObjectRef = toRef(jsCast<JSObject*>(globalObjectObject));
-        jsProxyObject = JSProxy::create(vm, proxyStructure);
+        jsProxyObject = JSGlobalProxy::create(vm, proxyStructure);
     }
     
     JSObjectRef array = JSObjectMakeArray(context, 0, nullptr, nullptr);
@@ -81,14 +82,14 @@ int testJSObjectGetProxyTarget()
     
     test("proxy target of null is null", !JSObjectGetProxyTarget(nullptr));
     test("proxy target of non-proxy is null", !JSObjectGetProxyTarget(array));
-    test("proxy target of uninitialized JSProxy is null", !JSObjectGetProxyTarget(jsProxy));
+    test("proxy target of uninitialized JSGlobalProxy is null", !JSObjectGetProxyTarget(jsProxy));
     
     {
         JSLockHolder locker(vm);
         jsProxyObject->setTarget(vm, globalObjectObject);
     }
     
-    test("proxy target of initialized JSProxy works", JSObjectGetProxyTarget(jsProxy) == globalObjectRef);
+    test("proxy target of initialized JSGlobalProxy works", JSObjectGetProxyTarget(jsProxy) == globalObjectRef);
     
     test("proxy target of ProxyObject works", JSObjectGetProxyTarget(proxyObject) == array);
     

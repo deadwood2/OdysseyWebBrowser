@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,17 +29,17 @@
 #if PLATFORM(IOS_FAMILY)
 
 #import "APIData.h"
+#import "APIUIClient.h"
 #import "ApplicationStateTracker.h"
-#import "DataReference.h"
-#import "DownloadProxy.h"
 #import "DrawingAreaProxy.h"
 #import "EndowmentStateTracker.h"
 #import "FrameInfoData.h"
 #import "InteractionInformationAtPosition.h"
 #import "NativeWebKeyboardEvent.h"
 #import "NavigationState.h"
+#import "PlatformXRSystem.h"
+#import "RemoteLayerTreeNode.h"
 #import "RunningBoardServicesSPI.h"
-#import "StringUtilities.h"
 #import "TapHandlingResult.h"
 #import "UIKitSPI.h"
 #import "UndoOrRedo.h"
@@ -47,9 +47,11 @@
 #import "WKContentView.h"
 #import "WKContentViewInteraction.h"
 #import "WKEditCommand.h"
+#import "WKFullScreenViewController.h"
 #import "WKGeolocationProviderIOS.h"
 #import "WKPasswordView.h"
 #import "WKProcessPoolInternal.h"
+#import "WKVisibilityPropagationView.h"
 #import "WKWebViewConfigurationInternal.h"
 #import "WKWebViewContentProviderRegistry.h"
 #import "WKWebViewIOS.h"
@@ -67,14 +69,22 @@
 #import <WebCore/NotImplemented.h>
 #import <WebCore/PlatformScreen.h>
 #import <WebCore/PromisedAttachmentInfo.h>
+#import <WebCore/ScreenOrientationType.h>
 #import <WebCore/ShareData.h>
 #import <WebCore/SharedBuffer.h>
 #import <WebCore/TextIndicator.h>
 #import <WebCore/ValidationBubble.h>
 #import <wtf/BlockPtr.h>
 #import <wtf/cocoa/Entitlements.h>
+#import <wtf/cocoa/SpanCocoa.h>
 
-#define MESSAGE_CHECK(assertion) MESSAGE_CHECK_BASE(assertion, m_webView.get()->_page->process().connection())
+#define MESSAGE_CHECK(assertion) do { \
+    if (auto webView = this->webView()) { \
+        MESSAGE_CHECK_BASE(assertion, webView->_page->legacyMainFrameProcess().connection()); \
+    } else { \
+        ASSERT_NOT_REACHED(); \
+    } \
+while (0)
 
 @interface UIWindow ()
 - (BOOL)_isHostedInAnotherProcess;
@@ -94,9 +104,9 @@ PageClientImpl::~PageClientImpl()
 {
 }
 
-std::unique_ptr<DrawingAreaProxy> PageClientImpl::createDrawingAreaProxy(WebProcessProxy& process)
+std::unique_ptr<DrawingAreaProxy> PageClientImpl::createDrawingAreaProxy(WebProcessProxy& webProcessProxy)
 {
-    return [m_contentView _createDrawingAreaProxy:process];
+    return [contentView() _createDrawingAreaProxy:webProcessProxy];
 }
 
 void PageClientImpl::setViewNeedsDisplay(const Region&)
@@ -104,14 +114,14 @@ void PageClientImpl::setViewNeedsDisplay(const Region&)
     ASSERT_NOT_REACHED();
 }
 
-void PageClientImpl::requestScroll(const FloatPoint& scrollPosition, const IntPoint& scrollOrigin)
+void PageClientImpl::requestScroll(const FloatPoint& scrollPosition, const IntPoint& scrollOrigin, ScrollIsAnimated animated)
 {
-    [m_webView _scrollToContentScrollPosition:scrollPosition scrollOrigin:scrollOrigin];
+    [webView() _scrollToContentScrollPosition:scrollPosition scrollOrigin:scrollOrigin animated:animated == ScrollIsAnimated::Yes];
 }
 
 WebCore::FloatPoint PageClientImpl::viewScrollPosition()
 {
-    if (UIScrollView *scroller = [m_contentView _scroller])
+    if (UIScrollView *scroller = [contentView() _scroller])
         return scroller.contentOffset;
 
     return { };
@@ -119,32 +129,51 @@ WebCore::FloatPoint PageClientImpl::viewScrollPosition()
 
 IntSize PageClientImpl::viewSize()
 {
-    return IntSize([m_webView bounds].size);
+    return IntSize([webView() bounds].size);
 }
 
 bool PageClientImpl::isViewWindowActive()
 {
     // FIXME: https://bugs.webkit.org/show_bug.cgi?id=133098
-    return isViewVisible() || [m_webView _isRetainingActiveFocusedState];
+    return isViewVisible() || [webView() _isRetainingActiveFocusedState];
 }
 
 bool PageClientImpl::isViewFocused()
 {
-    return (isViewInWindow() && ![m_webView _isBackground] && [m_webView _contentViewIsFirstResponder]) || [m_webView _isRetainingActiveFocusedState];
+    auto webView = this->webView();
+    return (isViewInWindow() && ![webView _isBackground] && [webView _contentViewIsFirstResponder]) || [webView _isRetainingActiveFocusedState];
 }
 
 bool PageClientImpl::isViewVisible()
 {
-    if (isViewInWindow() && ![m_webView _isBackground])
+    auto webView = this->webView();
+    if (!webView)
+        return false;
+
+    if (isViewInWindow() && ![webView _isBackground])
         return true;
     
-    if ([m_webView _isShowingVideoPictureInPicture])
+    if ([webView _isShowingVideoPictureInPicture])
         return true;
     
-    if ([m_webView _mayAutomaticallyShowVideoPictureInPicture])
+    if ([webView _mayAutomaticallyShowVideoPictureInPicture])
         return true;
-    
+
+#if ENABLE(WEBXR) && !USE(OPENXR)
+    auto page = webView->_page;
+    if (page && page->xrSystem() && page->xrSystem()->hasActiveSession())
+        return true;
+#endif
+
     return false;
+}
+
+void PageClientImpl::viewIsBecomingVisible()
+{
+#if ENABLE(PAGE_LOAD_OBSERVER)
+    if (RetainPtr webView = this->webView())
+        [webView _updatePageLoadObserverState];
+#endif
 }
 
 bool PageClientImpl::canTakeForegroundAssertions()
@@ -164,10 +193,10 @@ bool PageClientImpl::canTakeForegroundAssertions()
 bool PageClientImpl::isViewInWindow()
 {
     // FIXME: in WebKitTestRunner, m_webView is nil, so check the content view instead.
-    if (auto webView = m_webView.get())
+    if (auto webView = this->webView())
         return [webView window];
 
-    return [m_contentView window];
+    return [contentView() window];
 }
 
 bool PageClientImpl::isViewVisibleOrOccluded()
@@ -182,40 +211,63 @@ bool PageClientImpl::isVisuallyIdle()
 
 void PageClientImpl::processDidExit()
 {
-    [m_contentView _processDidExit];
-    [m_webView _processDidExit];
+    [contentView() _processDidExit];
+    [webView() _processDidExit];
 }
 
 void PageClientImpl::processWillSwap()
 {
-    [m_contentView _processWillSwap];
-    [m_webView _processWillSwap];
+    [contentView() _processWillSwap];
+    [webView() _processWillSwap];
 }
 
 void PageClientImpl::didRelaunchProcess()
 {
-    [m_contentView _didRelaunchProcess];
-    [m_webView _didRelaunchProcess];
+    [contentView() _didRelaunchProcess];
+    [webView() _didRelaunchProcess];
 }
 
 #if HAVE(VISIBILITY_PROPAGATION_VIEW)
 void PageClientImpl::didCreateContextInWebProcessForVisibilityPropagation(LayerHostingContextID)
 {
-    [m_contentView _webProcessDidCreateContextForVisibilityPropagation];
+    [contentView() _webProcessDidCreateContextForVisibilityPropagation];
 }
 
 #if ENABLE(GPU_PROCESS)
 void PageClientImpl::didCreateContextInGPUProcessForVisibilityPropagation(LayerHostingContextID)
 {
-    [m_contentView _gpuProcessDidCreateContextForVisibilityPropagation];
+    [contentView() _gpuProcessDidCreateContextForVisibilityPropagation];
 }
 #endif // ENABLE(GPU_PROCESS)
+
+#if ENABLE(MODEL_PROCESS)
+void PageClientImpl::didCreateContextInModelProcessForVisibilityPropagation(LayerHostingContextID)
+{
+    [m_contentView _modelProcessDidCreateContextForVisibilityPropagation];
+}
+#endif // ENABLE(MODEL_PROCESS)
+
+#if USE(EXTENSIONKIT)
+UIView *PageClientImpl::createVisibilityPropagationView()
+{
+    return [contentView() _createVisibilityPropagationView];
+}
+#endif
 #endif // HAVE(VISIBILITY_PROPAGATION_VIEW)
 
 #if ENABLE(GPU_PROCESS)
 void PageClientImpl::gpuProcessDidExit()
 {
-    [m_contentView _gpuProcessDidExit];
+    [contentView() _gpuProcessDidExit];
+    PageClientImplCocoa::gpuProcessDidExit();
+}
+#endif
+
+#if ENABLE(MODEL_PROCESS)
+void PageClientImpl::modelProcessDidExit()
+{
+    [m_contentView _modelProcessDidExit];
+    PageClientImplCocoa::modelProcessDidExit();
 }
 #endif
 
@@ -231,40 +283,46 @@ void PageClientImpl::toolTipChanged(const String&, const String&)
 
 void PageClientImpl::didNotHandleTapAsClick(const WebCore::IntPoint& point)
 {
-    [m_contentView _didNotHandleTapAsClick:point];
+    [contentView() _didNotHandleTapAsClick:point];
+}
+
+void PageClientImpl::didHandleTapAsHover()
+{
+    [contentView() _didHandleTapAsHover];
 }
 
 void PageClientImpl::didCompleteSyntheticClick()
 {
-    [m_contentView _didCompleteSyntheticClick];
+    [contentView() _didCompleteSyntheticClick];
 }
 
 void PageClientImpl::decidePolicyForGeolocationPermissionRequest(WebFrameProxy& frame, const FrameInfoData& frameInfo, Function<void(bool)>& completionHandler)
 {
-    [[wrapper(m_webView.get()->_page->process().processPool()) _geolocationProvider] decidePolicyForGeolocationRequestFromOrigin:FrameInfoData { frameInfo } completionHandler:std::exchange(completionHandler, nullptr) view:m_webView.get().get()];
+    if (auto webView = this->webView()) {
+        auto* geolocationProvider = [wrapper(webView->_page->configuration().processPool()) _geolocationProvider];
+        [geolocationProvider decidePolicyForGeolocationRequestFromOrigin:FrameInfoData { frameInfo } completionHandler:std::exchange(completionHandler, nullptr) view:webView.get()];
+    }
 }
 
 void PageClientImpl::didStartProvisionalLoadForMainFrame()
 {
-    [m_webView _didStartProvisionalLoadForMainFrame];
-    [m_contentView _didStartProvisionalLoadForMainFrame];
-    [m_webView _hidePasswordView];
+    auto webView = this->webView();
+    [webView _didStartProvisionalLoadForMainFrame];
+    [contentView() _didStartProvisionalLoadForMainFrame];
+    [webView _hidePasswordView];
 }
 
 void PageClientImpl::didFailProvisionalLoadForMainFrame()
 {
-    [m_webView _hidePasswordView];
+    [webView() _hidePasswordView];
 }
 
 void PageClientImpl::didCommitLoadForMainFrame(const String& mimeType, bool useCustomContentProvider)
 {
-    [m_webView _hidePasswordView];
-    [m_webView _setHasCustomContentView:useCustomContentProvider loadedMIMEType:mimeType];
-    [m_contentView _didCommitLoadForMainFrame];
-}
-
-void PageClientImpl::handleDownloadRequest(DownloadProxy&)
-{
+    auto webView = this->webView();
+    [webView _hidePasswordView];
+    [webView _setHasCustomContentView:useCustomContentProvider loadedMIMEType:mimeType];
+    [contentView() _didCommitLoadForMainFrame];
 }
 
 void PageClientImpl::didChangeContentSize(const WebCore::IntSize&)
@@ -274,17 +332,17 @@ void PageClientImpl::didChangeContentSize(const WebCore::IntSize&)
 
 void PageClientImpl::disableDoubleTapGesturesDuringTapIfNecessary(WebKit::TapIdentifier requestID)
 {
-    [m_contentView _disableDoubleTapGesturesDuringTapIfNecessary:requestID];
+    [contentView() _disableDoubleTapGesturesDuringTapIfNecessary:requestID];
 }
 
 void PageClientImpl::handleSmartMagnificationInformationForPotentialTap(WebKit::TapIdentifier requestID, const WebCore::FloatRect& renderRect, bool fitEntireRect, double viewportMinimumScale, double viewportMaximumScale, bool nodeIsRootLevel)
 {
-    [m_contentView _handleSmartMagnificationInformationForPotentialTap:requestID renderRect:renderRect fitEntireRect:fitEntireRect viewportMinimumScale:viewportMinimumScale viewportMaximumScale:viewportMaximumScale nodeIsRootLevel:nodeIsRootLevel];
+    [contentView() _handleSmartMagnificationInformationForPotentialTap:requestID renderRect:renderRect fitEntireRect:fitEntireRect viewportMinimumScale:viewportMinimumScale viewportMaximumScale:viewportMaximumScale nodeIsRootLevel:nodeIsRootLevel];
 }
 
 double PageClientImpl::minimumZoomScale() const
 {
-    if (UIScrollView *scroller = [m_webView scrollView])
+    if (UIScrollView *scroller = [webView() scrollView])
         return scroller.minimumZoomScale;
 
     return 1;
@@ -292,7 +350,7 @@ double PageClientImpl::minimumZoomScale() const
 
 WebCore::FloatRect PageClientImpl::documentRect() const
 {
-    return [m_contentView bounds];
+    return [contentView() bounds];
 }
 
 void PageClientImpl::setCursor(const Cursor& cursor)
@@ -320,7 +378,7 @@ void PageClientImpl::registerEditCommand(Ref<WebEditCommandProxy>&& command, Und
     auto actionName = command->label();
     auto commandObjC = adoptNS([[WKEditCommand alloc] initWithWebEditCommandProxy:WTFMove(command)]);
     
-    NSUndoManager *undoManager = [m_contentView undoManager];
+    NSUndoManager *undoManager = [contentView() undoManagerForWebView];
     [undoManager registerUndoWithTarget:m_undoTarget.get() selector:((undoOrRedo == UndoOrRedo::Undo) ? @selector(undoEditing:) : @selector(redoEditing:)) object:commandObjC.get()];
     if (!actionName.isEmpty())
         [undoManager setActionName:(NSString *)actionName];
@@ -328,33 +386,32 @@ void PageClientImpl::registerEditCommand(Ref<WebEditCommandProxy>&& command, Und
 
 void PageClientImpl::clearAllEditCommands()
 {
-    [[m_contentView undoManager] removeAllActionsWithTarget:m_undoTarget.get()];
+    [[contentView() undoManager] removeAllActionsWithTarget:m_undoTarget.get()];
 }
 
 bool PageClientImpl::canUndoRedo(UndoOrRedo undoOrRedo)
 {
-    return (undoOrRedo == UndoOrRedo::Undo) ? [[m_contentView undoManager] canUndo] : [[m_contentView undoManager] canRedo];
+    return (undoOrRedo == UndoOrRedo::Undo) ? [[contentView() undoManager] canUndo] : [[contentView() undoManager] canRedo];
 }
 
 void PageClientImpl::executeUndoRedo(UndoOrRedo undoOrRedo)
 {
-    return (undoOrRedo == UndoOrRedo::Undo) ? [[m_contentView undoManager] undo] : [[m_contentView undoManager] redo];
+    return (undoOrRedo == UndoOrRedo::Undo) ? [[contentView() undoManager] undo] : [[contentView() undoManager] redo];
 }
 
-void PageClientImpl::accessibilityWebProcessTokenReceived(const IPC::DataReference& data)
+void PageClientImpl::accessibilityWebProcessTokenReceived(std::span<const uint8_t> data, WebCore::FrameIdentifier, pid_t)
 {
-    NSData *remoteToken = [NSData dataWithBytes:data.data() length:data.size()];
-    [m_contentView _setAccessibilityWebProcessToken:remoteToken];
+    [contentView() _setAccessibilityWebProcessToken:toNSData(data).get()];
 }
 
 bool PageClientImpl::interpretKeyEvent(const NativeWebKeyboardEvent& event, bool isCharEvent)
 {
-    return [m_contentView _interpretKeyEvent:event.nativeEvent() isCharEvent:isCharEvent];
+    return [contentView() _interpretKeyEvent:event.nativeEvent() isCharEvent:isCharEvent];
 }
 
 void PageClientImpl::positionInformationDidChange(const InteractionInformationAtPosition& info)
 {
-    [m_contentView _positionInformationDidChange:info];
+    [contentView() _positionInformationDidChange:info];
 }
 
 void PageClientImpl::saveImageToLibrary(Ref<SharedBuffer>&& imageBuffer)
@@ -371,7 +428,7 @@ bool PageClientImpl::executeSavedCommandBySelector(const String&)
 
 void PageClientImpl::selectionDidChange()
 {
-    [m_contentView _selectionChanged];
+    [contentView() _selectionChanged];
 }
 
 void PageClientImpl::updateSecureInputState()
@@ -391,7 +448,7 @@ void PageClientImpl::notifyInputContextAboutDiscardedComposition()
 
 void PageClientImpl::assistiveTechnologyMakeFirstResponder()
 {
-    notImplemented();
+    [contentView() becomeFirstResponder];
 }
 
 void PageClientImpl::makeFirstResponder()
@@ -411,39 +468,48 @@ FloatRect PageClientImpl::convertToUserSpace(const FloatRect& rect)
 
 IntPoint PageClientImpl::screenToRootView(const IntPoint& point)
 {
-    return IntPoint([m_contentView convertPoint:point fromView:nil]);
+    return IntPoint([contentView() convertPoint:point fromView:nil]);
 }
 
 IntRect PageClientImpl::rootViewToScreen(const IntRect& rect)
 {
-    return enclosingIntRect([m_contentView convertRect:rect toView:nil]);
+    return enclosingIntRect([contentView() convertRect:rect toView:nil]);
 }
     
 IntPoint PageClientImpl::accessibilityScreenToRootView(const IntPoint& point)
 {
     CGPoint rootViewPoint = point;
-    if ([m_contentView respondsToSelector:@selector(accessibilityConvertPointFromSceneReferenceCoordinates:)])
-        rootViewPoint = [m_contentView accessibilityConvertPointFromSceneReferenceCoordinates:rootViewPoint];
+    auto contentView = this->contentView();
+    if ([contentView respondsToSelector:@selector(accessibilityConvertPointFromSceneReferenceCoordinates:)])
+        rootViewPoint = [contentView accessibilityConvertPointFromSceneReferenceCoordinates:rootViewPoint];
     return IntPoint(rootViewPoint);
 }
-    
+
+void PageClientImpl::relayAccessibilityNotification(const String& notificationName, const RetainPtr<NSData>& notificationData)
+{
+    auto contentView = this->contentView();
+    if ([contentView respondsToSelector:@selector(accessibilityRelayNotification:notificationData:)])
+        [contentView accessibilityRelayNotification:notificationName notificationData:notificationData.get()];
+}
+
 IntRect PageClientImpl::rootViewToAccessibilityScreen(const IntRect& rect)
 {
     CGRect rootViewRect = rect;
-    if ([m_contentView respondsToSelector:@selector(accessibilityConvertRectToSceneReferenceCoordinates:)])
-        rootViewRect = [m_contentView accessibilityConvertRectToSceneReferenceCoordinates:rootViewRect];
+    auto contentView = this->contentView();
+    if ([contentView respondsToSelector:@selector(accessibilityConvertRectToSceneReferenceCoordinates:)])
+        rootViewRect = [contentView accessibilityConvertRectToSceneReferenceCoordinates:rootViewRect];
     return enclosingIntRect(rootViewRect);
 }
     
 void PageClientImpl::doneWithKeyEvent(const NativeWebKeyboardEvent& event, bool eventWasHandled)
 {
-    [m_contentView _didHandleKeyEvent:event.nativeEvent() eventWasHandled:eventWasHandled];
+    [contentView() _didHandleKeyEvent:event.nativeEvent() eventWasHandled:eventWasHandled];
 }
 
 #if ENABLE(TOUCH_EVENTS)
 void PageClientImpl::doneWithTouchEvent(const NativeWebTouchEvent& nativeWebTouchEvent, bool eventHandled)
 {
-    [m_contentView _webTouchEvent:nativeWebTouchEvent preventsNativeGestures:eventHandled];
+    [contentView() _touchEvent:nativeWebTouchEvent preventsNativeGestures:eventHandled];
 }
 #endif
 
@@ -451,33 +517,34 @@ void PageClientImpl::doneWithTouchEvent(const NativeWebTouchEvent& nativeWebTouc
 
 void PageClientImpl::doneDeferringTouchStart(bool preventNativeGestures)
 {
-    [m_contentView _doneDeferringTouchStart:preventNativeGestures];
+    [contentView() _doneDeferringTouchStart:preventNativeGestures];
+}
+
+void PageClientImpl::doneDeferringTouchMove(bool preventNativeGestures)
+{
+    [contentView() _doneDeferringTouchMove:preventNativeGestures];
 }
 
 void PageClientImpl::doneDeferringTouchEnd(bool preventNativeGestures)
 {
-    [m_contentView _doneDeferringTouchEnd:preventNativeGestures];
+    [contentView() _doneDeferringTouchEnd:preventNativeGestures];
 }
 
 #endif // ENABLE(IOS_TOUCH_EVENTS)
 
 #if ENABLE(IMAGE_ANALYSIS)
 
-void PageClientImpl::requestTextRecognition(const URL& imageURL, const ShareableBitmap::Handle& imageData, CompletionHandler<void(WebCore::TextRecognitionResult&&)>&& completion)
+void PageClientImpl::requestTextRecognition(const URL& imageURL, ShareableBitmap::Handle&& imageData, const String& sourceLanguageIdentifier, const String& targetLanguageIdentifier, CompletionHandler<void(TextRecognitionResult&&)>&& completion)
 {
-    [m_contentView requestTextRecognition:imageURL imageData:imageData completionHandler:WTFMove(completion)];
+    [contentView() requestTextRecognition:imageURL imageData:WTFMove(imageData) sourceLanguageIdentifier:sourceLanguageIdentifier targetLanguageIdentifier:targetLanguageIdentifier completionHandler:WTFMove(completion)];
 }
 
 #endif // ENABLE(IMAGE_ANALYSIS)
 
-#if HAVE(PASTEBOARD_DATA_OWNER)
-
 WebCore::DataOwnerType PageClientImpl::dataOwnerForPasteboard(PasteboardAccessIntent intent) const
 {
-    return [m_contentView _dataOwnerForPasteboard:intent];
+    return [contentView() _dataOwnerForPasteboard:intent];
 }
-
-#endif
 
 RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy&)
 {
@@ -486,17 +553,17 @@ RefPtr<WebPopupMenuProxy> PageClientImpl::createPopupMenuProxy(WebPageProxy&)
 
 void PageClientImpl::setTextIndicator(Ref<TextIndicator> textIndicator, WebCore::TextIndicatorLifetime)
 {
-    [m_contentView setUpTextIndicator:textIndicator];
+    [contentView() setUpTextIndicator:textIndicator];
 }
 
 void PageClientImpl::clearTextIndicator(WebCore::TextIndicatorDismissalAnimation dismissalAnimation)
 {
-    [m_contentView clearTextIndicator:dismissalAnimation];
+    [contentView() clearTextIndicator:dismissalAnimation];
 }
 
 void PageClientImpl::setTextIndicatorAnimationProgress(float animationProgress)
 {
-    [m_contentView setTextIndicatorAnimationProgress:animationProgress];
+    [contentView() setTextIndicatorAnimationProgress:animationProgress];
 }
 
 void PageClientImpl::enterAcceleratedCompositingMode(const LayerTreeContext& layerTreeContext)
@@ -505,25 +572,25 @@ void PageClientImpl::enterAcceleratedCompositingMode(const LayerTreeContext& lay
 
 void PageClientImpl::makeViewBlank(bool makeBlank)
 {
-    [m_contentView layer].opacity = makeBlank ? 0 : 1;
+    [contentView() layer].opacity = makeBlank ? 0 : 1;
 }
 
-void PageClientImpl::showSafeBrowsingWarning(const SafeBrowsingWarning& warning, CompletionHandler<void(Variant<WebKit::ContinueUnsafeLoad, URL>&&)>&& completionHandler)
+void PageClientImpl::showBrowsingWarning(const BrowsingWarning& warning, CompletionHandler<void(std::variant<WebKit::ContinueUnsafeLoad, URL>&&)>&& completionHandler)
 {
-    if (auto webView = m_webView.get())
-        [webView _showSafeBrowsingWarning:warning completionHandler:WTFMove(completionHandler)];
+    if (auto webView = this->webView())
+        [webView _showBrowsingWarning:warning completionHandler:WTFMove(completionHandler)];
     else
         completionHandler(ContinueUnsafeLoad::No);
 }
 
-void PageClientImpl::clearSafeBrowsingWarning()
+void PageClientImpl::clearBrowsingWarning()
 {
-    [m_webView _clearSafeBrowsingWarning];
+    [webView() _clearBrowsingWarning];
 }
 
-void PageClientImpl::clearSafeBrowsingWarningIfForMainFrameNavigation()
+void PageClientImpl::clearBrowsingWarningIfForMainFrameNavigation()
 {
-    [m_webView _clearSafeBrowsingWarningIfForMainFrameNavigation];
+    [webView() _clearBrowsingWarningIfForMainFrameNavigation];
 }
 
 void PageClientImpl::exitAcceleratedCompositingMode()
@@ -546,17 +613,17 @@ void PageClientImpl::didPerformDictionaryLookup(const DictionaryPopupInfo& dicti
 
 bool PageClientImpl::effectiveAppearanceIsDark() const
 {
-    return [m_webView _effectiveAppearanceIsDark];
+    return [webView() _effectiveAppearanceIsDark];
 }
 
 bool PageClientImpl::effectiveUserInterfaceLevelIsElevated() const
 {
-    return [m_webView _effectiveUserInterfaceLevelIsElevated];
+    return [webView() _effectiveUserInterfaceLevelIsElevated];
 }
 
 void PageClientImpl::setRemoteLayerTreeRootNode(RemoteLayerTreeNode* rootNode)
 {
-    [m_contentView _setAcceleratedCompositingRootView:rootNode ? rootNode->uiView() : nil];
+    [contentView() _setAcceleratedCompositingRootView:rootNode ? rootNode->uiView() : nil];
 }
 
 CALayer *PageClientImpl::acceleratedCompositingRootLayer() const
@@ -567,7 +634,7 @@ CALayer *PageClientImpl::acceleratedCompositingRootLayer() const
 
 RefPtr<ViewSnapshot> PageClientImpl::takeViewSnapshot(std::optional<WebCore::IntRect>&&)
 {
-    return [m_webView _takeViewSnapshot];
+    return [webView() _takeViewSnapshot];
 }
 
 void PageClientImpl::wheelEventWasNotHandledByWebCore(const NativeWebWheelEvent& event)
@@ -577,134 +644,125 @@ void PageClientImpl::wheelEventWasNotHandledByWebCore(const NativeWebWheelEvent&
 
 void PageClientImpl::commitPotentialTapFailed()
 {
-    [m_contentView _commitPotentialTapFailed];
+    [contentView() _commitPotentialTapFailed];
 }
 
 void PageClientImpl::didGetTapHighlightGeometries(WebKit::TapIdentifier requestID, const WebCore::Color& color, const Vector<WebCore::FloatQuad>& highlightedQuads, const WebCore::IntSize& topLeftRadius, const WebCore::IntSize& topRightRadius, const WebCore::IntSize& bottomLeftRadius, const WebCore::IntSize& bottomRightRadius, bool nodeHasBuiltInClickHandling)
 {
-    [m_contentView _didGetTapHighlightForRequest:requestID color:color quads:highlightedQuads topLeftRadius:topLeftRadius topRightRadius:topRightRadius bottomLeftRadius:bottomLeftRadius bottomRightRadius:bottomRightRadius nodeHasBuiltInClickHandling:nodeHasBuiltInClickHandling];
+    [contentView() _didGetTapHighlightForRequest:requestID color:color quads:highlightedQuads topLeftRadius:topLeftRadius topRightRadius:topRightRadius bottomLeftRadius:bottomLeftRadius bottomRightRadius:bottomRightRadius nodeHasBuiltInClickHandling:nodeHasBuiltInClickHandling];
 }
 
 void PageClientImpl::didCommitLayerTree(const RemoteLayerTreeTransaction& layerTreeTransaction)
 {
-    [m_contentView _didCommitLayerTree:layerTreeTransaction];
+    [contentView() _didCommitLayerTree:layerTreeTransaction];
 }
 
 void PageClientImpl::layerTreeCommitComplete()
 {
-    [m_contentView _layerTreeCommitComplete];
+    [contentView() _layerTreeCommitComplete];
 }
 
 void PageClientImpl::couldNotRestorePageState()
 {
-    [m_webView _couldNotRestorePageState];
+    [webView() _couldNotRestorePageState];
 }
 
 void PageClientImpl::restorePageState(std::optional<WebCore::FloatPoint> scrollPosition, const WebCore::FloatPoint& scrollOrigin, const WebCore::FloatBoxExtent& obscuredInsetsOnSave, double scale)
 {
-    [m_webView _restorePageScrollPosition:scrollPosition scrollOrigin:scrollOrigin previousObscuredInset:obscuredInsetsOnSave scale:scale];
+    [webView() _restorePageScrollPosition:scrollPosition scrollOrigin:scrollOrigin previousObscuredInset:obscuredInsetsOnSave scale:scale];
 }
 
 void PageClientImpl::restorePageCenterAndScale(std::optional<WebCore::FloatPoint> center, double scale)
 {
-    [m_webView _restorePageStateToUnobscuredCenter:center scale:scale];
+    [webView() _restorePageStateToUnobscuredCenter:center scale:scale];
 }
 
-void PageClientImpl::elementDidFocus(const FocusedElementInformation& nodeInformation, bool userIsInteracting, bool blurPreviousNode, OptionSet<WebCore::ActivityState::Flag> activityStateChanges, API::Object* userData)
+void PageClientImpl::elementDidFocus(const FocusedElementInformation& nodeInformation, bool userIsInteracting, bool blurPreviousNode, OptionSet<WebCore::ActivityState> activityStateChanges, API::Object* userData)
 {
-    MESSAGE_CHECK(!userData || userData->type() == API::Object::Type::Data);
-
-    NSObject <NSSecureCoding> *userObject = nil;
-    if (API::Data* data = static_cast<API::Data*>(userData)) {
-        auto nsData = adoptNS([[NSData alloc] initWithBytesNoCopy:const_cast<unsigned char*>(data->bytes()) length:data->size() freeWhenDone:NO]);
-        auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:nsData.get() error:nullptr]);
-        unarchiver.get().decodingFailurePolicy = NSDecodingFailurePolicyRaiseException;
-        @try {
-            auto* allowedClasses = m_webView.get()->_page->process().processPool().allowedClassesForParameterCoding();
-            userObject = [unarchiver decodeObjectOfClasses:allowedClasses forKey:@"userObject"];
-        } @catch (NSException *exception) {
-            LOG_ERROR("Failed to decode user data: %@", exception);
-        }
-    }
-
-    [m_contentView _elementDidFocus:nodeInformation userIsInteracting:userIsInteracting blurPreviousNode:blurPreviousNode activityStateChanges:activityStateChanges userObject:userObject];
+    auto userObject = userData ? userData->toNSObject() : RetainPtr<NSObject<NSSecureCoding>>();
+    [contentView() _elementDidFocus:nodeInformation userIsInteracting:userIsInteracting blurPreviousNode:blurPreviousNode activityStateChanges:activityStateChanges userObject:userObject.get()];
 }
 
 void PageClientImpl::updateInputContextAfterBlurringAndRefocusingElement()
 {
-    [m_contentView _updateInputContextAfterBlurringAndRefocusingElement];
+    [contentView() _updateInputContextAfterBlurringAndRefocusingElement];
+}
+
+void PageClientImpl::updateFocusedElementInformation(const FocusedElementInformation& information)
+{
+    [contentView() _updateFocusedElementInformation:information];
 }
 
 bool PageClientImpl::isFocusingElement()
 {
-    return [m_contentView isFocusingElement];
+    return [contentView() isFocusingElement];
 }
 
 void PageClientImpl::elementDidBlur()
 {
-    [m_contentView _elementDidBlur];
+    [contentView() _elementDidBlur];
 }
 
 void PageClientImpl::focusedElementDidChangeInputMode(WebCore::InputMode mode)
 {
-    [m_contentView _didUpdateInputMode:mode];
+    [contentView() _didUpdateInputMode:mode];
 }
 
 void PageClientImpl::didUpdateEditorState()
 {
-    [m_contentView _didUpdateEditorState];
+    [contentView() _didUpdateEditorState];
 }
 
 void PageClientImpl::showPlaybackTargetPicker(bool hasVideo, const IntRect& elementRect, WebCore::RouteSharingPolicy policy, const String& contextUID)
 {
-    [m_contentView _showPlaybackTargetPicker:hasVideo fromRect:elementRect routeSharingPolicy:policy routingContextUID:contextUID];
+    [contentView() _showPlaybackTargetPicker:hasVideo fromRect:elementRect routeSharingPolicy:policy routingContextUID:contextUID];
 }
 
 bool PageClientImpl::handleRunOpenPanel(WebPageProxy*, WebFrameProxy*, const FrameInfoData& frameInfo, API::OpenPanelParameters* parameters, WebOpenPanelResultListenerProxy* listener)
 {
-    [m_contentView _showRunOpenPanel:parameters frameInfo:frameInfo resultListener:listener];
+    [contentView() _showRunOpenPanel:parameters frameInfo:frameInfo resultListener:listener];
     return true;
 }
 
 bool PageClientImpl::showShareSheet(const ShareDataWithParsedURL& shareData, WTF::CompletionHandler<void(bool)>&& completionHandler)
 {
-    [m_contentView _showShareSheet:shareData inRect:std::nullopt completionHandler:WTFMove(completionHandler)];
+    [contentView() _showShareSheet:shareData inRect:std::nullopt completionHandler:WTFMove(completionHandler)];
     return true;
 }
 
 void PageClientImpl::showContactPicker(const WebCore::ContactsRequestData& requestData, WTF::CompletionHandler<void(std::optional<Vector<WebCore::ContactInfo>>&&)>&& completionHandler)
 {
-    [m_contentView _showContactPicker:requestData completionHandler:WTFMove(completionHandler)];
+    [contentView() _showContactPicker:requestData completionHandler:WTFMove(completionHandler)];
 }
 
 void PageClientImpl::showInspectorHighlight(const WebCore::InspectorOverlay::Highlight& highlight)
 {
-    [m_contentView _showInspectorHighlight:highlight];
+    [contentView() _showInspectorHighlight:highlight];
 }
 
 void PageClientImpl::hideInspectorHighlight()
 {
-    [m_contentView _hideInspectorHighlight];
+    [contentView() _hideInspectorHighlight];
 }
 
 void PageClientImpl::showInspectorIndication()
 {
-    [m_contentView setShowingInspectorIndication:YES];
+    [contentView() setShowingInspectorIndication:YES];
 }
 
 void PageClientImpl::hideInspectorIndication()
 {
-    [m_contentView setShowingInspectorIndication:NO];
+    [contentView() setShowingInspectorIndication:NO];
 }
 
 void PageClientImpl::enableInspectorNodeSearch()
 {
-    [m_contentView _enableInspectorNodeSearch];
+    [contentView() _enableInspectorNodeSearch];
 }
 
 void PageClientImpl::disableInspectorNodeSearch()
 {
-    [m_contentView _disableInspectorNodeSearch];
+    [contentView() _disableInspectorNodeSearch];
 }
 
 #if ENABLE(FULLSCREEN_API)
@@ -718,100 +776,142 @@ WebFullScreenManagerProxyClient& PageClientImpl::fullScreenManagerProxyClient()
 
 void PageClientImpl::closeFullScreenManager()
 {
-    [m_webView closeFullScreenWindowController];
+    [webView() closeFullScreenWindowController];
 }
 
 bool PageClientImpl::isFullScreen()
 {
-    if (![m_webView hasFullScreenWindowController])
+    auto webView = this->webView();
+    if (![webView hasFullScreenWindowController])
         return false;
 
-    return [m_webView fullScreenWindowController].isFullScreen;
+    return [webView fullScreenWindowController].isFullScreen;
 }
 
-void PageClientImpl::enterFullScreen()
+void PageClientImpl::enterFullScreen(FloatSize mediaDimensions)
 {
-    [[m_webView fullScreenWindowController] enterFullScreen];
+    [[webView() fullScreenWindowController] enterFullScreen:mediaDimensions];
 }
 
 void PageClientImpl::exitFullScreen()
 {
-    [[m_webView fullScreenWindowController] exitFullScreen];
+    [[webView() fullScreenWindowController] exitFullScreen];
+}
+
+static UIInterfaceOrientationMask toUIInterfaceOrientationMask(WebCore::ScreenOrientationType orientation)
+{
+    switch (orientation) {
+    case WebCore::ScreenOrientationType::PortraitPrimary:
+        return UIInterfaceOrientationMaskPortrait;
+    case WebCore::ScreenOrientationType::PortraitSecondary:
+        return UIInterfaceOrientationMaskPortraitUpsideDown;
+    case WebCore::ScreenOrientationType::LandscapePrimary:
+        return UIInterfaceOrientationMaskLandscapeRight;
+    case WebCore::ScreenOrientationType::LandscapeSecondary:
+        return UIInterfaceOrientationMaskLandscapeLeft;
+    }
+    ASSERT_NOT_REACHED();
+    return UIInterfaceOrientationMaskPortrait;
+}
+
+bool PageClientImpl::lockFullscreenOrientation(WebCore::ScreenOrientationType orientation)
+{
+    [[webView() fullScreenWindowController] setSupportedOrientations:toUIInterfaceOrientationMask(orientation)];
+    return true;
+}
+
+void PageClientImpl::unlockFullscreenOrientation()
+{
+    [[webView() fullScreenWindowController] resetSupportedOrientations];
 }
 
 void PageClientImpl::beganEnterFullScreen(const IntRect& initialFrame, const IntRect& finalFrame)
 {
-    [[m_webView fullScreenWindowController] beganEnterFullScreenWithInitialFrame:initialFrame finalFrame:finalFrame];
+    [[webView() fullScreenWindowController] beganEnterFullScreenWithInitialFrame:initialFrame finalFrame:finalFrame];
 }
 
 void PageClientImpl::beganExitFullScreen(const IntRect& initialFrame, const IntRect& finalFrame)
 {
-    [[m_webView fullScreenWindowController] beganExitFullScreenWithInitialFrame:initialFrame finalFrame:finalFrame];
+    [[webView() fullScreenWindowController] beganExitFullScreenWithInitialFrame:initialFrame finalFrame:finalFrame];
 }
 
 #endif // ENABLE(FULLSCREEN_API)
 
-void PageClientImpl::didFinishLoadingDataForCustomContentProvider(const String& suggestedFilename, const IPC::DataReference& dataReference)
+void PageClientImpl::didFinishLoadingDataForCustomContentProvider(const String& suggestedFilename, std::span<const uint8_t> dataReference)
 {
-    RetainPtr<NSData> data = adoptNS([[NSData alloc] initWithBytes:dataReference.data() length:dataReference.size()]);
-    [m_webView _didFinishLoadingDataForCustomContentProviderWithSuggestedFilename:suggestedFilename data:data.get()];
+    [webView() _didFinishLoadingDataForCustomContentProviderWithSuggestedFilename:suggestedFilename data:toNSData(dataReference).get()];
 }
 
-void PageClientImpl::scrollingNodeScrollViewWillStartPanGesture()
+void PageClientImpl::scrollingNodeScrollViewWillStartPanGesture(ScrollingNodeID)
 {
-    [m_contentView scrollViewWillStartPanOrPinchGesture];
+    [contentView() scrollViewWillStartPanOrPinchGesture];
 }
 
-void PageClientImpl::scrollingNodeScrollViewDidScroll()
+void PageClientImpl::scrollingNodeScrollViewDidScroll(ScrollingNodeID)
 {
-    [m_contentView _didScroll];
+    [contentView() _didScroll];
 }
 
-void PageClientImpl::scrollingNodeScrollWillStartScroll()
+void PageClientImpl::scrollingNodeScrollWillStartScroll(ScrollingNodeID nodeID)
 {
-    [m_contentView _scrollingNodeScrollingWillBegin];
+    [contentView() _scrollingNodeScrollingWillBegin:nodeID];
 }
 
-void PageClientImpl::scrollingNodeScrollDidEndScroll()
+void PageClientImpl::scrollingNodeScrollDidEndScroll(ScrollingNodeID nodeID)
 {
-    [m_contentView _scrollingNodeScrollingDidEnd];
+    [contentView() _scrollingNodeScrollingDidEnd:nodeID];
 }
 
 Vector<String> PageClientImpl::mimeTypesWithCustomContentProviders()
 {
-    return [m_webView _contentProviderRegistry]._mimeTypesWithCustomContentProviders;
+    return [webView() _contentProviderRegistry]._mimeTypesWithCustomContentProviders;
 }
 
 void PageClientImpl::navigationGestureDidBegin()
 {
-    [m_webView _navigationGestureDidBegin];
-    NavigationState::fromWebPage(*m_webView.get()->_page).navigationGestureDidBegin();
+    if (auto webView = this->webView()) {
+        [webView _navigationGestureDidBegin];
+        if (auto* navigationState = NavigationState::fromWebPage(*webView->_page))
+            navigationState->navigationGestureDidBegin();
+    }
 }
 
 void PageClientImpl::navigationGestureWillEnd(bool willNavigate, WebBackForwardListItem& item)
 {
-    NavigationState::fromWebPage(*m_webView.get()->_page).navigationGestureWillEnd(willNavigate, item);
+    if (auto webView = this->webView()) {
+        if (auto* navigationState = NavigationState::fromWebPage(*webView->_page))
+            navigationState->navigationGestureWillEnd(willNavigate, item);
+    }
 }
 
 void PageClientImpl::navigationGestureDidEnd(bool willNavigate, WebBackForwardListItem& item)
 {
-    NavigationState::fromWebPage(*m_webView.get()->_page).navigationGestureDidEnd(willNavigate, item);
-    [m_webView _navigationGestureDidEnd];
+    if (auto webView = this->webView()) {
+        if (auto* navigationState = NavigationState::fromWebPage(*webView->_page))
+            navigationState->navigationGestureDidEnd(willNavigate, item);
+        [webView _navigationGestureDidEnd];
+    }
 }
 
 void PageClientImpl::navigationGestureDidEnd()
 {
-    [m_webView _navigationGestureDidEnd];
+    [webView() _navigationGestureDidEnd];
 }
 
 void PageClientImpl::willRecordNavigationSnapshot(WebBackForwardListItem& item)
 {
-    NavigationState::fromWebPage(*m_webView.get()->_page).willRecordNavigationSnapshot(item);
+    if (auto webView = this->webView()) {
+        if (auto* navigationState = NavigationState::fromWebPage(*webView->_page))
+            navigationState->willRecordNavigationSnapshot(item);
+    }
 }
 
 void PageClientImpl::didRemoveNavigationGestureSnapshot()
 {
-    NavigationState::fromWebPage(*m_webView.get()->_page).navigationGestureSnapshotWasRemoved();
+    if (auto webView = this->webView()) {
+        if (auto* navigationState = NavigationState::fromWebPage(*webView->_page))
+            navigationState->navigationGestureSnapshotWasRemoved();
+    }
 }
 
 void PageClientImpl::didFirstVisuallyNonEmptyLayoutForMainFrame()
@@ -820,27 +920,28 @@ void PageClientImpl::didFirstVisuallyNonEmptyLayoutForMainFrame()
 
 void PageClientImpl::didFinishNavigation(API::Navigation* navigation)
 {
-    [m_webView _didFinishNavigation:navigation];
+    [webView() _didFinishNavigation:navigation];
 }
 
 void PageClientImpl::didFailNavigation(API::Navigation* navigation)
 {
-    [m_webView _didFailNavigation:navigation];
+    [webView() _didFailNavigation:navigation];
 }
 
 void PageClientImpl::didSameDocumentNavigationForMainFrame(SameDocumentNavigationType navigationType)
 {
-    [m_webView _didSameDocumentNavigationForMainFrame:navigationType];
+    [webView() _didSameDocumentNavigationForMainFrame:navigationType];
 }
 
 void PageClientImpl::didChangeBackgroundColor()
 {
-    [m_webView _updateScrollViewBackground];
+    [webView() _updateScrollViewBackground];
 }
 
 void PageClientImpl::videoControlsManagerDidChange()
 {
-    [m_webView _videoControlsManagerDidChange];
+    PageClientImplCocoa::videoControlsManagerDidChange();
+    [webView() _videoControlsManagerDidChange];
 }
 
 void PageClientImpl::refView()
@@ -861,9 +962,9 @@ void PageClientImpl::didRestoreScrollPosition()
 
 WebCore::UserInterfaceLayoutDirection PageClientImpl::userInterfaceLayoutDirection()
 {
-    if (!m_webView)
-        return WebCore::UserInterfaceLayoutDirection::LTR;
-    return ([UIView userInterfaceLayoutDirectionForSemanticContentAttribute:[m_webView semanticContentAttribute]] == UIUserInterfaceLayoutDirectionLeftToRight) ? WebCore::UserInterfaceLayoutDirection::LTR : WebCore::UserInterfaceLayoutDirection::RTL;
+    if (auto webView = this->webView())
+        return ([UIView userInterfaceLayoutDirectionForSemanticContentAttribute:[webView semanticContentAttribute]] == UIUserInterfaceLayoutDirectionLeftToRight) ? WebCore::UserInterfaceLayoutDirection::LTR : WebCore::UserInterfaceLayoutDirection::RTL;
+    return WebCore::UserInterfaceLayoutDirection::LTR;
 }
 
 Ref<ValidationBubble> PageClientImpl::createValidationBubble(const String& message, const ValidationBubble::Settings& settings)
@@ -895,39 +996,50 @@ RefPtr<WebDateTimePicker> PageClientImpl::createDateTimePicker(WebPageProxy&)
 #if ENABLE(DRAG_SUPPORT)
 void PageClientImpl::didPerformDragOperation(bool handled)
 {
-    [m_contentView _didPerformDragOperation:handled];
+    [contentView() _didPerformDragOperation:handled];
 }
 
 void PageClientImpl::didHandleDragStartRequest(bool started)
 {
-    [m_contentView _didHandleDragStartRequest:started];
+    [contentView() _didHandleDragStartRequest:started];
 }
 
 void PageClientImpl::didHandleAdditionalDragItemsRequest(bool added)
 {
-    [m_contentView _didHandleAdditionalDragItemsRequest:added];
+    [contentView() _didHandleAdditionalDragItemsRequest:added];
 }
 
-void PageClientImpl::startDrag(const DragItem& item, const ShareableBitmap::Handle& image)
+void PageClientImpl::startDrag(const DragItem& item, ShareableBitmap::Handle&& image)
 {
-    [m_contentView _startDrag:ShareableBitmap::create(image)->makeCGImageCopy() item:item];
+    auto bitmap = ShareableBitmap::create(WTFMove(image));
+    if (!bitmap)
+        return;
+    [contentView() _startDrag:bitmap->makeCGImageCopy() item:item];
 }
 
 void PageClientImpl::willReceiveEditDragSnapshot()
 {
-    [m_contentView _willReceiveEditDragSnapshot];
+    [contentView() _willReceiveEditDragSnapshot];
 }
 
 void PageClientImpl::didReceiveEditDragSnapshot(std::optional<TextIndicatorData> data)
 {
-    [m_contentView _didReceiveEditDragSnapshot:data];
+    [contentView() _didReceiveEditDragSnapshot:data];
 }
 
 void PageClientImpl::didChangeDragCaretRect(const IntRect& previousCaretRect, const IntRect& caretRect)
 {
-    [m_contentView _didChangeDragCaretRect:previousCaretRect currentRect:caretRect];
+    [contentView() _didChangeDragCaretRect:previousCaretRect currentRect:caretRect];
 }
 #endif
+
+void PageClientImpl::performSwitchHapticFeedback()
+{
+#if HAVE(UI_IMPACT_FEEDBACK_GENERATOR)
+    auto feedbackGenerator = adoptNS([[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight]);
+    [feedbackGenerator impactOccurred];
+#endif
+}
 
 #if USE(QUICK_LOOK)
 void PageClientImpl::requestPasswordForQuickLookDocument(const String& fileName, WTF::Function<void(const String&)>&& completionHandler)
@@ -936,36 +1048,36 @@ void PageClientImpl::requestPasswordForQuickLookDocument(const String& fileName,
         completionHandler(password);
     });
 
-    if (WKPasswordView *passwordView = [m_webView _passwordView]) {
+    auto webView = this->webView();
+    if (WKPasswordView *passwordView = [webView _passwordView]) {
         ASSERT(fileName == String { passwordView.documentName });
         [passwordView showPasswordFailureAlert];
         passwordView.userDidEnterPassword = passwordHandler.get();
         return;
     }
 
-    [m_webView _showPasswordViewWithDocumentName:fileName passwordHandler:passwordHandler.get()];
-    NavigationState::fromWebPage(*m_webView.get()->_page).didRequestPasswordForQuickLookDocument();
+    [webView _showPasswordViewWithDocumentName:fileName passwordHandler:passwordHandler.get()];
 }
 #endif
 
-void PageClientImpl::requestDOMPasteAccess(const WebCore::IntRect& elementRect, const String& originIdentifier, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&& completionHandler)
+void PageClientImpl::requestDOMPasteAccess(WebCore::DOMPasteAccessCategory pasteAccessCategory, WebCore::DOMPasteRequiresInteraction requiresInteraction, const WebCore::IntRect& elementRect, const String& originIdentifier, CompletionHandler<void(WebCore::DOMPasteAccessResponse)>&& completionHandler)
 {
-    [m_contentView _requestDOMPasteAccessWithElementRect:elementRect originIdentifier:originIdentifier completionHandler:WTFMove(completionHandler)];
+    [contentView() _requestDOMPasteAccessForCategory:pasteAccessCategory requiresInteraction:requiresInteraction elementRect:elementRect originIdentifier:originIdentifier completionHandler:WTFMove(completionHandler)];
 }
 
 void PageClientImpl::cancelPointersForGestureRecognizer(UIGestureRecognizer* gestureRecognizer)
 {
-    [m_contentView cancelPointersForGestureRecognizer:gestureRecognizer];
+    [contentView() cancelPointersForGestureRecognizer:gestureRecognizer];
 }
 
 std::optional<unsigned> PageClientImpl::activeTouchIdentifierForGestureRecognizer(UIGestureRecognizer* gestureRecognizer)
 {
-    return [m_contentView activeTouchIdentifierForGestureRecognizer:gestureRecognizer];
+    return [contentView() activeTouchIdentifierForGestureRecognizer:gestureRecognizer];
 }
 
 void PageClientImpl::handleAutocorrectionContext(const WebAutocorrectionContext& context)
 {
-    [m_contentView _handleAutocorrectionContext:context];
+    [contentView() _handleAutocorrectionContext:context];
 }
 
 void PageClientImpl::showDictationAlternativeUI(const WebCore::FloatRect&, WebCore::DictationContext)
@@ -975,14 +1087,30 @@ void PageClientImpl::showDictationAlternativeUI(const WebCore::FloatRect&, WebCo
 
 void PageClientImpl::showDataDetectorsUIForPositionInformation(const InteractionInformationAtPosition& positionInformation)
 {
-    [m_contentView _showDataDetectorsUIForPositionInformation:positionInformation];
+    [contentView() _showDataDetectorsUIForPositionInformation:positionInformation];
 }
+
+void PageClientImpl::hardwareKeyboardAvailabilityChanged()
+{
+    [contentView() _hardwareKeyboardAvailabilityChanged];
+}
+
+#if ENABLE(VIDEO_PRESENTATION_MODE)
+
+void PageClientImpl::didCleanupFullscreen()
+{
+#if ENABLE(FULLSCREEN_API)
+    [[webView() fullScreenWindowController] didCleanupFullscreen];
+#endif
+}
+
+#endif // ENABLE(VIDEO_PRESENTATION_MODE)
 
 #if ENABLE(ATTACHMENT_ELEMENT)
 
 void PageClientImpl::writePromisedAttachmentToPasteboard(WebCore::PromisedAttachmentInfo&& info)
 {
-    [m_contentView _writePromisedAttachmentToPasteboard:WTFMove(info)];
+    [contentView() _writePromisedAttachmentToPasteboard:WTFMove(info)];
 }
 
 #endif // ENABLE(ATTACHMENT_ELEMENT)
@@ -990,37 +1118,133 @@ void PageClientImpl::writePromisedAttachmentToPasteboard(WebCore::PromisedAttach
 void PageClientImpl::setMouseEventPolicy(WebCore::MouseEventPolicy policy)
 {
 #if HAVE(UIKIT_WITH_MOUSE_SUPPORT)
-    [m_contentView _setMouseEventPolicy:policy];
+    [contentView() _setMouseEventPolicy:policy];
 #endif
 }
 
 #if ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS) && USE(UICONTEXTMENU)
 void PageClientImpl::showMediaControlsContextMenu(FloatRect&& targetFrame, Vector<MediaControlsContextMenuItem>&& items, CompletionHandler<void(MediaControlsContextMenuItem::ID)>&& completionHandler)
 {
-    [m_contentView _showMediaControlsContextMenu:WTFMove(targetFrame) items:WTFMove(items) completionHandler:WTFMove(completionHandler)];
+    [contentView() _showMediaControlsContextMenu:WTFMove(targetFrame) items:WTFMove(items) completionHandler:WTFMove(completionHandler)];
 }
 #endif // ENABLE(MEDIA_CONTROLS_CONTEXT_MENUS) && USE(UICONTEXTMENU)
 
 #if HAVE(UISCROLLVIEW_ASYNCHRONOUS_SCROLL_EVENT_HANDLING)
-void PageClientImpl::handleAsynchronousCancelableScrollEvent(UIScrollView *scrollView, UIScrollEvent *scrollEvent, void (^completion)(BOOL handled))
+void PageClientImpl::handleAsynchronousCancelableScrollEvent(WKBaseScrollView *scrollView, WKBEScrollViewScrollUpdate *update, void (^completion)(BOOL handled))
 {
-    [m_webView _scrollView:scrollView asynchronouslyHandleScrollEvent:scrollEvent completion:completion];
+    [webView() scrollView:scrollView handleScrollUpdate:update completion:completion];
 }
 #endif
 
 void PageClientImpl::runModalJavaScriptDialog(CompletionHandler<void()>&& callback)
 {
-    [m_contentView runModalJavaScriptDialog:WTFMove(callback)];
+    [contentView() runModalJavaScriptDialog:WTFMove(callback)];
 }
 
 WebCore::Color PageClientImpl::contentViewBackgroundColor()
 {
-    return WebCore::roundAndClampToSRGBALossy([m_contentView backgroundColor].CGColor);
+    WebCore::Color color;
+    [[webView() traitCollection] performAsCurrentTraitCollection:[&]() {
+        color = WebCore::roundAndClampToSRGBALossy([contentView() backgroundColor].CGColor);
+        if (color.isValid())
+            return;
+        color = WebCore::roundAndClampToSRGBALossy(UIColor.systemBackgroundColor.CGColor);
+    }];
+
+    return color;
+}
+
+Color PageClientImpl::insertionPointColor()
+{
+    return roundAndClampToSRGBALossy([webView() _insertionPointColor].CGColor);
+}
+
+bool PageClientImpl::isScreenBeingCaptured()
+{
+    return [contentView() screenIsBeingCaptured];
 }
 
 void PageClientImpl::requestScrollToRect(const FloatRect& targetRect, const FloatPoint& origin)
 {
-    [m_contentView _scrollToRect:targetRect withOrigin:origin minimumScrollDistance:0];
+    [contentView() _scrollToRect:targetRect withOrigin:origin minimumScrollDistance:0];
+}
+
+String PageClientImpl::sceneID()
+{
+    return [contentView() window].windowScene._sceneIdentifier;
+}
+
+void PageClientImpl::beginTextRecognitionForFullscreenVideo(ShareableBitmap::Handle&& imageHandle, AVPlayerViewController *playerViewController)
+{
+    [contentView() beginTextRecognitionForFullscreenVideo:WTFMove(imageHandle) playerViewController:playerViewController];
+}
+
+void PageClientImpl::cancelTextRecognitionForFullscreenVideo(AVPlayerViewController *controller)
+{
+    [contentView() cancelTextRecognitionForFullscreenVideo:controller];
+}
+
+bool PageClientImpl::isTextRecognitionInFullscreenVideoEnabled() const
+{
+    return [contentView() isTextRecognitionInFullscreenVideoEnabled];
+}
+
+#if ENABLE(IMAGE_ANALYSIS) && ENABLE(VIDEO)
+void PageClientImpl::beginTextRecognitionForVideoInElementFullscreen(ShareableBitmap::Handle&& bitmapHandle, FloatRect bounds)
+{
+    [contentView() beginTextRecognitionForVideoInElementFullscreen:WTFMove(bitmapHandle) bounds:bounds];
+}
+
+void PageClientImpl::cancelTextRecognitionForVideoInElementFullscreen()
+{
+    [contentView() cancelTextRecognitionForVideoInElementFullscreen];
+}
+#endif
+
+bool PageClientImpl::hasResizableWindows() const
+{
+#if HAVE(UIKIT_RESIZABLE_WINDOWS)
+    return [webView() _isWindowResizingEnabled];
+#else
+    return false;
+#endif
+}
+
+UIViewController *PageClientImpl::presentingViewController() const
+{
+    RetainPtr webView = this->webView();
+
+#if ENABLE(FULLSCREEN_API)
+    if ([webView fullScreenWindowController].isFullScreen)
+        return [webView fullScreenWindowController].fullScreenViewController;
+#endif
+
+    if (auto page = webView->_page)
+        return page->uiClient().presentingViewController();
+
+    return nil;
+}
+
+FloatRect PageClientImpl::rootViewToWebView(const FloatRect& rect) const
+{
+    return [webView() convertRect:rect fromView:contentView().get()];
+}
+
+FloatPoint PageClientImpl::webViewToRootView(const FloatPoint& point) const
+{
+    return [webView() convertPoint:point toView:contentView().get()];
+}
+
+#if HAVE(SPATIAL_TRACKING_LABEL)
+const String& PageClientImpl::spatialTrackingLabel() const
+{
+    return [contentView() spatialTrackingLabel];
+}
+#endif
+
+void PageClientImpl::scheduleVisibleContentRectUpdate()
+{
+    [webView() _scheduleVisibleContentRectUpdate];
 }
 
 } // namespace WebKit

@@ -25,8 +25,8 @@
 
 #pragma once
 
-#include "CSSComputedStyleDeclaration.h"
 #include "CSSPropertyParser.h"
+#include "ComputedStyleExtractor.h"
 #include "SVGAttributeAnimator.h"
 #include "SVGElement.h"
 
@@ -72,13 +72,13 @@ protected:
 
     String adjustForInheritance(SVGElement& targetElement, const String& value) const
     {
-        static MainThreadNeverDestroyed<const AtomString> inherit("inherit", AtomString::ConstructFromLiteral);
+        static MainThreadNeverDestroyed<const AtomString> inherit("inherit"_s);
         return value == inherit ? computeInheritedCSSPropertyValue(targetElement) : value;
     }
 
     String computeCSSPropertyValue(SVGElement& targetElement, CSSPropertyID id) const
     {
-        auto protector = makeRefPtr(targetElement);
+        Ref protector = targetElement;
 
         // Don't include any properties resulting from CSS Transitions/Animations or SMIL animations, as we want to retrieve the "base value".
         targetElement.setUseOverrideComputedStyle(true);
@@ -89,12 +89,10 @@ protected:
 
     String computeInheritedCSSPropertyValue(SVGElement& targetElement) const
     {
-        auto parent = makeRefPtr(targetElement.parentElement());
-        if (!parent || !parent->isSVGElement())
+        RefPtr svgParent = dynamicDowncast<SVGElement>(targetElement.parentElement());
+        if (!svgParent)
             return emptyString();
-        
-        SVGElement& svgParent = downcast<SVGElement>(*parent);
-        return computeCSSPropertyValue(svgParent, cssPropertyID(m_attributeName.localName()));
+        return computeCSSPropertyValue(*svgParent, cssPropertyID(m_attributeName.localName()));
     }
 
     AnimationFunction m_function;

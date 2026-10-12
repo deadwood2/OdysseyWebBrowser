@@ -60,7 +60,11 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
         if (!this._style)
             return;
 
-        this.element.addEventListener("focus", () => { this.focused = true; }, true);
+        this.element.addEventListener("focus", () => {
+            if (!this._suppressBlur)
+                this.focused = true;
+        }, true);
+
         this.element.addEventListener("blur", (event) => {
             let focusedElement = event.relatedTarget;
             if (focusedElement && this.element.contains(focusedElement))
@@ -253,10 +257,10 @@ WI.SpreadsheetCSSStyleDeclarationEditor = class SpreadsheetCSSStyleDeclarationEd
             properties = this._style.properties;
 
         if (this._style.inherited)
-            properties = properties.filter((property) => property.inherited);
+            properties = properties.filter((property) => property.inherited || property.isNewProperty);
 
         if (this._sortPropertiesByName)
-            properties.sort((a, b) => a.name.extendedLocaleCompare(b.name));
+            properties.sort((a, b) => WI.CSSProperty.sortPreferringNonPrefixed(a.name, b.name));
 
         let hideVariables = this._propertyVisibilityMode === SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideVariables;
         let hideNonVariables = this._propertyVisibilityMode === SpreadsheetCSSStyleDeclarationEditor.PropertyVisibilityMode.HideNonVariables;

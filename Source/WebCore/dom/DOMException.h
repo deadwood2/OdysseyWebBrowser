@@ -43,6 +43,8 @@ public:
     // For DOM bindings.
     static Ref<DOMException> create(const String& message, const String& name);
 
+    virtual ~DOMException() { }
+
     using LegacyCode = uint8_t;
     LegacyCode legacyCode() const { return m_legacyCode; }
 
@@ -60,9 +62,10 @@ public:
     static ASCIILiteral name(ExceptionCode ec) { return description(ec).name; }
     static ASCIILiteral message(ExceptionCode ec) { return description(ec).message; }
 
-private:
+protected:
     DOMException(LegacyCode, const String& name, const String& message);
 
+private:
     LegacyCode m_legacyCode;
     String m_name;
     String m_message;

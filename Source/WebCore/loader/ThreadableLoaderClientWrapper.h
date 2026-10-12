@@ -60,23 +60,23 @@ public:
             m_client->didSendData(bytesSent, totalBytesToBeSent);
     }
 
-    void didReceiveResponse(unsigned long identifier, const ResourceResponse& response)
+    void didReceiveResponse(ScriptExecutionContextIdentifier mainContext, ResourceLoaderIdentifier identifier, const ResourceResponse& response)
     {
         if (m_client)
-            m_client->didReceiveResponse(identifier, response);
+            m_client->didReceiveResponse(mainContext, identifier, response);
     }
 
-    void didReceiveData(const uint8_t* data, int dataLength)
+    void didReceiveData(const SharedBuffer& buffer)
     {
         if (m_client)
-            m_client->didReceiveData(data, dataLength);
+            m_client->didReceiveData(buffer);
     }
 
-    void didFinishLoading(unsigned long identifier)
+    void didFinishLoading(ScriptExecutionContextIdentifier mainContext, ResourceLoaderIdentifier identifier, const NetworkLoadMetrics& metrics)
     {
         m_done = true;
         if (m_client)
-            m_client->didFinishLoading(identifier);
+            m_client->didFinishLoading(mainContext, identifier, metrics);
     }
 
     void notifyIsDone(bool isDone)
@@ -85,17 +85,11 @@ public:
             m_client->notifyIsDone(isDone);
     }
 
-    void didFail(const ResourceError& error)
+    void didFail(ScriptExecutionContextIdentifier mainContext, const ResourceError& error)
     {
         m_done = true;
         if (m_client)
-            m_client->didFail(error);
-    }
-
-    void didReceiveAuthenticationCancellation(unsigned long identifier, const ResourceResponse& response)
-    {
-        if (m_client)
-            m_client->didReceiveResponse(identifier, response);
+            m_client->didFail(mainContext, error);
     }
 
     const String& initiator() const { return m_initiator; }
@@ -103,13 +97,13 @@ public:
 protected:
     explicit ThreadableLoaderClientWrapper(ThreadableLoaderClient&, const String&);
 
-    ThreadableLoaderClient* m_client;
+    WeakPtr<ThreadableLoaderClient> m_client;
     String m_initiator;
     bool m_done { false };
 };
 
 inline ThreadableLoaderClientWrapper::ThreadableLoaderClientWrapper(ThreadableLoaderClient& client, const String& initiator)
-    : m_client(&client)
+    : m_client(client)
     , m_initiator(initiator.isolatedCopy())
 {
 }

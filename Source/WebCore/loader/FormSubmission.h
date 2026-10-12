@@ -32,7 +32,7 @@
 
 #include "FormState.h"
 #include "FrameLoaderTypes.h"
-#include "RuntimeEnabledFeatures.h"
+#include "ReferrerPolicy.h"
 #include <wtf/URL.h>
 #include <wtf/WeakPtr.h>
 
@@ -57,8 +57,8 @@ public:
         const String& action() const { return m_action; }
         void parseAction(const String&);
 
-        const String& target() const { return m_target; }
-        void setTarget(const String& target) { m_target = target; }
+        const AtomString& target() const { return m_target; }
+        void setTarget(const AtomString& target) { m_target = target; }
 
         const String& encodingType() const { return m_encodingType; }
         static String parseEncodingType(const String&);
@@ -72,7 +72,7 @@ public:
         Method m_method { Method::Get };
         bool m_isMultiPartForm { false };
         String m_action;
-        String m_target;
+        AtomString m_target;
         String m_encodingType { "application/x-www-form-urlencoded"_s };
         String m_acceptCharset;
     };
@@ -84,7 +84,7 @@ public:
 
     Method method() const { return m_method; }
     const URL& action() const { return m_action; }
-    const String& target() const { return m_target; }
+    const AtomString& target() const { return m_target; }
     const String& contentType() const { return m_contentType; }
     FormState& state() const { return *m_formState; }
     Ref<FormState> takeState() { return m_formState.releaseNonNull(); }
@@ -92,6 +92,7 @@ public:
     const String boundary() const { return m_boundary; }
     LockHistory lockHistory() const { return m_lockHistory; }
     Event* event() const { return m_event.get(); }
+    RefPtr<Event> protectedEvent() const;
     const String& referrer() const { return m_referrer; }
     const String& origin() const { return m_origin; }
 
@@ -104,18 +105,24 @@ public:
     void cancel() { m_wasCancelled = true; }
     bool wasCancelled() const { return m_wasCancelled; }
 
+    NewFrameOpenerPolicy newFrameOpenerPolicy() const { return m_newFrameOpenerPolicy; }
+    void setNewFrameOpenerPolicy(NewFrameOpenerPolicy newFrameOpenerPolicy) { m_newFrameOpenerPolicy = newFrameOpenerPolicy; }
+
+    ReferrerPolicy referrerPolicy() const { return m_referrerPolicy; }
+    void setReferrerPolicy(ReferrerPolicy referrerPolicy) { m_referrerPolicy = referrerPolicy; }
+
 private:
     // dialog form submissions
-    FormSubmission(Method, const String& returnValue, const URL& action, const String& target, const String& contentType, LockHistory, Event*);
+    FormSubmission(Method, const String& returnValue, const URL& action, const AtomString& target, const String& contentType, LockHistory, Event*);
 
     // get/post form submissions
-    FormSubmission(Method, const URL& action, const String& target, const String& contentType, Ref<FormState>&&, Ref<FormData>&&, const String& boundary, LockHistory, Event*);
+    FormSubmission(Method, const URL& action, const AtomString& target, const String& contentType, Ref<FormState>&&, Ref<FormData>&&, const String& boundary, LockHistory, Event*);
 
     // FIXME: Hold an instance of Attributes instead of individual members.
     Method m_method;
     bool m_wasCancelled { false };
     URL m_action;
-    String m_target;
+    AtomString m_target;
     String m_contentType;
     RefPtr<FormState> m_formState;
     RefPtr<FormData> m_formData;
@@ -126,6 +133,9 @@ private:
     String m_origin;
 
     String m_returnValue; // for form[method=dialog]
+
+    NewFrameOpenerPolicy m_newFrameOpenerPolicy { NewFrameOpenerPolicy::Allow };
+    ReferrerPolicy m_referrerPolicy { ReferrerPolicy::EmptyString };
 };
 
 } // namespace WebCore

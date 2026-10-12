@@ -27,13 +27,23 @@
 
 #include <WebCore/IntSize.h>
 #include <wtf/Noncopyable.h>
+#include <wtf/TZoneMalloc.h>
+
+namespace WTF {
+class RunLoop;
+}
+
+namespace WebCore {
+class Region;
+}
 
 namespace WebKit {
 
 class WebPage;
 
 class AcceleratedSurface {
-    WTF_MAKE_NONCOPYABLE(AcceleratedSurface); WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_NONCOPYABLE(AcceleratedSurface);
+    WTF_MAKE_TZONE_ALLOCATED(AcceleratedSurface);
 public:
     class Client {
     public:
@@ -50,9 +60,24 @@ public:
     virtual bool shouldPaintMirrored() const { return false; }
 
     virtual void initialize() { }
+    virtual void didCreateGLContext() { }
+    virtual void willDestroyGLContext() { }
     virtual void finalize() { }
     virtual void willRenderFrame() { }
-    virtual void didRenderFrame() { }
+    virtual void didRenderFrame(WebCore::Region&&) { }
+
+    virtual void didCreateCompositingRunLoop(WTF::RunLoop&) { }
+    virtual void willDestroyCompositingRunLoop() { }
+
+#if PLATFORM(WPE) && USE(GBM) && ENABLE(WPE_PLATFORM)
+    virtual void preferredBufferFormatsDidChange() { }
+#endif
+
+    virtual void visibilityDidChange(bool) { }
+    virtual bool backgroundColorDidChange();
+
+    const WebCore::IntSize& size() const { return m_size; }
+    void clearIfNeeded();
 
 protected:
     AcceleratedSurface(WebPage&, Client&);
@@ -60,6 +85,7 @@ protected:
     WebPage& m_webPage;
     Client& m_client;
     WebCore::IntSize m_size;
+    std::atomic<bool> m_isOpaque { true };
 };
 
 } // namespace WebKit

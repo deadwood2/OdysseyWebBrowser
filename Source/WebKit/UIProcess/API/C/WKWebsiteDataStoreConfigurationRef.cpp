@@ -36,7 +36,11 @@ WKTypeID WKWebsiteDataStoreConfigurationGetTypeID()
 
 WKWebsiteDataStoreConfigurationRef WKWebsiteDataStoreConfigurationCreate()
 {
+#if PLATFORM(COCOA)
     auto configuration = WebKit::WebsiteDataStoreConfiguration::create(WebKit::IsPersistent::Yes);
+#else
+    auto configuration = WebKit::WebsiteDataStoreConfiguration::createWithBaseDirectories(nullString(), nullString());
+#endif
     return toAPI(&configuration.leakRef());
 }
 
@@ -100,6 +104,16 @@ void WKWebsiteDataStoreConfigurationSetCacheStorageDirectory(WKWebsiteDataStoreC
     WebKit::toImpl(configuration)->setCacheStorageDirectory(WebKit::toImpl(directory)->string());
 }
 
+WKStringRef WKWebsiteDataStoreConfigurationCopyGeneralStorageDirectory(WKWebsiteDataStoreConfigurationRef configuration)
+{
+    return WebKit::toCopiedAPI(WebKit::toImpl(configuration)->generalStorageDirectory());
+}
+
+void WKWebsiteDataStoreConfigurationSetGeneralStorageDirectory(WKWebsiteDataStoreConfigurationRef configuration, WKStringRef directory)
+{
+    WebKit::toImpl(configuration)->setGeneralStorageDirectory(WebKit::toImpl(directory)->string());
+}
+
 WKStringRef WKWebsiteDataStoreConfigurationCopyMediaKeysStorageDirectory(WKWebsiteDataStoreConfigurationRef configuration)
 {
     return WebKit::toCopiedAPI(WebKit::toImpl(configuration)->mediaKeysStorageDirectory());
@@ -128,6 +142,16 @@ WKStringRef WKWebsiteDataStoreConfigurationCopyServiceWorkerRegistrationDirector
 void WKWebsiteDataStoreConfigurationSetServiceWorkerRegistrationDirectory(WKWebsiteDataStoreConfigurationRef configuration, WKStringRef directory)
 {
     WebKit::toImpl(configuration)->setServiceWorkerRegistrationDirectory(WebKit::toImpl(directory)->string());
+}
+
+WKStringRef WKWebsiteDataStoreConfigurationCopyCookieStorageFile(WKWebsiteDataStoreConfigurationRef configuration)
+{
+    return WebKit::toCopiedAPI(WebKit::toImpl(configuration)->cookieStorageFile());
+}
+
+void WKWebsiteDataStoreConfigurationSetCookieStorageFile(WKWebsiteDataStoreConfigurationRef configuration, WKStringRef cookieStorageFile)
+{
+    WebKit::toImpl(configuration)->setCookieStorageFile(WebKit::toImpl(cookieStorageFile)->string());
 }
 
 uint64_t WKWebsiteDataStoreConfigurationGetPerOriginStorageQuota(WKWebsiteDataStoreConfigurationRef configuration)
@@ -168,4 +192,34 @@ bool WKWebsiteDataStoreConfigurationGetStaleWhileRevalidateEnabled(WKWebsiteData
 void WKWebsiteDataStoreConfigurationSetStaleWhileRevalidateEnabled(WKWebsiteDataStoreConfigurationRef configuration, bool enabled)
 {
     WebKit::toImpl(configuration)->setStaleWhileRevalidateEnabled(enabled);
+}
+
+WKStringRef WKWebsiteDataStoreConfigurationCopyPCMMachServiceName(WKWebsiteDataStoreConfigurationRef configuration)
+{
+    return WebKit::toCopiedAPI(WebKit::toImpl(configuration)->pcmMachServiceName());
+}
+
+void WKWebsiteDataStoreConfigurationSetPCMMachServiceName(WKWebsiteDataStoreConfigurationRef configuration, WKStringRef name)
+{
+    WebKit::toImpl(configuration)->setPCMMachServiceName(name ? WebKit::toImpl(name)->string() : String());
+}
+
+bool WKWebsiteDataStoreConfigurationHasOriginQuotaRatio(WKWebsiteDataStoreConfigurationRef configuration)
+{
+    return !!WebKit::toImpl(configuration)->originQuotaRatio();
+}
+
+void WKWebsiteDataStoreConfigurationClearOriginQuotaRatio(WKWebsiteDataStoreConfigurationRef configuration)
+{
+    WebKit::toImpl(configuration)->setOriginQuotaRatio(std::nullopt);
+}
+
+bool WKWebsiteDataStoreConfigurationHasTotalQuotaRatio(WKWebsiteDataStoreConfigurationRef configuration)
+{
+    return !!WebKit::toImpl(configuration)->totalQuotaRatio();
+}
+
+void WKWebsiteDataStoreConfigurationClearTotalQuotaRatio(WKWebsiteDataStoreConfigurationRef configuration)
+{
+    WebKit::toImpl(configuration)->setTotalQuotaRatio(std::nullopt);
 }

@@ -28,7 +28,6 @@
 
 #import "APIArray.h"
 #import "APIData.h"
-#import "ObjCObjectGraph.h"
 #import "WKBrowsingContextHandle.h"
 #import "WKBundleAPICast.h"
 #import "WKBundleInitialize.h"
@@ -73,22 +72,17 @@ static NSEventModifierFlags currentModifierFlags(id self, SEL _cmd)
 }
 #endif
 
-static RetainPtr<NSKeyedUnarchiver> createUnarchiver(const unsigned char* bytes, NSUInteger length)
+static RetainPtr<NSKeyedUnarchiver> createUnarchiver(std::span<const uint8_t> span)
 {
-    auto data = adoptNS([[NSData alloc] initWithBytesNoCopy:const_cast<unsigned char*>(bytes) length:length freeWhenDone:NO]);
-    auto unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:data.get() error:nullptr]);
+    RetainPtr data = adoptNS([[NSData alloc] initWithBytesNoCopy:const_cast<uint8_t*>(span.data()) length:span.size() freeWhenDone:NO]);
+    RetainPtr unarchiver = adoptNS([[NSKeyedUnarchiver alloc] initForReadingFromData:data.get() error:nullptr]);
     unarchiver.get().decodingFailurePolicy = NSDecodingFailurePolicyRaiseException;
     return unarchiver;
 }
 
 static RetainPtr<NSKeyedUnarchiver> createUnarchiver(const API::Data& data)
 {
-    return createUnarchiver(data.bytes(), data.size());
-}
-
-static RetainPtr<NSKeyedUnarchiver> createUnarchiver(const IPC::DataReference& data)
-{
-    return createUnarchiver(data.data(), data.size());
+    return createUnarchiver(data.span());
 }
 
 bool InjectedBundle::decodeBundleParameters(API::Data* bundleParameterDataPtr)
@@ -115,7 +109,7 @@ bool InjectedBundle::decodeBundleParameters(API::Data* bundleParameterDataPtr)
     return true;
 }
 
-bool InjectedBundle::initialize(const WebProcessCreationParameters& parameters, API::Object* initializationUserData)
+bool InjectedBundle::initialize(const WebProcessCreationParameters& parameters, RefPtr<API::Object>&& initializationUserData)
 {
     if (auto sandboxExtension = std::exchange(m_sandboxExtension, nullptr)) {
         if (!sandboxExtension->consumePermanently()) {
@@ -146,7 +140,7 @@ bool InjectedBundle::initialize(const WebProcessCreationParameters& parameters, 
         NSError *error;
         if (![m_platformBundle preflightAndReturnError:&error]) {
             NSLog(@"InjectedBundle::load failed - preflightAndReturnError failed, error: %@", error);
-            return nil;
+            return false;
         }
         if (![m_platformBundle loadAndReturnError:&error]) {
             NSLog(@"InjectedBundle::load failed - loadAndReturnError failed, error: %@", error);
@@ -160,7 +154,7 @@ bool InjectedBundle::initialize(const WebProcessCreationParameters& parameters, 
 
     // Update list of valid classes for the parameter coder
     if (additionalClassesForParameterCoderFunction)
-        additionalClassesForParameterCoderFunction(toAPI(this), toAPI(initializationUserData));
+        additionalClassesForParameterCoderFunction(toAPI(this), toAPI(initializationUserData.get()));
 
 #if PLATFORM(MAC)
     // Swizzle [NSEvent modiferFlags], since it always returns 0 when the WindowServer is blocked.
@@ -172,7 +166,7 @@ bool InjectedBundle::initialize(const WebProcessCreationParameters& parameters, 
     if (initializeFunction) {
         if (!decodeBundleParameters(parameters.bundleParameterData.get()))
             return false;
-        initializeFunction(toAPI(this), toAPI(initializationUserData));
+        initializeFunction(toAPI(this), toAPI(initializationUserData.get()));
         return true;
     }
 
@@ -203,12 +197,8 @@ bool InjectedBundle::initialize(const WebProcessCreationParameters& parameters, 
     if (!decodeBundleParameters(parameters.bundleParameterData.get()))
         return false;
 
-    if ([instance respondsToSelector:@selector(webProcessPlugIn:initializeWithObject:)]) {
-        RetainPtr<id> objCInitializationUserData;
-        if (initializationUserData && initializationUserData->type() == API::Object::Type::ObjCObjectGraph)
-            objCInitializationUserData = static_cast<ObjCObjectGraph*>(initializationUserData)->rootObject();
-        [instance webProcessPlugIn:plugInController initializeWithObject:objCInitializationUserData.get()];
-    }
+    if ([instance respondsToSelector:@selector(webProcessPlugIn:initializeWithObject:)])
+        [instance webProcessPlugIn:plugInController initializeWithObject:nil];
 
     return true;
 }
@@ -257,7 +247,7 @@ NSSet* InjectedBundle::classesForCoder()
     return m_classesForCoder.get();
 }
 
-void InjectedBundle::setBundleParameter(const String& key, const IPC::DataReference& value)
+void InjectedBundle::setBundleParameter(const String& key, std::span<const uint8_t> value)
 {
     id parameter = nil;
     auto unarchiver = createUnarchiver(value);
@@ -274,7 +264,7 @@ void InjectedBundle::setBundleParameter(const String& key, const IPC::DataRefere
     [m_bundleParameters setParameter:parameter forKey:key];
 }
 
-void InjectedBundle::setBundleParameters(const IPC::DataReference& value)
+void InjectedBundle::setBundleParameters(std::span<const uint8_t> value)
 {
     NSDictionary *parameters = nil;
     auto unarchiver = createUnarchiver(value);

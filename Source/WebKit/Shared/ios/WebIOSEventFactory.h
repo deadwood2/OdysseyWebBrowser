@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,13 +27,17 @@
 
 #if PLATFORM(IOS_FAMILY)
 
+#import "WKBrowserEngineDefinitions.h"
 #import "WebKeyboardEvent.h"
 #import "WebMouseEvent.h"
 #import "WebWheelEvent.h"
 #import <UIKit/UIKit.h>
+#import <WebCore/FloatSize.h>
 #import <WebCore/WebEvent.h>
 
-OBJC_CLASS UIScrollEvent;
+OBJC_CLASS WKBEScrollViewScrollUpdate;
+
+namespace WebKit {
 
 class WebIOSEventFactory {
 public:
@@ -41,10 +45,14 @@ public:
     static WebKit::WebMouseEvent createWebMouseEvent(::WebEvent *);
 
 #if HAVE(UISCROLLVIEW_ASYNCHRONOUS_SCROLL_EVENT_HANDLING)
-    static WebKit::WebWheelEvent createWebWheelEvent(UIScrollEvent *, UIView *contentView, std::optional<WebKit::WebWheelEvent::Phase> overridePhase = std::nullopt);
+    static WebKit::WebWheelEvent createWebWheelEvent(WKBEScrollViewScrollUpdate *, UIView *contentView, std::optional<WebKit::WebWheelEvent::Phase> overridePhase = std::nullopt);
+    static WebCore::FloatSize translationInView(WKBEScrollViewScrollUpdate *, UIView *);
 #endif
 
-    static UIKeyModifierFlags toUIKeyModifierFlags(OptionSet<WebKit::WebEvent::Modifier>);
+    static OptionSet<WebKit::WebEventModifier> webEventModifiersForUIKeyModifierFlags(UIKeyModifierFlags);
+    static UIKeyModifierFlags toUIKeyModifierFlags(OptionSet<WebKit::WebEventModifier>);
 };
+
+} // namespace WebKit
 
 #endif // PLATFORM(IOS_FAMILY)

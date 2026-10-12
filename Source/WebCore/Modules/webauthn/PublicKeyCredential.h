@@ -33,8 +33,10 @@
 
 namespace WebCore {
 
+enum class AuthenticatorAttachment : uint8_t;
 class AuthenticatorResponse;
 class Document;
+typedef IDLRecord<IDLDOMString, IDLBoolean> PublicKeyCredentialClientCapabilities;
 
 struct AuthenticationExtensionsClientOutputs;
 
@@ -46,9 +48,12 @@ public:
 
     ArrayBuffer* rawId() const;
     AuthenticatorResponse* response() const { return m_response.ptr(); }
+    AuthenticatorAttachment authenticatorAttachment() const;
     AuthenticationExtensionsClientOutputs getClientExtensionResults() const;
 
     static void isUserVerifyingPlatformAuthenticatorAvailable(Document&, DOMPromiseDeferred<IDLBoolean>&&);
+
+    static void getClientCapabilities(Document&, DOMPromiseDeferred<PublicKeyCredentialClientCapabilities>&&);
 
 private:
     PublicKeyCredential(Ref<AuthenticatorResponse>&&);

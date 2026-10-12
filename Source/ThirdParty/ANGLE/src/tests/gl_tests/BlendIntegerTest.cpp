@@ -9,7 +9,7 @@
 
 using namespace angle;
 
-class BlendIntegerTest : public ANGLETest
+class BlendIntegerTest : public ANGLETest<>
 {
   protected:
     BlendIntegerTest()
@@ -300,13 +300,13 @@ TEST_P(BlendIntegerTest, RGB10_A2UI)
 // Test that blending does not cancel draws on signed integer attachments.
 TEST_P(BlendIntegerTest, MRTSigned)
 {
-    // http://anglebug.com/5071
+    // http://anglebug.com/42263640
     ANGLE_SKIP_TEST_IF(IsVulkan() && IsWindows() && IsIntel());
 
-    // http://anglebug.com/5125
-    ANGLE_SKIP_TEST_IF(IsOpenGL() && IsOSX() && IsIntel());
+    // http://anglebug.com/42263688
+    ANGLE_SKIP_TEST_IF(IsOpenGL() && IsMac() && IsIntel());
 
-    // http://anglebug.com/5126
+    // http://anglebug.com/42263689
     ANGLE_SKIP_TEST_IF(IsVulkan() && IsAdreno());
 
     runTestMRT<true>();
@@ -315,13 +315,13 @@ TEST_P(BlendIntegerTest, MRTSigned)
 // Test that blending does not cancel draws on unsigned integer attachments.
 TEST_P(BlendIntegerTest, MRTUnsigned)
 {
-    // http://anglebug.com/5071
+    // http://anglebug.com/42263640
     ANGLE_SKIP_TEST_IF(IsVulkan() && IsWindows() && IsIntel());
 
-    // http://anglebug.com/5125
-    ANGLE_SKIP_TEST_IF(IsOpenGL() && IsOSX() && IsIntel());
+    // http://anglebug.com/42263688
+    ANGLE_SKIP_TEST_IF(IsOpenGL() && IsMac() && IsIntel());
 
-    // http://anglebug.com/5126
+    // http://anglebug.com/42263689
     ANGLE_SKIP_TEST_IF(IsVulkan() && IsAdreno());
 
     runTestMRT<false>();
@@ -329,4 +329,5 @@ TEST_P(BlendIntegerTest, MRTUnsigned)
 
 // Use this to select which configurations (e.g. which renderer, which GLES major version) these
 // tests should be run against.
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(BlendIntegerTest);
 ANGLE_INSTANTIATE_TEST_ES3(BlendIntegerTest);

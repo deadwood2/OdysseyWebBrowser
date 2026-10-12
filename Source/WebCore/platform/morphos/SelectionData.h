@@ -26,6 +26,7 @@
 #pragma once
 
 #include "Image.h"
+#include "SharedBuffer.h"
 #include <wtf/HashMap.h>
 #include <wtf/RefCounted.h>
 #include <wtf/URL.h>
@@ -73,6 +74,11 @@ public:
     void setCanSmartReplace(bool canSmartReplace) { m_canSmartReplace = canSmartReplace; }
     bool canSmartReplace() const { return m_canSmartReplace; }
 
+    void setCustomData(Ref<SharedBuffer>&& buffer) { m_customData = WTFMove(buffer); }
+    SharedBuffer* customData() const { return m_customData.get(); }
+    bool hasCustomData() const { return !!m_customData; }
+    void clearCustomData() { m_customData = nullptr; }
+
     void clearAll();
     void clearAllExceptFilenames();
 
@@ -83,6 +89,7 @@ private:
     String m_uriList;
     Vector<String> m_filenames;
     RefPtr<Image> m_image;
+    RefPtr<SharedBuffer> m_customData;
     HashMap<String, String> m_unknownTypeData;
     bool m_canSmartReplace { false };
 };

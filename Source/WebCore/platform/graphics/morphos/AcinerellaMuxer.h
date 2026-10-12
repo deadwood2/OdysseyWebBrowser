@@ -1,12 +1,11 @@
 #pragma once
 
-#include "config.h"
-
 #if ENABLE(VIDEO)
 
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/text/WTFString.h>
+#include <wtf/Deque.h>
 #include <wtf/Function.h>
 #include <wtf/ThreadSafeRefCounted.h>
 #include <wtf/threads/BinarySemaphore.h>
@@ -80,7 +79,7 @@ public:
 	uint32_t maxBufferSizeForMediaSourceDecoder(int decoderIndex);
 
 protected:
-	typedef std::queue<RefPtr<AcinerellaPackage>> AcinerellaPackageQueue;
+	typedef Deque<RefPtr<AcinerellaPackage>> AcinerellaPackageQueue;
 
 	inline bool isDecoderValid(int index) {
 		return 0 != (m_decoderMask & (1UL << index));

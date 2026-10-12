@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,6 +30,15 @@
 #include <wtf/WeakHashSet.h>
 
 namespace WebCore {
+class MediaSessionHelperClient;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebCore::MediaSessionHelperClient> : std::true_type { };
+}
+
+namespace WebCore {
 
 class MediaPlaybackTarget;
 
@@ -42,7 +51,6 @@ public:
     virtual void applicationDidEnterBackground(SuspendedUnderLock) = 0;
     virtual void applicationWillBecomeInactive() = 0;
     virtual void applicationDidBecomeActive() = 0;
-    virtual void mediaServerConnectionDied() { };
 
     enum class HasAvailableTargets : bool { No, Yes };
     virtual void externalOutputDeviceAvailableDidChange(HasAvailableTargets) = 0;
@@ -55,13 +63,15 @@ public:
 
     enum class SupportsAirPlayVideo : bool { No, Yes };
     virtual void activeVideoRouteDidChange(SupportsAirPlayVideo, Ref<MediaPlaybackTarget>&&) = 0;
+
+    enum class SupportsSpatialAudioPlayback : bool { No, Yes };
+    virtual void activeAudioRouteSupportsSpatialPlaybackDidChange(SupportsSpatialAudioPlayback) = 0;
 };
 
-class WEBCORE_EXPORT MediaSessionHelper {
-    WTF_MAKE_FAST_ALLOCATED;
+class WEBCORE_EXPORT MediaSessionHelper : public ThreadSafeRefCountedAndCanMakeThreadSafeWeakPtr<MediaSessionHelper> {
 public:
     static MediaSessionHelper& sharedHelper();
-    static void setSharedHelper(UniqueRef<MediaSessionHelper>&&);
+    static void setSharedHelper(Ref<MediaSessionHelper>&&);
     static void resetSharedHelper();
 
     MediaSessionHelper() = default;
@@ -73,7 +83,10 @@ public:
 
     void startMonitoringWirelessRoutes();
     void stopMonitoringWirelessRoutes();
-    virtual void providePresentingApplicationPID(int) = 0;
+
+    enum class ShouldOverride : bool { No, Yes };
+    void providePresentingApplicationPID(int pid) { providePresentingApplicationPID(pid, ShouldOverride::No); }
+    virtual void providePresentingApplicationPID(int, ShouldOverride) = 0;
 
     void setIsExternalOutputDeviceAvailable(bool);
 
@@ -89,18 +102,22 @@ public:
     using ShouldPause = MediaSessionHelperClient::ShouldPause;
     using SupportsAirPlayVideo = MediaSessionHelperClient::SupportsAirPlayVideo;
     using SuspendedUnderLock = MediaSessionHelperClient::SuspendedUnderLock;
+    using SupportsSpatialAudioPlayback = MediaSessionHelperClient::SupportsSpatialAudioPlayback;
 
     void activeAudioRouteDidChange(ShouldPause);
     void applicationWillEnterForeground(SuspendedUnderLock);
     void applicationDidEnterBackground(SuspendedUnderLock);
     void applicationWillBecomeInactive();
     void applicationDidBecomeActive();
-    void mediaServerConnectionDied();
+
+    void setActiveAudioRouteSupportsSpatialPlayback(bool);
+    void updateActiveAudioRouteSupportsSpatialPlayback();
 
 protected:
     void externalOutputDeviceAvailableDidChange(HasAvailableTargets);
     void isPlayingToAutomotiveHeadUnitDidChange(PlayingToAutomotiveHeadUnit);
     void activeVideoRouteDidChange(SupportsAirPlayVideo, Ref<MediaPlaybackTarget>&&);
+    void activeAudioRouteSupportsSpatialPlaybackDidChange(SupportsSpatialAudioPlayback);
 
 private:
     virtual void startMonitoringWirelessRoutesInternal() = 0;
@@ -111,6 +128,7 @@ private:
     uint32_t m_monitoringWirelessRoutesCount { 0 };
     bool m_activeVideoRouteSupportsAirPlayVideo { false };
     bool m_isPlayingToAutomotiveHeadUnit { false };
+    SupportsSpatialAudioPlayback m_activeAudioRouteSupportsSpatialPlayback { SupportsSpatialAudioPlayback::No };
     RefPtr<MediaPlaybackTarget> m_playbackTarget;
 };
 

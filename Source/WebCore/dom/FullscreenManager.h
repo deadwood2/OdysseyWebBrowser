@@ -28,36 +28,40 @@
 #if ENABLE(FULLSCREEN_API)
 
 #include "Document.h"
+#include "FrameDestructionObserverInlines.h"
+#include "GCReachableRef.h"
+#include "HTMLMediaElement.h"
+#include "HTMLMediaElementEnums.h"
 #include "LayoutRect.h"
+#include "Page.h"
 #include <wtf/Deque.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
-class RenderFullScreen;
-class RenderTreeBuilder;
+class DeferredPromise;
 class RenderStyle;
 
-class FullscreenManager final : public CanMakeWeakPtr<FullscreenManager> {
+class FullscreenManager final : public CanMakeWeakPtr<FullscreenManager>, public CanMakeCheckedPtr<FullscreenManager> {
     WTF_MAKE_FAST_ALLOCATED;
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(FullscreenManager);
 public:
     FullscreenManager(Document&);
     ~FullscreenManager();
 
-    Document& document() { return m_document; }
-    const Document& document() const { return m_document; }
-    Document& topDocument() const { return m_document.topDocument(); }
-    Page* page() const { return m_document.page(); }
-    Frame* frame() const { return m_document.frame(); }
-    Element* documentElement() const { return m_document.documentElement(); }
-    bool hasLivingRenderTree() const { return m_document.hasLivingRenderTree(); }
-    Document::BackForwardCacheState backForwardCacheState() const { return m_document.backForwardCacheState(); }
-    void scheduleFullStyleRebuild() { m_document.scheduleFullStyleRebuild(); }
+    Document& document() { return m_document.get(); }
+    const Document& document() const { return m_document.get(); }
+    Ref<Document> protectedDocument() const { return m_document.get(); }
+    Page* page() const { return document().page(); }
+    LocalFrame* frame() const { return document().frame(); }
+    Element* documentElement() const { return document().documentElement(); }
+    bool isSimpleFullscreenDocument() const;
+    Document::BackForwardCacheState backForwardCacheState() const { return document().backForwardCacheState(); }
 
-    // W3C Fullscreen API
-    Element* fullscreenElement() const { return !m_fullscreenElementStack.isEmpty() ? m_fullscreenElementStack.last().get() : nullptr; }
+    // WHATWG Fullscreen API
+    WEBCORE_EXPORT Element* fullscreenElement() const;
     WEBCORE_EXPORT bool isFullscreenEnabled() const;
-    WEBCORE_EXPORT void exitFullscreen();
+    WEBCORE_EXPORT void exitFullscreen(RefPtr<DeferredPromise>&&);
 
     // Mozilla versions.
     bool isFullscreen() const { return m_fullscreenElement.get(); }
@@ -69,26 +73,27 @@ public:
         EnforceIFrameAllowFullscreenRequirement,
         ExemptIFrameAllowFullscreenRequirement,
     };
-    WEBCORE_EXPORT void requestFullscreenForElement(Element*, FullscreenCheckType);
-
-    WEBCORE_EXPORT bool willEnterFullscreen(Element&);
+    WEBCORE_EXPORT void requestFullscreenForElement(Ref<Element>&&, RefPtr<DeferredPromise>&&, FullscreenCheckType, CompletionHandler<void(bool)>&& = [](bool) { }, HTMLMediaElementEnums::VideoFullscreenMode = HTMLMediaElementEnums::VideoFullscreenModeStandard);
+    WEBCORE_EXPORT bool willEnterFullscreen(Element&, HTMLMediaElementEnums::VideoFullscreenMode = HTMLMediaElementEnums::VideoFullscreenModeStandard);
     WEBCORE_EXPORT bool didEnterFullscreen();
     WEBCORE_EXPORT bool willExitFullscreen();
     WEBCORE_EXPORT bool didExitFullscreen();
 
-    void setFullscreenRenderer(RenderTreeBuilder&, RenderFullScreen&);
-    RenderFullScreen* fullscreenRenderer() const;
+    void notifyAboutFullscreenChangeOrError();
 
-    void dispatchFullscreenChangeEvents();
-    void fullscreenElementRemoved();
+    enum class ExitMode : bool { Resize, NoResize };
+    void finishExitFullscreen(Document&, ExitMode);
 
-    void adjustFullscreenElementOnNodeRemoval(Node&, Document::NodeRemoval = Document::NodeRemoval::Node);
+    void exitRemovedFullscreenElement(Element&);
 
     WEBCORE_EXPORT bool isAnimatingFullscreen() const;
     WEBCORE_EXPORT void setAnimatingFullscreen(bool);
 
-    WEBCORE_EXPORT bool areFullscreenControlsHidden() const;
-    WEBCORE_EXPORT void setFullscreenControlsHidden(bool);
+    enum class ResizeType : uint8_t {
+        DOMWindow           = 1 << 0,
+        VisualViewport      = 1 << 1,
+    };
+    void addPendingScheduledResize(ResizeType);
 
     void clear();
     void emptyEventQueue();
@@ -96,37 +101,39 @@ public:
 protected:
     friend class Document;
 
-    void dispatchFullscreenChangeOrErrorEvent(Deque<RefPtr<Node>>&, const AtomString& eventName, bool shouldNotifyMediaElement);
-    void clearFullscreenElementStack();
-    void popFullscreenElementStack();
-    void pushFullscreenElementStack(Element&);
+    enum class EventType : bool { Change, Error };
+    void dispatchFullscreenChangeOrErrorEvent(Deque<GCReachableRef<Node>>&, EventType, bool shouldNotifyMediaElement);
+    void dispatchEventForNode(Node&, EventType);
     void addDocumentToFullscreenChangeEventQueue(Document&);
 
 private:
 #if !RELEASE_LOG_DISABLED
-    const WTF::Logger& logger() const { return m_document.logger(); }
+    const Logger& logger() const { return document().logger(); }
     const void* logIdentifier() const { return m_logIdentifier; }
-    const char* logClassName() const { return "FullscreenManager"; }
+    ASCIILiteral logClassName() const { return "FullscreenManager"_s; }
     WTFLogChannel& logChannel() const;
 #endif
 
-    Document& m_document;
+    Document& topDocument() { return m_topDocument ? *m_topDocument : document().topDocument(); }
+    Ref<Document> protectedTopDocument();
+
+    WeakRef<Document, WeakPtrImplWithEventTargetData> m_document;
+    WeakPtr<Document, WeakPtrImplWithEventTargetData> m_topDocument;
 
     RefPtr<Element> fullscreenOrPendingElement() const { return m_fullscreenElement ? m_fullscreenElement : m_pendingFullscreenElement; }
+
+    RefPtr<DeferredPromise> m_pendingPromise;
 
     bool m_pendingExitFullscreen { false };
     RefPtr<Element> m_pendingFullscreenElement;
     RefPtr<Element> m_fullscreenElement;
-    Vector<RefPtr<Element>> m_fullscreenElementStack;
-    WeakPtr<RenderFullScreen> m_fullscreenRenderer { nullptr };
-    Deque<RefPtr<Node>> m_fullscreenChangeEventTargetQueue;
-    Deque<RefPtr<Node>> m_fullscreenErrorEventTargetQueue;
-    LayoutRect m_savedPlaceholderFrameRect;
-    std::unique_ptr<RenderStyle> m_savedPlaceholderRenderStyle;
+    Deque<GCReachableRef<Node>> m_fullscreenChangeEventTargetQueue;
+    Deque<GCReachableRef<Node>> m_fullscreenErrorEventTargetQueue;
+
+    OptionSet<ResizeType> m_pendingScheduledResize;
 
     bool m_areKeysEnabledInFullscreen { false };
     bool m_isAnimatingFullscreen { false };
-    bool m_areFullscreenControlsHidden { false };
 
 #if !RELEASE_LOG_DISABLED
     const void* m_logIdentifier;

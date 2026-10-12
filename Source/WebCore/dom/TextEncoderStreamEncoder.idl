@@ -24,9 +24,7 @@
  */
 
 [
-    EnabledAtRuntime=TransformStreamAPI,
     Exposed=(Window,Worker),
-    ImplementationLacksVTable,
     PrivateIdentifier,
 ] interface TextEncoderStreamEncoder {
     constructor();

@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2023 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -20,9 +20,35 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import platform
 import sys
 
 from webkitscmpy import AutoInstall, Package, Version
 
-AutoInstall.register(Package('twisted', Version(15, 5, 0), pypi_name='Twisted'))
+AutoInstall.install(Package('constantly', Version(15, 1, 0), pypi_name='constantly'))
+
+if sys.version_info >= (3, 0):
+    AutoInstall.install(Package('hyperlink', Version(21, 0, 0), pypi_name='hyperlink'))
+    AutoInstall.install(Package('incremental', Version(21, 3, 0), pypi_name='incremental'))
+
+    if sys.version_info >= (3, 11):
+        AutoInstall.install(Package('twisted', Version(22, 10, 0), pypi_name='Twisted', implicit_deps=['pyparsing']))
+    else:
+        AutoInstall.install(Package('twisted', Version(20, 3, 0), pypi_name='Twisted', implicit_deps=['pyparsing']))
+
+    # There are no prebuilt binaries for arm-32 of 'bcrypt' and building it requires cargo/rust
+    # Since this dep is not really needed for the current arm-32 bots we skip it instead of
+    # adding the overhead of a cargo/rust toolchain into the yocto-based image the bots run.
+    if not (platform.machine().startswith('arm') and platform.architecture()[0] == '32bit'):
+        AutoInstall.install(Package('bcrypt', Version(4), wheel=True))
+    AutoInstall.install(Package('pycparser', Version(2, 21), wheel=True))
+
+    from twisted.protocols.tls import TLSMemoryBIOFactory
+    from twisted.python import threadpool
+else:
+    AutoInstall.install(Package('hyperlink', Version(17, 3, 0), pypi_name='hyperlink'))
+    AutoInstall.install(Package('incremental', Version(17, 5, 0), pypi_name='incremental'))
+    AutoInstall.install(Package('twisted', Version(17, 5, 0), pypi_name='Twisted', implicit_deps=['OpenSSL', 'pyparsing']))
+    AutoInstall.install(Package('pycparser', Version(2, 18)))
+
 sys.modules[__name__] = __import__('twisted')

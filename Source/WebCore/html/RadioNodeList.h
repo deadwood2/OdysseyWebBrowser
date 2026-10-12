@@ -31,7 +31,7 @@
 namespace WebCore {
 
 class RadioNodeList final : public CachedLiveNodeList<RadioNodeList> {
-    WTF_MAKE_ISO_ALLOCATED(RadioNodeList);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(RadioNodeList);
 public:
     static Ref<RadioNodeList> create(ContainerNode& rootNode, const AtomString& name);
     virtual ~RadioNodeList();
@@ -42,10 +42,10 @@ public:
 
 private:
     RadioNodeList(ContainerNode&, const AtomString& name);
-    bool isRootedAtDocument() const final { return m_isRootedAtDocument; }
+    bool isRootedAtTreeScope() const final { return m_isRootedAtTreeScope; }
 
     AtomString m_name;
-    bool m_isRootedAtDocument;
+    bool m_isRootedAtTreeScope;
 };
 
 } // namespace WebCore

@@ -36,6 +36,7 @@
 #include "FidoConstants.h"
 #include "WebAuthenticationConstants.h"
 #include "WebAuthenticationUtils.h"
+#include <wtf/CheckedArithmetic.h>
 
 namespace fido {
 using namespace WebCore;
@@ -64,10 +65,10 @@ static Vector<uint8_t> extractECPublicKeyFromU2fRegistrationResponse(const Vecto
     if (u2fData.size() < pos + 2 * ES256FieldElementLength)
         return { };
 
-    Vector<uint8_t> x { u2fData.data() + pos, ES256FieldElementLength };
+    auto x = u2fData.subvector(pos, ES256FieldElementLength);
     pos += ES256FieldElementLength;
 
-    Vector<uint8_t> y { u2fData.data() + pos, ES256FieldElementLength };
+    auto y = u2fData.subvector(pos, ES256FieldElementLength);
     return encodeES256PublicKeyAsCBOR(WTFMove(x), WTFMove(y));
 }
 
@@ -81,7 +82,7 @@ static Vector<uint8_t> extractCredentialIdFromU2fRegistrationResponse(const Vect
 
     if (u2fData.size() < pos + credentialIdLength)
         return { };
-    return { u2fData.data() + pos, credentialIdLength };
+    return u2fData.subvector(pos, credentialIdLength);
 }
 
 static Vector<uint8_t> createAttestedCredentialDataFromU2fRegisterResponse(const Vector<uint8_t>& u2fData, const Vector<uint8_t>& publicKey)
@@ -116,13 +117,16 @@ static size_t parseX509Length(const Vector<uint8_t>& u2fData, size_t offset)
 static cbor::CBORValue::MapValue createFidoAttestationStatementFromU2fRegisterResponse(const Vector<uint8_t>& u2fData, size_t offset)
 {
     auto x509Length = parseX509Length(u2fData, offset);
-    if (!x509Length || u2fData.size() < offset + x509Length)
+    auto requiredLength = CheckedSize { x509Length } + offset;
+    if (requiredLength.hasOverflowed())
+        return { };
+    if (!x509Length || u2fData.size() < requiredLength)
         return { };
 
-    Vector<uint8_t> x509 { u2fData.data() + offset, x509Length };
+    auto x509 = u2fData.subvector(offset, x509Length);
     offset += x509Length;
 
-    Vector<uint8_t> signature { u2fData.data() + offset, u2fData.size() - offset };
+    auto signature = u2fData.subvector(offset);
     if (signature.isEmpty())
         return { };
 
@@ -137,7 +141,7 @@ static cbor::CBORValue::MapValue createFidoAttestationStatementFromU2fRegisterRe
 
 } // namespace
 
-RefPtr<AuthenticatorAttestationResponse> readU2fRegisterResponse(const String& rpId, const Vector<uint8_t>& u2fData, AuthenticatorAttachment attachment, const AttestationConveyancePreference& attestation)
+RefPtr<AuthenticatorAttestationResponse> readU2fRegisterResponse(const String& rpId, const Vector<uint8_t>& u2fData, AuthenticatorAttachment attachment, Vector<AuthenticatorTransport>&& transports, const AttestationConveyancePreference& attestation)
 {
     auto publicKey = extractECPublicKeyFromU2fRegistrationResponse(u2fData);
     if (publicKey.isEmpty())
@@ -158,14 +162,14 @@ RefPtr<AuthenticatorAttestationResponse> readU2fRegisterResponse(const String& r
     if (fidoAttestationStatement.empty())
         return nullptr;
 
-    auto attestationObject = buildAttestationObject(WTFMove(authData), "fido-u2f", WTFMove(fidoAttestationStatement), attestation);
+    auto attestationObject = buildAttestationObject(WTFMove(authData), "fido-u2f"_s, WTFMove(fidoAttestationStatement), attestation);
 
-    return AuthenticatorAttestationResponse::create(credentialId, attestationObject, attachment);
+    return AuthenticatorAttestationResponse::create(credentialId, attestationObject, attachment, WTFMove(transports));
 }
 
-RefPtr<AuthenticatorAssertionResponse> readU2fSignResponse(const String& rpId, const Vector<uint8_t>& keyHandle, const Vector<uint8_t>& u2fData, AuthenticatorAttachment attachment)
+RefPtr<AuthenticatorAssertionResponse> readU2fSignResponse(const String& rpId, const WebCore::BufferSource& keyHandle, const Vector<uint8_t>& u2fData, AuthenticatorAttachment attachment)
 {
-    if (keyHandle.isEmpty() || u2fData.size() <= signatureIndex)
+    if (!keyHandle.length() || u2fData.size() <= signatureIndex)
         return nullptr;
 
     // 1 byte flags, 4 bytes counter
@@ -177,8 +181,9 @@ RefPtr<AuthenticatorAssertionResponse> readU2fSignResponse(const String& rpId, c
     auto authData = buildAuthData(rpId, flags, counter, { });
 
     // FIXME: Find a way to remove the need of constructing a vector here.
-    Vector<uint8_t> signature { u2fData.data() + signatureIndex, u2fData.size() - signatureIndex };
-    return AuthenticatorAssertionResponse::create(keyHandle, authData, signature, { }, attachment);
+    auto signature = u2fData.subvector(signatureIndex);
+    Vector<uint8_t> keyHandleVector { keyHandle.span() };
+    return AuthenticatorAssertionResponse::create(keyHandleVector, authData, signature, { }, attachment);
 }
 
 } // namespace fido

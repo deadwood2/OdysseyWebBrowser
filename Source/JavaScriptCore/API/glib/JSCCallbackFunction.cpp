@@ -37,6 +37,7 @@
 #include "JSFunction.h"
 #include "JSGlobalObject.h"
 #include "JSLock.h"
+#include <wtf/text/MakeString.h>
 
 namespace JSC {
 
@@ -50,7 +51,7 @@ static JSObjectRef callAsConstructor(JSContextRef callerContext, JSObjectRef con
     return static_cast<JSCCallbackFunction*>(toJS(constructor))->construct(callerContext, argumentCount, arguments, exception);
 }
 
-const ClassInfo JSCCallbackFunction::s_info = { "CallbackFunction", &InternalFunction::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCCallbackFunction) };
+const ClassInfo JSCCallbackFunction::s_info = { "CallbackFunction"_s, &InternalFunction::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSCCallbackFunction) };
 
 static JSC_DECLARE_HOST_FUNCTION(callJSCCallbackFunction);
 static JSC_DECLARE_HOST_FUNCTION(constructJSCCallbackFunction);
@@ -68,7 +69,7 @@ JSC_DEFINE_HOST_FUNCTION(constructJSCCallbackFunction, (JSGlobalObject* globalOb
 JSCCallbackFunction* JSCCallbackFunction::create(VM& vm, JSGlobalObject* globalObject, const String& name, Type type, JSCClass* jscClass, GRefPtr<GClosure>&& closure, GType returnType, std::optional<Vector<GType>>&& parameters)
 {
     Structure* structure = globalObject->glibCallbackFunctionStructure();
-    JSCCallbackFunction* function = new (NotNull, allocateCell<JSCCallbackFunction>(vm.heap)) JSCCallbackFunction(vm, structure, type, jscClass, WTFMove(closure), returnType, WTFMove(parameters));
+    JSCCallbackFunction* function = new (NotNull, allocateCell<JSCCallbackFunction>(vm)) JSCCallbackFunction(vm, structure, type, jscClass, WTFMove(closure), returnType, WTFMove(parameters));
     function->finishCreation(vm, 0, name);
     return function;
 }
@@ -226,7 +227,7 @@ JSObjectRef JSCCallbackFunction::construct(JSContextRef callerContext, size_t ar
         *exception = toRef(JSC::createTypeError(toJS(jsContext), "constructor returned null"_s));
         break;
     default:
-        *exception = toRef(JSC::createTypeError(toJS(jsContext), makeString("invalid type ", g_type_name(G_VALUE_TYPE(&returnValue)), " returned by constructor")));
+        *exception = toRef(JSC::createTypeError(toJS(jsContext), makeString("invalid type "_s, span(g_type_name(G_VALUE_TYPE(&returnValue))), " returned by constructor"_s)));
         break;
     }
     g_value_unset(&returnValue);

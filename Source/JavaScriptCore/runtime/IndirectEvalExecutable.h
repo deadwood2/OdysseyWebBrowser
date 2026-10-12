@@ -31,11 +31,15 @@ namespace JSC {
 
 class IndirectEvalExecutable final : public EvalExecutable {
 public:
-    static IndirectEvalExecutable* create(JSGlobalObject*, const SourceCode&, DerivedContextType, bool isArrowFunctionContext, EvalContextType);
+    static IndirectEvalExecutable* tryCreate(JSGlobalObject*, const SourceCode&, LexicallyScopedFeatures, DerivedContextType, bool isArrowFunctionContext, EvalContextType);
+    static IndirectEvalExecutable* create(JSGlobalObject*, const SourceCode&, LexicallyScopedFeatures, DerivedContextType, bool isArrowFunctionContext, EvalContextType, NakedPtr<JSObject>&);
 private:
-    IndirectEvalExecutable(JSGlobalObject*, const SourceCode&, DerivedContextType, bool isArrowFunctionContext, EvalContextType);
+    template<typename ErrorHandlerFunctor>
+    inline static IndirectEvalExecutable* createImpl(JSGlobalObject*, const SourceCode&, LexicallyScopedFeatures, DerivedContextType, bool isArrowFunctionContext, EvalContextType, ErrorHandlerFunctor);
+
+    IndirectEvalExecutable(JSGlobalObject*, const SourceCode&, LexicallyScopedFeatures, DerivedContextType, bool isArrowFunctionContext, EvalContextType);
 };
 
-static_assert(sizeof(IndirectEvalExecutable) == sizeof(EvalExecutable), "");
+static_assert(sizeof(IndirectEvalExecutable) == sizeof(EvalExecutable));
 
 } // namespace JSC

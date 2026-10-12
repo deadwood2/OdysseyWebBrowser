@@ -31,7 +31,7 @@
 #pragma once
 
 #include "LayoutUnit.h"
-#include "RenderStyle.h"
+#include "RenderFlexibleBox.h"
 #include <wtf/Forward.h>
 #include <wtf/Noncopyable.h>
 
@@ -39,9 +39,9 @@ namespace WebCore {
 
 class RenderBox;
 
-class FlexItem {
+class FlexLayoutItem {
 public:
-    FlexItem(RenderBox&, LayoutUnit flexBaseContentSize, LayoutUnit mainAxisBorderAndPadding, LayoutUnit mainAxisMargin, std::pair<LayoutUnit, LayoutUnit> minMaxSizes, bool everHadLayout);
+    FlexLayoutItem(RenderBox&, LayoutUnit flexBaseContentSize, LayoutUnit mainAxisBorderAndPadding, LayoutUnit mainAxisMargin, std::pair<LayoutUnit, LayoutUnit> minMaxSizes, bool everHadLayout);
 
     LayoutUnit hypotheticalMainAxisMarginBoxSize() const
     {
@@ -58,12 +58,14 @@ public:
         return flexedContentSize + mainAxisBorderAndPadding + mainAxisMargin;
     }
 
+    const RenderStyle& style() const { return renderer->style(); }
+
     LayoutUnit constrainSizeByMinMax(const LayoutUnit) const;
 
-    RenderBox& box;
-    const LayoutUnit flexBaseContentSize;
+    CheckedRef<RenderBox> renderer;
+    LayoutUnit flexBaseContentSize;
     const LayoutUnit mainAxisBorderAndPadding;
-    const LayoutUnit mainAxisMargin;
+    mutable LayoutUnit mainAxisMargin;
     const std::pair<LayoutUnit, LayoutUnit> minMaxSizes;
     const LayoutUnit hypotheticalMainContentSize;
     LayoutUnit flexedContentSize;
@@ -75,18 +77,20 @@ class FlexLayoutAlgorithm {
     WTF_MAKE_NONCOPYABLE(FlexLayoutAlgorithm);
 
 public:
-    FlexLayoutAlgorithm(const RenderStyle&, LayoutUnit lineBreakLength, const Vector<FlexItem>& allItems, LayoutUnit gapBetweenItems, LayoutUnit gapBetweenLines);
+    FlexLayoutAlgorithm(RenderFlexibleBox&, LayoutUnit lineBreakLength, const Vector<FlexLayoutItem>& allItems, LayoutUnit gapBetweenItems, LayoutUnit gapBetweenLines);
 
     // The hypothetical main size of an item is the flex base size clamped
     // according to its min and max main size properties
-    bool computeNextFlexLine(size_t& nextIndex, Vector<FlexItem>& lineItems, LayoutUnit& sumFlexBaseSize, double& totalFlexGrow, double& totalFlexShrink, double& totalWeightedFlexShrink, LayoutUnit& sumHypotheticalMainSize);
+    bool computeNextFlexLine(size_t& nextIndex, Vector<FlexLayoutItem>& lineItems, LayoutUnit& sumFlexBaseSize, double& totalFlexGrow, double& totalFlexShrink, double& totalWeightedFlexShrink, LayoutUnit& sumHypotheticalMainSize);
 
 private:
-    bool isMultiline() const { return m_style.flexWrap() != FlexWrap::NoWrap; }
+    bool isMultiline() const { return m_flexbox.style().flexWrap() != FlexWrap::NoWrap; }
+    bool canFitItemWithTrimmedMarginEnd(const FlexLayoutItem&, LayoutUnit sumHypotheticalMainSize) const;
+    void removeMarginEndFromFlexSizes(FlexLayoutItem&, LayoutUnit& sumFlexBaseSize, LayoutUnit& sumHypotheticalMainSize) const;
 
-    const RenderStyle& m_style;
+    RenderFlexibleBox& m_flexbox;
     LayoutUnit m_lineBreakLength;
-    const Vector<FlexItem>& m_allItems;
+    const Vector<FlexLayoutItem>& m_allItems;
 
     const LayoutUnit m_gapBetweenItems;
     const LayoutUnit m_gapBetweenLines;

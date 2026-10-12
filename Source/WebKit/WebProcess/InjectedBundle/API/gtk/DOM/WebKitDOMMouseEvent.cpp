@@ -318,7 +318,7 @@ void webkit_dom_mouse_event_init_mouse_event(WebKitDOMMouseEvent* self, const gc
     g_return_if_fail(WEBKIT_DOM_IS_DOM_WINDOW(view));
     g_return_if_fail(WEBKIT_DOM_IS_EVENT_TARGET(relatedTarget));
     WebCore::MouseEvent* item = WebKit::core(self);
-    WTF::String convertedType = WTF::String::fromUTF8(type);
+    auto convertedType = WTF::AtomString::fromUTF8(type);
     WebCore::EventTarget* convertedRelatedTarget = WebKit::core(relatedTarget);
     item->initMouseEvent(convertedType, canBubble, cancelable, WebKit::toWindowProxy(view), detail, screenX, screenY, clientX, clientY, ctrlKey, altKey, shiftKey, metaKey, button, convertedRelatedTarget);
 }
@@ -400,7 +400,7 @@ gushort webkit_dom_mouse_event_get_button(WebKitDOMMouseEvent* self)
     WebCore::JSMainThreadNullState state;
     g_return_val_if_fail(WEBKIT_DOM_IS_MOUSE_EVENT(self), 0);
     WebCore::MouseEvent* item = WebKit::core(self);
-    gushort result = item->button();
+    gushort result = static_cast<gushort>(item->button());
     return result;
 }
 
@@ -436,7 +436,7 @@ glong webkit_dom_mouse_event_get_x(WebKitDOMMouseEvent* self)
     WebCore::JSMainThreadNullState state;
     g_return_val_if_fail(WEBKIT_DOM_IS_MOUSE_EVENT(self), 0);
     WebCore::MouseEvent* item = WebKit::core(self);
-    glong result = item->x();
+    glong result = item->clientX();
     return result;
 }
 
@@ -445,7 +445,7 @@ glong webkit_dom_mouse_event_get_y(WebKitDOMMouseEvent* self)
     WebCore::JSMainThreadNullState state;
     g_return_val_if_fail(WEBKIT_DOM_IS_MOUSE_EVENT(self), 0);
     WebCore::MouseEvent* item = WebKit::core(self);
-    glong result = item->y();
+    glong result = item->clientY();
     return result;
 }
 

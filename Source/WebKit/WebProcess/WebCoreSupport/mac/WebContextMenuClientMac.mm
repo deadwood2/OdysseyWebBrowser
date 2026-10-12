@@ -28,13 +28,14 @@
 
 #if ENABLE(CONTEXT_MENUS)
 
+#import "MessageSenderInlines.h"
 #import "WebCoreArgumentCoders.h"
 #import "WebPage.h"
 #import "WebPageProxyMessages.h"
 #import <WebCore/DictionaryLookup.h>
 #import <WebCore/Editor.h>
-#import <WebCore/Frame.h>
-#import <WebCore/FrameView.h>
+#import <WebCore/LocalFrame.h>
+#import <WebCore/LocalFrameView.h>
 #import <WebCore/Page.h>
 #import <WebCore/TextIndicator.h>
 #import <WebCore/TranslationContextMenuInfo.h>
@@ -43,56 +44,28 @@
 namespace WebKit {
 using namespace WebCore;
 
-void WebContextMenuClient::lookUpInDictionary(Frame* frame)
+void WebContextMenuClient::lookUpInDictionary(LocalFrame* frame)
 {
     m_page->performDictionaryLookupForSelection(*frame, frame->selection().selection(), TextIndicatorPresentationTransition::BounceAndCrossfade);
 }
 
-bool WebContextMenuClient::isSpeaking()
+bool WebContextMenuClient::isSpeaking() const
 {
     return m_page->isSpeaking();
 }
 
-void WebContextMenuClient::speak(const String& string)
+void WebContextMenuClient::speak(const String&)
 {
-    m_page->speak(string);
 }
 
 void WebContextMenuClient::stopSpeaking()
 {
-    m_page->stopSpeaking();
 }
 
-void WebContextMenuClient::searchWithGoogle(const Frame* frame)
+void WebContextMenuClient::searchWithGoogle(const LocalFrame* frame)
 {
-    String searchString = frame->editor().selectedText();
-    searchString.stripWhiteSpace();
-
+    auto searchString = frame->editor().selectedText().trim(deprecatedIsSpaceOrNewline);
     m_page->send(Messages::WebPageProxy::SearchTheWeb(searchString));
-}
-
-void WebContextMenuClient::searchWithSpotlight()
-{
-    // FIXME: Why do we need to search all the frames like this?
-    // Isn't there any function in WebCore that can do this?
-    // If not, can we find a place in WebCore to put this?
-
-    Frame& mainFrame = m_page->corePage()->mainFrame();
-
-    Frame* selectionFrame = &mainFrame;
-    for (; selectionFrame; selectionFrame = selectionFrame->tree().traverseNext()) {
-        if (selectionFrame->selection().isRange())
-            break;
-    }
-    if (!selectionFrame)
-        selectionFrame = &mainFrame;
-
-    String selectedString = selectionFrame->displayStringModifiedByEncoding(selectionFrame->editor().selectedText());
-
-    if (selectedString.isEmpty())
-        return;
-
-    m_page->send(Messages::WebPageProxy::SearchWithSpotlight(selectedString));
 }
 
 #if HAVE(TRANSLATION_UI_SERVICES)

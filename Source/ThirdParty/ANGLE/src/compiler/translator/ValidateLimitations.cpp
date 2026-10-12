@@ -144,13 +144,9 @@ bool ValidateLimitationsTraverser::visitLoop(Visit, TIntermLoop *node)
     if (!validateForLoopHeader(node))
         return false;
 
-    TIntermNode *body = node->getBody();
-    if (body != nullptr)
-    {
-        mLoopSymbolIds.push_back(GetLoopSymbolId(node));
-        body->traverse(this);
-        mLoopSymbolIds.pop_back();
-    }
+    mLoopSymbolIds.push_back(GetLoopSymbolId(node));
+    node->getBody()->traverse(this);
+    mLoopSymbolIds.pop_back();
 
     // The loop is fully processed - no need to visit children.
     return false;
@@ -337,11 +333,13 @@ bool ValidateLimitationsTraverser::validateForLoopExpr(TIntermLoop *node, int in
     TIntermUnary *unOp   = expr->getAsUnaryNode();
     TIntermBinary *binOp = unOp ? nullptr : expr->getAsBinaryNode();
 
-    TOperator op          = EOpNull;
-    TIntermSymbol *symbol = nullptr;
+    TOperator op            = EOpNull;
+    const TFunction *opFunc = nullptr;
+    TIntermSymbol *symbol   = nullptr;
     if (unOp != nullptr)
     {
         op     = unOp->getOp();
+        opFunc = unOp->getFunction();
         symbol = unOp->getOperand()->getAsSymbolNode();
     }
     else if (binOp != nullptr)
@@ -376,7 +374,15 @@ bool ValidateLimitationsTraverser::validateForLoopExpr(TIntermLoop *node, int in
             ASSERT((unOp == nullptr) && (binOp != nullptr));
             break;
         default:
-            error(expr->getLine(), "Invalid operator", GetOperatorString(op));
+            if (BuiltInGroup::IsBuiltIn(op))
+            {
+                ASSERT(opFunc != nullptr);
+                error(expr->getLine(), "Invalid built-in call", opFunc->name().data());
+            }
+            else
+            {
+                error(expr->getLine(), "Invalid operator", GetOperatorString(op));
+            }
             return false;
     }
 

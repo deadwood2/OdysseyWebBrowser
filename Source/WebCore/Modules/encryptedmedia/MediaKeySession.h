@@ -32,6 +32,7 @@
 
 #include "ActiveDOMObject.h"
 #include "CDMInstanceSession.h"
+#include "ContextDestructionObserverInlines.h"
 #include "EventTarget.h"
 #include "IDLTypes.h"
 #include "MediaKeyMessageType.h"
@@ -61,16 +62,19 @@ class SharedBuffer;
 
 template<typename IDLType> class DOMPromiseProxy;
 
-class MediaKeySession final : public RefCounted<MediaKeySession>, public EventTargetWithInlineData, public ActiveDOMObject, public CDMInstanceSessionClient {
-    WTF_MAKE_ISO_ALLOCATED(MediaKeySession);
+class MediaKeySession final : public RefCounted<MediaKeySession>, public EventTarget, public ActiveDOMObject, public CDMInstanceSessionClient {
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED_EXPORT(MediaKeySession, WEBCORE_EXPORT);
 public:
     static Ref<MediaKeySession> create(Document&, WeakPtr<MediaKeys>&&, MediaKeySessionType, bool useDistinctiveIdentifier, Ref<CDM>&&, Ref<CDMInstanceSession>&&);
-    virtual ~MediaKeySession();
+    WEBCORE_EXPORT virtual ~MediaKeySession();
 
     using CDMInstanceSessionClient::weakPtrFactory;
-    using WeakValueType = CDMInstanceSessionClient::WeakValueType;
-    using RefCounted<MediaKeySession>::ref;
-    using RefCounted<MediaKeySession>::deref;
+    using CDMInstanceSessionClient::WeakValueType;
+    using CDMInstanceSessionClient::WeakPtrImplType;
+
+    // ActiveDOMObject.
+    void ref() const final { RefCounted::ref(); }
+    void deref() const final { RefCounted::deref(); }
 
     bool isClosed() const { return m_closed; }
 
@@ -97,6 +101,7 @@ private:
     void updateExpiration(double);
     void sessionClosed();
     String mediaKeysStorageDirectory() const;
+    CDMKeyGroupingStrategy keyGroupingStrategy() const;
 
     // CDMInstanceSessionClient
     void updateKeyStatuses(CDMInstanceSessionClient::KeyStatusVector&&) override;
@@ -105,26 +110,26 @@ private:
     PlatformDisplayID displayID() final;
 
     // EventTarget
-    EventTargetInterface eventTargetInterface() const override { return MediaKeySessionEventTargetInterfaceType; }
+    enum EventTargetInterfaceType eventTargetInterface() const override { return EventTargetInterfaceType::MediaKeySession; }
     ScriptExecutionContext* scriptExecutionContext() const override { return ActiveDOMObject::scriptExecutionContext(); }
     void refEventTarget() override { ref(); }
     void derefEventTarget() override { deref(); }
 
     // ActiveDOMObject
-    const char* activeDOMObjectName() const final;
     bool virtualHasPendingActivity() const final;
+    void stop() final;
 
     // DisplayChangedObserver
     void displayChanged(PlatformDisplayID);
 
 #if !RELEASE_LOG_DISABLED
     // LoggerHelper
-    const WTF::Logger& logger() const { return m_logger; }
-    const char* logClassName() const { return "MediaKeySession"; }
+    const Logger& logger() const { return m_logger; }
+    ASCIILiteral logClassName() const { return "MediaKeySession"_s; }
     WTFLogChannel& logChannel() const;
     const void* logIdentifier() const { return m_logIdentifier; }
 
-    Ref<WTF::Logger> m_logger;
+    Ref<Logger> m_logger;
     const void* m_logIdentifier;
 #endif
 

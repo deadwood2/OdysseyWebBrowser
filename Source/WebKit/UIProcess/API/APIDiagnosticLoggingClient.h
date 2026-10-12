@@ -25,9 +25,13 @@
 
 #pragma once
 
-#include <WebCore/DiagnosticLoggingDomain.h>
-#include <WebCore/DiagnosticLoggingResultType.h>
-#include <wtf/text/WTFString.h>
+#include <wtf/Forward.h>
+#include <wtf/TZoneMallocInlines.h>
+
+namespace WebCore {
+enum DiagnosticLoggingResultType : uint8_t;
+enum class DiagnosticLoggingDomain : uint8_t;
+}
 
 namespace WebKit {
 class WebPageProxy;
@@ -38,7 +42,7 @@ namespace API {
 class Dictionary;
 
 class DiagnosticLoggingClient {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(DiagnosticLoggingClient);
 public:
     virtual ~DiagnosticLoggingClient() { }
 

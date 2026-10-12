@@ -27,17 +27,18 @@
 
 namespace WebCore {
 
-class CSSCursorImageValue;
+class StyleCursorImage;
 
 class SVGCursorElement final : public SVGElement, public SVGTests, public SVGURIReference {
-    WTF_MAKE_ISO_ALLOCATED(SVGCursorElement);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(SVGCursorElement);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(SVGCursorElement);
 public:
     static Ref<SVGCursorElement> create(const QualifiedName&, Document&);
 
     virtual ~SVGCursorElement();
 
-    void addClient(CSSCursorImageValue&);
-    void removeClient(CSSCursorImageValue&);
+    void addClient(StyleCursorImage&);
+    void removeClient(StyleCursorImage&);
 
     const SVGLengthValue& x() const { return m_x->currentValue(); }
     const SVGLengthValue& y() const { return m_y->currentValue(); }
@@ -49,9 +50,8 @@ private:
     SVGCursorElement(const QualifiedName&, Document&);
 
     using PropertyRegistry = SVGPropertyOwnerRegistry<SVGCursorElement, SVGElement, SVGTests, SVGURIReference>;
-    const SVGPropertyRegistry& propertyRegistry() const final { return m_propertyRegistry; }
-    
-    void parseAttribute(const QualifiedName&, const AtomString&) final;
+
+    void attributeChanged(const QualifiedName&, const AtomString& oldValue, const AtomString& newValue, AttributeModificationReason) final;
     void svgAttributeChanged(const QualifiedName&) final;
 
     bool isValid() const final { return SVGTests::isValid(); }
@@ -59,10 +59,9 @@ private:
 
     void addSubresourceAttributeURLs(ListHashSet<URL>&) const final;
 
-    PropertyRegistry m_propertyRegistry { *this };
     Ref<SVGAnimatedLength> m_x { SVGAnimatedLength::create(this, SVGLengthMode::Width) };
     Ref<SVGAnimatedLength> m_y { SVGAnimatedLength::create(this, SVGLengthMode::Height) };
-    HashSet<CSSCursorImageValue*> m_clients;
+    WeakHashSet<StyleCursorImage> m_clients;
 };
 
 } // namespace WebCore

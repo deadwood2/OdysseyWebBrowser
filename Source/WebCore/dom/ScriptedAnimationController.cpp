@@ -29,39 +29,21 @@
 
 #include "InspectorInstrumentation.h"
 #include "Logging.h"
+#include "OpportunisticTaskScheduler.h"
 #include "Page.h"
-#include "Quirks.h"
 #include "RequestAnimationFrameCallback.h"
 #include "Settings.h"
 #include "UserGestureIndicator.h"
-#include <wtf/Ref.h>
 #include <wtf/SystemTracing.h>
-
-#if OS(MORPHOS)
-static const Seconds fullSpeedAnimationInterval { 30_ms };
-static const Seconds halfSpeedThrottlingAnimationInterval { 60_ms };
-static const Seconds aggressiveThrottlingAnimationInterval { 10_s };
-#else
-// Allow a little more than 60fps to make sure we can at least hit that frame rate.
-static const Seconds fullSpeedAnimationInterval { 15_ms };
-// Allow a little more than 30fps to make sure we can at least hit that frame rate.
-static const Seconds halfSpeedThrottlingAnimationInterval { 30_ms };
-static const Seconds aggressiveThrottlingAnimationInterval { 10_s };
-#endif
 
 namespace WebCore {
 
 ScriptedAnimationController::ScriptedAnimationController(Document& document)
-    : m_document(makeWeakPtr(document))
+    : m_document(document)
 {
 }
 
 ScriptedAnimationController::~ScriptedAnimationController() = default;
-
-bool ScriptedAnimationController::requestAnimationFrameEnabled() const
-{
-    return m_document && m_document->settings().requestAnimationFrameEnabled();
-}
 
 void ScriptedAnimationController::suspend()
 {
@@ -126,10 +108,13 @@ ScriptedAnimationController::CallbackId ScriptedAnimationController::registerCal
     CallbackId callbackId = ++m_nextCallbackId;
     callback->m_firedOrCancelled = false;
     callback->m_id = callbackId;
-    m_callbackDataList.append({ WTFMove(callback), UserGestureIndicator::currentUserGesture() });
+    RefPtr<ImminentlyScheduledWorkScope> workScope;
+    if (RefPtr page = this->page())
+        workScope = page->opportunisticTaskScheduler().makeScheduledWorkScope();
+    m_callbackDataList.append({ WTFMove(callback), UserGestureIndicator::currentUserGesture(), WTFMove(workScope) });
 
-    if (m_document)
-        InspectorInstrumentation::didRequestAnimationFrame(*m_document, callbackId);
+    if (RefPtr document = m_document.get())
+        InspectorInstrumentation::didRequestAnimationFrame(*document, callbackId);
 
     if (!m_suspendCount)
         scheduleAnimation();
@@ -146,12 +131,12 @@ void ScriptedAnimationController::cancelCallback(CallbackId callbackId)
     });
 
     if (cancelled && m_document)
-        InspectorInstrumentation::didCancelAnimationFrame(*m_document, callbackId);
+        InspectorInstrumentation::didCancelAnimationFrame(*protectedDocument(), callbackId);
 }
 
 void ScriptedAnimationController::serviceRequestAnimationFrameCallbacks(ReducedResolutionSeconds timestamp)
 {
-    if (!m_callbackDataList.size() || m_suspendCount || !requestAnimationFrameEnabled())
+    if (!m_callbackDataList.size() || m_suspendCount)
         return;
 
     if (shouldRescheduleRequestAnimationFrame(timestamp)) {
@@ -163,8 +148,6 @@ void ScriptedAnimationController::serviceRequestAnimationFrameCallbacks(ReducedR
     TraceScope tracingScope(RAFCallbackStart, RAFCallbackEnd);
 
     auto highResNowMs = std::round(1000 * timestamp.seconds());
-    if (m_document && m_document->quirks().needsMillisecondResolutionForHighResTimeStamp())
-        highResNowMs += 0.1;
 
     LOG_WITH_STREAM(RequestAnimationFrame, stream << "ScriptedAnimationController::serviceRequestAnimationFrameCallbacks at " << highResNowMs << " (throttling reasons " << throttlingReasons() << ", preferred interval " << preferredScriptedAnimationInterval().milliseconds() << "ms)");
 
@@ -174,10 +157,10 @@ void ScriptedAnimationController::serviceRequestAnimationFrameCallbacks(ReducedR
 
     // Invoking callbacks may detach elements from our document, which clears the document's
     // reference to us, so take a defensive reference.
-    Ref<ScriptedAnimationController> protectedThis(*this);
-    Ref<Document> protectedDocument(*m_document);
+    Ref protectedThis { *this };
+    Ref document = *m_document;
 
-    for (auto& [callback, userGestureTokenToForward] : callbackDataList) {
+    for (auto& [callback, userGestureTokenToForward, scheduledWorkScope] : callbackDataList) {
         if (callback->m_firedOrCancelled)
             continue;
         callback->m_firedOrCancelled = true;
@@ -186,9 +169,10 @@ void ScriptedAnimationController::serviceRequestAnimationFrameCallbacks(ReducedR
             userGestureTokenToForward = nullptr;
         UserGestureIndicator gestureIndicator(userGestureTokenToForward);
 
-        InspectorInstrumentation::willFireAnimationFrame(protectedDocument, callback->m_id);
+        auto identifier = callback->m_id;
+        InspectorInstrumentation::willFireAnimationFrame(document, identifier);
         callback->handleEvent(highResNowMs);
-        InspectorInstrumentation::didFireAnimationFrame(protectedDocument);
+        InspectorInstrumentation::didFireAnimationFrame(document, identifier);
     }
 
     // Remove any callbacks we fired from the list of pending callbacks.
@@ -204,11 +188,13 @@ void ScriptedAnimationController::serviceRequestAnimationFrameCallbacks(ReducedR
 
 void ScriptedAnimationController::scheduleAnimation()
 {
-    if (!requestAnimationFrameEnabled())
-        return;
-
-    if (auto* page = this->page())
+    if (RefPtr page = this->page())
         page->scheduleRenderingUpdate(RenderingUpdateStep::AnimationFrameCallbacks);
+}
+
+RefPtr<Document> ScriptedAnimationController::protectedDocument()
+{
+    return m_document.get();
 }
 
 }

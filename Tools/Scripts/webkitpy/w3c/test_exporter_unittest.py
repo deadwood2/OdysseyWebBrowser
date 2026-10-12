@@ -69,10 +69,6 @@ class TestExporterTest(unittest.TestCase):
         def push(self, options):
             self.calls.append('push ' + ' '.join(options))
 
-        def format_patch(self, options):
-            self.calls.append('format patch ' + ' '.join(options))
-            return 'formatted patch with changes done to LayoutTests/imported/w3c/web-platform-tests/test1.html'
-
         def delete_branch(self, branch_name):
             self.calls.append('delete branch ' + branch_name)
 
@@ -96,7 +92,7 @@ class TestExporterTest(unittest.TestCase):
         def branch_ref_exists(self, name):
             return False
 
-        def create_patch(self, commit, arguments):
+        def create_patch(self, commit, arguments, commit_message=False, find_branch=False):
             self.calls.append('create_patch ' + commit + ' ' + str(arguments))
             return self.mock_format_patch_result
 
@@ -130,15 +126,15 @@ class TestExporterTest(unittest.TestCase):
         options = parse_args(['test_exporter.py', '-g', 'HEAD', '-b', '1234', '-c', '-n', 'USER', '-t', 'TOKEN'])
         exporter = WebPlatformTestExporter(host, options, TestExporterTest.MockGit, TestExporterTest.MockBugzilla, MockWPTGitHub, TestExporterTest.MockWPTLinter)
         exporter.do_export()
-        self.assertEquals(exporter._github.calls, ['create_pr', 'add_label "webkit-export"'])
+        self.assertEqual(exporter._github.calls, ['create_pr', 'add_label "webkit-export"'])
         self.assertTrue('WebKit export' in exporter._github.pull_requests_created[0][1])
-        self.assertEquals(exporter._git.calls, [
+        self.assertEqual(exporter._git.calls, [
             '/mock-checkout/WebKitBuild/w3c-tests/web-platform-tests',
             'fetch',
             'checkout master',
             'reset hard origin/master',
             'checkout new branch wpt-export-for-webkit-1234',
-            'apply_mail_patch patch.temp ',
+            'apply_mail_patch patch.temp -3',
             'commit -a -m WebKit export of https://bugs.webkit.org/show_bug.cgi?id=1234',
             'remote ',
             'remote add USER https://USER@github.com/USER/wpt.git',
@@ -148,11 +144,11 @@ class TestExporterTest(unittest.TestCase):
             'delete branch wpt-export-for-webkit-1234',
             'checkout master',
             'reset hard origin/master'])
-        self.assertEquals(exporter._bugzilla.calls, [
+        self.assertEqual(exporter._bugzilla.calls, [
             'fetch bug 1234',
             'Append https://github.com/web-platform-tests/wpt/pull/5678 to see also list',
             'post comment to bug 1234 : Submitted web-platform-tests pull request: https://github.com/web-platform-tests/wpt/pull/5678'])
-        self.assertEquals(mock_linter.calls, ['/mock-checkout/WebKitBuild/w3c-tests/web-platform-tests', 'lint'])
+        self.assertEqual(mock_linter.calls, ['/mock-checkout/WebKitBuild/w3c-tests/web-platform-tests', 'lint'])
 
     def test_export_with_specific_branch(self):
         host = TestExporterTest.MyMockHost()
@@ -160,13 +156,13 @@ class TestExporterTest(unittest.TestCase):
         options = parse_args(['test_exporter.py', '-g', 'HEAD', '-b', '1234', '-c', '-n', 'USER', '-t', 'TOKEN', '-bn', 'wpt-export-branch'])
         exporter = WebPlatformTestExporter(host, options, TestExporterTest.MockGit, TestExporterTest.MockBugzilla, MockWPTGitHub, TestExporterTest.MockWPTLinter)
         exporter.do_export()
-        self.assertEquals(exporter._git.calls, [
+        self.assertEqual(exporter._git.calls, [
             '/mock-checkout/WebKitBuild/w3c-tests/web-platform-tests',
             'fetch',
             'checkout master',
             'reset hard origin/master',
             'checkout new branch wpt-export-for-webkit-1234',
-            'apply_mail_patch patch.temp ',
+            'apply_mail_patch patch.temp -3',
             'commit -a -m WebKit export of https://bugs.webkit.org/show_bug.cgi?id=1234',
             'remote ',
             'remote add USER https://USER@github.com/USER/wpt.git',
@@ -222,6 +218,26 @@ Subversion Revision: 231920
 diff --git a/LayoutTests/imported/w3c/web-platform-tests/fetch/api/headers/header-values-expected.txt b/LayoutTests/imported/w3c/web-platform-tests/fetch/api/headers/header-values-expected.txt
 
 +change to expected
+
+diff --git a/LayoutTests/imported/w3c/web-platform-tests/fetch/api/headers/header-values.any.serviceworker.html b/LayoutTests/imported/w3c/web-platform-tests/fetch/api/headers/header-values.any.serviceworker.html
+
++change to expected
+
+diff --git a/LayoutTests/imported/w3c/web-platform-tests/fetch/api/headers/header-values.any.sharedworker.html b/LayoutTests/imported/w3c/web-platform-tests/fetch/api/headers/header-values.any.sharedworker.html
+
++change to expected
+"""
+        options = parse_args(['test_exporter.py', '-g', 'HEAD', '-b', '1234', '-c', '-n', 'USER', '-t', 'TOKEN'])
+        exporter = WebPlatformTestExporter(host, options, TestExporterTest.MockGit, TestExporterTest.MockBugzilla, MockWPTGitHub, TestExporterTest.MockWPTLinter)
+        self.assertFalse(exporter.has_wpt_changes())
+
+    def test_ignore_changes_to_expected_mismatch_file(self):
+        host = TestExporterTest.MyMockHost()
+        host._mockSCM.mock_format_patch_result = b"""
+Subversion Revision: 231920
+diff --git a/LayoutTests/imported/w3c/web-platform-tests/css/css-counter-styles/counter-style-at-rule/empty-string-symbol-expected-mismatch.html b/LayoutTests/imported/w3c/web-platform-tests/css/css-counter-styles/counter-style-at-rule/empty-string-symbol-expected-mismatch.html
+
++change to expected-mismatch
 """
         options = parse_args(['test_exporter.py', '-g', 'HEAD', '-b', '1234', '-c', '-n', 'USER', '-t', 'TOKEN'])
         exporter = WebPlatformTestExporter(host, options, TestExporterTest.MockGit, TestExporterTest.MockBugzilla, MockWPTGitHub, TestExporterTest.MockWPTLinter)

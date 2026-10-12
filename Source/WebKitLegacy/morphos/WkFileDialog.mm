@@ -4,7 +4,6 @@
 #include <wtf/text/WTFString.h>
 #include <WebCore/CurlDownload.h>
 #include <WebCore/ResourceResponse.h>
-#include <WebCore/TextEncoding.h>
 #include "WebProcess.h"
 #define __OBJC__
 #import <ob/OBFramework.h>

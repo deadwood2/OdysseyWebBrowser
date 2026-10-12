@@ -36,17 +36,17 @@ public:
     explicit MediaRecorderProvider(WebPage&);
 
 private:
-#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA)
+#if ENABLE(MEDIA_RECORDER) && PLATFORM(COCOA)
     std::unique_ptr<WebCore::MediaRecorderPrivate> createMediaRecorderPrivate(WebCore::MediaStreamPrivate&, const WebCore::MediaRecorderPrivateOptions&) final;
 #endif
 
-#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && HAVE(AVASSETWRITERDELEGATE)
+#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA) && ENABLE(GPU_PROCESS)
     WebPage& m_webPage;
 #endif
 };
 
 inline MediaRecorderProvider::MediaRecorderProvider(WebPage& webPage)
-#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA) && ENABLE(GPU_PROCESS) && HAVE(AVASSETWRITERDELEGATE)
+#if ENABLE(MEDIA_STREAM) && PLATFORM(COCOA) && ENABLE(GPU_PROCESS)
     : m_webPage(webPage)
 #endif
 {

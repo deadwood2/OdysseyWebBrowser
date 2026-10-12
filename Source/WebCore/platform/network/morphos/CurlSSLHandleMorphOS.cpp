@@ -30,8 +30,69 @@ namespace WebCore {
 
 void CurlSSLHandle::platformInitialize()
 {
-    static String caCertPath = "MOSSYS:Data/SSL/curl-ca-bundle.crt";
+    static String caCertPath = "MOSSYS:Data/SSL/curl-ca-bundle.crt"_s;
     setCACertPath(WTFMove(caCertPath));
+
+#if 1
+    constexpr auto cipherList =
+        "TLS_CHACHA20_POLY1305_SHA256:"
+        "TLS_AES_128_GCM_SHA256:"
+        "TLS_AES_256_GCM_SHA384:"
+        "ECDHE-ECDSA-CHACHA20-POLY1305:"
+        "ECDHE-RSA-CHACHA20-POLY1305:"
+        "ECDHE-ECDSA-AES128-GCM-SHA256:"
+        "ECDHE-RSA-AES128-GCM-SHA256:"
+        "ECDHE-ECDSA-AES256-GCM-SHA384:"
+        "ECDHE-RSA-AES256-GCM-SHA384:"
+        "ECDHE-ECDSA-AES128-SHA:"
+        "ECDHE-ECDSA-AES256-SHA:"
+        "ECDHE-RSA-AES128-SHA:"
+        "ECDHE-RSA-AES256-SHA:"
+        "AES128-GCM-SHA256:"
+        "AES256-GCM-SHA384:"
+        "AES128-SHA:"
+        "AES256-SHA";
+#else
+    constexpr auto cipherList =
+        "TLS_CHACHA20_POLY1305_SHA256:"
+        "TLS_AES_128_GCM_SHA256:"
+        "TLS_AES_256_GCM_SHA384:"
+        "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:"
+        "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:"
+        "TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256:"
+        "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:"
+        "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:"
+        "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256:"
+        "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:"
+        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:"
+        "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384:"
+        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:"
+        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256:"
+        "TLS_DHE_RSA_WITH_AES_128_CBC_SHA256:"
+        "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384:"
+        "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384:"
+        "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256:"
+        "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA:"
+        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA:"
+        "TLS_DHE_RSA_WITH_AES_128_CBC_SHA:"
+        "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:"
+        "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:"
+        "TLS_DHE_RSA_WITH_AES_256_CBC_SHA:"
+        "TLS_RSA_WITH_AES_128_GCM_SHA256:"
+        "TLS_RSA_WITH_AES_256_GCM_SHA384:"
+        "TLS_RSA_WITH_AES_128_CBC_SHA256:"
+        "TLS_RSA_WITH_AES_256_CBC_SHA256:"
+        "TLS_RSA_WITH_AES_128_CBC_SHA:"
+        "TLS_RSA_WITH_AES_256_CBC_SHA";
+#endif
+
+    const auto cipherListTLS1_3 =
+        "TLS_CHACHA20_POLY1305_SHA256:"
+        "TLS_AES_128_GCM_SHA256:"
+        "TLS_AES_256_GCM_SHA384";
+
+    setCipherList(cipherList);
+    setCipherListTLS1_3(cipherListTLS1_3);
 }
 
 } // namespace WebCore

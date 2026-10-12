@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,34 +26,35 @@
 #include "config.h"
 #include "NetworkStorageSession.h"
 
+#include "PublicSuffixStore.h"
+#include "ResourceRequest.h"
 #include <wtf/MainThread.h>
 #include <wtf/NeverDestroyed.h>
 #include <wtf/ProcessID.h>
 #include <wtf/ProcessPrivilege.h>
-#include <wtf/text/StringConcatenateNumbers.h>
-
-#if PLATFORM(COCOA)
-#include "PublicSuffix.h"
-#include "ResourceRequest.h"
-#endif
 
 namespace WebCore {
 
-RetainPtr<CFURLStorageSessionRef> NetworkStorageSession::createCFStorageSessionForIdentifier(CFStringRef identifier)
+RetainPtr<CFURLStorageSessionRef> NetworkStorageSession::createCFStorageSessionForIdentifier(CFStringRef identifier, ShouldDisableCFURLCache shouldDisableCFURLCache)
 {
     auto storageSession = adoptCF(_CFURLStorageSessionCreate(kCFAllocatorDefault, identifier, nullptr));
 
     if (!storageSession)
         return nullptr;
 
-    auto cache = adoptCF(_CFURLStorageSessionCopyCache(kCFAllocatorDefault, storageSession.get()));
-    if (!cache)
-        return nullptr;
+    if (shouldDisableCFURLCache == ShouldDisableCFURLCache::Yes)
+        _CFURLStorageSessionDisableCache(storageSession.get());
 
-    CFURLCacheSetDiskCapacity(cache.get(), 0);
+    if (shouldDisableCFURLCache == ShouldDisableCFURLCache::No) {
+        auto cache = adoptCF(_CFURLStorageSessionCopyCache(kCFAllocatorDefault, storageSession.get()));
+        if (!cache)
+            return nullptr;
 
-    auto sharedCache = adoptCF(CFURLCacheCopySharedURLCache());
-    CFURLCacheSetMemoryCapacity(cache.get(), CFURLCacheMemoryCapacity(sharedCache.get()));
+        CFURLCacheSetDiskCapacity(cache.get(), 0);
+
+        auto sharedCache = adoptCF(CFURLCacheCopySharedURLCache());
+        CFURLCacheSetMemoryCapacity(cache.get(), CFURLCacheMemoryCapacity(sharedCache.get()));
+    }
 
     if (!NetworkStorageSession::processMayUseCookieAPI())
         return storageSession;
@@ -98,12 +99,8 @@ RetainPtr<CFHTTPCookieStorageRef> NetworkStorageSession::cookieStorage() const
     if (m_platformSession)
         return adoptCF(_CFURLStorageSessionCopyCookieStorage(kCFAllocatorDefault, m_platformSession.get()));
 
-#if USE(CFURLCONNECTION)
-    return _CFHTTPCookieStorageGetDefault(kCFAllocatorDefault);
-#else
     // When using NSURLConnection, we also use its shared cookie storage.
     return nullptr;
-#endif
 }
 
 } // namespace WebCore

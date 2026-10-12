@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2018 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2021 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -38,11 +38,11 @@ class JSGenericArrayBufferConstructor final : public InternalFunction {
 public:
     using Base = InternalFunction;
 
-    static JSGenericArrayBufferConstructor* create(VM& vm, Structure* structure, JSArrayBufferPrototype* prototype, GetterSetter* speciesSymbol)
+    static JSGenericArrayBufferConstructor* create(VM& vm, Structure* structure, JSArrayBufferPrototype* prototype)
     {
         JSGenericArrayBufferConstructor* result =
-            new (NotNull, allocateCell<JSGenericArrayBufferConstructor>(vm.heap)) JSGenericArrayBufferConstructor(vm, structure);
-        result->finishCreation(vm, prototype, speciesSymbol);
+            new (NotNull, allocateCell<JSGenericArrayBufferConstructor>(vm)) JSGenericArrayBufferConstructor(vm, structure);
+        result->finishCreation(vm, prototype);
         return result;
     }
 
@@ -55,7 +55,7 @@ public:
 
 private:
     JSGenericArrayBufferConstructor(VM&, Structure*);
-    void finishCreation(VM&, JSArrayBufferPrototype*, GetterSetter* speciesSymbol);
+    void finishCreation(VM&, JSArrayBufferPrototype*);
 };
 
 using JSArrayBufferConstructor = JSGenericArrayBufferConstructor<ArrayBufferSharingMode::Default>;

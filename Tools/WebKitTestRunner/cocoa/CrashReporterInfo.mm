@@ -30,11 +30,14 @@
 #import <WebKit/WKURLCF.h>
 #import <wtf/RetainPtr.h>
 #import <wtf/cocoa/CrashReporter.h>
+#import <wtf/text/MakeString.h>
 
 namespace WTR {
 
 static String testPathFromURL(WKURLRef url)
 {
+    if (!url)
+        return "(null)"_s;
     auto cfURL = adoptCF(WKURLCopyCFURL(kCFAllocatorDefault, url));
     if (!cfURL)
         return String();
@@ -45,8 +48,8 @@ static String testPathFromURL(WKURLRef url)
     String schemeString(schemeCFString.get());
     String pathString(pathCFString.get());
     
-    if (equalLettersIgnoringASCIICase(schemeString, "file")) {
-        String layoutTests("/LayoutTests/");
+    if (equalLettersIgnoringASCIICase(schemeString, "file"_s)) {
+        String layoutTests("/LayoutTests/"_s);
         size_t layoutTestsOffset = pathString.find(layoutTests);
         if (layoutTestsOffset == notFound)
             return String();
@@ -54,12 +57,12 @@ static String testPathFromURL(WKURLRef url)
         return pathString.substring(layoutTestsOffset + layoutTests.length());
     }
 
-    if (!equalLettersIgnoringASCIICase(schemeString, "http") && !equalLettersIgnoringASCIICase(schemeString, "https"))
+    if (!equalLettersIgnoringASCIICase(schemeString, "http"_s) && !equalLettersIgnoringASCIICase(schemeString, "https"_s))
         return String();
 
     auto hostCFString = adoptCF(CFURLCopyHostName(cfURL.get()));
     String hostString(hostCFString.get());
-    if (hostString == "127.0.0.1")
+    if (hostString == "127.0.0.1"_s)
         return pathString;
 
     return String();
@@ -69,7 +72,7 @@ void setCrashReportApplicationSpecificInformationToURL(WKURLRef url)
 {
     String testPath = testPathFromURL(url);
     if (!testPath.isNull()) {
-        auto message = makeString("CRASHING TEST: ", testPath);
+        auto message = makeString("CRASHING TEST: "_s, testPath);
         WTF::setCrashLogMessage(message.utf8().data());
     }
 }

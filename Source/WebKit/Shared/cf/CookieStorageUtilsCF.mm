@@ -28,6 +28,7 @@
 
 #import <pal/spi/cocoa/NSURLConnectionSPI.h>
 #import <wtf/ProcessPrivilege.h>
+#import <wtf/cf/VectorCF.h>
 
 namespace WebKit {
 
@@ -48,13 +49,7 @@ RetainPtr<CFHTTPCookieStorageRef> cookieStorageFromIdentifyingData(const Vector<
 Vector<uint8_t> identifyingDataFromCookieStorage(CFHTTPCookieStorageRef cookieStorage)
 {
     ASSERT(hasProcessPrivilege(ProcessPrivilege::CanAccessRawCookies));
-
-    Vector<uint8_t> result;
-
-    auto cfData = adoptCF(CFHTTPCookieStorageCreateIdentifyingData(kCFAllocatorDefault, cookieStorage));
-    result.append(CFDataGetBytePtr(cfData.get()), CFDataGetLength(cfData.get()));
-
-    return result;
+    return makeVector(adoptCF(CFHTTPCookieStorageCreateIdentifyingData(kCFAllocatorDefault, cookieStorage)).get());
 }
 
 } // namespace WebKit

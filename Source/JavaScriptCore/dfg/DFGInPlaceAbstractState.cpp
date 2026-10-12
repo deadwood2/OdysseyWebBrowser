@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2019 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -30,8 +30,11 @@
 
 #include "DFGBasicBlock.h"
 #include "JSCJSValueInlines.h"
+#include <wtf/TZoneMallocInlines.h>
 
 namespace JSC { namespace DFG {
+
+WTF_MAKE_TZONE_ALLOCATED_IMPL(InPlaceAbstractState);
 
 namespace DFGInPlaceAbstractStateInternal {
 static constexpr bool verbose = false;
@@ -41,11 +44,12 @@ InPlaceAbstractState::InPlaceAbstractState(Graph& graph)
     : m_graph(graph)
     , m_abstractValues(*graph.m_abstractValuesCache)
     , m_variables(OperandsLike, graph.block(0)->variablesAtHead)
+    , m_tupleAbstractValues(graph.m_tupleData.size())
     , m_block(nullptr)
 {
 }
 
-InPlaceAbstractState::~InPlaceAbstractState() { }
+InPlaceAbstractState::~InPlaceAbstractState() = default;
 
 void InPlaceAbstractState::beginBasicBlock(BasicBlock* basicBlock)
 {
@@ -82,17 +86,15 @@ void InPlaceAbstractState::beginBasicBlock(BasicBlock* basicBlock)
     basicBlock->cfaShouldRevisit = false;
     basicBlock->cfaHasVisited = true;
     m_isValid = true;
-    m_shouldTryConstantFolding = false;
     m_branchDirection = InvalidBranchDirection;
     m_structureClobberState = basicBlock->cfaStructureClobberStateAtHead;
 }
 
 static void setLiveValues(Vector<NodeAbstractValuePair>& values, const Vector<NodeFlowProjection>& live)
 {
-    values.shrink(0);
-    values.reserveCapacity(live.size());
-    for (NodeFlowProjection node : live)
-        values.uncheckedAppend(NodeAbstractValuePair { node, AbstractValue() });
+    values = live.map([](auto node) {
+        return NodeAbstractValuePair { node, AbstractValue() };
+    });
 }
 
 Operands<AbstractValue>& InPlaceAbstractState::variablesForDebugging()
@@ -112,7 +114,6 @@ void InPlaceAbstractState::initialize()
     for (BasicBlock* entrypoint : m_graph.m_roots) {
         entrypoint->cfaShouldRevisit = true;
         entrypoint->cfaHasVisited = false;
-        entrypoint->cfaThinksShouldTryConstantFolding = false;
         entrypoint->cfaStructureClobberStateAtHead = StructuresAreWatched;
         entrypoint->cfaStructureClobberStateAtTail = StructuresAreWatched;
 
@@ -174,7 +175,6 @@ void InPlaceAbstractState::initialize()
         ASSERT(block->isReachable);
         block->cfaShouldRevisit = false;
         block->cfaHasVisited = false;
-        block->cfaThinksShouldTryConstantFolding = false;
         block->cfaStructureClobberStateAtHead = StructuresAreWatched;
         block->cfaStructureClobberStateAtTail = StructuresAreWatched;
         for (size_t i = 0; i < block->valuesAtHead.size(); ++i) {
@@ -199,8 +199,7 @@ bool InPlaceAbstractState::endBasicBlock()
     ASSERT(m_block);
     
     BasicBlock* block = m_block; // Save the block for successor merging.
-    
-    block->cfaThinksShouldTryConstantFolding = m_shouldTryConstantFolding;
+
     block->cfaDidFinish = m_isValid;
     block->cfaBranchDirection = m_branchDirection;
     
@@ -305,8 +304,15 @@ bool InPlaceAbstractState::endBasicBlock()
             block->valuesAtTail[i] = atIndex(i);
         }
 
-        for (NodeAbstractValuePair& valueAtTail : block->ssa->valuesAtTail)
-            valueAtTail.value = forNode(valueAtTail.node);
+        for (NodeAbstractValuePair& valueAtTail : block->ssa->valuesAtTail) {
+            NodeFlowProjection& node = valueAtTail.node;
+            if (node->isTuple()) {
+                ASSERT(hasClearedAbstractState(node));
+                valueAtTail.value = AbstractValue();
+                continue;
+            }
+            valueAtTail.value = forNode(node);
+        }
         break;
     }
 
@@ -370,14 +376,18 @@ bool InPlaceAbstractState::merge(BasicBlock* from, BasicBlock* to)
             unsigned valueCountInFromBlock = 0;
             for (NodeAbstractValuePair& fromBlockValueAtTail : from->ssa->valuesAtTail) {
                 if (fromBlockValueAtTail.node == node) {
-                    ASSERT(fromBlockValueAtTail.value == forNode(node));
+                    if (node->isTuple())
+                        ASSERT(hasClearedAbstractState(node) && !fromBlockValueAtTail.value);
+                    else
+                        ASSERT(fromBlockValueAtTail.value == forNode(node));
                     ++valueCountInFromBlock;
                 }
             }
             ASSERT(valueCountInFromBlock == 1);
 #endif
 
-            changed |= entry.value.merge(forNode(node));
+            if (!node->isTuple())
+                changed |= entry.value.merge(forNode(node));
 
             if (DFGInPlaceAbstractStateInternal::verbose)
                 dataLog("         Result: ", entry.value, "\n");

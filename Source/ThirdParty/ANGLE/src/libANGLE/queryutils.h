@@ -43,7 +43,7 @@ void QueryFramebufferAttachmentParameteriv(const Context *context,
 void QueryBufferParameteriv(const Buffer *buffer, GLenum pname, GLint *params);
 void QueryBufferParameteri64v(const Buffer *buffer, GLenum pname, GLint64 *params);
 void QueryBufferPointerv(const Buffer *buffer, GLenum pname, void **params);
-void QueryProgramiv(Context *context, const Program *program, GLenum pname, GLint *params);
+void QueryProgramiv(Context *context, Program *program, GLenum pname, GLint *params);
 void QueryRenderbufferiv(const Context *context,
                          const Renderbuffer *renderbuffer,
                          GLenum pname,
@@ -113,7 +113,7 @@ void QueryVertexAttribIuiv(const VertexAttribute &attrib,
                            GLuint *params);
 
 void QueryActiveUniformBlockiv(const Program *program,
-                               GLuint uniformBlockIndex,
+                               UniformBlockIndex uniformBlockIndex,
                                GLenum pname,
                                GLint *params);
 
@@ -152,7 +152,7 @@ void SetFramebufferParameteri(const Context *context,
                               GLenum pname,
                               GLint param);
 
-void SetProgramParameteri(Program *program, GLenum pname, GLint value);
+void SetProgramParameteri(const Context *context, Program *program, GLenum pname, GLint value);
 
 GLint GetUniformResourceProperty(const Program *program, GLuint index, const GLenum prop);
 
@@ -160,7 +160,8 @@ GLuint QueryProgramResourceIndex(const Program *program,
                                  GLenum programInterface,
                                  const GLchar *name);
 
-void QueryProgramResourceName(const Program *program,
+void QueryProgramResourceName(const Context *context,
+                              const Program *program,
                               GLenum programInterface,
                               GLuint index,
                               GLsizei bufSize,
@@ -172,7 +173,7 @@ GLint QueryProgramResourceLocation(const Program *program,
                                    const GLchar *name);
 void QueryProgramResourceiv(const Program *program,
                             GLenum programInterface,
-                            GLuint index,
+                            UniformBlockIndex index,
                             GLsizei propCount,
                             const GLenum *props,
                             GLsizei bufSize,
@@ -275,11 +276,17 @@ void QueryConfigAttrib(const Config *config, EGLint attribute, EGLint *value);
 void QueryContextAttrib(const gl::Context *context, EGLint attribute, EGLint *value);
 
 egl::Error QuerySurfaceAttrib(const Display *display,
-                              const Surface *surface,
+                              const gl::Context *context,
+                              Surface *surface,
                               EGLint attribute,
                               EGLint *value);
-void SetSurfaceAttrib(Surface *surface, EGLint attribute, EGLint value);
-Error GetSyncAttrib(Display *display, Sync *sync, EGLint attribute, EGLint *value);
+egl::Error SetSurfaceAttrib(Surface *surface, EGLint attribute, EGLint value);
+Error GetSyncAttrib(Display *display, SyncID sync, EGLint attribute, EGLint *value);
+egl::Error QuerySurfaceAttrib64KHR(const Display *display,
+                                   const gl::Context *context,
+                                   Surface *surface,
+                                   EGLint attribute,
+                                   EGLAttribKHR *value);
 
 }  // namespace egl
 

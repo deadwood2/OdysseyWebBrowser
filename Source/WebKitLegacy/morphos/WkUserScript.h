@@ -18,13 +18,20 @@ typedef enum
 
 + (WkUserScript *)userScriptWithContents:(OBString *)script injectPosition:(WkUserScript_InjectPosition)position injectInFrames:(WkUserScript_InjectInFrames)inFrames whiteList:(OBArray *)white blackList:(OBArray *)blacklist;
 
++ (WkUserScript *)userScriptWithContents:(OBString *)script css:(OBString *)css injectPosition:(WkUserScript_InjectPosition)position injectInFrames:(WkUserScript_InjectInFrames)inFrames whiteList:(OBArray *)white blackList:(OBArray *)blacklist;
+
 + (WkUserScript *)userScriptWithContentsOfFile:(OBString *)path injectPosition:(WkUserScript_InjectPosition)position injectInFrames:(WkUserScript_InjectInFrames)inFrames whiteList:(OBArray *)white blackList:(OBArray *)blacklist;
+
++ (WkUserScript *)userScriptWithContentsOfFile:(OBString *)path cssFile:(OBString *)css injectPosition:(WkUserScript_InjectPosition)position injectInFrames:(WkUserScript_InjectInFrames)inFrames whiteList:(OBArray *)white blackList:(OBArray *)blacklist;
 
 - (WkUserScript_InjectPosition)injectPosition;
 - (WkUserScript_InjectInFrames)injectInFrames;
 
 - (OBString *)path;
 - (OBString *)script;
+
+- (OBString *)cssPath;
+- (OBString *)css;
 
 - (OBArray * /* OBString */)whiteList;
 - (OBArray * /* OBString */)blackList;

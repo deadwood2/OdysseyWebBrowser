@@ -9,16 +9,18 @@
 //   configured incorrectly. For example, they might be using the D3D11 renderer when the test is
 //   meant to be using the D3D9 renderer.
 
-#include "test_utils/ANGLETest.h"
-
 #include "common/string_utils.h"
+#include "test_utils/ANGLETest.h"
+#include "test_utils/gl_raii.h"
+#include "util/shader_utils.h"
+#include "util/test_utils.h"
 
 using namespace angle;
 
-namespace
+namespace angle
 {
 
-class RendererTest : public ANGLETest
+class RendererTest : public ANGLETest<>
 {
   protected:
     RendererTest()
@@ -131,23 +133,14 @@ TEST_P(RendererTest, RequestedRendererCreated)
     EGLint glesMajorVersion = GetParam().majorVersion;
     EGLint glesMinorVersion = GetParam().minorVersion;
 
-    // Ensure that the renderer string contains the requested version number
-    if (glesMajorVersion == 3 && glesMinorVersion == 1)
+    std::ostringstream expectedVersionString;
+    if (GetParam().clientType == EGL_OPENGL_ES_API)
     {
-        ASSERT_NE(versionString.find(std::string("es 3.1")), std::string::npos);
+        expectedVersionString << "es ";
     }
-    else if (glesMajorVersion == 3 && glesMinorVersion == 0)
-    {
-        ASSERT_NE(versionString.find(std::string("es 3.0")), std::string::npos);
-    }
-    else if (glesMajorVersion == 2 && glesMinorVersion == 0)
-    {
-        ASSERT_NE(versionString.find(std::string("es 2.0")), std::string::npos);
-    }
-    else
-    {
-        FAIL() << "Unhandled GL ES client version.";
-    }
+    expectedVersionString << glesMajorVersion << "." << glesMinorVersion;
+
+    ASSERT_NE(versionString.find(expectedVersionString.str()), std::string::npos);
 
     ASSERT_GL_NO_ERROR();
     ASSERT_EGL_SUCCESS();
@@ -169,8 +162,65 @@ TEST_P(RendererTest, SimpleOperation)
     ASSERT_GL_NO_ERROR();
 }
 
+// Perform a simple buffer operation.
+TEST_P(RendererTest, BufferData)
+{
+    constexpr size_t kBufferSize = 1024;
+    std::array<uint8_t, kBufferSize> data;
+    for (size_t i = 0; i < kBufferSize; i++)
+    {
+        data[i] = static_cast<uint8_t>(i);
+    }
+
+    // All at once in the glBufferData call
+    {
+        GLBuffer buffer;
+        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+
+        glBufferData(GL_ARRAY_BUFFER, 1024, data.data(), GL_STATIC_DRAW);
+    }
+
+    // Set data with sub data
+    {
+        GLBuffer buffer;
+        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+
+        glBufferData(GL_ARRAY_BUFFER, 1024, nullptr, GL_STATIC_DRAW);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, kBufferSize, data.data());
+    }
+}
+
+// Compile simple vertex and fragment shaders
+TEST_P(RendererTest, CompileShader)
+{
+    GLuint vs = CompileShader(GL_VERTEX_SHADER, essl1_shaders::vs::Zero());
+    EXPECT_NE(vs, 0u);
+    glDeleteShader(vs);
+
+    GLuint fs = CompileShader(GL_FRAGMENT_SHADER, essl1_shaders::fs::Red());
+    EXPECT_NE(fs, 0u);
+    glDeleteShader(fs);
+}
+
+// Link a simple program
+TEST_P(RendererTest, LinkProgram)
+{
+    ANGLE_GL_PROGRAM(prog, essl1_shaders::vs::Zero(), essl1_shaders::fs::Red());
+}
+
+// Draw a triangle using no vertex attributes
+TEST_P(RendererTest, Draw)
+{
+    ANGLE_GL_PROGRAM(prog, essl1_shaders::vs::Zero(), essl1_shaders::fs::Red());
+    glUseProgram(prog);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+}
+
 // Select configurations (e.g. which renderer, which GLES major version) these tests should be run
 // against.
-
-ANGLE_INSTANTIATE_TEST_ES2_AND_ES3_AND_ES31_AND_NULL(RendererTest);
-}  // anonymous namespace
+// TODO(http://anglebug.com/42266907): move ES2_WEBGPU to the definition of
+// ANGLE_ALL_TEST_PLATFORMS_ES2 once webgpu is developed enough to run more tests.
+ANGLE_INSTANTIATE_TEST_ES2_AND_ES3_AND_ES31_AND_NULL_AND(RendererTest,
+                                                         ANGLE_ALL_TEST_PLATFORMS_GL32_CORE,
+                                                         ES2_WEBGPU());
+}  // namespace angle

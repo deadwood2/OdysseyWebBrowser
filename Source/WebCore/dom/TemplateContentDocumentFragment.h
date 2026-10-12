@@ -28,30 +28,41 @@
 #pragma once
 
 #include "DocumentFragment.h"
+#include "Element.h"
 
 namespace WebCore {
 
 class TemplateContentDocumentFragment final : public DocumentFragment {
-    WTF_MAKE_ISO_ALLOCATED(TemplateContentDocumentFragment);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(TemplateContentDocumentFragment);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(TemplateContentDocumentFragment);
 public:
-    static Ref<TemplateContentDocumentFragment> create(Document& document, const Element* host)
+    static Ref<TemplateContentDocumentFragment> create(Document& document, const Element& host)
     {
         return adoptRef(*new TemplateContentDocumentFragment(document, host));
     }
 
-    const Element* host() const { return m_host; }
+    const Element* host() const { return m_host.get(); }
     void clearHost() { m_host = nullptr; }
 
 private:
-    TemplateContentDocumentFragment(Document& document, const Element* host)
-        : DocumentFragment(document, CreateDocumentFragment)
+    TemplateContentDocumentFragment(Document& document, const Element& host)
+        : DocumentFragment(document)
         , m_host(host)
     {
     }
 
     bool isTemplateContent() const override { return true; }
 
-    const Element* m_host;
+    WeakPtr<const Element, WeakPtrImplWithEventTargetData> m_host;
 };
 
 } // namespace WebCore
+
+SPECIALIZE_TYPE_TRAITS_BEGIN(WebCore::TemplateContentDocumentFragment)
+    static bool isType(const WebCore::Node& node)
+    {
+        auto* fragment = dynamicDowncast<WebCore::DocumentFragment>(node);
+        return fragment && is<WebCore::TemplateContentDocumentFragment>(*fragment);
+    }
+    static bool isType(const WebCore::DocumentFragment& node) { return node.isTemplateContent(); }
+SPECIALIZE_TYPE_TRAITS_END()

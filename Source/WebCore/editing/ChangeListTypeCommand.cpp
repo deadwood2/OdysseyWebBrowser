@@ -27,12 +27,13 @@
 #include "ChangeListTypeCommand.h"
 
 #include "Editing.h"
-#include "ElementAncestorIterator.h"
-#include "Frame.h"
+#include "ElementAncestorIteratorInlines.h"
+#include "FrameDestructionObserverInlines.h"
 #include "FrameSelection.h"
 #include "HTMLElement.h"
 #include "HTMLOListElement.h"
 #include "HTMLUListElement.h"
+#include "LocalFrame.h"
 #include <wtf/RefPtr.h>
 
 namespace WebCore {
@@ -46,8 +47,8 @@ static std::optional<std::pair<ChangeListTypeCommand::Type, Ref<HTMLElement>>> l
     auto commonAncestor = commonInclusiveAncestor<ComposedTree>(*startNode, *endNode);
 
     RefPtr<HTMLElement> listToReplace;
-    if (is<HTMLUListElement>(commonAncestor) || is<HTMLOListElement>(commonAncestor))
-        listToReplace = downcast<HTMLElement>(commonAncestor);
+    if (auto* htmlElement = dynamicDowncast<HTMLElement>(commonAncestor); is<HTMLUListElement>(htmlElement) || is<HTMLOListElement>(htmlElement))
+        listToReplace = htmlElement;
     else
         listToReplace = enclosingList(commonAncestor);
 
@@ -62,7 +63,7 @@ static std::optional<std::pair<ChangeListTypeCommand::Type, Ref<HTMLElement>>> l
 
 std::optional<ChangeListTypeCommand::Type> ChangeListTypeCommand::listConversionType(Document& document)
 {
-    if (auto frame = makeRefPtr(document.frame())) {
+    if (RefPtr frame = document.frame()) {
         if (auto typeAndElement = listConversionTypeForSelection(frame->selection().selection()))
             return typeAndElement->first;
     }

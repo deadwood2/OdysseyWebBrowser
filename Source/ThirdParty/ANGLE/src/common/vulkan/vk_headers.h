@@ -11,7 +11,7 @@
 #define LIBANGLE_RENDERER_VULKAN_VK_HEADERS_H_
 
 #if ANGLE_SHARED_LIBVULKAN
-#    include "third_party/volk/volk.h"
+#    include <volk.h>
 #else
 #    include <vulkan/vulkan.h>
 #endif
@@ -26,6 +26,7 @@ extern PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT;
 extern PFN_vkCmdBeginDebugUtilsLabelEXT vkCmdBeginDebugUtilsLabelEXT;
 extern PFN_vkCmdEndDebugUtilsLabelEXT vkCmdEndDebugUtilsLabelEXT;
 extern PFN_vkCmdInsertDebugUtilsLabelEXT vkCmdInsertDebugUtilsLabelEXT;
+extern PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT;
 
 // VK_EXT_debug_report
 extern PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT;
@@ -41,6 +42,9 @@ extern PFN_vkImportSemaphoreFdKHR vkImportSemaphoreFdKHR;
 
 // VK_EXT_external_memory_host
 extern PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerPropertiesEXT;
+
+// VK_EXT_host_query_reset
+extern PFN_vkResetQueryPoolEXT vkResetQueryPoolEXT;
 
 // VK_EXT_transform_feedback
 extern PFN_vkCmdBindTransformFeedbackBuffersEXT vkCmdBindTransformFeedbackBuffersEXT;
@@ -90,6 +94,55 @@ extern PFN_vkGetMemoryAndroidHardwareBufferANDROID vkGetMemoryAndroidHardwareBuf
 #    if defined(ANGLE_PLATFORM_GGP)
 extern PFN_vkCreateStreamDescriptorSurfaceGGP vkCreateStreamDescriptorSurfaceGGP;
 #    endif  // defined(ANGLE_PLATFORM_GGP)
+
+// VK_KHR_shared_presentable_image
+extern PFN_vkGetSwapchainStatusKHR vkGetSwapchainStatusKHR;
+
+// VK_EXT_extended_dynamic_state
+extern PFN_vkCmdBindVertexBuffers2EXT vkCmdBindVertexBuffers2EXT;
+extern PFN_vkCmdSetCullModeEXT vkCmdSetCullModeEXT;
+extern PFN_vkCmdSetDepthBoundsTestEnableEXT vkCmdSetDepthBoundsTestEnableEXT;
+extern PFN_vkCmdSetDepthCompareOpEXT vkCmdSetDepthCompareOpEXT;
+extern PFN_vkCmdSetDepthTestEnableEXT vkCmdSetDepthTestEnableEXT;
+extern PFN_vkCmdSetDepthWriteEnableEXT vkCmdSetDepthWriteEnableEXT;
+extern PFN_vkCmdSetFrontFaceEXT vkCmdSetFrontFaceEXT;
+extern PFN_vkCmdSetPrimitiveTopologyEXT vkCmdSetPrimitiveTopologyEXT;
+extern PFN_vkCmdSetScissorWithCountEXT vkCmdSetScissorWithCountEXT;
+extern PFN_vkCmdSetStencilOpEXT vkCmdSetStencilOpEXT;
+extern PFN_vkCmdSetStencilTestEnableEXT vkCmdSetStencilTestEnableEXT;
+extern PFN_vkCmdSetViewportWithCountEXT vkCmdSetViewportWithCountEXT;
+
+// VK_EXT_extended_dynamic_state2
+extern PFN_vkCmdSetDepthBiasEnableEXT vkCmdSetDepthBiasEnableEXT;
+extern PFN_vkCmdSetLogicOpEXT vkCmdSetLogicOpEXT;
+extern PFN_vkCmdSetPatchControlPointsEXT vkCmdSetPatchControlPointsEXT;
+extern PFN_vkCmdSetPrimitiveRestartEnableEXT vkCmdSetPrimitiveRestartEnableEXT;
+extern PFN_vkCmdSetRasterizerDiscardEnableEXT vkCmdSetRasterizerDiscardEnableEXT;
+
+// VK_EXT_vertex_input_dynamic_state
+extern PFN_vkCmdSetVertexInputEXT vkCmdSetVertexInputEXT;
+
+// VK_KHR_fragment_shading_rate
+extern PFN_vkGetPhysicalDeviceFragmentShadingRatesKHR vkGetPhysicalDeviceFragmentShadingRatesKHR;
+extern PFN_vkCmdSetFragmentShadingRateKHR vkCmdSetFragmentShadingRateKHR;
+
+// VK_GOOGLE_display_timing
+extern PFN_vkGetPastPresentationTimingGOOGLE vkGetPastPresentationTimingGOOGLE;
+
+// VK_EXT_host_image_copy
+extern PFN_vkCopyImageToImageEXT vkCopyImageToImageEXT;
+extern PFN_vkCopyImageToMemoryEXT vkCopyImageToMemoryEXT;
+extern PFN_vkCopyMemoryToImageEXT vkCopyMemoryToImageEXT;
+extern PFN_vkTransitionImageLayoutEXT vkTransitionImageLayoutEXT;
+extern PFN_vkGetImageSubresourceLayout2EXT vkGetImageSubresourceLayout2EXT;
+
+// VK_KHR_dynamic_rendering
+extern PFN_vkCmdBeginRenderingKHR vkCmdBeginRenderingKHR;
+extern PFN_vkCmdEndRenderingKHR vkCmdEndRenderingKHR;
+
+// VK_KHR_dynamic_rendering_local_read
+extern PFN_vkCmdSetRenderingAttachmentLocationsKHR vkCmdSetRenderingAttachmentLocationsKHR;
+extern PFN_vkCmdSetRenderingInputAttachmentIndicesKHR vkCmdSetRenderingInputAttachmentIndicesKHR;
 
 }  // namespace rx
 

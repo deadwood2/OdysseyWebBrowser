@@ -28,16 +28,33 @@
 #if PLATFORM(COCOA)
 
 #include <pal/system/SleepDisabler.h>
+#include <wtf/RefCounter.h>
 
 namespace PAL {
 
+#if PLATFORM(IOS_FAMILY)
+enum ScreenSleepDisablerCounterType { };
+typedef RefCounter<ScreenSleepDisablerCounterType> ScreenSleepDisablerCounter;
+typedef ScreenSleepDisablerCounter::Token ScreenSleepDisablerCounterToken;
+#endif
+
 class SleepDisablerCocoa : public SleepDisabler {
 public:
-    explicit SleepDisablerCocoa(const char*, Type);
+    explicit SleepDisablerCocoa(const String&, Type);
     virtual ~SleepDisablerCocoa();
 
+#if PLATFORM(IOS_FAMILY)
+    PAL_EXPORT static void setScreenWakeLockHandler(Function<bool(bool shouldKeepScreenAwake)>&&);
+#endif
+
 private:
+    void takeScreenSleepDisablingAssertion(const String& reason);
+    void takeSystemSleepDisablingAssertion(const String& reason);
+
     uint32_t m_sleepAssertion { 0 };
+#if PLATFORM(IOS_FAMILY)
+    ScreenSleepDisablerCounterToken m_screenSleepDisablerToken;
+#endif
 };
 
 } // namespace PAL

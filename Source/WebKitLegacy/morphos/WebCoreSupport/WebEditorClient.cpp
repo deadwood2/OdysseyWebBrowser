@@ -341,17 +341,13 @@ void WebEditorClient::didBeginEditing()
 
 void WebEditorClient::respondToChangedContents()
 {
-    notImplemented();
+	if (m_webPage && m_webPage->_fTextChanged)
+		m_webPage->_fTextChanged();
 }
 
-void WebEditorClient::respondToChangedSelection(Frame*)
+void WebEditorClient::respondToChangedSelection(LocalFrame*)
 {
 //    m_webPage->selectionChanged();
-    notImplemented();
-}
-
-void WebEditorClient::discardedComposition(Frame*)
-{
     notImplemented();
 }
 
@@ -375,7 +371,7 @@ void WebEditorClient::willWriteSelectionToPasteboard(const std::optional<WebCore
     notImplemented();
 }
 
-void WebEditorClient::getClientPasteboardData(const std::optional<SimpleRange>&, Vector<String>& pasteboardTypes, Vector<RefPtr<SharedBuffer>>& pasteboardData)
+void WebEditorClient::getClientPasteboardData(const std::optional<WebCore::SimpleRange>&, Vector<std::pair<String, RefPtr<WebCore::SharedBuffer>>>& pasteboardTypesAndData)
 {
     notImplemented();
 }
@@ -437,42 +433,47 @@ bool WebEditorClient::isSelectTrailingWhitespaceEnabled(void) const
     return page->settings().selectTrailingWhitespaceEnabled();
 }
 
-void WebEditorClient::textFieldDidBeginEditing(Element* e)
+void WebEditorClient::textFieldDidBeginEditing(Element& e)
 {
 //    notImplemented();
 	
     if (is<HTMLInputElement>(e) && !m_webPage->hasAutofillElements())
     {
-		HTMLInputElement* element = downcast<HTMLInputElement>(e);
+		HTMLInputElement* element = dynamicDowncast<HTMLInputElement>(e);
 		m_webPage->startedEditingElement(element);
 	}
 }
 
-void WebEditorClient::textFieldDidEndEditing(Element* e)
+void WebEditorClient::textFieldDidEndEditing(Element& e)
 {
 //    notImplemented();
 }
 
-void WebEditorClient::textDidChangeInTextField(Element* e)
+void WebEditorClient::textDidChangeInTextField(Element& e)
 {
-    if (!UserTypingGestureIndicator::processingUserTypingGesture() || UserTypingGestureIndicator::focusedElementAtGestureStart() != e)
+#if 0
+    auto* inputElement = dynamicDowncast<HTMLInputElement>(e);
+    if (!inputElement)
         return;
-    //notImplemented();
+
+    bool initiatedByUserTyping = UserTypingGestureIndicator::processingUserTypingGesture() && UserTypingGestureIndicator::focusedElementAtGestureStart() == inputElement;
+   //notImplemented();
+#endif
 }
 
-bool WebEditorClient::doTextFieldCommandFromEvent(Element* e, KeyboardEvent* ke)
+bool WebEditorClient::doTextFieldCommandFromEvent(Element& e, KeyboardEvent* ke)
 {
     bool result = false;
     notImplemented();
     return result;
 }
 
-void WebEditorClient::textWillBeDeletedInTextField(Element* e)
+void WebEditorClient::textWillBeDeletedInTextField(Element& e)
 {
     //notImplemented();
 }
 
-void WebEditorClient::textDidChangeInTextArea(Element* e)
+void WebEditorClient::textDidChangeInTextArea(Element& e)
 {
     //notImplemented();
 }
@@ -561,12 +562,12 @@ void WebEditorClient::clearUndoRedoOperations()
 		m_webPage->_fUndoRedoChanged();
 }
 
-bool WebEditorClient::canCopyCut(Frame*, bool defaultValue) const
+bool WebEditorClient::canCopyCut(LocalFrame*, bool defaultValue) const
 {
     return defaultValue;
 }
 
-bool WebEditorClient::canPaste(Frame*, bool defaultValue) const
+bool WebEditorClient::canPaste(LocalFrame*, bool defaultValue) const
 {
     return defaultValue;
 }
@@ -729,13 +730,6 @@ m_additionalLanguage.utf8().data(), m_additionalSpellDictionary ? SpellCheck(m_a
 			return;
 		}
 	}
-}
-
-String WebEditorClient::getAutoCorrectSuggestionForMisspelledWord(const String& inputWord)
-{
-    // This method can be implemented using customized algorithms for the particular browser.
-    // Currently, it computes an empty string.
-    return String();
 }
 
 void WebEditorClient::checkGrammarOfString(StringView text, Vector<GrammarDetail>& details, int* badGrammarLocation, int* badGrammarLength)

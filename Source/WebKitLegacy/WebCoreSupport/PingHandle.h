@@ -28,17 +28,23 @@
 #include <WebCore/ResourceError.h>
 #include <WebCore/ResourceHandle.h>
 #include <WebCore/ResourceHandleClient.h>
+#include <WebCore/ResourceLoaderOptions.h>
 #include <WebCore/ResourceRequest.h>
 #include <WebCore/ResourceResponse.h>
+#ifndef __MORPHOS__
+#include <WebCore/SharedBuffer.h>
+#endif
 #include <WebCore/Timer.h>
 #include <wtf/CompletionHandler.h>
+#include <wtf/TZoneMallocInlines.h>
 
 // This class triggers asynchronous loads independent of the networking context staying alive (i.e., auditing pingbacks).
 // The object just needs to live long enough to ensure the message was actually sent.
 // As soon as any callback is received from the ResourceHandle, this class will cancel the load and delete itself.
 
 class PingHandle final : private WebCore::ResourceHandleClient {
-    WTF_MAKE_NONCOPYABLE(PingHandle); WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED_INLINE(PingHandle);
+    WTF_MAKE_NONCOPYABLE(PingHandle);
 public:
     PingHandle(WebCore::NetworkingContext* networkingContext, const WebCore::ResourceRequest& request, bool shouldUseCredentialStorage, bool shouldFollowRedirects, CompletionHandler<void(const WebCore::ResourceError&, const WebCore::ResourceResponse&)>&& completionHandler)
         : m_currentRequest(request)
@@ -49,8 +55,7 @@ public:
     {
         bool defersLoading = false;
         bool shouldContentSniff = false;
-        bool shouldContentEncodingSniff = true;
-        m_handle = WebCore::ResourceHandle::create(networkingContext, request, this, defersLoading, shouldContentSniff, shouldContentEncodingSniff, nullptr, false);
+        m_handle = WebCore::ResourceHandle::create(networkingContext, request, this, defersLoading, shouldContentSniff, WebCore::ContentEncodingSniffingPolicy::Default, nullptr, false);
 
         // If the server never responds, this object will hang around forever.
         // Set a very generous timeout, just in case.
@@ -73,7 +78,7 @@ private:
         completionHandler();
         pingLoadComplete({ }, response);
     }
-    void didReceiveBuffer(WebCore::ResourceHandle*, Ref<WebCore::SharedBuffer>&&, int) final { pingLoadComplete(); }
+    void didReceiveData(WebCore::ResourceHandle*, const WebCore::SharedBuffer&, int) final { pingLoadComplete(); }
     void didFinishLoading(WebCore::ResourceHandle*, const WebCore::NetworkLoadMetrics&) final { pingLoadComplete(); }
     void didFail(WebCore::ResourceHandle*, const WebCore::ResourceError& error) final { pingLoadComplete(error); }
     bool shouldUseCredentialStorage(WebCore::ResourceHandle*) final { return m_shouldUseCredentialStorage; }

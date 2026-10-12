@@ -35,7 +35,7 @@ namespace {
 
 struct DispatchWorkItem {
     WTF_MAKE_STRUCT_FAST_ALLOCATED;
-    Ref<WorkQueue> m_workQueue;
+    Ref<WorkQueueBase> m_workQueue;
     Function<void()> m_function;
     void operator()() { m_function(); }
 };
@@ -49,44 +49,63 @@ template<typename T> static void dispatchWorkItem(void* dispatchContext)
     delete item;
 }
 
-void WorkQueue::dispatch(Function<void()>&& function)
+void WorkQueueBase::dispatch(Function<void()>&& function)
 {
-    dispatch_async_f(m_dispatchQueue.get(), new DispatchWorkItem { makeRef(*this), WTFMove(function) }, dispatchWorkItem<DispatchWorkItem>);
+    dispatch_async_f(m_dispatchQueue.get(), new DispatchWorkItem { Ref { *this }, WTFMove(function) }, dispatchWorkItem<DispatchWorkItem>);
 }
 
-void WorkQueue::dispatchAfter(Seconds duration, Function<void()>&& function)
+void WorkQueueBase::dispatchWithQOS(Function<void()>&& function, QOS qos)
 {
-    dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, duration.nanosecondsAs<int64_t>()), m_dispatchQueue.get(), new DispatchWorkItem { makeRef(*this),  WTFMove(function) }, dispatchWorkItem<DispatchWorkItem>);
+    dispatch_block_t blockWithQOS = dispatch_block_create_with_qos_class(DISPATCH_BLOCK_ENFORCE_QOS_CLASS, Thread::dispatchQOSClass(qos), 0, makeBlockPtr([function = WTFMove(function)] () mutable {
+        function();
+        function = { };
+    }).get());
+    dispatch_async(m_dispatchQueue.get(), blockWithQOS);
+#if !__has_feature(objc_arc)
+    Block_release(blockWithQOS);
+#endif
 }
 
-void WorkQueue::dispatchSync(Function<void()>&& function)
+void WorkQueueBase::dispatchAfter(Seconds duration, Function<void()>&& function)
+{
+    dispatch_after_f(dispatch_time(DISPATCH_TIME_NOW, duration.nanosecondsAs<int64_t>()), m_dispatchQueue.get(), new DispatchWorkItem { Ref { *this },  WTFMove(function) }, dispatchWorkItem<DispatchWorkItem>);
+}
+
+void WorkQueueBase::dispatchSync(Function<void()>&& function)
 {
     dispatch_sync_f(m_dispatchQueue.get(), new Function<void()> { WTFMove(function) }, dispatchWorkItem<Function<void()>>);
 }
 
-Ref<WorkQueue> WorkQueue::constructMainWorkQueue()
-{
-    return adoptRef(*new WorkQueue(dispatch_get_main_queue()));
-}
-
-WorkQueue::WorkQueue(OSObjectPtr<dispatch_queue_t>&& dispatchQueue)
+WorkQueueBase::WorkQueueBase(OSObjectPtr<dispatch_queue_t>&& dispatchQueue)
     : m_dispatchQueue(WTFMove(dispatchQueue))
+    , m_threadID(mainThreadID)
 {
 }
 
-void WorkQueue::platformInitialize(const char* name, Type type, QOS qos)
+void WorkQueueBase::platformInitialize(ASCIILiteral name, Type type, QOS qos)
 {
     dispatch_queue_attr_t attr = type == Type::Concurrent ? DISPATCH_QUEUE_CONCURRENT : DISPATCH_QUEUE_SERIAL;
     attr = dispatch_queue_attr_make_with_qos_class(attr, Thread::dispatchQOSClass(qos), 0);
     m_dispatchQueue = adoptOSObject(dispatch_queue_create(name, attr));
     dispatch_set_context(m_dispatchQueue.get(), this);
+    // We use &s_uid for the key, since it's convenient. Dispatch does not dereference it.
+    // We use s_uid to generate the id so that WorkQueues and Threads share the id namespace.
+    // This makes it possible to assert that code runs in the expected sequence, regardless of if it is
+    // in a thread or a work queue.
+    m_threadID = ++s_uid;
+    dispatch_queue_set_specific(m_dispatchQueue.get(), &s_uid, reinterpret_cast<void*>(m_threadID), nullptr);
 }
 
-void WorkQueue::platformInvalidate()
+void WorkQueueBase::platformInvalidate()
 {
 }
 
-void WorkQueue::concurrentApply(size_t iterations, WTF::Function<void(size_t index)>&& function)
+WorkQueue::WorkQueue(MainTag)
+    : WorkQueueBase(dispatch_get_main_queue())
+{
+}
+
+void ConcurrentWorkQueue::apply(size_t iterations, WTF::Function<void(size_t index)>&& function)
 {
     dispatch_apply(iterations, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), makeBlockPtr([function = WTFMove(function)](size_t index) {
         function(index);

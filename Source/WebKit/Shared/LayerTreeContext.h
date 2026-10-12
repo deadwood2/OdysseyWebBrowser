@@ -26,12 +26,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <wtf/Forward.h>
-
-namespace IPC {
-class Decoder;
-class Encoder;
-}
 
 namespace WebKit {
 
@@ -44,34 +38,17 @@ enum class LayerHostingMode : uint8_t {
 
 class LayerTreeContext {
 public:
-    LayerTreeContext();
-    ~LayerTreeContext();
+    LayerTreeContext() = default;
+    LayerTreeContext(uint64_t id)
+        : contextID(id)
+    {
+    }
 
-    void encode(IPC::Encoder&) const;
-    static WARN_UNUSED_RETURN bool decode(IPC::Decoder&, LayerTreeContext&);
+    friend bool operator==(LayerTreeContext, LayerTreeContext) = default;
 
-    bool isEmpty() const;
+    bool isEmpty() const { return !contextID; }
 
-    uint64_t contextID;
+    uint64_t contextID { 0 };
 };
 
-bool operator==(const LayerTreeContext&, const LayerTreeContext&);
-
-inline bool operator!=(const LayerTreeContext& a, const LayerTreeContext& b)
-{
-    return !(a == b);
-}
-
-}
-
-namespace WTF {
-template<> struct EnumTraits<WebKit::LayerHostingMode> {
-    using values = EnumValues<
-        WebKit::LayerHostingMode,
-#if HAVE(OUT_OF_PROCESS_LAYER_HOSTING)
-        WebKit::LayerHostingMode::OutOfProcess,
-#endif
-        WebKit::LayerHostingMode::InProcess
-    >;
-};
 }

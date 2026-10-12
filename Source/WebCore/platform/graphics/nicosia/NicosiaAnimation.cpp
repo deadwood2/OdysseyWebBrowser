@@ -21,6 +21,8 @@
 #include "NicosiaAnimation.h"
 
 #include "LayoutSize.h"
+#include "TranslateTransformOperation.h"
+#include <wtf/Scope.h>
 
 namespace Nicosia {
 
@@ -44,37 +46,45 @@ static FilterOperations applyFilterAnimation(const FilterOperations& from, const
     if (!from.isEmpty() && !to.isEmpty() && !from.operationsMatch(to))
         return to;
 
-    FilterOperations result;
-
-    size_t fromSize = from.operations().size();
-    size_t toSize = to.operations().size();
+    size_t fromSize = from.size();
+    size_t toSize = to.size();
     size_t size = std::max(fromSize, toSize);
+
+    Vector<Ref<FilterOperation>> operations;
+    operations.reserveInitialCapacity(size);
+
     for (size_t i = 0; i < size; i++) {
-        RefPtr<FilterOperation> fromOp = (i < fromSize) ? from.operations()[i].get() : nullptr;
-        RefPtr<FilterOperation> toOp = (i < toSize) ? to.operations()[i].get() : nullptr;
+        RefPtr<FilterOperation> fromOp = (i < fromSize) ? from[i].ptr() : nullptr;
+        RefPtr<FilterOperation> toOp = (i < toSize) ? to[i].ptr() : nullptr;
         RefPtr<FilterOperation> blendedOp = toOp ? blendFunc(fromOp.get(), *toOp, progress, boxSize) : (fromOp ? blendFunc(nullptr, *fromOp, progress, boxSize, true) : nullptr);
         if (blendedOp)
-            result.operations().append(blendedOp);
+            operations.append(blendedOp.releaseNonNull());
         else {
-            auto identityOp = PassthroughFilterOperation::create();
-            if (progress > 0.5)
-                result.operations().append(toOp ? toOp : WTFMove(identityOp));
-            else
-                result.operations().append(fromOp ? fromOp : WTFMove(identityOp));
+            if (progress > 0.5) {
+                if (toOp)
+                    operations.append(toOp.releaseNonNull());
+                else
+                    operations.append(PassthroughFilterOperation::create());
+            } else {
+                if (fromOp)
+                    operations.append(fromOp.releaseNonNull());
+                else
+                    operations.append(PassthroughFilterOperation::create());
+            }
         }
     }
 
-    return result;
+    return FilterOperations { WTFMove(operations) };
 }
 
-static bool shouldReverseAnimationValue(WebCore::Animation::AnimationDirection direction, int loopCount)
+static bool shouldReverseAnimationValue(WebCore::Animation::Direction direction, int loopCount)
 {
-    return (direction == WebCore::Animation::AnimationDirectionAlternate && loopCount & 1)
-        || (direction == WebCore::Animation::AnimationDirectionAlternateReverse && !(loopCount & 1))
-        || direction == WebCore::Animation::AnimationDirectionReverse;
+    return (direction == WebCore::Animation::Direction::Alternate && loopCount & 1)
+        || (direction == WebCore::Animation::Direction::AlternateReverse && !(loopCount & 1))
+        || direction == WebCore::Animation::Direction::Reverse;
 }
 
-static double normalizedAnimationValue(double runningTime, double duration, WebCore::Animation::AnimationDirection direction, double iterationCount)
+static double normalizedAnimationValue(double runningTime, double duration, WebCore::Animation::Direction direction, double iterationCount)
 {
     if (!duration)
         return 0;
@@ -88,11 +98,11 @@ static double normalizedAnimationValue(double runningTime, double duration, WebC
     return shouldReverseAnimationValue(direction, loopCount) ? 1 - normalized : normalized;
 }
 
-static double normalizedAnimationValueForFillsForwards(double iterationCount, WebCore::Animation::AnimationDirection direction)
+static double normalizedAnimationValueForFillsForwards(double iterationCount, WebCore::Animation::Direction direction)
 {
-    if (direction == WebCore::Animation::AnimationDirectionNormal)
+    if (direction == WebCore::Animation::Direction::Normal)
         return 1;
-    if (direction == WebCore::Animation::AnimationDirectionReverse)
+    if (direction == WebCore::Animation::Direction::Reverse)
         return 0;
     return shouldReverseAnimationValue(direction, iterationCount) ? 1 : 0;
 }
@@ -109,51 +119,23 @@ static float applyOpacityAnimation(float fromOpacity, float toOpacity, double pr
     return fromOpacity + progress * (toOpacity - fromOpacity);
 }
 
-static TransformationMatrix applyTransformAnimation(const TransformOperations& from, const TransformOperations& to, double progress, const FloatSize& boxSize, bool listsMatch)
+static TransformationMatrix applyTransformAnimation(const TransformOperations& from, const TransformOperations& to, double progress, const FloatSize& boxSize)
 {
     TransformationMatrix matrix;
 
     // First frame of an animation.
     if (!progress) {
-        from.apply(boxSize, matrix);
+        from.apply(matrix, boxSize);
         return matrix;
     }
 
     // Last frame of an animation.
     if (progress == 1) {
-        to.apply(boxSize, matrix);
+        to.apply(matrix, boxSize);
         return matrix;
     }
 
-    // If we have incompatible operation lists, we blend the resulting matrices.
-    if (!listsMatch) {
-        TransformationMatrix fromMatrix;
-        to.apply(boxSize, matrix);
-        from.apply(boxSize, fromMatrix);
-        matrix.blend(fromMatrix, progress);
-        return matrix;
-    }
-
-    // Animation to "-webkit-transform: none".
-    if (!to.size()) {
-        TransformOperations blended(from);
-        for (auto& operation : blended.operations())
-            operation->blend(nullptr, progress, true)->apply(matrix, boxSize);
-        return matrix;
-    }
-
-    // Animation from "-webkit-transform: none".
-    if (!from.size()) {
-        TransformOperations blended(to);
-        for (auto& operation : blended.operations())
-            operation->blend(nullptr, 1 - progress, true)->apply(matrix, boxSize);
-        return matrix;
-    }
-
-    // Normal animation with a matching operation list.
-    TransformOperations blended(to);
-    for (size_t i = 0; i < blended.operations().size(); ++i)
-        blended.operations()[i]->blend(from.at(i), progress, !from.at(i))->apply(matrix, boxSize);
+    to.blend(from, progress, LayoutSize { boxSize }).apply(matrix, boxSize);
     return matrix;
 }
 
@@ -166,16 +148,40 @@ static const TimingFunction& timingFunctionForAnimationValue(const AnimationValu
     return CubicBezierTimingFunction::defaultTimingFunction();
 }
 
-Animation::Animation(const String& name, const KeyframeValueList& keyframes, const FloatSize& boxSize, const WebCore::Animation& animation, bool listsMatch, MonotonicTime startTime, Seconds pauseTime, AnimationState state)
+static KeyframeValueList createThreadsafeKeyFrames(const KeyframeValueList& originalKeyframes, const FloatSize& boxSize)
+{
+    if (originalKeyframes.property() != AnimatedProperty::Transform)
+        return originalKeyframes;
+
+    // Currently translation operations are the only transform operations that store a non-fixed
+    // Length. Some Lengths, in particular those for calc() operations, are not thread-safe or
+    // multiprocess safe, because they maintain indices into a shared HashMap of CalculationValues.
+    // This code converts all possible unsafe Length parameters to fixed Lengths, which are safe to
+    // use in other threads and across IPC channels.
+    KeyframeValueList keyframes = originalKeyframes;
+    for (unsigned i = 0; i < keyframes.size(); i++) {
+        const auto& transformValue = static_cast<const TransformAnimationValue&>(keyframes.at(i));
+        for (auto& operation : transformValue.value()) {
+            if (RefPtr translation = dynamicDowncast<TranslateTransformOperation>(operation)) {
+                translation->setX(Length(translation->xAsFloat(boxSize), LengthType::Fixed));
+                translation->setY(Length(translation->yAsFloat(boxSize), LengthType::Fixed));
+                translation->setZ(Length(translation->zAsFloat(), LengthType::Fixed));
+            }
+        }
+    }
+
+    return keyframes;
+}
+
+Animation::Animation(const String& name, const KeyframeValueList& keyframes, const FloatSize& boxSize, const WebCore::Animation& animation, MonotonicTime startTime, Seconds pauseTime, AnimationState state)
     : m_name(name.isSafeToSendToAnotherThread() ? name : name.isolatedCopy())
-    , m_keyframes(keyframes)
+    , m_keyframes(createThreadsafeKeyFrames(keyframes, boxSize))
     , m_boxSize(boxSize)
     , m_timingFunction(animation.timingFunction()->clone())
     , m_iterationCount(animation.iterationCount())
     , m_duration(animation.duration())
     , m_direction(animation.direction())
     , m_fillsForwards(animation.fillsForwards())
-    , m_listsMatch(listsMatch)
     , m_startTime(startTime)
     , m_pauseTime(pauseTime)
     , m_totalRunningTime(0_s)
@@ -193,7 +199,6 @@ Animation::Animation(const Animation& other)
     , m_duration(other.m_duration)
     , m_direction(other.m_direction)
     , m_fillsForwards(other.m_fillsForwards)
-    , m_listsMatch(other.m_listsMatch)
     , m_startTime(other.m_startTime)
     , m_pauseTime(other.m_pauseTime)
     , m_totalRunningTime(other.m_totalRunningTime)
@@ -212,7 +217,6 @@ Animation& Animation::operator=(const Animation& other)
     m_duration = other.m_duration;
     m_direction = other.m_direction;
     m_fillsForwards = other.m_fillsForwards;
-    m_listsMatch = other.m_listsMatch;
     m_startTime = other.m_startTime;
     m_pauseTime = other.m_pauseTime;
     m_totalRunningTime = other.m_totalRunningTime;
@@ -221,8 +225,20 @@ Animation& Animation::operator=(const Animation& other)
     return *this;
 }
 
-void Animation::apply(ApplicationResult& applicationResults, MonotonicTime time)
+void Animation::apply(ApplicationResult& applicationResults, MonotonicTime time, KeepInternalState keepInternalState)
 {
+    MonotonicTime oldLastRefreshedTime = m_lastRefreshedTime;
+    Seconds oldTotalRunningTime = m_totalRunningTime;
+    AnimationState oldState = m_state;
+
+    auto maybeRestoreInternalState = makeScopeExit([&] {
+        if (keepInternalState == KeepInternalState::Yes) {
+            m_lastRefreshedTime = oldLastRefreshedTime;
+            m_totalRunningTime = oldTotalRunningTime;
+            m_state = oldState;
+        }
+    });
+
     // Even when m_state == AnimationState::Stopped && !m_fillsForwards, we should calculate the last value to avoid a flash.
     // CoordinatedGraphicsScene will soon remove the stopped animation and update the value instead of this function.
 
@@ -248,7 +264,7 @@ void Animation::apply(ApplicationResult& applicationResults, MonotonicTime time)
     }
     if (m_keyframes.size() == 2) {
         auto& timingFunction = timingFunctionForAnimationValue(m_keyframes.at(0), *this);
-        normalizedValue = timingFunction.transformTime(normalizedValue, m_duration);
+        normalizedValue = timingFunction.transformProgress(normalizedValue, m_duration);
         applyInternal(applicationResults, m_keyframes.at(0), m_keyframes.at(1), normalizedValue);
         return;
     }
@@ -261,23 +277,10 @@ void Animation::apply(ApplicationResult& applicationResults, MonotonicTime time)
 
         normalizedValue = (normalizedValue - from.keyTime()) / (to.keyTime() - from.keyTime());
         auto& timingFunction = timingFunctionForAnimationValue(from, *this);
-        normalizedValue = timingFunction.transformTime(normalizedValue, m_duration);
+        normalizedValue = timingFunction.transformProgress(normalizedValue, m_duration);
         applyInternal(applicationResults, from, to, normalizedValue);
         break;
     }
-}
-
-void Animation::applyKeepingInternalState(ApplicationResult& applicationResults, MonotonicTime time)
-{
-    MonotonicTime oldLastRefreshedTime = m_lastRefreshedTime;
-    Seconds oldTotalRunningTime = m_totalRunningTime;
-    AnimationState oldState = m_state;
-
-    apply(applicationResults, time);
-
-    m_lastRefreshedTime = oldLastRefreshedTime;
-    m_totalRunningTime = oldTotalRunningTime;
-    m_state = oldState;
 }
 
 void Animation::pause(Seconds time)
@@ -310,16 +313,20 @@ Seconds Animation::computeTotalRunningTime(MonotonicTime time)
 void Animation::applyInternal(ApplicationResult& applicationResults, const AnimationValue& from, const AnimationValue& to, float progress)
 {
     switch (m_keyframes.property()) {
-    case AnimatedPropertyTransform:
-        applicationResults.transform = applyTransformAnimation(static_cast<const TransformAnimationValue&>(from).value(), static_cast<const TransformAnimationValue&>(to).value(), progress, m_boxSize, m_listsMatch);
+    case AnimatedProperty::Translate:
+    case AnimatedProperty::Rotate:
+    case AnimatedProperty::Scale:
+    case AnimatedProperty::Transform: {
+        ASSERT(applicationResults.transform);
+        auto transform = applyTransformAnimation(static_cast<const TransformAnimationValue&>(from).value(), static_cast<const TransformAnimationValue&>(to).value(), progress, m_boxSize);
+        applicationResults.transform->multiply(transform);
         return;
-    case AnimatedPropertyOpacity:
+    }
+    case AnimatedProperty::Opacity:
         applicationResults.opacity = applyOpacityAnimation((static_cast<const FloatAnimationValue&>(from).value()), (static_cast<const FloatAnimationValue&>(to).value()), progress);
         return;
-    case AnimatedPropertyFilter:
-#if ENABLE(FILTERS_LEVEL_2)
-    case AnimatedPropertyWebkitBackdropFilter:
-#endif
+    case AnimatedProperty::Filter:
+    case AnimatedProperty::WebkitBackdropFilter:
         applicationResults.filters = applyFilterAnimation(static_cast<const FilterAnimationValue&>(from).value(), static_cast<const FilterAnimationValue&>(to).value(), progress, m_boxSize);
         return;
     default:
@@ -342,7 +349,7 @@ void Animations::remove(const String& name)
     });
 }
 
-void Animations::remove(const String& name, AnimatedPropertyID property)
+void Animations::remove(const String& name, AnimatedProperty property)
 {
     m_animations.removeAllMatching([&name, property] (const Animation& animation) {
         return animation.name() == name && animation.keyframes().property() == property;
@@ -371,19 +378,68 @@ void Animations::resume()
         animation.resume();
 }
 
-void Animations::apply(Animation::ApplicationResult& applicationResults, MonotonicTime time)
+void Animations::apply(Animation::ApplicationResult& applicationResults, MonotonicTime time, Animation::KeepInternalState keepInternalState)
 {
-    for (auto& animation : m_animations)
-        animation.apply(applicationResults, time);
+    Vector<Animation*> translateAnimations;
+    Vector<Animation*> rotateAnimations;
+    Vector<Animation*> scaleAnimations;
+    Vector<Animation*> transformAnimations;
+    Vector<Animation*> leafAnimations;
+
+    for (auto& animation : m_animations) {
+        switch (animation.keyframes().property()) {
+        case AnimatedProperty::Translate:
+            translateAnimations.append(&animation);
+            break;
+        case AnimatedProperty::Rotate:
+            rotateAnimations.append(&animation);
+            break;
+        case AnimatedProperty::Scale:
+            scaleAnimations.append(&animation);
+            break;
+        case AnimatedProperty::Transform:
+            transformAnimations.append(&animation);
+            break;
+        default:
+            leafAnimations.append(&animation);
+        }
+    }
+
+    if (!translateAnimations.isEmpty() || !rotateAnimations.isEmpty() || !scaleAnimations.isEmpty() || !transformAnimations.isEmpty()) {
+        applicationResults.transform = TransformationMatrix();
+
+        if (translateAnimations.isEmpty())
+            applicationResults.transform->multiply(m_translate);
+        else {
+            for (auto* animation : translateAnimations)
+                animation->apply(applicationResults, time, keepInternalState);
+        }
+
+        if (rotateAnimations.isEmpty())
+            applicationResults.transform->multiply(m_rotate);
+        else {
+            for (auto* animation : rotateAnimations)
+                animation->apply(applicationResults, time, keepInternalState);
+        }
+
+        if (scaleAnimations.isEmpty())
+            applicationResults.transform->multiply(m_scale);
+        else {
+            for (auto* animation : scaleAnimations)
+                animation->apply(applicationResults, time, keepInternalState);
+        }
+
+        if (transformAnimations.isEmpty())
+            applicationResults.transform->multiply(m_transform);
+        else
+            transformAnimations.last()->apply(applicationResults, time, keepInternalState);
+    }
+
+    for (auto* animation : leafAnimations)
+        animation->apply(applicationResults, time, keepInternalState);
 }
 
-void Animations::applyKeepingInternalState(Animation::ApplicationResult& applicationResults, MonotonicTime time)
-{
-    for (auto& animation : m_animations)
-        animation.applyKeepingInternalState(applicationResults, time);
-}
-
-bool Animations::hasActiveAnimationsOfType(AnimatedPropertyID type) const
+bool Animations::hasActiveAnimationsOfType(AnimatedProperty type) const
 {
     return std::any_of(m_animations.begin(), m_animations.end(),
         [&type](const Animation& animation) {
@@ -396,6 +452,32 @@ bool Animations::hasRunningAnimations() const
     return std::any_of(m_animations.begin(), m_animations.end(),
         [](const Animation& animation) {
             return animation.state() == Animation::AnimationState::Playing;
+        });
+}
+
+bool Animations::hasRunningTransformAnimations() const
+{
+    return std::any_of(m_animations.begin(), m_animations.end(),
+        [](const Animation& animation) {
+            switch (animation.keyframes().property()) {
+            case AnimatedProperty::Translate:
+            case AnimatedProperty::Rotate:
+            case AnimatedProperty::Scale:
+            case AnimatedProperty::Transform:
+                break;
+            default:
+                return false;
+            }
+
+            switch (animation.state()) {
+            case Animation::AnimationState::Playing:
+            case Animation::AnimationState::Paused:
+                break;
+            default:
+                return false;
+            }
+
+            return true;
         });
 }
 

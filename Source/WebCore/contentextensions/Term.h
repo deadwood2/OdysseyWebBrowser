@@ -100,8 +100,6 @@ public:
 
     bool operator==(const Term& other) const;
 
-    unsigned hash() const;
-
     bool isEmptyValue() const;
 
 #if CONTENT_EXTENSIONS_STATE_MACHINE_DEBUGGING
@@ -113,6 +111,8 @@ public:
 #endif
     
 private:
+    friend void add(Hasher&, const Term&);
+
     // This is exact for character sets but conservative for groups.
     // The return value can be false for a group equivalent to a universal transition.
     bool isUniversalTransition() const;
@@ -158,42 +158,22 @@ private:
             return WTF::bitCount(m_characters[0]) + WTF::bitCount(m_characters[1]);
         }
         
-        bool operator==(const CharacterSet& other) const
-        {
-            return other.m_inverted == m_inverted
-                && other.m_characters[0] == m_characters[0]
-                && other.m_characters[1] == m_characters[1];
-        }
-
-        unsigned hash() const
-        {
-            return computeHash(m_inverted, m_characters);
-        }
+        friend bool operator==(const CharacterSet&, const CharacterSet&) = default;
 
     private:
+        friend void add(Hasher&, const CharacterSet&);
+
         bool m_inverted { false };
         std::array<uint64_t, 2> m_characters { 0, 0 };
     };
+    friend void add(Hasher&, const Term::CharacterSet&);
 
     struct Group {
         Vector<Term> terms;
 
-        bool operator==(const Group& other) const
-        {
-            return other.terms == terms;
-        }
-
-        unsigned hash() const
-        {
-            unsigned hash = 6421749;
-            for (const Term& term : terms) {
-                unsigned termHash = term.hash();
-                hash = (hash << 16) ^ ((termHash << 11) ^ hash);
-                hash += hash >> 11;
-            }
-            return hash;
-        }
+        friend bool operator==(const Group&, const Group&) = default;
     };
+    friend void add(Hasher&, const Term::Group&);
 
     union AtomData {
         AtomData()
@@ -209,6 +189,31 @@ private:
         Group group;
     } m_atomData;
 };
+
+inline void add(Hasher& hasher, const Term::CharacterSet& characterSet)
+{
+    add(hasher, characterSet.m_inverted, characterSet.m_characters);
+}
+
+inline void add(Hasher& hasher, const Term::Group& group)
+{
+    add(hasher, group.terms);
+}
+
+inline void add(Hasher& hasher, const Term& term)
+{
+    add(hasher, term.m_termType, term.m_quantifier);
+    switch (term.m_termType) {
+    case Term::TermType::Empty:
+        break;
+    case Term::TermType::CharacterSet:
+        add(hasher, term.m_atomData.characterSet);
+        break;
+    case Term::TermType::Group:
+        add(hasher, term.m_atomData.group);
+        break;
+    }
+}
 
 #if CONTENT_EXTENSIONS_STATE_MACHINE_DEBUGGING
 inline String quantifierToString(AtomQuantifier quantifier)
@@ -235,10 +240,10 @@ inline String Term::toString() const
         builder.append('[');
         for (UChar c = 0; c < 128; c++) {
             if (m_atomData.characterSet.get(c)) {
-                if (isASCIIPrintable(c) && !isASCIISpace(c))
+                if (isASCIIPrintable(c) && !isUnicodeCompatibleASCIIWhitespace(c))
                     builder.append(c);
                 else
-                    builder.append("\\u", c);
+                    builder.append("\\u"_s, c);
             }
         }
         builder.append(']');
@@ -540,24 +545,6 @@ inline bool Term::operator==(const Term& other) const
     }
     ASSERT_NOT_REACHED();
     return false;
-}
-
-inline unsigned Term::hash() const
-{
-    unsigned primary = static_cast<unsigned>(m_termType) << 16 | static_cast<unsigned>(m_quantifier);
-    unsigned secondary = 0;
-    switch (m_termType) {
-    case TermType::Empty:
-        secondary = 52184393;
-        break;
-    case TermType::CharacterSet:
-        secondary = m_atomData.characterSet.hash();
-        break;
-    case TermType::Group:
-        secondary = m_atomData.group.hash();
-        break;
-    }
-    return WTF::pairIntHash(primary, secondary);
 }
 
 inline bool Term::isEmptyValue() const

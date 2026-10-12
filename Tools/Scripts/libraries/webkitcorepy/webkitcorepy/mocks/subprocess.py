@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Apple Inc. All rights reserved.
+# Copyright (C) 2020-2022 Apple Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -69,6 +69,7 @@ class Subprocess(ContextStack):
             completion = kwargs.pop('completion', ProcessCompletion())
             cwd = kwargs.pop('cwd', None)
             input = kwargs.pop('input', None)
+            env = kwargs.pop('env', None)
             generator = kwargs.pop('generator', None)
             if kwargs.keys():
                 raise TypeError('__init__() got an unexpected keyword argument {}'.format(kwargs.keys()[0]))
@@ -83,10 +84,12 @@ class Subprocess(ContextStack):
             self.generator = generator or (lambda *args, **kwargs: completion)
             self.cwd = cwd
             self.input = string_utils.encode(input) if input else None
+            self.env = env
 
         def matches(self, *args, **kwargs):
             cwd = kwargs.pop('cwd', None)
             input = kwargs.pop('input', None)
+            env = kwargs.pop('env', None)
             if kwargs.keys():
                 raise TypeError('matches() got an unexpected keyword argument {}'.format(kwargs.keys()[0]))
 
@@ -103,20 +106,25 @@ class Subprocess(ContextStack):
                     continue
                 elif re.match(self.args[count], args[count]):
                     continue
+                elif not count and self.args[count].split('/')[-1] == args[count]:
+                    continue
                 return False
 
             if self.cwd is not None and cwd != self.cwd:
                 return False
             if self.input is not None and input != self.input:
                 return False
+            if self.env is not None and env != self.env:
+                return False
             return True
 
         def __call__(self, *args, **kwargs):
             cwd = kwargs.pop('cwd', None)
             input = kwargs.pop('input', None)
+            env = kwargs.pop('env', dict())
             if kwargs.keys():
                 raise TypeError('__call__() got an unexpected keyword argument {}'.format(kwargs.keys()[0]))
-            return self.generator(*args, cwd=cwd, input=input)
+            return self.generator(*args, cwd=cwd, input=input, env=env)
 
         @classmethod
         def compare(cls, a, b):
@@ -137,7 +145,7 @@ class Subprocess(ContextStack):
         candidates = []
         while current:
             for completion in current.completions:
-                if completion.args[0] == program:
+                if completion.args[0] == program or completion.args[0].split('/')[-1] == program:
                     candidates.append(completion)
                 if current.ordered:
                     break

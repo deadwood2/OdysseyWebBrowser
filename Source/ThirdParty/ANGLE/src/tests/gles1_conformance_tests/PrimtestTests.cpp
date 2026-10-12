@@ -28,7 +28,7 @@ extern void DrawPrims(void);
 
 namespace angle
 {
-class GLES1PrimtestTest : public ANGLETest
+class GLES1PrimtestTest : public ANGLETest<>
 {
   protected:
     GLES1PrimtestTest()
@@ -161,6 +161,3 @@ TEST_P(GLES1PrimtestTest, Texture)
 
 ANGLE_INSTANTIATE_TEST(GLES1PrimtestTest, ES1_OPENGL(), ES1_VULKAN());
 }  // namespace angle
-
-// Included here to fix a compile error due to white box tests using angle_end2end_tests_main.
-void RegisterContextCompatibilityTests() {}

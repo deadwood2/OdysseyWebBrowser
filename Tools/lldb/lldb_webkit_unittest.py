@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 # Copyright (C) 2018 Apple Inc. All rights reserved.
@@ -85,7 +85,7 @@ class LLDBDebugSession(object):
 class TestSummaryProviders(unittest.TestCase):
     @classmethod
     def shouldSkip(cls):
-        return not SystemHost().platform.is_mac()
+        return not SystemHost.get_default().platform.is_mac()
 
     @classmethod
     def setUpClass(cls):
@@ -204,6 +204,12 @@ class TestSummaryProviders(unittest.TestCase):
         self.assertEqual(provider.get_child_at_index(0).GetValue(), '1')
         self.assertEqual(provider.get_child_at_index(1).GetName(), 'D')
         self.assertEqual(provider.get_child_at_index(1).GetValue(), '8')
+
+    # MARK: WTFURL_SummaryProvider test cases
+
+    def serial_test_WTFURL_SummaryProvider(self):
+        variable = lldb_webkit.WTFURL_SummaryProvider(self._sbFrame.FindVariable('aURL'), {})
+        self.assertEqual(variable, '{ https://www.example.com/ }')
 
     # MARK: WTFCompactPointerTuple test cases
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,15 +27,17 @@
 
 namespace JSC {
 
-#if ENABLE(JIT_OPERATION_VALIDATION) || CPU(ARM64E)
+#if ENABLE(JIT_OPERATION_VALIDATION) || ENABLE(JIT_OPERATION_DISASSEMBLY) || CPU(ARM64E)
 
 #define JSC_UTILITY_GATES(v) \
     v(jitCagePtr, NoPtrTag) \
     v(tailCallJSEntryPtrTag, NoPtrTag) \
     v(tailCallJSEntrySlowPathPtrTag, NoPtrTag) \
+    v(tailCallWithoutUntagJSEntryPtrTag, NoPtrTag) \
     v(loopOSREntry, NoPtrTag) \
     v(entryOSREntry, NoPtrTag) \
     v(wasmOSREntry, NoPtrTag) \
+    v(wasmTailCallJSEntrySlowPathPtrTag, NoPtrTag) \
     v(exceptionHandler, NoPtrTag) \
     v(returnFromLLInt, NoPtrTag) \
     v(llint_function_for_call_arity_checkUntag, NoPtrTag) \
@@ -46,30 +48,20 @@ namespace JSC {
 
 #define JSC_JS_GATE_OPCODES(v) \
     v(op_call, JSEntryPtrTag) \
-    v(op_tail_call, JSEntryPtrTag) \
+    v(op_call_ignore_result, JSEntryPtrTag) \
     v(op_construct, JSEntryPtrTag) \
     v(op_iterator_next, JSEntryPtrTag) \
     v(op_iterator_open, JSEntryPtrTag) \
-    v(op_call_slow, JSEntrySlowPathPtrTag) \
-    v(op_tail_call_slow, JSEntrySlowPathPtrTag) \
-    v(op_construct_slow, JSEntrySlowPathPtrTag) \
-    v(op_call_varargs_slow, JSEntrySlowPathPtrTag) \
-    v(op_tail_call_varargs_slow, JSEntrySlowPathPtrTag) \
-    v(op_tail_call_forward_arguments_slow, JSEntrySlowPathPtrTag) \
-    v(op_construct_varargs_slow, JSEntrySlowPathPtrTag) \
-    v(op_call_eval_slow, JSEntrySlowPathPtrTag) \
-    v(op_iterator_next_slow, JSEntrySlowPathPtrTag) \
-    v(op_iterator_open_slow, JSEntrySlowPathPtrTag) \
+    v(op_call_varargs, JSEntryPtrTag) \
+    v(op_construct_varargs, JSEntryPtrTag) \
+    v(op_call_direct_eval_slow, JSEntrySlowPathPtrTag) \
 
 #if ENABLE(WEBASSEMBLY)
 
 #define JSC_WASM_GATE_OPCODES(v) \
     v(wasm_call, JSEntrySlowPathPtrTag) \
-    v(wasm_call_no_tls, JSEntrySlowPathPtrTag) \
     v(wasm_call_indirect, JSEntrySlowPathPtrTag) \
-    v(wasm_call_indirect_no_tls, JSEntrySlowPathPtrTag) \
     v(wasm_call_ref, JSEntrySlowPathPtrTag) \
-    v(wasm_call_ref_no_tls, JSEntrySlowPathPtrTag) \
 
 #else
 #define JSC_WASM_GATE_OPCODES(v)
@@ -86,12 +78,15 @@ enum class Gate : uint8_t {
 
 #define JSC_COUNT(gateName, tag) + 1
 #define JSC_OPCODE_COUNT(gateName, tag) + 3
-static constexpr unsigned numberOfGates = (JSC_UTILITY_GATES(JSC_COUNT)) + (JSC_JS_GATE_OPCODES(JSC_OPCODE_COUNT)) + (JSC_WASM_GATE_OPCODES(JSC_OPCODE_COUNT));
+static constexpr unsigned numberOfGates = 0 JSC_UTILITY_GATES(JSC_COUNT) JSC_JS_GATE_OPCODES(JSC_OPCODE_COUNT) JSC_WASM_GATE_OPCODES(JSC_OPCODE_COUNT);
 #undef JSC_COUNT
 #undef JSC_OPCODE_COUNT
-#else
+
+#else // not (ENABLE(JIT_OPERATION_VALIDATION) || ENABLE(JIT_OPERATION_DISASSEMBLY) || CPU(ARM64E))
+
 // Keep it non-zero to make JSCConfig's array not [0].
 static constexpr unsigned numberOfGates = 1;
-#endif
 
-}
+#endif // ENABLE(JIT_OPERATION_VALIDATION) || ENABLE(JIT_OPERATION_DISASSEMBLY) || CPU(ARM64E)
+
+} // namespace JSC

@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include <wtf/ApproximateTime.h>
 #include <wtf/ClockType.h>
 #include <wtf/MonotonicTime.h>
 #include <wtf/WallTime.h>
@@ -49,7 +50,13 @@ public:
         , m_type(ClockType::Monotonic)
     {
     }
-    
+
+    TimeWithDynamicClockType(ApproximateTime time)
+        : m_value(time.secondsSinceEpoch().value())
+        , m_type(ClockType::Approximate)
+    {
+    }
+
     static TimeWithDynamicClockType fromRawSeconds(double value, ClockType type)
     {
         TimeWithDynamicClockType result;
@@ -73,10 +80,15 @@ public:
     // Asserts that the time is of the type you want.
     WTF_EXPORT_PRIVATE WallTime wallTime() const;
     WTF_EXPORT_PRIVATE MonotonicTime monotonicTime() const;
+    WTF_EXPORT_PRIVATE ApproximateTime approximateTime() const;
     
     WTF_EXPORT_PRIVATE WallTime approximateWallTime() const;
     WTF_EXPORT_PRIVATE MonotonicTime approximateMonotonicTime() const;
     
+    bool isNaN() const { return std::isnan(m_value); }
+    bool isInfinity() const { return std::isinf(m_value); }
+    bool isFinite() const { return std::isfinite(m_value); }
+
     explicit operator bool() const { return !!m_value; }
     
     TimeWithDynamicClockType operator+(Seconds other) const
@@ -108,16 +120,7 @@ public:
     
     WTF_EXPORT_PRIVATE Seconds operator-(const TimeWithDynamicClockType&) const;
     
-    bool operator==(const TimeWithDynamicClockType& other) const
-    {
-        return m_value == other.m_value
-            && m_type == other.m_type;
-    }
-    
-    bool operator!=(const TimeWithDynamicClockType& other) const
-    {
-        return !(*this == other);
-    }
+    friend bool operator==(const TimeWithDynamicClockType&, const TimeWithDynamicClockType&) = default;
     
     // To do relative comparisons, you must be using times with the same clock type.
     WTF_EXPORT_PRIVATE bool operator<(const TimeWithDynamicClockType&) const;
@@ -137,25 +140,6 @@ WTF_EXPORT_PRIVATE void sleep(const TimeWithDynamicClockType&);
 WTF_EXPORT_PRIVATE bool hasElapsed(const TimeWithDynamicClockType&);
 
 } // namespace WTF
-
-namespace std {
-
-inline bool isnan(WTF::TimeWithDynamicClockType time)
-{
-    return std::isnan(time.secondsSinceEpoch().value());
-}
-
-inline bool isinf(WTF::TimeWithDynamicClockType time)
-{
-    return std::isinf(time.secondsSinceEpoch().value());
-}
-
-inline bool isfinite(WTF::TimeWithDynamicClockType time)
-{
-    return std::isfinite(time.secondsSinceEpoch().value());
-}
-
-} // namespace std
 
 using WTF::TimeWithDynamicClockType;
 using WTF::hasElapsed;

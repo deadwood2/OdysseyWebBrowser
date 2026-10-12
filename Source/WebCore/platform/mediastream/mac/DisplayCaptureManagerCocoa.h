@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Apple Inc. All rights reserved.
+ * Copyright (C) 2017-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -27,11 +27,11 @@
 
 #if ENABLE(MEDIA_STREAM)
 
-#include "CaptureDeviceManager.h"
+#include "DisplayCaptureManager.h"
 
 namespace WebCore {
 
-class DisplayCaptureManagerCocoa final : public CaptureDeviceManager {
+class DisplayCaptureManagerCocoa final : public DisplayCaptureManager {
 public:
     static DisplayCaptureManagerCocoa& singleton();
 
@@ -39,9 +39,6 @@ public:
 
 private:
     virtual ~DisplayCaptureManagerCocoa() = default;
-
-    void updateDisplayCaptureDevices();
-    void updateWindowCaptureDevices();
 
     const Vector<CaptureDevice>& captureDevices() final;
 

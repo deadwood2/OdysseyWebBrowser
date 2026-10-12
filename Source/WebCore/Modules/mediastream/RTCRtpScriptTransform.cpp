@@ -35,23 +35,23 @@
 #include "RTCRtpScriptTransformer.h"
 #include "RTCRtpTransformBackend.h"
 #include "Worker.h"
-#include <wtf/IsoMallocInlines.h>
+#include <wtf/TZoneMallocInlines.h>
 #include <wtf/WeakPtr.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(RTCRtpScriptTransform);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RTCRtpScriptTransform);
 
 ExceptionOr<Ref<RTCRtpScriptTransform>> RTCRtpScriptTransform::create(JSC::JSGlobalObject& state, Worker& worker, JSC::JSValue options, Vector<JSC::Strong<JSC::JSObject>>&& transfer)
 {
     if (!worker.scriptExecutionContext())
-        return Exception { InvalidStateError, "Worker frame is detached"_s };
+        return Exception { ExceptionCode::InvalidStateError, "Worker frame is detached"_s };
 
-    auto* context = JSC::jsCast<JSDOMGlobalObject*>(&state)->scriptExecutionContext();
+    RefPtr context = JSC::jsCast<JSDOMGlobalObject*>(&state)->scriptExecutionContext();
     if (!context)
-        return Exception { InvalidStateError, "Invalid context"_s };
+        return Exception { ExceptionCode::InvalidStateError, "Invalid context"_s };
 
-    Vector<RefPtr<MessagePort>> transferredPorts;
+    Vector<Ref<MessagePort>> transferredPorts;
     auto serializedOptions = SerializedScriptValue::create(state, options, WTFMove(transfer), transferredPorts);
     if (serializedOptions.hasException())
         return serializedOptions.releaseException();
@@ -60,7 +60,7 @@ ExceptionOr<Ref<RTCRtpScriptTransform>> RTCRtpScriptTransform::create(JSC::JSGlo
     if (channels.hasException())
         return channels.releaseException();
 
-    auto transform = adoptRef(*new RTCRtpScriptTransform(*context, makeRef(worker)));
+    auto transform = adoptRef(*new RTCRtpScriptTransform(*context, worker));
     transform->suspendIfNeeded();
 
     worker.createRTCRtpScriptTransformer(transform, { serializedOptions.releaseReturnValue(), channels.releaseReturnValue() });
@@ -86,10 +86,10 @@ void RTCRtpScriptTransform::setTransformer(RTCRtpScriptTransformer& transformer)
         Locker locker { m_transformerLock };
         ASSERT(!m_isTransformerInitialized);
         m_isTransformerInitialized = true;
-        m_transformer = makeWeakPtr(transformer);
+        m_transformer = transformer;
     }
     transformer.startPendingActivity();
-    callOnMainThread([this, protectedThis = makeRef(*this)]() mutable {
+    callOnMainThread([this, protectedThis = Ref { *this }]() mutable {
         if (m_backend)
             setupTransformer(m_backend.releaseNonNull());
     });
@@ -113,8 +113,8 @@ void RTCRtpScriptTransform::willClearBackend(RTCRtpTransformBackend&)
 void RTCRtpScriptTransform::initializeTransformer(RTCRtpTransformBackend& backend)
 {
     m_isAttached = true;
-    if (!setupTransformer(makeRef(backend)))
-        m_backend = makeRef(backend);
+    if (!setupTransformer(backend))
+        m_backend = &backend;
 }
 
 bool RTCRtpScriptTransform::setupTransformer(Ref<RTCRtpTransformBackend>&& backend)

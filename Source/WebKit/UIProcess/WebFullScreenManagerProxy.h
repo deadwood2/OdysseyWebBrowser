@@ -27,15 +27,27 @@
 
 #if ENABLE(FULLSCREEN_API)
 
+#include "FullScreenMediaDetails.h"
 #include "MessageReceiver.h"
+#include <WebCore/HTMLMediaElement.h>
+#include <WebCore/HTMLMediaElementEnums.h>
+#include <wtf/CheckedRef.h>
 #include <wtf/CompletionHandler.h>
 #include <wtf/RefCounted.h>
 #include <wtf/RefPtr.h>
 #include <wtf/Seconds.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/Vector.h>
 
+namespace WebKit {
+class WebFullScreenManagerProxy;
+}
+
 namespace WebCore {
+class FloatSize;
 class IntRect;
+
+enum class ScreenOrientationType : uint8_t;
 
 template <typename> class RectEdges;
 using FloatBoxExtent = RectEdges<float>;
@@ -44,6 +56,7 @@ using FloatBoxExtent = RectEdges<float>;
 namespace WebKit {
 
 class WebPageProxy;
+struct SharedPreferencesForWebProcess;
 
 class WebFullScreenManagerProxyClient {
 public:
@@ -51,39 +64,64 @@ public:
 
     virtual void closeFullScreenManager() = 0;
     virtual bool isFullScreen() = 0;
+#if PLATFORM(IOS_FAMILY)
+    virtual void enterFullScreen(WebCore::FloatSize mediaDimensions) = 0;
+#else
     virtual void enterFullScreen() = 0;
+#endif
     virtual void exitFullScreen() = 0;
     virtual void beganEnterFullScreen(const WebCore::IntRect& initialFrame, const WebCore::IntRect& finalFrame) = 0;
     virtual void beganExitFullScreen(const WebCore::IntRect& initialFrame, const WebCore::IntRect& finalFrame) = 0;
+
+    virtual bool lockFullscreenOrientation(WebCore::ScreenOrientationType) { return false; }
+    virtual void unlockFullscreenOrientation() { }
 };
 
-class WebFullScreenManagerProxy : public IPC::MessageReceiver {
-    WTF_MAKE_FAST_ALLOCATED;
+class WebFullScreenManagerProxy : public IPC::MessageReceiver, public CanMakeCheckedPtr<WebFullScreenManagerProxy> {
+    WTF_MAKE_TZONE_ALLOCATED(WebFullScreenManagerProxy);
+    WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(WebFullScreenManagerProxy);
 public:
     WebFullScreenManagerProxy(WebPageProxy&, WebFullScreenManagerProxyClient&);
     virtual ~WebFullScreenManagerProxy();
 
+    const SharedPreferencesForWebProcess& sharedPreferencesForWebProcess() const;
+
     bool isFullScreen();
     bool blocksReturnToFullscreenFromPictureInPicture() const;
+#if ENABLE(VIDEO_USES_ELEMENT_FULLSCREEN)
+    bool isVideoElement() const { return m_isVideoElement; }
+#endif
+#if ENABLE(QUICKLOOK_FULLSCREEN)
+    bool isImageElement() const { return m_imageBuffer; }
+    void prepareQuickLookImageURL(CompletionHandler<void(URL&&)>&&) const;
+#endif // QUICKLOOK_FULLSCREEN
     void close();
 
-    void willEnterFullScreen();
+    enum class FullscreenState : uint8_t {
+        NotInFullscreen,
+        EnteringFullscreen,
+        InFullscreen,
+        ExitingFullscreen,
+    };
+    FullscreenState fullscreenState() const { return m_fullscreenState; }
+    void willEnterFullScreen(WebCore::HTMLMediaElementEnums::VideoFullscreenMode = WebCore::HTMLMediaElementEnums::VideoFullscreenModeStandard);
     void didEnterFullScreen();
     void willExitFullScreen();
     void didExitFullScreen();
     void setAnimatingFullScreen(bool);
-    void requestEnterFullScreen();
+    void requestRestoreFullScreen(CompletionHandler<void(bool)>&&);
     void requestExitFullScreen();
     void saveScrollPosition();
     void restoreScrollPosition();
     void setFullscreenInsets(const WebCore::FloatBoxExtent&);
     void setFullscreenAutoHideDuration(Seconds);
-    void setFullscreenControlsHidden(bool);
     void closeWithCallback(CompletionHandler<void()>&&);
+    bool lockFullscreenOrientation(WebCore::ScreenOrientationType);
+    void unlockFullscreenOrientation();
 
 private:
     void supportsFullScreen(bool withKeyboard, CompletionHandler<void(bool)>&&);
-    void enterFullScreen(bool blocksReturnToFullscreenFromPictureInPicture);
+    void enterFullScreen(bool blocksReturnToFullscreenFromPictureInPicture, FullScreenMediaDetails&&);
     void exitFullScreen();
     void beganEnterFullScreen(const WebCore::IntRect& initialFrame, const WebCore::IntRect& finalFrame);
     void beganExitFullScreen(const WebCore::IntRect& initialFrame, const WebCore::IntRect& finalFrame);
@@ -92,10 +130,30 @@ private:
     void didReceiveMessage(IPC::Connection&, IPC::Decoder&) override;
     bool didReceiveSyncMessage(IPC::Connection&, IPC::Decoder&, UniqueRef<IPC::Encoder>&) override;
 
+#if !RELEASE_LOG_DISABLED
+    const Logger& logger() const { return m_logger; }
+    const void* logIdentifier() const { return m_logIdentifier; }
+    ASCIILiteral logClassName() const { return "WebFullScreenManagerProxy"_s; }
+    WTFLogChannel& logChannel() const;
+#endif
+
     WebPageProxy& m_page;
     WebFullScreenManagerProxyClient& m_client;
+    FullscreenState m_fullscreenState { FullscreenState::NotInFullscreen };
     bool m_blocksReturnToFullscreenFromPictureInPicture { false };
+#if ENABLE(VIDEO_USES_ELEMENT_FULLSCREEN)
+    bool m_isVideoElement { false };
+#endif
+#if ENABLE(QUICKLOOK_FULLSCREEN)
+    String m_imageMIMEType;
+    RefPtr<WebCore::SharedBuffer> m_imageBuffer;
+#endif // QUICKLOOK_FULLSCREEN
     Vector<CompletionHandler<void()>> m_closeCompletionHandlers;
+
+#if !RELEASE_LOG_DISABLED
+    Ref<const Logger> m_logger;
+    const void* m_logIdentifier;
+#endif
 };
 
 } // namespace WebKit

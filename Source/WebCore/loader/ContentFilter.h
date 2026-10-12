@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2016 Apple Inc. All rights reserved.
+ * Copyright (C) 2013-2024 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,6 +28,7 @@
 #if ENABLE(CONTENT_FILTERING)
 
 #include "CachedResourceHandle.h"
+#include "LoaderMalloc.h"
 #include "PlatformContentFilter.h"
 #include "ResourceError.h"
 #include <functional>
@@ -44,28 +45,42 @@ class ResourceResponse;
 class SubstituteData;
 
 class ContentFilter {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_FAST_ALLOCATED_WITH_HEAP_IDENTIFIER(Loader);
     WTF_MAKE_NONCOPYABLE(ContentFilter);
 
 public:
     template <typename T> static void addType() { types().append(type<T>()); }
 
-    static std::unique_ptr<ContentFilter> create(ContentFilterClient&);
-    ~ContentFilter();
+    WEBCORE_EXPORT static std::unique_ptr<ContentFilter> create(ContentFilterClient&);
+    WEBCORE_EXPORT ~ContentFilter();
 
-    static const char* urlScheme() { return "x-apple-content-filter"; }
+    static constexpr ASCIILiteral urlScheme() { return "x-apple-content-filter"_s; }
 
+    WEBCORE_EXPORT void startFilteringMainResource(const URL&);
     void startFilteringMainResource(CachedRawResource&);
-    void stopFilteringMainResource();
+    WEBCORE_EXPORT void stopFilteringMainResource();
 
-    bool continueAfterWillSendRequest(ResourceRequest&, const ResourceResponse&);
-    bool continueAfterResponseReceived(const ResourceResponse&);
-    bool continueAfterDataReceived(const uint8_t* data, int length);
+    WEBCORE_EXPORT bool continueAfterWillSendRequest(ResourceRequest&, const ResourceResponse&);
+    WEBCORE_EXPORT bool continueAfterResponseReceived(const ResourceResponse&);
+    WEBCORE_EXPORT bool continueAfterDataReceived(const SharedBuffer&, size_t encodedDataLength);
+    WEBCORE_EXPORT bool continueAfterNotifyFinished(const URL& resourceURL);
+    bool continueAfterDataReceived(const SharedBuffer&);
     bool continueAfterNotifyFinished(CachedResource&);
 
     static bool continueAfterSubstituteDataRequest(const DocumentLoader& activeLoader, const SubstituteData&);
     bool willHandleProvisionalLoadFailure(const ResourceError&) const;
-    void handleProvisionalLoadFailure(const ResourceError&);
+    WEBCORE_EXPORT void handleProvisionalLoadFailure(const ResourceError&);
+
+    const ResourceError& blockedError() const { return m_blockedError; }
+    void setBlockedError(const ResourceError& error) { m_blockedError = error; }
+    bool isAllowed() const { return m_state == State::Allowed; }
+    bool responseReceived() const { return m_responseReceived; }
+
+    WEBCORE_EXPORT static const URL& blockedPageURL();
+
+#if HAVE(AUDIT_TOKEN)
+    WEBCORE_EXPORT void setHostProcessAuditToken(const std::optional<audit_token_t>&);
+#endif
 
 private:
     using State = PlatformContentFilter::State;
@@ -82,15 +97,27 @@ private:
 
     template <typename Function> void forEachContentFilterUntilBlocked(Function&&);
     void didDecide(State);
-    void deliverResourceData(CachedResource&);
+    void deliverResourceData(const SharedBuffer&, size_t encodedDataLength = 0);
+    void deliverStoredResourceData();
 
+    Ref<ContentFilterClient> protectedClient() const;
+    
+    URL url();
+    
     Container m_contentFilters;
-    ContentFilterClient& m_client;
+    WeakRef<ContentFilterClient> m_client;
+    URL m_mainResourceURL;
+    struct ResourceDataItem {
+        RefPtr<const SharedBuffer> buffer;
+        size_t encodedDataLength;
+    };
+    Vector<ResourceDataItem> m_buffers;
     CachedResourceHandle<CachedRawResource> m_mainResource;
-    const PlatformContentFilter* m_blockingContentFilter { nullptr };
+    WeakPtr<const PlatformContentFilter> m_blockingContentFilter;
     State m_state { State::Stopped };
     ResourceError m_blockedError;
     bool m_isLoadingBlockedPage { false };
+    bool m_responseReceived { false };
 };
 
 template <typename T>

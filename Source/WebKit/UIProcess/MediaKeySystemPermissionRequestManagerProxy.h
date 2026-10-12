@@ -31,7 +31,17 @@
 #include <wtf/HashMap.h>
 #include <wtf/LoggerHelper.h>
 #include <wtf/RunLoop.h>
+#include <wtf/TZoneMalloc.h>
 #include <wtf/WeakPtr.h>
+
+namespace WebKit {
+class MediaKeySystemPermissionRequestManagerProxy;
+}
+
+namespace WTF {
+template<typename T> struct IsDeprecatedWeakRefSmartPointerException;
+template<> struct IsDeprecatedWeakRefSmartPointerException<WebKit::MediaKeySystemPermissionRequestManagerProxy> : std::true_type { };
+}
 
 namespace WebCore {
 class SecurityOrigin;
@@ -42,7 +52,7 @@ namespace WebKit {
 class WebPageProxy;
 
 class MediaKeySystemPermissionRequestManagerProxy : public CanMakeWeakPtr<MediaKeySystemPermissionRequestManagerProxy> {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(MediaKeySystemPermissionRequestManagerProxy);
 public:
     explicit MediaKeySystemPermissionRequestManagerProxy(WebPageProxy&);
     ~MediaKeySystemPermissionRequestManagerProxy();

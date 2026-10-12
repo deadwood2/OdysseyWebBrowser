@@ -36,6 +36,7 @@ class Blit9;
 class Context9;
 class IndexDataManager;
 class ProgramD3D;
+class ProgramExecutableD3D;
 class RenderTarget9;
 class StreamingIndexBufferInterface;
 class StaticIndexBufferInterface;
@@ -81,7 +82,8 @@ class Renderer9 : public RendererD3D
                                  EGLint *height,
                                  GLsizei *samples,
                                  gl::Format *glFormat,
-                                 const angle::Format **angleFormat) const override;
+                                 const angle::Format **angleFormat,
+                                 UINT *arraySlice) const override;
     egl::Error validateShareHandle(const egl::Config *config,
                                    HANDLE shareHandle,
                                    const egl::AttributeMap &attribs) const override;
@@ -128,7 +130,7 @@ class Renderer9 : public RendererD3D
     angle::Result applyRenderTarget(const gl::Context *context,
                                     const RenderTarget9 *colorRenderTarget,
                                     const RenderTarget9 *depthStencilRenderTarget);
-    void applyUniforms(ProgramD3D *programD3D);
+    void applyUniforms(ProgramExecutableD3D *executableD3D);
     bool applyPrimitiveType(gl::PrimitiveMode primitiveType,
                             GLsizei elementCount,
                             bool usesPointSize);
@@ -156,7 +158,6 @@ class Renderer9 : public RendererD3D
     bool testDeviceResettable() override;
 
     VendorID getVendorId() const;
-    std::string getRendererDescription() const;
     DeviceIdentifier getAdapterIdentifier() const override;
 
     IDirect3DDevice9 *getDevice() { return mDevice; }
@@ -249,7 +250,7 @@ class Renderer9 : public RendererD3D
                                       gl::ShaderType type,
                                       const std::vector<D3DVarying> &streamOutVaryings,
                                       bool separatedOutputBuffers,
-                                      const angle::CompilerWorkaroundsD3D &workarounds,
+                                      const CompilerWorkaroundsD3D &workarounds,
                                       ShaderExecutableD3D **outExectuable) override;
     angle::Result ensureHLSLCompilerInitialized(d3d::Context *context) override;
 
@@ -275,49 +276,63 @@ class Renderer9 : public RendererD3D
                             bool unpackFlipY,
                             bool unpackPremultiplyAlpha,
                             bool unpackUnmultiplyAlpha) override;
-    TextureStorage *createTextureStorage2D(SwapChainD3D *swapChain) override;
+    TextureStorage *createTextureStorage2D(SwapChainD3D *swapChain,
+                                           const std::string &label) override;
     TextureStorage *createTextureStorageEGLImage(EGLImageD3D *eglImage,
-                                                 RenderTargetD3D *renderTargetD3D) override;
-    TextureStorage *createTextureStorageExternal(
-        egl::Stream *stream,
-        const egl::Stream::GLTextureDescription &desc) override;
+                                                 RenderTargetD3D *renderTargetD3D,
+                                                 const std::string &label) override;
+
+    TextureStorage *createTextureStorageBuffer(const gl::OffsetBindingPointer<gl::Buffer> &buffer,
+                                               GLenum internalFormat,
+                                               const std::string &label) override;
+
+    TextureStorage *createTextureStorageExternal(egl::Stream *stream,
+                                                 const egl::Stream::GLTextureDescription &desc,
+                                                 const std::string &label) override;
+
     TextureStorage *createTextureStorage2D(GLenum internalformat,
-                                           bool renderTarget,
+                                           BindFlags bindFlags,
                                            GLsizei width,
                                            GLsizei height,
                                            int levels,
+                                           const std::string &label,
                                            bool hintLevelZeroOnly) override;
     TextureStorage *createTextureStorageCube(GLenum internalformat,
-                                             bool renderTarget,
+                                             BindFlags bindFlags,
                                              int size,
                                              int levels,
-                                             bool hintLevelZeroOnly) override;
+                                             bool hintLevelZeroOnly,
+                                             const std::string &label) override;
     TextureStorage *createTextureStorage3D(GLenum internalformat,
-                                           bool renderTarget,
+                                           BindFlags bindFlags,
                                            GLsizei width,
                                            GLsizei height,
                                            GLsizei depth,
-                                           int levels) override;
+                                           int levels,
+                                           const std::string &label) override;
     TextureStorage *createTextureStorage2DArray(GLenum internalformat,
-                                                bool renderTarget,
+                                                BindFlags bindFlags,
                                                 GLsizei width,
                                                 GLsizei height,
                                                 GLsizei depth,
-                                                int levels) override;
+                                                int levels,
+                                                const std::string &label) override;
 
     TextureStorage *createTextureStorage2DMultisample(GLenum internalformat,
                                                       GLsizei width,
                                                       GLsizei height,
                                                       int levels,
                                                       int samples,
-                                                      bool fixedSampleLocations) override;
+                                                      bool fixedSampleLocations,
+                                                      const std::string &label) override;
     TextureStorage *createTextureStorage2DMultisampleArray(GLenum internalformat,
                                                            GLsizei width,
                                                            GLsizei height,
                                                            GLsizei depth,
                                                            int levels,
                                                            int samples,
-                                                           bool fixedSampleLocations) override;
+                                                           bool fixedSampleLocations,
+                                                           const std::string &label) override;
 
     // Buffer creation
     VertexBuffer *createVertexBuffer() override;
@@ -407,6 +422,10 @@ class Renderer9 : public RendererD3D
 
     void setGlobalDebugAnnotator() override;
 
+    std::string getRendererDescription() const override;
+    std::string getVendorString() const override;
+    std::string getVersionString(bool includeFullVersion) const override;
+
   private:
     angle::Result drawArraysImpl(const gl::Context *context,
                                  gl::PrimitiveMode mode,
@@ -428,9 +447,12 @@ class Renderer9 : public RendererD3D
     void generateCaps(gl::Caps *outCaps,
                       gl::TextureCapsMap *outTextureCaps,
                       gl::Extensions *outExtensions,
-                      gl::Limitations *outLimitations) const override;
+                      gl::Limitations *outLimitations,
+                      ShPixelLocalStorageOptions *outPLSOptions) const override;
 
     void initializeFeatures(angle::FeaturesD3D *features) const override;
+
+    void initializeFrontendFeatures(angle::FrontendFeatures *features) const override;
 
     angle::Result setBlendDepthRasterStates(const gl::Context *context, gl::PrimitiveMode drawMode);
 

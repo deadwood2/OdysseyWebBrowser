@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Apple Inc. All rights reserved.
+ * Copyright (C) 2020-2022 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +29,7 @@
 #if PLATFORM(COCOA) && ENABLE(MEDIA_STREAM)
 
 #include "GPUProcessConnection.h"
-#include "SharedRingBufferStorage.h"
+#include "SharedCARingBuffer.h"
 #include "UserMediaCaptureManager.h"
 #include "UserMediaCaptureManagerMessages.h"
 #include "UserMediaCaptureManagerProxyMessages.h"
@@ -39,75 +39,141 @@
 #include <WebCore/RealtimeMediaSource.h>
 #include <WebCore/RealtimeMediaSourceCenter.h>
 #include <WebCore/WebAudioBufferList.h>
+#include <wtf/NativePromise.h>
 
 namespace WebKit {
 using namespace WebCore;
+
+static Ref<IPC::Connection> getSourceConnection(bool shouldCaptureInGPUProcess)
+{
+    ASSERT(isMainRunLoop());
+#if ENABLE(GPU_PROCESS)
+    if (shouldCaptureInGPUProcess)
+        return WebProcess::singleton().ensureGPUProcessConnection().connection();
+#endif
+    return *WebProcess::singleton().parentProcessConnection();
+}
+
+RemoteRealtimeMediaSourceProxy::RemoteRealtimeMediaSourceProxy(WebCore::RealtimeMediaSourceIdentifier identifier, const WebCore::CaptureDevice& device, bool shouldCaptureInGPUProcess, const WebCore::MediaConstraints* constraints)
+    : m_identifier(identifier)
+    , m_connection(getSourceConnection(shouldCaptureInGPUProcess))
+    , m_device(device)
+    , m_shouldCaptureInGPUProcess(shouldCaptureInGPUProcess)
+{
+    if (constraints)
+        m_constraints = *constraints;
+}
 
 RemoteRealtimeMediaSourceProxy::~RemoteRealtimeMediaSourceProxy()
 {
     failApplyConstraintCallbacks("Source terminated"_s);
 }
 
-IPC::Connection* RemoteRealtimeMediaSourceProxy::connection()
+void RemoteRealtimeMediaSourceProxy::updateConnection()
 {
-    ASSERT(isMainRunLoop());
-#if ENABLE(GPU_PROCESS)
-    if (m_shouldCaptureInGPUProcess)
-        return &WebProcess::singleton().ensureGPUProcessConnection().connection();
-#endif
-    return WebProcess::singleton().parentProcessConnection();
+    m_connection = getSourceConnection(m_shouldCaptureInGPUProcess);
 }
 
-void RemoteRealtimeMediaSourceProxy::startProducingData()
+void RemoteRealtimeMediaSourceProxy::startProducingData(WebCore::PageIdentifier pageIdentifier)
 {
-    connection()->send(Messages::UserMediaCaptureManagerProxy::StartProducingData { m_identifier }, 0);
+    m_interrupted = false;
+    m_connection->send(Messages::UserMediaCaptureManagerProxy::StartProducingData { m_identifier, pageIdentifier }, 0);
 }
 
 void RemoteRealtimeMediaSourceProxy::stopProducingData()
 {
-    connection()->send(Messages::UserMediaCaptureManagerProxy::StopProducingData { m_identifier }, 0);
+    m_interrupted = false;
+    m_connection->send(Messages::UserMediaCaptureManagerProxy::StopProducingData { m_identifier }, 0);
 }
 
-void RemoteRealtimeMediaSourceProxy::createRemoteMediaSource(const String& deviceIDHashSalt, CreateCallback&& callback)
+void RemoteRealtimeMediaSourceProxy::endProducingData()
 {
-    connection()->sendWithAsyncReply(Messages::UserMediaCaptureManagerProxy::CreateMediaSourceForCaptureDeviceWithConstraints(identifier(), m_device, deviceIDHashSalt, m_constraints), WTFMove(callback));
+    m_connection->send(Messages::UserMediaCaptureManagerProxy::EndProducingData { m_identifier }, 0);
+}
+
+void RemoteRealtimeMediaSourceProxy::createRemoteMediaSource(const MediaDeviceHashSalts& deviceIDHashSalts, WebCore::PageIdentifier pageIdentifier, CreateCallback&& callback, bool shouldUseRemoteFrame)
+{
+    m_connection->sendWithAsyncReply(Messages::UserMediaCaptureManagerProxy::CreateMediaSourceForCaptureDeviceWithConstraints(identifier(), m_device, deviceIDHashSalts, m_constraints, shouldUseRemoteFrame, pageIdentifier), WTFMove(callback));
+}
+
+RemoteRealtimeMediaSourceProxy RemoteRealtimeMediaSourceProxy::clone()
+{
+    return { RealtimeMediaSourceIdentifier::generate(), m_device, m_shouldCaptureInGPUProcess, &m_constraints };
+}
+
+void RemoteRealtimeMediaSourceProxy::createRemoteCloneSource(WebCore::RealtimeMediaSourceIdentifier cloneIdentifier, WebCore::PageIdentifier pageIdentifier)
+{
+    m_connection->send(Messages::UserMediaCaptureManagerProxy::Clone { m_identifier, cloneIdentifier, pageIdentifier }, 0);
 }
 
 void RemoteRealtimeMediaSourceProxy::applyConstraints(const MediaConstraints& constraints, RealtimeMediaSource::ApplyConstraintsHandler&& completionHandler)
 {
-    m_pendingApplyConstraintsCallbacks.append(WTFMove(completionHandler));
+    m_pendingApplyConstraintsRequests.append(std::make_pair(WTFMove(completionHandler), constraints));
     // FIXME: Use sendAsyncWithReply.
-    connection()->send(Messages::UserMediaCaptureManagerProxy::ApplyConstraints { m_identifier, constraints }, 0);
+    m_connection->send(Messages::UserMediaCaptureManagerProxy::ApplyConstraints { m_identifier, constraints }, 0);
+}
+
+struct RemoteRealtimeMediaSourceProxy::PromiseConverter {
+    static auto convertError(IPC::Error)
+    {
+        return makeUnexpected(String { "IPC Connection closed"_s });
+    }
+};
+
+Ref<WebCore::RealtimeMediaSource::TakePhotoNativePromise> RemoteRealtimeMediaSourceProxy::takePhoto(PhotoSettings&& settings)
+{
+    return m_connection->sendWithPromisedReply<PromiseConverter>(Messages::UserMediaCaptureManagerProxy::TakePhoto { identifier(), WTFMove(settings) });
+}
+
+Ref<WebCore::RealtimeMediaSource::PhotoCapabilitiesNativePromise> RemoteRealtimeMediaSourceProxy::getPhotoCapabilities()
+{
+    return m_connection->sendWithPromisedReply<PromiseConverter>(Messages::UserMediaCaptureManagerProxy::GetPhotoCapabilities { identifier() });
+}
+
+Ref<WebCore::RealtimeMediaSource::PhotoSettingsNativePromise> RemoteRealtimeMediaSourceProxy::getPhotoSettings()
+{
+    return m_connection->sendWithPromisedReply<PromiseConverter>(Messages::UserMediaCaptureManagerProxy::GetPhotoSettings { identifier() });
 }
 
 void RemoteRealtimeMediaSourceProxy::applyConstraintsSucceeded()
 {
-    auto callback = m_pendingApplyConstraintsCallbacks.takeFirst();
-    callback({ });
+    auto request = m_pendingApplyConstraintsRequests.takeFirst();
+    m_constraints = WTFMove(request.second);
+    request.first({ });
 }
 
-void RemoteRealtimeMediaSourceProxy::applyConstraintsFailed(String&& failedConstraint, String&& errorMessage)
+void RemoteRealtimeMediaSourceProxy::applyConstraintsFailed(WebCore::MediaConstraintType invalidConstraint, String&& errorMessage)
 {
-    auto callback = m_pendingApplyConstraintsCallbacks.takeFirst();
-    callback(RealtimeMediaSource::ApplyConstraintsError { WTFMove(failedConstraint), WTFMove(errorMessage) });
+    auto callback = m_pendingApplyConstraintsRequests.takeFirst().first;
+    callback(RealtimeMediaSource::ApplyConstraintsError { invalidConstraint, WTFMove(errorMessage) });
 }
 
 void RemoteRealtimeMediaSourceProxy::failApplyConstraintCallbacks(const String& errorMessage)
 {
-    auto callbacks = WTFMove(m_pendingApplyConstraintsCallbacks);
-    while (!callbacks.isEmpty())
-        callbacks.takeFirst()(RealtimeMediaSource::ApplyConstraintsError { { }, errorMessage });
+    auto requests = WTFMove(m_pendingApplyConstraintsRequests);
+    while (!requests.isEmpty())
+        requests.takeFirst().first(RealtimeMediaSource::ApplyConstraintsError { { }, errorMessage });
 }
 
-void RemoteRealtimeMediaSourceProxy::hasEnded()
+void RemoteRealtimeMediaSourceProxy::end()
 {
-    connection()->send(Messages::UserMediaCaptureManagerProxy::End { m_identifier }, 0);
+    ASSERT(!m_isEnded);
+    m_isEnded = true;
+    m_connection->send(Messages::UserMediaCaptureManagerProxy::RemoveSource { m_identifier }, 0);
 }
 
-void RemoteRealtimeMediaSourceProxy::whenReady(CompletionHandler<void(String)>&& callback)
+void RemoteRealtimeMediaSourceProxy::whenReady(CompletionHandler<void(WebCore::CaptureSourceError&&)>&& callback)
 {
     if (m_isReady)
-        return callback(WTFMove(m_errorMessage));
+        return callback(WebCore::CaptureSourceError(m_failureReason));
+
+    if (m_callback) {
+        callback = [previousCallbacks = std::exchange(m_callback, { }), newCallback = WTFMove(callback)] (auto&& error) mutable {
+            previousCallbacks(WebCore::CaptureSourceError { error });
+            newCallback(WTFMove(error));
+        };
+    }
+
     m_callback = WTFMove(callback);
 }
 
@@ -119,12 +185,19 @@ void RemoteRealtimeMediaSourceProxy::setAsReady()
         m_callback({ });
 }
 
-void RemoteRealtimeMediaSourceProxy::didFail(String&& errorMessage)
+void RemoteRealtimeMediaSourceProxy::didFail(CaptureSourceError&& reason)
 {
     m_isReady = true;
-    m_errorMessage = WTFMove(errorMessage);
+    m_failureReason = WTFMove(reason);
     if (m_callback)
-        m_callback(m_errorMessage);
+        m_callback(WebCore::CaptureSourceError(m_failureReason));
+}
+
+bool RemoteRealtimeMediaSourceProxy::isPowerEfficient() const
+{
+    auto syncResult = m_connection->sendSync(Messages::UserMediaCaptureManagerProxy::IsPowerEfficient { identifier() }, 0, GPUProcessConnection::defaultTimeout);
+    auto [isPowerEfficient] = syncResult.takeReplyOr(false);
+    return isPowerEfficient;
 }
 
 }

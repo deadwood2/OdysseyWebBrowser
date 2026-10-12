@@ -25,7 +25,10 @@
 
 #include "config.h"
 #include "SessionHost.h"
+
+#include <wtf/NeverDestroyed.h>
 #include <wtf/UUID.h>
+#include <wtf/text/MakeString.h>
 
 namespace WebDriver {
 
@@ -49,8 +52,7 @@ void SessionHost::sendWebInspectorEvent(const String& event)
     if (!m_clientID)
         return;
 
-    const CString message = event.utf8();
-    send(m_clientID.value(), message.dataAsUInt8Ptr(), message.length());
+    send(m_clientID.value(), event.utf8().span());
 }
 
 void SessionHost::connectToBrowser(Function<void (std::optional<String> error)>&& completionHandler)
@@ -67,13 +69,13 @@ void SessionHost::connectToBrowser(Function<void (std::optional<String> error)>&
     }
 
     if (targetIp.isEmpty() || !targetPort) {
-        completionHandler(makeString("Target IP/port is invalid, or not specified."));
+        completionHandler(makeString("Target IP/port is invalid, or not specified."_s));
         return;
     }
 
     m_clientID = connectInet(targetIp.utf8().data(), targetPort);
     if (!m_clientID)
-        completionHandler(makeString(targetIp.utf8().data(), ":", String::number(targetPort), " is not reachable."));
+        completionHandler(makeString(targetIp.utf8().span(), ':', targetPort, " is not reachable."_s));
     else
         completionHandler(std::nullopt);
 }
@@ -105,7 +107,7 @@ std::optional<Vector<SessionHost::Target>> SessionHost::parseTargetList(const st
         if (!targetId
             || !itemObject->getString("name"_s, name)
             || !itemObject->getString("type"_s, type)
-            || type != "automation")
+            || type != "automation"_s)
             continue;
 
         target.id = *targetId;
@@ -150,7 +152,7 @@ void SessionHost::startAutomationSession(Function<void (bool, std::optional<Stri
 {
     ASSERT(!m_startSessionCompletionHandler);
     m_startSessionCompletionHandler = WTFMove(completionHandler);
-    m_sessionID = createCanonicalUUIDString();
+    m_sessionID = createVersion4UUIDString();
 
     auto sendMessageEvent = JSON::Object::create();
     sendMessageEvent->setString("event"_s, "StartAutomationSession"_s);
@@ -170,6 +172,10 @@ void SessionHost::setTargetList(uint64_t connectionID, Vector<Target>&& targetLi
         // Disconnected from backend
         m_clientID = std::nullopt;
         inspectorDisconnected();
+        if (m_startSessionCompletionHandler) {
+            auto startSessionCompletionHandler = std::exchange(m_startSessionCompletionHandler, nullptr);
+            startSessionCompletionHandler(true, "received empty target list"_s);
+        }
         return;
     }
 

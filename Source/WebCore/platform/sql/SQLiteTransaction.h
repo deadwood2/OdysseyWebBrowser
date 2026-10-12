@@ -26,6 +26,7 @@
 #ifndef SQLiteTransaction_h
 #define SQLiteTransaction_h
 
+#include <wtf/CheckedRef.h>
 #include <wtf/FastMalloc.h>
 #include <wtf/Noncopyable.h>
 
@@ -45,12 +46,12 @@ public:
     void stop();
     
     bool inProgress() const { return m_inProgress; }
-    bool wasRolledBackBySqlite() const;
+    WEBCORE_EXPORT bool wasRolledBackBySqlite() const;
 
-    SQLiteDatabase& database() const { return m_db; }
+    SQLiteDatabase& database() const { return m_db.get(); }
 
 private:
-    SQLiteDatabase& m_db;
+    CheckedRef<SQLiteDatabase> m_db;
     bool m_inProgress;
     bool m_readOnly;
 };

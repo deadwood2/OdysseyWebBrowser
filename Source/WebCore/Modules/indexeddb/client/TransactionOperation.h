@@ -45,7 +45,7 @@ enum class IndexRecordType : bool;
 namespace IDBClient {
 
 class TransactionOperation : public ThreadSafeRefCounted<TransactionOperation> {
-    WTF_MAKE_ISO_ALLOCATED(TransactionOperation);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(TransactionOperation);
     friend IDBRequestData::IDBRequestData(TransactionOperation&);
 public:
     virtual ~TransactionOperation()
@@ -127,7 +127,7 @@ protected:
     IDBResourceIdentifier m_identifier;
     uint64_t m_objectStoreIdentifier { 0 };
     uint64_t m_indexIdentifier { 0 };
-    std::unique_ptr<IDBResourceIdentifier> m_cursorIdentifier;
+    std::optional<IDBResourceIdentifier> m_cursorIdentifier;
     IndexedDB::IndexRecordType m_indexRecordType { IndexedDB::IndexRecordType::Key };
     Function<void()> m_performFunction;
     Function<void(const IDBResultData&)> m_completeFunction;
@@ -136,7 +136,7 @@ private:
     IDBResourceIdentifier transactionIdentifier() const { return m_transaction->info().identifier(); }
     uint64_t objectStoreIdentifier() const { return m_objectStoreIdentifier; }
     uint64_t indexIdentifier() const { return m_indexIdentifier; }
-    IDBResourceIdentifier* cursorIdentifier() const { return m_cursorIdentifier.get(); }
+    std::optional<IDBResourceIdentifier> cursorIdentifier() const { return m_cursorIdentifier; }
     IDBTransaction& transaction() { return m_transaction.get(); }
     IndexedDB::IndexRecordType indexRecordType() const { return m_indexRecordType; }
 
@@ -149,7 +149,7 @@ private:
 };
 
 class TransactionOperationImpl final : public TransactionOperation {
-    WTF_MAKE_ISO_ALLOCATED(TransactionOperationImpl);
+    WTF_MAKE_TZONE_OR_ISO_ALLOCATED(TransactionOperationImpl);
 public:
     template<typename... Args> static Ref<TransactionOperationImpl> create(Args&&... args) { return adoptRef(*new TransactionOperationImpl(std::forward<Args>(args)...)); }
 private:
@@ -157,12 +157,12 @@ private:
         : TransactionOperation(transaction)
     {
         ASSERT(performMethod);
-        m_performFunction = [protectedThis = makeRef(*this), performMethod = WTFMove(performMethod)] {
+        m_performFunction = [protectedThis = Ref { *this }, performMethod = WTFMove(performMethod)] {
             performMethod(protectedThis.get());
         };
 
         if (completeMethod) {
-            m_completeFunction = [protectedThis = makeRef(*this), completeMethod = WTFMove(completeMethod)] (const IDBResultData& resultData) {
+            m_completeFunction = [protectedThis = Ref { *this }, completeMethod = WTFMove(completeMethod)] (const IDBResultData& resultData) {
                 completeMethod(resultData);
             };
         }
@@ -172,12 +172,12 @@ private:
         : TransactionOperation(transaction, request)
     {
         ASSERT(performMethod);
-        m_performFunction = [protectedThis = makeRef(*this), performMethod = WTFMove(performMethod)] {
+        m_performFunction = [protectedThis = Ref { *this }, performMethod = WTFMove(performMethod)] {
             performMethod(protectedThis.get());
         };
 
         if (completeMethod) {
-            m_completeFunction = [protectedThis = makeRef(*this), completeMethod = WTFMove(completeMethod)] (const IDBResultData& resultData) {
+            m_completeFunction = [protectedThis = Ref { *this }, completeMethod = WTFMove(completeMethod)] (const IDBResultData& resultData) {
                 completeMethod(resultData);
             };
         }

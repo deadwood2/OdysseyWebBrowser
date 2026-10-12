@@ -34,17 +34,15 @@
 #include <wtf/Function.h>
 #include <wtf/Noncopyable.h>
 #include <wtf/RetainPtr.h>
+#include <wtf/TZoneMalloc.h>
 
 namespace WebKit {
 
 class HidConnection {
-    WTF_MAKE_FAST_ALLOCATED;
+    WTF_MAKE_TZONE_ALLOCATED(HidConnection);
     WTF_MAKE_NONCOPYABLE(HidConnection);
 public:
-    enum class DataSent {
-        No,
-        Yes
-    };
+    enum class DataSent : bool { No, Yes };
 
     using DataSentCallback = CompletionHandler<void(DataSent)>;
     using DataReceivedCallback = Function<void(Vector<uint8_t>&&)>;

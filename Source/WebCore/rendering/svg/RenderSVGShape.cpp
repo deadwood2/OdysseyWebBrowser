@@ -9,6 +9,7 @@
  * Copyright (C) 2011 Renata Hodovan <reni@webkit.org>
  * Copyright (C) 2011 University of Szeged
  * Copyright (C) 2018 Adobe Systems Incorporated. All rights reserved.
+ * Copyright (C) 2020, 2021, 2022 Igalia S.L.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -35,39 +36,28 @@
 #include "HitTestRequest.h"
 #include "HitTestResult.h"
 #include "LayoutRepainter.h"
+#include "LegacyRenderSVGResourceMarker.h"
 #include "PointerEventsHitRules.h"
-#include "RenderSVGResourceMarker.h"
-#include "RenderSVGResourceSolidColor.h"
+#include "RenderSVGShapeInlines.h"
+#include "RenderStyleInlines.h"
+#include "RenderView.h"
+#include "SVGPaintServerHandling.h"
 #include "SVGPathData.h"
-#include "SVGRenderingContext.h"
-#include "SVGResources.h"
-#include "SVGResourcesCache.h"
 #include "SVGURIReference.h"
-#include <wtf/IsoMallocInlines.h>
+#include "SVGVisitedRendererTracking.h"
 #include <wtf/StackStats.h>
+#include <wtf/TZoneMallocInlines.h>
 
 namespace WebCore {
 
-WTF_MAKE_ISO_ALLOCATED_IMPL(RenderSVGShape);
+WTF_MAKE_TZONE_OR_ISO_ALLOCATED_IMPL(RenderSVGShape);
 
-RenderSVGShape::RenderSVGShape(SVGGraphicsElement& element, RenderStyle&& style)
-    : RenderSVGModelObject(element, WTFMove(style))
-    , m_needsBoundariesUpdate(false) // Default is false, the cached rects are empty from the beginning.
-    , m_needsShapeUpdate(true) // Default is true, so we grab a Path object once from SVGGraphicsElement.
-    , m_needsTransformUpdate(true) // Default is true, so we grab a AffineTransform object once from SVGGraphicsElement.
+RenderSVGShape::RenderSVGShape(Type type, SVGGraphicsElement& element, RenderStyle&& style)
+    : RenderSVGModelObject(type, element, WTFMove(style), SVGModelObjectFlag::IsShape)
 {
 }
 
 RenderSVGShape::~RenderSVGShape() = default;
-
-void RenderSVGShape::updateShapeFromElement()
-{
-    m_path = createPath();
-    processMarkerPositions();
-
-    m_fillBoundingBox = calculateObjectBoundingBox();
-    m_strokeBoundingBox = calculateStrokeBoundingBox();
-}
 
 bool RenderSVGShape::isEmpty() const
 {
@@ -121,8 +111,8 @@ bool RenderSVGShape::fillContains(const FloatPoint& point, bool requiresFill, co
     if (m_fillBoundingBox.isEmpty() || !m_fillBoundingBox.contains(point))
         return false;
 
-    Color fallbackColor;
-    if (requiresFill && !RenderSVGResource::fillPaintingResource(*this, style(), fallbackColor))
+    auto paintServerResult = SVGPaintServerHandling::requestPaintServer<SVGPaintServerHandling::Operation::Fill>(*this, style());
+    if (requiresFill && std::holds_alternative<std::monostate>(paintServerResult))
         return false;
 
     return shapeDependentFillContains(point, fillRule);
@@ -130,11 +120,16 @@ bool RenderSVGShape::fillContains(const FloatPoint& point, bool requiresFill, co
 
 bool RenderSVGShape::strokeContains(const FloatPoint& point, bool requiresStroke)
 {
-    if (strokeBoundingBox().isEmpty() || !strokeBoundingBox().contains(point))
+    // "A zero value causes no stroke to be painted."
+    if (!strokeWidth())
         return false;
 
-    Color fallbackColor;
-    if (requiresStroke && !RenderSVGResource::strokePaintingResource(*this, style(), fallbackColor))
+    auto approximateStrokeBoundingBox = this->approximateStrokeBoundingBox();
+    if (approximateStrokeBoundingBox.isEmpty() || !approximateStrokeBoundingBox.contains(point))
+        return false;
+
+    auto paintServerResult = SVGPaintServerHandling::requestPaintServer<SVGPaintServerHandling::Operation::Stroke>(*this, style());
+    if (requiresStroke && std::holds_alternative<std::monostate>(paintServerResult))
         return false;
 
     return shapeDependentStrokeContains(point);
@@ -143,31 +138,16 @@ bool RenderSVGShape::strokeContains(const FloatPoint& point, bool requiresStroke
 void RenderSVGShape::layout()
 {
     StackStats::LayoutCheckPoint layoutCheckPoint;
-    LayoutRepainter repainter(*this, SVGRenderSupport::checkForSVGRepaintDuringLayout(*this) && selfNeedsLayout());
 
-    bool updateCachedBoundariesInParents = false;
-
-    if (m_needsShapeUpdate || m_needsBoundariesUpdate) {
+    LayoutRepainter repainter(*this);
+    if (m_needsShapeUpdate) {
         updateShapeFromElement();
+
         m_needsShapeUpdate = false;
-        updateRepaintBoundingBox();
-        m_needsBoundariesUpdate = false;
-        updateCachedBoundariesInParents = true;
+        setCurrentSVGLayoutRect(enclosingLayoutRect(m_fillBoundingBox));
     }
 
-    if (m_needsTransformUpdate) {
-        m_localTransform = graphicsElement().animatedLocalTransform();
-        m_needsTransformUpdate = false;
-        updateCachedBoundariesInParents = true;
-    }
-
-    // Invalidate all resources of this client if our layout changed.
-    if (everHadLayout() && selfNeedsLayout())
-        SVGResourcesCache::clientLayoutChanged(*this);
-
-    // If our bounds changed, notify the parents.
-    if (updateCachedBoundariesInParents)
-        RenderSVGModelObject::setNeedsBoundariesUpdate();
+    updateLayerTransform();
 
     repainter.repaintAfterLayout();
     clearNeedsLayout();
@@ -196,59 +176,19 @@ bool RenderSVGShape::setupNonScalingStrokeContext(AffineTransform& strokeTransfo
 
 AffineTransform RenderSVGShape::nonScalingStrokeTransform() const
 {
-    return graphicsElement().getScreenCTM(SVGLocatable::DisallowStyleUpdate);
+    return protectedGraphicsElement()->getScreenCTM(SVGLocatable::DisallowStyleUpdate);
 }
 
-bool RenderSVGShape::shouldGenerateMarkerPositions() const
+void RenderSVGShape::fillShape(const RenderStyle& style, GraphicsContext& context)
 {
-    if (!style().svgStyle().hasMarkers())
-        return false;
-
-    if (!graphicsElement().supportsMarkers())
-        return false;
-
-    auto* resources = SVGResourcesCache::cachedResourcesForRenderer(*this);
-    if (!resources)
-        return false;
-
-    return resources->markerStart() || resources->markerMid() || resources->markerEnd();
+    SVGPaintServerHandling paintServerHandling { context };
+    if (paintServerHandling.preparePaintOperation<SVGPaintServerHandling::Operation::Fill>(*this, style))
+        fillShape(context);
 }
 
-void RenderSVGShape::fillShape(const RenderStyle& style, GraphicsContext& originalContext)
+void RenderSVGShape::strokeShape(const RenderStyle& style, GraphicsContext& context)
 {
-    GraphicsContext* context = &originalContext;
-    Color fallbackColor;
-    if (RenderSVGResource* fillPaintingResource = RenderSVGResource::fillPaintingResource(*this, style, fallbackColor)) {
-        if (fillPaintingResource->applyResource(*this, style, context, RenderSVGResourceMode::ApplyToFill))
-            fillPaintingResource->postApplyResource(*this, context, RenderSVGResourceMode::ApplyToFill, nullptr, this);
-        else if (fallbackColor.isValid()) {
-            RenderSVGResourceSolidColor* fallbackResource = RenderSVGResource::sharedSolidPaintingResource();
-            fallbackResource->setColor(fallbackColor);
-            if (fallbackResource->applyResource(*this, style, context, RenderSVGResourceMode::ApplyToFill))
-                fallbackResource->postApplyResource(*this, context, RenderSVGResourceMode::ApplyToFill, nullptr, this);
-        }
-    }
-}
-
-void RenderSVGShape::strokeShape(const RenderStyle& style, GraphicsContext& originalContext)
-{
-    GraphicsContext* context = &originalContext;
-    Color fallbackColor;
-    if (RenderSVGResource* strokePaintingResource = RenderSVGResource::strokePaintingResource(*this, style, fallbackColor)) {
-        if (strokePaintingResource->applyResource(*this, style, context, RenderSVGResourceMode::ApplyToStroke))
-            strokePaintingResource->postApplyResource(*this, context, RenderSVGResourceMode::ApplyToStroke, nullptr, this);
-        else if (fallbackColor.isValid()) {
-            RenderSVGResourceSolidColor* fallbackResource = RenderSVGResource::sharedSolidPaintingResource();
-            fallbackResource->setColor(fallbackColor);
-            if (fallbackResource->applyResource(*this, style, context, RenderSVGResourceMode::ApplyToStroke))
-                fallbackResource->postApplyResource(*this, context, RenderSVGResourceMode::ApplyToStroke, nullptr, this);
-        }
-    }
-}
-
-void RenderSVGShape::strokeShape(GraphicsContext& context)
-{
-    if (!style().hasVisibleStroke())
+    if (!style.hasVisibleStroke())
         return;
 
     GraphicsContextStateSaver stateSaver(context, false);
@@ -257,64 +197,66 @@ void RenderSVGShape::strokeShape(GraphicsContext& context)
         if (!setupNonScalingStrokeContext(nonScalingTransform, stateSaver))
             return;
     }
-    strokeShape(style(), context);
+
+    SVGPaintServerHandling paintServerHandling { context };
+    if (paintServerHandling.preparePaintOperation<SVGPaintServerHandling::Operation::Stroke>(*this, style))
+        strokeShape(context);
 }
 
 void RenderSVGShape::fillStrokeMarkers(PaintInfo& childPaintInfo)
 {
-    auto paintOrder = RenderStyle::paintTypesForPaintOrder(style().paintOrder());
-    for (unsigned i = 0; i < paintOrder.size(); ++i) {
-        switch (paintOrder.at(i)) {
+    for (auto type : RenderStyle::paintTypesForPaintOrder(style().paintOrder())) {
+        switch (type) {
         case PaintType::Fill:
             fillShape(style(), childPaintInfo.context());
             break;
         case PaintType::Stroke:
-            strokeShape(childPaintInfo.context());
+            strokeShape(style(), childPaintInfo.context());
             break;
         case PaintType::Markers:
-            if (!m_markerPositions.isEmpty())
-                drawMarkers(childPaintInfo);
+            drawMarkers(childPaintInfo);
             break;
         }
     }
 }
 
-void RenderSVGShape::paint(PaintInfo& paintInfo, const LayoutPoint&)
+void RenderSVGShape::paint(PaintInfo& paintInfo, const LayoutPoint& paintOffset)
 {
-    if (paintInfo.context().paintingDisabled() || paintInfo.phase != PaintPhase::Foreground
-        || style().visibility() == Visibility::Hidden || isEmpty())
-        return;
-    FloatRect boundingBox = repaintRectInLocalCoordinates();
-    if (!SVGRenderSupport::paintInfoIntersectsRepaintRect(boundingBox, m_localTransform, paintInfo))
+    OptionSet<PaintPhase> relevantPaintPhases { PaintPhase::Foreground, PaintPhase::ClippingMask, PaintPhase::Mask, PaintPhase::Outline, PaintPhase::SelfOutline };
+    if (!shouldPaintSVGRenderer(paintInfo, relevantPaintPhases) || isEmpty())
         return;
 
-    PaintInfo childPaintInfo(paintInfo);
-    GraphicsContextStateSaver stateSaver(childPaintInfo.context());
-    childPaintInfo.applyTransform(m_localTransform);
-
-    if (childPaintInfo.phase == PaintPhase::Foreground) {
-        SVGRenderingContext renderingContext(*this, childPaintInfo);
-
-        if (renderingContext.isRenderingPrepared()) {
-            const SVGRenderStyle& svgStyle = style().svgStyle();
-            if (svgStyle.shapeRendering() == ShapeRendering::CrispEdges)
-                childPaintInfo.context().setShouldAntialias(false);
-
-            fillStrokeMarkers(childPaintInfo);
-        }
+    if (paintInfo.phase == PaintPhase::ClippingMask) {
+        paintSVGClippingMask(paintInfo, objectBoundingBox());
+        return;
     }
 
-    if (style().outlineWidth())
-        paintOutline(childPaintInfo, IntRect(boundingBox));
-}
+    auto adjustedPaintOffset = paintOffset + currentSVGLayoutLocation();
+    if (paintInfo.phase == PaintPhase::Mask) {
+        paintSVGMask(paintInfo, adjustedPaintOffset);
+        return;
+    }
 
-// This method is called from inside paintOutline() since we call paintOutline()
-// while transformed to our coord system, return local coords
-void RenderSVGShape::addFocusRingRects(Vector<LayoutRect>& rects, const LayoutPoint&, const RenderLayerModelObject*)
-{
-    LayoutRect rect = LayoutRect(repaintRectInLocalCoordinates());
-    if (!rect.isEmpty())
-        rects.append(rect);
+    auto visualOverflowRect = visualOverflowRectEquivalent();
+    visualOverflowRect.moveBy(adjustedPaintOffset);
+    if (!visualOverflowRect.intersects(paintInfo.rect))
+        return;
+
+    if (paintInfo.phase == PaintPhase::Outline || paintInfo.phase == PaintPhase::SelfOutline) {
+        paintSVGOutline(paintInfo, adjustedPaintOffset);
+        return;
+    }
+
+    ASSERT(paintInfo.phase == PaintPhase::Foreground);
+    GraphicsContextStateSaver stateSaver(paintInfo.context());
+
+    auto coordinateSystemOriginTranslation = adjustedPaintOffset - nominalSVGLayoutLocation();
+    paintInfo.context().translate(coordinateSystemOriginTranslation.width(), coordinateSystemOriginTranslation.height());
+
+    if (style().svgStyle().shapeRendering() == ShapeRendering::CrispEdges)
+        paintInfo.context().setShouldAntialias(false);
+
+    fillStrokeMarkers(paintInfo);
 }
 
 bool RenderSVGShape::isPointInFill(const FloatPoint& point)
@@ -340,76 +282,63 @@ FloatPoint RenderSVGShape::getPointAtLength(float distance) const
     return hasPath() ? path().pointAtLength(distance) : createPath()->pointAtLength(distance);
 }
 
-bool RenderSVGShape::nodeAtFloatPoint(const HitTestRequest& request, HitTestResult& result, const FloatPoint& pointInParent, HitTestAction hitTestAction)
+bool RenderSVGShape::nodeAtPoint(const HitTestRequest& request, HitTestResult& result, const HitTestLocation& locationInContainer, const LayoutPoint& accumulatedOffset, HitTestAction hitTestAction)
 {
-    // We only draw in the forground phase, so we only hit-test then.
     if (hitTestAction != HitTestForeground)
         return false;
 
-    FloatPoint localPoint = m_localTransform.inverse().value_or(AffineTransform()).mapPoint(pointInParent);
+    static NeverDestroyed<SVGVisitedRendererTracking::VisitedSet> s_visitedSet;
 
-    if (!SVGRenderSupport::pointInClippingArea(*this, localPoint))
+    SVGVisitedRendererTracking recursionTracking(s_visitedSet);
+    if (recursionTracking.isVisiting(*this))
         return false;
 
-    SVGHitTestCycleDetectionScope hitTestScope(*this);
+    SVGVisitedRendererTracking::Scope recursionScope(recursionTracking, *this);
 
-    PointerEventsHitRules hitRules(PointerEventsHitRules::SVG_PATH_HITTESTING, request, style().pointerEvents());
-    bool isVisible = (style().visibility() == Visibility::Visible);
-    if (isVisible || !hitRules.requireVisible) {
+    auto adjustedLocation = accumulatedOffset + currentSVGLayoutLocation();
+    auto localPoint = locationInContainer.point();
+    auto coordinateSystemOriginTranslation = nominalSVGLayoutLocation() - adjustedLocation;
+    localPoint.move(coordinateSystemOriginTranslation);
+
+    if (!pointInSVGClippingArea(localPoint))
+        return false;
+
+    PointerEventsHitRules hitRules(PointerEventsHitRules::HitTestingTargetType::SVGPath, request, usedPointerEvents());
+    if (isVisibleToHitTesting(style(), request) || !hitRules.requireVisible) {
         const SVGRenderStyle& svgStyle = style().svgStyle();
         WindRule fillRule = svgStyle.fillRule();
         if (request.svgClipContent())
             fillRule = svgStyle.clipRule();
-        if ((hitRules.canHitStroke && (svgStyle.hasStroke() || !hitRules.requireStroke) && strokeContains(localPoint, hitRules.requireStroke))
-            || (hitRules.canHitFill && (svgStyle.hasFill() || !hitRules.requireFill) && fillContains(localPoint, hitRules.requireFill, fillRule))
-            || (hitRules.canHitBoundingBox && objectBoundingBox().contains(localPoint))) {
-            updateHitTestResult(result, LayoutPoint(localPoint));
-            if (result.addNodeToListBasedTestResult(nodeForHitTest(), request, flooredLayoutPoint(localPoint)) == HitTestProgress::Stop)
+
+        if (hitRules.canHitStroke && (svgStyle.hasStroke() || !hitRules.requireStroke) && strokeContains(localPoint, hitRules.requireStroke)) {
+            updateHitTestResult(result, locationInContainer.point() - toLayoutSize(adjustedLocation));
+            if (result.addNodeToListBasedTestResult(protectedNodeForHitTest().get(), request, locationInContainer, strokeBoundingBox()) == HitTestProgress::Stop)
                 return true;
+            return false;
+        }
+
+        if ((hitRules.canHitFill && (svgStyle.hasFill() || !hitRules.requireFill) && fillContains(localPoint, hitRules.requireFill, fillRule))
+            || (hitRules.canHitBoundingBox && m_fillBoundingBox.contains(localPoint))) {
+            updateHitTestResult(result, locationInContainer.point() - toLayoutSize(adjustedLocation));
+            if (result.addNodeToListBasedTestResult(protectedNodeForHitTest().get(), request, locationInContainer, m_fillBoundingBox) == HitTestProgress::Stop)
+                return true;
+            return false;
         }
     }
+
     return false;
 }
 
-static inline RenderSVGResourceMarker* markerForType(SVGMarkerType type, RenderSVGResourceMarker* markerStart, RenderSVGResourceMarker* markerMid, RenderSVGResourceMarker* markerEnd)
+FloatRect RenderSVGShape::strokeBoundingBox() const
 {
-    switch (type) {
-    case StartMarker:
-        return markerStart;
-    case MidMarker:
-        return markerMid;
-    case EndMarker:
-        return markerEnd;
+    if (m_shapeType == ShapeType::Empty)
+        return { };
+    if (!m_strokeBoundingBox) {
+        // Initialize m_strokeBoundingBox before calling calculateStrokeBoundingBox, since recursively referenced markers can cause us to re-enter here.
+        m_strokeBoundingBox = FloatRect { };
+        m_strokeBoundingBox = calculateStrokeBoundingBox();
     }
-
-    ASSERT_NOT_REACHED();
-    return 0;
-}
-
-FloatRect RenderSVGShape::markerRect(float strokeWidth) const
-{
-    ASSERT(!m_markerPositions.isEmpty());
-
-    auto* resources = SVGResourcesCache::cachedResourcesForRenderer(*this);
-    ASSERT(resources);
-
-    RenderSVGResourceMarker* markerStart = resources->markerStart();
-    RenderSVGResourceMarker* markerMid = resources->markerMid();
-    RenderSVGResourceMarker* markerEnd = resources->markerEnd();
-    ASSERT(markerStart || markerMid || markerEnd);
-
-    FloatRect boundaries;
-    unsigned size = m_markerPositions.size();
-    for (unsigned i = 0; i < size; ++i) {
-        if (RenderSVGResourceMarker* marker = markerForType(m_markerPositions[i].type, markerStart, markerMid, markerEnd))
-            boundaries.unite(marker->markerBoundaries(marker->markerTransformation(m_markerPositions[i].origin, m_markerPositions[i].angle, strokeWidth)));
-    }
-    return boundaries;
-}
-
-FloatRect RenderSVGShape::calculateObjectBoundingBox() const
-{
-    return path().boundingRect();
+    return *m_strokeBoundingBox;
 }
 
 FloatRect RenderSVGShape::calculateStrokeBoundingBox() const
@@ -424,87 +353,77 @@ FloatRect RenderSVGShape::calculateStrokeBoundingBox() const
                 Path* usePath = nonScalingStrokePath(m_path.get(), nonScalingTransform);
                 FloatRect strokeBoundingRect = usePath->strokeBoundingRect(Function<void(GraphicsContext&)> { [this] (GraphicsContext& context) {
                     SVGRenderSupport::applyStrokeStyleToContext(context, style(), *this);
-                }});
+                } });
                 strokeBoundingRect = inverse.value().mapRect(strokeBoundingRect);
                 strokeBoundingBox.unite(strokeBoundingRect);
             }
         } else {
             strokeBoundingBox.unite(path().strokeBoundingRect(Function<void(GraphicsContext&)> { [this] (GraphicsContext& context) {
                 SVGRenderSupport::applyStrokeStyleToContext(context, style(), *this);
-            }}));
+            } }));
         }
     }
 
-    if (!m_markerPositions.isEmpty())
-        strokeBoundingBox.unite(markerRect(strokeWidth()));
-
-    return strokeBoundingBox;
+    return adjustStrokeBoundingBoxForZeroLengthLinecaps(RepaintRectCalculation::Accurate, strokeBoundingBox);
 }
 
-void RenderSVGShape::updateRepaintBoundingBox()
+FloatRect RenderSVGShape::approximateStrokeBoundingBox() const
 {
-    m_repaintBoundingBoxExcludingShadow = strokeBoundingBox();
-    SVGRenderSupport::intersectRepaintRectWithResources(*this, m_repaintBoundingBoxExcludingShadow);
+    if (m_shapeType == ShapeType::Empty)
+        return { };
+    if (!m_approximateStrokeBoundingBox) {
+        // Initialize m_approximateStrokeBoundingBox before calling calculateApproximateStrokeBoundingBox, since recursively referenced markers can cause us to re-enter here.
+        m_approximateStrokeBoundingBox = FloatRect { };
+        m_approximateStrokeBoundingBox = calculateApproximateStrokeBoundingBox();
+    }
+    return *m_approximateStrokeBoundingBox;
+}
 
-    m_repaintBoundingBox = m_repaintBoundingBoxExcludingShadow;
+FloatRect RenderSVGShape::calculateApproximateStrokeBoundingBox() const
+{
+    if (m_strokeBoundingBox)
+        return *m_strokeBoundingBox;
+
+    return SVGRenderSupport::calculateApproximateStrokeBoundingBox(*this);
 }
 
 float RenderSVGShape::strokeWidth() const
 {
-    SVGLengthContext lengthContext(&graphicsElement());
+    SVGLengthContext lengthContext(protectedGraphicsElement().ptr());
     return lengthContext.valueForLength(style().strokeWidth());
 }
 
-bool RenderSVGShape::hasSmoothStroke() const
+Path& RenderSVGShape::ensurePath()
 {
-    const SVGRenderStyle& svgStyle = style().svgStyle();
-    return svgStyle.strokeDashArray().isEmpty()
-        && style().strokeMiterLimit() == style().initialStrokeMiterLimit()
-        && style().joinStyle() == style().initialJoinStyle()
-        && style().capStyle() == style().initialCapStyle();
-}
-
-void RenderSVGShape::drawMarkers(PaintInfo& paintInfo)
-{
-    ASSERT(!m_markerPositions.isEmpty());
-
-    auto* resources = SVGResourcesCache::cachedResourcesForRenderer(*this);
-    if (!resources)
-        return;
-
-    RenderSVGResourceMarker* markerStart = resources->markerStart();
-    RenderSVGResourceMarker* markerMid = resources->markerMid();
-    RenderSVGResourceMarker* markerEnd = resources->markerEnd();
-    if (!markerStart && !markerMid && !markerEnd)
-        return;
-
-    float strokeWidth = this->strokeWidth();
-    unsigned size = m_markerPositions.size();
-    for (unsigned i = 0; i < size; ++i) {
-        if (RenderSVGResourceMarker* marker = markerForType(m_markerPositions[i].type, markerStart, markerMid, markerEnd))
-            marker->draw(paintInfo, marker->markerTransformation(m_markerPositions[i].origin, m_markerPositions[i].angle, strokeWidth));
-    }
+    if (!hasPath())
+        m_path = createPath();
+    return path();
 }
 
 std::unique_ptr<Path> RenderSVGShape::createPath() const
 {
-    return makeUnique<Path>(pathFromGraphicsElement(&graphicsElement()));
+    return makeUnique<Path>(pathFromGraphicsElement(protectedGraphicsElement()));
 }
 
-void RenderSVGShape::processMarkerPositions()
+void RenderSVGShape::styleWillChange(StyleDifference diff, const RenderStyle& newStyle)
 {
-    m_markerPositions.clear();
+    auto* oldStyle = hasInitializedStyle() ? &style() : nullptr;
+    if (oldStyle) {
+        if (diff == StyleDifference::Layout)
+            setNeedsShapeUpdate();
+    }
 
-    if (!shouldGenerateMarkerPositions())
-        return;
+    RenderSVGModelObject::styleWillChange(diff, newStyle);
+}
 
-    ASSERT(m_path);
+bool RenderSVGShape::needsHasSVGTransformFlags() const
+{
+    return protectedGraphicsElement()->hasTransformRelatedAttributes();
+}
 
-    SVGMarkerData markerData(m_markerPositions, SVGResourcesCache::cachedResourcesForRenderer(*this)->markerReverseStart());
-    m_path->apply([&markerData](const PathElement& pathElement) {
-        SVGMarkerData::updateFromPathElement(markerData, pathElement);
-    });
-    markerData.pathIsDone();
+void RenderSVGShape::applyTransform(TransformationMatrix& transform, const RenderStyle& style, const FloatRect& boundingBox, OptionSet<RenderStyle::TransformOperationOption> options) const
+{
+    applySVGTransform(transform, protectedGraphicsElement(), style, boundingBox, std::nullopt, std::nullopt, options);
 }
 
 }

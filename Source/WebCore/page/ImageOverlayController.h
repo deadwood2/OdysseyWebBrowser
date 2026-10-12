@@ -28,6 +28,7 @@
 #include "Color.h"
 #include "LayoutRect.h"
 #include "PageOverlay.h"
+#include <wtf/OptionSet.h>
 #include <wtf/Vector.h>
 #include <wtf/WeakPtr.h>
 
@@ -39,16 +40,20 @@ namespace WebCore {
 
 class Document;
 class Element;
-class Frame;
 class GraphicsContext;
+class GraphicsLayer;
+class GraphicsLayerClient;
 class HTMLElement;
 class IntRect;
 class FloatQuad;
+class LocalFrame;
 class Page;
 class RenderElement;
+class WeakPtrImplWithEventTargetData;
+enum class RenderingUpdateStep : uint32_t;
 struct GapRects;
 
-class ImageOverlayController final : private PageOverlay::Client
+class ImageOverlayController final : private PageOverlayClient
 #if PLATFORM(MAC)
     , DataDetectorHighlightClient
 #endif
@@ -57,8 +62,13 @@ class ImageOverlayController final : private PageOverlay::Client
 public:
     explicit ImageOverlayController(Page&);
 
-    void selectionQuadsDidChange(Frame&, const Vector<FloatQuad>&);
-    void elementUnderMouseDidChange(Frame&, Element*);
+    void selectionQuadsDidChange(LocalFrame&, const Vector<FloatQuad>&);
+    void elementUnderMouseDidChange(LocalFrame&, Element*);
+
+#if ENABLE(DATA_DETECTION)
+    WEBCORE_EXPORT bool hasActiveDataDetectorHighlightForTesting() const;
+    void textRecognitionResultsChanged(HTMLElement&);
+#endif
 
     void documentDetached(const Document&);
 
@@ -79,24 +89,33 @@ private:
     void clearDataDetectorHighlights();
     bool handleDataDetectorAction(const HTMLElement&, const IntPoint&);
 
+    // DataDetectorHighlightClient
+#if ENABLE(DATA_DETECTION)
     DataDetectorHighlight* activeHighlight() const final { return m_activeDataDetectorHighlight.get(); }
+    void scheduleRenderingUpdate(OptionSet<RenderingUpdateStep>) final;
+    float deviceScaleFactor() const final;
+    RefPtr<GraphicsLayer> createGraphicsLayer(GraphicsLayerClient&) final;
+#endif
 #endif
 
-    void platformUpdateElementUnderMouse(Frame&, Element* elementUnderMouse);
+    void platformUpdateElementUnderMouse(LocalFrame&, Element* elementUnderMouse);
     bool platformHandleMouseEvent(const PlatformMouseEvent&);
+
+    RefPtr<Page> protectedPage() const;
+    RefPtr<PageOverlay> protectedOverlay() const { return m_overlay; }
 
     WeakPtr<Page> m_page;
     RefPtr<PageOverlay> m_overlay;
-    WeakPtr<HTMLElement> m_hostElementForSelection;
+    WeakPtr<HTMLElement, WeakPtrImplWithEventTargetData> m_hostElementForSelection;
     Vector<FloatQuad> m_selectionQuads;
     LayoutRect m_selectionClipRect;
     Color m_selectionBackgroundColor { Color::transparentBlack };
 
 #if PLATFORM(MAC)
-    using ContainerAndHighlight = std::pair<WeakPtr<HTMLElement>, Ref<DataDetectorHighlight>>;
+    using ContainerAndHighlight = std::pair<WeakPtr<HTMLElement, WeakPtrImplWithEventTargetData>, Ref<DataDetectorHighlight>>;
     Vector<ContainerAndHighlight> m_dataDetectorContainersAndHighlights;
     RefPtr<DataDetectorHighlight> m_activeDataDetectorHighlight;
-    WeakPtr<HTMLElement> m_hostElementForDataDetectors;
+    WeakPtr<HTMLElement, WeakPtrImplWithEventTargetData> m_hostElementForDataDetectors;
 #endif
 };
 

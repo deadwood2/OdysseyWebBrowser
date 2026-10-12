@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2018 Apple, Inc.  All rights reserved.
+ * Copyright (C) 2015-2023 Apple, Inc.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,27 +29,14 @@
 // FIXME: Remove NS_ASSUME_NONNULL_BEGIN/END and all _Nullable annotations once we remove the NSHTTPCookie forward declaration below.
 NS_ASSUME_NONNULL_BEGIN
 
-#if PLATFORM(MAC) && __MAC_OS_X_VERSION_MAX_ALLOWED < 101500
-typedef NSString * NSHTTPCookieStringPolicy;
-@interface NSHTTPCookie (Staging)
-@property (nullable, readonly, copy) NSHTTPCookieStringPolicy sameSitePolicy;
-@end
-
-static NSString * const NSHTTPCookieSameSiteLax = @"lax";
-static NSString * const NSHTTPCookieSameSiteStrict = @"strict";
-#endif
-
 namespace WebCore {
 
 static Vector<uint16_t> portVectorFromList(NSArray<NSNumber *> *portList)
 {
-    Vector<uint16_t> ports;
-    ports.reserveInitialCapacity(portList.count);
-
-    for (NSNumber *port : portList)
-        ports.uncheckedAppend(port.unsignedShortValue);
-
-    return ports;
+    return Vector<uint16_t>(portList.count, [portList](size_t i) {
+        NSNumber *port = portList[i];
+        return port.unsignedShortValue;
+    });
 }
 
 static NSString * _Nullable portStringFromVector(const Vector<uint16_t>& ports)
@@ -96,12 +83,12 @@ static Cookie::SameSitePolicy coreSameSitePolicy(NSHTTPCookieStringPolicy _Nulla
 {
     if (!policy)
         return Cookie::SameSitePolicy::None;
-    ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
     if ([policy isEqualToString:NSHTTPCookieSameSiteLax])
         return Cookie::SameSitePolicy::Lax;
     if ([policy isEqualToString:NSHTTPCookieSameSiteStrict])
         return Cookie::SameSitePolicy::Strict;
-    ALLOW_NEW_API_WITHOUT_GUARDS_END
+ALLOW_NEW_API_WITHOUT_GUARDS_END
     ASSERT_NOT_REACHED();
     return Cookie::SameSitePolicy::None;
 }
@@ -111,12 +98,12 @@ static NSHTTPCookieStringPolicy _Nullable nsSameSitePolicy(Cookie::SameSitePolic
     switch (policy) {
     case Cookie::SameSitePolicy::None:
         return nil;
-    ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
+ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
     case Cookie::SameSitePolicy::Lax:
         return NSHTTPCookieSameSiteLax;
     case Cookie::SameSitePolicy::Strict:
         return NSHTTPCookieSameSiteStrict;
-    ALLOW_NEW_API_WITHOUT_GUARDS_END
+ALLOW_NEW_API_WITHOUT_GUARDS_END
     }
 }
 
@@ -134,10 +121,7 @@ Cookie::Cookie(NSHTTPCookie *cookie)
     , commentURL { cookie.commentURL }
     , ports { portVectorFromList(cookie.portList) }
 {
-    ALLOW_NEW_API_WITHOUT_GUARDS_BEGIN
-    if ([cookie respondsToSelector:@selector(sameSitePolicy)])
-        sameSite = coreSameSitePolicy(cookie.sameSitePolicy);
-    ALLOW_NEW_API_WITHOUT_GUARDS_END
+    sameSite = coreSameSitePolicy(cookie.sameSitePolicy);
 }
 
 Cookie::operator NSHTTPCookie * _Nullable () const

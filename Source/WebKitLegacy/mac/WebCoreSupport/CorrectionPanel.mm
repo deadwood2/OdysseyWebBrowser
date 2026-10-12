@@ -26,43 +26,27 @@
 #import "CorrectionPanel.h"
 
 #import "WebViewInternal.h"
+#import <WebCore/CorrectionIndicator.h>
 #import <wtf/cocoa/VectorCocoa.h>
 
 #if USE(AUTOCORRECTION_PANEL)
 
 using namespace WebCore;
 
-static inline NSCorrectionIndicatorType correctionIndicatorType(AlternativeTextType alternativeTextType)
-{
-    switch (alternativeTextType) {
-    case AlternativeTextTypeCorrection:
-        return NSCorrectionIndicatorTypeDefault;
-    case AlternativeTextTypeReversion:
-        return NSCorrectionIndicatorTypeReversion;
-    case AlternativeTextTypeSpellingSuggestions:
-        return NSCorrectionIndicatorTypeGuesses;
-    case AlternativeTextTypeDictationAlternatives:
-        ASSERT_NOT_REACHED();
-        break;
-    }
-    ASSERT_NOT_REACHED();
-    return NSCorrectionIndicatorTypeDefault;
-}
-
 CorrectionPanel::CorrectionPanel()
     : m_wasDismissedExternally(false)
-    , m_reasonForDismissing(ReasonForDismissingAlternativeTextIgnored)
+    , m_reasonForDismissing(ReasonForDismissingAlternativeText::Ignored)
 {
 }
 
 CorrectionPanel::~CorrectionPanel()
 {
-    dismissInternal(ReasonForDismissingAlternativeTextIgnored, false);
+    dismissInternal(ReasonForDismissingAlternativeText::Ignored, false);
 }
 
 void CorrectionPanel::show(WebView* view, AlternativeTextType type, const FloatRect& boundingBoxOfReplacedString, const String& replacedString, const String& replacementString, const Vector<String>& alternativeReplacementStrings)
 {
-    dismissInternal(ReasonForDismissingAlternativeTextIgnored, false);
+    dismissInternal(ReasonForDismissingAlternativeText::Ignored, false);
     
     if (!view)
         return;
@@ -115,7 +99,7 @@ void CorrectionPanel::handleAcceptedReplacement(NSString* acceptedReplacement, N
         if (acceptedReplacement)
             recordAutocorrectionResponse(documentTag, NSCorrectionResponseAccepted, replaced, acceptedReplacement);
         else {
-            if (!m_wasDismissedExternally || m_reasonForDismissing == ReasonForDismissingAlternativeTextCancelled)
+            if (!m_wasDismissedExternally || m_reasonForDismissing == ReasonForDismissingAlternativeText::Cancelled)
                 recordAutocorrectionResponse(documentTag, NSCorrectionResponseRejected, replaced, proposedReplacement);
             else
                 recordAutocorrectionResponse(documentTag, NSCorrectionResponseIgnored, replaced, proposedReplacement);

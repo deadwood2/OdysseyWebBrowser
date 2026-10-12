@@ -76,6 +76,12 @@ static bool handleOptionRemoteLayerTree(Options& options, const char*, const cha
     return true;
 }
 
+static bool handleOptionNoRemoteLayerTree(Options& options, const char*, const char*)
+{
+    options.features.boolTestRunnerFeatures.insert_or_assign("noUseRemoteLayerTree", true);
+    return true;
+}
+
 static bool handleOptionShowWindow(Options& options, const char*, const char*)
 {
     options.features.boolTestRunnerFeatures.insert_or_assign("shouldShowWindow", true);
@@ -114,6 +120,12 @@ static bool handleOptionAllowedHost(Options& options, const char*, const char* h
     return true;
 }
 
+static bool handleOptionLocalhostAlias(Options& options, const char*, const char* host)
+{
+    options.localhostAliases.insert(host);
+    return true;
+}
+
 static bool parseFeature(std::string_view featureString, TestFeatures& features)
 {
     auto strings = split(featureString, '=');
@@ -144,6 +156,37 @@ static bool handleOptionInternalFeature(Options& options, const char*, const cha
     return parseFeature(feature, options.features);
 }
 
+static bool handleOptionAdditionalHeader(Options& options, const char*, const char* feature)
+{
+    return parseFeature(feature, options.features);
+}
+
+static bool handleOptionWebCoreLogging(Options& options, const char*, const char* channels)
+{
+    options.webCoreLogChannels = channels;
+    return true;
+}
+
+static bool handleOptionWebKitLogging(Options& options, const char*, const char* channels)
+{
+    options.webKitLogChannels = channels;
+    return true;
+}
+
+static bool handleOptionLockdownMode(Options& options, const char*, const char*)
+{
+    options.lockdownModeEnabled = true;
+    return true;
+}
+
+#if PLATFORM(WPE)
+static bool handleOptionWPEPlatformAPI(Options& options, const char*, const char*)
+{
+    options.useWPEPlatformAPI = true;
+    return true;
+}
+#endif
+
 static bool handleOptionUnmatched(Options& options, const char* option, const char*)
 {
     if (option[0] && option[1] && option[0] == '-' && option[1] == '-')
@@ -163,7 +206,9 @@ OptionsHandler::OptionsHandler(Options& o)
     optionList.append(Option("--complex-text", "Force complex tests.", handleOptionComplexText));
     optionList.append(Option("--accelerated-drawing", "Use accelerated drawing.", handleOptionAcceleratedDrawing));
     optionList.append(Option("--remote-layer-tree", "Use remote layer tree.", handleOptionRemoteLayerTree));
+    optionList.append(Option("--no-remote-layer-tree", "Disable remote layer tree.", handleOptionNoRemoteLayerTree));
     optionList.append(Option("--allowed-host", "Allows access to the specified host from tests.", handleOptionAllowedHost, true));
+    optionList.append(Option("--localhost-alias", "Adds hostname alias to localhost if the port supports it.", handleOptionLocalhostAlias, true));
     optionList.append(Option("--allow-any-certificate-for-allowed-hosts", "Allows any HTTPS certificate for an allowed host.", handleOptionAllowAnyHTTPSCertificateForAllowedHosts));
     optionList.append(Option("--show-webview", "DEPRECATED. Same as --show-window", handleOptionShowWindow));
     optionList.append(Option("--show-window", "Make the test runner window visible during testing", handleOptionShowWindow));
@@ -172,10 +217,17 @@ OptionsHandler::OptionsHandler(Options& o)
     optionList.append(Option("--no-enable-all-experimental-features", "Do not enable all experimental features by default", handleOptionNoEnableAllExperimentalFeatures));
     optionList.append(Option("--experimental-feature", "Enable experimental feature", handleOptionExperimentalFeature, true));
     optionList.append(Option("--internal-feature", "Enable internal feature", handleOptionInternalFeature, true));
+    optionList.append(Option("--additional-header", "Passes webkit-test-runner header value to tests", handleOptionAdditionalHeader, true));
 #if ENABLE(ACCESSIBILITY_ISOLATED_TREE)
     optionList.append(Option("--accessibility-isolated-tree", "Enable accessibility isolated tree mode for tests", handleOptionAccessibilityIsolatedTreeMode));
 #endif
-    
+    optionList.append(Option("--webcore-logging", "Enable WebCore log channels", handleOptionWebCoreLogging, true));
+    optionList.append(Option("--webkit-logging", "Enable WebKit log channels", handleOptionWebKitLogging, true));
+    optionList.append(Option("--lockdown-mode", "Enable Lockdown Mode", handleOptionLockdownMode));
+#if PLATFORM(WPE)
+    optionList.append(Option("--wpe-platform-api", "Use the WPE platform API", handleOptionWPEPlatformAPI));
+#endif
+
     optionList.append(Option(0, 0, handleOptionUnmatched));
 }
 

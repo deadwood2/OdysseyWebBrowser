@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011, 2012, 2013 Apple Inc. All rights reserved.
+ * Copyright (C) 2011-2023 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -28,13 +28,12 @@
 
 #import "APIData.h"
 #import "APINavigation.h"
-#import "ObjCObjectGraph.h"
 #import "PageLoadStateObserver.h"
 #import "RemoteObjectRegistry.h"
 #import "RemoteObjectRegistryMessages.h"
+#import "WKAPICast.h"
 #import "WKBackForwardListInternal.h"
 #import "WKBackForwardListItemInternal.h"
-#import "WKBrowsingContextGroupInternal.h"
 #import "WKBrowsingContextHandleInternal.h"
 #import "WKBrowsingContextLoadDelegatePrivate.h"
 #import "WKBrowsingContextPolicyDelegate.h"
@@ -48,18 +47,24 @@
 #import "WKPagePolicyClientInternal.h"
 #import "WKProcessGroupPrivate.h"
 #import "WKRetainPtr.h"
+#import "WKSharedAPICast.h"
 #import "WKURLRequestNS.h"
 #import "WKURLResponseNS.h"
 #import "WKViewInternal.h"
-#import "WebCertificateInfo.h"
+#import "WebFrameProxy.h"
 #import "WebPageProxy.h"
 #import "WebProcessPool.h"
 #import "WebProtectionSpace.h"
 #import "_WKRemoteObjectRegistryInternal.h"
+#import <WebCore/Pagination.h>
 #import <WebCore/WebCoreObjCExtras.h>
 #import <wtf/BlockPtr.h>
+#import <wtf/CheckedPtr.h>
 #import <wtf/NeverDestroyed.h>
 #import <wtf/WeakObjCPtr.h>
+#import <wtf/cf/CFURLExtras.h>
+#import <wtf/cocoa/SpanCocoa.h>
+#import <wtf/cocoa/TypeCastsCocoa.h>
 
 NSString * const WKActionIsMainFrameKey = @"WKActionIsMainFrameKey";
 NSString * const WKActionNavigationTypeKey = @"WKActionNavigationTypeKey";
@@ -83,9 +88,9 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 }
 
 ALLOW_DEPRECATED_DECLARATIONS_BEGIN
-static HashMap<WebKit::WebPageProxy*, __unsafe_unretained WKBrowsingContextController *>& browsingContextControllerMap()
+static HashMap<WeakRef<WebKit::WebPageProxy>, __unsafe_unretained WKBrowsingContextController *>& browsingContextControllerMap()
 {
-    static NeverDestroyed<HashMap<WebKit::WebPageProxy*, __unsafe_unretained WKBrowsingContextController *>> browsingContextControllerMap;
+    static NeverDestroyed<HashMap<WeakRef<WebKit::WebPageProxy>, __unsafe_unretained WKBrowsingContextController *>> browsingContextControllerMap;
     return browsingContextControllerMap;
 }
 ALLOW_DEPRECATED_DECLARATIONS_END
@@ -95,8 +100,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (WebCoreObjCScheduleDeallocateOnMainRunLoop(WKBrowsingContextController.class, self))
         return;
 
-    ASSERT(browsingContextControllerMap().get(_page.get()) == self);
-    browsingContextControllerMap().remove(_page.get());
+    ASSERT(browsingContextControllerMap().get(*_page) == self);
+    browsingContextControllerMap().remove(*_page);
 
     _page->pageLoadState().removeObserver(*_pageLoadStateObserver);
 
@@ -136,11 +141,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (void)loadRequest:(NSURLRequest *)request userData:(id)userData
 {
-    RefPtr<WebKit::ObjCObjectGraph> wkUserData;
-    if (userData)
-        wkUserData = WebKit::ObjCObjectGraph::create(userData);
-
-    _page->loadRequest(request, WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow, wkUserData.get());
+    ASSERT(!userData);
+    _page->loadRequest(request, WebCore::ShouldOpenExternalURLsPolicy::ShouldNotAllow, { });
 }
 
 - (void)loadFileURL:(NSURL *)URL restrictToFilesWithin:(NSURL *)allowedDirectory
@@ -150,14 +152,11 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (void)loadFileURL:(NSURL *)URL restrictToFilesWithin:(NSURL *)allowedDirectory userData:(id)userData
 {
+    ASSERT(!userData);
     if (![URL isFileURL] || (allowedDirectory && ![allowedDirectory isFileURL]))
         [NSException raise:NSInvalidArgumentException format:@"Attempted to load a non-file URL"];
 
-    RefPtr<WebKit::ObjCObjectGraph> wkUserData;
-    if (userData)
-        wkUserData = WebKit::ObjCObjectGraph::create(userData);
-
-    _page->loadFile([URL _web_originalDataAsWTFString], [allowedDirectory _web_originalDataAsWTFString], wkUserData.get());
+    _page->loadFile(bytesAsString(bridge_cast(URL)), bytesAsString(bridge_cast(allowedDirectory)), { });
 }
 
 - (void)loadHTMLString:(NSString *)HTMLString baseURL:(NSURL *)baseURL
@@ -167,18 +166,15 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (void)loadHTMLString:(NSString *)HTMLString baseURL:(NSURL *)baseURL userData:(id)userData
 {
-    RefPtr<WebKit::ObjCObjectGraph> wkUserData;
-    if (userData)
-        wkUserData = WebKit::ObjCObjectGraph::create(userData);
-
+    ASSERT(!userData);
     NSData *data = [HTMLString dataUsingEncoding:NSUTF8StringEncoding];
-    _page->loadData({ static_cast<const uint8_t*>(data.bytes), data.length }, "text/html"_s, "UTF-8"_s, [baseURL _web_originalDataAsWTFString], wkUserData.get());
+    _page->loadData(WebCore::SharedBuffer::create(data), "text/html"_s, "UTF-8"_s, bytesAsString(bridge_cast(baseURL)), { });
 }
 
 - (void)loadAlternateHTMLString:(NSString *)string baseURL:(NSURL *)baseURL forUnreachableURL:(NSURL *)unreachableURL
 {
     NSData *data = [string dataUsingEncoding:NSUTF8StringEncoding];
-    _page->loadAlternateHTML({ static_cast<const uint8_t*>(data.bytes), data.length }, "UTF-8"_s, baseURL, unreachableURL);
+    _page->loadAlternateHTML(WebCore::DataSegment::create((__bridge CFDataRef)data), "UTF-8"_s, baseURL, unreachableURL);
 }
 
 - (void)loadData:(NSData *)data MIMEType:(NSString *)MIMEType textEncodingName:(NSString *)encodingName baseURL:(NSURL *)baseURL
@@ -188,11 +184,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 - (void)loadData:(NSData *)data MIMEType:(NSString *)MIMEType textEncodingName:(NSString *)encodingName baseURL:(NSURL *)baseURL userData:(id)userData
 {
-    RefPtr<WebKit::ObjCObjectGraph> wkUserData;
-    if (userData)
-        wkUserData = WebKit::ObjCObjectGraph::create(userData);
-
-    _page->loadData({ static_cast<const uint8_t*>(data.bytes), data.length }, MIMEType, encodingName, [baseURL _web_originalDataAsWTFString], wkUserData.get());
+    ASSERT(!userData);
+    _page->loadData(WebCore::SharedBuffer::create(data), MIMEType, encodingName, bytesAsString(bridge_cast(baseURL)), { });
 }
 
 - (void)stopLoading
@@ -312,7 +305,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 - (NSArray *)certificateChain
 {
     if (WebKit::WebFrameProxy* mainFrame = _page->mainFrame())
-        return mainFrame->certificateInfo() ? (__bridge NSArray *)mainFrame->certificateInfo()->certificateInfo().certificateChain() : nil;
+        return (__bridge NSArray *)WebCore::CertificateInfo::certificateChainFromSecTrust(mainFrame->certificateInfo().trust().get()).autorelease();
 
     return nil;
 }
@@ -341,9 +334,9 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
 static void didStartProvisionalNavigation(WKPageRef page, WKNavigationRef, WKTypeRef userData, const void* clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextControllerDidStartProvisionalLoad:)])
@@ -352,9 +345,9 @@ static void didStartProvisionalNavigation(WKPageRef page, WKNavigationRef, WKTyp
 
 static void didReceiveServerRedirectForProvisionalNavigation(WKPageRef page, WKNavigationRef, WKTypeRef userData, const void* clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextControllerDidReceiveServerRedirectForProvisionalLoad:)])
@@ -363,9 +356,9 @@ static void didReceiveServerRedirectForProvisionalNavigation(WKPageRef page, WKN
 
 static void didFailProvisionalNavigation(WKPageRef page, WKNavigationRef, WKErrorRef error, WKTypeRef userData, const void* clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextController:didFailProvisionalLoadWithError:)])
@@ -374,9 +367,9 @@ static void didFailProvisionalNavigation(WKPageRef page, WKNavigationRef, WKErro
 
 static void didCommitNavigation(WKPageRef page, WKNavigationRef, WKTypeRef userData, const void* clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextControllerDidCommitLoad:)])
@@ -385,9 +378,9 @@ static void didCommitNavigation(WKPageRef page, WKNavigationRef, WKTypeRef userD
 
 static void didFinishNavigation(WKPageRef page, WKNavigationRef, WKTypeRef userData, const void* clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextControllerDidFinishLoad:)])
@@ -396,9 +389,9 @@ static void didFinishNavigation(WKPageRef page, WKNavigationRef, WKTypeRef userD
 
 static void didFailNavigation(WKPageRef page, WKNavigationRef, WKErrorRef error, WKTypeRef userData, const void* clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextController:didFailLoadWithError:)])
@@ -407,9 +400,9 @@ static void didFailNavigation(WKPageRef page, WKNavigationRef, WKErrorRef error,
 
 static bool canAuthenticateAgainstProtectionSpace(WKPageRef page, WKProtectionSpaceRef protectionSpace, const void *clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextController:canAuthenticateAgainstProtectionSpace:)])
@@ -420,9 +413,9 @@ static bool canAuthenticateAgainstProtectionSpace(WKPageRef page, WKProtectionSp
 
 static void didReceiveAuthenticationChallenge(WKPageRef page, WKAuthenticationChallengeRef authenticationChallenge, const void *clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextController:didReceiveAuthenticationChallenge:)])
@@ -431,9 +424,9 @@ static void didReceiveAuthenticationChallenge(WKPageRef page, WKAuthenticationCh
 
 static void processDidCrash(WKPageRef page, const void* clientInfo)
 {
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     auto loadDelegate = browsingContext->_loadDelegate.get();
 
     if ([loadDelegate respondsToSelector:@selector(browsingContextControllerWebProcessDidCrash:)])
@@ -491,9 +484,9 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
     policyClient.decidePolicyForNavigationAction = [](WKPageRef page, WKFrameRef frame, WKFrameNavigationType navigationType, WKEventModifiers modifiers, WKEventMouseButton mouseButton, WKFrameRef originatingFrame, WKURLRequestRef originalRequest, WKURLRequestRef request, WKFramePolicyListenerRef listener, WKTypeRef userData, const void* clientInfo)
     {
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
         auto policyDelegate = browsingContext->_policyDelegate.get();
 
         if ([policyDelegate respondsToSelector:@selector(browsingContextController:decidePolicyForNavigationAction:decisionHandler:)]) {
@@ -508,7 +501,7 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
             if (originatingFrame) {
                 actionDictionary = adoptNS([actionDictionary mutableCopy]);
-                [(NSMutableDictionary *)actionDictionary.get() setObject:[NSURL _web_URLWithWTFString:WebKit::toImpl(originatingFrame)->url().string()] forKey:WKActionOriginatingFrameURLKey];
+                [(NSMutableDictionary *)actionDictionary.get() setObject:(NSURL *)WebKit::toImpl(originatingFrame)->url() forKey:WKActionOriginatingFrameURLKey];
             }
             
             [policyDelegate browsingContextController:browsingContext decidePolicyForNavigationAction:actionDictionary.get() decisionHandler:makePolicyDecisionBlock(listener).get()];
@@ -518,9 +511,9 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
     policyClient.decidePolicyForNewWindowAction = [](WKPageRef page, WKFrameRef frame, WKFrameNavigationType navigationType, WKEventModifiers modifiers, WKEventMouseButton mouseButton, WKURLRequestRef request, WKStringRef frameName, WKFramePolicyListenerRef listener, WKTypeRef userData, const void* clientInfo)
     {
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
         auto policyDelegate = browsingContext->_policyDelegate.get();
 
         if ([policyDelegate respondsToSelector:@selector(browsingContextController:decidePolicyForNewWindowAction:decisionHandler:)]) {
@@ -540,9 +533,9 @@ ALLOW_DEPRECATED_DECLARATIONS_END
 
     policyClient.decidePolicyForResponse = [](WKPageRef page, WKFrameRef frame, WKURLResponseRef response, WKURLRequestRef request, bool canShowMIMEType, WKFramePolicyListenerRef listener, WKTypeRef userData, const void* clientInfo)
     {
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         auto browsingContext = (__bridge WKBrowsingContextController *)clientInfo;
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
         auto policyDelegate = browsingContext->_policyDelegate.get();
 
         if ([policyDelegate respondsToSelector:@selector(browsingContextController:decidePolicyForResponseAction:decisionHandler:)]) {
@@ -558,9 +551,9 @@ ALLOW_DEPRECATED_DECLARATIONS_END
             WKFramePolicyListenerUse(listener);
     };
 
-    ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
     WKPageSetPagePolicyClient(toAPI(&page), &policyClient.base);
-    ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
 }
 
 - (id <WKBrowsingContextLoadDelegate>)loadDelegate
@@ -590,9 +583,9 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     if (policyDelegate)
         setUpPagePolicyClient(self, *_page);
     else {
-        ALLOW_DEPRECATED_DECLARATIONS_BEGIN
+ALLOW_DEPRECATED_DECLARATIONS_BEGIN
         WKPageSetPagePolicyClient(toAPI(_page.get()), nullptr);
-        ALLOW_DEPRECATED_DECLARATIONS_END
+ALLOW_DEPRECATED_DECLARATIONS_END
     }
 }
 
@@ -622,8 +615,8 @@ ALLOW_DEPRECATED_DECLARATIONS_END
     _pageLoadStateObserver = makeUnique<WebKit::PageLoadStateObserver>(self);
     _page->pageLoadState().addObserver(*_pageLoadStateObserver);
 
-    ASSERT(!browsingContextControllerMap().contains(_page.get()));
-    browsingContextControllerMap().set(_page.get(), self);
+    ASSERT(!browsingContextControllerMap().contains(*_page));
+    browsingContextControllerMap().set(*_page, self);
 
     return self;
 }
@@ -650,19 +643,19 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
     WebCore::Pagination::Mode mode;
     switch (paginationMode) {
     case WKPaginationModeUnpaginated:
-        mode = WebCore::Pagination::Unpaginated;
+        mode = WebCore::PaginationMode::Unpaginated;
         break;
     case WKPaginationModeLeftToRight:
-        mode = WebCore::Pagination::LeftToRightPaginated;
+        mode = WebCore::PaginationMode::LeftToRightPaginated;
         break;
     case WKPaginationModeRightToLeft:
-        mode = WebCore::Pagination::RightToLeftPaginated;
+        mode = WebCore::PaginationMode::RightToLeftPaginated;
         break;
     case WKPaginationModeTopToBottom:
-        mode = WebCore::Pagination::TopToBottomPaginated;
+        mode = WebCore::PaginationMode::TopToBottomPaginated;
         break;
     case WKPaginationModeBottomToTop:
-        mode = WebCore::Pagination::BottomToTopPaginated;
+        mode = WebCore::PaginationMode::BottomToTopPaginated;
         break;
     default:
         return;
@@ -674,15 +667,15 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 - (WKBrowsingContextPaginationMode)paginationMode
 {
     switch (_page->paginationMode()) {
-    case WebCore::Pagination::Unpaginated:
+    case WebCore::PaginationMode::Unpaginated:
         return WKPaginationModeUnpaginated;
-    case WebCore::Pagination::LeftToRightPaginated:
+    case WebCore::PaginationMode::LeftToRightPaginated:
         return WKPaginationModeLeftToRight;
-    case WebCore::Pagination::RightToLeftPaginated:
+    case WebCore::PaginationMode::RightToLeftPaginated:
         return WKPaginationModeRightToLeft;
-    case WebCore::Pagination::TopToBottomPaginated:
+    case WebCore::PaginationMode::TopToBottomPaginated:
         return WKPaginationModeTopToBottom;
-    case WebCore::Pagination::BottomToTopPaginated:
+    case WebCore::PaginationMode::BottomToTopPaginated:
         return WKPaginationModeBottomToTop;
     }
 
@@ -722,12 +715,11 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 
 - (void)setPaginationLineGridEnabled:(BOOL)lineGridEnabled
 {
-    _page->setPaginationLineGridEnabled(lineGridEnabled);
 }
 
 - (BOOL)paginationLineGridEnabled
 {
-    return _page->paginationLineGridEnabled();
+    return NO;
 }
 
 - (NSUInteger)pageCount
@@ -751,12 +743,12 @@ ALLOW_DEPRECATED_IMPLEMENTATIONS_END
 
 - (pid_t)processIdentifier
 {
-    return _page->processIdentifier();
+    return _page->legacyMainFrameProcessID();
 }
 
 - (BOOL)_webProcessIsResponsive
 {
-    return _page->process().isResponsive();
+    return _page->legacyMainFrameProcess().isResponsive();
 }
 
 @end

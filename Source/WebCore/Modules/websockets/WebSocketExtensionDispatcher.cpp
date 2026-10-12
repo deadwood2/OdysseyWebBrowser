@@ -35,6 +35,7 @@
 #include <wtf/ASCIICType.h>
 #include <wtf/HashMap.h>
 #include <wtf/text/CString.h>
+#include <wtf/text/MakeString.h>
 #include <wtf/text/StringHash.h>
 
 namespace WebCore {
@@ -62,19 +63,15 @@ const String WebSocketExtensionDispatcher::createHeaderValue() const
     if (!numProcessors)
         return String();
 
-    StringBuilder builder;
-    builder.append(m_processors[0]->handshakeString());
-    for (size_t i = 1; i < numProcessors; ++i)
-        builder.append(", ", m_processors[i]->handshakeString());
-    return builder.toString();
+    return makeString(interleave(m_processors, [](auto& processor) { return processor->handshakeString(); }, ", "_s));
 }
 
 void WebSocketExtensionDispatcher::appendAcceptedExtension(const String& extensionToken, HashMap<String, String>& extensionParameters)
 {
-    m_acceptedExtensionsBuilder.append(m_acceptedExtensionsBuilder.isEmpty() ? "" : ", ", extensionToken);
+    m_acceptedExtensionsBuilder.append(m_acceptedExtensionsBuilder.isEmpty() ? ""_s : ", "_s, extensionToken);
     // FIXME: Should use ListHashSet to keep the order of the parameters.
     for (auto& parameter : extensionParameters) {
-        m_acceptedExtensionsBuilder.append("; ", parameter.key);
+        m_acceptedExtensionsBuilder.append("; "_s, parameter.key);
         if (!parameter.value.isNull())
             m_acceptedExtensionsBuilder.append('=', parameter.value);
     }
@@ -93,7 +90,7 @@ bool WebSocketExtensionDispatcher::processHeaderValue(const String& headerValue)
 
     // If we don't send Sec-WebSocket-Extensions header, the server should not return the header.
     if (!m_processors.size()) {
-        fail("Received unexpected Sec-WebSocket-Extensions header");
+        fail("Received unexpected Sec-WebSocket-Extensions header"_s);
         return false;
     }
 
@@ -103,7 +100,7 @@ bool WebSocketExtensionDispatcher::processHeaderValue(const String& headerValue)
         String extensionToken;
         HashMap<String, String> extensionParameters;
         if (!parser.parseExtension(extensionToken, extensionParameters)) {
-            fail("Sec-WebSocket-Extensions header is invalid");
+            fail("Sec-WebSocket-Extensions header is invalid"_s);
             return false;
         }
 
@@ -121,7 +118,7 @@ bool WebSocketExtensionDispatcher::processHeaderValue(const String& headerValue)
         }
         // There is no extension which can process the response.
         if (index == m_processors.size()) {
-            fail("Received unexpected extension: " + extensionToken);
+            fail(makeString("Received unexpected extension: "_s, extensionToken));
             return false;
         }
     }
